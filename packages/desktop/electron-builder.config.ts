@@ -178,8 +178,11 @@ const verifyPackage: NonNullable<Configuration["afterPack"]> = async (context) =
       "static-analysis/dist/turen_static_analysis_wasm_bg.wasm",
       "forensic-tools/forensic-worker.js",
       "forensic-tools/wifi-offline/dist/turen_wifi_offline_wasm.js",
+      "forensic-tools/wifi-offline/dist/turen_wifi_offline_wasm_bg.wasm",
       "forensic-tools/windows-artifacts/dist/turen_windows_artifacts_wasm.js",
+      "forensic-tools/windows-artifacts/dist/turen_windows_artifacts_wasm_bg.wasm",
       "forensic-tools/rebuild-timeline/dist/turen_rebuild_timeline_wasm.js",
+      "forensic-tools/rebuild-timeline/dist/turen_rebuild_timeline_wasm_bg.wasm",
     ].map((file) =>
       access(path.join(resources, file)).catch(() => {
         throw new Error(`Packaged decompile artifact is missing: ${file}`)

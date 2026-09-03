@@ -1,0 +1,21 @@
+{
+  "name": "turen-wifi-offline-wasm",
+  "type": "module",
+  "description": "Offline 802.11 capture summary for Turen",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_wifi_offline_wasm_bg.wasm",
+    "turen_wifi_offline_wasm.js",
+    "turen_wifi_offline_wasm.d.ts"
+  ],
+  "main": "turen_wifi_offline_wasm.js",
+  "types": "turen_wifi_offline_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

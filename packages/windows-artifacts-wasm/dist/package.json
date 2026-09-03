@@ -1,0 +1,21 @@
+{
+  "name": "turen-windows-artifacts-wasm",
+  "type": "module",
+  "description": "Windows forensic artifact parser for Turen",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_windows_artifacts_wasm_bg.wasm",
+    "turen_windows_artifacts_wasm.js",
+    "turen_windows_artifacts_wasm.d.ts"
+  ],
+  "main": "turen_windows_artifacts_wasm.js",
+  "types": "turen_windows_artifacts_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

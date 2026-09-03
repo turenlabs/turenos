@@ -1,0 +1,21 @@
+{
+  "name": "turen-static-analysis-wasm",
+  "type": "module",
+  "description": "Bounded static analysis WebAssembly operations for Turen",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_static_analysis_wasm_bg.wasm",
+    "turen_static_analysis_wasm.js",
+    "turen_static_analysis_wasm.d.ts"
+  ],
+  "main": "turen_static_analysis_wasm.js",
+  "types": "turen_static_analysis_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
