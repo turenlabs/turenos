@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/opengrep",
+  "name": "Opengrep",
+  "description": "Run Semgrep-compatible static analysis rules",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "tool",
+      "id": "opengrep",
+      "name": "Opengrep",
+      "description": "Run Semgrep-compatible static analysis rules",
+      "adapter": "security:opengrep",
+      "secrets": [],
+      "defaultEnabled": false,
+      "group": "sast",
+      "commands": ["opengrep"],
+      "configuration": [],
+      "tools": {
+        "allow": ["opengrep_scan"],
+        "write": []
+      },
+      "instructions": "Use Opengrep for its declared purpose: Run Semgrep-compatible static analysis rules. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ]
+}

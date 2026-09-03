@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/elastic-security",
+  "name": "Elastic Security / Agent Builder",
+  "description": "Investigate Elastic security and observability evidence through a customer Kibana Agent Builder MCP endpoint",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://www.elastic.co/docs/explore-analyze/ai-features/agent-builder/mcp-server",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "elastic-security",
+      "name": "Elastic Security / Agent Builder",
+      "description": "Read Elastic security alerts, attack discovery, entity risk, cases, observability alerts, logs, and traces",
+      "adapter": "mcp:elastic-security",
+      "secrets": [
+        { "id": "ELASTIC_OAUTH_CLIENT_SECRET", "label": "Elastic OAuth client secret (optional)", "required": false }
+      ],
+      "configuration": [{ "id": "clientId", "label": "Elastic OAuth client ID", "required": true }],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "customer-url", "path": "/api/agent_builder/mcp", "privateNetwork": true },
+      "connection": {
+        "oauth": { "clientId": "clientId", "clientSecret": "ELASTIC_OAUTH_CLIENT_SECRET" }
+      },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 9, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": [
+          "security.alerts",
+          "security.attack_discovery_search",
+          "security.entity_risk_score",
+          "security.get_entity",
+          "security.search_entities",
+          "platform.core.cases",
+          "observability.get_alerts",
+          "observability.get_logs",
+          "observability.get_traces"
+        ],
+        "write": []
+      },
+      "instructions": "Enter the Kibana base URL and a least-privilege OAuth client registration. TurenOS does not configure the API-key alternative for this integration. Keep access read-only and do not admit custom, workflow, detection-rule, case mutation, or response tools."
+    }
+  ]
+}

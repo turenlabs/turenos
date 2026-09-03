@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/websearch-exa",
+  "name": "Exa Web Search",
+  "description": "Search and retrieve current web content through Exa",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://exa.ai/",
+  "contributions": [
+    {
+      "type": "data",
+      "id": "websearch-exa",
+      "name": "Exa Web Search",
+      "description": "Search and retrieve current web content through Exa",
+      "adapter": "websearch:exa",
+      "secrets": [
+        {
+          "id": "EXA_API_KEY",
+          "label": "Exa API key",
+          "required": false
+        }
+      ],
+      "tools": {
+        "allow": ["websearch"],
+        "write": []
+      },
+      "defaultEnabled": true,
+      "instructions": "Use Exa Web Search for its declared purpose: Search and retrieve current web content through Exa. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ]
+}

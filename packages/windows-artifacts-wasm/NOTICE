@@ -1,0 +1,2 @@
+This package contains Turen's bounded windows-artifacts WebAssembly operations.
+It vendors prefetch-core, evtx, mft, amcache-core, lnk-core, jumplist_parser, and winreg-core.

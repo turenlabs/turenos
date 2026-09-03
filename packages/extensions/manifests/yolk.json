@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/yolk",
+  "name": "Yolk Change Intelligence",
+  "description": "Inspect semantic impact before edits and compare behavior after code changes",
+  "version": "0.2.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "tool",
+      "id": "yolk",
+      "name": "Yolk Change Intelligence",
+      "description": "Inspect semantic impact before edits and compare behavior after code changes",
+      "adapter": "builtin:yolk",
+      "secrets": [],
+      "defaultEnabled": false,
+      "group": "code-intelligence",
+      "commands": [],
+      "configuration": [],
+      "tools": {
+        "allow": ["inspect_change"],
+        "write": []
+      },
+      "instructions": "Yolk indexes named functions and methods and their static call graph. It does not observe Solid/React tracking, store reads inside callees, effects, or runtime dependency leaks, so it cannot diagnose UI reopen loops or similar reactive bugs. Use inspect_change for shared named-function impact; if the exact symbol is unknown, pass a source path and retry once with an exact returned symbol. Automatic post-edit notes are optional caller-review guidance, not a diagnosis or a required checkpoint. Unknown or partial confidence is not extra evidence. Prefer exact fail-before/pass-after regressions, direct code tracing, and focused review. Never create probe files or restart TurenOS to refresh the index."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "turen-goblin-wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "turen_goblin_wasm_bg.wasm",
+    "turen_goblin_wasm.js",
+    "turen_goblin_wasm.d.ts"
+  ],
+  "main": "turen_goblin_wasm.js",
+  "types": "turen_goblin_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

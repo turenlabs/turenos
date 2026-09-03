@@ -1,0 +1,9 @@
+[data-component="logo-mark"],
+[data-component="logo-splash"],
+[data-component="logo-wordmark"] {
+  display: block;
+}
+
+[data-component="logo-mark"] {
+  width: 24px;
+}

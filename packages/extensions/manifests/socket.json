@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/socket",
+  "name": "Socket",
+  "description": "Check dependency packages for supply-chain risk scores through Socket's public hosted MCP service",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://docs.socket.dev/docs/guide-to-socket-mcp",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "socket",
+      "name": "Socket",
+      "description": "Query Socket dependency security scores, organizations, alerts, threat-feed data, and package files",
+      "adapter": "mcp:socket",
+      "secrets": [],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "hosted", "url": "https://mcp.socket.dev/" },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 5, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": ["depscore", "organizations", "alerts", "threat_feed", "package_files"],
+        "write": []
+      },
+      "instructions": "Authenticate through Socket's hosted OAuth flow. Keep usage read-only and do not admit newly added Socket tools without reviewing them for mutation capability first."
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+Given a file where you saw a symbol used, find the declaration it actually
+binds to, using the project's language server.
+
+This exists for one job grep cannot do: when several same-named symbols are in
+scope — four packages each exporting a `New`, a method promoted from an
+embedded struct, a name shadowed by a local import — the language server
+resolves the name the way the compiler does, through that file's imports,
+aliases, embedding and receivers, and tells you which declaration this file's
+usage actually means.
+
+If you have not seen the symbol used anywhere and just want to find a
+declaration by name, use workspace_symbol instead — that is a plain name
+lookup and does not need a file.
+
+DO NOT use this for pattern or text search. If you can write it as a regular
+expression, use grep.
+
+Parameters:
+- symbol: the symbol name, exactly as spelled at the usage site.
+- path: required. The file where you saw the symbol used.
+
+You never supply a line or character offset. The usage site is located for you
+from the name.

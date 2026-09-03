@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-08-02T23-20-24-264Z",
+  "startedAt": "2026-08-02T23:20:32.698Z",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "bun": "1.3.14"
+  },
+  "options": {
+    "harnesses": ["turen-claude-code"],
+    "tasks": ["trivial"],
+    "repetitions": 1,
+    "timeoutMs": 300000
+  },
+  "harnesses": [
+    {
+      "id": "turen-claude-code",
+      "label": "Turen (claude-code provider)",
+      "pairing": "anthropic-haiku",
+      "model": "claude-code/haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "usageIsCumulative": false,
+      "availability": {
+        "ok": true
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "trivial",
+      "label": "Trivial single-file question",
+      "measures": "fixed overhead — the floor a harness pays before doing any real work",
+      "needsWrite": false,
+      "turns": 1
+    }
+  ],
+  "runs": [
+    {
+      "harness": "turen-claude-code",
+      "harnessLabel": "Turen (claude-code provider)",
+      "pairing": "anthropic-haiku",
+      "model": "claude-code/haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "task": "trivial",
+      "taskLabel": "Trivial single-file question",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T23-20-24-264Z/turen-claude-code__trivial__r1",
+      "startedAt": "2026-08-02T23:20:24.316Z",
+      "wallMs": 8380,
+      "usage": {
+        "inputTokens": 8,
+        "cacheReadTokens": 11817,
+        "cacheWriteTokens": 602,
+        "outputTokens": 69,
+        "reasoningTokens": 0,
+        "contextTokens": 12427
+      },
+      "providerRequests": 1,
+      "providerRequestsExact": true,
+      "toolCalls": 1,
+      "reportedCostUsd": 0,
+      "modeledCostUsd": 0.0027386999999999997,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "ses_03b38ab3effeu8zRSfUnFYSdV2",
+          "text": "4271",
+          "usage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 11817,
+            "cacheWriteTokens": 602,
+            "outputTokens": 69,
+            "reasoningTokens": 0,
+            "contextTokens": 12427
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 11817,
+                "cacheWriteTokens": 602,
+                "outputTokens": 69,
+                "reasoningTokens": 0,
+                "contextTokens": 12427
+              }
+            }
+          ],
+          "providerRequests": 1,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 8380,
+          "reportedCostUsd": 0,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 11817,
+            "cacheWriteTokens": 602,
+            "outputTokens": 69,
+            "reasoningTokens": 0,
+            "contextTokens": 12427
+          },
+          "turnIndex": 0,
+          "prompt": "In src/config.ts, what is the numeric value of the exported constant MAX_RETRY_ATTEMPTS? Reply with only the number.",
+          "verifierPass": true,
+          "verifierDetail": "found 4271"
+        }
+      ]
+    }
+  ],
+  "derived": [
+    {
+      "harness": "turen-claude-code",
+      "harnessLabel": "Turen (claude-code provider)",
+      "pairing": "anthropic-haiku",
+      "model": "claude-code/haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "fixedOverheadContextTokens": 12427,
+      "firstRequestContextTokens": 12427,
+      "marginalContextTokens": {},
+      "conversationTurnContextTokens": null,
+      "contextGrowthSlopeTokensPerTurn": null,
+      "tasksPassed": 1,
+      "tasksAttempted": 1
+    }
+  ]
+}

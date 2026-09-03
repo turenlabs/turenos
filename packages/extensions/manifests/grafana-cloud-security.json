@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/grafana-cloud-security",
+  "name": "Grafana Cloud Security Operations",
+  "description": "Investigate alerts, incidents, logs, metrics, and on-call state through Grafana Cloud's hosted MCP server",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://grafana.com/docs/grafana-cloud/ai-tools/mcp-servers/cloud-mcp/",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "grafana-cloud-security",
+      "name": "Grafana Cloud Security Operations",
+      "description": "Read Grafana Cloud incident and observability evidence",
+      "adapter": "mcp:grafana-cloud-security",
+      "secrets": [],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "hosted", "url": "https://mcp.grafana.com/mcp" },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 10, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": [
+          "list_incidents",
+          "get_incident",
+          "list_alert_groups",
+          "get_alert_group",
+          "get_annotations",
+          "get_current_oncall_users",
+          "list_investigations",
+          "get_investigation",
+          "query_loki_logs",
+          "query_prometheus"
+        ],
+        "write": []
+      },
+      "instructions": "Authorize read-only access. Keep time ranges bounded and do not admit dashboard, alert, or incident mutation tools."
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known public identifiers, hashes, and secret-redaction fixtures"
+regexes = [
+  '''turenlabs/hibp''',
+  '''shift\+alt\+arrow(?:up|down)''',
+  '''bridge-secret-12345''',
+  '''header-token-67890''',
+  '''AKIAFIXTURE123456''',
+  '''aws-secret-abcdef123456''',
+  '''settings-token-24680''',
+  '''query-signature-13579/\+''',
+  '''b1a6c5158156caac821fd1b30253ca8acb52454a48fa744420e41889cb589f82''',
+  '''sk-123456789012345678901234''',
+  '''AIzaSyDHibiBRvJZLsFnPYPoiTwxY4ztQ55yqCE''',
+  '''f65d0f325faadc1e121c319e2faa41170d3fa07d8c89abd48ca5358d9a223de2''',
+  '''e67e803f624fb4d67dea1c730d06e1067e1b14d830e2c2202569e3ef0f70bb50''',
+  '''A02-crypto-failures''',
+  '''questionV2Reply''',
+]

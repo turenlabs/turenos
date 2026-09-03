@@ -1,0 +1,26 @@
+Find where a named symbol is declared, using the project's language server.
+
+Use this to turn a name into a location: "where is OpenRepository defined",
+"is there a type called Renderer", "which package holds this interface". It
+understands the language, so it returns declarations only — never a mention in
+a comment, a string, or an unrelated file that happens to contain the word.
+
+DO NOT use this for pattern or text search. For "find every call to os.Exit",
+"which files mention FOO", "list the handlers matching this regex", or anything
+you would express as a regular expression, use grep. Grep is already faster and
+just as accurate for those, and routing them through the language server makes
+the task slower without improving the answer.
+
+Parameters:
+- name: the symbol name, exactly as spelled in the source. Matching is fuzzy,
+  so an exact name gives the cleanest results. Methods may come back qualified
+  by their receiver or class (for example "Repository.IsEmpty").
+- path (optional): a file in the project whose language you want searched. Only
+  needed in a repository with several languages.
+
+Results are capped at the most relevant matches. If several symbols share a
+name, all of them are listed with their kind and location — pick the one you
+want and pass its file as `path` to the other structural tools.
+
+The language server starts automatically on first use and needs a few seconds
+to index a large project. Subsequent calls are near-instant.

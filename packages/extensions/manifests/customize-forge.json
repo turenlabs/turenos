@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/customize-forge",
+  "name": "Customize TurenOS",
+  "description": "Create and maintain TurenOS configuration, agents, commands, skills, and extensions",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "customize-forge",
+      "name": "Customize TurenOS",
+      "description": "Instructions for configuring and extending TurenOS",
+      "adapter": "skill:customize-forge",
+      "secrets": [],
+      "defaultEnabled": true,
+      "source": {
+        "type": "embedded",
+        "name": "customize-forge"
+      },
+      "requires": [],
+      "instructions": "Use this skill when configuring TurenOS agents, commands, permissions, or other supported configuration files. Preserve the current schema and restart after config changes."
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/sonarqube-cloud-security",
+  "name": "SonarQube Cloud Security",
+  "description": "Investigate SonarQube Cloud issues, security hotspots, quality gates, and rules through the hosted MCP service",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://docs.sonarsource.com/sonarqube-mcp-server/",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "sonarqube-cloud-security",
+      "name": "SonarQube Cloud Security",
+      "description": "Read SonarQube Cloud security issues, hotspots, quality gates, and coding rules",
+      "adapter": "mcp:sonarqube-cloud-security",
+      "secrets": [{ "id": "SONARQUBE_TOKEN", "label": "SonarQube user token", "required": true }],
+      "configuration": [{ "id": "organization", "label": "SonarQube organization key", "required": true }],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "hosted", "url": "https://api.sonarcloud.io/mcp" },
+      "connection": {
+        "headers": [
+          { "name": "Authorization", "secret": "SONARQUBE_TOKEN", "prefix": "Bearer " },
+          { "name": "X-Sonar-Organization", "configuration": "organization" }
+        ]
+      },
+      "authentication": "key",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 6, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": [
+          "search_sonar_issues_in_projects",
+          "search_security_hotspots",
+          "show_security_hotspot",
+          "get_project_quality_gate_status",
+          "list_quality_gates",
+          "show_rule"
+        ],
+        "write": []
+      },
+      "instructions": "Provide a least-privilege SonarQube user token and organization key. The token is sent only as a bearer authorization header and is never shown in the interface, logs, or tool output. Do not enable issue, hotspot, rule, project, or quality-gate mutations."
+    }
+  ]
+}

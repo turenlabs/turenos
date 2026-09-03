@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/linear",
+  "name": "Linear",
+  "description": "Search and update Linear issues, projects, cycles, and teams",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://linear.app/docs/mcp",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "linear",
+      "name": "Linear",
+      "description": "Search and update Linear issues, projects, cycles, and teams",
+      "adapter": "security:linear",
+      "secrets": [
+        {
+          "id": "LINEAR_API_KEY",
+          "label": "Linear API key",
+          "required": true
+        }
+      ],
+      "defaultEnabled": false,
+      "upstreamPolicy": "audited-linear-dynamic-v1",
+      "deployment": {
+        "type": "hosted",
+        "url": "https://mcp.linear.app/mcp"
+      },
+      "authentication": "key",
+      "localOnly": true,
+      "tools": {
+        "allow": ["linear_tools", "linear_call"],
+        "write": ["linear_call"]
+      },
+      "instructions": "Use Linear search before mutations. Confirm the target team, issue, project, or cycle and prefer the narrowest write operation."
+    }
+  ]
+}

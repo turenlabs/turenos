@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/bandit",
+  "name": "Bandit",
+  "description": "Scan Python code for common security issues",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "tool",
+      "id": "bandit",
+      "name": "Bandit",
+      "description": "Scan Python code for common security issues",
+      "adapter": "security:bandit",
+      "secrets": [],
+      "defaultEnabled": false,
+      "group": "sast",
+      "commands": ["bandit"],
+      "configuration": [],
+      "tools": {
+        "allow": ["bandit_scan"],
+        "write": []
+      },
+      "instructions": "Use Bandit for its declared purpose: Scan Python code for common security issues. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ]
+}

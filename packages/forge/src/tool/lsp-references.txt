@@ -1,0 +1,27 @@
+Find every place a named symbol is used, using the project's language server.
+
+This is a semantic answer, not a text match. It resolves through imports,
+aliases, embedding and interface satisfaction, and it excludes same-named
+symbols that are actually something else. Use it for impact questions: "what
+breaks if I change this signature", "is this field still used", "who reads this
+constant".
+
+DO NOT use this for pattern or text search. If you can express what you want as
+a regular expression — "every call to os.Exit", "files mentioning FOO", "all
+the handlers matching this pattern" — use grep instead. Grep is already both
+faster and complete for that shape of question; using this tool there only
+costs time.
+
+Parameters:
+- symbol: the symbol name, exactly as spelled in the source. A bare name is
+  usually enough ("OpenRepository"). Qualify it with the receiver or class when
+  the name is common ("Repository.IsEmpty").
+- path (optional): a file to disambiguate with. Omit it on the first call; pass
+  it only if the result reported other symbols sharing the name.
+
+You never supply a line or character offset. Name the symbol and the position
+is resolved for you.
+
+Output is `file:line:column`, one reference per line, relative to the project
+root. If several symbols share the name, the ones not used are listed at the
+end so you can retry with `path`.

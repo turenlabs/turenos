@@ -1,0 +1,324 @@
+import { beforeEach, describe, expect, test } from "bun:test"
+import { Effect, Layer, Schema } from "effect"
+import { HttpClient, HttpClientResponse } from "effect/unstable/http"
+import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
+import { LayerNode } from "@turenlabs/core/effect/layer-node"
+import { LayerNodePlatform } from "@turenlabs/core/effect/app-node-platform"
+import { PermissionV2 } from "@turenlabs/core/permission"
+import { SessionV2 } from "@turenlabs/core/session"
+import { ToolRegistry } from "@turenlabs/core/tool/registry"
+import { WebSearchTool } from "@turenlabs/core/tool/websearch"
+import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
+import { ExtensionRuntime } from "@turenlabs/core/extension"
+import { Extension } from "@turenlabs/schema"
+import { testEffect } from "./lib/effect"
+import { toolIdentity, executeTool, settleTool, toolDefinitions } from "./lib/tool"
+
+const sessionID = SessionV2.ID.make("ses_websearch_test")
+const payload = (text: string) =>
+  JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    result: { content: [{ type: "text", text }] },
+  })
+
+describe("WebSearchTool provider selection", () => {
+  test("rejects out-of-range numeric controls", () => {
+    const decode = Schema.decodeUnknownSync(WebSearchTool.Input)
+    expect(() => decode({ query: "x", numResults: 0 })).toThrow()
+    expect(() => decode({ query: "x", numResults: WebSearchTool.MAX_NUM_RESULTS + 1 })).toThrow()
+    expect(() => decode({ query: "x", contextMaxCharacters: WebSearchTool.MAX_CONTEXT_CHARACTERS + 1 })).toThrow()
+  })
+  test("selects a stable provider per session", () => {
+    const enabled = { enableExa: true, enableParallel: true }
+    expect(WebSearchTool.selectProvider(sessionID, enabled)).toBe(WebSearchTool.selectProvider(sessionID, enabled))
+  })
+
+  test("selects only enabled Extension providers", () => {
+    expect(WebSearchTool.selectProvider(sessionID, { enableExa: true, enableParallel: false })).toBe("exa")
+    expect(WebSearchTool.selectProvider(sessionID, { enableExa: false, enableParallel: true })).toBe("parallel")
+    expect(WebSearchTool.selectProvider(sessionID, { enableExa: false, enableParallel: false })).toBeUndefined()
+  })
+})
+
+describe("WebSearchTool MCP response parser", () => {
+  test("parses plain JSON-RPC responses", async () => {
+    expect(await Effect.runPromise(WebSearchTool.parseResponse(payload("search results")))).toBe("search results")
+  })
+
+  test("parses SSE JSON-RPC responses and ignores non-JSON frames", async () => {
+    expect(
+      await Effect.runPromise(
+        WebSearchTool.parseResponse(`data: [DONE]\nevent: message\ndata: ${payload("search results")}\n\n`),
+      ),
+    ).toBe("search results")
+  })
+})
+
+interface Request {
+  readonly url: string
+  readonly headers: Record<string, string>
+  readonly body: unknown
+}
+
+const requests: Request[] = []
+const assertions: PermissionV2.AssertInput[] = []
+let responseBody = payload("search results")
+let makeResponse = () => new Response(responseBody, { status: 200 })
+
+beforeEach(() => {
+  responseBody = payload("search results")
+  makeResponse = () => new Response(responseBody, { status: 200 })
+})
+
+const http = Layer.succeed(
+  HttpClient.HttpClient,
+  HttpClient.make((request) =>
+    Effect.sync(() => {
+      if (request.body._tag !== "Uint8Array") throw new Error(`Unexpected request body: ${request.body._tag}`)
+      requests.push({
+        url: request.url,
+        headers: request.headers,
+        body: JSON.parse(new TextDecoder().decode(request.body.body)),
+      })
+      return HttpClientResponse.fromWeb(request, makeResponse())
+    }),
+  ),
+)
+const permission = Layer.succeed(
+  PermissionV2.Service,
+  PermissionV2.Service.of({
+    assert: (input) => Effect.sync(() => assertions.push(input)),
+    ask: () => Effect.die("unused"),
+    reply: () => Effect.die("unused"),
+    get: () => Effect.die("unused"),
+    forSession: () => Effect.die("unused"),
+    list: () => Effect.die("unused"),
+  }),
+)
+const it = testEffect(
+  AppNodeBuilder.build(
+    LayerNode.group([ToolRegistry.node, ToolRegistry.toolsNode, WebSearchTool.node, ExtensionRuntime.node]),
+    [
+      [PermissionV2.node, permission],
+      [LayerNodePlatform.httpClient, http],
+      [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],
+    ],
+  ),
+)
+const enableOnly = (provider: WebSearchTool.Provider) =>
+  Effect.gen(function* () {
+    const extensions = yield* ExtensionRuntime.Service
+    yield* Effect.all([
+      extensions.update(Extension.ID.make("turenlabs", "websearch-exa"), { enabled: provider === "exa" }),
+      extensions.update(Extension.ID.make("turenlabs", "websearch-parallel"), { enabled: provider === "parallel" }),
+    ])
+  })
+
+describe("WebSearchTool registration", () => {
+  it.effect("registers websearch, asserts query permission, and calls Exa", () =>
+    Effect.gen(function* () {
+      requests.length = 0
+      assertions.length = 0
+      responseBody = payload("exa results")
+      yield* enableOnly("exa")
+      const registry = yield* ToolRegistry.Service
+
+      expect((yield* toolDefinitions(registry)).map((tool) => tool.name)).toEqual(["websearch"])
+      expect(
+        yield* executeTool(registry, {
+          sessionID,
+          ...toolIdentity,
+          call: {
+            type: "tool-call",
+            id: "call-exa",
+            name: "websearch",
+            input: {
+              query: "effect typescript",
+              numResults: 3,
+              livecrawl: "preferred",
+              type: "fast",
+              contextMaxCharacters: 2500,
+            },
+          },
+        }),
+      ).toEqual({ type: "text", value: "exa results" })
+      expect(assertions).toMatchObject([
+        {
+          sessionID,
+          action: "websearch",
+          resources: ["effect typescript"],
+          save: ["*"],
+          metadata: {
+            query: "effect typescript",
+            numResults: 3,
+            livecrawl: "preferred",
+            type: "fast",
+            contextMaxCharacters: 2500,
+            provider: "exa",
+          },
+        },
+      ])
+      expect(requests).toEqual([
+        {
+          url: WebSearchTool.EXA_URL,
+          headers: expect.any(Object),
+          body: {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: {
+              name: "web_search_exa",
+              arguments: {
+                query: "effect typescript",
+                type: "fast",
+                numResults: 3,
+                livecrawl: "preferred",
+                contextMaxCharacters: 2500,
+              },
+            },
+          },
+        },
+      ])
+    }),
+  )
+
+  it.effect("calls Parallel with session ID and keeps bearer credentials out of output", () =>
+    Effect.gen(function* () {
+      requests.length = 0
+      assertions.length = 0
+      responseBody = payload("parallel results")
+      yield* enableOnly("parallel")
+      yield* ExtensionRuntime.Service.use((extensions) =>
+        extensions.update(Extension.ID.make("turenlabs", "websearch-parallel"), {
+          enabled: true,
+          secrets: { PARALLEL_API_KEY: "parallel-secret" },
+        }),
+      )
+      const registry = yield* ToolRegistry.Service
+
+      const settled = yield* settleTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        call: { type: "tool-call", id: "call-parallel", name: "websearch", input: { query: "effect layers" } },
+      })
+
+      expect(requests[0]).toMatchObject({
+        url: WebSearchTool.PARALLEL_URL,
+        headers: { authorization: "Bearer parallel-secret" },
+        body: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "web_search",
+            arguments: { objective: "effect layers", search_queries: ["effect layers"], session_id: sessionID },
+          },
+        },
+      })
+      expect(requests[0]?.body).not.toHaveProperty("params.arguments.model_name")
+      expect(settled).toEqual({
+        result: { type: "text", value: "parallel results" },
+        output: {
+          structured: { provider: "parallel", text: "parallel results" },
+          content: [{ type: "text", text: "parallel results" }],
+        },
+      })
+      expect(JSON.stringify(settled)).not.toContain("parallel-secret")
+    }),
+  )
+
+  it.effect("keeps an Exa credential in the transport URL and out of model output", () =>
+    Effect.gen(function* () {
+      requests.length = 0
+      assertions.length = 0
+      responseBody = payload("credentialed exa results")
+      yield* enableOnly("exa")
+      yield* ExtensionRuntime.Service.use((extensions) =>
+        extensions.update(Extension.ID.make("turenlabs", "websearch-exa"), {
+          enabled: true,
+          secrets: { EXA_API_KEY: "exa secret" },
+        }),
+      )
+      const registry = yield* ToolRegistry.Service
+
+      const settled = yield* settleTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        call: { type: "tool-call", id: "call-exa-key", name: "websearch", input: { query: "effect schema" } },
+      })
+
+      expect(requests[0]?.url).toBe(`${WebSearchTool.EXA_URL}?exaApiKey=exa+secret`)
+      expect(JSON.stringify(settled)).not.toContain("exa secret")
+    }),
+  )
+
+  it.effect("returns the legacy no-results fallback as concise model text", () =>
+    Effect.gen(function* () {
+      requests.length = 0
+      assertions.length = 0
+      responseBody = ""
+      yield* enableOnly("exa")
+      const registry = yield* ToolRegistry.Service
+
+      expect(
+        yield* executeTool(registry, {
+          sessionID,
+          ...toolIdentity,
+          call: { type: "tool-call", id: "call-empty", name: "websearch", input: { query: "nothing" } },
+        }),
+      ).toEqual({ type: "text", value: WebSearchTool.NO_RESULTS })
+    }),
+  )
+
+  it.effect("rejects oversized MCP response bodies", () =>
+    Effect.gen(function* () {
+      requests.length = 0
+      assertions.length = 0
+      let chunksRead = 0
+      let cancelled = false
+      makeResponse = () =>
+        new Response(
+          new ReadableStream({
+            pull(controller) {
+              chunksRead++
+              if (chunksRead === 10) throw new Error("response was not stopped at the byte limit")
+              controller.enqueue(new Uint8Array(64 * 1024))
+            },
+            cancel() {
+              cancelled = true
+            },
+          }),
+          { status: 200 },
+        )
+      yield* enableOnly("exa")
+      const registry = yield* ToolRegistry.Service
+
+      expect(
+        yield* executeTool(registry, {
+          sessionID,
+          ...toolIdentity,
+          call: { type: "tool-call", id: "call-large-response", name: "websearch", input: { query: "too much" } },
+        }),
+      ).toEqual({ type: "error", value: "Unable to search the web for too much" })
+      expect(chunksRead).toBeLessThan(10)
+      expect(cancelled).toBe(true)
+    }),
+  )
+
+  it.effect("fails closed when both web search provider extensions are disabled", () =>
+    Effect.gen(function* () {
+      const extensions = yield* ExtensionRuntime.Service
+      yield* extensions.update(Extension.ID.make("turenlabs", "websearch-exa"), { enabled: false })
+      yield* extensions.update(Extension.ID.make("turenlabs", "websearch-parallel"), { enabled: false })
+      const registry = yield* ToolRegistry.Service
+      expect(
+        yield* executeTool(registry, {
+          sessionID,
+          ...toolIdentity,
+          call: { type: "tool-call", id: "call-disabled", name: "websearch", input: { query: "disabled" } },
+        }),
+      ).toEqual({ type: "error", value: "Unable to search the web for disabled" })
+    }),
+  )
+})

@@ -1,0 +1,15 @@
+{
+  "name": "turen-mpress-wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "turen_mpress_wasm_bg.wasm",
+    "turen_mpress_wasm.js",
+    "turen_mpress_wasm.d.ts"
+  ],
+  "main": "turen_mpress_wasm.js",
+  "types": "turen_mpress_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

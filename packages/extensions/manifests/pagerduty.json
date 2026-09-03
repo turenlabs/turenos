@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/pagerduty",
+  "name": "PagerDuty",
+  "description": "Investigate incidents, on-call assignments, and schedules through PagerDuty's provider-hosted MCP service",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://pagerduty.github.io/pagerduty-mcp-server/docs/remote-server/setup",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "pagerduty",
+      "name": "PagerDuty",
+      "description": "Read PagerDuty incidents, on-call assignments, schedules, and current user context",
+      "adapter": "mcp:pagerduty",
+      "secrets": [{ "id": "PAGERDUTY_CLIENT_SECRET", "label": "PagerDuty OAuth client secret", "required": true }],
+      "configuration": [
+        {
+          "id": "clientId",
+          "label": "PagerDuty OAuth client ID (redirect: http://127.0.0.1:19876/mcp/oauth/callback)",
+          "required": true
+        }
+      ],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "hosted", "url": "https://mcp.pagerduty.com/mcp" },
+      "connection": {
+        "oauth": { "clientId": "clientId", "clientSecret": "PAGERDUTY_CLIENT_SECRET" }
+      },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 5, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": ["get_user_data", "list_incidents", "get_incident", "list_oncalls", "list_schedules"],
+        "write": []
+      },
+      "instructions": "PagerDuty does not support dynamic client registration. Register a least-privilege OAuth app with TurenOS's loopback redirect, then provide its client ID and secret. Keep access read-only."
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "turen-email-security-wasm",
+  "type": "module",
+  "description": "Bounded RFC 5322 and MIME email security analysis for TurenOS",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_email_security_wasm_bg.wasm",
+    "turen_email_security_wasm.js",
+    "turen_email_security_wasm.d.ts"
+  ],
+  "main": "turen_email_security_wasm.js",
+  "types": "turen_email_security_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

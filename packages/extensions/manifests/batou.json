@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/batou",
+  "name": "Batou",
+  "description": "Run automatic SAST on agent file writes",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "tool",
+      "id": "batou",
+      "name": "Batou",
+      "description": "Run automatic SAST on agent file writes",
+      "adapter": "security:batou",
+      "secrets": [],
+      "defaultEnabled": false,
+      "group": "sast",
+      "commands": ["batou"],
+      "configuration": [],
+      "tools": {
+        "allow": [],
+        "write": []
+      },
+      "instructions": "Use Batou for its declared purpose: Run automatic SAST on agent file writes. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ]
+}

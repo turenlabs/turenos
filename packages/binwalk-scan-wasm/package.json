@@ -1,0 +1,16 @@
+{
+  "name": "@turenlabs/binwalk-scan-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "files": [
+    "dist/",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "SOURCE.json",
+    "SHA256SUMS"
+  ],
+  "exports": "./dist/turen_binwalk_scan_wasm.js"
+}

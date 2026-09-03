@@ -1,0 +1,3 @@
+Contains official libpcap from The Tcpdump Group.
+The build uses PCAP_TYPE=null and exposes only bounded memory-backed offline reading and filtering.
+Retain all acknowledgements and notices in the accompanying LICENSE.

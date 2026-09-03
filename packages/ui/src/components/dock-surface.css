@@ -1,0 +1,88 @@
+/*
+ * Dock surfaces — the stack at the foot of a session: the goal / subagent /
+ * followup trays tucked behind the composer shell.
+ *
+ * v2 reads as a terminal split. Square corners, a real 1px rule instead of a
+ * 0.5px spread shadow, and a 2px left rule (rule.css) carrying whatever the
+ * pane means. Trays that tuck against the shell drop the edge they share with
+ * it, so the stack resolves to single lines rather than doubled hairlines.
+ *
+ * The legacy layout is preserved verbatim further down.
+ */
+
+body[data-new-layout] [data-dock-surface="shell"] {
+  background-color: var(--v2-background-bg-base);
+  border: var(--v2-rule);
+  border-radius: var(--v2-radius-surface);
+  box-shadow: none;
+  position: relative;
+  z-index: 10;
+  overflow: clip;
+}
+
+body[data-new-layout] [data-dock-surface="tray"] {
+  background-color: var(--v2-background-bg-layer-01);
+  border: var(--v2-rule);
+  border-radius: var(--v2-radius-surface);
+  box-shadow: none;
+  position: relative;
+  z-index: 0;
+  overflow: clip;
+}
+
+/* A tray tucked above the shell hands its bottom edge to the shell's top edge. */
+body[data-new-layout] [data-dock-surface="tray"][data-dock-attach="bottom"] {
+  border-bottom: none;
+}
+
+/* ...and one tucked below hands over its top edge. */
+body[data-new-layout] [data-dock-surface="tray"][data-dock-attach="top"] {
+  border-top: none;
+}
+
+/* A dock carrying `data-rule` replaces its neutral left hairline with the rule;
+   rule.css lives in the utilities layer, so it wins over the shorthand above. */
+
+/* ── Legacy layout ─────────────────────────────────────────────────────────
+   The rounded, shadowed docks belong to the interface being sunset. Radius
+   zeroing for tucked trays used to live in inline styles at the call sites,
+   which outranked this file; it is now driven by data-dock-attach. */
+
+body:not([data-new-layout]) [data-dock-surface="shell"] {
+  background-color: var(--surface-raised-stronger-non-alpha);
+  box-shadow: var(--shadow-xs-border);
+  position: relative;
+  z-index: 10;
+  border-radius: 12px;
+  overflow: clip;
+}
+
+body:not([data-new-layout]) [data-dock-surface="tray"] {
+  background-color: var(--background-base);
+  border: 1px solid var(--border-weak-base);
+  position: relative;
+  z-index: 0;
+  border-radius: 12px;
+  overflow: clip;
+}
+
+body:not([data-new-layout]) [data-dock-surface="tray"][data-dock-attach="top"] {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+body:not([data-new-layout]) [data-dock-surface="tray"][data-dock-attach="bottom"] {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* ── Shared geometry ──
+   The tuck is layout rather than decoration, so both layouts keep it. */
+
+[data-dock-surface="tray"][data-dock-attach="top"] {
+  margin-top: -0.875rem;
+}
+
+[data-dock-surface="tray"][data-dock-attach="bottom"] {
+  margin-bottom: -0.875rem;
+}

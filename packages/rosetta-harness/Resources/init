@@ -1,0 +1,27 @@
+#!/bin/busybox sh
+set -eu
+
+finish() {
+  status=$?
+  trap - EXIT
+  printf 'TUREN_EXIT=%s\n' "$status" > /dev/hvc1
+  /bin/busybox poweroff -f
+}
+trap finish EXIT
+
+/bin/busybox mkdir -p /dev /proc /sys /rosetta /input /tmp
+/bin/busybox mount -t devtmpfs devtmpfs /dev
+/bin/busybox mount -t proc proc /proc
+/bin/busybox mount -t sysfs sysfs /sys
+/bin/busybox insmod /lib/virtiofs.ko
+/bin/busybox insmod /lib/binfmt_misc.ko
+/bin/busybox mount -t virtiofs rosetta /rosetta
+/bin/busybox mount -t virtiofs turen-input /input
+/bin/busybox mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
+/bin/busybox printf '%s\n' ':rosetta:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00:\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/rosetta/rosetta:OCF' > /proc/sys/fs/binfmt_misc/register
+printf 'TUREN_OUTPUT_BEGIN\n' > /dev/hvc1
+set +e
+/input/program > /dev/hvc1 2>&1
+status=$?
+printf '\nTUREN_OUTPUT_END\n' > /dev/hvc1
+exit "$status"

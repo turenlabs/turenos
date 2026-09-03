@@ -1,0 +1,24 @@
+{
+  "crate": "turen-binwalk-scan-wasm",
+  "upstream": "https://github.com/ReFirmLabs/binwalk",
+  "upstreamVersion": "3.1.1",
+  "upstreamCommit": "26713972e3f9f52dc37d4a421c4554b0bd9e82ef",
+  "derivation": "Original bounded implementation informed by the upstream signature catalog; no upstream runtime code or dependencies are included.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmBindgen": false,
+  "runtimeDependencies": [],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": false,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 1024,
+    "findingsDefault": 256,
+    "findingsMaximum": 4096,
+    "candidateValidations": 1000000,
+    "outputBytes": 4194304
+  }
+}

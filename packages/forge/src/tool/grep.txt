@@ -1,0 +1,9 @@
+- Fast content search tool that works with any codebase size
+- Searches file contents using regular expressions
+- Supports full regex syntax (eg. "log.*Error", "function\s+\w+", etc.)
+- Filter files by pattern with the include parameter (eg. "*.js", "*.{ts,tsx}")
+- Returns file paths and line numbers with matching lines
+- Use this tool when you need to find files containing specific patterns
+- Use this tool for workspace content searches, including bounded match counting. Do not use Bash, grep, or rg when this tool is available.
+- For initial orientation in an unfamiliar codebase, call repo_map first to see the structure and important files, then grep to pinpoint specific content
+- When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use the Task tool instead

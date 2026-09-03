@@ -1,0 +1,34 @@
+Find every function or method that calls a named function, using the project's
+language server.
+
+This is the strongest reason these tools exist. Reconstructing a call graph by
+reading files is where searching costs the most: each caller has to be found,
+opened, and read just to learn the name of the next one up. This answers the
+whole level in one call, and it follows interface dispatch — a caller that
+invokes the symbol through an interface is reported, even though its source
+never contains the implementing type's name and no text search would find it.
+
+Use it for call-graph and reachability questions: "who calls this", "how is
+this reached from the request handler", "is this dead code", "what is the path
+from the API layer to this database write". Call it again on a caller to walk
+another level up.
+
+DO NOT use this for pattern or text search. "Every call to os.Exit", "files
+mentioning FOO", anything you could write as a regular expression — use grep.
+It is faster there and misses nothing.
+
+Parameters:
+- symbol: the function or method name, exactly as spelled in the source. A bare
+  name is usually enough ("OpenRepository"); qualify it with the receiver or
+  class when the name is common ("Repository.IsEmpty").
+- path (optional): a file to disambiguate with. Omit it on the first call; pass
+  it only if the result reported other symbols sharing the name.
+
+You never supply a line or character offset. Name the function and the position
+is resolved for you.
+
+Only functions, methods and constructors have a call hierarchy. Asking about a
+type, field or constant says so explicitly rather than returning an empty list.
+
+Each result line is the calling function, where it is declared, and the lines
+inside it where the call happens.

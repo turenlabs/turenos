@@ -1,0 +1,8 @@
+- Repository orientation tool: builds a compact structural map of a codebase in a single call.
+- Call this FIRST when you land in an unfamiliar repository, before reaching for serial ls/find/tree/wc probing or opening files at random. One repo_map call replaces many exploratory glob/grep/read round-trips.
+- Returns a token-bounded overview: the directory skeleton (top levels with per-directory file counts, honoring .gitignore and collapsing vendored/generated dirs), a ranked list of the most important files (entry points, densely-exported modules, and widely-imported files), and a few top-level symbols (with line numbers) for each of those files.
+- Parameters:
+  - path (optional): restrict the map to a subdirectory of the workspace. Omit for the whole workspace. In a monorepo the package roots under packages/ (apps/, crates/, ...) are surfaced automatically.
+  - focus (optional): a term (e.g. "auth", "payment", "websocket") that biases the ranking toward files that mention it, so the map is tailored to the task you are about to work on.
+- Use the returned file paths and symbol line numbers to jump straight to the relevant code with read, or to target a grep. Re-run with a different `focus` when you switch tasks.
+- The map is hard-capped (~2000 tokens) and cached per repository state, so it is cheap to call repeatedly. If the output notes it was truncated, narrow the scope with `path` or `focus`.

@@ -1,0 +1,9 @@
+{
+  "upstream": "https://github.com/atomdrift-project/stng",
+  "version": "1.9.0",
+  "commit": "5d3c939edb55c7dcf3d5be70cad0648953b80640",
+  "rust": "1.94.0",
+  "wasmPack": "0.14.0",
+  "scope": "portable raw, wide, decoder, classification and XOR subset",
+  "run": "32733653801"
+}

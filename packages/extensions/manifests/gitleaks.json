@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/gitleaks",
+  "name": "Gitleaks",
+  "description": "Scan repositories and history for committed secrets",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "tool",
+      "id": "gitleaks",
+      "name": "Gitleaks",
+      "description": "Scan repositories and history for committed secrets",
+      "adapter": "security:gitleaks",
+      "secrets": [],
+      "defaultEnabled": false,
+      "group": "secrets",
+      "commands": ["gitleaks"],
+      "configuration": [],
+      "tools": {
+        "allow": ["gitleaks_scan", "gitleaks_scan_history"],
+        "write": []
+      },
+      "instructions": "Use Gitleaks for its declared purpose: Scan repositories and history for committed secrets. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ]
+}

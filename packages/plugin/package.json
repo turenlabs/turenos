@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@turenlabs/plugin",
+  "version": "1.0.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "bun test",
+    "bench:embeddings": "python3 script/bench-embedding-models.py",
+    "typecheck": "tsgo --noEmit",
+    "build": "tsc"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./tool": "./src/tool.ts",
+    "./rlm-plugin": "./src/rlm-plugin.ts",
+    "./zero-mem": "./src/zero-mem.ts",
+    "./zero-mem-plugin": "./src/zero-mem-plugin.ts",
+    "./potion": "./src/potion.ts",
+    "./v2/effect": "./src/v2/effect/index.ts",
+    "./v2/effect/plugin": "./src/v2/effect/plugin.ts",
+    "./v2/effect/integration": "./src/v2/effect/integration.ts",
+    "./v2/promise": "./src/v2/promise/index.ts",
+    "./v2/types": "./src/v2/types.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@ai-sdk/provider": "3.0.8",
+    "@turenlabs/sdk": "workspace:*",
+    "effect": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "@typescript/native-preview": "catalog:"
+  }
+}

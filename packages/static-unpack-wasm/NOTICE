@@ -1,0 +1,2 @@
+UPX is GPL-2.0-or-later and is distributed as a separate unmodified WebAssembly program with complete corresponding source.
+The MPRESS analysis-grade reconstructor is derived from MIT-licensed RetDec algorithms and does not link to UPX.

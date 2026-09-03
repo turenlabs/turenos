@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/github-security",
+  "name": "GitHub Security",
+  "description": "Investigate code scanning, Dependabot, secret scanning, and security advisories through GitHub's hosted MCP server",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://github.com/github/github-mcp-server",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "github-security",
+      "name": "GitHub Security",
+      "description": "Read GitHub code security alerts, dependency alerts, secret scanning alerts, and advisories",
+      "adapter": "mcp:github-security",
+      "secrets": [],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": {
+        "type": "hosted",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "headers": {
+          "X-MCP-Toolsets": "code_security,dependabot,secret_protection,security_advisories",
+          "X-MCP-Tools": "run_secret_scanning",
+          "X-MCP-Readonly": "true",
+          "X-MCP-Lockdown": "true"
+        }
+      },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 8, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": [
+          "get_code_scanning_alert",
+          "list_code_scanning_alerts",
+          "get_dependabot_alert",
+          "list_dependabot_alerts",
+          "get_secret_scanning_alert",
+          "list_secret_scanning_alerts",
+          "get_global_security_advisory",
+          "list_global_security_advisories",
+          "list_org_repository_security_advisories",
+          "list_repository_security_advisories",
+          "run_secret_scanning"
+        ],
+        "write": []
+      },
+      "instructions": "Keep GitHub access read-only and scoped to repositories the user is authorized to inspect. Use Lockdown mode for public content."
+    }
+  ]
+}

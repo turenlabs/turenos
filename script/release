@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION=${1:?Usage: ./script/release <version>}
+VERSION=${VERSION#v}
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
+
+if [ "$(git branch --show-current)" != "dev" ]; then
+  echo "Releases must be dispatched from the dev branch" >&2
+  exit 1
+fi
+
+if [ -n "$(git status --porcelain)" ]; then
+  echo "Releases require a clean worktree" >&2
+  exit 1
+fi
+
+git fetch origin dev --tags
+FORGE_VERSION="$VERSION" bun script/release-check.ts
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/dev)" ]; then
+  echo "Local dev must exactly match origin/dev" >&2
+  exit 1
+fi
+
+bun run version:check
+
+REPO=${GH_REPO:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}
+gh workflow run release.yml --repo "$REPO" --ref dev -f version="$VERSION"

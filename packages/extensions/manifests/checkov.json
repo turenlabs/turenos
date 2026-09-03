@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/checkov",
+  "name": "Checkov",
+  "description": "Scan infrastructure as code for misconfigurations",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "tool",
+      "id": "checkov",
+      "name": "Checkov",
+      "description": "Scan infrastructure as code for misconfigurations",
+      "adapter": "security:checkov",
+      "secrets": [],
+      "defaultEnabled": false,
+      "group": "iac",
+      "commands": ["checkov"],
+      "configuration": [],
+      "tools": {
+        "allow": ["checkov_scan"],
+        "write": []
+      },
+      "instructions": "Use Checkov for its declared purpose: Scan infrastructure as code for misconfigurations. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ]
+}

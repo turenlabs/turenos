@@ -1,0 +1,39 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory
+export const __wbg_compiler_free: (a: number, b: number) => void
+export const __wbg_rules_free: (a: number, b: number) => void
+export const __wbg_scanner_free: (a: number, b: number) => void
+export const compiler_addSource: (a: number, b: number, c: number) => [number, number]
+export const compiler_build: (a: number) => [number, number, number]
+export const compiler_defineGlobal: (a: number, b: number, c: number, d: any) => [number, number]
+export const compiler_errors: (a: number) => [number, number, number, number]
+export const compiler_new: () => number
+export const compiler_newNamespace: (a: number, b: number, c: number) => [number, number]
+export const compiler_warnings: (a: number) => [number, number, number, number]
+export const rules_scan: (a: number, b: number, c: number) => [number, number, number]
+export const rules_scanner: (a: number) => number
+export const rules_warnings: (a: number) => [number, number]
+export const scanner_new: (a: number) => number
+export const scanner_scan: (a: number, b: number, c: number) => [number, number, number]
+export const scanner_setGlobal: (a: number, b: number, c: number, d: any) => [number, number]
+export const scanner_setMaxMatchesPerPattern: (a: number, b: number) => void
+export const scanner_setTimeoutMs: (a: number, b: number) => void
+export const wasm_bindgen__convert__closures_____invoke__h2e602d28c3701e16: (
+  a: number,
+  b: number,
+  c: any,
+  d: any,
+  e: any,
+  f: any,
+) => any
+export const __wbindgen_malloc_command_export: (a: number, b: number) => number
+export const __wbindgen_realloc_command_export: (a: number, b: number, c: number, d: number) => number
+export const __wbindgen_exn_store_command_export: (a: number) => void
+export const __externref_table_alloc_command_export: () => number
+export const __wbindgen_externrefs: WebAssembly.Table
+export const __wbindgen_destroy_closure_command_export: (a: number, b: number) => void
+export const __externref_table_dealloc_command_export: (a: number) => void
+export const __externref_drop_slice_command_export: (a: number, b: number) => void
+export const __wbindgen_free_command_export: (a: number, b: number, c: number) => void
+export const __wbindgen_start: () => void

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/crowdstrike-falcon",
+  "name": "CrowdStrike Falcon",
+  "description": "Investigate Falcon detections, hosts, intelligence, cloud risks, and Spotlight vulnerabilities through the vendor MCP server",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://developer.crowdstrike.com/falcon-mcp/",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "crowdstrike-falcon",
+      "name": "CrowdStrike Falcon",
+      "description": "Read CrowdStrike Falcon detections, hosts, intelligence, cloud posture, and vulnerabilities",
+      "instructions": "Enter least-privilege Falcon API credentials. TurenOS downloads the pinned package and starts it with the vendor read-only control.",
+      "adapter": "mcp:crowdstrike-falcon",
+      "secrets": [
+        { "id": "FALCON_CLIENT_ID", "label": "Falcon API client ID", "required": true },
+        { "id": "FALCON_CLIENT_SECRET", "label": "Falcon API client secret", "required": true }
+      ],
+      "configuration": [{ "id": "baseUrl", "label": "Falcon cloud API URL (US-1 default)", "required": false }],
+      "defaultEnabled": false,
+      "authentication": "key",
+      "upstreamPolicy": "static",
+      "localOnly": true,
+      "deployment": {
+        "type": "local",
+        "command": "uvx",
+        "platforms": ["darwin", "linux", "win32"]
+      },
+      "tools": {
+        "allow": [
+          "falcon_search_detections",
+          "falcon_get_detection_details",
+          "falcon_aggregate_detections",
+          "falcon_search_hosts",
+          "falcon_get_host_details",
+          "falcon_search_actors",
+          "falcon_search_indicators",
+          "falcon_search_reports",
+          "falcon_get_mitre_report",
+          "falcon_search_vulnerabilities"
+        ],
+        "write": []
+      }
+    }
+  ]
+}

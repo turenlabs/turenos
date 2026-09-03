@@ -1,0 +1,49 @@
+name: Validate Apple Signing
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Import Developer ID identity
+        uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_APPLICATION_P12 }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Validate notarization credentials
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: xcrun notarytool history --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID"
+
+      - name: Sign, notarize, and verify disposable probe
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/turen-signing-probe"
+          archive="$probe.zip"
+          cp /usr/bin/true "$probe"
+          identity=$(security find-identity -v -p codesigning | awk '/Developer ID Application/ { print $2; exit }')
+          test -n "$identity"
+          codesign --force --timestamp --options runtime --sign "$identity" "$probe"
+          codesign --verify --strict --verbose=2 "$probe"
+          ditto -c -k --sequesterRsrc "$probe" "$archive"
+          xcrun notarytool submit "$archive" --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          codesign -dv --verbose=4 "$probe" 2>&1 \
+            | grep -Eq '^(Authority=Developer ID Application: Turen Labs, Inc.|TeamIdentifier=5Q9UJQ9MPK)$'
+
+      - name: Remove disposable probe
+        if: always()
+        run: rm -f "$RUNNER_TEMP/turen-signing-probe" "$RUNNER_TEMP/turen-signing-probe.zip"

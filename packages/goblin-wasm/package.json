@@ -1,0 +1,21 @@
+{
+  "name": "@turenlabs/goblin-wasm",
+  "version": "0.10.6-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "TurenOS-packaged bounded Goblin executable inspector",
+  "main": "dist/turen_goblin_wasm.js",
+  "types": "dist/turen_goblin_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/turen_goblin_wasm.d.ts",
+      "import": "./dist/turen_goblin_wasm.js",
+      "default": "./dist/turen_goblin_wasm.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "license": "MIT",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

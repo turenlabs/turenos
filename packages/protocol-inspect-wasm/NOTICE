@@ -1,0 +1,1 @@
+This package contains Turen's bounded offline protocol-inspection WebAssembly operations. It vendors etherparse 0.21.0 and related permissive Rust dependencies.

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/jfrog-xray",
+  "name": "JFrog Xray / Supply Chain Security",
+  "description": "Investigate JFrog Xray artifact posture, violations, SBOM impact, packages, CVEs, and builds through the customer-hosted MCP endpoint",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://docs.jfrog.com/integrations/docs/jfrog-mcp-server-tools",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "jfrog-xray",
+      "name": "JFrog Xray / Supply Chain Security",
+      "description": "Read Xray artifact summaries, policy violations, security status, SBOM impact, package vulnerability context, and build information",
+      "adapter": "mcp:jfrog-xray",
+      "secrets": [],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "customer-url", "path": "/mcp", "privateNetwork": false },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 8, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": [
+          "xray_artifact_get_summary",
+          "xray_artifact_get_violations",
+          "xray_artifact_security_status",
+          "xray_sbom_search_impacted_resources",
+          "catalog_vulnerabilities_get",
+          "catalog_packages_versions_vulnerabilities",
+          "catalog_packages_list_versions",
+          "catalog_packages_get",
+          "artifactory_builds_list_builds",
+          "artifactory_builds_list_build_runs",
+          "artifactory_builds_get_info"
+        ],
+        "write": []
+      },
+      "instructions": "Enter the JFrog Platform base URL after a platform administrator enables MCP. TurenOS will use the upstream OAuth flow; if client registration is refused, the connection status reports that registration limitation without exposing credentials. Keep access read-only."
+    }
+  ]
+}

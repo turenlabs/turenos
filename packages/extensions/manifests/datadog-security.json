@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/datadog-security",
+  "name": "Datadog Security & Incident Response",
+  "description": "Investigate Datadog incidents, logs, monitors, traces, and security findings through the regional hosted MCP service",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://docs.datadoghq.com/mcp_server/",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "datadog-security",
+      "name": "Datadog Security & Incident Response",
+      "description": "Read Datadog incidents, security signals and findings, logs, monitors, traces, and spans",
+      "adapter": "mcp:datadog-security",
+      "secrets": [],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "customer-url", "path": "/v1/mcp", "privateNetwork": false },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 10, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": [
+          "get_datadog_incident",
+          "search_datadog_incidents",
+          "search_datadog_logs",
+          "search_datadog_monitors",
+          "get_datadog_trace",
+          "search_datadog_spans",
+          "search_datadog_security_signals",
+          "analyze_datadog_security_signals",
+          "get_datadog_security_signal",
+          "security_findings_schema",
+          "search_datadog_security_findings"
+        ],
+        "write": []
+      },
+      "instructions": "Enter the Datadog MCP base URL for the organization region, then authorize a least-privilege read-only account. Do not enable mutation, workflow, notebook, monitor, case, or security remediation tools."
+    }
+  ]
+}

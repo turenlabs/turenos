@@ -1,0 +1,19 @@
+{
+  "upx": {
+    "upstream": "https://github.com/upx/upx",
+    "version": "5.2.0",
+    "commit": "034b6d0d81c53998c07ad6f34bfead6f5c5445ce",
+    "license": "GPL-2.0-or-later"
+  },
+  "mpress": {
+    "upstream": "https://github.com/avast/retdec",
+    "version": "5.0",
+    "commit": "53e55b4b26e9b843787f0e06d867441e32b1604e",
+    "license": "MIT",
+    "scope": "analysis-grade PE32 LZMAT/LZMA reconstruction"
+  },
+  "emscripten": "4.0.10",
+  "rust": "1.93.0",
+  "wasmPack": "0.14.0",
+  "run": "32745587933"
+}

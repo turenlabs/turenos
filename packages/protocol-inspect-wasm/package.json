@@ -1,0 +1,21 @@
+{
+  "name": "@turenlabs/protocol-inspect-wasm",
+  "version": "0.1.0-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "Turen-packaged bounded offline packet and protocol inspection WebAssembly",
+  "main": "dist/turen_protocol_inspect_wasm.js",
+  "types": "dist/turen_protocol_inspect_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/turen_protocol_inspect_wasm.d.ts",
+      "import": "./dist/turen_protocol_inspect_wasm.js",
+      "default": "./dist/turen_protocol_inspect_wasm.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "license": "MIT",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

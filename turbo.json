@@ -1,0 +1,17 @@
+{
+  "$schema": "https://v2-8-13.turborepo.dev/schema.json",
+  "globalEnv": ["CI"],
+  "globalPassThroughEnv": ["CI"],
+  "tasks": {
+    "typecheck": {},
+    "build": {
+      "dependsOn": [],
+      "outputs": ["dist/**"]
+    },
+    "test": {
+      "dependsOn": [],
+      "outputs": [],
+      "passThroughEnv": ["*"]
+    }
+  }
+}

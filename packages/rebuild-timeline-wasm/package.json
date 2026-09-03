@@ -1,0 +1,21 @@
+{
+  "name": "@turenlabs/rebuild-timeline-wasm",
+  "version": "0.1.0-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "Bounded forensic timeline rebuild for TurenOS",
+  "main": "dist/turen_rebuild_timeline_wasm.js",
+  "types": "dist/turen_rebuild_timeline_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/turen_rebuild_timeline_wasm.d.ts",
+      "import": "./dist/turen_rebuild_timeline_wasm.js",
+      "default": "./dist/turen_rebuild_timeline_wasm.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "license": "MIT",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

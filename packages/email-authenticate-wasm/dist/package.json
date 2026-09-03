@@ -1,0 +1,21 @@
+{
+  "name": "turen-email-authenticate-wasm",
+  "type": "module",
+  "description": "Offline, bounded email authentication evidence for Turen agents",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_email_authenticate_wasm_bg.wasm",
+    "turen_email_authenticate_wasm.js",
+    "turen_email_authenticate_wasm.d.ts"
+  ],
+  "main": "turen_email_authenticate_wasm.js",
+  "types": "turen_email_authenticate_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

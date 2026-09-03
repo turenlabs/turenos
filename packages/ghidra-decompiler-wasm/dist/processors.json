@@ -1,0 +1,2805 @@
+[
+  {
+    "id": "8085:LE:16:default",
+    "description": "Intel 8085",
+    "sla": "Processors/8085/data/languages/8085.sla",
+    "pspec": "Processors/8085/data/languages/8085.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/8085/data/languages/8085.cspec"
+      }
+    ]
+  },
+  {
+    "id": "SuperH4:BE:32:default",
+    "description": "SuperH-4(a) (SH4) big endian",
+    "sla": "Processors/SuperH4/data/languages/SuperH4_be.sla",
+    "pspec": "Processors/SuperH4/data/languages/SuperH4.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/SuperH4/data/languages/SuperH4_be.cspec"
+      }
+    ]
+  },
+  {
+    "id": "SuperH4:LE:32:default",
+    "description": "SuperH-4(a) (SH4) little endian",
+    "sla": "Processors/SuperH4/data/languages/SuperH4_le.sla",
+    "pspec": "Processors/SuperH4/data/languages/SuperH4.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/SuperH4/data/languages/SuperH4_le.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/SuperH4/data/languages/SuperH4_le.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LE:32:v8",
+    "description": "Generic ARM/Thumb v8 little endian",
+    "sla": "Processors/ARM/data/languages/ARM8_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/ARM/data/languages/ARM_win.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LE:32:v8T",
+    "description": "Generic ARM/Thumb v8 little endian (Thumb is default)",
+    "sla": "Processors/ARM/data/languages/ARM8_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARMtTHUMB.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/ARM/data/languages/ARM_win.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LEBE:32:v8LEInstruction",
+    "description": "Generic ARM/Thumb v8 little endian instructions and big endian data",
+    "sla": "Processors/ARM/data/languages/ARM8_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:BE:32:v8",
+    "description": "Generic ARM/Thumb v8 big endian",
+    "sla": "Processors/ARM/data/languages/ARM8_be.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:BE:32:v8T",
+    "description": "Generic ARM/Thumb v8 big endian (Thumb is default)",
+    "sla": "Processors/ARM/data/languages/ARM8_be.sla",
+    "pspec": "Processors/ARM/data/languages/ARMtTHUMB.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LE:32:v7",
+    "description": "Generic ARM/Thumb v7 little endian",
+    "sla": "Processors/ARM/data/languages/ARM7_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/ARM/data/languages/ARM_win.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LEBE:32:v7LEInstruction",
+    "description": "Generic ARM/Thumb v7 little endian instructions and big endian data",
+    "sla": "Processors/ARM/data/languages/ARM7_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:BE:32:v7",
+    "description": "Generic ARM/Thumb v7 big endian",
+    "sla": "Processors/ARM/data/languages/ARM7_be.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LE:32:Cortex",
+    "description": "ARM Cortex / Thumb little endian",
+    "sla": "Processors/ARM/data/languages/ARM7_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARMCortex.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:BE:32:Cortex",
+    "description": "ARM Cortex / Thumb big endian",
+    "sla": "Processors/ARM/data/languages/ARM7_be.sla",
+    "pspec": "Processors/ARM/data/languages/ARMCortex.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LE:32:v8-m",
+    "description": "ARM Cortex v8-m little endian",
+    "sla": "Processors/ARM/data/languages/ARM8m_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARMCortex.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:BE:32:v8-m",
+    "description": "ARM Cortex v8-m big endian",
+    "sla": "Processors/ARM/data/languages/ARM8m_be.sla",
+    "pspec": "Processors/ARM/data/languages/ARMCortex.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LE:32:v6",
+    "description": "Generic ARM/Thumb v6 little endian",
+    "sla": "Processors/ARM/data/languages/ARM6_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt_v6.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM_v45.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:BE:32:v6",
+    "description": "Generic ARM/Thumb v6 big endian",
+    "sla": "Processors/ARM/data/languages/ARM6_be.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt_v6.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM_v45.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LE:32:v5t",
+    "description": "Generic ARM/Thumb v5 little endian (T-variant)",
+    "sla": "Processors/ARM/data/languages/ARM5t_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt_v45.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM_v45.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:BE:32:v5t",
+    "description": "Generic ARM/Thumb v5 big endian (T-variant)",
+    "sla": "Processors/ARM/data/languages/ARM5t_be.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt_v45.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM_v45.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LE:32:v5",
+    "description": "Generic ARM v5 little endian",
+    "sla": "Processors/ARM/data/languages/ARM5_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARM_v45.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM_v45.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:BE:32:v5",
+    "description": "Generic ARM v5 big endian",
+    "sla": "Processors/ARM/data/languages/ARM5_be.sla",
+    "pspec": "Processors/ARM/data/languages/ARM_v45.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM_v45.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LE:32:v4t",
+    "description": "Generic ARM/Thumb v4 little endian (T-variant)",
+    "sla": "Processors/ARM/data/languages/ARM4t_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt_v45.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM_v45.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:BE:32:v4t",
+    "description": "Generic ARM/Thumb v4 big endian (T-variant)",
+    "sla": "Processors/ARM/data/languages/ARM4t_be.sla",
+    "pspec": "Processors/ARM/data/languages/ARMt_v45.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM_v45.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:LE:32:v4",
+    "description": "Generic ARM v4 little endian",
+    "sla": "Processors/ARM/data/languages/ARM4_le.sla",
+    "pspec": "Processors/ARM/data/languages/ARM_v45.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM_v45.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "ARM:BE:32:v4",
+    "description": "Generic ARM v4 big endian",
+    "sla": "Processors/ARM/data/languages/ARM4_be.sla",
+    "pspec": "Processors/ARM/data/languages/ARM_v45.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/ARM/data/languages/ARM_v45.cspec"
+      },
+      {
+        "name": "APCS",
+        "id": "apcs",
+        "spec": "Processors/ARM/data/languages/ARM_apcs.cspec"
+      }
+    ]
+  },
+  {
+    "id": "sparc:BE:32:default",
+    "description": "Sparc V9 32-bit",
+    "sla": "Processors/Sparc/data/languages/SparcV9_32.sla",
+    "pspec": "Processors/Sparc/data/languages/SparcV9.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Sparc/data/languages/SparcV9_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "sparc:BE:64:default",
+    "description": "Sparc V9 64-bit",
+    "sla": "Processors/Sparc/data/languages/SparcV9_64.sla",
+    "pspec": "Processors/Sparc/data/languages/SparcV9.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Sparc/data/languages/SparcV9_64.cspec"
+      }
+    ]
+  },
+  {
+    "id": "avr8:LE:16:default",
+    "description": "AVR8 with 16-bit word addressable code space",
+    "sla": "Processors/Atmel/data/languages/avr8.sla",
+    "pspec": "Processors/Atmel/data/languages/avr8.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/Atmel/data/languages/avr8gcc.cspec"
+      },
+      {
+        "name": "iarV1",
+        "id": "iarV1",
+        "spec": "Processors/Atmel/data/languages/avr8iarV1.cspec"
+      },
+      {
+        "name": "imgCraftV8",
+        "id": "imgCraftV8",
+        "spec": "Processors/Atmel/data/languages/avr8imgCraftV8.cspec"
+      }
+    ]
+  },
+  {
+    "id": "avr8:LE:16:extended",
+    "description": "AVR8 with 22-bit word addressable with EIND code space",
+    "sla": "Processors/Atmel/data/languages/avr8eind.sla",
+    "pspec": "Processors/Atmel/data/languages/avr8.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/Atmel/data/languages/avr8egcc.cspec"
+      }
+    ]
+  },
+  {
+    "id": "avr8:LE:16:atmega256",
+    "description": "AVR8 for an Atmega 256",
+    "sla": "Processors/Atmel/data/languages/avr8eind.sla",
+    "pspec": "Processors/Atmel/data/languages/atmega256.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/Atmel/data/languages/avr8egcc.cspec"
+      }
+    ]
+  },
+  {
+    "id": "avr8:LE:24:xmega",
+    "description": "AVR8 for an Xmega",
+    "sla": "Processors/Atmel/data/languages/avr8xmega.sla",
+    "pspec": "Processors/Atmel/data/languages/avr8xmega.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/Atmel/data/languages/avr8egcc.cspec"
+      }
+    ]
+  },
+  {
+    "id": "avr32:BE:32:default",
+    "description": "Generic AVR32-A big-endian",
+    "sla": "Processors/Atmel/data/languages/avr32a.sla",
+    "pspec": "Processors/Atmel/data/languages/avr32a.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Atmel/data/languages/avr32a.cspec"
+      }
+    ]
+  },
+  {
+    "id": "8051:BE:16:default",
+    "description": "8051 Microcontroller Family",
+    "sla": "Processors/8051/data/languages/8051.sla",
+    "pspec": "Processors/8051/data/languages/8051.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/8051/data/languages/8051.cspec"
+      },
+      {
+        "name": "Archimedes",
+        "id": "Archimedes",
+        "spec": "Processors/8051/data/languages/8051_archimedes.cspec"
+      }
+    ]
+  },
+  {
+    "id": "80251:BE:24:default",
+    "description": "80251 Microcontroller Family",
+    "sla": "Processors/8051/data/languages/80251.sla",
+    "pspec": "Processors/8051/data/languages/80251.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/8051/data/languages/80251.cspec"
+      }
+    ]
+  },
+  {
+    "id": "80390:BE:24:default",
+    "description": "80390 in flat mode",
+    "sla": "Processors/8051/data/languages/80390.sla",
+    "pspec": "Processors/8051/data/languages/8051.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/8051/data/languages/80390.cspec"
+      }
+    ]
+  },
+  {
+    "id": "8051:BE:24:mx51",
+    "description": "NXP/Phillips MX51",
+    "sla": "Processors/8051/data/languages/mx51.sla",
+    "pspec": "Processors/8051/data/languages/mx51.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/8051/data/languages/mx51.cspec"
+      }
+    ]
+  },
+  {
+    "id": "JVM:BE:32:default",
+    "description": "Generic JVM",
+    "sla": "Processors/JVM/data/languages/JVM.sla",
+    "pspec": "Processors/JVM/data/languages/JVM.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/JVM/data/languages/JVM.cspec"
+      }
+    ]
+  },
+  {
+    "id": "pa-risc:BE:32:default",
+    "description": "Generic PA-RISC 32-bit big endian",
+    "sla": "Processors/PA-RISC/data/languages/pa-risc32be.sla",
+    "pspec": "Processors/PA-RISC/data/languages/pa-risc32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PA-RISC/data/languages/pa-risc32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "HC-12:BE:16:default",
+    "description": "HC12 Microcontroller Family",
+    "sla": "Processors/HCS12/data/languages/HC12.sla",
+    "pspec": "Processors/HCS12/data/languages/HC12.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/HCS12/data/languages/HC12.cspec"
+      }
+    ]
+  },
+  {
+    "id": "HCS-12:BE:24:default",
+    "description": "HCS12 Microcontroller Family",
+    "sla": "Processors/HCS12/data/languages/HCS12.sla",
+    "pspec": "Processors/HCS12/data/languages/HCS12.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/HCS12/data/languages/HCS12.cspec"
+      }
+    ]
+  },
+  {
+    "id": "HCS-12X:BE:24:default",
+    "description": "HCS12X Microcontroller Family",
+    "sla": "Processors/HCS12/data/languages/HCS12X.sla",
+    "pspec": "Processors/HCS12/data/languages/HCS12X.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/HCS12/data/languages/HCS12X.cspec"
+      }
+    ]
+  },
+  {
+    "id": "HCS12:BE:24:default",
+    "description": "HCS12X Microcontroller Family",
+    "sla": "Processors/HCS12/data/languages/HCS12X.sla",
+    "pspec": "Processors/HCS12/data/languages/HCS12X.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/HCS12/data/languages/HCS12X.cspec"
+      }
+    ]
+  },
+  {
+    "id": "V850:LE:32:default",
+    "description": "Renesas V850 family",
+    "sla": "Processors/V850/data/languages/V850.sla",
+    "pspec": "Processors/V850/data/languages/V850.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/V850/data/languages/V850.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:BE:32:default",
+    "description": "MIPS32 32-bit addresses, big endian, with mips16e",
+    "sla": "Processors/MIPS/data/languages/mips32be.sla",
+    "pspec": "Processors/MIPS/data/languages/mips32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips32be.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/MIPS/data/languages/mips32be.cspec"
+      },
+      {
+        "name": "eabi",
+        "id": "eabi",
+        "spec": "Processors/MIPS/data/languages/mips32_eabi.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:LE:32:default",
+    "description": "MIPS32 32-bit addresses, little endian, with mips16e",
+    "sla": "Processors/MIPS/data/languages/mips32le.sla",
+    "pspec": "Processors/MIPS/data/languages/mips32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips32le.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/MIPS/data/languages/mips32le.cspec"
+      },
+      {
+        "name": "eabi",
+        "id": "eabi",
+        "spec": "Processors/MIPS/data/languages/mips32_eabi.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:BE:32:R6",
+    "description": "MIPS32 Release-6 32-bit addresses, big endian, with microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips32R6be.sla",
+    "pspec": "Processors/MIPS/data/languages/mips32R6.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips32_fp64.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:LE:32:R6",
+    "description": "MIPS32 Release-6 32-bit addresses, little endian, with microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips32R6le.sla",
+    "pspec": "Processors/MIPS/data/languages/mips32R6.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips32_fp64.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:BE:64:default",
+    "description": "MIPS64 64-bit addresses, big endian, with mips16e",
+    "sla": "Processors/MIPS/data/languages/mips64be.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64be.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:LE:64:default",
+    "description": "MIPS64 64-bit addreses, little endian, with mips16e",
+    "sla": "Processors/MIPS/data/languages/mips64le.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64le.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/MIPS/data/languages/mips64le.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:BE:64:micro",
+    "description": "MIPS64 64-bit addresses, big endian, with microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips64be.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64micro.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64be.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:LE:64:micro",
+    "description": "MIPS64 64-bit addresses, little endian, with microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips64le.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64micro.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64le.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/MIPS/data/languages/mips64le.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:BE:64:R6",
+    "description": "MIPS64 Release-6 64-bit addresses, big endian, with microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips64be.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64R6.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64be.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:LE:64:R6",
+    "description": "MIPS64 Release-6 64-bit addresses, little endian, with microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips64le.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64R6.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64le.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/MIPS/data/languages/mips64le.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:BE:64:64-32addr",
+    "description": "MIPS64 32-bit addresses, big endian, with mips16e",
+    "sla": "Processors/MIPS/data/languages/mips64be.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "o64",
+        "id": "o64",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "n32",
+        "id": "n32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_n32.cspec"
+      },
+      {
+        "name": "o32",
+        "id": "o32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:LE:64:64-32addr",
+    "description": "MIPS64 32-bit addresses, little endian, with mips16e",
+    "sla": "Processors/MIPS/data/languages/mips64le.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "o64",
+        "id": "o64",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "n32",
+        "id": "n32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_n32.cspec"
+      },
+      {
+        "name": "o32",
+        "id": "o32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o32.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:LE:64:micro64-32addr",
+    "description": "MIPS64 32-bit addresses, little endian, with microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips64le.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64micro.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "o64",
+        "id": "o64",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "n32",
+        "id": "n32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_n32.cspec"
+      },
+      {
+        "name": "o32",
+        "id": "o32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o32.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:BE:64:micro64-32addr",
+    "description": "MIPS64 32-bit addresses, big endian, with microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips64be.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64micro.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "o64",
+        "id": "o64",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "n32",
+        "id": "n32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_n32.cspec"
+      },
+      {
+        "name": "o32",
+        "id": "o32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:BE:64:64-32R6addr",
+    "description": "MIPS64 Release-6 big endian with 32 bit addressing and microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips64be.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64R6.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "o64",
+        "id": "o64",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "n32",
+        "id": "n32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_n32.cspec"
+      },
+      {
+        "name": "o32",
+        "id": "o32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:LE:64:64-32R6addr",
+    "description": "MIPS64 Release-6 with 32-bit addresses, little endian, with microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips64le.sla",
+    "pspec": "Processors/MIPS/data/languages/mips64R6.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "o64",
+        "id": "o64",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      },
+      {
+        "name": "n32",
+        "id": "n32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_n32.cspec"
+      },
+      {
+        "name": "o32",
+        "id": "o32",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o32.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/MIPS/data/languages/mips64_32_o64.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:BE:32:micro",
+    "description": "MIPS32 32-bit addresses, big endian, with microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips32be.sla",
+    "pspec": "Processors/MIPS/data/languages/mips32micro.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips32be.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MIPS:LE:32:micro",
+    "description": "MIPS32 32-bit addresses, little endian, with microMIPS",
+    "sla": "Processors/MIPS/data/languages/mips32le.sla",
+    "pspec": "Processors/MIPS/data/languages/mips32micro.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MIPS/data/languages/mips32le.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/MIPS/data/languages/mips32le.cspec"
+      }
+    ]
+  },
+  {
+    "id": "SuperH:BE:32:SH-2A",
+    "description": "SuperH SH-2A processor 32-bit big-endian",
+    "sla": "Processors/SuperH/data/languages/sh-2a.sla",
+    "pspec": "Processors/SuperH/data/languages/superh.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/SuperH/data/languages/superh2a.cspec"
+      }
+    ]
+  },
+  {
+    "id": "SuperH:BE:32:SH-2",
+    "description": "SuperH SH-2 processor 32-bit big-endian",
+    "sla": "Processors/SuperH/data/languages/sh-2.sla",
+    "pspec": "Processors/SuperH/data/languages/superh.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/SuperH/data/languages/superh.cspec"
+      }
+    ]
+  },
+  {
+    "id": "SuperH:BE:32:SH-1",
+    "description": "SuperH SH-1 processor 32-bit big-endian",
+    "sla": "Processors/SuperH/data/languages/sh-1.sla",
+    "pspec": "Processors/SuperH/data/languages/superh.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/SuperH/data/languages/superh.cspec"
+      }
+    ]
+  },
+  {
+    "id": "eBPF:BE:64:default",
+    "description": "eBPF processor 64-bit big-endian",
+    "sla": "Processors/eBPF/data/languages/eBPF_be.sla",
+    "pspec": "Processors/eBPF/data/languages/eBPF.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/eBPF/data/languages/eBPF.cspec"
+      }
+    ]
+  },
+  {
+    "id": "eBPF:LE:64:default",
+    "description": "eBPF processor 64-bit little-endian",
+    "sla": "Processors/eBPF/data/languages/eBPF_le.sla",
+    "pspec": "Processors/eBPF/data/languages/eBPF.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/eBPF/data/languages/eBPF.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:32:default",
+    "description": "PowerPC 32-bit big endian w/Altivec, G2",
+    "sla": "Processors/PowerPC/data/languages/ppc_32_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_32.cspec"
+      },
+      {
+        "name": "Mac OS X",
+        "id": "macosx",
+        "spec": "Processors/PowerPC/data/languages/ppc_32_be_Mac.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:LE:32:default",
+    "description": "PowerPC 32-bit little endian w/Altivec, G2",
+    "sla": "Processors/PowerPC/data/languages/ppc_32_le.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_32.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/PowerPC/data/languages/ppc_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:64:default",
+    "description": "PowerPC 64-bit big endian w/Altivec, G2",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_be.cspec"
+      },
+      {
+        "name": "Mac OS X",
+        "id": "macosx",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_be_Mac.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:64:64-32addr",
+    "description": "PowerPC 64-bit big endian w/Altivec and 32 bit addressing, G2",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:LE:64:64-32addr",
+    "description": "PowerPC 64-bit little endian w/Altivec and 32 bit addressing, G2",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_le.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_32.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:LE:64:default",
+    "description": "PowerPC 64-bit little endian w/Altivec, G2",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_le.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_le.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:32:4xx",
+    "description": "PowerPC 4xx 32-bit big endian embedded core",
+    "sla": "Processors/PowerPC/data/languages/ppc_32_4xx_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:LE:32:4xx",
+    "description": "PowerPC 4xx 32-bit little endian embedded core",
+    "sla": "Processors/PowerPC/data/languages/ppc_32_4xx_le.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_32.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/PowerPC/data/languages/ppc_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:32:MPC8270",
+    "description": "Freescale MPC8280 32-bit big endian family (PowerQUICC-III)",
+    "sla": "Processors/PowerPC/data/languages/ppc_32_quicciii_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_32_mpc8270.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:32:QUICC",
+    "description": "PowerQUICC-III 32-bit big endian family",
+    "sla": "Processors/PowerPC/data/languages/ppc_32_quicciii_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:LE:32:QUICC",
+    "description": "PowerQUICC-III 32-bit little endian family",
+    "sla": "Processors/PowerPC/data/languages/ppc_32_quicciii_le.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_32.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/PowerPC/data/languages/ppc_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:32:e500",
+    "description": "PowerQUICC-III e500 32-bit big-endian family",
+    "sla": "Processors/PowerPC/data/languages/ppc_32_e500_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_32_e500_be.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:LE:32:e500",
+    "description": "PowerQUICC-III e500 32-bit little-endian family",
+    "sla": "Processors/PowerPC/data/languages/ppc_32_e500_le.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_32_e500_le.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:32:e500mc",
+    "description": "PowerQUICC-III e500mc 32-bit big-endian family",
+    "sla": "Processors/PowerPC/data/languages/ppc_32_e500mc_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_32_e500mc_be.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:LE:32:e500mc",
+    "description": "PowerQUICC-III e500mc 32-bit little-endian family",
+    "sla": "Processors/PowerPC/data/languages/ppc_32_e500mc_le.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_32_e500mc_le.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:64:A2-32addr",
+    "description": "Power ISA 3.0 Big Endian w/EVX and 32-bit Addressing",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_isa_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:LE:64:A2-32addr",
+    "description": "Power ISA 3.0 Little Endian w/EVX and 32-bit Addressing",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_isa_le.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_32.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:64:A2ALT-32addr",
+    "description": "Power ISA 3.0 Big Endian w/Altivec and 32-bit Addressing",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_isa_altivec_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:LE:64:A2ALT-32addr",
+    "description": "Power ISA 3.0 Little Endian w/Altivec and 32-bit Addressing",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_isa_altivec_le.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_32.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:64:A2ALT",
+    "description": "Power ISA 3.0 Big Endian w/Altivec",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_isa_altivec_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_be.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:LE:64:A2ALT",
+    "description": "Power ISA 3.0 Little Endian w/Altivec",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_isa_altivec_le.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_le.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:64:VLE-32addr",
+    "description": "Power ISA 3.0 Big Endian w/VLE, EVX and 32-bit Addressing ",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_isa_vle_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PowerPC:BE:64:VLEALT-32addr",
+    "description": "Power ISA 3.0 Big Endian w/VLE, Altivec and 32-bit Addressing",
+    "sla": "Processors/PowerPC/data/languages/ppc_64_isa_altivec_vle_be.sla",
+    "pspec": "Processors/PowerPC/data/languages/ppc_64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PowerPC/data/languages/ppc_64_32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "DATA:LE:64:default",
+    "description": "Raw Data File (Little Endian)",
+    "sla": "Processors/DATA/data/languages/data-le-64.sla",
+    "pspec": "Processors/DATA/data/languages/data.pspec",
+    "compilers": [
+      {
+        "name": "pointer64",
+        "id": "pointer64",
+        "spec": "Processors/DATA/data/languages/data-ptr64.cspec"
+      },
+      {
+        "name": "pointer32",
+        "id": "pointer32",
+        "spec": "Processors/DATA/data/languages/data-ptr32.cspec"
+      },
+      {
+        "name": "pointer16",
+        "id": "pointer16",
+        "spec": "Processors/DATA/data/languages/data-ptr16.cspec"
+      }
+    ]
+  },
+  {
+    "id": "DATA:BE:64:default",
+    "description": "Raw Data File (Big Endian)",
+    "sla": "Processors/DATA/data/languages/data-be-64.sla",
+    "pspec": "Processors/DATA/data/languages/data.pspec",
+    "compilers": [
+      {
+        "name": "pointer64",
+        "id": "pointer64",
+        "spec": "Processors/DATA/data/languages/data-ptr64.cspec"
+      },
+      {
+        "name": "pointer32",
+        "id": "pointer32",
+        "spec": "Processors/DATA/data/languages/data-ptr32.cspec"
+      },
+      {
+        "name": "pointer16",
+        "id": "pointer16",
+        "spec": "Processors/DATA/data/languages/data-ptr16.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Xtensa:LE:32:default",
+    "description": "Tensilica Xtensa 32-bit little-endian",
+    "sla": "Processors/Xtensa/data/languages/xtensa_le.sla",
+    "pspec": "Processors/Xtensa/data/languages/xtensa.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Xtensa/data/languages/xtensa.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Xtensa:BE:32:default",
+    "description": "Tensilica Xtensa 32-bit big-endian",
+    "sla": "Processors/Xtensa/data/languages/xtensa_be.sla",
+    "pspec": "Processors/Xtensa/data/languages/xtensa.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Xtensa/data/languages/xtensa.cspec"
+      }
+    ]
+  },
+  {
+    "id": "CP1600:BE:16:default",
+    "description": "General Instruments CP1600",
+    "sla": "Processors/CP1600/data/languages/CP1600.sla",
+    "pspec": "Processors/CP1600/data/languages/CP1600.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/CP1600/data/languages/CP1600.cspec"
+      }
+    ]
+  },
+  {
+    "id": "6805:BE:16:default",
+    "description": "6805 Microcontroller Family",
+    "sla": "Processors/MC6800/data/languages/6805.sla",
+    "pspec": "Processors/MC6800/data/languages/6805.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MC6800/data/languages/6805.cspec"
+      }
+    ]
+  },
+  {
+    "id": "6809:BE:16:default",
+    "description": "6809 Microprocessor",
+    "sla": "Processors/MC6800/data/languages/6809.sla",
+    "pspec": "Processors/MC6800/data/languages/6809.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MC6800/data/languages/6809.cspec"
+      }
+    ]
+  },
+  {
+    "id": "H6309:BE:16:default",
+    "description": "Hitachi 6309 Microprocessor, extension of 6809, 6309 addressing modes, missing many instructions",
+    "sla": "Processors/MC6800/data/languages/H6309.sla",
+    "pspec": "Processors/MC6800/data/languages/6809.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MC6800/data/languages/6809.cspec"
+      }
+    ]
+  },
+  {
+    "id": "CR16C:LE:16:default",
+    "description": "National Semiconductor's CompactRISC CR16C little endian",
+    "sla": "Processors/CR16/data/languages/CR16C.sla",
+    "pspec": "Processors/CR16/data/languages/CR16.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/CR16/data/languages/CR16.cspec"
+      }
+    ]
+  },
+  {
+    "id": "x86:LE:32:default",
+    "description": "Intel/AMD 32-bit x86",
+    "sla": "Processors/x86/data/languages/x86.sla",
+    "pspec": "Processors/x86/data/languages/x86.pspec",
+    "compilers": [
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/x86/data/languages/x86win.cspec"
+      },
+      {
+        "name": "clang",
+        "id": "clangwindows",
+        "spec": "Processors/x86/data/languages/x86win.cspec"
+      },
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/x86/data/languages/x86gcc.cspec"
+      },
+      {
+        "name": "Borland C++",
+        "id": "borlandcpp",
+        "spec": "Processors/x86/data/languages/x86borland.cspec"
+      },
+      {
+        "name": "Delphi",
+        "id": "borlanddelphi",
+        "spec": "Processors/x86/data/languages/x86delphi.cspec"
+      },
+      {
+        "name": "golang",
+        "id": "golang",
+        "spec": "Processors/x86/data/languages/x86-32-golang.cspec"
+      }
+    ]
+  },
+  {
+    "id": "x86:LE:32:System Management Mode",
+    "description": "Intel/AMD 32-bit x86 System Management Mode",
+    "sla": "Processors/x86/data/languages/x86.sla",
+    "pspec": "Processors/x86/data/languages/x86-16.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/x86/data/languages/x86-16.cspec"
+      }
+    ]
+  },
+  {
+    "id": "x86:LE:16:Real Mode",
+    "description": "Intel/AMD 16-bit x86 Real Mode",
+    "sla": "Processors/x86/data/languages/x86.sla",
+    "pspec": "Processors/x86/data/languages/x86-16-real.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/x86/data/languages/x86-16.cspec"
+      }
+    ]
+  },
+  {
+    "id": "x86:LE:16:Protected Mode",
+    "description": "Intel/AMD 16-bit x86 Protected Mode",
+    "sla": "Processors/x86/data/languages/x86.sla",
+    "pspec": "Processors/x86/data/languages/x86-16.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/x86/data/languages/x86-16.cspec"
+      }
+    ]
+  },
+  {
+    "id": "x86:LE:64:default",
+    "description": "Intel/AMD 64-bit x86",
+    "sla": "Processors/x86/data/languages/x86-64.sla",
+    "pspec": "Processors/x86/data/languages/x86-64.pspec",
+    "compilers": [
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/x86/data/languages/x86-64-win.cspec"
+      },
+      {
+        "name": "clang",
+        "id": "clangwindows",
+        "spec": "Processors/x86/data/languages/x86-64-win.cspec"
+      },
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/x86/data/languages/x86-64-gcc.cspec"
+      },
+      {
+        "name": "golang",
+        "id": "golang",
+        "spec": "Processors/x86/data/languages/x86-64-golang.cspec"
+      },
+      {
+        "name": "Swift",
+        "id": "swift",
+        "spec": "Processors/x86/data/languages/x86-64-swift.cspec"
+      }
+    ]
+  },
+  {
+    "id": "x86:LE:64:compat32",
+    "description": "Intel/AMD 64-bit x86 in 32-bit compatibility mode (long mode off)",
+    "sla": "Processors/x86/data/languages/x86-64.sla",
+    "pspec": "Processors/x86/data/languages/x86-64-compat32.pspec",
+    "compilers": [
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/x86/data/languages/x86win.cspec"
+      },
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/x86/data/languages/x86gcc.cspec"
+      }
+    ]
+  },
+  {
+    "id": "TI_MSP430:LE:16:default",
+    "description": "TI MSP430 16-Bit MicroController",
+    "sla": "Processors/TI_MSP430/data/languages/TI_MSP430.sla",
+    "pspec": "Processors/TI_MSP430/data/languages/TI_MSP430.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/TI_MSP430/data/languages/TI_MSP430.cspec"
+      }
+    ]
+  },
+  {
+    "id": "TI_MSP430X:LE:32:default",
+    "description": "TI MSP430X 20-Bit MicroController",
+    "sla": "Processors/TI_MSP430/data/languages/TI_MSP430X.sla",
+    "pspec": "Processors/TI_MSP430/data/languages/TI_MSP430.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/TI_MSP430/data/languages/TI_MSP430X.cspec"
+      }
+    ]
+  },
+  {
+    "id": "BPF:LE:32:default",
+    "description": "BPF processor 32-bit little-endian",
+    "sla": "Processors/BPF/data/languages/BPF_le.sla",
+    "pspec": "Processors/BPF/data/languages/BPF.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/BPF/data/languages/BPF.cspec"
+      }
+    ]
+  },
+  {
+    "id": "M8C:BE:16:default",
+    "description": "Cypress M8C Microcontroller Family",
+    "sla": "Processors/M8C/data/languages/m8c.sla",
+    "pspec": "Processors/M8C/data/languages/m8c.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/M8C/data/languages/m8c.cspec"
+      }
+    ]
+  },
+  {
+    "id": "tricore:LE:32:default",
+    "description": "Siemens Tricore Embedded Processor",
+    "sla": "Processors/tricore/data/languages/tricore.sla",
+    "pspec": "Processors/tricore/data/languages/tricore.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/tricore/data/languages/tricore.cspec"
+      }
+    ]
+  },
+  {
+    "id": "tricore:LE:32:tc29x",
+    "description": "Siemens Tricore Embedded Processor TC29x",
+    "sla": "Processors/tricore/data/languages/tricore.sla",
+    "pspec": "Processors/tricore/data/languages/tc29x.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/tricore/data/languages/tricore.cspec"
+      }
+    ]
+  },
+  {
+    "id": "tricore:LE:32:tc172x",
+    "description": "Siemens Tricore Embedded Processor TC1724/TC1728",
+    "sla": "Processors/tricore/data/languages/tricore.sla",
+    "pspec": "Processors/tricore/data/languages/tc172x.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/tricore/data/languages/tricore.cspec"
+      }
+    ]
+  },
+  {
+    "id": "tricore:LE:32:tc176x",
+    "description": "Siemens Tricore Embedded Processor TC1762/TC1766",
+    "sla": "Processors/tricore/data/languages/tricore.sla",
+    "pspec": "Processors/tricore/data/languages/tc176x.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/tricore/data/languages/tricore.cspec"
+      }
+    ]
+  },
+  {
+    "id": "8048:LE:16:default",
+    "description": "8048 Microcontroller Family",
+    "sla": "Processors/8048/data/languages/8048.sla",
+    "pspec": "Processors/8048/data/languages/8048.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/8048/data/languages/8048.cspec"
+      }
+    ]
+  },
+  {
+    "id": "HCS08:BE:16:default",
+    "description": "HCS08 Microcontroller Family",
+    "sla": "Processors/HCS08/data/languages/HCS08.sla",
+    "pspec": "Processors/HCS08/data/languages/HCS08.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/HCS08/data/languages/HCS08.cspec"
+      }
+    ]
+  },
+  {
+    "id": "HCS08:BE:16:MC9S08GB60",
+    "description": "HCS08 Microcontroller Family - MC9S08GB60",
+    "sla": "Processors/HCS08/data/languages/HCS08.sla",
+    "pspec": "Processors/HCS08/data/languages/HCS08-MC9S08GB60.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/HCS08/data/languages/HCS08.cspec"
+      }
+    ]
+  },
+  {
+    "id": "HC08:BE:16:default",
+    "description": "HC08 Microcontroller Family",
+    "sla": "Processors/HCS08/data/languages/HC08.sla",
+    "pspec": "Processors/HCS08/data/languages/HC08.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/HCS08/data/languages/HCS08.cspec"
+      }
+    ]
+  },
+  {
+    "id": "HC08:BE:16:MC68HC908QY4",
+    "description": "HC08 Microcontroller Family - MC68HC908QY4",
+    "sla": "Processors/HCS08/data/languages/HC08.sla",
+    "pspec": "Processors/HCS08/data/languages/HC08-MC68HC908QY4.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/HCS08/data/languages/HCS08.cspec"
+      }
+    ]
+  },
+  {
+    "id": "HC05:BE:16:default",
+    "description": "HC05 (6805) Microcontroller Family",
+    "sla": "Processors/HCS08/data/languages/HC05.sla",
+    "pspec": "Processors/HCS08/data/languages/HC05.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/HCS08/data/languages/HC05.cspec"
+      }
+    ]
+  },
+  {
+    "id": "HC05:BE:16:M68HC05TB",
+    "description": "HC05 (6805) Microcontroller Family - M68HC05TB",
+    "sla": "Processors/HCS08/data/languages/HC05.sla",
+    "pspec": "Processors/HCS08/data/languages/HC05-M68HC05TB.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/HCS08/data/languages/HC05.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:default",
+    "description": "Dalvik Base",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_Base.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:DEX_Base",
+    "description": "Dalvik Base",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_Base.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:DEX_KitKat",
+    "description": "Dalvik DEX KitKat",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_DEX_KitKat.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:ODEX_KitKat",
+    "description": "Dalvik ODEX KitKat",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_ODEX_KitKat.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:DEX_Lollipop",
+    "description": "Dalvik DEX Lollipop",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_DEX_Lollipop.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:Marshmallow",
+    "description": "Dalvik DEX Marshmallow",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_DEX_Marshmallow.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:DEX_Nougat",
+    "description": "Dalvik DEX Nougat",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_DEX_Nougat.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:DEX_Oreo",
+    "description": "Dalvik DEX Oreo",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_DEX_Oreo.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:DEX_Pie",
+    "description": "Dalvik DEX Pie",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_DEX_Pie.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:DEX_Android10",
+    "description": "Dalvik DEX Android10",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_DEX_Android10.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:DEX_Android11",
+    "description": "Dalvik DEX Android11",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_DEX_Android11.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:DEX_Android12",
+    "description": "Dalvik DEX Android12",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_DEX_Android12.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Dalvik:LE:32:DEX_Android13",
+    "description": "Dalvik DEX Android13",
+    "sla": "Processors/Dalvik/data/languages/Dalvik_DEX_Android12.sla",
+    "pspec": "Processors/Dalvik/data/languages/Dalvik_Base.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Dalvik/data/languages/Dalvik_Base.cspec"
+      }
+    ]
+  },
+  {
+    "id": "NDS32:BE:32:default",
+    "description": "NDS32 default processor 32-bit big-endian",
+    "sla": "Processors/NDS32/data/languages/nds32be.sla",
+    "pspec": "Processors/NDS32/data/languages/nds32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/NDS32/data/languages/nds32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "NDS32:LE:32:default",
+    "description": "NDS32 default processor 32-bit little-endian",
+    "sla": "Processors/NDS32/data/languages/nds32le.sla",
+    "pspec": "Processors/NDS32/data/languages/nds32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/NDS32/data/languages/nds32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Loongarch:LE:32:ilp32f",
+    "description": "Loongson 3 32-bit with 32-bit FP",
+    "sla": "Processors/Loongarch/data/languages/loongarch32_f32.sla",
+    "pspec": "Processors/Loongarch/data/languages/loongarch32.pspec",
+    "compilers": [
+      {
+        "name": "gnu",
+        "id": "default",
+        "spec": "Processors/Loongarch/data/languages/ilp32f.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Loongarch:LE:32:ilp32d",
+    "description": "Loongson 3 32-bit with 64-bit FP",
+    "sla": "Processors/Loongarch/data/languages/loongarch32_f64.sla",
+    "pspec": "Processors/Loongarch/data/languages/loongarch32.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Loongarch/data/languages/ilp32d.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Loongarch:LE:64:lp64f",
+    "description": "Loongson 3 64-bit with 32-bit FP",
+    "sla": "Processors/Loongarch/data/languages/loongarch64_f32.sla",
+    "pspec": "Processors/Loongarch/data/languages/loongarch64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Loongarch/data/languages/lp64f.cspec"
+      }
+    ]
+  },
+  {
+    "id": "Loongarch:LE:64:lp64d",
+    "description": "Loongson 3 64-bit with 64-bit FP",
+    "sla": "Processors/Loongarch/data/languages/loongarch64_f64.sla",
+    "pspec": "Processors/Loongarch/data/languages/loongarch64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Loongarch/data/languages/lp64d.cspec"
+      }
+    ]
+  },
+  {
+    "id": "z80:LE:16:default",
+    "description": "Zilog Z80",
+    "sla": "Processors/Z80/data/languages/z80.sla",
+    "pspec": "Processors/Z80/data/languages/z80.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Z80/data/languages/z80.cspec"
+      }
+    ]
+  },
+  {
+    "id": "z8401x:LE:16:default",
+    "description": "Zilog Z8401x (IPC) microcontroller",
+    "sla": "Processors/Z80/data/languages/z80.sla",
+    "pspec": "Processors/Z80/data/languages/z8401x.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Z80/data/languages/z80.cspec"
+      }
+    ]
+  },
+  {
+    "id": "z180:LE:16:default",
+    "description": "Zilog Z180",
+    "sla": "Processors/Z80/data/languages/z180.sla",
+    "pspec": "Processors/Z80/data/languages/z180.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Z80/data/languages/z80.cspec"
+      }
+    ]
+  },
+  {
+    "id": "z182:LE:16:default",
+    "description": "Zilog Z182",
+    "sla": "Processors/Z80/data/languages/z180.sla",
+    "pspec": "Processors/Z80/data/languages/z182.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/Z80/data/languages/z80.cspec"
+      }
+    ]
+  },
+  {
+    "id": "AARCH64:LE:64:v8A",
+    "description": "Generic ARM64 v8.5-A LE instructions, LE data, missing some 8.5 vector",
+    "sla": "Processors/AARCH64/data/languages/AARCH64.sla",
+    "pspec": "Processors/AARCH64/data/languages/AARCH64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/AARCH64/data/languages/AARCH64.cspec"
+      },
+      {
+        "name": "Visual Studio",
+        "id": "windows",
+        "spec": "Processors/AARCH64/data/languages/AARCH64_win.cspec"
+      },
+      {
+        "name": "golang",
+        "id": "golang",
+        "spec": "Processors/AARCH64/data/languages/AARCH64_golang.cspec"
+      }
+    ]
+  },
+  {
+    "id": "AARCH64:BE:64:v8A",
+    "description": "Generic ARM64 v8.5-A LE instructions, BE data, missing some 8.5 vector",
+    "sla": "Processors/AARCH64/data/languages/AARCH64BE.sla",
+    "pspec": "Processors/AARCH64/data/languages/AARCH64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/AARCH64/data/languages/AARCH64.cspec"
+      },
+      {
+        "name": "golang",
+        "id": "golang",
+        "spec": "Processors/AARCH64/data/languages/AARCH64_golang.cspec"
+      }
+    ]
+  },
+  {
+    "id": "AARCH64:LE:32:ilp32",
+    "description": "Generic ARM64 v8.5-A LE instructions, LE data, ilp32",
+    "sla": "Processors/AARCH64/data/languages/AARCH64.sla",
+    "pspec": "Processors/AARCH64/data/languages/AARCH64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/AARCH64/data/languages/AARCH64_ilp32.cspec"
+      },
+      {
+        "name": "golang",
+        "id": "golang",
+        "spec": "Processors/AARCH64/data/languages/AARCH64_golang.cspec"
+      }
+    ]
+  },
+  {
+    "id": "AARCH64:BE:32:ilp32",
+    "description": "Generic ARM64 v8.5-A LE instructions, BE data, ilp32",
+    "sla": "Processors/AARCH64/data/languages/AARCH64BE.sla",
+    "pspec": "Processors/AARCH64/data/languages/AARCH64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/AARCH64/data/languages/AARCH64_ilp32.cspec"
+      },
+      {
+        "name": "golang",
+        "id": "golang",
+        "spec": "Processors/AARCH64/data/languages/AARCH64_golang.cspec"
+      }
+    ]
+  },
+  {
+    "id": "AARCH64:LE:64:AppleSilicon",
+    "description": "AppleSilicon ARM v8.5-A LE instructions, LE data, AMX extensions",
+    "sla": "Processors/AARCH64/data/languages/AARCH64_AppleSilicon.sla",
+    "pspec": "Processors/AARCH64/data/languages/AARCH64.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/AARCH64/data/languages/AARCH64_apple.cspec"
+      },
+      {
+        "name": "Swift",
+        "id": "swift",
+        "spec": "Processors/AARCH64/data/languages/AARCH64_swift.cspec"
+      },
+      {
+        "name": "golang",
+        "id": "golang",
+        "spec": "Processors/AARCH64/data/languages/AARCH64_golang.cspec"
+      }
+    ]
+  },
+  {
+    "id": "MCS96:LE:16:default",
+    "description": "Intel MCS-96 Microcontroller Family",
+    "sla": "Processors/MCS96/data/languages/MCS96.sla",
+    "pspec": "Processors/MCS96/data/languages/MCS96.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/MCS96/data/languages/MCS96.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PIC-12:LE:16:PIC-12C5xx",
+    "description": "PIC-12C5xx",
+    "sla": "Processors/PIC/data/languages/pic12c5xx.sla",
+    "pspec": "Processors/PIC/data/languages/pic12c5xx.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/pic12c5xx.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PIC-24E:LE:24:default",
+    "description": "PIC-24E",
+    "sla": "Processors/PIC/data/languages/PIC24E.sla",
+    "pspec": "Processors/PIC/data/languages/PIC24.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/PIC24.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PIC-24F:LE:24:default",
+    "description": "PIC-24F",
+    "sla": "Processors/PIC/data/languages/PIC24F.sla",
+    "pspec": "Processors/PIC/data/languages/PIC24.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/PIC24.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PIC-24H:LE:24:default",
+    "description": "PIC-24H",
+    "sla": "Processors/PIC/data/languages/PIC24H.sla",
+    "pspec": "Processors/PIC/data/languages/PIC24.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/PIC24.cspec"
+      }
+    ]
+  },
+  {
+    "id": "dsPIC30F:LE:24:default",
+    "description": "dsPIC30F",
+    "sla": "Processors/PIC/data/languages/dsPIC30F.sla",
+    "pspec": "Processors/PIC/data/languages/PIC24.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/PIC24.cspec"
+      }
+    ]
+  },
+  {
+    "id": "dsPIC33F:LE:24:default",
+    "description": "dsPIC33F",
+    "sla": "Processors/PIC/data/languages/dsPIC33F.sla",
+    "pspec": "Processors/PIC/data/languages/PIC24.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/PIC24.cspec"
+      }
+    ]
+  },
+  {
+    "id": "dsPIC33E:LE:24:default",
+    "description": "dsPIC33E",
+    "sla": "Processors/PIC/data/languages/dsPIC33E.sla",
+    "pspec": "Processors/PIC/data/languages/PIC24.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/PIC24.cspec"
+      }
+    ]
+  },
+  {
+    "id": "dsPIC33C:LE:24:default",
+    "description": "dsPIC33C",
+    "sla": "Processors/PIC/data/languages/dsPIC33C.sla",
+    "pspec": "Processors/PIC/data/languages/PIC24.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/PIC24.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PIC-18:LE:24:PIC-18",
+    "description": "PIC-18",
+    "sla": "Processors/PIC/data/languages/pic18.sla",
+    "pspec": "Processors/PIC/data/languages/pic18.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/pic18.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PIC-17:LE:16:PIC-17C7xx",
+    "description": "PIC-17C7xx",
+    "sla": "Processors/PIC/data/languages/pic17c7xx.sla",
+    "pspec": "Processors/PIC/data/languages/pic17c7xx.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/pic17c7xx.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PIC-16:LE:16:PIC-16C5x",
+    "description": "PIC-16C5x",
+    "sla": "Processors/PIC/data/languages/pic16c5x.sla",
+    "pspec": "Processors/PIC/data/languages/pic16c5x.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/pic16c5x.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PIC-16:LE:16:PIC-16",
+    "description": "PIC-16(C,CR)XXX",
+    "sla": "Processors/PIC/data/languages/pic16.sla",
+    "pspec": "Processors/PIC/data/languages/pic16.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/pic16.cspec"
+      }
+    ]
+  },
+  {
+    "id": "PIC-16:LE:16:PIC-16F",
+    "description": "PIC-16(L)FXXX",
+    "sla": "Processors/PIC/data/languages/pic16f.sla",
+    "pspec": "Processors/PIC/data/languages/pic16f.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/PIC/data/languages/pic16f.cspec"
+      }
+    ]
+  },
+  {
+    "id": "68000:BE:32:default",
+    "description": "Motorola 32-bit 68040",
+    "sla": "Processors/68000/data/languages/68040.sla",
+    "pspec": "Processors/68000/data/languages/68000.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/68000/data/languages/68000.cspec"
+      }
+    ]
+  },
+  {
+    "id": "68000:BE:32:MC68030",
+    "description": "Motorola 32-bit 68030",
+    "sla": "Processors/68000/data/languages/68030.sla",
+    "pspec": "Processors/68000/data/languages/68000.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/68000/data/languages/68000.cspec"
+      }
+    ]
+  },
+  {
+    "id": "68000:BE:32:MC68020",
+    "description": "Motorola 32-bit 68020",
+    "sla": "Processors/68000/data/languages/68020.sla",
+    "pspec": "Processors/68000/data/languages/68000.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/68000/data/languages/68000.cspec"
+      }
+    ]
+  },
+  {
+    "id": "68000:BE:32:Coldfire",
+    "description": "Motorola 32-bit Coldfire",
+    "sla": "Processors/68000/data/languages/coldfire.sla",
+    "pspec": "Processors/68000/data/languages/68000.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/68000/data/languages/68000.cspec"
+      },
+      {
+        "name": "register",
+        "id": "register",
+        "spec": "Processors/68000/data/languages/68000_register.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:64:default",
+    "description": "RISC-V 64 little default",
+    "sla": "Processors/RISCV/data/languages/riscv.lp64d.sla",
+    "pspec": "Processors/RISCV/data/languages/RV64.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/riscv64-fp.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:32:default",
+    "description": "RISC-V 32 little default",
+    "sla": "Processors/RISCV/data/languages/riscv.ilp32d.sla",
+    "pspec": "Processors/RISCV/data/languages/RV32.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/riscv32-fp.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:32:AndeStar_v5",
+    "description": "AndeStar v5 RISC-V based 32 little default",
+    "sla": "Processors/RISCV/data/languages/andestar_v5.sla",
+    "pspec": "Processors/RISCV/data/languages/RV32.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/riscv32-fp.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:64:RV64I",
+    "description": "RISC-V 64 little base",
+    "sla": "Processors/RISCV/data/languages/old/riscv.lp64d.sla",
+    "pspec": "Processors/RISCV/data/languages/old/RV64.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/old/riscv64.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:64:RV64IC",
+    "description": "RISC-V 64 little base compressed",
+    "sla": "Processors/RISCV/data/languages/old/riscv.lp64d.sla",
+    "pspec": "Processors/RISCV/data/languages/old/RV64.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/old/riscv64.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:64:RV64G",
+    "description": "RISC-V 64 little general purpose",
+    "sla": "Processors/RISCV/data/languages/old/riscv.lp64d.sla",
+    "pspec": "Processors/RISCV/data/languages/old/RV64.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/old/riscv64-fp.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:64:RV64GC",
+    "description": "RISC-V 64 little general purpose compressed",
+    "sla": "Processors/RISCV/data/languages/old/riscv.lp64d.sla",
+    "pspec": "Processors/RISCV/data/languages/old/RV64.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/old/riscv64-fp.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:32:RV32I",
+    "description": "RISC-V 32 little base",
+    "sla": "Processors/RISCV/data/languages/old/riscv.ilp32d.sla",
+    "pspec": "Processors/RISCV/data/languages/old/RV32.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/old/riscv32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:32:RV32IC",
+    "description": "RISC-V 32 little base compressed",
+    "sla": "Processors/RISCV/data/languages/old/riscv.ilp32d.sla",
+    "pspec": "Processors/RISCV/data/languages/old/RV32.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/old/riscv32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:32:RV32IMC",
+    "description": "RISC-V 32 little base compressed",
+    "sla": "Processors/RISCV/data/languages/old/riscv.ilp32d.sla",
+    "pspec": "Processors/RISCV/data/languages/old/RV32.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/old/riscv32.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:32:RV32G",
+    "description": "RISC-V 32 little general purpose",
+    "sla": "Processors/RISCV/data/languages/old/riscv.ilp32d.sla",
+    "pspec": "Processors/RISCV/data/languages/old/RV32.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/old/riscv32-fp.cspec"
+      }
+    ]
+  },
+  {
+    "id": "RISCV:LE:32:RV32GC",
+    "description": "RISC-V 32 little general purpose compressed",
+    "sla": "Processors/RISCV/data/languages/old/riscv.ilp32d.sla",
+    "pspec": "Processors/RISCV/data/languages/old/RV32.pspec",
+    "compilers": [
+      {
+        "name": "gcc",
+        "id": "gcc",
+        "spec": "Processors/RISCV/data/languages/old/riscv32-fp.cspec"
+      }
+    ]
+  },
+  {
+    "id": "M16C/60:LE:16:default",
+    "description": "Renesas M16C/60 16-Bit MicroComputer",
+    "sla": "Processors/M16C/data/languages/M16C_60.sla",
+    "pspec": "Processors/M16C/data/languages/M16C_60.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/M16C/data/languages/M16C_60.cspec"
+      }
+    ]
+  },
+  {
+    "id": "M16C/80:LE:16:default",
+    "description": "Renesas M16C/80 16-Bit MicroComputer",
+    "sla": "Processors/M16C/data/languages/M16C_80.sla",
+    "pspec": "Processors/M16C/data/languages/M16C_80.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/M16C/data/languages/M16C_80.cspec"
+      }
+    ]
+  },
+  {
+    "id": "6502:LE:16:default",
+    "description": "6502 Microcontroller Family",
+    "sla": "Processors/6502/data/languages/6502.sla",
+    "pspec": "Processors/6502/data/languages/6502.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/6502/data/languages/6502.cspec"
+      }
+    ]
+  },
+  {
+    "id": "65C02:LE:16:default",
+    "description": "65C02 Microcontroller Family",
+    "sla": "Processors/6502/data/languages/65c02.sla",
+    "pspec": "Processors/6502/data/languages/6502.pspec",
+    "compilers": [
+      {
+        "name": "default",
+        "id": "default",
+        "spec": "Processors/6502/data/languages/6502.cspec"
+      }
+    ]
+  }
+]

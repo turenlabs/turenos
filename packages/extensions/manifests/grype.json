@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/grype",
+  "name": "Grype",
+  "description": "Scan for vulnerabilities and generate SBOMs",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "tool",
+      "id": "grype",
+      "name": "Grype",
+      "description": "Scan for vulnerabilities and generate SBOMs",
+      "adapter": "security:grype",
+      "secrets": [],
+      "defaultEnabled": false,
+      "group": "dependencies",
+      "commands": ["grype", "syft"],
+      "configuration": [],
+      "tools": {
+        "allow": ["grype_scan", "syft_sbom"],
+        "write": []
+      },
+      "instructions": "Use Grype for its declared purpose: Scan for vulnerabilities and generate SBOMs. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ]
+}

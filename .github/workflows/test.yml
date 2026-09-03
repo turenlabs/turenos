@@ -1,0 +1,108 @@
+# TurenOS cross-platform test suite.
+name: test
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  checks: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  unit:
+    name: unit (${{ matrix.settings.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - name: linux
+            host: ubuntu-latest
+          - name: windows
+            host: windows-latest
+    runs-on: ${{ matrix.settings.host }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "bot@turen.dev"
+          git config --global user.name "turen"
+
+      - name: Cache Turbo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: node_modules/.cache/turbo
+          key: turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-
+            turbo-${{ runner.os }}-
+
+      # Linux covers every package. Core and Forge exercise POSIX process and filesystem
+      # behavior, so Windows runs the remaining portable package suites.
+      - name: Run unit tests
+        timeout-minutes: 45
+        run: |
+          export GITHUB_ACTIONS=false
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            for directory in \
+              packages/app \
+              packages/client \
+              packages/codemode \
+              packages/effect-drizzle-sqlite \
+              packages/extensions \
+              packages/http-recorder \
+              packages/httpapi-codegen \
+              packages/llm \
+              packages/plugin \
+              packages/script \
+              packages/sdk/js \
+              packages/sdk-next \
+              packages/session-ui \
+              packages/ui
+            do
+              bun --cwd "$directory" test
+            done
+            exit 0
+          fi
+          bun turbo test --concurrency=1
+        env:
+          FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER: ${{ runner.os == 'Windows' && 'true' || 'false' }}
+
+      - name: Check generated client
+        if: runner.os == 'Linux'
+        working-directory: packages/client
+        run: bun run check:generated
+
+      # Runs coverage, auth and effect as three independent gates. They used to be chained
+      # with `&&` behind coverage, which always failed on pre-existing uncovered routes, so
+      # auth and effect never executed here.
+      - name: Run HttpApi exerciser gates
+        if: runner.os == 'Linux'
+        timeout-minutes: 30
+        working-directory: packages/forge
+        run: bun run test:httpapi

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/native-audit",
+  "name": "Native Audits",
+  "description": "Run native package-manager vulnerability audits",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "tool",
+      "id": "native-audit",
+      "name": "Native Audits",
+      "description": "Run native package-manager vulnerability audits",
+      "adapter": "security:native-audit",
+      "secrets": [],
+      "defaultEnabled": false,
+      "group": "dependencies",
+      "commands": ["npm", "pip-audit", "cargo", "govulncheck"],
+      "configuration": [],
+      "tools": {
+        "allow": ["native_dependency_audit"],
+        "write": []
+      },
+      "instructions": "Use Native Audits for its declared purpose: Run native package-manager vulnerability audits. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ]
+}

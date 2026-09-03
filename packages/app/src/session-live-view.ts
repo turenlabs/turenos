@@ -1,0 +1,9 @@
+export type SessionLiveView =
+  | "history"
+  | "subagents"
+  | "changes"
+  | "harness"
+  | "todos"
+  | "activity"
+  | "context"
+  | "terminal"

@@ -1,0 +1,160 @@
+/*
+ * The composer as a shell prompt line, and the docks stacked behind it.
+ *
+ * The session page's foot continues the transcript's terminal treatment
+ * (message-timeline.css): one mono face, 12.5px, hierarchy from dimness and
+ * weight rather than chrome. The dock shell already reads as a terminal split
+ * (dock-surface.css — square, 1px rule, focus-reactive left mark); this file
+ * finishes the type and adds the prompt glyph.
+ *
+ * Loaded unlayered (imported from session-composer-region.tsx), so it outranks
+ * @layer components/utilities where the shared kit styles live. Everything is
+ * scoped to [data-component="session-prompt-dock"] / "session-composer", so the
+ * new-session page and portalled menus keep the app face.
+ *
+ * v2 only; the legacy layout keeps its rounded treatment until sunset.
+ */
+
+body[data-new-layout] [data-component="session-prompt-dock"] {
+  /* Same var-remap trick as the transcript: session-ui rules reach for these,
+     so redefining them converts the docks wholesale. */
+  --font-family-sans: var(--v2-font-family-mono);
+  --v2-font-family-sans: var(--v2-font-family-mono);
+  --font-size-base: 12.5px;
+  --font-size-small: 12px;
+  font-family: var(--v2-font-family-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  letter-spacing: 0;
+
+  /* Kit buttons inside the docks become dim inline text in the terminal face:
+     square-ish, mono, no leftover Inter metrics. */
+  [data-component="button"],
+  [data-component="button-v2"],
+  [data-component="icon-button-v2"] {
+    border-radius: var(--v2-radius-control);
+    font-family: inherit;
+    letter-spacing: 0;
+  }
+
+  [data-component="button-v2"] {
+    font-size: 12px;
+    font-weight: var(--font-weight-regular);
+  }
+}
+
+/* ── The prompt line ── */
+body[data-new-layout] [data-component="session-composer"] {
+  min-height: 76px;
+
+  /* The editor and its well both carry min-h-[52px]; the terminal line needs
+     less headroom. */
+  .min-h-\[52px\] {
+    min-height: 40px;
+  }
+
+  [data-component="prompt-input"] {
+    position: relative;
+    min-height: 40px;
+    padding: 10px 16px 6px 34px;
+    font-family: var(--v2-font-family-mono);
+    font-size: 12.5px;
+    line-height: 20px;
+
+    /* The leading ❯. Dim at rest, focus-toned when the line is live — the same
+       behaviour as the shell's data-rule-focus left mark. Absolutely positioned
+       so it never enters the contenteditable's text flow. */
+    &::before {
+      content: "\276F";
+      position: absolute;
+      top: 10px;
+      inset-inline-start: 16px;
+      line-height: 20px;
+      color: var(--v2-text-text-muted);
+      font-weight: var(--font-weight-medium);
+      pointer-events: none;
+      user-select: none;
+    }
+  }
+
+  &:focus-within [data-component="prompt-input"]::before {
+    color: var(--v2-border-border-focus);
+  }
+
+  /* The placeholder overlay mirrors the editor's metrics exactly. */
+  [data-component="session-composer-text"] {
+    padding: 10px 16px 0 34px;
+    font-family: var(--v2-font-family-mono);
+    font-size: 12.5px;
+    line-height: 20px;
+  }
+
+  /* The control strip under the line tightens with the rest of the rhythm. */
+  > .h-11 {
+    height: 38px;
+  }
+
+  /* Send: a flat square key, not a gradient lozenge. !important because the
+     call site paints the gradient inline; the fill keeps the same contrast
+     token the gradient resolved to. */
+  [data-action="prompt-submit"] {
+    border-radius: var(--v2-radius-control);
+    background: var(--v2-background-bg-contrast) !important;
+    box-shadow: none !important;
+  }
+}
+
+/* ── The question dock ── */
+body[data-new-layout] [data-component="session-question-dock"] {
+  [data-slot="question-header-title"],
+  [data-slot="question-text"],
+  [data-slot="option-label"],
+  [data-slot="option-description"],
+  [data-slot="question-custom-input"] {
+    font-size: 12.5px;
+  }
+
+  /* Hints are commentary — dim, and prefixed like a comment. */
+  [data-slot="question-hint"] {
+    font-size: 12px;
+    color: var(--v2-text-text-faint);
+
+    &::before {
+      content: "# ";
+    }
+  }
+
+  [data-component="dock-prompt"][data-kind="question"] [data-slot="question-body"] {
+    gap: 10px;
+  }
+
+  /* Options are flat rows behind a 1px rule: no fill at rest, a quiet layer
+     fill on hover, the picked state keeping its existing info tint. */
+  [data-slot="question-option"] {
+    background-color: transparent;
+    border: var(--v2-rule);
+    border-radius: var(--v2-radius-surface);
+    padding: 6px 8px 6px 10px;
+
+    &:hover:not([data-picked="true"]) {
+      background-color: var(--v2-background-bg-layer-01);
+    }
+  }
+
+  [data-slot="question-options"] {
+    gap: 4px;
+    margin-top: 8px;
+  }
+}
+
+/* ── The permission dock shares the type scale ── */
+body[data-new-layout] [data-component="session-prompt-dock"] [data-component="dock-prompt"][data-kind="permission"] {
+  [data-slot="permission-header-title"],
+  [data-slot="permission-hint"] {
+    font-size: 12.5px;
+  }
+
+  [data-slot="permission-patterns"] code {
+    font-size: 12px;
+  }
+}

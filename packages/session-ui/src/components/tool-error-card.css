@@ -1,0 +1,125 @@
+[data-component="card"][data-kind="tool-error-card"] {
+  --card-pad-y: 8px;
+  --card-line-pad: 12px;
+
+  [data-slot="basic-tool-tool-title"] {
+    color: var(--v2-text-text-base);
+  }
+
+  [data-slot="basic-tool-tool-subtitle"] {
+    color: var(--v2-text-text-muted);
+  }
+
+  [data-slot="collapsible-arrow"],
+  [data-slot="collapsible-arrow-icon"] {
+    color: var(--v2-text-text-faint);
+  }
+
+  > [data-component="collapsible"].tool-collapsible {
+    gap: 0px;
+  }
+
+  > [data-component="collapsible"].tool-collapsible[data-open="true"] {
+    gap: 4px;
+  }
+
+  [data-component="tool-error-card-icon"] [data-component="icon"] {
+    color: var(--card-accent);
+  }
+
+  [data-slot="tool-error-card-content"] {
+    position: relative;
+    padding-left: 24px;
+    margin-bottom: 8px;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  > [data-component="collapsible"].tool-collapsible[data-open="true"] [data-slot="tool-error-card-content"] {
+    padding-right: 40px;
+  }
+
+  [data-slot="tool-error-card-copy"] {
+    position: absolute;
+    top: 0;
+    right: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    will-change: opacity;
+  }
+
+  &:hover [data-slot="tool-error-card-copy"],
+  &:focus-within [data-slot="tool-error-card-copy"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  [data-slot="tool-error-card-content"] :where(*)::selection {
+    background: var(--v2-state-bg-danger);
+    color: var(--v2-text-text-base);
+  }
+
+  [data-slot="tool-error-card-content"] :where(*)::-moz-selection {
+    background: var(--v2-state-bg-danger);
+    color: var(--v2-text-text-base);
+  }
+}
+
+/*
+ * A failed tool, in the one rule vocabulary.
+ *
+ * Card already draws the mark — a squared, full-height ::before in the error
+ * tone (card.css), the same 2px `┃` that rule.css draws as a border and that a
+ * block tool wears as a notch. All this does is put it in the same column as
+ * those two: the mark hangs --rule-inset into the margin and the card keeps no
+ * left padding, so the rule lands beside the user turn's agent rule and the
+ * notch, and the failed row's title lands on the transcript's text column
+ * instead of 16px right of it.
+ *
+ * The ban glyph goes with it. It was a second mark saying the same thing as the
+ * red rule, and it was the only reason a failed row's title sat right of every
+ * other row's. The rule says "failed"; the row can now line up.
+ */
+body[data-new-layout] [data-component="card"][data-kind="tool-error-card"] {
+  --card-pad-l: 0px;
+
+  /* `left`, not `inset-inline-start`: card.css draws the mark with `left: 0`,
+     and matching the physical property keeps this a plain cascade override. */
+  &::before {
+    left: calc(-1 * var(--rule-inset));
+  }
+
+  [data-slot="basic-tool-tool-indicator"] {
+    display: none;
+  }
+
+  /* the card is flush with the text column; the body hangs under the title */
+  [data-slot="tool-error-card-content"] {
+    padding-left: 0;
+  }
+}
+
+body:not([data-new-layout]) [data-component="card"][data-kind="tool-error-card"] {
+  [data-slot="basic-tool-tool-title"] {
+    color: var(--text-strong);
+  }
+
+  [data-slot="basic-tool-tool-subtitle"] {
+    color: var(--text-base);
+  }
+
+  [data-slot="collapsible-arrow"] {
+    color: var(--text-base);
+  }
+
+  [data-slot="collapsible-arrow-icon"] {
+    color: var(--icon-weaker);
+  }
+
+  [data-slot="tool-error-card-content"] :where(*)::selection,
+  [data-slot="tool-error-card-content"] :where(*)::-moz-selection {
+    background: var(--surface-critical-base);
+    color: var(--text-on-critical-base);
+  }
+}

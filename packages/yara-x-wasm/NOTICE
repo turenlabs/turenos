@@ -1,0 +1,7 @@
+YARA-X
+
+This product includes YARA-X software developed by The YARA-X Authors and
+distributed under the BSD 3-Clause License.
+
+The WebAssembly package is compiled from the unmodified official YARA-X source
+and repackaged by Turen for isolated agent-tool execution.

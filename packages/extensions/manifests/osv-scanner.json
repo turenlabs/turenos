@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/osv-scanner",
+  "name": "OSV-Scanner",
+  "description": "Scan lockfiles and dependencies for known vulnerabilities",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "tool",
+      "id": "osv-scanner",
+      "name": "OSV-Scanner",
+      "description": "Scan lockfiles and dependencies for known vulnerabilities",
+      "adapter": "security:osv-scanner",
+      "secrets": [],
+      "defaultEnabled": false,
+      "group": "dependencies",
+      "commands": ["osv-scanner"],
+      "configuration": [],
+      "tools": {
+        "allow": ["osv_scanner_scan"],
+        "write": []
+      },
+      "instructions": "Use OSV-Scanner for its declared purpose: Scan lockfiles and dependencies for known vulnerabilities. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ]
+}

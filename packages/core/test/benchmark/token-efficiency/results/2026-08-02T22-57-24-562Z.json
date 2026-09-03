@@ -1,0 +1,1737 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-08-02T22-57-24-562Z",
+  "startedAt": "2026-08-02T23:00:14.632Z",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "bun": "1.3.14"
+  },
+  "options": {
+    "harnesses": ["claude-code", "turen-claude-code", "codex", "turen-openai"],
+    "tasks": ["trivial", "search", "edit", "conversation"],
+    "repetitions": 1,
+    "timeoutMs": 300000
+  },
+  "harnesses": [
+    {
+      "id": "claude-code",
+      "label": "Claude Code",
+      "pairing": "anthropic-haiku",
+      "model": "haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "usageIsCumulative": false,
+      "availability": {
+        "ok": true
+      }
+    },
+    {
+      "id": "turen-claude-code",
+      "label": "Turen (claude-code provider)",
+      "pairing": "anthropic-haiku",
+      "model": "claude-code/haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "usageIsCumulative": false,
+      "availability": {
+        "ok": true
+      }
+    },
+    {
+      "id": "codex",
+      "label": "Codex CLI",
+      "pairing": "openai-codex",
+      "model": "gpt-5.6-sol",
+      "underlyingModel": "gpt-5.6-sol",
+      "pricingKey": "gpt-5.6-sol",
+      "usageIsCumulative": true,
+      "availability": {
+        "ok": true
+      }
+    },
+    {
+      "id": "turen-openai",
+      "label": "Turen (openai provider)",
+      "pairing": "openai-codex",
+      "model": "openai/gpt-5-mini",
+      "underlyingModel": "gpt-5-mini",
+      "pricingKey": "gpt-5-mini",
+      "usageIsCumulative": false,
+      "availability": {
+        "ok": false,
+        "reason": "OPENAI_API_KEY is not set. Turen runs here against a scratch DB with an ephemeral vault key, so the stored OpenAI OAuth credential cannot be decrypted; this arm needs an API key in the environment."
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "trivial",
+      "label": "Trivial single-file question",
+      "measures": "fixed overhead — the floor a harness pays before doing any real work",
+      "needsWrite": false,
+      "turns": 1
+    },
+    {
+      "id": "search",
+      "label": "Multi-file symbol search",
+      "measures": "tool-output cost — how expensively a harness reads a repo",
+      "needsWrite": false,
+      "turns": 1
+    },
+    {
+      "id": "edit",
+      "label": "Small edit, verified on disk",
+      "measures": "write-path cost — read/modify/write round-trip",
+      "needsWrite": true,
+      "turns": 1
+    },
+    {
+      "id": "conversation",
+      "label": "5-turn conversation",
+      "measures": "context growth per turn — how fast history compounds",
+      "needsWrite": false,
+      "turns": 5
+    }
+  ],
+  "runs": [
+    {
+      "harness": "claude-code",
+      "harnessLabel": "Claude Code",
+      "pairing": "anthropic-haiku",
+      "model": "haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "task": "trivial",
+      "taskLabel": "Trivial single-file question",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/claude-code__trivial__r1",
+      "startedAt": "2026-08-02T22:57:24.605Z",
+      "wallMs": 5293,
+      "usage": {
+        "inputTokens": 18,
+        "cacheReadTokens": 42540,
+        "cacheWriteTokens": 8023,
+        "outputTokens": 239,
+        "reasoningTokens": 0,
+        "contextTokens": 50581
+      },
+      "providerRequests": 2,
+      "providerRequestsExact": true,
+      "toolCalls": 1,
+      "reportedCostUsd": 0.022149000000000002,
+      "modeledCostUsd": 0.021513,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "fe6c0aeb-82c7-431b-afdd-66267aeb2ecd",
+          "text": "4271",
+          "usage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 42540,
+            "cacheWriteTokens": 8023,
+            "outputTokens": 239,
+            "reasoningTokens": 0,
+            "contextTokens": 50581
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 10,
+                "cacheReadTokens": 17536,
+                "cacheWriteTokens": 7468,
+                "outputTokens": 4,
+                "reasoningTokens": 0,
+                "contextTokens": 25014
+              }
+            },
+            {
+              "index": 1,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 25004,
+                "cacheWriteTokens": 555,
+                "outputTokens": 1,
+                "reasoningTokens": 0,
+                "contextTokens": 25567
+              }
+            }
+          ],
+          "providerRequests": 2,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 5293,
+          "reportedCostUsd": 0.022149000000000002,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 42540,
+            "cacheWriteTokens": 8023,
+            "outputTokens": 239,
+            "reasoningTokens": 0,
+            "contextTokens": 50581
+          },
+          "turnIndex": 0,
+          "prompt": "In src/config.ts, what is the numeric value of the exported constant MAX_RETRY_ATTEMPTS? Reply with only the number.",
+          "verifierPass": true,
+          "verifierDetail": "found 4271"
+        }
+      ]
+    },
+    {
+      "harness": "claude-code",
+      "harnessLabel": "Claude Code",
+      "pairing": "anthropic-haiku",
+      "model": "haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "task": "search",
+      "taskLabel": "Multi-file symbol search",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/claude-code__search__r1",
+      "startedAt": "2026-08-02T22:57:29.973Z",
+      "wallMs": 4892,
+      "usage": {
+        "inputTokens": 18,
+        "cacheReadTokens": 42330,
+        "cacheWriteTokens": 7450,
+        "outputTokens": 249,
+        "reasoningTokens": 0,
+        "contextTokens": 49798
+      },
+      "providerRequests": 2,
+      "providerRequestsExact": true,
+      "toolCalls": 1,
+      "reportedCostUsd": 0.021049,
+      "modeledCostUsd": 0.020396,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "f667d51f-4b89-4c94-a7c2-87caab0ae13e",
+          "text": "src/tenant.ts\nsrc/auth.ts\nsrc/store.ts",
+          "usage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 42330,
+            "cacheWriteTokens": 7450,
+            "outputTokens": 249,
+            "reasoningTokens": 0,
+            "contextTokens": 49798
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 10,
+                "cacheReadTokens": 17536,
+                "cacheWriteTokens": 7258,
+                "outputTokens": 1,
+                "reasoningTokens": 0,
+                "contextTokens": 24804
+              }
+            },
+            {
+              "index": 1,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 24794,
+                "cacheWriteTokens": 192,
+                "outputTokens": 1,
+                "reasoningTokens": 0,
+                "contextTokens": 24994
+              }
+            }
+          ],
+          "providerRequests": 2,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 4892,
+          "reportedCostUsd": 0.021049,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 42330,
+            "cacheWriteTokens": 7450,
+            "outputTokens": 249,
+            "reasoningTokens": 0,
+            "contextTokens": 49798
+          },
+          "turnIndex": 0,
+          "prompt": "List every file under src/ that references the identifier normalizeTenantId, including the file that defines it. Reply with only the repo-relative file paths, one per line, and nothing else.",
+          "verifierPass": true,
+          "verifierDetail": "found all 3 files"
+        }
+      ]
+    },
+    {
+      "harness": "claude-code",
+      "harnessLabel": "Claude Code",
+      "pairing": "anthropic-haiku",
+      "model": "haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "task": "edit",
+      "taskLabel": "Small edit, verified on disk",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/claude-code__edit__r1",
+      "startedAt": "2026-08-02T22:57:34.924Z",
+      "wallMs": 8540,
+      "usage": {
+        "inputTokens": 28,
+        "cacheReadTokens": 67682,
+        "cacheWriteTokens": 9156,
+        "outputTokens": 569,
+        "reasoningTokens": 0,
+        "contextTokens": 76866
+      },
+      "providerRequests": 3,
+      "providerRequestsExact": true,
+      "toolCalls": 2,
+      "reportedCostUsd": 0.028585199999999998,
+      "modeledCostUsd": 0.0279532,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "5295e596-c8aa-4f8e-b958-25a44e9fca4a",
+          "text": "Done. Changed `REQUEST_TIMEOUT_MS` from 3000 to 9500 in `src/config.ts` — no other changes were made.",
+          "usage": {
+            "inputTokens": 28,
+            "cacheReadTokens": 67682,
+            "cacheWriteTokens": 9156,
+            "outputTokens": 569,
+            "reasoningTokens": 0,
+            "contextTokens": 76866
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 10,
+                "cacheReadTokens": 17536,
+                "cacheWriteTokens": 7252,
+                "outputTokens": 3,
+                "reasoningTokens": 0,
+                "contextTokens": 24798
+              }
+            },
+            {
+              "index": 1,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 24788,
+                "cacheWriteTokens": 570,
+                "outputTokens": 5,
+                "reasoningTokens": 0,
+                "contextTokens": 25366
+              }
+            },
+            {
+              "index": 2,
+              "usage": {
+                "inputTokens": 10,
+                "cacheReadTokens": 25358,
+                "cacheWriteTokens": 1334,
+                "outputTokens": 1,
+                "reasoningTokens": 0,
+                "contextTokens": 26702
+              }
+            }
+          ],
+          "providerRequests": 3,
+          "providerRequestsExact": true,
+          "toolCalls": 2,
+          "wallMs": 8540,
+          "reportedCostUsd": 0.028585199999999998,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 28,
+            "cacheReadTokens": 67682,
+            "cacheWriteTokens": 9156,
+            "outputTokens": 569,
+            "reasoningTokens": 0,
+            "contextTokens": 76866
+          },
+          "turnIndex": 0,
+          "prompt": "In src/config.ts, change the exported constant REQUEST_TIMEOUT_MS from its current value to 9500. Change nothing else in the file or the repository.",
+          "verifierPass": true,
+          "verifierDetail": "REQUEST_TIMEOUT_MS = 9500 on disk, no collateral damage"
+        }
+      ]
+    },
+    {
+      "harness": "claude-code",
+      "harnessLabel": "Claude Code",
+      "pairing": "anthropic-haiku",
+      "model": "haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "task": "conversation",
+      "taskLabel": "5-turn conversation",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/claude-code__conversation__r1",
+      "startedAt": "2026-08-02T22:57:43.525Z",
+      "wallMs": 20888,
+      "usage": {
+        "inputTokens": 82,
+        "cacheReadTokens": 224487,
+        "cacheWriteTokens": 9523,
+        "outputTokens": 875,
+        "reasoningTokens": 0,
+        "contextTokens": 234092
+      },
+      "providerRequests": 9,
+      "providerRequestsExact": true,
+      "toolCalls": 4,
+      "reportedCostUsd": 0.0465927,
+      "modeledCostUsd": 0.0459517,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "feb7a524-67b1-43c6-b719-93c9bd92b5e1",
+          "text": "4271",
+          "usage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 42535,
+            "cacheWriteTokens": 8006,
+            "outputTokens": 218,
+            "reasoningTokens": 0,
+            "contextTokens": 50559
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 10,
+                "cacheReadTokens": 17536,
+                "cacheWriteTokens": 7463,
+                "outputTokens": 1,
+                "reasoningTokens": 0,
+                "contextTokens": 25009
+              }
+            },
+            {
+              "index": 1,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 24999,
+                "cacheWriteTokens": 543,
+                "outputTokens": 1,
+                "reasoningTokens": 0,
+                "contextTokens": 25550
+              }
+            }
+          ],
+          "providerRequests": 2,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 5045,
+          "reportedCostUsd": 0.0220145,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 42535,
+            "cacheWriteTokens": 8006,
+            "outputTokens": 218,
+            "reasoningTokens": 0,
+            "contextTokens": 50559
+          },
+          "turnIndex": 0,
+          "prompt": "In src/config.ts, what is the numeric value of the exported constant MAX_RETRY_ATTEMPTS? Reply with only the number.",
+          "verifierPass": true,
+          "verifierDetail": "found 4271"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "feb7a524-67b1-43c6-b719-93c9bd92b5e1",
+          "text": "3000",
+          "usage": {
+            "inputTokens": 10,
+            "cacheReadTokens": 25542,
+            "cacheWriteTokens": 82,
+            "outputTokens": 62,
+            "reasoningTokens": 0,
+            "contextTokens": 25634
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 10,
+                "cacheReadTokens": 25542,
+                "cacheWriteTokens": 82,
+                "outputTokens": 4,
+                "reasoningTokens": 0,
+                "contextTokens": 25634
+              }
+            }
+          ],
+          "providerRequests": 1,
+          "providerRequestsExact": true,
+          "toolCalls": 0,
+          "wallMs": 2695,
+          "reportedCostUsd": 0.0030382,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 10,
+            "cacheReadTokens": 25542,
+            "cacheWriteTokens": 82,
+            "outputTokens": 62,
+            "reasoningTokens": 0,
+            "contextTokens": 25634
+          },
+          "turnIndex": 1,
+          "prompt": "In that same file, what is the numeric value of REQUEST_TIMEOUT_MS? Reply with only the number.",
+          "verifierPass": true,
+          "verifierDetail": "found 3000"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "feb7a524-67b1-43c6-b719-93c9bd92b5e1",
+          "text": "src/tenant.ts",
+          "usage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 51341,
+            "cacheWriteTokens": 270,
+            "outputTokens": 190,
+            "reasoningTokens": 0,
+            "contextTokens": 51629
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 10,
+                "cacheReadTokens": 25624,
+                "cacheWriteTokens": 93,
+                "outputTokens": 4,
+                "reasoningTokens": 0,
+                "contextTokens": 25727
+              }
+            },
+            {
+              "index": 1,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 25717,
+                "cacheWriteTokens": 177,
+                "outputTokens": 1,
+                "reasoningTokens": 0,
+                "contextTokens": 25902
+              }
+            }
+          ],
+          "providerRequests": 2,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 4166,
+          "reportedCostUsd": 0.0066421,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 51341,
+            "cacheWriteTokens": 270,
+            "outputTokens": 190,
+            "reasoningTokens": 0,
+            "contextTokens": 51629
+          },
+          "turnIndex": 2,
+          "prompt": "Which file defines the function normalizeTenantId? Reply with only the repo-relative path.",
+          "verifierPass": true,
+          "verifierDetail": "found src/tenant.ts"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "feb7a524-67b1-43c6-b719-93c9bd92b5e1",
+          "text": "TenantStore",
+          "usage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 51873,
+            "cacheWriteTokens": 666,
+            "outputTokens": 205,
+            "reasoningTokens": 0,
+            "contextTokens": 52557
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 10,
+                "cacheReadTokens": 25894,
+                "cacheWriteTokens": 85,
+                "outputTokens": 4,
+                "reasoningTokens": 0,
+                "contextTokens": 25989
+              }
+            },
+            {
+              "index": 1,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 25979,
+                "cacheWriteTokens": 581,
+                "outputTokens": 2,
+                "reasoningTokens": 0,
+                "contextTokens": 26568
+              }
+            }
+          ],
+          "providerRequests": 2,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 4883,
+          "reportedCostUsd": 0.007562300000000001,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 51873,
+            "cacheWriteTokens": 666,
+            "outputTokens": 205,
+            "reasoningTokens": 0,
+            "contextTokens": 52557
+          },
+          "turnIndex": 3,
+          "prompt": "What is the name of the exported class in src/store.ts? Reply with only the class name.",
+          "verifierPass": true,
+          "verifierDetail": "found TenantStore"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "feb7a524-67b1-43c6-b719-93c9bd92b5e1",
+          "text": "Bramblewick",
+          "usage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 53196,
+            "cacheWriteTokens": 499,
+            "outputTokens": 200,
+            "reasoningTokens": 0,
+            "contextTokens": 53713
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 10,
+                "cacheReadTokens": 26560,
+                "cacheWriteTokens": 76,
+                "outputTokens": 4,
+                "reasoningTokens": 0,
+                "contextTokens": 26646
+              }
+            },
+            {
+              "index": 1,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 26636,
+                "cacheWriteTokens": 423,
+                "outputTokens": 1,
+                "reasoningTokens": 0,
+                "contextTokens": 27067
+              }
+            }
+          ],
+          "providerRequests": 2,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 4099,
+          "reportedCostUsd": 0.007335600000000001,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 18,
+            "cacheReadTokens": 53196,
+            "cacheWriteTokens": 499,
+            "outputTokens": 200,
+            "reasoningTokens": 0,
+            "contextTokens": 53713
+          },
+          "turnIndex": 4,
+          "prompt": "According to README.md, what is this project's codename? Reply with only the codename.",
+          "verifierPass": true,
+          "verifierDetail": "found Bramblewick"
+        }
+      ]
+    },
+    {
+      "harness": "turen-claude-code",
+      "harnessLabel": "Turen (claude-code provider)",
+      "pairing": "anthropic-haiku",
+      "model": "claude-code/haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "task": "trivial",
+      "taskLabel": "Trivial single-file question",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/turen-claude-code__trivial__r1",
+      "startedAt": "2026-08-02T22:58:04.481Z",
+      "wallMs": 8214,
+      "usage": {
+        "inputTokens": 8,
+        "cacheReadTokens": 16846,
+        "cacheWriteTokens": 561,
+        "outputTokens": 44,
+        "reasoningTokens": 0,
+        "contextTokens": 17415
+      },
+      "providerRequests": 1,
+      "providerRequestsExact": true,
+      "toolCalls": 1,
+      "reportedCostUsd": 0,
+      "modeledCostUsd": 0.0030346000000000006,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "ses_03b4d1ccdffep439F7aEM39FTR",
+          "text": "4271",
+          "usage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 16846,
+            "cacheWriteTokens": 561,
+            "outputTokens": 44,
+            "reasoningTokens": 0,
+            "contextTokens": 17415
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 16846,
+                "cacheWriteTokens": 561,
+                "outputTokens": 44,
+                "reasoningTokens": 0,
+                "contextTokens": 17415
+              }
+            }
+          ],
+          "providerRequests": 1,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 8214,
+          "reportedCostUsd": 0,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 16846,
+            "cacheWriteTokens": 561,
+            "outputTokens": 44,
+            "reasoningTokens": 0,
+            "contextTokens": 17415
+          },
+          "turnIndex": 0,
+          "prompt": "In src/config.ts, what is the numeric value of the exported constant MAX_RETRY_ATTEMPTS? Reply with only the number.",
+          "verifierPass": true,
+          "verifierDetail": "found 4271"
+        }
+      ]
+    },
+    {
+      "harness": "turen-claude-code",
+      "harnessLabel": "Turen (claude-code provider)",
+      "pairing": "anthropic-haiku",
+      "model": "claude-code/haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "task": "search",
+      "taskLabel": "Multi-file symbol search",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/turen-claude-code__search__r1",
+      "startedAt": "2026-08-02T22:58:12.738Z",
+      "wallMs": 7363,
+      "usage": {
+        "inputTokens": 8,
+        "cacheReadTokens": 16855,
+        "cacheWriteTokens": 244,
+        "outputTokens": 98,
+        "reasoningTokens": 0,
+        "contextTokens": 17107
+      },
+      "providerRequests": 1,
+      "providerRequestsExact": true,
+      "toolCalls": 1,
+      "reportedCostUsd": 0,
+      "modeledCostUsd": 0.0026715,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "ses_03b4cfdd1ffe9S4PuxTRr6wKm4",
+          "text": "src/store.ts\nsrc/auth.ts\nsrc/tenant.ts",
+          "usage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 16855,
+            "cacheWriteTokens": 244,
+            "outputTokens": 98,
+            "reasoningTokens": 0,
+            "contextTokens": 17107
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 16855,
+                "cacheWriteTokens": 244,
+                "outputTokens": 98,
+                "reasoningTokens": 0,
+                "contextTokens": 17107
+              }
+            }
+          ],
+          "providerRequests": 1,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 7363,
+          "reportedCostUsd": 0,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 16855,
+            "cacheWriteTokens": 244,
+            "outputTokens": 98,
+            "reasoningTokens": 0,
+            "contextTokens": 17107
+          },
+          "turnIndex": 0,
+          "prompt": "List every file under src/ that references the identifier normalizeTenantId, including the file that defines it. Reply with only the repo-relative file paths, one per line, and nothing else.",
+          "verifierPass": true,
+          "verifierDetail": "found all 3 files"
+        }
+      ]
+    },
+    {
+      "harness": "turen-claude-code",
+      "harnessLabel": "Turen (claude-code provider)",
+      "pairing": "anthropic-haiku",
+      "model": "claude-code/haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "task": "edit",
+      "taskLabel": "Small edit, verified on disk",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/turen-claude-code__edit__r1",
+      "startedAt": "2026-08-02T22:58:20.145Z",
+      "wallMs": 10776,
+      "usage": {
+        "inputTokens": 10,
+        "cacheReadTokens": 17421,
+        "cacheWriteTokens": 654,
+        "outputTokens": 83,
+        "reasoningTokens": 0,
+        "contextTokens": 18085
+      },
+      "providerRequests": 1,
+      "providerRequestsExact": true,
+      "toolCalls": 2,
+      "reportedCostUsd": 0,
+      "modeledCostUsd": 0.0034751000000000005,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "ses_03b4ce12fffeUKU8h6AjYhGSfY",
+          "text": "Done. Changed `REQUEST_TIMEOUT_MS` from 3000 to 9500 in src/config.ts.",
+          "usage": {
+            "inputTokens": 10,
+            "cacheReadTokens": 17421,
+            "cacheWriteTokens": 654,
+            "outputTokens": 83,
+            "reasoningTokens": 0,
+            "contextTokens": 18085
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 10,
+                "cacheReadTokens": 17421,
+                "cacheWriteTokens": 654,
+                "outputTokens": 83,
+                "reasoningTokens": 0,
+                "contextTokens": 18085
+              }
+            }
+          ],
+          "providerRequests": 1,
+          "providerRequestsExact": true,
+          "toolCalls": 2,
+          "wallMs": 10776,
+          "reportedCostUsd": 0,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 10,
+            "cacheReadTokens": 17421,
+            "cacheWriteTokens": 654,
+            "outputTokens": 83,
+            "reasoningTokens": 0,
+            "contextTokens": 18085
+          },
+          "turnIndex": 0,
+          "prompt": "In src/config.ts, change the exported constant REQUEST_TIMEOUT_MS from its current value to 9500. Change nothing else in the file or the repository.",
+          "verifierPass": true,
+          "verifierDetail": "REQUEST_TIMEOUT_MS = 9500 on disk, no collateral damage"
+        }
+      ]
+    },
+    {
+      "harness": "turen-claude-code",
+      "harnessLabel": "Turen (claude-code provider)",
+      "pairing": "anthropic-haiku",
+      "model": "claude-code/haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "task": "conversation",
+      "taskLabel": "5-turn conversation",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/turen-claude-code__conversation__r1",
+      "startedAt": "2026-08-02T22:58:30.976Z",
+      "wallMs": 34371,
+      "usage": {
+        "inputTokens": 42,
+        "cacheReadTokens": 88230,
+        "cacheWriteTokens": 1841,
+        "outputTokens": 269,
+        "reasoningTokens": 0,
+        "contextTokens": 90113
+      },
+      "providerRequests": 5,
+      "providerRequestsExact": true,
+      "toolCalls": 4,
+      "reportedCostUsd": 0,
+      "modeledCostUsd": 0.013892,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "ses_03b4cb5f0ffeMx7TcImm02nSkK",
+          "text": "4271",
+          "usage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 16844,
+            "cacheWriteTokens": 562,
+            "outputTokens": 44,
+            "reasoningTokens": 0,
+            "contextTokens": 17414
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 16844,
+                "cacheWriteTokens": 562,
+                "outputTokens": 44,
+                "reasoningTokens": 0,
+                "contextTokens": 17414
+              }
+            }
+          ],
+          "providerRequests": 1,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 8299,
+          "reportedCostUsd": 0,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 16844,
+            "cacheWriteTokens": 562,
+            "outputTokens": 44,
+            "reasoningTokens": 0,
+            "contextTokens": 17414
+          },
+          "turnIndex": 0,
+          "prompt": "In src/config.ts, what is the numeric value of the exported constant MAX_RETRY_ATTEMPTS? Reply with only the number.",
+          "verifierPass": true,
+          "verifierDetail": "found 4271"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "ses_03b4cb5f0ffeMx7TcImm02nSkK",
+          "text": "3000",
+          "usage": {
+            "inputTokens": 10,
+            "cacheReadTokens": 17406,
+            "cacheWriteTokens": 77,
+            "outputTokens": 85,
+            "reasoningTokens": 0,
+            "contextTokens": 17493
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 10,
+                "cacheReadTokens": 17406,
+                "cacheWriteTokens": 77,
+                "outputTokens": 85,
+                "reasoningTokens": 0,
+                "contextTokens": 17493
+              }
+            }
+          ],
+          "providerRequests": 1,
+          "providerRequestsExact": true,
+          "toolCalls": 0,
+          "wallMs": 4784,
+          "reportedCostUsd": 0,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 10,
+            "cacheReadTokens": 17406,
+            "cacheWriteTokens": 77,
+            "outputTokens": 85,
+            "reasoningTokens": 0,
+            "contextTokens": 17493
+          },
+          "turnIndex": 1,
+          "prompt": "In that same file, what is the numeric value of REQUEST_TIMEOUT_MS? Reply with only the number.",
+          "verifierPass": true,
+          "verifierDetail": "found 3000"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "ses_03b4cb5f0ffeMx7TcImm02nSkK",
+          "text": "src/tenant.ts",
+          "usage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 17600,
+            "cacheWriteTokens": 185,
+            "outputTokens": 44,
+            "reasoningTokens": 0,
+            "contextTokens": 17793
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 17600,
+                "cacheWriteTokens": 185,
+                "outputTokens": 44,
+                "reasoningTokens": 0,
+                "contextTokens": 17793
+              }
+            }
+          ],
+          "providerRequests": 1,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 8251,
+          "reportedCostUsd": 0,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 17600,
+            "cacheWriteTokens": 185,
+            "outputTokens": 44,
+            "reasoningTokens": 0,
+            "contextTokens": 17793
+          },
+          "turnIndex": 2,
+          "prompt": "Which file defines the function normalizeTenantId? Reply with only the repo-relative path.",
+          "verifierPass": true,
+          "verifierDetail": "found src/tenant.ts"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "ses_03b4cb5f0ffeMx7TcImm02nSkK",
+          "text": "TenantStore",
+          "usage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 17860,
+            "cacheWriteTokens": 590,
+            "outputTokens": 40,
+            "reasoningTokens": 0,
+            "contextTokens": 18458
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 17860,
+                "cacheWriteTokens": 590,
+                "outputTokens": 40,
+                "reasoningTokens": 0,
+                "contextTokens": 18458
+              }
+            }
+          ],
+          "providerRequests": 1,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 6236,
+          "reportedCostUsd": 0,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 17860,
+            "cacheWriteTokens": 590,
+            "outputTokens": 40,
+            "reasoningTokens": 0,
+            "contextTokens": 18458
+          },
+          "turnIndex": 3,
+          "prompt": "What is the name of the exported class in src/store.ts? Reply with only the class name.",
+          "verifierPass": true,
+          "verifierDetail": "found TenantStore"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "ses_03b4cb5f0ffeMx7TcImm02nSkK",
+          "text": "Bramblewick",
+          "usage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 18520,
+            "cacheWriteTokens": 427,
+            "outputTokens": 56,
+            "reasoningTokens": 0,
+            "contextTokens": 18955
+          },
+          "requests": [
+            {
+              "index": 0,
+              "usage": {
+                "inputTokens": 8,
+                "cacheReadTokens": 18520,
+                "cacheWriteTokens": 427,
+                "outputTokens": 56,
+                "reasoningTokens": 0,
+                "contextTokens": 18955
+              }
+            }
+          ],
+          "providerRequests": 1,
+          "providerRequestsExact": true,
+          "toolCalls": 1,
+          "wallMs": 6801,
+          "reportedCostUsd": 0,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 8,
+            "cacheReadTokens": 18520,
+            "cacheWriteTokens": 427,
+            "outputTokens": 56,
+            "reasoningTokens": 0,
+            "contextTokens": 18955
+          },
+          "turnIndex": 4,
+          "prompt": "According to README.md, what is this project's codename? Reply with only the codename.",
+          "verifierPass": true,
+          "verifierDetail": "found Bramblewick"
+        }
+      ]
+    },
+    {
+      "harness": "codex",
+      "harnessLabel": "Codex CLI",
+      "pairing": "openai-codex",
+      "model": "gpt-5.6-sol",
+      "underlyingModel": "gpt-5.6-sol",
+      "pricingKey": "gpt-5.6-sol",
+      "task": "trivial",
+      "taskLabel": "Trivial single-file question",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/codex__trivial__r1",
+      "startedAt": "2026-08-02T22:59:05.408Z",
+      "wallMs": 6466,
+      "usage": {
+        "inputTokens": 3708,
+        "cacheReadTokens": 23040,
+        "cacheWriteTokens": 0,
+        "outputTokens": 124,
+        "reasoningTokens": 0,
+        "contextTokens": 26748
+      },
+      "providerRequests": 2,
+      "providerRequestsExact": false,
+      "toolCalls": 1,
+      "reportedCostUsd": null,
+      "modeledCostUsd": null,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "019fc4b3-cd07-71f3-a7b7-b105015e25f8",
+          "text": "4271",
+          "usage": {
+            "inputTokens": 3708,
+            "cacheReadTokens": 23040,
+            "cacheWriteTokens": 0,
+            "outputTokens": 124,
+            "reasoningTokens": 0,
+            "contextTokens": 26748
+          },
+          "requests": [],
+          "providerRequests": 2,
+          "providerRequestsExact": false,
+          "toolCalls": 1,
+          "wallMs": 6466,
+          "reportedCostUsd": null,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 3708,
+            "cacheReadTokens": 23040,
+            "cacheWriteTokens": 0,
+            "outputTokens": 124,
+            "reasoningTokens": 0,
+            "contextTokens": 26748
+          },
+          "turnIndex": 0,
+          "prompt": "In src/config.ts, what is the numeric value of the exported constant MAX_RETRY_ATTEMPTS? Reply with only the number.",
+          "verifierPass": true,
+          "verifierDetail": "found 4271"
+        }
+      ]
+    },
+    {
+      "harness": "codex",
+      "harnessLabel": "Codex CLI",
+      "pairing": "openai-codex",
+      "model": "gpt-5.6-sol",
+      "underlyingModel": "gpt-5.6-sol",
+      "pricingKey": "gpt-5.6-sol",
+      "task": "search",
+      "taskLabel": "Multi-file symbol search",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/codex__search__r1",
+      "startedAt": "2026-08-02T22:59:11.940Z",
+      "wallMs": 6443,
+      "usage": {
+        "inputTokens": 3720,
+        "cacheReadTokens": 23040,
+        "cacheWriteTokens": 0,
+        "outputTokens": 144,
+        "reasoningTokens": 8,
+        "contextTokens": 26760
+      },
+      "providerRequests": 2,
+      "providerRequestsExact": false,
+      "toolCalls": 1,
+      "reportedCostUsd": null,
+      "modeledCostUsd": null,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "019fc4b3-e60e-7f12-8596-5a00fcdf3a3e",
+          "text": "src/auth.ts\nsrc/store.ts\nsrc/tenant.ts",
+          "usage": {
+            "inputTokens": 3720,
+            "cacheReadTokens": 23040,
+            "cacheWriteTokens": 0,
+            "outputTokens": 144,
+            "reasoningTokens": 8,
+            "contextTokens": 26760
+          },
+          "requests": [],
+          "providerRequests": 2,
+          "providerRequestsExact": false,
+          "toolCalls": 1,
+          "wallMs": 6443,
+          "reportedCostUsd": null,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 3720,
+            "cacheReadTokens": 23040,
+            "cacheWriteTokens": 0,
+            "outputTokens": 144,
+            "reasoningTokens": 8,
+            "contextTokens": 26760
+          },
+          "turnIndex": 0,
+          "prompt": "List every file under src/ that references the identifier normalizeTenantId, including the file that defines it. Reply with only the repo-relative file paths, one per line, and nothing else.",
+          "verifierPass": true,
+          "verifierDetail": "found all 3 files"
+        }
+      ]
+    },
+    {
+      "harness": "codex",
+      "harnessLabel": "Codex CLI",
+      "pairing": "openai-codex",
+      "model": "gpt-5.6-sol",
+      "underlyingModel": "gpt-5.6-sol",
+      "pricingKey": "gpt-5.6-sol",
+      "task": "edit",
+      "taskLabel": "Small edit, verified on disk",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/codex__edit__r1",
+      "startedAt": "2026-08-02T22:59:18.459Z",
+      "wallMs": 20161,
+      "usage": {
+        "inputTokens": 9847,
+        "cacheReadTokens": 46080,
+        "cacheWriteTokens": 0,
+        "outputTokens": 411,
+        "reasoningTokens": 0,
+        "contextTokens": 55927
+      },
+      "providerRequests": 5,
+      "providerRequestsExact": false,
+      "toolCalls": 3,
+      "reportedCostUsd": null,
+      "modeledCostUsd": null,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "019fc4b3-ff8c-7183-892a-425bdc19fed3",
+          "text": "Updated `REQUEST_TIMEOUT_MS` from `3000` to `9500` in [src/config.ts](/private/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/codex__edit__r1/src/config.ts:15). No other changes made.",
+          "usage": {
+            "inputTokens": 9847,
+            "cacheReadTokens": 46080,
+            "cacheWriteTokens": 0,
+            "outputTokens": 411,
+            "reasoningTokens": 0,
+            "contextTokens": 55927
+          },
+          "requests": [],
+          "providerRequests": 5,
+          "providerRequestsExact": false,
+          "toolCalls": 3,
+          "wallMs": 20161,
+          "reportedCostUsd": null,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 9847,
+            "cacheReadTokens": 46080,
+            "cacheWriteTokens": 0,
+            "outputTokens": 411,
+            "reasoningTokens": 0,
+            "contextTokens": 55927
+          },
+          "turnIndex": 0,
+          "prompt": "In src/config.ts, change the exported constant REQUEST_TIMEOUT_MS from its current value to 9500. Change nothing else in the file or the repository.",
+          "verifierPass": true,
+          "verifierDetail": "REQUEST_TIMEOUT_MS = 9500 on disk, no collateral damage"
+        }
+      ]
+    },
+    {
+      "harness": "codex",
+      "harnessLabel": "Codex CLI",
+      "pairing": "openai-codex",
+      "model": "gpt-5.6-sol",
+      "underlyingModel": "gpt-5.6-sol",
+      "pricingKey": "gpt-5.6-sol",
+      "task": "conversation",
+      "taskLabel": "5-turn conversation",
+      "repetition": 1,
+      "status": "ok",
+      "statusDetail": null,
+      "workspace": "/var/folders/jr/w55xj1gx3_31mlbgv3m2c_3w0000gn/T/turen-token-bench/2026-08-02T22-57-24-562Z/codex__conversation__r1",
+      "startedAt": "2026-08-02T22:59:38.699Z",
+      "wallMs": 35924,
+      "usage": {
+        "inputTokens": 13089,
+        "cacheReadTokens": 124416,
+        "cacheWriteTokens": 0,
+        "outputTokens": 624,
+        "reasoningTokens": 0,
+        "contextTokens": 137505
+      },
+      "providerRequests": 10,
+      "providerRequestsExact": false,
+      "toolCalls": 5,
+      "reportedCostUsd": null,
+      "modeledCostUsd": null,
+      "turns": [
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "019fc4b4-4e90-7632-ab0e-b39da23e291f",
+          "text": "4271",
+          "usage": {
+            "inputTokens": 6775,
+            "cacheReadTokens": 19968,
+            "cacheWriteTokens": 0,
+            "outputTokens": 123,
+            "reasoningTokens": 0,
+            "contextTokens": 26743
+          },
+          "requests": [],
+          "providerRequests": 2,
+          "providerRequestsExact": false,
+          "toolCalls": 1,
+          "wallMs": 6269,
+          "reportedCostUsd": null,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 6775,
+            "cacheReadTokens": 19968,
+            "cacheWriteTokens": 0,
+            "outputTokens": 123,
+            "reasoningTokens": 0,
+            "contextTokens": 26743
+          },
+          "turnIndex": 0,
+          "prompt": "In src/config.ts, what is the numeric value of the exported constant MAX_RETRY_ATTEMPTS? Reply with only the number.",
+          "verifierPass": true,
+          "verifierDetail": "found 4271"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "019fc4b4-4e90-7632-ab0e-b39da23e291f",
+          "text": "3000",
+          "usage": {
+            "inputTokens": 1026,
+            "cacheReadTokens": 26112,
+            "cacheWriteTokens": 0,
+            "outputTokens": 120,
+            "reasoningTokens": 0,
+            "contextTokens": 27138
+          },
+          "requests": [],
+          "providerRequests": 2,
+          "providerRequestsExact": false,
+          "toolCalls": 1,
+          "wallMs": 6319,
+          "reportedCostUsd": null,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 7801,
+            "cacheReadTokens": 46080,
+            "cacheWriteTokens": 0,
+            "outputTokens": 243,
+            "reasoningTokens": 0,
+            "contextTokens": 53881
+          },
+          "turnIndex": 1,
+          "prompt": "In that same file, what is the numeric value of REQUEST_TIMEOUT_MS? Reply with only the number.",
+          "verifierPass": true,
+          "verifierDetail": "found 3000"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "019fc4b4-4e90-7632-ab0e-b39da23e291f",
+          "text": "src/tenant.ts",
+          "usage": {
+            "inputTokens": 1393,
+            "cacheReadTokens": 26112,
+            "cacheWriteTokens": 0,
+            "outputTokens": 128,
+            "reasoningTokens": 0,
+            "contextTokens": 27505
+          },
+          "requests": [],
+          "providerRequests": 2,
+          "providerRequestsExact": false,
+          "toolCalls": 1,
+          "wallMs": 10116,
+          "reportedCostUsd": null,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 9194,
+            "cacheReadTokens": 72192,
+            "cacheWriteTokens": 0,
+            "outputTokens": 371,
+            "reasoningTokens": 0,
+            "contextTokens": 81386
+          },
+          "turnIndex": 2,
+          "prompt": "Which file defines the function normalizeTenantId? Reply with only the repo-relative path.",
+          "verifierPass": true,
+          "verifierDetail": "found src/tenant.ts"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "019fc4b4-4e90-7632-ab0e-b39da23e291f",
+          "text": "TenantStore",
+          "usage": {
+            "inputTokens": 1764,
+            "cacheReadTokens": 26112,
+            "cacheWriteTokens": 0,
+            "outputTokens": 130,
+            "reasoningTokens": 0,
+            "contextTokens": 27876
+          },
+          "requests": [],
+          "providerRequests": 2,
+          "providerRequestsExact": false,
+          "toolCalls": 1,
+          "wallMs": 6716,
+          "reportedCostUsd": null,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 10958,
+            "cacheReadTokens": 98304,
+            "cacheWriteTokens": 0,
+            "outputTokens": 501,
+            "reasoningTokens": 0,
+            "contextTokens": 109262
+          },
+          "turnIndex": 3,
+          "prompt": "What is the name of the exported class in src/store.ts? Reply with only the class name.",
+          "verifierPass": true,
+          "verifierDetail": "found TenantStore"
+        },
+        {
+          "ok": true,
+          "error": null,
+          "sessionId": "019fc4b4-4e90-7632-ab0e-b39da23e291f",
+          "text": "Bramblewick",
+          "usage": {
+            "inputTokens": 2131,
+            "cacheReadTokens": 26112,
+            "cacheWriteTokens": 0,
+            "outputTokens": 123,
+            "reasoningTokens": 0,
+            "contextTokens": 28243
+          },
+          "requests": [],
+          "providerRequests": 2,
+          "providerRequestsExact": false,
+          "toolCalls": 1,
+          "wallMs": 6504,
+          "reportedCostUsd": null,
+          "exitCode": 0,
+          "rawUsage": {
+            "inputTokens": 13089,
+            "cacheReadTokens": 124416,
+            "cacheWriteTokens": 0,
+            "outputTokens": 624,
+            "reasoningTokens": 0,
+            "contextTokens": 137505
+          },
+          "turnIndex": 4,
+          "prompt": "According to README.md, what is this project's codename? Reply with only the codename.",
+          "verifierPass": true,
+          "verifierDetail": "found Bramblewick"
+        }
+      ]
+    },
+    {
+      "harness": "turen-openai",
+      "harnessLabel": "Turen (openai provider)",
+      "pairing": "openai-codex",
+      "model": "openai/gpt-5-mini",
+      "underlyingModel": "gpt-5-mini",
+      "pricingKey": "gpt-5-mini",
+      "task": "trivial",
+      "taskLabel": "Trivial single-file question",
+      "repetition": 1,
+      "status": "blocked",
+      "statusDetail": "OPENAI_API_KEY is not set. Turen runs here against a scratch DB with an ephemeral vault key, so the stored OpenAI OAuth credential cannot be decrypted; this arm needs an API key in the environment.",
+      "workspace": "",
+      "startedAt": "2026-08-02T23:00:14.625Z",
+      "wallMs": 0,
+      "usage": {
+        "inputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "outputTokens": 0,
+        "reasoningTokens": 0,
+        "contextTokens": 0
+      },
+      "providerRequests": 0,
+      "providerRequestsExact": true,
+      "toolCalls": 0,
+      "reportedCostUsd": null,
+      "modeledCostUsd": null,
+      "turns": []
+    },
+    {
+      "harness": "turen-openai",
+      "harnessLabel": "Turen (openai provider)",
+      "pairing": "openai-codex",
+      "model": "openai/gpt-5-mini",
+      "underlyingModel": "gpt-5-mini",
+      "pricingKey": "gpt-5-mini",
+      "task": "search",
+      "taskLabel": "Multi-file symbol search",
+      "repetition": 1,
+      "status": "blocked",
+      "statusDetail": "OPENAI_API_KEY is not set. Turen runs here against a scratch DB with an ephemeral vault key, so the stored OpenAI OAuth credential cannot be decrypted; this arm needs an API key in the environment.",
+      "workspace": "",
+      "startedAt": "2026-08-02T23:00:14.625Z",
+      "wallMs": 0,
+      "usage": {
+        "inputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "outputTokens": 0,
+        "reasoningTokens": 0,
+        "contextTokens": 0
+      },
+      "providerRequests": 0,
+      "providerRequestsExact": true,
+      "toolCalls": 0,
+      "reportedCostUsd": null,
+      "modeledCostUsd": null,
+      "turns": []
+    },
+    {
+      "harness": "turen-openai",
+      "harnessLabel": "Turen (openai provider)",
+      "pairing": "openai-codex",
+      "model": "openai/gpt-5-mini",
+      "underlyingModel": "gpt-5-mini",
+      "pricingKey": "gpt-5-mini",
+      "task": "edit",
+      "taskLabel": "Small edit, verified on disk",
+      "repetition": 1,
+      "status": "blocked",
+      "statusDetail": "OPENAI_API_KEY is not set. Turen runs here against a scratch DB with an ephemeral vault key, so the stored OpenAI OAuth credential cannot be decrypted; this arm needs an API key in the environment.",
+      "workspace": "",
+      "startedAt": "2026-08-02T23:00:14.625Z",
+      "wallMs": 0,
+      "usage": {
+        "inputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "outputTokens": 0,
+        "reasoningTokens": 0,
+        "contextTokens": 0
+      },
+      "providerRequests": 0,
+      "providerRequestsExact": true,
+      "toolCalls": 0,
+      "reportedCostUsd": null,
+      "modeledCostUsd": null,
+      "turns": []
+    },
+    {
+      "harness": "turen-openai",
+      "harnessLabel": "Turen (openai provider)",
+      "pairing": "openai-codex",
+      "model": "openai/gpt-5-mini",
+      "underlyingModel": "gpt-5-mini",
+      "pricingKey": "gpt-5-mini",
+      "task": "conversation",
+      "taskLabel": "5-turn conversation",
+      "repetition": 1,
+      "status": "blocked",
+      "statusDetail": "OPENAI_API_KEY is not set. Turen runs here against a scratch DB with an ephemeral vault key, so the stored OpenAI OAuth credential cannot be decrypted; this arm needs an API key in the environment.",
+      "workspace": "",
+      "startedAt": "2026-08-02T23:00:14.625Z",
+      "wallMs": 0,
+      "usage": {
+        "inputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "outputTokens": 0,
+        "reasoningTokens": 0,
+        "contextTokens": 0
+      },
+      "providerRequests": 0,
+      "providerRequestsExact": true,
+      "toolCalls": 0,
+      "reportedCostUsd": null,
+      "modeledCostUsd": null,
+      "turns": []
+    }
+  ],
+  "derived": [
+    {
+      "harness": "claude-code",
+      "harnessLabel": "Claude Code",
+      "pairing": "anthropic-haiku",
+      "model": "haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "fixedOverheadContextTokens": 50581,
+      "firstRequestContextTokens": 25014,
+      "marginalContextTokens": {
+        "search": -783,
+        "edit": 26285,
+        "conversation": 183511
+      },
+      "conversationTurnContextTokens": [50559, 25634, 51629, 52557, 53713],
+      "contextGrowthSlopeTokensPerTurn": 3323,
+      "tasksPassed": 4,
+      "tasksAttempted": 4
+    },
+    {
+      "harness": "turen-claude-code",
+      "harnessLabel": "Turen (claude-code provider)",
+      "pairing": "anthropic-haiku",
+      "model": "claude-code/haiku",
+      "underlyingModel": "claude-haiku-4-5",
+      "pricingKey": "claude-haiku-4-5",
+      "fixedOverheadContextTokens": 17415,
+      "firstRequestContextTokens": 17415,
+      "marginalContextTokens": {
+        "search": -308,
+        "edit": 670,
+        "conversation": 72698
+      },
+      "conversationTurnContextTokens": [17414, 17493, 17793, 18458, 18955],
+      "contextGrowthSlopeTokensPerTurn": 405,
+      "tasksPassed": 4,
+      "tasksAttempted": 4
+    },
+    {
+      "harness": "codex",
+      "harnessLabel": "Codex CLI",
+      "pairing": "openai-codex",
+      "model": "gpt-5.6-sol",
+      "underlyingModel": "gpt-5.6-sol",
+      "pricingKey": "gpt-5.6-sol",
+      "fixedOverheadContextTokens": 26748,
+      "firstRequestContextTokens": null,
+      "marginalContextTokens": {
+        "search": 12,
+        "edit": 29179,
+        "conversation": 110757
+      },
+      "conversationTurnContextTokens": [26743, 27138, 27505, 27876, 28243],
+      "contextGrowthSlopeTokensPerTurn": 374,
+      "tasksPassed": 4,
+      "tasksAttempted": 4
+    },
+    {
+      "harness": "turen-openai",
+      "harnessLabel": "Turen (openai provider)",
+      "pairing": "openai-codex",
+      "model": "openai/gpt-5-mini",
+      "underlyingModel": "gpt-5-mini",
+      "pricingKey": "gpt-5-mini",
+      "fixedOverheadContextTokens": null,
+      "firstRequestContextTokens": null,
+      "marginalContextTokens": {},
+      "conversationTurnContextTokens": null,
+      "contextGrowthSlopeTokensPerTurn": null,
+      "tasksPassed": 0,
+      "tasksAttempted": 4
+    }
+  ]
+}

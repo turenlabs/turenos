@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/incident-io",
+  "name": "incident.io",
+  "description": "Analyze incidents, alerts, on-call schedules, and response workload through incident.io's hosted MCP server",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://docs.incident.io/ai/remote-mcp",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "incident-io",
+      "name": "incident.io",
+      "description": "Read incident-response history, alert volume, schedules, and investigation context",
+      "adapter": "mcp:incident-io",
+      "secrets": [],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "hosted", "url": "https://mcp.incident.io/mcp" },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 10, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": [
+          "alert_list",
+          "alert_show",
+          "alert_stats",
+          "incident_list",
+          "incident_show",
+          "incident_stats",
+          "resource_show",
+          "schedule_list",
+          "schedule_show",
+          "team_list"
+        ],
+        "write": []
+      },
+      "instructions": "Keep access read-only, use bounded time ranges, and follow stats to list to show for operational analysis."
+    }
+  ]
+}

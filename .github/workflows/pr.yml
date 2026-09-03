@@ -1,0 +1,73 @@
+# Required checks for pull requests, on Blacksmith runners.
+#
+# `test.yml` still owns the cross-platform matrix (Windows, e2e, HttpApi gates)
+# on GitHub-hosted runners, and `typecheck.yml` owns types. This workflow is the
+# fast gate a PR has to clear: lint and the unit suite, nothing needing a second OS.
+name: pr
+
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  lint:
+    name: lint
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      # oxlint exits non-zero on errors only. The tree carries thousands of
+      # warnings today, so promoting them here would make every PR red on
+      # arrival and teach people to ignore the check.
+      - name: Run lint
+        run: bun run lint
+
+      - name: Check third-party license inventory
+        run: bun run license:check
+
+  test:
+    name: test
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      # Some suites shell out to git and fail without an identity configured.
+      - name: Configure git identity
+        run: |
+          git config --global user.email "bot@turen.dev"
+          git config --global user.name "turen"
+
+      - name: Cache Turbo
+        uses: useblacksmith/cache@71c7c918062ba3861252d84b07fe5ab2a6b467a6 # v5.0.2
+        with:
+          path: node_modules/.cache/turbo
+          key: turbo-test-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-test-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-
+            turbo-test-${{ runner.os }}-
+
+      # turbo.json declares one generic `test` task, so this covers every
+      # workspace that defines a `test` script. GITHUB_ACTIONS=false keeps bun
+      # on its normal reporter; the annotating one swallows failure detail.
+      - name: Run unit tests
+        run: GITHUB_ACTIONS=false bun turbo test

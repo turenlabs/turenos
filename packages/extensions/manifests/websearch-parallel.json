@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/websearch-parallel",
+  "name": "Parallel Web Search",
+  "description": "Research current web content through Parallel",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://parallel.ai/",
+  "contributions": [
+    {
+      "type": "data",
+      "id": "websearch-parallel",
+      "name": "Parallel Web Search",
+      "description": "Research current web content through Parallel",
+      "adapter": "websearch:parallel",
+      "secrets": [
+        {
+          "id": "PARALLEL_API_KEY",
+          "label": "Parallel API key",
+          "required": false
+        }
+      ],
+      "tools": {
+        "allow": ["websearch"],
+        "write": []
+      },
+      "defaultEnabled": true,
+      "instructions": "Use Parallel Web Search for its declared purpose: Research current web content through Parallel. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ]
+}

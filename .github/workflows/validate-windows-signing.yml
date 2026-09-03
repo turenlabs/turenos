@@ -1,0 +1,73 @@
+name: Validate Windows Signing
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      FORGE_REQUIRE_SIGNING: "1"
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TRUSTED_SIGNING_ACCOUNT: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+      AZURE_TRUSTED_SIGNING_PROFILE: ${{ secrets.AZURE_TRUSTED_SIGNING_PROFILE }}
+      AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Authenticate to Azure with OIDC
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create disposable Windows signing probe
+        shell: pwsh
+        run: |
+          $sourcePath = "$env:RUNNER_TEMP\turen-signing-probe.cs"
+          $source = @'
+          using System;
+          public static class Program {
+            public static void Main() { Console.WriteLine("TurenOS signing probe"); }
+          }
+          '@
+          Set-Content -Path $sourcePath -Value $source -Encoding utf8
+          $compiler = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          if (-not (Test-Path $compiler)) { throw "C# compiler is unavailable at $compiler" }
+          & $compiler /nologo /target:exe /platform:x64 "/out:$env:RUNNER_TEMP\turen-signing-probe.exe" $sourcePath
+          if ($LASTEXITCODE -ne 0) { throw "C# compiler exited with $LASTEXITCODE" }
+
+      - name: Sign disposable probe
+        shell: pwsh
+        run: ./script/sign-windows.ps1 -Path "$env:RUNNER_TEMP\turen-signing-probe.exe"
+
+      - name: Verify Authenticode identity and timestamp
+        shell: pwsh
+        run: |
+          $probe = "$env:RUNNER_TEMP\turen-signing-probe.exe"
+          $signature = Get-AuthenticodeSignature -FilePath $probe
+          if ($signature.Status -ne "Valid") {
+            throw "Signing probe status is $($signature.Status): $($signature.StatusMessage)"
+          }
+          if ($signature.SignerCertificate.Subject -notmatch 'CN="?Turen Labs, Inc"?') {
+            throw "Unexpected signer: $($signature.SignerCertificate.Subject)"
+          }
+          if ($null -eq $signature.TimeStamperCertificate) {
+            throw "Signing probe has no trusted timestamp"
+          }
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $probe).Hash
+          "Windows Trusted Signing probe passed: $hash" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Remove disposable probe
+        if: always()
+        shell: pwsh
+        run: Remove-Item "$env:RUNNER_TEMP\turen-signing-probe.*" -Force -ErrorAction SilentlyContinue

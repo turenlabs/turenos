@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/automox",
+  "name": "Automox Hosted",
+  "description": "Connect directly to the Automox-hosted MCP service with an Automox API key",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://www.automox.com/platform/it-automation/mcp-server",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "automox",
+      "name": "Automox Hosted",
+      "description": "Vendor-hosted Automox endpoint posture and patching context",
+      "instructions": "Paste an org-scoped Automox API key and enable the connection. TurenOS exposes only the reviewed read-only capability set.",
+      "adapter": "mcp:automox",
+      "secrets": [{ "id": "AUTOMOX_HOSTED_API_KEY", "label": "Automox API key", "required": true }],
+      "defaultEnabled": false,
+      "authentication": "key",
+      "upstreamPolicy": "static",
+      "localOnly": false,
+      "deployment": {
+        "type": "hosted",
+        "url": "https://console.automox.com/api/mcp"
+      },
+      "connection": {
+        "headers": [{ "name": "Authorization", "secret": "AUTOMOX_HOSTED_API_KEY", "prefix": "Bearer " }]
+      },
+      "tools": {
+        "allow": [
+          "audit_events_ocsf",
+          "audit_trail_user_activity",
+          "device_detail",
+          "device_health_metrics",
+          "devices_needing_attention",
+          "discover_capabilities",
+          "get_action_set_detail",
+          "get_action_set_issues",
+          "get_action_set_solutions",
+          "get_compliance_snapshot",
+          "get_device_full_profile",
+          "get_device_inventory",
+          "get_patch_tuesday_readiness",
+          "list_devices",
+          "list_events",
+          "list_remediation_action_sets",
+          "noncompliant_report",
+          "patch_approvals_summary",
+          "policy_catalog",
+          "policy_compliance_stats",
+          "policy_health_overview",
+          "prepatch_report",
+          "search_devices"
+        ],
+        "write": []
+      }
+    }
+  ]
+}

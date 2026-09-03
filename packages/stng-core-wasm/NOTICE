@@ -1,0 +1,2 @@
+Portable stng-core subset derived from stng by The Atomdrift Project.
+Turen removed host, cache, Rizin, CLI and parallel boundaries and added aggregate limits.

@@ -1,0 +1,2 @@
+This package contains Turen's bounded rebuild-timeline WebAssembly operations.
+It vendors the bodyfile crate and merges artifact JSON events.

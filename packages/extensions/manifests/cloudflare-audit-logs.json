@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/cloudflare-audit-logs",
+  "name": "Cloudflare Audit Logs",
+  "description": "Search account audit activity through Cloudflare's provider-hosted MCP server",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "cloudflare-audit-logs",
+      "name": "Cloudflare Audit Logs",
+      "description": "Search Cloudflare account audit logs by actor, action, resource, time, and request metadata",
+      "adapter": "mcp:cloudflare-audit-logs",
+      "secrets": [],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "hosted", "url": "https://auditlogs.mcp.cloudflare.com/mcp" },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 1, "unloadAfterIdleTurns": 3 },
+      "tools": { "allow": ["auditlogs_by_account_id"], "write": [] },
+      "instructions": "Use the selected Cloudflare account and bounded time ranges. Start with small result limits and paginate deliberately."
+    }
+  ]
+}

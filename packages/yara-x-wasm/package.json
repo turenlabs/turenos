@@ -1,0 +1,22 @@
+{
+  "name": "@turenlabs/yara-x-wasm",
+  "version": "1.19.0-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "TurenOS-packaged official YARA-X WebAssembly runtime",
+  "main": "dist/yara_x_js.js",
+  "module": "dist/yara_x_js.js",
+  "types": "dist/yara_x_js.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/yara_x_js.d.ts",
+      "import": "./dist/yara_x_js.js",
+      "default": "./dist/yara_x_js.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "license": "BSD-3-Clause",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/trivy",
+  "name": "Trivy",
+  "description": "Scan workspaces for vulnerabilities and misconfigurations",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "tool",
+      "id": "trivy",
+      "name": "Trivy",
+      "description": "Scan workspaces for vulnerabilities and misconfigurations",
+      "adapter": "security:trivy",
+      "secrets": [],
+      "defaultEnabled": false,
+      "group": "dependencies",
+      "commands": ["trivy"],
+      "configuration": [],
+      "tools": {
+        "allow": ["trivy_scan", "trivy_config_scan"],
+        "write": []
+      },
+      "instructions": "Use Trivy for its declared purpose: Scan workspaces for vulnerabilities and misconfigurations. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/sentry",
+  "name": "Sentry",
+  "description": "Investigate application errors and events through Sentry's provider-hosted MCP service",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://docs.sentry.io/product/sentry-mcp/",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "sentry",
+      "name": "Sentry",
+      "description": "Search Sentry issues and events and retrieve scoped Sentry resources",
+      "adapter": "mcp:sentry",
+      "secrets": [],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "hosted", "url": "https://mcp.sentry.dev/mcp" },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 3, "unloadAfterIdleTurns": 3 },
+      "tools": { "allow": ["search_issues", "search_events", "get_sentry_resource"], "write": [] },
+      "instructions": "Scope access to one Sentry organization and project whenever possible. Keep queries bounded and do not admit write or newly discovered tools without review."
+    }
+  ]
+}

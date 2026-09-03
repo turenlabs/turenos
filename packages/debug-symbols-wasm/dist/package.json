@@ -1,0 +1,21 @@
+{
+  "name": "turen-debug-symbols-wasm",
+  "type": "module",
+  "description": "Bounded DWARF, PDB, and symbol inspection for Turen agents",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_debug_symbols_wasm_bg.wasm",
+    "turen_debug_symbols_wasm.js",
+    "turen_debug_symbols_wasm.d.ts"
+  ],
+  "main": "turen_debug_symbols_wasm.js",
+  "types": "turen_debug_symbols_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

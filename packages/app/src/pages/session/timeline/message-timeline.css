@@ -1,0 +1,437 @@
+/*
+ * Transcript rhythm and the user turn.
+ *
+ * Two rules recovered from the deleted TUI (packages/tui/src/routes/session/index.tsx,
+ * recoverable at 3b2694a11):
+ *
+ *   1. Density. Spacing is owned by the *follower*, never the leader, and only
+ *      appears at a structural boundary. A run of single-line tool rows stacks
+ *      flush; prose, reasoning, errors and the user turn get one blank line.
+ *      The decision is made in rows.ts and lands here as [data-separate].
+ *
+ *   2. The user turn is left-aligned and full width, carried by a prompt glyph
+ *      (❯) in the agent's colour hanging in the gutter — not a right-aligned
+ *      filled bubble. In the TUI the agent colour appeared *only* on the margin
+ *      mark; the block itself was neutral.
+ *
+ * Loaded unlayered (imported from message-timeline.tsx), so it outranks
+ * @layer components where session-ui's message-part.css lives. That is
+ * deliberate: this slice owns the transcript's presentation of a user turn,
+ * and session-ui is shared with other session layouts.
+ *
+ * Anything here that changes a rendered height invalidates the measurement
+ * snapshots message-timeline.tsx keeps for a session. Those live only for the
+ * page load, so a shipped change is safe on its own; a CSS-only HMR is not, and
+ * message-timeline.tsx drops them on one. See the note there.
+ */
+
+/* ── Density ──
+ *
+ * Padding, never margin: the virtualiser measures the border box of the
+ * [data-index] div (virtual-core's measureElement), so a margin would be
+ * invisible to it and the row would be clipped to its own understated height.
+ */
+[data-timeline-row][data-separate="true"] {
+  padding-top: var(--v2-cell-y);
+}
+
+/* ── The transcript's own error row ──
+ *
+ * It is a Card, so its rule is card.css's ::before rather than a border, and it
+ * would otherwise sit at the text column instead of in the rule column — a
+ * fourth left edge. Hang it at --rule-inset like every other mark and drop the
+ * card's left padding, so its text lands where the prose does. The failed-tool
+ * card does the same thing in tool-error-card.css. */
+body[data-new-layout] [data-timeline-row="Error"] [data-component="card"] {
+  --card-pad-l: 0px;
+
+  &::before {
+    left: calc(-1 * var(--rule-inset));
+  }
+}
+
+body[data-new-layout] [data-slot="session-provider-error-pixel"] {
+  display: inline-block;
+  margin-inline-end: 0.5rem;
+  color: var(--v2-icon-icon-muted);
+  font-family: var(--v2-font-family-mono);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.12em;
+  transform: scale(1.25);
+  transform-origin: center;
+}
+
+/* ── The user turn ── */
+body[data-new-layout] [data-timeline-row="UserMessage"] {
+  /* --rule-inset (rule.css) is rule width plus the gap that follows it, and it
+     is the same number every ruled surface in the transcript hangs by: the tool
+     notch, the failure rule and this one all land in one margin column. The
+     user's words land on the same column as the assistant's, and the turn's
+     mark sits alone in the gutter. That shared text column is what made the TUI
+     transcript read as one column with marks in the margin rather than a stack
+     of indented cards.
+
+     The mark itself is the shell's prompt glyph, in the agent's colour, rather
+     than a 2px bar: the transcript reads as a terminal session, and in a
+     terminal a user line begins with ❯. The glyph hangs absolutely so the block
+     is byte-for-byte the size it would be unmarked — same trick as rule.css's
+     [data-rule-hang], for the same virtualiser reasons. */
+  [data-component="user-message"] {
+    position: relative;
+    align-items: flex-start;
+    width: auto;
+    max-width: none;
+    margin-inline-start: 0;
+    padding-inline-start: 0;
+    border-inline-start: none;
+
+    &::before {
+      content: "\276F";
+      position: absolute;
+      top: 0;
+      inset-inline-start: calc(-1 * var(--rule-inset));
+      width: var(--rule-inset);
+      color: var(--rule-tone, var(--v2-icon-icon-muted));
+      font-family: var(--v2-font-family-mono);
+      font-weight: var(--font-weight-medium);
+      line-height: inherit;
+      pointer-events: none;
+    }
+  }
+
+  [data-slot="user-message-body"] {
+    width: 100%;
+    max-width: 100%;
+    margin-inline-start: 0;
+    align-items: flex-start;
+  }
+
+  /* No fill. The rule carries the turn; a filled panel behind it would just be
+     a bubble with a stripe. Dropping the padding with it keeps the rule tight
+     to the prose — the leading in --line-height-large is the breathing room. */
+  [data-slot="user-message-text"] {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    padding: 0;
+    background: transparent;
+    border-radius: var(--v2-radius-surface);
+    box-shadow: none;
+  }
+
+  [data-slot="user-message-text"][data-comments] {
+    width: auto;
+    padding-bottom: var(--v2-cell-x);
+  }
+
+  [data-slot="user-message-comments"] {
+    align-items: flex-start;
+    margin-inline-start: 0;
+  }
+
+  [data-slot="user-message-attachments"] {
+    justify-content: flex-start;
+    width: 100%;
+    max-width: 100%;
+    margin-inline-start: 0;
+  }
+
+  [data-slot="user-message-copy-wrapper"],
+  [data-slot="user-message-meta-wrap"] {
+    justify-content: flex-start;
+  }
+
+  [data-slot="user-message-meta"],
+  [data-slot="user-message-meta-tail"] {
+    text-align: start;
+  }
+
+  [data-slot="user-message-meta"] {
+    flex: 0 1 auto;
+  }
+}
+
+/* ── The terminal pass ──
+ *
+ * The transcript is set as terminal output: one mono face, one small size, one
+ * left-aligned stream. Everything below extends the TUI recovery that the rule
+ * column started — hierarchy comes from dimness and weight, never from chrome.
+ *
+ * The var remaps are the whole trick: nearly every session-ui rule reaches for
+ * --font-family-sans / --v2-font-family-sans / --font-size-base, so redefining
+ * them at the transcript root converts the stream wholesale. Only rules that
+ * hard-code a px size need the itemised overrides that follow. Portalled
+ * surfaces (menus, dialogs, tooltips) render outside this subtree and keep the
+ * app face — the terminal is the page, not the chrome above it.
+ */
+body[data-new-layout] [data-session-title],
+body[data-new-layout] [data-timeline-virtual-content] {
+  --font-family-sans: var(--v2-font-family-mono);
+  --v2-font-family-sans: var(--v2-font-family-mono);
+  --font-size-base: 12.5px;
+  --font-size-small: 12px;
+  font-family: var(--v2-font-family-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
+body[data-new-layout] [data-timeline-virtual-content] {
+  /* Density: terminal-tight. Halving --v2-cell-y halves both spacing rules at
+     once — the TurnGap row (2 cells) and the data-separate blank line (1 cell)
+     both read it, so the whole rhythm compresses without touching either. */
+  --v2-cell-y: 10px;
+
+  /* The gutter widens from 10px to 18px so it can carry glyph prefixes (❯, #)
+     as well as the 2px hung rules; the container below pads the text column
+     out to make the room. */
+  --rule-inset: 18px;
+
+  [data-slot="session-turn-message-container"] {
+    padding-inline-start: 34px;
+  }
+
+  /* The comment strip's wrapper is not a message container, but its chips sit
+     on the same text column as everything else in the stream. */
+  [data-timeline-row="CommentStrip"] [data-component="session-turn"] > div {
+    padding-inline-start: 34px;
+  }
+
+  /* Tool calls read as dim command invocations: lowercase mono, command and
+     args at the same muted level, the status glyph in the icon column doing
+     the signalling. */
+  [data-component="tool-trigger"] {
+    [data-slot="basic-tool-tool-info"] {
+      font-size: 12.5px;
+    }
+
+    [data-slot="basic-tool-tool-title"],
+    [data-slot="basic-tool-tool-subtitle"],
+    [data-slot="basic-tool-tool-arg"] {
+      font-size: 12.5px;
+      font-weight: var(--font-weight-regular);
+      color: var(--v2-text-text-muted);
+    }
+
+    [data-slot="basic-tool-tool-title"].capitalize {
+      text-transform: lowercase;
+    }
+  }
+
+  [data-component="task-tool-card"] {
+    [data-component="task-tool-title"] {
+      font-size: 12.5px;
+      font-weight: var(--font-weight-regular);
+      letter-spacing: 0;
+      text-transform: lowercase;
+    }
+
+    [data-slot="basic-tool-tool-subtitle"] {
+      font-size: 12.5px;
+      letter-spacing: 0;
+    }
+  }
+
+  [data-component="edit-trigger"] [data-slot="message-part-title"],
+  [data-component="write-trigger"] [data-slot="message-part-title"] {
+    font-size: 12.5px;
+    font-weight: var(--font-weight-regular);
+  }
+
+  /* The collapsed context group header joins the command lines it summarises. */
+  [data-slot="context-tool-group-title"] {
+    font-size: 12.5px;
+    font-weight: var(--font-weight-regular);
+    color: var(--v2-text-text-muted);
+  }
+
+  /* basic-tool-v2 hard-codes 13px/-0.04px for Inter; the mono face wants the
+     shared size and no negative tracking. */
+  [data-slot="basic-tool-v2-title"],
+  [data-slot="basic-tool-v2-subtitle"],
+  [data-slot="basic-tool-v2-arg"] {
+    font-size: 12.5px;
+    letter-spacing: 0;
+  }
+
+  /* Prose: terminal output, not an article. Headings compress to one step so
+     they read as emphasis rather than typography. */
+  [data-component="markdown"] {
+    line-height: 150%;
+  }
+
+  [data-component="markdown"] :is(h1, h2) {
+    font-size: 13px;
+  }
+
+  [data-component="markdown"] :is(h3, h4, h5, h6) {
+    font-size: 12.5px;
+  }
+
+  [data-component="bash-output"] [data-slot="bash-pre"] code {
+    font-size: 12.5px;
+  }
+
+  /* Reasoning is commentary: dim, and marked with the comment glyph in the
+     gutter column where the user turn carries its prompt glyph. */
+  [data-component="reasoning-part"] {
+    position: relative;
+
+    [data-component="markdown"] {
+      margin-top: 8px;
+      font-size: 12.5px;
+    }
+
+    &::before {
+      content: "#";
+      position: absolute;
+      top: 8px;
+      inset-inline-start: calc(-1 * var(--rule-inset));
+      width: var(--rule-inset);
+      color: var(--v2-text-text-faint);
+      line-height: 150%;
+      pointer-events: none;
+    }
+  }
+
+  [data-slot="session-turn-thinking"] {
+    margin-top: 6px;
+    font-weight: var(--font-weight-regular);
+    color: var(--v2-text-text-muted);
+  }
+
+  /* Density: the 24px web-app part margins halve with the cell rhythm. */
+  [data-component="text-part"] {
+    margin-top: 12px;
+  }
+
+  [data-component="tool-output"] {
+    margin-bottom: 12px;
+  }
+
+  [data-component="todos"] {
+    padding: 6px 0 12px;
+  }
+
+  /* The queued-status line under a user turn: a dim bracketed annotation on
+     the left-aligned stream, [queued — runs after this turn]. */
+  [data-slot="session-turn-pending-delivery"] {
+    text-align: start;
+    color: var(--v2-text-text-faint);
+
+    &::before {
+      content: "[";
+    }
+
+    &::after {
+      content: "]";
+    }
+  }
+}
+
+/* ── The live status line's glyphs ──
+ *
+ * Structural rules are unscoped: the row renders in both layouts, and without the
+ * one-line clip the spinner's frame strip would stack visibly. Tone (muted colour)
+ * lives in the terminal-pass block above. All motion is pure CSS and sits behind
+ * prefers-reduced-motion; without it every status shows its first frame as a static
+ * mark in the same 20px glyph column the thinking canvas occupies.
+ */
+[data-slot="session-turn-thinking"] {
+  [data-slot="session-turn-status-glyph"] {
+    flex: 0 0 auto;
+    inline-size: 20px;
+    text-align: center;
+    font-family: var(--v2-font-family-mono);
+    line-height: 1.5;
+
+    &[data-spinner] {
+      overflow: hidden;
+      height: 1.5em;
+      height: 1lh;
+    }
+  }
+
+  [data-slot="session-turn-status-glyph-strip"] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  [data-slot="session-turn-status-dots"] {
+    letter-spacing: 1px;
+  }
+
+  [data-slot="session-turn-status-cursor"] {
+    margin-inline-start: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* 1 + 4: the whole line blinks, slowly. */
+  [data-slot="session-turn-thinking"][data-status="question"],
+  [data-slot="session-turn-thinking"][data-status="retrying"] {
+    animation: v2-turn-status-blink 1.6s linear infinite;
+  }
+
+  /* 3 + 5: braille spinner — the strip steps one line per frame through the clip. */
+  [data-slot="session-turn-status-glyph"][data-spinner] [data-slot="session-turn-status-glyph-strip"] {
+    animation: v2-turn-status-spin 2s steps(10, end) infinite;
+  }
+
+  [data-slot="session-turn-status-glyph"][data-spinner="fast"] [data-slot="session-turn-status-glyph-strip"] {
+    animation-duration: 0.8s;
+  }
+
+  /* 2: three dots pulsing in sequence. */
+  [data-slot="session-turn-status-dots"] > span {
+    animation: v2-turn-status-dot 1.2s linear infinite;
+  }
+
+  [data-slot="session-turn-status-dots"] > span:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  [data-slot="session-turn-status-dots"] > span:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  /* 7: the block cursor after "writing". */
+  [data-slot="session-turn-status-cursor"] {
+    animation: v2-turn-status-blink 1s steps(1, end) infinite;
+  }
+}
+
+@keyframes v2-turn-status-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes v2-turn-status-spin {
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+@keyframes v2-turn-status-dot {
+  0%,
+  15% {
+    opacity: 0.25;
+  }
+
+  25%,
+  55% {
+    opacity: 1;
+  }
+
+  65%,
+  100% {
+    opacity: 0.25;
+  }
+}

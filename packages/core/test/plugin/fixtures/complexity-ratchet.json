@@ -1,0 +1,149 @@
+[
+  {
+    "id": "typescript-small-handler",
+    "label": "clean",
+    "path": "src/handler.ts",
+    "before": "",
+    "after": "export function handle(input: Input) {\n  const parsed = schema.parse(input)\n  return service.run(parsed)\n}"
+  },
+  {
+    "id": "python-simple-transform",
+    "label": "clean",
+    "path": "app/transform.py",
+    "before": "",
+    "after": "def transform(items):\n    return [item.name.strip() for item in items if item.active]"
+  },
+  {
+    "id": "go-small-switch",
+    "label": "clean",
+    "path": "command/run.go",
+    "before": "",
+    "after": "func run(name string) error {\n  switch name {\n  case \"start\":\n    return start()\n  case \"stop\":\n    return stop()\n  default:\n    return errors.New(\"unknown command\")\n  }\n}"
+  },
+  {
+    "id": "rust-exhaustive-match",
+    "label": "clean",
+    "path": "src/state.rs",
+    "before": "",
+    "after": "fn label(state: State) -> &'static str {\n    match state {\n        State::Ready => \"ready\",\n        State::Running => \"running\",\n        State::Stopped => \"stopped\",\n        State::Failed => \"failed\",\n    }\n}"
+  },
+  {
+    "id": "java-large-data-builder",
+    "label": "clean",
+    "path": "src/Palette.java",
+    "before": "",
+    "after": "public final class Palette {\n  private static final String[] COLORS = {\n    \"amber\", \"blue\", \"coral\", \"denim\", \"emerald\", \"fawn\",\n    \"gold\", \"hazel\", \"indigo\", \"jade\", \"khaki\", \"lilac\",\n    \"mint\", \"navy\", \"ochre\", \"pearl\", \"quartz\", \"rose\",\n    \"sage\", \"teal\", \"umber\", \"violet\", \"white\", \"xanthic\",\n    \"yellow\", \"zinc\"\n  };\n}"
+  },
+  {
+    "id": "typescript-intentional-callback",
+    "label": "clean",
+    "path": "test/clock.test.ts",
+    "before": "",
+    "after": "const dispose = register(() => {})\nexpect(dispose).toBeDefined()"
+  },
+  {
+    "id": "typescript-placeholder-identifier",
+    "label": "clean",
+    "path": "src/errors.ts",
+    "before": "",
+    "after": "import { NotImplementedError } from './errors'\nexport function known(error: unknown) {\n  return error instanceof NotImplementedError\n}"
+  },
+  {
+    "id": "typescript-function-types",
+    "label": "clean",
+    "path": "src/types.ts",
+    "before": "",
+    "after": "type Start = () => {}\ntype Stop = () => {}\ntype Reset = () => {}"
+  },
+  {
+    "id": "python-abstract-method",
+    "label": "clean",
+    "path": "app/provider.py",
+    "before": "",
+    "after": "class Provider(ABC):\n    @abstractmethod\n    def execute(self, request):\n        raise NotImplementedError()"
+  },
+  {
+    "id": "typescript-help-strings",
+    "label": "clean",
+    "path": "src/help.ts",
+    "before": "",
+    "after": "export const help = [\n  'if auth fails, sign in',\n  'if the token expires, refresh',\n  'if the server fails, retry',\n  'if retry fails, ask support',\n  'if locked, wait',\n  'if denied, ask an admin',\n  'if stale, reload',\n  'if blank, restart',\n  'if setup fails, read docs',\n  'if problems remain, file an issue',\n]"
+  },
+  {
+    "id": "typescript-documented-placeholder",
+    "label": "clean",
+    "path": "src/help.ts",
+    "before": "",
+    "after": "const documentation = `\nthrow new Error(\"not implemented\")\n`\n/*\nthrow new Error(\"not implemented\")\n*/"
+  },
+  {
+    "id": "python-mixed-abstract-concrete",
+    "label": "erosion",
+    "path": "app/provider.py",
+    "before": "",
+    "after": "class Provider(ABC):\n    @abstractmethod\n    def name(self):\n        raise NotImplementedError()\n\ndef execute_request(request):\n    raise NotImplementedError('pending')"
+  },
+  {
+    "id": "generated-placeholder-ignored",
+    "label": "clean",
+    "path": "src/generated/client.ts",
+    "before": "",
+    "after": "export function pending() { throw new Error(\"not implemented\") }"
+  },
+  {
+    "id": "typescript-removes-branches",
+    "label": "clean",
+    "path": "src/search.ts",
+    "before": "if (kind === 'a') return a()\nif (kind === 'b') return b()\nif (kind === 'c') return c()\nif (kind === 'd') return d()\nif (kind === 'e') return e()\nif (kind === 'f') return f()",
+    "after": "return handlers[kind]?.()"
+  },
+  {
+    "id": "typescript-concentrated-branching",
+    "label": "erosion",
+    "path": "src/command.ts",
+    "before": "export function run(input: Input) {\n  return execute(input)\n}",
+    "after": "export function run(input: Input) {\n  if (input.kind === 'a') return executeA(input)\n  if (input.kind === 'b') return executeB(input)\n  if (input.kind === 'c') return executeC(input)\n  if (input.kind === 'd') return executeD(input)\n  if (input.kind === 'e') return executeE(input)\n  if (input.kind === 'f') return executeF(input)\n  if (input.kind === 'g') return executeG(input)\n  if (input.kind === 'h') return executeH(input)\n  if (input.kind === 'i') return executeI(input)\n  if (input.kind === 'j') return executeJ(input)\n  const a = normalize(input.a)\n  const b = normalize(input.b)\n  const c = normalize(input.c)\n  const d = normalize(input.d)\n  const e = normalize(input.e)\n  const f = normalize(input.f)\n  const g = normalize(input.g)\n  const h = normalize(input.h)\n  const i = normalize(input.i)\n  const j = normalize(input.j)\n  const k = normalize(input.k)\n  const l = normalize(input.l)\n  const m = normalize(input.m)\n  const n = normalize(input.n)\n  const o = normalize(input.o)\n  const p = normalize(input.p)\n  const q = normalize(input.q)\n  const r = normalize(input.r)\n  const s = normalize(input.s)\n  const t = normalize(input.t)\n  const u = normalize(input.u)\n  const v = normalize(input.v)\n  const w = normalize(input.w)\n  const x = normalize(input.x)\n  const y = normalize(input.y)\n  const z = normalize(input.z)\n  return execute(input)\n}"
+  },
+  {
+    "id": "python-placeholder",
+    "label": "erosion",
+    "path": "app/provider.py",
+    "before": "",
+    "after": "def execute(request):\n    raise NotImplementedError('provider pending')"
+  },
+  {
+    "id": "rust-placeholder",
+    "label": "erosion",
+    "path": "src/provider.rs",
+    "before": "",
+    "after": "fn execute(request: Request) -> Response {\n    todo!()\n}"
+  },
+  {
+    "id": "java-placeholder",
+    "label": "erosion",
+    "path": "src/Provider.java",
+    "before": "",
+    "after": "Response execute(Request request) {\n  throw new Error(\"not implemented\");\n}"
+  },
+  {
+    "id": "go-empty-scaffolding",
+    "label": "erosion",
+    "path": "server/routes.go",
+    "before": "",
+    "after": "func createUser() {}\nfunc updateUser() {}\nfunc deleteUser() {}"
+  },
+  {
+    "id": "duplicated-validation",
+    "label": "erosion",
+    "path": "src/validate.ts",
+    "before": "",
+    "after": "validateRequired(input.name, 'name')\nvalidateRequired(input.name, 'name')\nvalidateRequired(input.name, 'name')\nvalidateRequired(input.name, 'name')\nvalidateRequired(input.name, 'name')\nvalidateRequired(input.name, 'name')\nvalidateRequired(input.name, 'name')\nvalidateRequired(input.name, 'name')\nvalidateRequired(input.name, 'name')"
+  },
+  {
+    "id": "c-large-switch",
+    "label": "erosion",
+    "path": "src/dispatch.c",
+    "before": "",
+    "after": "int dispatch(int kind) {\n  switch (kind) {\n    case 1: if (ready()) return run(1); break;\n    case 2: if (ready()) return run(2); break;\n    case 3: if (ready()) return run(3); break;\n    case 4: if (ready()) return run(4); break;\n    case 5: if (ready()) return run(5); break;\n    case 6: if (ready()) return run(6); break;\n    case 7: if (ready()) return run(7); break;\n    case 8: if (ready()) return run(8); break;\n    case 9: if (ready()) return run(9); break;\n    case 10: if (ready()) return run(10); break;\n    default: return -1;\n  }\n}"
+  }
+]

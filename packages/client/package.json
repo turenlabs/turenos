@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@turenlabs/client",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./effect": "./src/effect.ts"
+  },
+  "scripts": {
+    "generate": "bun run script/build.ts",
+    "check:generated": "bun run generate && git diff --exit-code -- src/generated src/generated-effect",
+    "test": "bun test --timeout 60000",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@turenlabs/schema": "workspace:*",
+    "@turenlabs/protocol": "workspace:*"
+  },
+  "peerDependencies": {
+    "effect": "4.0.0-beta.83"
+  },
+  "peerDependenciesMeta": {
+    "effect": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@turenlabs/core": "workspace:*",
+    "@turenlabs/httpapi-codegen": "workspace:*",
+    "@turenlabs/server": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:"
+  }
+}

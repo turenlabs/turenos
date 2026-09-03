@@ -1,0 +1,89 @@
+diff --git a/dist/ghostty-web.js b/dist/ghostty-web.js
+index ec4e6785d2d1030a0d67db0890093dfba60e3b4c..8afbd2ee99ff0c02beea624c868ed473b2968dac 100644
+--- a/dist/ghostty-web.js
++++ b/dist/ghostty-web.js
+@@ -1237,11 +1237,14 @@ const P = {
+     var Q;
+     if (this.isDisposed || !((Q = this.mouseConfig) != null && Q.hasMouseTracking()))
+       return;
++    if (A.deltaY === 0)
++      return;
++    A.preventDefault(), A.stopPropagation();
+     const B = this.pixelToCell(A);
+     if (!B)
+       return;
+     const I = A.deltaY < 0 ? 64 : 65;
+-    this.sendMouseEvent(I, B.col, B.row, !1, A), A.preventDefault();
++    this.sendMouseEvent(I, B.col, B.row, !1, A);
+   }
+   /**
+    * Emit paste data with bracketed paste support
+@@ -2570,8 +2573,11 @@ class wA {
+       M && (M.activate(I), (I.ctrlKey || I.metaKey) && I.preventDefault());
+     }, this.handleWheel = (I) => {
+       var C, E, D;
+-      if (I.preventDefault(), I.stopPropagation(), this.customWheelEventHandler && this.customWheelEventHandler(I))
++      if (this.customWheelEventHandler && this.customWheelEventHandler(I))
++        return I.preventDefault(), void I.stopPropagation();
++      if (this.wasmTerm?.hasMouseTracking())
+         return;
++      I.preventDefault(), I.stopPropagation();
+       if (((C = this.wasmTerm) == null ? void 0 : C.isAlternateScreen()) ?? !1) {
+         const i = I.deltaY > 0 ? "down" : "up", o = Math.min(Math.abs(Math.round(I.deltaY / 33)), 5);
+         for (let G = 0; G < o; G++)
+diff --git a/lib/input-handler.ts b/lib/input-handler.ts
+index 83d6f3f22d13b80a254e300814c7a91f8dcd3316..b6042f2aa2a1d7138abae54daf6a737b544b21ae 100644
+--- a/lib/input-handler.ts
++++ b/lib/input-handler.ts
+@@ -894,6 +894,11 @@ export class InputHandler {
+     if (this.isDisposed) return;
+     if (!this.mouseConfig?.hasMouseTracking()) return;
+ 
++    if (event.deltaY === 0) return;
++
++    event.preventDefault();
++    event.stopPropagation();
++
+     const cell = this.pixelToCell(event);
+     if (!cell) return;
+ 
+@@ -901,9 +906,6 @@ export class InputHandler {
+     const button = event.deltaY < 0 ? 64 : 65;
+ 
+     this.sendMouseEvent(button, cell.col, cell.row, false, event);
+-
+-    // Prevent default scrolling when mouse tracking is active
+-    event.preventDefault();
+   }
+ 
+   /**
+diff --git a/lib/terminal.ts b/lib/terminal.ts
+index 2ca5ac8ce8cedc58696bcce82c3797a2c9242955..62fc5abae5f00fb59a31abc162ea5c9639f27560 100644
+--- a/lib/terminal.ts
++++ b/lib/terminal.ts
+@@ -1581,15 +1581,21 @@ export class Terminal implements ITerminalCore {
+    * Handle wheel events for scrolling (Phase 2)
+    */
+   private handleWheel = (e: WheelEvent): void => {
+-    // Always prevent default browser scrolling
+-    e.preventDefault();
+-    e.stopPropagation();
+-
+     // Allow custom handler to override
+     if (this.customWheelEventHandler && this.customWheelEventHandler(e)) {
++      e.preventDefault();
++      e.stopPropagation();
+       return;
+     }
+ 
++    // InputHandler owns mouse reporting. Allow its bubble listener to encode
++    // the wheel event for the foreground application.
++    if (this.wasmTerm?.hasMouseTracking()) return;
++
++    // Always prevent default browser scrolling
++    e.preventDefault();
++    e.stopPropagation();
++
+     // Check if in alternate screen mode (vim, less, htop, etc.)
+     const isAltScreen = this.wasmTerm?.isAlternateScreen() ?? false;
+ 

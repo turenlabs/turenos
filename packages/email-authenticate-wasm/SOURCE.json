@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "package": "@turenlabs/email-authenticate-wasm",
+  "version": "0.1.0",
+  "upstream": {
+    "name": "mail-auth",
+    "version": "0.12.1",
+    "commit": "73602fe6af3cc2dde5841fa970fdc4f8bc4d7806",
+    "crateSha256": "faa246141b9a9194be268605d9db7228784a0eb347d155eeaa223181037693d0",
+    "license": "Apache-2.0 OR MIT"
+  },
+  "patches": [
+    "vendor/mail-auth: add dns-offline feature and snapshot-only resolver",
+    "vendor/mail-auth: use web-time for offline wasm clock access"
+  ],
+  "features": ["rust-crypto", "dns-offline"],
+  "excludedFeatures": ["aws-lc-rs", "ring", "dns-hickory", "dns-doh", "arc", "report", "generate", "rkyv"],
+  "toolchain": {
+    "rust": "1.94.0",
+    "wasmPack": "0.15.0",
+    "target": "wasm32-unknown-unknown",
+    "wasmOpt": ["-O", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]
+  },
+  "limits": {
+    "messageBytes": 16777216,
+    "requestBytes": 25165824,
+    "dnsEntries": 4096,
+    "txtBytes": 262144,
+    "dkimSignatures": 32,
+    "dnsQueries": 128,
+    "spfLookups": 10,
+    "outputBytes": 524288
+  },
+  "network": false,
+  "filesystem": false,
+  "execution": false
+}

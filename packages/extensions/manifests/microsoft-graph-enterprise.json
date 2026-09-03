@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/microsoft-graph-enterprise",
+  "name": "Microsoft Graph Enterprise / Entra Identity",
+  "description": "Investigate Microsoft Entra identity and enterprise Microsoft Graph context through Microsoft's hosted MCP server",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://learn.microsoft.com/graph/mcp-server/overview",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "microsoft-graph-enterprise",
+      "name": "Microsoft Graph Enterprise / Entra Identity",
+      "description": "Suggest and execute read-only Microsoft Graph queries for enterprise identity context",
+      "adapter": "mcp:microsoft-graph-enterprise",
+      "secrets": [
+        {
+          "id": "MICROSOFT_GRAPH_CLIENT_SECRET",
+          "label": "Microsoft Entra OAuth client secret (optional)",
+          "required": false
+        }
+      ],
+      "configuration": [{ "id": "clientId", "label": "Microsoft Entra OAuth client ID", "required": true }],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "hosted", "url": "https://mcp.svc.cloud.microsoft/enterprise" },
+      "connection": {
+        "oauth": { "clientId": "clientId", "clientSecret": "MICROSOFT_GRAPH_CLIENT_SECRET" }
+      },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 3, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": ["microsoft_graph_suggest_queries", "microsoft_graph_get", "microsoft_graph_list_properties"],
+        "write": []
+      },
+      "instructions": "Register a least-privilege Entra OAuth application with TurenOS's loopback redirect. Use delegated read scopes only and do not permit Graph write, directory administration, or consent-management operations."
+    }
+  ]
+}

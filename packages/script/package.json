@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/package",
+  "name": "@turenlabs/script",
+  "version": "1.0.1",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "bun test --timeout 30000",
+    "typecheck": "tsgo --noEmit",
+    "version:check": "bun ./src/check.ts"
+  },
+  "dependencies": {
+    "semver": "^7.6.3"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/semver": "^7.5.8"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

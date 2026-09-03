@@ -1,0 +1,46 @@
+@layer components {
+  [data-component="status-indicator-v2"] {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    color: var(--v2-text-text-muted);
+    font-family: var(--v2-font-family-mono);
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 16px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  [data-component="status-indicator-v2"]::before {
+    width: 6px;
+    height: 6px;
+    flex: none;
+    border-radius: var(--v2-radius-pill);
+    background: currentColor;
+    content: "";
+  }
+
+  [data-component="status-indicator-v2"][data-shape="bar"]::before {
+    width: 2px;
+    height: 14px;
+    border-radius: var(--v2-radius-control);
+  }
+
+  [data-component="status-indicator-v2"][data-tone="info"] {
+    color: var(--v2-state-fg-info);
+  }
+
+  [data-component="status-indicator-v2"][data-tone="success"] {
+    color: var(--v2-state-fg-success);
+  }
+
+  [data-component="status-indicator-v2"][data-tone="warning"] {
+    color: var(--v2-state-fg-warning);
+  }
+
+  [data-component="status-indicator-v2"][data-tone="danger"] {
+    color: var(--v2-state-fg-danger);
+  }
+}

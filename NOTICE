@@ -1,0 +1,24 @@
+TurenOS
+Copyright (c) 2026 Turen Labs
+
+TurenOS is an independently maintained hard fork of OpenCode.
+Copyright (c) 2025 opencode contributors.
+Upstream fork point:
+https://github.com/anomalyco/opencode/commit/3a1c6df9e24672f0761a6ced18e1315d89334baf
+
+OpenCode is licensed under the MIT License. The complete license text is in
+LICENSE. TurenOS modifications are distributed under the same license unless a
+file states otherwise.
+
+This product includes software derived from Thinking Orbs.
+Copyright (c) 2026 Jakub Antalik.
+Source: https://github.com/Jakubantalik/thinking-orbs
+Pinned source commit: eda2d708b99ab871993bbea5a5f08d23a14da436
+Thinking Orbs is licensed under the MIT License. The complete third-party
+license text is in packages/ui/src/components/thinking-engine/THIRD_PARTY_LICENSE.txt
+in the source tree and licenses/Thinking-Orbs-MIT.txt in TurenOS Desktop.
+
+Exact third-party runtime package versions, declared licenses, source locations,
+and installed license texts are distributed in licenses/THIRD_PARTY_NOTICES.txt
+and licenses/THIRD_PARTY_LICENSES.json. These files are regenerated from the
+runtime dependency closure before every Desktop build.

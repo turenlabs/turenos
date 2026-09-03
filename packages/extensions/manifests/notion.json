@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/notion",
+  "name": "Notion",
+  "description": "Search, read, create, and update pages in a Notion workspace",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://developers.notion.com/docs/get-started-with-mcp",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "notion",
+      "name": "Notion",
+      "description": "Search, read, create, and update pages in a Notion workspace",
+      "adapter": "mcp:notion",
+      "secrets": [],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": {
+        "type": "hosted",
+        "url": "https://mcp.notion.com/mcp"
+      },
+      "authentication": "oauth",
+      "localOnly": true,
+      "tools": {
+        "allow": [
+          "notion-search",
+          "notion-fetch",
+          "notion-create-pages",
+          "notion-update-page",
+          "notion-move-pages",
+          "notion-duplicate-page",
+          "notion-create-database",
+          "notion-update-data-source",
+          "notion-create-view",
+          "notion-update-view",
+          "notion-query-data-sources",
+          "notion-query-database-view",
+          "notion-query-meeting-notes",
+          "notion-create-comment",
+          "notion-get-comments",
+          "notion-get-teams",
+          "notion-get-users",
+          "notion-get-async-task"
+        ],
+        "write": [
+          "notion-create-pages",
+          "notion-update-page",
+          "notion-move-pages",
+          "notion-duplicate-page",
+          "notion-create-database",
+          "notion-update-data-source",
+          "notion-create-view",
+          "notion-update-view",
+          "notion-create-comment"
+        ]
+      },
+      "instructions": "Use Notion search and fetch before editing pages. Confirm the target page or database and summarize intended writes before using write tools."
+    }
+  ]
+}

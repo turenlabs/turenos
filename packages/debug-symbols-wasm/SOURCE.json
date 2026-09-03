@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "package": "@turenlabs/debug-symbols-wasm",
+  "version": "0.1.0",
+  "dependencies": {
+    "gimli": "0.34.0",
+    "pdb": "0.8.0",
+    "object": "0.37.3",
+    "rustc-demangle": "0.1.28",
+    "cpp_demangle": "0.5.1",
+    "msvc-demangler": "0.11.0"
+  },
+  "license": "MIT OR Apache-2.0",
+  "upstream": {
+    "object": "0.37.3",
+    "gimli": "0.34.0",
+    "pdb": "0.8.0"
+  },
+  "limits": {
+    "inputBytes": 67108864,
+    "records": 4096,
+    "nameBytes": 4096
+  },
+  "network": false,
+  "filesystem": false,
+  "execution": false
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@turenlabs/ghidra-decompiler-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TurenOS-maintained Ghidra C++ decompiler built for WebAssembly",
+  "main": "dist/ghidra_decompiler.js",
+  "files": [
+    "dist/"
+  ],
+  "license": "Apache-2.0",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

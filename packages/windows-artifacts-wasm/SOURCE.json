@@ -1,0 +1,5 @@
+{
+  "crate": "turen-windows-artifacts-wasm",
+  "rust": "1.97.1",
+  "wasmPack": "0.14.0"
+}

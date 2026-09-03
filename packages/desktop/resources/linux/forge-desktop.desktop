@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=TurenOS
+Exec=/opt/Forge/com.turenlabs.forge %U
+Terminal=false
+Type=Application
+Icon=com.turenlabs.forge
+StartupWMClass=com.turenlabs.forge
+NoDisplay=true
+Comment=TurenOS security engineering workbench
+Categories=Development;

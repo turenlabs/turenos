@@ -1,0 +1,839 @@
+# TurenOS GitHub release pipeline.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact version from the root VERSION file, without a leading v
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: forge-release
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.version.outputs.sha }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Validate release identity
+        env:
+          FORGE_CHANNEL: prod
+          FORGE_VERSION: ${{ inputs.version }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          canonical=$(tr -d '[:space:]' < VERSION)
+          if [ "${{ github.ref_name }}" != "dev" ]; then
+            echo "Release workflow must run from dev" >&2
+            exit 1
+          fi
+          if [ "$FORGE_VERSION" != "$canonical" ]; then
+            echo "Requested version $FORGE_VERSION does not match VERSION ($canonical)" >&2
+            exit 1
+          fi
+          release_sha=$(git rev-parse HEAD)
+          # --verify --quiet, because a bare `git rev-parse` echoes the ref it
+          # could not resolve back to stdout. That made tag_sha non-empty for a
+          # tag that does not exist, so preflight read every new version as
+          # "already released" and no release could ever start.
+          tag_sha=$(git rev-parse --verify --quiet "v${FORGE_VERSION}^{commit}" 2>/dev/null || true)
+          release_json=$(gh release view "v${FORGE_VERSION}" --repo "$GH_REPO" \
+            --json tagName,isDraft,targetCommitish 2>/dev/null || true)
+          action=$(RELEASE_SHA="$release_sha" TAG_SHA="$tag_sha" RELEASE_JSON="$release_json" bun script/release-state.ts)
+          resume_tag=""
+          if [ "$action" = "resume" ]; then resume_tag="v${FORGE_VERSION}"; fi
+          FORGE_RESUME_TAG="$resume_tag" bun script/release-check.ts
+          bun run version:check
+
+      - name: Resolve version outputs
+        id: version
+        env:
+          FORGE_CHANNEL: prod
+          FORGE_VERSION: ${{ inputs.version }}
+          GH_REPO: ${{ github.repository }}
+        run: bun script/version.ts
+
+      - name: Validate signing configuration
+        env:
+          APPLE_CERTIFICATE_APPLICATION_P12: ${{ secrets.APPLE_CERTIFICATE_APPLICATION_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          AZURE_TRUSTED_SIGNING_PROFILE: ${{ secrets.AZURE_TRUSTED_SIGNING_PROFILE }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          RELEASE_GPG_PRIVATE_KEY_B64: ${{ secrets.RELEASE_GPG_PRIVATE_KEY_B64 }}
+          RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+          RELEASE_GPG_FINGERPRINT: ${{ secrets.RELEASE_GPG_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            APPLE_CERTIFICATE_APPLICATION_P12 \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_ID \
+            APPLE_ID_PASSWORD \
+            APPLE_TEAM_ID \
+            AZURE_CLIENT_ID \
+            AZURE_TENANT_ID \
+            AZURE_SUBSCRIPTION_ID \
+            AZURE_TRUSTED_SIGNING_ACCOUNT \
+            AZURE_TRUSTED_SIGNING_PROFILE \
+            AZURE_TRUSTED_SIGNING_ENDPOINT \
+            RELEASE_GPG_PRIVATE_KEY_B64 \
+            RELEASE_GPG_PASSPHRASE \
+            RELEASE_GPG_FINGERPRINT; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "Missing release signing secrets: ${missing[*]}" >&2
+            exit 1
+          fi
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+          printf '%s' "$APPLE_CERTIFICATE_APPLICATION_P12" | base64 --decode > "$tmp/apple.p12"
+          openssl pkcs12 -legacy -in "$tmp/apple.p12" -passin env:APPLE_CERTIFICATE_PASSWORD \
+            -clcerts -nokeys -out "$tmp/apple.pem" >/dev/null
+          openssl x509 -in "$tmp/apple.pem" -checkend 86400 -noout
+          openssl x509 -in "$tmp/apple.pem" -subject -noout | grep -Fq 'Developer ID Application'
+          [[ "$APPLE_ID" == *@* ]]
+          [[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]
+          for id in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            [[ "${!id}" =~ ^[0-9A-Fa-f-]{36}$ ]] || { echo "$id must be a UUID" >&2; exit 1; }
+          done
+          [[ "$AZURE_TRUSTED_SIGNING_ENDPOINT" == https://* ]]
+          printf '%s' "$RELEASE_GPG_PRIVATE_KEY_B64" | base64 --decode > "$tmp/release.gpg"
+          fingerprint=$(gpg --batch --with-colons --import-options show-only --import "$tmp/release.gpg" \
+            | awk -F: '$1 == "fpr" { print toupper($10); exit }')
+          expected=$(printf '%s' "$RELEASE_GPG_FINGERPRINT" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+          test -n "$fingerprint"
+          test "$fingerprint" = "$expected"
+          export GNUPGHOME="$tmp/gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          gpg --batch --import "$tmp/release.gpg" >/dev/null
+          printf '%s' "$RELEASE_GPG_PASSPHRASE" > "$tmp/passphrase"
+          printf 'TurenOS release signing preflight\n' > "$tmp/probe"
+          gpg --batch --yes --detach-sign --local-user "$expected" --pinentry-mode loopback \
+            --passphrase-file "$tmp/passphrase" --output "$tmp/probe.sig" "$tmp/probe"
+          gpg --batch --verify "$tmp/probe.sig" "$tmp/probe"
+
+      - name: Validate Azure signing identity
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Typecheck
+        run: bun turbo typecheck --concurrency=2
+
+      - name: Unit tests
+        env:
+          GITHUB_ACTIONS: "false"
+        run: bun turbo test --concurrency=1
+
+      - name: Generated client gate
+        working-directory: packages/client
+        run: bun run check:generated
+
+      - name: HTTP API contract gate
+        working-directory: packages/forge
+        run: bun run test:httpapi
+
+  build-runtime:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: ubuntu-24.04
+            artifact: runtime-linux-x64
+          - host: ubuntu-24.04-arm
+            artifact: runtime-linux-arm64
+          - host: macos-15-intel
+            artifact: runtime-darwin-unsigned-x64
+          - host: macos-15
+            artifact: runtime-darwin-unsigned-arm64
+          - host: windows-2025
+            artifact: runtime-windows-unsigned-x64
+          - host: windows-11-arm
+            artifact: runtime-windows-unsigned-arm64
+    runs-on: ${{ matrix.settings.host }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Build Desktop runtime targets
+        env:
+          FORGE_CHANNEL: prod
+          FORGE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: bun --cwd packages/forge script/build.ts --skip-install --platform
+
+      - name: Stage non-Windows runtime archives
+        if: runner.os != 'Windows'
+        working-directory: packages/forge/dist
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = Linux ]; then
+            for dir in forge-linux-*; do tar -czf "${dir}.tar.gz" -C "${dir}/bin" .; done
+          else
+            for dir in forge-darwin-*; do (cd "${dir}/bin" && zip -q -r "../../${dir}.zip" .); done
+          fi
+
+      - name: Upload Linux runtime archives
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.settings.artifact }}
+          if-no-files-found: error
+          path: packages/forge/dist/forge-linux-*.tar.gz
+
+      - name: Upload unsigned macOS runtime archives
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.settings.artifact }}
+          if-no-files-found: error
+          path: packages/forge/dist/forge-darwin-*.zip
+
+      - name: Upload unsigned Windows runtime binaries
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.settings.artifact }}
+          if-no-files-found: error
+          path: |
+            packages/forge/dist/forge-windows-*/bin/forge.exe
+            packages/forge/dist/forge-windows-*/bin/licenses/**
+
+  sign-runtime-macos:
+    needs: [preflight, build-runtime]
+    runs-on: macos-15
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+
+      - name: Import macOS signing certificate
+        uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
+        with:
+          keychain: build
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_APPLICATION_P12 }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Validate Apple notarization credentials
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: xcrun notarytool history --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID"
+
+      - name: Download unsigned macOS runtime archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: runtime-darwin-unsigned-*
+          path: unsigned
+          merge-multiple: true
+
+      - name: Sign, notarize, and verify macOS runtimes
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          identity=$(security find-identity -v -p codesigning | awk '/Developer ID Application/ { print $2; exit }')
+          test -n "$identity"
+          mkdir signed
+          archives=(unsigned/*.zip)
+          test "${#archives[@]}" -eq 3
+          for archive in "${archives[@]}"; do
+            dir=$(mktemp -d)
+            ditto -x -k "$archive" "$dir"
+            binary=$(find "$dir" -type f -name forge -perm -111 | head -1)
+            test -n "$binary"
+            codesign --force --timestamp --options runtime \
+              --entitlements packages/desktop/resources/entitlements.plist --sign "$identity" "$binary"
+            codesign --verify --strict --verbose=2 "$binary"
+            target="$PWD/signed/$(basename "$archive")"
+            (cd "$dir" && zip -q -r "$target" .)
+            xcrun notarytool submit "$target" --apple-id "$APPLE_ID" \
+              --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+            rm -rf "$dir"
+          done
+
+      - name: Upload signed macOS runtime archives
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runtime-darwin
+          if-no-files-found: error
+          path: signed/*.zip
+
+  sign-runtime-windows:
+    needs: [preflight, build-runtime]
+    runs-on: windows-2025
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TRUSTED_SIGNING_ACCOUNT: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+      AZURE_TRUSTED_SIGNING_PROFILE: ${{ secrets.AZURE_TRUSTED_SIGNING_PROFILE }}
+      AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+      FORGE_REQUIRE_SIGNING: "1"
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+
+      - name: Download unsigned Windows runtime binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: runtime-windows-unsigned-*
+          path: unsigned
+          merge-multiple: true
+
+      - name: Azure login
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign and verify Windows runtime binaries
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          $files = @(Get-ChildItem unsigned -Recurse -Filter forge.exe)
+          if ($files.Count -ne 3) {
+            throw "Expected 3 Windows runtime binaries, found $($files.Count)"
+          }
+          & ./script/sign-windows.ps1 @($files.FullName)
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            if ($signature.Status -ne "Valid") {
+              throw "Invalid signature for $($file.FullName): $($signature.Status)"
+            }
+            if ($file.FullName -notmatch "arm64") {
+              $reported = (& $file.FullName --version).Trim()
+              if ($reported -ne $env:EXPECTED_VERSION) {
+                throw "$($file.FullName) reports $reported; expected $env:EXPECTED_VERSION"
+              }
+            }
+          }
+
+      - name: Stage signed Windows runtime archives
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path signed -Force | Out-Null
+          Get-ChildItem unsigned -Recurse -Filter forge.exe | ForEach-Object {
+            $target = $_.Directory.Parent.Name
+            Compress-Archive -Path "$($_.Directory.FullName)\*" -DestinationPath "signed\${target}.zip" -Force
+          }
+
+      - name: Upload signed Windows runtime archives
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runtime-windows
+          if-no-files-found: error
+          path: signed/*.zip
+
+  build-desktop:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: macos-15-intel
+            target: x86_64-apple-darwin
+            platform_flag: --mac --x64
+            install_flags: --os=darwin --cpu=x64
+          - host: macos-15
+            target: aarch64-apple-darwin
+            platform_flag: --mac --arm64
+            install_flags: --os=darwin --cpu=arm64
+          - host: windows-2025
+            target: x86_64-pc-windows-msvc
+            platform_flag: --win --x64
+            install_flags: ""
+          - host: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            platform_flag: --win --arm64
+            install_flags: --os=win32 --cpu=arm64
+          - host: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            platform_flag: --linux --x64
+            install_flags: --os=linux --cpu=x64
+          - host: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            platform_flag: --linux --arm64
+            install_flags: --os=linux --cpu=arm64
+    runs-on: ${{ matrix.settings.host }}
+    env:
+      FORGE_CHANNEL: prod
+      FORGE_VERSION: ${{ needs.preflight.outputs.version }}
+      RUST_TARGET: ${{ matrix.settings.target }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TRUSTED_SIGNING_ACCOUNT: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+      AZURE_TRUSTED_SIGNING_PROFILE: ${{ secrets.AZURE_TRUSTED_SIGNING_PROFILE }}
+      AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+      FORGE_REQUIRE_SIGNING: ${{ startsWith(matrix.settings.host, 'windows') && '1' || '0' }}
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+
+      - name: Import macOS signing certificate
+        if: runner.os == 'macOS'
+        uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
+        with:
+          keychain: build
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_APPLICATION_P12 }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Verify macOS signing identity
+        if: runner.os == 'macOS'
+        run: security find-identity -v -p codesigning | grep -Fq 'Developer ID Application'
+
+      - name: Validate Apple notarization credentials
+        if: runner.os == 'macOS'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: xcrun notarytool history --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID"
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          install-flags: ${{ matrix.settings.install_flags }}
+
+      - name: Azure login
+        if: runner.os == 'Windows'
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm
+
+      - name: Prepare Desktop and native sidecar
+        working-directory: packages/desktop
+        run: bun ./scripts/prepare.ts
+
+      - name: Verify staged sidecar version
+        shell: bash
+        working-directory: packages/desktop
+        run: |
+          binary=resources/forge-cli
+          if [ "${{ runner.os }}" = "Windows" ]; then binary=resources/forge-cli.exe; fi
+          reported=$("./$binary" --version)
+          if [ "$reported" != "$FORGE_VERSION" ]; then
+            echo "$binary reports $reported; expected $FORGE_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Build Desktop
+        working-directory: packages/desktop
+        run: bunx electron-vite build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.WEB_SENTRY_PROJECT }}
+          SENTRY_RELEASE: desktop@${{ needs.preflight.outputs.version }}
+          VITE_SENTRY_DSN: ${{ vars.WEB_SENTRY_DSN }}
+          VITE_SENTRY_ENVIRONMENT: production
+          VITE_SENTRY_RELEASE: desktop@${{ needs.preflight.outputs.version }}
+
+      - name: Package Desktop
+        working-directory: packages/desktop
+        timeout-minutes: 60
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE_APPLICATION_P12 || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_ID_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
+        run: bunx electron-builder ${{ matrix.settings.platform_flag }} --publish never --config electron-builder.config.ts
+
+      - name: Verify Windows Desktop signatures
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: packages/desktop
+        run: |
+          $files = @(Get-ChildItem dist -Recurse -Filter *.exe)
+          if ($files.Count -eq 0) { throw "No Windows executables were packaged" }
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            if ($signature.Status -ne "Valid") {
+              throw "Invalid signature for $($file.FullName): $($signature.Status)"
+            }
+          }
+
+      - name: Verify Windows Desktop identity and version
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: packages/desktop
+        run: |
+          $expectedArtifact = if ($env:RUST_TARGET.StartsWith("aarch64")) {
+            "turenos-desktop-win-arm64.exe"
+          } else {
+            "turenos-desktop-win-x64.exe"
+          }
+          $installer = Get-Item "dist/$expectedArtifact"
+          $unpacked = Get-ChildItem dist -Directory -Filter "win*-unpacked" | Select-Object -First 1
+          if (-not $unpacked) { throw "No unpacked Windows application was produced" }
+          $main = Get-Item (Join-Path $unpacked.FullName "TurenOS.exe")
+          foreach ($signed in @($installer, $main)) {
+            $signature = Get-AuthenticodeSignature $signed.FullName
+            if ($signature.SignerCertificate.Subject -notmatch "Turen Labs, Inc") {
+              throw "$($signed.Name) was not signed by Turen Labs"
+            }
+            if ($signature.SignerCertificate.Issuer -notmatch "Microsoft") {
+              throw "$($signed.Name) was not signed through Azure Trusted Signing"
+            }
+            if (-not $signature.TimeStamperCertificate) {
+              throw "$($signed.Name) is missing its Authenticode timestamp"
+            }
+          }
+          $bytes = [IO.File]::ReadAllBytes($main.FullName)
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+          $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          $expectedMachine = if ($env:RUST_TARGET.StartsWith("aarch64")) { 0xAA64 } else { 0x8664 }
+          if ($machine -ne $expectedMachine) {
+            throw "$($main.Name) has PE machine 0x$($machine.ToString('X4')); expected 0x$($expectedMachine.ToString('X4'))"
+          }
+          $allowedVersions = @($env:FORGE_VERSION, "$($env:FORGE_VERSION).0")
+          if ($installer.VersionInfo.ProductVersion -notin $allowedVersions) {
+            throw "$expectedArtifact reports product version $($installer.VersionInfo.ProductVersion); expected $($env:FORGE_VERSION)"
+          }
+          $asar = Join-Path $unpacked.FullName "resources/app.asar"
+          $content = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($asar))
+          if (-not $content.Contains('"version": "' + $env:FORGE_VERSION + '"')) {
+            throw "Packaged Windows application does not contain version $($env:FORGE_VERSION)"
+          }
+          if (-not $content.Contains("com.turenlabs.forge")) {
+            throw "Packaged Windows application does not contain the prod application identity"
+          }
+
+      - name: Verify macOS Desktop signature and notarization
+        if: runner.os == 'macOS'
+        shell: bash
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          app=$(find dist -maxdepth 2 -name '*.app' -type d | head -1)
+          dmg=$(find dist -maxdepth 1 -name '*.dmg' -type f | head -1)
+          zip=$(find dist -maxdepth 1 -name '*.zip' -type f | head -1)
+          test -n "$app"
+          test -n "$dmg"
+          test -n "$zip"
+          expected_arch=arm64
+          if [[ "$RUST_TARGET" == x86_64-* ]]; then expected_arch=x86_64; fi
+          verify_app() {
+            codesign --verify --deep --strict --verbose=2 "$1"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$1/Contents/Info.plist")" = "com.turenlabs.forge"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$1/Contents/Info.plist")" = "$FORGE_VERSION"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$1/Contents/Info.plist")" = "$FORGE_VERSION"
+            executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$1/Contents/Info.plist")
+            lipo -archs "$1/Contents/MacOS/$executable" | grep -Eq "(^| )${expected_arch}( |$)"
+            codesign --verify --strict --verbose=2 "$1/Contents/Resources/forge-cli"
+            lipo -archs "$1/Contents/Resources/forge-cli" | grep -Eq "(^| )${expected_arch}( |$)"
+            while IFS= read -r native; do codesign --verify --strict --verbose=2 "$native"; done \
+              < <(find "$1/Contents/Resources/native" -type f -name '*.node')
+          }
+          verify_app "$app"
+          xcrun stapler validate "$app"
+          mount_dir=$(mktemp -d)
+          cleanup_mount() {
+            if mount | grep -Fq "on $mount_dir "; then hdiutil detach "$mount_dir"; fi
+          }
+          trap cleanup_mount EXIT
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_dir"
+          mounted_app=$(find "$mount_dir" -maxdepth 1 -name '*.app' -type d | head -1)
+          test -n "$mounted_app"
+          verify_app "$mounted_app"
+          hdiutil detach "$mount_dir"
+          trap - EXIT
+          zip_dir=$(mktemp -d)
+          ditto -x -k "$zip" "$zip_dir"
+          zipped_app=$(find "$zip_dir" -maxdepth 1 -name '*.app' -type d | head -1)
+          test -n "$zipped_app"
+          verify_app "$zipped_app"
+
+      - name: Verify Linux Desktop identity and version
+        if: runner.os == 'Linux'
+        shell: bash
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          appimage=$(find dist -maxdepth 1 -name '*.AppImage' -type f | head -1)
+          deb=$(find dist -maxdepth 1 -name '*.deb' -type f | head -1)
+          rpm=$(find dist -maxdepth 1 -name '*.rpm' -type f | head -1)
+          test -n "$appimage"
+          test -n "$deb"
+          test -n "$rpm"
+          test "$(dpkg-deb -f "$deb" Package)" = "forge"
+          test "$(dpkg-deb -f "$deb" Version)" = "$FORGE_VERSION"
+          dpkg-deb -c "$deb" | grep -F 'com.turenlabs.forge' >/dev/null
+          test "$(rpm -qp --qf '%{NAME}' "$rpm")" = "forge"
+          test "$(rpm -qp --qf '%{VERSION}' "$rpm")" = "$FORGE_VERSION"
+          rpm -qlp "$rpm" | grep -F 'com.turenlabs.forge' >/dev/null
+          chmod +x "$appimage"
+          "$appimage" --appimage-extract >/dev/null
+          test -x squashfs-root/com.turenlabs.forge
+          expected_machine='AArch64'
+          if [[ "$RUST_TARGET" == x86_64-* ]]; then expected_machine='Advanced Micro Devices X86-64'; fi
+          readelf -h squashfs-root/com.turenlabs.forge | grep -F "$expected_machine" >/dev/null
+          grep -aFq '"version": "'"$FORGE_VERSION"'"' squashfs-root/resources/app.asar
+          grep -aFq 'com.turenlabs.forge' squashfs-root/resources/app.asar
+
+      - name: Upload Desktop release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-${{ matrix.settings.target }}
+          if-no-files-found: error
+          path: |
+            packages/desktop/dist/*.dmg
+            packages/desktop/dist/*.zip
+            packages/desktop/dist/*.exe
+            packages/desktop/dist/*.AppImage
+            packages/desktop/dist/*.deb
+            packages/desktop/dist/*.rpm
+
+  publish:
+    needs: [preflight, build-runtime, sign-runtime-macos, sign-runtime-windows, build-desktop]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Download Linux runtime archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: runtime-linux-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Download signed macOS runtime archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: runtime-darwin
+          path: release-assets
+
+      - name: Download signed Windows Desktop runtime archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: runtime-windows
+          path: release-assets
+
+      - name: Download Desktop artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: desktop-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Import release signing key
+        env:
+          RELEASE_GPG_PRIVATE_KEY_B64: ${{ secrets.RELEASE_GPG_PRIVATE_KEY_B64 }}
+          RELEASE_GPG_FINGERPRINT: ${{ secrets.RELEASE_GPG_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$RUNNER_TEMP/release-gnupg"
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          mkdir -m 700 "$GNUPGHOME"
+          key=$(mktemp)
+          trap 'rm -f "$key"' EXIT
+          printf '%s' "$RELEASE_GPG_PRIVATE_KEY_B64" | base64 --decode > "$key"
+          gpg --batch --import "$key"
+          fingerprint=$(printf '%s' "$RELEASE_GPG_FINGERPRINT" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+          gpg --batch --list-secret-keys "$fingerprint" >/dev/null
+          gpg --batch --armor --export "$fingerprint" > release-assets/RELEASE_SIGNING_KEY.asc
+
+      - name: Verify staged release and generate checksums
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          required=(
+            forge-linux-arm64.tar.gz
+            forge-linux-arm64-musl.tar.gz
+            forge-linux-x64.tar.gz
+            forge-linux-x64-baseline.tar.gz
+            forge-linux-x64-musl.tar.gz
+            forge-linux-x64-baseline-musl.tar.gz
+            forge-darwin-arm64.zip
+            forge-darwin-x64.zip
+            forge-darwin-x64-baseline.zip
+            forge-windows-arm64.zip
+            forge-windows-x64.zip
+            forge-windows-x64-baseline.zip
+          )
+          for file in "${required[@]}"; do
+            test -s "$file" || { echo "Missing required release asset: $file" >&2; exit 1; }
+          done
+          for pattern in \
+            'turenos-desktop-mac-x64.dmg' \
+            'turenos-desktop-mac-x64.zip' \
+            'turenos-desktop-mac-arm64.dmg' \
+            'turenos-desktop-mac-arm64.zip' \
+            'turenos-desktop-win-x64.exe' \
+            'turenos-desktop-win-arm64.exe' \
+            'turenos-desktop-linux-x64.AppImage' \
+            'turenos-desktop-linux-x64.deb' \
+            'turenos-desktop-linux-x64.rpm' \
+            'turenos-desktop-linux-arm64.AppImage' \
+            'turenos-desktop-linux-arm64.deb' \
+            'turenos-desktop-linux-arm64.rpm' \
+            'RELEASE_SIGNING_KEY.asc'; do
+            compgen -G "$pattern" >/dev/null || { echo "Missing Desktop asset: $pattern" >&2; exit 1; }
+          done
+          if find . -maxdepth 1 -type f -empty | grep -q .; then
+            echo "Release contains an empty asset" >&2
+            exit 1
+          fi
+          assets='[]'
+          while IFS= read -r file; do
+            hash=$(sha256sum "$file" | awk '{print $1}')
+            size=$(stat -c '%s' "$file")
+            assets=$(jq \
+              --arg name "$file" \
+              --arg sha256 "$hash" \
+              --argjson size "$size" \
+              '. + [{name: $name, size: $size, sha256: $sha256}]' <<< "$assets")
+          done < <(find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name release-manifest.json -printf '%f\n' | sort)
+          jq -n --arg version "$VERSION" --arg commit "$RELEASE_SHA" --argjson assets "$assets" \
+            '{version: $version, commit: $commit, assets: $assets}' > release-manifest.json
+          : > SHA256SUMS
+          while IFS= read -r file; do
+            sha256sum "$file" >> SHA256SUMS
+          done < <(find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' | sort)
+          sha256sum -c SHA256SUMS
+
+      - name: Sign and verify release assets
+        env:
+          RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+          RELEASE_GPG_FINGERPRINT: ${{ secrets.RELEASE_GPG_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          fingerprint=$(printf '%s' "$RELEASE_GPG_FINGERPRINT" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+          passphrase=$(mktemp)
+          trap 'rm -f "$passphrase"' EXIT
+          printf '%s' "$RELEASE_GPG_PASSPHRASE" > "$passphrase"
+          cd release-assets
+          for file in *; do
+            if [ "$file" = RELEASE_SIGNING_KEY.asc ]; then continue; fi
+            gpg --batch --yes --armor --detach-sign --local-user "$fingerprint" \
+              --pinentry-mode loopback --passphrase-file "$passphrase" "$file"
+          done
+          for signature in *.asc; do
+            if [ "$signature" = RELEASE_SIGNING_KEY.asc ]; then continue; fi
+            gpg --batch --verify "$signature" "${signature%.asc}"
+          done
+
+      - name: Create, upload, and verify draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin dev --tags --force
+          tag_sha=$(git rev-parse --verify --quiet "v${VERSION}^{commit}" 2>/dev/null || true)
+          release_json=$(gh release view "v${VERSION}" --repo "$GH_REPO" \
+            --json tagName,isDraft,targetCommitish 2>/dev/null || true)
+          action=$(FORGE_VERSION="$VERSION" RELEASE_SHA="$RELEASE_SHA" TAG_SHA="$tag_sha" \
+            RELEASE_JSON="$release_json" bun script/release-state.ts)
+          resume_tag=""
+          if [ "$action" = "resume" ]; then resume_tag="v${VERSION}"; fi
+          FORGE_VERSION="$VERSION" FORGE_RESUME_TAG="$resume_tag" bun script/release-check.ts
+          if [ "$action" = "create" ]; then
+            previous_tag=$(git tag --list 'v*' --sort=-version:refname | head -1)
+            args=("v${VERSION}" --repo "$GH_REPO" --draft --target "$RELEASE_SHA" --title "TurenOS ${VERSION}")
+            if [ -n "$previous_tag" ]; then
+              args+=(--generate-notes --notes-start-tag "$previous_tag")
+            else
+              notes=$(mktemp)
+              cat > "$notes" <<'EOF'
+          Initial TurenOS release baseline.
+
+          This release includes TurenOS Desktop and its managed native runtime for macOS, Windows, and Linux. SHA256SUMS, release-manifest.json, and their detached signatures describe and verify the shipped artifacts.
+          EOF
+              args+=(--notes-file "$notes")
+            fi
+            gh release create "${args[@]}"
+          else
+            echo "Resuming existing draft v${VERSION} at ${RELEASE_SHA}"
+          fi
+          gh release upload "v${VERSION}" release-assets/* --repo "$GH_REPO" --clobber
+          verify_dir=$(mktemp -d)
+          gh release download "v${VERSION}" --repo "$GH_REPO" --dir "$verify_dir"
+          (
+            cd "$verify_dir"
+            sha256sum -c SHA256SUMS
+            for signature in *.asc; do
+              if [ "$signature" = RELEASE_SIGNING_KEY.asc ]; then continue; fi
+              gpg --batch --verify "$signature" "${signature%.asc}"
+            done
+          )
+          gh release edit "v${VERSION}" --repo "$GH_REPO" --draft=false
+
+      - name: Remove release signing key
+        if: always()
+        run: rm -rf "$GNUPGHOME"

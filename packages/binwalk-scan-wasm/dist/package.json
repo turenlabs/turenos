@@ -1,0 +1,8 @@
+{
+  "name": "turen-binwalk-scan-wasm",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "type": "module",
+  "main": "turen_binwalk_scan_wasm.js",
+  "types": "turen_binwalk_scan_wasm.d.ts"
+}

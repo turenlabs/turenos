@@ -1,0 +1,139 @@
+[
+  { "id": "ripgrep-workspace", "shell": "bash", "command": "rg SessionRunner packages/core/src", "expected": "grep" },
+  { "id": "ripgrep-default-root", "shell": "bash", "command": "rg SessionRunner", "expected": "grep" },
+  { "id": "ripgrep-files", "shell": "bash", "command": "rg --files packages/core", "expected": "glob" },
+  {
+    "id": "grep-file",
+    "shell": "bash",
+    "command": "grep SessionRunner packages/core/src/session/runner/llm.ts",
+    "expected": "grep"
+  },
+  { "id": "grep-recursive", "shell": "bash", "command": "grep -R SessionRunner packages/core/src", "expected": "grep" },
+  { "id": "find-files", "shell": "bash", "command": "find packages/core/src -name '*.ts'", "expected": "glob" },
+  {
+    "id": "wrapped-ripgrep",
+    "shell": "bash",
+    "command": "command rg SessionRunner packages/core/src",
+    "expected": "grep"
+  },
+  {
+    "id": "env-ripgrep",
+    "shell": "bash",
+    "command": "env LANG=C rg SessionRunner packages/core/src",
+    "expected": "grep"
+  },
+  {
+    "id": "sed-in-place",
+    "shell": "bash",
+    "command": "sed -i 's/old/new/' packages/core/src/index.ts",
+    "expected": "edit"
+  },
+  {
+    "id": "sed-in-place-backup",
+    "shell": "bash",
+    "command": "sed -i.bak 's/old/new/' packages/core/src/index.ts",
+    "expected": "edit"
+  },
+  {
+    "id": "perl-in-place",
+    "shell": "bash",
+    "command": "perl -pi -e 's/old/new/' packages/core/src/index.ts",
+    "expected": "edit"
+  },
+  {
+    "id": "shell-apply-patch",
+    "shell": "bash",
+    "command": "apply_patch < /tmp/change.patch",
+    "expected": "apply_patch"
+  },
+  {
+    "id": "echo-write",
+    "shell": "bash",
+    "command": "echo hello > packages/core/src/generated.txt",
+    "expected": "apply_patch"
+  },
+  {
+    "id": "printf-write",
+    "shell": "bash",
+    "command": "printf hello >> packages/core/src/generated.txt",
+    "expected": "apply_patch"
+  },
+  {
+    "id": "cat-write",
+    "shell": "bash",
+    "command": "cat template.txt > packages/core/src/generated.txt",
+    "expected": "apply_patch"
+  },
+  {
+    "id": "tee-write",
+    "shell": "bash",
+    "command": "echo hello | tee packages/core/src/generated.txt",
+    "expected": "apply_patch"
+  },
+  {
+    "id": "powershell-search",
+    "shell": "powershell",
+    "command": "rg SessionRunner packages/core/src",
+    "expected": "grep"
+  },
+  {
+    "id": "powershell-write",
+    "shell": "powershell",
+    "command": "Set-Content packages/core/src/generated.txt hello",
+    "expected": "edit"
+  },
+  { "id": "cmd-ripgrep", "shell": "cmd", "command": "rg SessionRunner packages\\core\\src", "expected": "grep" },
+  {
+    "id": "cmd-write",
+    "shell": "cmd",
+    "command": "echo hello > packages\\core\\src\\generated.txt",
+    "expected": "edit"
+  },
+  { "id": "git-status", "shell": "bash", "command": "git status --short", "expected": "allow" },
+  { "id": "git-grep", "shell": "bash", "command": "git grep SessionRunner", "expected": "grep" },
+  { "id": "grep-process-output", "shell": "bash", "command": "git diff | grep SessionRunner", "expected": "allow" },
+  { "id": "ripgrep-process-output", "shell": "bash", "command": "git diff | rg SessionRunner", "expected": "allow" },
+  { "id": "grep-stdin", "shell": "bash", "command": "grep SessionRunner", "expected": "allow" },
+  {
+    "id": "find-exec",
+    "shell": "bash",
+    "command": "find packages/core/src -name '*.ts' -exec wc -l {} +",
+    "expected": "allow"
+  },
+  { "id": "sed-transform", "shell": "bash", "command": "git diff | sed -n '1,80p'", "expected": "allow" },
+  { "id": "perl-transform", "shell": "bash", "command": "printf hello | perl -pe 's/h/H/'", "expected": "allow" },
+  { "id": "test-output", "shell": "bash", "command": "bun test > test-results.log", "expected": "allow" },
+  { "id": "build-command", "shell": "bash", "command": "bun run build", "expected": "allow" },
+  { "id": "ripgrep-version", "shell": "bash", "command": "rg --version", "expected": "allow" },
+  { "id": "grep-version", "shell": "bash", "command": "grep --version", "expected": "allow" },
+  {
+    "id": "external-tee",
+    "shell": "bash",
+    "command": "echo hello | tee /tmp/forge-routing-output",
+    "expected": "allow"
+  },
+  { "id": "external-ripgrep", "shell": "bash", "command": "rg error /tmp/forge-build.log", "expected": "allow" },
+  {
+    "id": "external-ripgrep-max-count",
+    "shell": "bash",
+    "command": "rg -m 1 error /tmp/forge-build.log",
+    "expected": "allow"
+  },
+  { "id": "external-relative-ripgrep", "shell": "bash", "command": "rg error ../outside", "expected": "allow" },
+  {
+    "id": "external-ripgrep-files-glob",
+    "shell": "bash",
+    "command": "rg --glob '*.log' --files /tmp",
+    "expected": "allow"
+  },
+  { "id": "external-grep", "shell": "bash", "command": "grep error /tmp/forge-build.log", "expected": "allow" },
+  {
+    "id": "external-grep-context",
+    "shell": "bash",
+    "command": "grep -C 2 error /tmp/forge-build.log",
+    "expected": "allow"
+  },
+  { "id": "external-find", "shell": "bash", "command": "find /tmp -name '*.log'", "expected": "allow" },
+  { "id": "dev-null", "shell": "bash", "command": "printf hello > /dev/null", "expected": "allow" },
+  { "id": "stderr-redirect", "shell": "bash", "command": "echo stderr >&2", "expected": "allow" }
+]

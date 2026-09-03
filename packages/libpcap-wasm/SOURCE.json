@@ -1,0 +1,8 @@
+{
+  "upstream": "https://github.com/the-tcpdump-group/libpcap",
+  "version": "1.10.6",
+  "commit": "a999701dca5c873779281938baee6bc185a8d4dc",
+  "emscripten": "4.0.10",
+  "configuration": "PCAP_TYPE=null; offline reader and numeric-only BPF filters",
+  "run": "32740893854"
+}

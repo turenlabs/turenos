@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/tenable",
+  "name": "Tenable",
+  "description": "Query assets, search vulnerability exposure, and manage tags and tickets through Tenable's hosted Hexa AI MCP service",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://docs.tenable.com/public/cloud/tenable-one/hexa-ai.htm",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "tenable",
+      "name": "Tenable",
+      "description": "Search Tenable assets and exposures; create tickets and apply tags with explicit approval",
+      "adapter": "mcp:tenable",
+      "secrets": [
+        {
+          "id": "TENABLE_API_KEYS",
+          "label": "Tenable API keys formatted as accessKey=<KEY>;secretKey=<SECRET>",
+          "required": true
+        }
+      ],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "hosted", "url": "https://cloud.tenable.com/mcp/" },
+      "connection": { "headers": [{ "name": "X-ApiKeys", "secret": "TENABLE_API_KEYS" }] },
+      "authentication": "key",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 6, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": [
+          "asset_search",
+          "tenable_one_search_assets",
+          "tagging_create_tag",
+          "tagging_add_tags_assets",
+          "ticket_create_issue",
+          "ticket_notify_assignees"
+        ],
+        "write": ["tagging_create_tag", "tagging_add_tags_assets", "ticket_create_issue", "ticket_notify_assignees"]
+      },
+      "instructions": "Use a least-privilege Tenable API key; the hosted service requires an eligible Tenable One license. Asset searches are read-only. Confirm with the user before tag creation, tag application, ticket creation, or assignee notification because these actions mutate Tenable One state."
+    }
+  ]
+}

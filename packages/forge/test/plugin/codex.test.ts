@@ -1,0 +1,385 @@
+import { describe, expect, test } from "bun:test"
+import {
+  CodexAuthPlugin,
+  buildAuthorizeUrl,
+  parseJwtClaims,
+  extractAccountIdFromClaims,
+  extractAccountId,
+  renderOAuthError,
+  type IdTokenClaims,
+} from "../../src/plugin/openai/codex"
+
+function createTestJwt(payload: object): string {
+  const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url")
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url")
+  return `${header}.${body}.sig`
+}
+
+describe("plugin.codex", () => {
+  test("ChatGPT authorize URLs force a login prompt", () => {
+    const url = new URL(
+      buildAuthorizeUrl("http://localhost:1455/auth/callback", { verifier: "v", challenge: "c" }, "state"),
+    )
+    expect(url.searchParams.get("prompt")).toBe("login")
+  })
+
+  test("escapes provider errors in callback HTML", () => {
+    const error = `</div><script>alert("xss" & 'more')</script>`
+    const html = renderOAuthError(error)
+
+    expect(html).toContain("&lt;/div&gt;&lt;script&gt;alert(&quot;xss&quot; &amp; &#39;more&#39;)&lt;/script&gt;")
+    expect(html).not.toContain(error)
+  })
+
+  describe("parseJwtClaims", () => {
+    test("parses valid JWT with claims", () => {
+      const payload = { email: "test@example.com", chatgpt_account_id: "acc-123" }
+      const jwt = createTestJwt(payload)
+      const claims = parseJwtClaims(jwt)
+      expect(claims).toEqual(payload)
+    })
+
+    test("returns undefined for JWT with less than 3 parts", () => {
+      expect(parseJwtClaims("invalid")).toBeUndefined()
+      expect(parseJwtClaims("only.two")).toBeUndefined()
+    })
+
+    test("returns undefined for invalid base64", () => {
+      expect(parseJwtClaims("a.!!!invalid!!!.b")).toBeUndefined()
+    })
+
+    test("returns undefined for invalid JSON payload", () => {
+      const header = Buffer.from("{}").toString("base64url")
+      const invalidJson = Buffer.from("not json").toString("base64url")
+      expect(parseJwtClaims(`${header}.${invalidJson}.sig`)).toBeUndefined()
+    })
+  })
+
+  describe("extractAccountIdFromClaims", () => {
+    test("extracts chatgpt_account_id from root", () => {
+      const claims: IdTokenClaims = { chatgpt_account_id: "acc-root" }
+      expect(extractAccountIdFromClaims(claims)).toBe("acc-root")
+    })
+
+    test("extracts chatgpt_account_id from nested https://api.openai.com/auth", () => {
+      const claims: IdTokenClaims = {
+        "https://api.openai.com/auth": { chatgpt_account_id: "acc-nested" },
+      }
+      expect(extractAccountIdFromClaims(claims)).toBe("acc-nested")
+    })
+
+    test("prefers root over nested", () => {
+      const claims: IdTokenClaims = {
+        chatgpt_account_id: "acc-root",
+        "https://api.openai.com/auth": { chatgpt_account_id: "acc-nested" },
+      }
+      expect(extractAccountIdFromClaims(claims)).toBe("acc-root")
+    })
+
+    test("extracts from organizations array as fallback", () => {
+      const claims: IdTokenClaims = {
+        organizations: [{ id: "org-123" }, { id: "org-456" }],
+      }
+      expect(extractAccountIdFromClaims(claims)).toBe("org-123")
+    })
+
+    test("returns undefined when no accountId found", () => {
+      const claims: IdTokenClaims = { email: "test@example.com" }
+      expect(extractAccountIdFromClaims(claims)).toBeUndefined()
+    })
+  })
+
+  describe("extractAccountId", () => {
+    test("extracts from id_token first", () => {
+      const idToken = createTestJwt({ chatgpt_account_id: "from-id-token" })
+      const accessToken = createTestJwt({ chatgpt_account_id: "from-access-token" })
+      expect(
+        extractAccountId({
+          id_token: idToken,
+          access_token: accessToken,
+          refresh_token: "rt",
+        }),
+      ).toBe("from-id-token")
+    })
+
+    test("falls back to access_token when id_token has no accountId", () => {
+      const idToken = createTestJwt({ email: "test@example.com" })
+      const accessToken = createTestJwt({
+        "https://api.openai.com/auth": { chatgpt_account_id: "from-access" },
+      })
+      expect(
+        extractAccountId({
+          id_token: idToken,
+          access_token: accessToken,
+          refresh_token: "rt",
+        }),
+      ).toBe("from-access")
+    })
+
+    test("returns undefined when no tokens have accountId", () => {
+      const token = createTestJwt({ email: "test@example.com" })
+      expect(
+        extractAccountId({
+          id_token: token,
+          access_token: token,
+          refresh_token: "rt",
+        }),
+      ).toBeUndefined()
+    })
+
+    test("handles missing id_token", () => {
+      const accessToken = createTestJwt({ chatgpt_account_id: "acc-123" })
+      expect(
+        extractAccountId({
+          id_token: "",
+          access_token: accessToken,
+          refresh_token: "rt",
+        }),
+      ).toBe("acc-123")
+    })
+  })
+
+  test("installs websocket transport only when experimental websockets are enabled", async () => {
+    const disabled = await CodexAuthPlugin({} as never)
+    const enabled = await CodexAuthPlugin({} as never, { experimentalWebSockets: true })
+
+    const disabledOptions = await disabled.auth!.loader!(
+      async () => ({ type: "api", key: "sk-test" }) as never,
+      {} as never,
+    )
+    const enabledOptions = await enabled.auth!.loader!(
+      async () => ({ type: "api", key: "sk-test" }) as never,
+      {} as never,
+    )
+
+    expect(disabledOptions.fetch).toBeUndefined()
+    expect(enabledOptions.fetch).toBeFunction()
+    await enabled.dispose?.()
+  })
+
+  test("filters unsupported modes and keeps the catalog's context limits for OAuth GPT models", async () => {
+    const hooks = await CodexAuthPlugin({} as never)
+    const limit = { context: 1_050_000, input: 922_000, output: 128_000 }
+    const provider = {
+      models: {
+        ...Object.fromEntries(
+          [
+            "gpt-5.4",
+            "gpt-5.5",
+            "gpt-5.6",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.7-pro",
+            "gpt-5.3-codex-spark",
+          ].map((id) => [id, { id, api: { id }, limit, cost: {}, options: {} }]),
+        ),
+        "gpt-5.4-pro": {
+          id: "gpt-5.4-pro",
+          api: { id: "gpt-5.4" },
+          limit,
+          cost: {},
+          options: { reasoningMode: "pro" },
+        },
+        "gpt-5.6-sol-high": {
+          id: "gpt-5.6-sol-high",
+          api: { id: "gpt-5.6-sol" },
+          limit,
+          cost: {},
+          options: { reasoningEffort: "high" },
+        },
+      },
+    }
+
+    const models = await hooks.provider!.models!(provider as never, { auth: { type: "oauth" } } as never)
+
+    // Codex serves the same models as the API, so every one of these keeps the
+    // catalog's window. This used to override gpt-5.5 to 400k/272k and gpt-5.6
+    // to 500k/372k -- pre-release figures that stayed behind after the models
+    // shipped at 1.05M/922k, halving the usable window and driving compaction
+    // at roughly twice the necessary rate.
+    for (const id of ["gpt-5.4", "gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+      expect(models[id]?.limit).toEqual(limit)
+    }
+    // Cost is still zeroed: that one really is a Codex fact, since the turn
+    // bills against the ChatGPT subscription rather than per token.
+    expect(models["gpt-5.6-sol"]?.cost).toEqual({ input: 0, output: 0, cache: { read: 0, write: 0 } })
+    expect(models["gpt-5.4-pro"]).toBeUndefined()
+    expect(models["gpt-5.7-pro"]).toBeUndefined()
+    expect(models["gpt-5.3-codex-spark"]).toBeDefined()
+    expect(models["gpt-5.6-sol-high"]).toBeDefined()
+    const apiModels = await hooks.provider!.models!(provider as never, { auth: { type: "api" } } as never)
+    expect(apiModels["gpt-5.3-codex-spark"]).toBeUndefined()
+    expect(apiModels["gpt-5.6-sol"]).toBeDefined()
+  })
+
+  test("deduplicates concurrent Codex token refreshes", async () => {
+    let auth = {
+      type: "oauth" as const,
+      refresh: "refresh-old",
+      access: "",
+      expires: 0,
+    }
+    const authUpdates: Array<{
+      auth: { refresh: string; access: string; expires: number; accountId?: string }
+    }> = []
+    let resolveRefresh: (() => void) | undefined
+    const refreshReady = new Promise<void>((resolve) => {
+      resolveRefresh = resolve
+    })
+    let refreshRequests = 0
+    const apiRequests: { authorization: string | null; accountId: string | null }[] = []
+
+    using server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        if (url.pathname === "/oauth/token") {
+          expect(await request.text()).toContain("refresh_token=refresh-old")
+          refreshRequests += 1
+          await refreshReady
+          return Response.json({
+            id_token: createTestJwt({ chatgpt_account_id: "acc-123" }),
+            access_token: "access-new",
+            refresh_token: "refresh-new",
+            expires_in: 3600,
+          })
+        }
+
+        if (url.pathname === "/backend-api/codex/responses") {
+          apiRequests.push({
+            authorization: request.headers.get("authorization"),
+            accountId: request.headers.get("ChatGPT-Account-Id"),
+          })
+          return new Response("{}", { status: 200 })
+        }
+
+        return new Response("unexpected request", { status: 500 })
+      },
+    })
+
+    const hooks = await CodexAuthPlugin(
+      {
+        client: {
+          auth: {
+            async set(input: { auth: { refresh: string; access: string; expires: number; accountId?: string } }) {
+              authUpdates.push(input)
+              auth = {
+                type: "oauth",
+                refresh: input.auth.refresh,
+                access: input.auth.access,
+                expires: input.auth.expires,
+                ...(input.auth.accountId && { accountId: input.auth.accountId }),
+              }
+            },
+          },
+        } as never,
+        project: {} as never,
+        directory: "",
+        worktree: "",
+        experimental_workspace: {
+          register() {},
+        },
+        serverUrl: new URL("https://example.com"),
+        $: {} as never,
+      },
+      {
+        issuer: server.url.origin,
+        codexApiEndpoint: new URL("/backend-api/codex/responses", server.url).toString(),
+      },
+    )
+    const loaded = await hooks.auth!.loader!(async () => auth as never, {} as never)
+
+    const first = loaded.fetch!("https://api.openai.com/v1/responses")
+    const second = loaded.fetch!("https://api.openai.com/v1/responses")
+
+    await waitFor(() => refreshRequests === 1)
+    expect(apiRequests).toHaveLength(0)
+
+    resolveRefresh!()
+    await Promise.all([first, second])
+
+    expect(refreshRequests).toBe(1)
+    expect(authUpdates).toHaveLength(1)
+    expect(authUpdates[0]?.auth.refresh).toBe("refresh-new")
+    expect(authUpdates[0]?.auth.access).toBe("access-new")
+    expect(authUpdates[0]?.auth.accountId).toBe("acc-123")
+    expect(apiRequests).toEqual([
+      { authorization: "Bearer access-new", accountId: "acc-123" },
+      { authorization: "Bearer access-new", accountId: "acc-123" },
+    ])
+  })
+
+  test("does not restore OpenAI credentials when they change during refresh", async () => {
+    const authUpdates: unknown[] = []
+    const replacements: Array<{ expected: unknown; info: unknown }> = []
+    using server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        if (url.pathname === "/oauth/token") {
+          return Response.json({
+            id_token: createTestJwt({ chatgpt_account_id: "acc-123" }),
+            access_token: "access-new",
+            refresh_token: "refresh-new",
+            expires_in: 3600,
+          })
+        }
+        return new Response("{}", { status: 200 })
+      },
+    })
+
+    const hooks = await CodexAuthPlugin(
+      {
+        client: {
+          auth: {
+            async set(input: unknown) {
+              authUpdates.push(input)
+            },
+          },
+        } as never,
+        project: {} as never,
+        directory: "",
+        worktree: "",
+        experimental_workspace: {
+          register() {},
+        },
+        serverUrl: new URL("https://example.com"),
+        $: {} as never,
+      },
+      {
+        issuer: server.url.origin,
+        replaceOAuth: async (expected, info) => {
+          replacements.push({ expected, info })
+          return false
+        },
+      },
+    )
+    const loaded = await hooks.auth!.loader!(
+      async () =>
+        ({
+          type: "oauth",
+          refresh: "refresh-old",
+          access: "",
+          expires: 0,
+        }) as never,
+      {} as never,
+    )
+
+    await expect(loaded.fetch!("https://api.openai.com/v1/responses")).rejects.toThrow(
+      "OpenAI credentials changed while an access token was refreshing",
+    )
+    expect(authUpdates).toEqual([])
+    expect(replacements).toHaveLength(1)
+    expect((replacements[0]?.expected as { refresh: string }).refresh).toBe("refresh-old")
+    expect((replacements[0]?.info as { refresh: string }).refresh).toBe("refresh-new")
+  })
+})
+
+async function waitFor(predicate: () => boolean) {
+  const started = Date.now()
+  while (!predicate()) {
+    if (Date.now() - started > 1_000) throw new Error("timed out waiting for condition")
+    await new Promise((resolve) => setTimeout(resolve, 1))
+  }
+}

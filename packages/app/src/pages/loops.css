@@ -1,0 +1,168 @@
+@layer components {
+  .automation-workspace {
+    --automation-mint: #36c9a5;
+    --automation-blue: #48aef2;
+    --automation-violet: #8b7cf6;
+    --automation-orange: #f59b62;
+  }
+
+  .automation-canvas {
+    background-color: var(--v2-background-bg-base);
+    background-image: radial-gradient(var(--v2-border-border-strong) 0.75px, transparent 0.75px);
+    background-position: 0 0;
+    background-size: 20px 20px;
+  }
+
+  .automation-flow {
+    display: flex;
+    width: min(100%, 520px);
+    min-height: 100%;
+    margin: 0 auto;
+    padding: 20px 32px 36px;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  .automation-node {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    min-height: 60px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--automation-node-accent) 24%, var(--v2-border-border-base));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--automation-node-accent) 7%, var(--v2-background-bg-layer-01));
+    box-shadow: none;
+    color: var(--v2-text-text-base);
+    text-align: left;
+    transition:
+      border-color 140ms ease,
+      box-shadow 140ms ease,
+      transform 140ms ease;
+  }
+
+  .automation-node:hover {
+    border-color: color-mix(in srgb, var(--automation-node-accent) 55%, var(--v2-border-border-base));
+    transform: none;
+  }
+
+  .automation-node:focus-visible,
+  .automation-node-selected {
+    outline: none;
+    border-color: var(--automation-node-accent);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--automation-node-accent) 18%, transparent),
+      0 4px 16px color-mix(in srgb, var(--v2-text-text-base) 9%, transparent);
+  }
+
+  .automation-node-trigger {
+    --automation-node-accent: var(--automation-mint);
+  }
+
+  .automation-node-agent {
+    --automation-node-accent: var(--automation-blue);
+  }
+
+  .automation-node-skill {
+    --automation-node-accent: var(--automation-orange);
+  }
+
+  .automation-node-delivery {
+    --automation-node-accent: var(--automation-violet);
+  }
+
+  .automation-node-icon {
+    display: block;
+    width: 8px;
+    height: 8px;
+    align-self: center;
+    flex: 0 0 8px;
+    margin-left: 16px;
+    border-radius: 2px;
+    border-right: 0;
+    align-items: center;
+    justify-content: center;
+    background: var(--automation-node-accent);
+    color: transparent;
+  }
+
+  .automation-node-kicker {
+    color: color-mix(in srgb, var(--automation-node-accent) 82%, var(--v2-text-text-base));
+  }
+
+  .automation-connector {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .automation-connector-line {
+    position: absolute;
+    inset-block: 0;
+    left: 50%;
+    width: 1px;
+    background: linear-gradient(var(--automation-mint), var(--automation-blue));
+    opacity: 0.55;
+    transform: translateX(-50%);
+  }
+
+  .automation-connector [data-component="icon-button-v2"] {
+    width: 24px;
+    height: 24px;
+    min-height: 24px;
+    border: 1px solid var(--v2-border-border-base);
+    border-radius: 999px;
+    background: var(--v2-background-bg-layer-01);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--v2-text-text-base) 8%, transparent);
+  }
+
+  .automation-insert-menu {
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--v2-border-border-base);
+    border-radius: 10px;
+    background: var(--v2-background-bg-layer-01);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--v2-text-text-base) 12%, transparent);
+  }
+
+  .automation-palette-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: var(--v2-text-text-base);
+    text-align: left;
+    transition:
+      background 140ms ease,
+      border-color 140ms ease;
+  }
+
+  .automation-palette-item:hover,
+  .automation-palette-item:focus-visible {
+    outline: none;
+    border-color: var(--v2-border-border-base);
+    background: var(--v2-background-bg-layer-02);
+  }
+
+  @media (max-width: 1023px) {
+    .automation-flow {
+      padding-inline: 20px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .automation-node,
+    .automation-palette-item {
+      transition: none;
+    }
+  }
+}

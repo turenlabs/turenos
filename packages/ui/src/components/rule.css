@@ -1,0 +1,146 @@
+/*
+ * The left rule — `┃` (U+2503), recovered from the deleted TUI's SplitBorder.
+ *
+ * The TUI framed almost nothing in boxes. Its one structural mark was a heavy
+ * vertical rule down the left edge of a block, recoloured per context: agent
+ * colour for a user turn, error colour for a failure, a muted neutral for a tool
+ * block so it read as structure rather than signal, panel colour for reverted
+ * content. This file is that grammar, as one attribute.
+ *
+ *   <div data-rule="error">…</div>
+ *   <div data-rule="agent" style={{ "--rule-tone": agentColor(name) }}>…</div>
+ *   <div data-rule="notch" data-rule-hang>…</div>
+ *   <form data-rule="muted" data-rule-focus>…</form>
+ *
+ * The rule is deliberately the only 2px line in the system (--v2-rule-width-heavy);
+ * every other hairline is 1px. That contrast is what makes a ruled block read as
+ * "this belongs to something" rather than "this is a box".
+ *
+ * It sets no padding. Every surface that uses it already owns its own padding,
+ * and forcing one here would fight them.
+ *
+ * Card ([data-component="card"]) draws the same mark as a ::before, because its
+ * padding sits outside the rule. It consumes the same tone palette rather than
+ * inventing a parallel one — see card.css.
+ *
+ * v2 only. The legacy layout keeps its rounded, shadowed treatment.
+ */
+
+body[data-new-layout] {
+  /*
+   * One column, one gap, one width.
+   *
+   * Every rule in the transcript lands in the same margin column: the mark is
+   * --v2-rule-width-heavy wide and --v2-rule-gap clear of the text, so a block
+   * that hangs its rule is outdented by exactly the sum of the two. A single
+   * inset makes "the rule column" a thing you can point at rather than three
+   * near-misses, and it is the number every hanging surface subtracts.
+   */
+  --rule-inset: calc(var(--v2-rule-width-heavy) + var(--v2-rule-gap));
+}
+
+/*
+ * The default tone is the same neutral the notch uses, and for the same reason.
+ *
+ * It was --v2-border-border-strong, which is --v2-alpha-dark-20 / --v2-alpha-light-20:
+ * a 20% wash of the opposite ground. That is fine for a 1px hairline separating two
+ * filled surfaces, but as a 2px mark on the transcript ground it measures 1.89:1 in
+ * dark and 1.61:1 in light — under the 3:1 floor for a non-text mark, i.e. invisible.
+ *
+ * This tone is what a user turn falls back to when no agent colour resolves, so an
+ * unreadable default is not a cosmetic default: it is a rule that silently is not
+ * there. --v2-icon-icon-muted is grey-600 (#808080) in both themes, so it holds
+ * 4.58:1 / 3.95:1 on either ground without a per-theme value.
+ */
+body[data-new-layout] [data-rule] {
+  --rule-tone: var(--v2-icon-icon-muted);
+
+  border-inline-start: var(--v2-rule-width-heavy) solid var(--rule-tone);
+}
+
+/*
+ * The hanging form.
+ *
+ * A border-drawn rule takes its width out of the box's content, so a block that
+ * gains or loses one reflows. In a virtualised transcript that is not a cosmetic
+ * difference: a row's measured height is cached, and a change in content width
+ * can move a wrap. This form paints the same mark as an absolutely positioned
+ * bar sitting in the margin instead — same column, same width, same tone, but
+ * the box it marks is byte-for-byte the size it would be unruled.
+ *
+ * The parent must leave --rule-inset of room to its left. In the transcript the
+ * scroller already does, because the user turn has always hung there.
+ */
+body[data-new-layout] [data-rule][data-rule-hang] {
+  position: relative;
+  border-inline-start: 0;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(-1 * var(--rule-inset));
+    width: var(--v2-rule-width-heavy);
+    background-color: var(--rule-tone);
+    pointer-events: none;
+  }
+}
+
+/* Reverted, inactive, or merely structural: present, but not asking for attention. */
+body[data-new-layout] [data-rule="muted"] {
+  --rule-tone: var(--v2-border-border-base);
+}
+
+/* A user turn, coloured by the agent that answered it. Callers override
+   --rule-tone inline with the resolved agent colour; this is the fallback. */
+body[data-new-layout] [data-rule="agent"] {
+  --rule-tone: var(--v2-text-text-accent);
+}
+
+body[data-new-layout] [data-rule="error"] {
+  --rule-tone: var(--v2-state-fg-danger);
+}
+
+body[data-new-layout] [data-rule="warning"] {
+  --rule-tone: var(--v2-state-fg-warning);
+}
+
+body[data-new-layout] [data-rule="success"] {
+  --rule-tone: var(--v2-state-fg-success);
+}
+
+body[data-new-layout] [data-rule="info"] {
+  --rule-tone: var(--v2-state-fg-info);
+}
+
+/*
+ * Tool blocks.
+ *
+ * The TUI coloured this rule with the *background*, so a filled block read as a
+ * notch cut out of it rather than as an accent sitting on it. That trick does
+ * not transfer: TurenOS transcript blocks are not filled, so a background-toned
+ * rule on a background-toned surface is literally invisible — bg-layer-03 on
+ * bg-base is 1.59:1 in dark and 1.16:1 in light, i.e. nothing.
+ *
+ * So the notch keeps its *role* — the structural mark that groups a tool block,
+ * subordinate to the agent and error accents — and drops the trick. It is the
+ * one neutral in the ramp that sits at real contrast on both grounds:
+ *
+ *   #808080 on #161616 (dark) = 4.58:1     agent 12.2:1   error 6.44:1
+ *   #808080 on #ffffff (light) = 3.95:1     agent  7.39:1   error 6.06:1
+ *
+ * Above the 3:1 floor for a non-text mark in both themes, and below both accents
+ * in both themes — and unsaturated, so it reads as structure rather than signal.
+ */
+body[data-new-layout] [data-rule="notch"] {
+  --rule-tone: var(--v2-icon-icon-muted);
+}
+
+/*
+ * Focus-reactive form of the rule, as the TUI composer used it: dim at rest,
+ * live when the surface holds focus. Combine with a resting tone —
+ * `data-rule="muted" data-rule-focus`.
+ */
+body[data-new-layout] [data-rule-focus]:focus-within {
+  --rule-tone: var(--v2-border-border-focus);
+}

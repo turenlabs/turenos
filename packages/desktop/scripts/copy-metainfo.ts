@@ -1,0 +1,42 @@
+import { resolveChannel } from "./utils"
+
+const arg = process.argv[2]
+const channel = arg === "dev" || arg === "beta" || arg === "prod" ? arg : resolveChannel()
+
+const appId = channel === "prod" ? "com.turenlabs.forge" : `com.turenlabs.forge.${channel}`
+const productName = channel === "prod" ? "TurenOS" : `TurenOS ${channel.charAt(0).toUpperCase() + channel.slice(1)}`
+const summary = `Security engineering agent${channel !== "prod" ? ` (${channel})` : ""}`
+
+const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>${appId}</id>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>${productName}</name>
+  <summary>${summary}</summary>
+
+  <developer id="com.turenlabs">
+    <name>Turen Labs</name>
+  </developer>
+
+  <description>
+    <p>
+      TurenOS is a batteries-included workbench for security engineering, code review, and remediation.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">${appId}.desktop</launchable>
+
+  <content_rating type="oars-1.1" />
+
+  <url type="bugtracker">https://github.com/turenlabs/forge/issues</url>
+  <url type="homepage">https://github.com/turenlabs/forge</url>
+  <url type="vcs-browser">https://github.com/turenlabs/forge</url>
+
+</component>
+`
+
+await Bun.write(`resources/${appId}.metainfo.xml`, xml)
+console.log(`Generated metainfo for ${channel} at resources/${appId}.metainfo.xml`)

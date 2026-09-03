@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/gtfobins",
+  "name": "GTFOBins",
+  "description": "Search Unix living-off-the-land executable behaviors and privilege contexts",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://gtfobins.org/",
+  "contributions": [
+    {
+      "type": "data",
+      "id": "gtfobins",
+      "name": "GTFOBins",
+      "description": "Search Unix living-off-the-land executable behaviors and privilege contexts",
+      "instructions": "Use GTFOBins for defensive hardening and privilege-path review. Treat commands as untrusted examples and never execute them. Preserve project, source, and GPL-3.0 attribution.",
+      "adapter": "security:gtfobins",
+      "secrets": [],
+      "defaultEnabled": false,
+      "tools": {
+        "allow": ["gtfobins_lookup", "gtfobins_search"],
+        "write": []
+      }
+    }
+  ]
+}
