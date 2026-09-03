@@ -1612,18 +1612,22 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }))
   const fastControl = () => (
     <Show when={!providersLoading() && store.mode !== "shell" && fastMode()}>
-      <TooltipV2 placement="top" gutter={4} value="Use fast mode">
+      <TooltipV2
+        placement="top"
+        gutter={4}
+        value={fastMode()?.enabled ? "Turn off fast mode" : "Turn on fast mode"}
+      >
         <ButtonV2
           data-action="prompt-model-fast"
           variant={fastMode()?.enabled ? "outline" : "ghost-muted"}
           size="normal"
-          aria-label="Fast mode"
+          aria-label={fastMode()?.enabled ? "Turn off fast mode" : "Turn on fast mode"}
           aria-pressed={fastMode()?.enabled}
           class="font-medium"
           style={control()}
           onClick={toggleFastMode}
         >
-          Fast
+          {fastMode()?.enabled ? "Fast on" : "Fast off"}
         </ButtonV2>
       </TooltipV2>
     </Show>
@@ -2180,18 +2184,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           </Show>
                         </div>
                         <Show when={fastMode()}>
-                          <Tooltip placement="top" value="Use fast mode">
+                          <Tooltip
+                            placement="top"
+                            value={fastMode()?.enabled ? "Turn off fast mode" : "Turn on fast mode"}
+                          >
                             <Button
                               data-action="prompt-model-fast"
                               variant={fastMode()?.enabled ? "secondary" : "ghost"}
                               size="normal"
-                              aria-label="Fast mode"
+                              aria-label={fastMode()?.enabled ? "Turn off fast mode" : "Turn on fast mode"}
                               aria-pressed={fastMode()?.enabled}
                               class="text-13-medium"
                               style={control()}
                               onClick={toggleFastMode}
                             >
-                              Fast
+                              {fastMode()?.enabled ? "Fast on" : "Fast off"}
                             </Button>
                           </Tooltip>
                         </Show>
