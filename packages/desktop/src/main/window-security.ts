@@ -3,6 +3,15 @@ import { externalHttpUrl } from "./external-link"
 export const rendererProtocol = "forge-internal"
 export const rendererHost = "renderer"
 export const rendererOrigin = `${rendererProtocol}://${rendererHost}`
+export const rendererDocumentPolicyHeader = "Document-Policy"
+export const rendererDocumentPolicy = "include-js-call-stacks-in-crash-reports"
+
+export function rendererResponseHeaders(input: Headers, file: string) {
+  const headers = new Headers(input)
+  headers.set("Cache-Control", "no-store")
+  if (file.toLowerCase().endsWith(".html")) headers.set(rendererDocumentPolicyHeader, rendererDocumentPolicy)
+  return headers
+}
 
 type RendererIpcEvent = {
   sender: {

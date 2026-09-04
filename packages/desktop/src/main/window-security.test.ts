@@ -5,6 +5,7 @@ import {
   mainWindowNavigation,
   rendererCorsOrigins,
   rendererOrigin,
+  rendererResponseHeaders,
 } from "./window-security"
 
 const devURL = "http://127.0.0.1:5173/app"
@@ -32,6 +33,15 @@ describe("main window security", () => {
     expect(rendererCorsOrigins("")).toEqual([rendererOrigin])
     expect(rendererCorsOrigins(devURL)).toEqual([rendererOrigin, "http://127.0.0.1:5173"])
     expect(rendererCorsOrigins("file:///tmp/index.html")).toEqual([rendererOrigin])
+  })
+
+  test("prevents packaged renderer assets from surviving an app update in cache", () => {
+    expect(rendererResponseHeaders(new Headers(), "/renderer/assets/extend-old.js").get("Cache-Control")).toBe(
+      "no-store",
+    )
+    expect(rendererResponseHeaders(new Headers(), "/renderer/index.html").get("Document-Policy")).toBe(
+      "include-js-call-stacks-in-crash-reports",
+    )
   })
 
   test("trusts only owned main frames at the renderer origin", () => {

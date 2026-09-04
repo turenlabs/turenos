@@ -34,7 +34,7 @@ export function createMenu(deps: Deps) {
 
 function nativeItem(entry: DesktopMenuEntry, deps: Deps): MenuItemConstructorOptions {
   if (entry.type === "separator") return { type: "separator" }
-  if (entry.role) return { role: nativeRole(entry.role) }
+  if (entry.role) return { role: nativeRole(entry.role), label: entry.label }
 
   const item: MenuItemConstructorOptions = {
     label: entry.label,

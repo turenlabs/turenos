@@ -19,6 +19,9 @@ import {
   mainWindowNavigation,
   rendererHost,
   rendererProtocol,
+  rendererDocumentPolicy,
+  rendererDocumentPolicyHeader,
+  rendererResponseHeaders,
 } from "./window-security"
 
 const root = dirname(fileURLToPath(import.meta.url))
@@ -31,9 +34,6 @@ const oc2Background = {
   light: resolveThemeVariant(oc2Theme.light, false)["background-base"],
   dark: resolveThemeVariant(oc2Theme.dark, true)["background-base"],
 }
-const documentPolicyHeader = "Document-Policy"
-const jsCallStacksDocumentPolicy = "include-js-call-stacks-in-crash-reports"
-
 protocol.registerSchemesAsPrivileged([
   {
     scheme: rendererProtocol,
@@ -368,7 +368,7 @@ function loadWindow(win: BrowserWindow, html: string) {
     return
   }
 
-  void win.loadURL(`${rendererProtocol}://${rendererHost}/${html}`)
+  void win.loadURL(`${rendererProtocol}://${rendererHost}/${html}?v=${encodeURIComponent(app.getVersion())}`)
 }
 
 function wireWindowNavigation(win: BrowserWindow) {
@@ -585,10 +585,11 @@ export async function flushWindowState() {
 }
 
 function addDocumentPolicy(response: Response, file: string) {
-  if (!file.toLowerCase().endsWith(".html")) return response
-  const headers = new Headers(response.headers)
-  headers.set(documentPolicyHeader, jsCallStacksDocumentPolicy)
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: rendererResponseHeaders(response.headers, file),
+  })
 }
 
 function allowRendererPermissions(win: BrowserWindow) {
@@ -613,7 +614,8 @@ function isTrustedRendererUrl(value?: string) {
 }
 
 function addRendererDocumentPolicyHeader(value: string, headers: Record<string, any>) {
-  if (isRendererUrl(value, { html: true })) upsertKeyValue(headers, documentPolicyHeader, [jsCallStacksDocumentPolicy])
+  if (isRendererUrl(value, { html: true }))
+    upsertKeyValue(headers, rendererDocumentPolicyHeader, [rendererDocumentPolicy])
 }
 
 export function assertTrustedRendererEvent(event: IpcMainEvent | IpcMainInvokeEvent, fail = true) {
