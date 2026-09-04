@@ -39,6 +39,11 @@ export async function stageVigil(
     await new Bun.Archive(await Bun.file(archive).bytes()).extract(staging)
     await fs.rm(destination, { recursive: true, force: true })
     await fs.cp(path.join(staging, name), destination, { recursive: true })
+    await Promise.all(
+      (await fs.readdir(destination, { recursive: true }))
+        .filter((file) => path.basename(file).startsWith("._"))
+        .map((file) => fs.rm(path.join(destination, file), { force: true })),
+    )
     const checksums = (await Bun.file(path.join(destination, "SHA256SUMS")).text())
       .split("\n")
       .flatMap((line) => {

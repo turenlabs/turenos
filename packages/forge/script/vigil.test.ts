@@ -29,6 +29,9 @@ describe("stageVigil", () => {
       expect(
         await Bun.file(path.join(destination, target.os === "win32" ? "vigil-compact.exe" : "vigil-compact")).exists(),
       ).toBe(true)
+      expect((await fs.readdir(destination, { recursive: true })).some((file) => path.basename(file).startsWith("._"))).toBe(
+        false,
+      )
     })
   }
 })

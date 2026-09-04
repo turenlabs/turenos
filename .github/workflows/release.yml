@@ -347,8 +347,19 @@ jobs:
             codesign --verify --strict --verbose=2 "$vigil"
             target="$PWD/signed/$(basename "$archive")"
             (cd "$dir" && zip -q -r "$target" .)
-            xcrun notarytool submit "$target" --apple-id "$APPLE_ID" \
-              --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+            result=$(mktemp)
+            if ! xcrun notarytool submit "$target" --apple-id "$APPLE_ID" \
+              --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait \
+              --output-format json > "$result"; then
+              cat "$result"
+              submission=$(jq -r '.id // empty' "$result")
+              if [ -n "$submission" ]; then
+                xcrun notarytool log "$submission" --apple-id "$APPLE_ID" \
+                  --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID"
+              fi
+              exit 1
+            fi
+            cat "$result"
             rm -rf "$dir"
           done
 
