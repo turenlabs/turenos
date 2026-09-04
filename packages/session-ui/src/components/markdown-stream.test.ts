@@ -1,7 +1,23 @@
 import { describe, expect, test } from "bun:test"
-import { canCommitStreamResult, canReusePendingBlock, project, stream } from "./markdown-stream"
+import {
+  canCommitStreamResult,
+  canReusePendingBlock,
+  canReusePendingDocument,
+  project,
+  stream,
+} from "./markdown-stream"
 
 describe("markdown stream", () => {
+  test("preserves every rendered block while completion parses a final queued delta", () => {
+    const previous = project(undefined, "**First** paragraph.\n\n- Second block.\n\nThird paragraph.", true)
+    const text = `${previous.text} Final delta.`
+    expect(previous.blocks).toHaveLength(3)
+    expect(canReusePendingDocument(previous.text, project(previous, text, false))).toBe(true)
+    expect(canReusePendingDocument(previous.text, project(previous, text, true))).toBe(false)
+    expect(canReusePendingDocument(previous.text, project(previous, "Replacement", false))).toBe(false)
+    expect(canReusePendingDocument(previous.text, project(previous, "**First** paragraph.", false))).toBe(false)
+  })
+
   test("slow parsing makes monotonic progress during continuous streaming", () => {
     expect(canCommitStreamResult("**Hello** world grows", "**Hello", "**Hello** world")).toBe(true)
     expect(canCommitStreamResult("**Hello** world grows", "**Hello** world", "**Hello")).toBe(false)

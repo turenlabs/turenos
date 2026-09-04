@@ -18,7 +18,14 @@ import { Icon as IconV2 } from "@turenlabs/ui/v2/icon"
 import { IconButtonV2 } from "@turenlabs/ui/v2/icon-button-v2"
 import { TooltipV2 } from "@turenlabs/ui/v2/tooltip-v2"
 import { bundledLanguages } from "shiki"
-import { canCommitStreamResult, canReusePendingBlock, project, type Block, type Projection } from "./markdown-stream"
+import {
+  canCommitStreamResult,
+  canReusePendingBlock,
+  canReusePendingDocument,
+  project,
+  type Block,
+  type Projection,
+} from "./markdown-stream"
 import {
   disposeStreamingCode,
   highlightStreamingCode,
@@ -554,6 +561,9 @@ function pendingBlocks(
   if (!result) return []
   if (!projection || result.text === projection.text) return result.blocks
   const initial = result.blocks.length === 1 && result.blocks[0]?.key === "initial"
+  // Completion collapses the projection to one full-document parse. Keep all
+  // rendered blocks until it resolves, including when pacing flushes a tail.
+  if (!initial && result.blocks.length > 0 && canReusePendingDocument(result.text, projection)) return result.blocks
   return projection.blocks.map((block, index) => {
     const current = initial ? undefined : result.blocks[index]
     if (current && canReusePendingBlock(current, block)) return current

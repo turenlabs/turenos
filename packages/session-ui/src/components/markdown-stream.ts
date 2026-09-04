@@ -93,6 +93,10 @@ export function canReusePendingBlock(current: Pick<Block, "mode" | "raw"> | unde
   return next.raw.startsWith(current.raw)
 }
 
+export function canReusePendingDocument(rendered: string, next: Projection) {
+  return next.blocks.length === 1 && next.blocks[0]?.mode === "full" && next.text.startsWith(rendered)
+}
+
 /** Accept useful async progress without reviving replaced text or moving backwards. */
 export function canCommitStreamResult(text: string, rendered: string, completed: string) {
   return text.startsWith(completed) && (!text.startsWith(rendered) || completed.length >= rendered.length)
