@@ -200,19 +200,19 @@ export const DESKTOP_MENU: DesktopMenu[] = [
     id: "help",
     label: "Help",
     items: [
-      { type: "item", label: "TurenOS Documentation", href: "https://github.com/turenlabs/forge/docs" },
-      { type: "item", label: "Support", href: "https://github.com/turenlabs/forge/issues" },
+      { type: "item", label: "TurenOS Documentation", href: ProductLinks.documentation },
+      { type: "item", label: "Support", href: ProductLinks.support },
       { type: "item", label: "Export Logs...", command: "logs.export" },
       { type: "separator" },
       {
         type: "item",
         label: "Share Feedback",
-        href: "https://github.com/turenlabs/forge/issues/new?template=feature_request.yml",
+        href: ProductLinks.featureRequest,
       },
       {
         type: "item",
         label: "Report a Bug",
-        href: "https://github.com/turenlabs/forge/issues/new?template=bug_report.yml",
+        href: ProductLinks.bugReport,
       },
     ],
   },
@@ -221,3 +221,4 @@ export const DESKTOP_MENU: DesktopMenu[] = [
 export function desktopMenuVisible(item: { platforms?: DesktopMenuPlatform[] }, platform: DesktopMenuPlatform) {
   return !item.platforms || item.platforms.includes(platform)
 }
+import { ProductLinks } from "./product-links"

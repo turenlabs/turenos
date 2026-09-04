@@ -14,6 +14,7 @@ import { SettingsListV2 } from "./parts/list"
 import { SettingsServerPicker, SettingsServerScope } from "../settings-server-picker"
 import { SettingsPageHeaderV2 } from "./page-header"
 import "./settings-v2.css"
+import { providerAuthTagKey } from "./provider-auth-tag"
 
 type ProviderSource = "env" | "api" | "config" | "custom"
 type ProviderItem = ReturnType<ReturnType<typeof useProviders>["connected"]>[number]
@@ -73,6 +74,8 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
   }
 
   const type = (item: ProviderItem) => {
+    const auth = providerAuthTagKey(item)
+    if (auth) return language.t(auth)
     const current = source(item)
     if (current === "env") return language.t("settings.providers.tag.environment")
     if (current === "api") return language.t("provider.connect.method.apiKey")

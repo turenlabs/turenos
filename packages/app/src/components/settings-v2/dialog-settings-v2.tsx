@@ -2,6 +2,7 @@ import { type Component, createEffect, createMemo, createSignal, For, Show, star
 import { Dialog } from "@turenlabs/ui/v2/dialog-v2"
 import { TabsV2 } from "@turenlabs/ui/v2/tabs-v2"
 import { TextInputV2 } from "@turenlabs/ui/v2/text-input-v2"
+import { IconButtonV2 } from "@turenlabs/ui/v2/icon-button-v2"
 import { Icon } from "@turenlabs/ui/icon"
 import { useDialog } from "@turenlabs/ui/context/dialog"
 import { useLanguage } from "@/context/language"
@@ -165,6 +166,13 @@ export const DialogSettings: Component<{
           }}
           class="settings-v2"
         >
+          <IconButtonV2
+            class="settings-v2-close"
+            icon="close"
+            variant="ghost"
+            aria-label={language.t("common.close")}
+            onClick={() => dialog.close()}
+          />
           <TabsV2.List>
             <div class="settings-v2-nav-shell">
               <div class="settings-v2-nav-search">

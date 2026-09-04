@@ -1052,6 +1052,7 @@ export const Info = Schema.Struct({
   id: ProviderV2.ID,
   name: Schema.String,
   source: Schema.Literals(["env", "config", "custom", "api"]),
+  auth: optional(Schema.Literals(["api", "oauth", "wellknown"])),
   env: Schema.Array(Schema.String),
   key: optional(Schema.String),
   options: Schema.Record(Schema.String, Schema.Any),

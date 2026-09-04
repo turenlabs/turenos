@@ -41,8 +41,8 @@ import {
   type PanelSurface,
   type Surface,
 } from "@/components/nav-rail-state"
+import { ProductLinks } from "@/product-links"
 
-const HELP_URL = "https://github.com/turenlabs/forge/desktop-feedback"
 
 const RAIL_ITEM =
   "relative flex size-9 shrink-0 cursor-default items-center justify-center rounded-[8px] border-0 bg-transparent text-v2-icon-icon-muted outline-none transition-[background-color,color,box-shadow] duration-[120ms] ease-in-out hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:[box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-focus)]"
@@ -429,7 +429,7 @@ export function NavRail() {
             data-action="nav-rail-help"
             class={RAIL_ITEM}
             aria-label={language.t("nav.rail.help")}
-            onClick={() => platform.openLink(HELP_URL)}
+            onClick={() => platform.openLink(ProductLinks.feedback)}
           >
             <IconV2 name="help" />
           </button>
@@ -458,7 +458,7 @@ export function NavRail() {
             aria-label={serverLabel()}
             onClick={showServers}
           >
-            <IconV2 name="status" />
+            <IconV2 name="connections" />
             <span class="absolute bottom-1 right-1 flex items-center justify-center rounded-full bg-v2-background-bg-deep p-px">
               <ServerHealthIndicator health={serverHealth()} />
             </span>

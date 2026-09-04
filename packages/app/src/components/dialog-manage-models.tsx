@@ -12,26 +12,23 @@ import { Switch as SwitchV2 } from "@turenlabs/ui/v2/switch-v2"
 import { ProviderIcon } from "@turenlabs/ui/provider-icon"
 import { useFilteredList } from "@turenlabs/ui/hooks"
 import { For, Show, type Component } from "solid-js"
-import { useNavigate } from "@solidjs/router"
 import { useLocal } from "@/context/local"
 import { popularProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
-import { useDialog } from "@turenlabs/ui/context/dialog"
 import { SettingsListV2 } from "./settings-v2/parts/list"
 import { SettingsRowV2 } from "./settings-v2/parts/row"
 import "./settings-v2/settings-v2.css"
+import { useSettingsDialog } from "./settings-dialog"
 
 type ModelItem = ReturnType<ReturnType<typeof useLocal>["model"]["list"]>[number]
 
 export const DialogManageModels: Component = () => {
   const local = useLocal()
   const language = useLanguage()
-  const dialog = useDialog()
-  const navigate = useNavigate()
+  const showProviders = useSettingsDialog("providers")
 
   const handleConnectProvider = () => {
-    dialog.close()
-    navigate("/extend/catalog?kind=provider")
+    showProviders()
   }
   const providerRank = (id: string) => popularProviders.indexOf(id)
   const providerList = (providerID: string) => local.model.list().filter((x) => x.provider.id === providerID)
@@ -119,12 +116,10 @@ export const DialogManageModels: Component = () => {
 export const DialogManageModelsV2: Component = () => {
   const local = useLocal()
   const language = useLanguage()
-  const dialog = useDialog()
-  const navigate = useNavigate()
+  const showProviders = useSettingsDialog("providers")
 
   const handleConnectProvider = () => {
-    dialog.close()
-    navigate("/extend/catalog?kind=provider")
+    showProviders()
   }
   const providerList = (providerID: string) => local.model.list().filter((x) => x.provider.id === providerID)
   const providerVisible = (providerID: string) =>

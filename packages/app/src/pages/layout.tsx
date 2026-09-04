@@ -50,6 +50,7 @@ import { archivedHomeSessionEvent } from "@/pages/home-session-archive"
 import { setSessionHandoff } from "@/pages/session/handoff"
 import { SessionRouteKey, SessionStateKey } from "@/utils/server-scope"
 import { notifySessionTabsRemoved } from "@/components/titlebar-session-events"
+import { ProductLinks } from "@/product-links"
 
 import { useDialog } from "@turenlabs/ui/context/dialog"
 import { useTheme, type ColorScheme } from "@turenlabs/ui/theme/context"
@@ -1105,7 +1106,7 @@ export default function LegacyLayout(props: ParentProps) {
   })
 
   function connectProvider() {
-    navigate("/extend/catalog?kind=provider")
+    openSettings("providers")
   }
 
   function openServer() {
@@ -1116,14 +1117,14 @@ export default function LegacyLayout(props: ParentProps) {
     })
   }
 
-  function openSettings() {
+  function openSettings(defaultValue?: string) {
     const run = ++dialogRun
     const module = settings.general.newLayoutDesigns()
       ? import("@/components/settings-v2")
       : import("@/components/dialog-settings")
     void module.then((x) => {
       if (dialogDead || dialogRun !== run) return
-      dialog.show(() => <x.DialogSettings />)
+      dialog.show(() => <x.DialogSettings defaultValue={defaultValue} />)
     })
   }
 
@@ -2253,9 +2254,9 @@ export default function LegacyLayout(props: ParentProps) {
       renderProjectOverlay={projectOverlay}
       settingsLabel={() => language.t("sidebar.settings")}
       settingsKeybind={() => command.keybind("settings.open")}
-      onOpenSettings={openSettings}
+      onOpenSettings={() => openSettings()}
       helpLabel={() => language.t("sidebar.help")}
-      onOpenHelp={() => platform.openLink("https://github.com/turenlabs/forge/desktop-feedback")}
+      onOpenHelp={() => platform.openLink(ProductLinks.feedback)}
       renderPanel={() =>
         mobile ? <SidebarPanel project={currentProject} mobile /> : <SidebarPanel project={currentProject} merged />
       }
