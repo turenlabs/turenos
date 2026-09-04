@@ -82,6 +82,9 @@ tmp-pentest/
 /scratch/
 /secpapers/
 /node-*.js
+
+# Required by Desktop source builds and public source snapshots.
+!packages/forge/script/build-node.ts
 /poly.flag.png
 /packages/forge/Library/
 /packages/*/.perf/
