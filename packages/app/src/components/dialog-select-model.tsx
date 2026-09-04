@@ -30,9 +30,9 @@ import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
 import { handleDocumentSearchKeydown } from "@/utils/search-keydown"
 import { createEventListener } from "@solid-primitives/event-listener"
-import { useNavigate } from "@solidjs/router"
 import { matchesModelSearch } from "./dialog-select-model-search"
 import { modelCapabilitySummary } from "./model-selection-display"
+import { useSettingsDialog } from "./settings-dialog"
 
 type ModelState = ReturnType<typeof useLocal>["model"]
 type ModelItem = ReturnType<ModelState["list"]>[number]
@@ -138,7 +138,7 @@ export function ModelSelectorPopover(props: {
     dismiss: null,
   })
   const dialog = useDialog()
-  const navigate = useNavigate()
+  const showProviders = useSettingsDialog("providers")
 
   const close = (dismiss: Dismiss) => {
     setStore("dismiss", dismiss)
@@ -154,7 +154,7 @@ export function ModelSelectorPopover(props: {
 
   const handleConnectProvider = () => {
     close("provider")
-    navigate("/extend/catalog?kind=provider")
+    showProviders()
   }
   const language = useLanguage()
 
@@ -551,11 +551,10 @@ export function ModelSelectorPopoverV2(props: {
 export const DialogSelectModel: Component<{ provider?: string; model?: ModelPickerState }> = (props) => {
   const dialog = useDialog()
   const language = useLanguage()
-  const navigate = useNavigate()
+  const showProviders = useSettingsDialog("providers")
 
   const provider = () => {
-    dialog.close()
-    navigate("/extend/catalog?kind=provider")
+    showProviders()
   }
 
   const manage = () => {

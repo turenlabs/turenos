@@ -5,11 +5,11 @@ import { Tag } from "@turenlabs/ui/v2/badge-v2"
 import { TooltipV2 } from "@turenlabs/ui/v2/tooltip-v2"
 import { useDialog } from "@turenlabs/ui/context/dialog"
 import { createMemo, onCleanup, onMount, type Component, For, Show } from "solid-js"
-import { useNavigate } from "@solidjs/router"
 import { useLocal } from "@/context/local"
 import { isRemovedProvider } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
 import { ModelTooltip } from "./model-tooltip"
+import { useSettingsDialog } from "./settings-dialog"
 
 type ModelState = ReturnType<typeof useLocal>["model"]
 
@@ -17,7 +17,7 @@ export const DialogSelectModelUnpaidV2: Component<{ model?: ModelState }> = (pro
   const local = useLocal()
   const model = props.model ?? local.model
   const dialog = useDialog()
-  const navigate = useNavigate()
+  const showProviders = useSettingsDialog("providers")
   const language = useLanguage()
   const modelKey = (item: ReturnType<ModelState["list"]>[number]) => `${item.provider.id}:${item.id}`
   const currentKey = createMemo(() => {
@@ -25,8 +25,7 @@ export const DialogSelectModelUnpaidV2: Component<{ model?: ModelState }> = (pro
     return c ? `${c.provider.id}:${c.id}` : undefined
   })
   const openProviders = () => {
-    dialog.close()
-    navigate("/extend/catalog?kind=provider")
+    showProviders()
   }
 
   const selectModel = (item: ReturnType<ModelState["list"]>[number]) => {

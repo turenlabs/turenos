@@ -141,13 +141,10 @@ export const DialogSettings: Component<{
       }))
       .filter((section) => section.items.length > 0)
   })
-  const visibleNavigation = createMemo(() => {
-    const matched = matchedNavigation()
-    if (matched.length > 0 || !filter()) return matched
-    return navigation()
-      .map((section) => ({ ...section, items: section.items.filter((item) => item.value === tab()) }))
-      .filter((section) => section.items.length > 0)
-  })
+  const matches = (item: SettingsNavigationItem) => {
+    const query = filter().trim().toLocaleLowerCase()
+    return !query || `${item.label} ${item.keywords}`.toLocaleLowerCase().includes(query)
+  }
 
   createEffect(() => {
     if (!filter()) return
@@ -185,14 +182,21 @@ export const DialogSettings: Component<{
                 />
               </div>
               <div class="settings-v2-nav-sections">
-                <For each={visibleNavigation()}>
+                <For each={navigation()}>
                   {(section) => (
-                    <div class="flex flex-col gap-1.5">
+                    <div
+                      class="flex flex-col gap-1.5"
+                      classList={{ hidden: !section.items.some((item) => matches(item)) }}
+                    >
                       <TabsV2.SectionTitle>{section.title}</TabsV2.SectionTitle>
                       <div class="flex flex-col gap-1.5 w-full">
                         <For each={section.items}>
                           {(item) => (
-                            <TabsV2.Trigger value={item.value}>
+                            <TabsV2.Trigger
+                              value={item.value}
+                              disabled={!matches(item)}
+                              classList={{ hidden: !matches(item) }}
+                            >
                               <Icon name={item.icon} />
                               {item.label}
                             </TabsV2.Trigger>

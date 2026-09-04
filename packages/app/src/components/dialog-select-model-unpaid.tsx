@@ -5,11 +5,11 @@ import { List, type ListRef } from "@turenlabs/ui/list"
 import { Tag } from "@turenlabs/ui/tag"
 import { Tooltip } from "@turenlabs/ui/tooltip"
 import { type Component, Show } from "solid-js"
-import { useNavigate } from "@solidjs/router"
 import { useLocal } from "@/context/local"
 import { isRemovedProvider } from "@/hooks/use-providers"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
+import { useSettingsDialog } from "./settings-dialog"
 
 type ModelState = ReturnType<typeof useLocal>["model"]
 
@@ -17,12 +17,11 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
   const local = useLocal()
   const model = props.model ?? local.model
   const dialog = useDialog()
-  const navigate = useNavigate()
+  const showProviders = useSettingsDialog("providers")
   const language = useLanguage()
 
   const openProviders = () => {
-    dialog.close()
-    navigate("/extend/catalog?kind=provider")
+    showProviders()
   }
 
   let listRef: ListRef | undefined
