@@ -2576,6 +2576,10 @@ export default function Page() {
               toolsLoading={() => sessionTools.isLoading}
               toolsError={() => (sessionTools.error instanceof Error ? sessionTools.error.message : undefined)}
               onRefreshTools={() => void sessionTools.refetch()}
+              onRevealTool={(call) => {
+                setLiveDockView("history")
+                queueMicrotask(() => revealMessage(call.message.id))
+              }}
               files={() => liveChangedFiles().length}
               agents={liveAgents}
               swarm={liveSwarm}
@@ -2711,7 +2715,16 @@ export default function Page() {
                   {subagentDock()}
                 </Show>
               )}
-              context={() => <SessionContextTab />}
+              context={() => (
+                <SessionContextTab
+                  objective={() => goal.goal()?.objective}
+                  todos={composer.todos}
+                  onRevealMessage={(messageID) => {
+                    setLiveDockView("history")
+                    queueMicrotask(() => revealMessage(messageID))
+                  }}
+                />
+              )}
               changes={reviewPanelV2}
               terminal={() => <TerminalPanelV2 alwaysOpen />}
               history={timelineContent}

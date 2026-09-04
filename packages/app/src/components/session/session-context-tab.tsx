@@ -10,7 +10,7 @@ import { StickyAccordionHeader } from "@turenlabs/ui/sticky-accordion-header"
 import { File } from "@turenlabs/session-ui/file"
 import { Markdown } from "@turenlabs/session-ui/markdown"
 import { ScrollView } from "@turenlabs/ui/scroll-view"
-import type { Message, Part, UserMessage } from "@turenlabs/sdk/v2/client"
+import type { Message, Part, Todo, ToolPart, UserMessage } from "@turenlabs/sdk/v2/client"
 import { useLanguage } from "@/context/language"
 import { useProviders } from "@/hooks/use-providers"
 import { useSDK } from "@/context/sdk"
@@ -91,7 +91,11 @@ function RawMessage(props: {
 const emptyMessages: Message[] = []
 const emptyUserMessages: UserMessage[] = []
 
-export function SessionContextTab() {
+export function SessionContextTab(props: {
+  objective?: () => string | undefined
+  todos?: () => Todo[]
+  onRevealMessage?: (messageID: string) => void
+} = {}) {
   const sync = useSync()
   const language = useLanguage()
   const sdk = useSDK()
@@ -196,6 +200,42 @@ export function SessionContextTab() {
     if (key === "tool") return language.t("context.breakdown.tool")
     return language.t("context.breakdown.other")
   }
+  const getParts = (id: string) => (sync().data.part[id] ?? []) as Part[]
+
+  const evidence = createMemo(() =>
+    messages()
+      .flatMap((message) =>
+        getParts(message.id).flatMap((part) =>
+          part.type === "tool" && part.state.status !== "pending" && part.state.status !== "running"
+            ? [{ messageID: message.id, part }]
+            : [],
+        ),
+      )
+      .filter((item) => !toolCompacted(item.part))
+      .slice(-8),
+  )
+  const archived = createMemo(() =>
+    messages().flatMap((message) =>
+      getParts(message.id).flatMap((part) =>
+        part.type === "tool" && toolCompacted(part)
+          ? [{ messageID: message.id, part }]
+          : [],
+      ),
+    ),
+  )
+  const taskState = createMemo(() => {
+    const todos = props.todos?.() ?? []
+    const completed = todos.filter((todo) => todo.status === "completed")
+    const unresolved = todos.filter((todo) => todo.status === "pending" || todo.status === "in_progress")
+    return {
+      verified: completed.length ? `${completed.length} completed ${completed.length === 1 ? "item" : "items"}` : "None yet",
+      unresolved: unresolved.length ? `${unresolved.length} open ${unresolved.length === 1 ? "item" : "items"}` : "None",
+      next:
+        unresolved.find((todo) => todo.status === "in_progress")?.content ??
+        unresolved[0]?.content ??
+        "Awaiting user review",
+    }
+  })
 
   const stats = [
     { label: "context.stats.session", value: () => info()?.title ?? params.id ?? "—" },
@@ -224,8 +264,6 @@ export function SessionContextTab() {
   let scroll: HTMLDivElement | undefined
   let frame: number | undefined
   let pending: { x: number; y: number } | undefined
-  const getParts = (id: string) => (sync().data.part[id] ?? []) as Part[]
-
   const restoreScroll = () => {
     const el = scroll
     if (!el) return
@@ -280,6 +318,91 @@ export function SessionContextTab() {
       onScroll={handleScroll}
     >
       <div class="px-6 pt-4 pb-10 flex flex-col gap-10">
+        <section class="overflow-hidden rounded-surface border border-v2-border-border-base bg-v2-background-bg-base">
+          <header class="flex flex-wrap items-center justify-between gap-3 border-b border-v2-border-border-muted px-5 py-3">
+            <div>
+              <p class="text-[13px] font-medium text-v2-text-strong">Context used for latest response</p>
+              <p class="mt-0.5 text-[10px] text-v2-text-faint">Projected from the active provider transcript</p>
+            </div>
+            <span class="font-mono text-[11px] text-v2-text-muted">
+              {formatter().number(ctx()?.total)} / {formatter().number(ctx()?.limit)}
+            </span>
+          </header>
+          <div class="grid gap-0 @[44rem]:grid-cols-[minmax(0,1.25fr)_minmax(260px,0.75fr)]">
+            <div class="border-b border-v2-border-border-muted p-5 @[44rem]:border-b-0 @[44rem]:border-r">
+              <p class="font-mono text-[10px] uppercase tracking-wide text-v2-text-faint">Current task</p>
+              <p class="mt-2 break-words text-[13px] leading-5 text-v2-text-strong">
+                {props.objective?.() ?? "No active session goal"}
+              </p>
+              <p class="mt-5 font-mono text-[10px] uppercase tracking-wide text-v2-text-faint">Included evidence</p>
+              <Show
+                when={evidence().length > 0}
+                fallback={<p class="mt-2 text-[11px] text-v2-text-muted">No completed tool evidence in the active context.</p>}
+              >
+                <div class="mt-2 flex flex-col">
+                  <For each={evidence()}>
+                    {(item) => (
+                      <button
+                        type="button"
+                        disabled={!props.onRevealMessage}
+                        class="grid grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-2 border-t border-v2-border-border-muted py-2 text-left first:border-t-0"
+                        onClick={() => props.onRevealMessage?.(item.messageID)}
+                      >
+                        <span
+                          aria-hidden="true"
+                          class={
+                            item.part.state.status === "error"
+                              ? "text-v2-state-fg-danger"
+                              : "text-v2-state-fg-success"
+                          }
+                        >
+                          {item.part.state.status === "error" ? "!" : "✓"}
+                        </span>
+                        <span class="min-w-0 truncate text-[11px] text-v2-text-base">{contextEvidenceLabel(item.part)}</span>
+                        <span class="font-mono text-[9px] text-v2-text-faint">{item.part.callID}</span>
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
+            <div class="p-5">
+              <p class="font-mono text-[10px] uppercase tracking-wide text-v2-text-faint">State</p>
+              <dl class="mt-2 grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-2 text-[11px]">
+                <dt class="text-v2-text-faint">Evidence</dt>
+                <dd class="text-v2-text-base">{evidence().length} current calls</dd>
+                <dt class="text-v2-text-faint">Archived</dt>
+                <dd class="text-v2-text-base">{archived().length} pruned results</dd>
+                <dt class="text-v2-text-faint">Status</dt>
+                <dd class="text-v2-text-base">{ctx() ? "Latest response projected" : "Awaiting response"}</dd>
+                <dt class="text-v2-text-faint">Verified</dt>
+                <dd class="text-v2-text-base">{taskState().verified}</dd>
+                <dt class="text-v2-text-faint">Unresolved</dt>
+                <dd class="text-v2-text-base">{taskState().unresolved}</dd>
+                <dt class="text-v2-text-faint">Next action</dt>
+                <dd class="break-words text-v2-text-base">{taskState().next}</dd>
+              </dl>
+              <Show when={archived().length > 0}>
+                <p class="mt-5 font-mono text-[10px] uppercase tracking-wide text-v2-text-faint">Archived</p>
+                <div class="mt-2 flex flex-col gap-1.5">
+                  <For each={archived().slice(-4)}>
+                    {(item) => (
+                      <button
+                        type="button"
+                        disabled={!props.onRevealMessage}
+                        class="flex min-w-0 items-center gap-2 text-left text-[11px] text-v2-text-muted hover:text-v2-text-base"
+                        onClick={() => props.onRevealMessage?.(item.messageID)}
+                      >
+                        <span aria-hidden="true">⊘</span>
+                        <span class="truncate">{contextEvidenceLabel(item.part)}</span>
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
+          </div>
+        </section>
         <div class="flex flex-col gap-3">
           <div class="grid grid-cols-1 @[32rem]:grid-cols-2 gap-4">
             <For each={stats}>
@@ -346,4 +469,17 @@ export function SessionContextTab() {
       </div>
     </ScrollView>
   )
+}
+
+function contextEvidenceLabel(part: ToolPart) {
+  const path = part.state.input.path
+  if (typeof path === "string") return `${part.tool}: ${path}`
+  const command = part.state.input.command
+  if (typeof command === "string") return command
+  return part.tool
+}
+
+function toolCompacted(part: ToolPart) {
+  if (typeof part.metadata?.prunedAt === "number") return true
+  return "time" in part.state && part.state.time && "compacted" in part.state.time && !!part.state.time.compacted
 }

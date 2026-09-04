@@ -164,6 +164,53 @@ describe("presentSessionV2Messages", () => {
     expect(result.parts.map((entry) => entry.id)).toEqual([user.id])
   })
 
+  test("keeps subagent board notifications out of the transcript while preserving assistant ownership", () => {
+    const result = present([
+      user,
+      {
+        id: "msg_board",
+        type: "user",
+        text: [
+          "A subagent posted an update to the shared team board.",
+          "<forge-team-board-update>",
+          '{"title":"Internal lead"}',
+          "</forge-team-board-update>",
+        ].join("\n"),
+        time: { created: 2 },
+      },
+      {
+        id: "msg_assistant",
+        type: "assistant",
+        agent: "build",
+        model: { providerID: "provider", id: "model" },
+        time: { created: 3, completed: 4 },
+        content: [{ id: "text_1", type: "text", text: "I incorporated the lead." }],
+      },
+    ])
+
+    expect(result.messages.map((message) => message.id)).toEqual(["msg_user", "msg_assistant"])
+    expect(result.parts.map((entry) => entry.id)).toEqual(["msg_user", "msg_assistant"])
+    expect(result.messages.at(-1)).toMatchObject({ parentID: "msg_user" })
+  })
+
+  test("does not project a pending subagent board notification", () => {
+    const result = present([user], [
+      {
+        admittedSeq: 2,
+        id: "msg_board_pending",
+        sessionID: "ses_goal",
+        prompt: {
+          text: "A subagent posted an update <forge-team-board-update> {\"title\":\"lead\"} </forge-team-board-update>",
+        },
+        delivery: "steer",
+        timeCreated: 2,
+      },
+    ])
+
+    expect(result.messages.map((message) => message.id)).toEqual(["msg_user"])
+    expect(result.parts.map((entry) => entry.id)).toEqual(["msg_user"])
+  })
+
   test("uses the assistant route as the authoritative user-message receipt", () => {
     const result = present([
       user,
@@ -335,6 +382,37 @@ describe("presentSessionV2Messages", () => {
     // model can no longer see this.
     expect(state(assistant(1700000000000)).output).toBe("a\nb")
     expect(state(assistant()).time.compacted).toBeUndefined()
+  })
+
+  test("retains a prune mark on failed tools for context inspection", () => {
+    const result = present([
+      user,
+      {
+        id: "msg_failed",
+        type: "assistant",
+        agent: "build",
+        model: { providerID: "provider", id: "model" },
+        time: { created: 2 },
+        content: [
+          {
+            id: "call_failed",
+            type: "tool",
+            name: "bash",
+            time: { created: 2, ran: 3, completed: 4, pruned: 5 },
+            state: {
+              status: "error",
+              input: { command: "bun test" },
+              error: { name: "Error", message: "failed" },
+              structured: {},
+              content: [{ type: "text", text: "failure output" }],
+            },
+          },
+        ],
+      },
+    ] as SessionMessage[])
+
+    const part = result.parts.find((item) => item.id === "msg_failed")?.parts[0]
+    expect(part?.type === "tool" ? part.metadata : undefined).toMatchObject({ prunedAt: 5 })
   })
 
   test("presents a durable shell command as one deterministic user turn and bash tool result", () => {

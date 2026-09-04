@@ -1,4 +1,15 @@
-import { batch, createComputed, ErrorBoundary, For, Show, Suspense, type ComponentProps, type JSX } from "solid-js"
+import {
+  batch,
+  createComputed,
+  createMemo,
+  createSignal,
+  ErrorBoundary,
+  For,
+  Show,
+  Suspense,
+  type ComponentProps,
+  type JSX,
+} from "solid-js"
 import { createStore } from "solid-js/store"
 import { Icon } from "@turenlabs/ui/icon"
 import { StatusIndicatorV2, type StatusIndicatorV2Tone } from "@turenlabs/ui/v2/status-indicator-v2"
@@ -9,6 +20,7 @@ import type { SessionLiveView } from "@/session-live-view"
 import type { SessionSwarmProgress } from "./subagent/session-subagent"
 import { SessionSwarmProgressView } from "./subagent/session-swarm-progress"
 import { SessionPanelRenderContext } from "./session-panel-render"
+import { activityOutput, groupSessionActivity, type SessionActivityKind } from "./goal/session-activity-model"
 
 export type { SessionLiveView } from "@/session-live-view"
 
@@ -29,12 +41,31 @@ export function SessionLiveDock(props: {
   agents?: () => SessionLiveAgents
 }) {
   const activeAgents = () => props.agents?.().active ?? 0
+  const [moreOpen, setMoreOpen] = createSignal(false)
+  let moreButton!: HTMLButtonElement
+  let moreMenu!: HTMLDivElement
+  const moreItems = DOCK_ITEMS.filter((item) => item.value !== "history" && item.value !== "activity")
+  const select = (view: SessionLiveView) => {
+    setMoreOpen(false)
+    props.onViewChange(view)
+  }
 
   return (
-    <div class="flex min-w-0 max-w-full justify-center" data-component="session-live-dock">
+    <div
+      class="relative flex min-w-0 max-w-full justify-center"
+      data-component="session-live-dock"
+      onFocusOut={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMoreOpen(false)
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !moreOpen()) return
+        setMoreOpen(false)
+        queueMicrotask(() => moreButton.focus())
+      }}
+    >
       <nav
         aria-label="Session tools"
-        class="flex max-w-full items-end gap-1 overflow-x-auto rounded-[18px] border border-v2-border-border-base bg-v2-background-bg-layer-01/90 px-2 py-1.5 shadow-[var(--v2-elevation-floating)] backdrop-blur-md no-scrollbar"
+        class="hidden max-w-full items-end gap-1 overflow-x-auto rounded-[18px] border border-v2-border-border-base bg-v2-background-bg-layer-01/90 px-2 py-1.5 shadow-[var(--v2-elevation-floating)] backdrop-blur-md no-scrollbar sm:flex"
       >
         <For each={DOCK_ITEMS}>
           {(item) => (
@@ -50,7 +81,7 @@ export function SessionLiveDock(props: {
                 }}
                 aria-label={item.label}
                 aria-pressed={props.view() === item.value}
-                onClick={() => props.onViewChange(item.value)}
+                onClick={() => select(item.value)}
               >
                 <Icon
                   name={props.view() === item.value && "activeIcon" in item ? item.activeIcon : item.icon}
@@ -74,6 +105,80 @@ export function SessionLiveDock(props: {
             </TooltipV2>
           )}
         </For>
+      </nav>
+      <Show when={moreOpen()}>
+        <>
+          <button
+            type="button"
+            aria-label="Close session view menu"
+            class="fixed inset-0 z-40 bg-black/10 sm:hidden"
+            onClick={() => {
+              setMoreOpen(false)
+              queueMicrotask(() => moreButton.focus())
+            }}
+          />
+          <div
+            ref={moreMenu}
+            role="menu"
+            aria-label="More session views"
+            class="absolute bottom-[calc(100%+8px)] left-1/2 z-50 grid w-[min(320px,calc(100vw-24px))] -translate-x-1/2 grid-cols-2 gap-1 rounded-[14px] border border-v2-border-border-base bg-v2-background-bg-layer-01 p-2 shadow-[var(--v2-elevation-overlay)] sm:hidden"
+          >
+            <For each={moreItems}>
+              {(item) => (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={props.view() === item.value}
+                  class="flex min-w-0 items-center gap-2 rounded-[9px] px-3 py-2.5 text-left text-[11px] text-v2-text-muted hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-strong"
+                  classList={{ "bg-v2-background-bg-layer-02 text-v2-text-strong": props.view() === item.value }}
+                  onClick={() => select(item.value)}
+                >
+                  <Icon name={item.icon} size="small" />
+                  <span class="truncate">{item.label}</span>
+                </button>
+              )}
+            </For>
+          </div>
+        </>
+      </Show>
+      <nav
+        aria-label="Session tools"
+        class="grid w-full max-w-sm grid-cols-3 overflow-hidden rounded-[14px] border border-v2-border-border-base bg-v2-background-bg-layer-01/95 p-1 shadow-[var(--v2-elevation-floating)] backdrop-blur-md sm:hidden"
+      >
+        <For each={DOCK_ITEMS.filter((item) => item.value === "history" || item.value === "activity")}>
+          {(item) => (
+            <button
+              type="button"
+              aria-pressed={props.view() === item.value}
+              class="flex h-10 items-center justify-center gap-1.5 rounded-[10px] text-[10px] text-v2-text-muted"
+              classList={{ "bg-v2-background-bg-layer-02 text-v2-text-strong": props.view() === item.value }}
+              onClick={() => select(item.value)}
+            >
+              <Icon name={item.icon} size="small" />
+              {item.label}
+            </button>
+          )}
+        </For>
+        <button
+          ref={moreButton}
+          type="button"
+          aria-expanded={moreOpen()}
+          aria-haspopup="menu"
+          aria-pressed={props.view() !== "history" && props.view() !== "activity"}
+          class="flex h-10 items-center justify-center gap-1.5 rounded-[10px] text-[10px] text-v2-text-muted"
+          classList={{
+            "bg-v2-background-bg-layer-02 text-v2-text-strong":
+              moreOpen() || (props.view() !== "history" && props.view() !== "activity"),
+          }}
+          onClick={() => {
+            const open = !moreOpen()
+            setMoreOpen(open)
+            if (open) queueMicrotask(() => moreMenu.querySelector("button")?.focus())
+          }}
+        >
+          <Icon name="dot-grid" size="small" />
+          More
+        </button>
       </nav>
     </div>
   )
@@ -180,6 +285,7 @@ export function SessionLivePrototype(props: {
   toolsLoading?: () => boolean
   toolsError?: () => string | undefined
   onRefreshTools?: () => void
+  onRevealTool?: (call: SessionLiveToolCall) => void
   files: () => number
   agents: () => SessionLiveAgents
   swarm?: () => SessionSwarmProgress | undefined
@@ -247,6 +353,8 @@ export function SessionLivePrototype(props: {
                   toolsLoading={() => props.toolsLoading?.() ?? false}
                   toolsError={() => props.toolsError?.()}
                   onRefreshTools={() => props.onRefreshTools?.()}
+                  onRevealTool={(call) => props.onRevealTool?.(call)}
+                  onViewChange={props.onViewChange}
                 />
               )}
             />
@@ -590,13 +698,31 @@ function Activity(props: {
   toolsLoading: () => boolean
   toolsError: () => string | undefined
   onRefreshTools: () => void
+  onRevealTool: (call: SessionLiveToolCall) => void
+  onViewChange: (view: SessionLiveView) => void
 }) {
   const [toolOpen, setToolOpen] = createStore<Record<string, boolean>>({})
   const [inventoryOpen, setInventoryOpen] = createStore({ value: false })
-  const allOpen = () => props.toolCalls().length > 0 && props.toolCalls().every((item) => toolOpen[item.id] === true)
+  const [filter, setFilter] = createSignal<"all" | SessionActivityKind>("all")
+  const [search, setSearch] = createSignal("")
+  const groups = createMemo(() => groupSessionActivity(props.toolCalls().toReversed()))
+  const visibleGroups = createMemo(() => {
+    const query = search().trim().toLowerCase()
+    return groups().filter((group) => {
+      if (filter() !== "all" && group.kind !== filter()) return false
+      if (!query) return true
+      return `${group.title} ${group.detail} ${group.calls.map((call) => `${call.part.tool} ${call.part.callID}`).join(" ")}`
+        .toLowerCase()
+        .includes(query)
+    })
+  })
+  const groupOpen = (id: string, status: ToolPart["state"]["status"], kind: SessionActivityKind) =>
+    toolOpen[id] ?? (status === "error" || kind === "network" || kind === "destructive")
+  const allOpen = () =>
+    visibleGroups().length > 0 && visibleGroups().every((group) => groupOpen(group.id, group.status, group.kind))
   const toggleAll = () => {
     const open = !allOpen()
-    props.toolCalls().forEach((item) => setToolOpen(item.id, open))
+    visibleGroups().forEach((group) => setToolOpen(group.id, open))
   }
 
   return (
@@ -711,11 +837,14 @@ function Activity(props: {
       </section>
       <Show when={props.swarm()}>{(swarm) => <SessionSwarmProgressView progress={swarm()} surface="activity" />}</Show>
       <SessionPerformance items={props.items} tools={props.tools} files={props.files} agents={props.agents} />
-      <section class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-surface border border-v2-border-border-base bg-v2-background-bg-base">
-        <div class="flex items-center justify-between border-b border-v2-border-border-muted px-5 py-3">
+      <section class="order-first flex min-h-0 flex-1 flex-col overflow-hidden rounded-surface border border-v2-border-border-base bg-v2-background-bg-base">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-v2-border-border-muted px-5 py-3">
           <StatusIndicatorV2 tone={props.toolCalls().length > 0 ? "info" : "neutral"}>Activity</StatusIndicatorV2>
           <div class="flex items-center gap-4">
-            <span class="font-mono text-[10px] text-v2-text-faint">{props.toolCalls().length} tool events</span>
+            <span class="font-mono text-[10px] text-v2-text-faint">
+              {props.toolCalls().length} calls · {formatActivityDuration(groups().reduce((sum, group) => sum + group.duration, 0))} ·{" "}
+              {groups().filter((group) => group.kind === "network").reduce((sum, group) => sum + group.calls.length, 0)} network
+            </span>
             <button
               type="button"
               class="font-mono text-[10px] text-v2-text-muted transition-colors hover:text-v2-text-strong"
@@ -725,49 +854,133 @@ function Activity(props: {
             </button>
           </div>
         </div>
+        <div class="flex flex-wrap gap-2 border-b border-v2-border-border-muted bg-v2-background-bg-layer-01 px-5 py-2.5">
+          <label class="sr-only" for="session-activity-filter">
+            Filter activity
+          </label>
+          <select
+            id="session-activity-filter"
+            value={filter()}
+            class="h-8 rounded-control border border-v2-border-border-base bg-v2-background-bg-base px-2 text-[11px] text-v2-text-base outline-none focus:border-v2-border-border-focus"
+            onInput={(event) => setFilter(event.currentTarget.value as "all" | SessionActivityKind)}
+          >
+            <option value="all">All activity</option>
+            <option value="context">Read-only</option>
+            <option value="write">Writes</option>
+            <option value="verify">Verification</option>
+            <option value="network">Network</option>
+            <option value="destructive">Consequential</option>
+            <option value="other">Other</option>
+          </select>
+          <label class="sr-only" for="session-activity-search">
+            Search activity
+          </label>
+          <input
+            id="session-activity-search"
+            type="search"
+            value={search()}
+            placeholder="Search activity…"
+            class="h-8 min-w-48 flex-1 rounded-control border border-v2-border-border-base bg-v2-background-bg-base px-3 text-[11px] text-v2-text-base outline-none placeholder:text-v2-text-faint focus:border-v2-border-border-focus"
+            onInput={(event) => setSearch(event.currentTarget.value)}
+          />
+        </div>
         <Show
-          when={props.toolCalls().length > 0}
-          fallback={<p class="px-5 py-8 text-[13px] text-v2-text-muted">Tool activity will appear here.</p>}
+          when={visibleGroups().length > 0}
+          fallback={
+            <p class="px-5 py-8 text-[13px] text-v2-text-muted">
+              {props.toolCalls().length > 0 ? "No activity matches these filters." : "Tool activity will appear here."}
+            </p>
+          }
         >
           <div class="min-h-0 flex-1 overflow-y-auto">
-            <For each={props.toolCalls().toReversed()}>
-              {(item) => (
-                <article class="border-b border-v2-border-border-muted last:border-b-0">
+            <For each={visibleGroups()}>
+              {(group) => (
+                <article
+                  data-activity-kind={group.kind}
+                  data-activity-status={group.status}
+                  class="border-b border-v2-border-border-muted last:border-b-0"
+                  classList={{
+                    "bg-v2-state-bg-danger/20": group.status === "error",
+                    "bg-v2-state-bg-warning/15": group.kind === "network" || group.kind === "destructive",
+                  }}
+                >
                   <button
                     type="button"
-                    class="grid w-full grid-cols-[56px_10px_minmax(0,1fr)_auto] items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-                    aria-expanded={toolOpen[item.id] ?? false}
-                    onClick={() => setToolOpen(item.id, !(toolOpen[item.id] ?? false))}
+                    class="grid w-full grid-cols-[10px_minmax(0,1fr)_auto] items-start gap-3 px-5 py-3 text-left transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+                    aria-expanded={groupOpen(group.id, group.status, group.kind)}
+                    onClick={() => setToolOpen(group.id, !groupOpen(group.id, group.status, group.kind))}
                   >
-                    <span class="font-mono text-[10px] text-v2-text-faint">
-                      {formatActivityTime(activityTime(item))}
-                    </span>
                     <span
                       aria-hidden="true"
-                      class={`size-1.5 rounded-full ${activityToneClass(item.part.state.status)}`}
+                      class={`mt-1.5 size-1.5 rounded-full ${activityToneClass(group.status)}`}
                     />
-                    <span class="min-w-0 truncate text-[12px] text-v2-text-base">
-                      {item.part.tool} · {activityStatusLabel(item.part.state.status)}
+                    <span class="min-w-0">
+                      <span class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        <strong class="text-[12px] font-medium text-v2-text-strong">{group.title}</strong>
+                        <span class="truncate text-[11px] text-v2-text-muted">{group.detail}</span>
+                      </span>
+                      <span class="mt-1 flex flex-wrap gap-x-3 text-[10px] text-v2-text-faint">
+                        <span>{group.calls.length} {group.calls.length === 1 ? "call" : "calls"}</span>
+                        <Show when={group.duration > 0}><span>{formatActivityDuration(group.duration)}</span></Show>
+                        <span>{activityStatusLabel(group.status)}</span>
+                      </span>
                     </span>
-                    <Icon
-                      name="chevron-right"
-                      size="small"
-                      class="text-v2-icon-icon-muted transition-transform"
-                      classList={{ "rotate-90": toolOpen[item.id] ?? false }}
-                      aria-hidden="true"
-                    />
-                  </button>
-                  <Show when={toolOpen[item.id]}>
-                    <div class="border-t border-v2-border-border-muted bg-v2-background-bg-deep px-5 py-3">
-                      <MessagePart
-                        part={item.part}
-                        message={item.message}
-                        defaultOpen={false}
-                        toolOpen
-                        onToolOpenChange={(open) => setToolOpen(item.id, open)}
-                        deferToolContent
-                        virtualizeDiff
+                    <span class="flex items-center gap-3">
+                      <Icon
+                        name="chevron-right"
+                        size="small"
+                        class="text-v2-icon-icon-muted transition-transform"
+                        classList={{ "rotate-90": groupOpen(group.id, group.status, group.kind) }}
+                        aria-hidden="true"
                       />
+                    </span>
+                  </button>
+                  <Show when={groupOpen(group.id, group.status, group.kind)}>
+                    <div class="border-t border-v2-border-border-muted bg-v2-background-bg-deep">
+                      <Show when={group.kind === "write" && group.paths.length > 0}>
+                        <div class="flex items-center justify-between gap-3 border-b border-v2-border-border-muted px-5 py-2.5">
+                          <span class="min-w-0 truncate text-[11px] text-v2-text-muted">{group.paths.join(", ")}</span>
+                          <button
+                            type="button"
+                            class="shrink-0 text-[10px] text-v2-text-accent hover:underline"
+                            onClick={() => props.onViewChange("changes")}
+                          >
+                            Review diff
+                          </button>
+                        </div>
+                      </Show>
+                      <For each={group.calls}>
+                        {(item) => (
+                          <div data-call-id={item.part.callID} class="border-b border-v2-border-border-muted px-5 py-3 last:border-b-0">
+                            <div class="mb-2 flex items-center justify-between gap-3">
+                              <button
+                                type="button"
+                                class="min-w-0 truncate font-mono text-[10px] text-v2-text-accent hover:underline"
+                                onClick={() => props.onRevealTool(item)}
+                              >
+                                {item.part.tool} · {item.part.callID}
+                              </button>
+                              <span class="shrink-0 font-mono text-[10px] text-v2-text-faint">
+                                {formatActivityTime(activityTime(item))}
+                              </span>
+                            </div>
+                            <Show when={item.part.state.status === "error"}>
+                              <pre class="mb-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-control border border-v2-state-border-danger bg-v2-state-bg-danger/30 p-3 text-[11px] text-v2-state-fg-danger">
+                                {activityOutput(item.part)}
+                              </pre>
+                            </Show>
+                            <MessagePart
+                              part={item.part}
+                              message={item.message}
+                              defaultOpen={false}
+                              toolOpen
+                              onToolOpenChange={(open) => setToolOpen(group.id, open)}
+                              deferToolContent
+                              virtualizeDiff
+                            />
+                          </div>
+                        )}
+                      </For>
                     </div>
                   </Show>
                 </article>
@@ -795,6 +1008,11 @@ function activityToneClass(status: ToolPart["state"]["status"]) {
 
 function formatActivityTime(value: number) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+}
+
+function formatActivityDuration(value: number) {
+  if (value < 1_000) return `${value}ms`
+  return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)}s`
 }
 
 function activityTime(item: SessionLiveToolCall) {

@@ -18,6 +18,12 @@ export type SessionV2TimelineProjection = SessionV2Presentation & {
   removedMessageIDs: string[]
 }
 
+const SUBAGENT_BOARD_UPDATE_MARKER = "<forge-team-board-update>"
+
+function isSubagentBoardNotification(message: SessionMessage) {
+  return message.type === "user" && message.text.includes(SUBAGENT_BOARD_UPDATE_MARKER)
+}
+
 type ShellMessage = Extract<SessionMessage, { type: "shell" }> & {
   timeout?: number
   status?: "running" | "completed" | "cancelled" | "timed_out" | "failed"
@@ -126,6 +132,9 @@ export function presentSessionV2Messages(input: {
       return
     }
     if (message.type === "user") {
+      // Board updates are admitted as user-context inputs so the model can reconcile them, but
+      // they are internal coordination traffic rather than a turn the user authored.
+      if (isSubagentBoardNotification(message)) return
       appendUser(message)
       return
     }
@@ -281,6 +290,7 @@ export function presentSessionV2Messages(input: {
   const projected = new Set(messages.map((message) => message.id))
   input.pendingInputs?.forEach((pending) => {
     if (projected.has(pending.id)) return
+    if (pending.prompt.text.includes(SUBAGENT_BOARD_UPDATE_MARKER)) return
     projected.add(pending.id)
     appendUser(
       {
@@ -433,6 +443,7 @@ function presentTool(sessionID: string, messageID: string, tool: SessionMessageA
   const metadata = {
     ...(tool.provider?.executed ? { providerExecuted: true } : {}),
     ...(tool.provider?.metadata ?? {}),
+    ...(tool.time.pruned ? { prunedAt: tool.time.pruned } : {}),
   }
   const base = {
     id: tool.id,
