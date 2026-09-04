@@ -305,6 +305,7 @@ function createSidecarEnv(): Record<string, string> {
       path: env.PATH,
     }),
   )
+  if (app.isPackaged) env.FORGE_VIGIL_PATH = join(process.resourcesPath, "vigil")
   if (!app.isPackaged) env.FORGE_DISABLE_CHANNEL_DB = "1"
   return env
 }

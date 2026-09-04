@@ -7,11 +7,8 @@ import { Global } from "@turenlabs/core/global"
 import { Extension } from "@turenlabs/schema"
 import { Process } from "@/util/process"
 
-const REPOSITORY_REVISION = "eb565b761f6cf1870a282cefffab065d33d49ec0"
-const RUNTIME_VERSION = "v0.9.0-beta.3"
 const MODEL_SHA256 = "a56667baba56811b35dd7dffc75270f8c0d3f42de88f35dd198666a663e17f1e"
 const METADATA_SHA256 = "9c90f3bc1869f77452ed4f1cec1cdb17ffac5e5a20b229060432d6c9596f26db"
-const MAX_DOWNLOAD_BYTES = 128 * 1024 * 1024
 const MAX_OUTPUT_BYTES = 64 * 1024
 
 const targets = {
@@ -19,6 +16,12 @@ const targets = {
     archive: "vigil-compact-darwin-arm64.tar.gz",
     directory: "vigil-compact-darwin-arm64",
     sha256: "b47164c9e7db7cdc199f5212e90c9865202f0c54fd05fe9225bd9dda4d170436",
+  },
+  "darwin-x64": {
+    archive: "vigil-compact-darwin-amd64.tar.gz",
+    directory: "vigil-compact-darwin-amd64",
+    sha256: "54c43cbad6ee28089d3ce0683153d36d033bf06e94012e9690917f1d86488a13",
+    bundledOnly: true,
   },
   "linux-x64": {
     archive: "vigil-compact-linux-amd64.tar.gz",
@@ -90,7 +93,9 @@ export function resetInstallState() {
 
 export async function ensure() {
   if (installing) return installing
-  installing = install()
+  const selected = target()
+  if (!selected) return undefined
+  installing = loadBundled()
   try {
     return await installing
   } finally {
@@ -143,7 +148,12 @@ async function scanManifestUnlocked(
         "json",
         staging,
       ],
-      { env: null, abort: AbortSignal.timeout(30_000), timeout: 2_000, nothrow: true },
+      {
+        env: process.platform === "linux" ? { LD_LIBRARY_PATH: path.dirname(config.library) } : null,
+        abort: AbortSignal.timeout(30_000),
+        timeout: 2_000,
+        nothrow: true,
+      },
     )
     const output = result.code === 0 ? result.stdout : result.stderr
     if (output.byteLength > MAX_OUTPUT_BYTES) throw new Error("Vigil returned too much output")
@@ -195,39 +205,26 @@ function parseResult(output: string): { result?: Score; errorCode?: string } {
   }
 }
 
-async function install() {
-  const selected = target()
-  if (!selected) return undefined
-  const root = path.join(Global.Path.cache, "vigil", RUNTIME_VERSION)
-  const installRoot = path.join(root, selected.directory)
-  const packageRoot = path.join(installRoot, selected.directory)
-  const binary = path.join(packageRoot, process.platform === "win32" ? "vigil-compact.exe" : "vigil-compact")
-  const library = path.join(packageRoot, runtimeLibrary())
-  const model = path.join(packageRoot, "compact-model.onnx")
-  const metadata = path.join(packageRoot, "compact-model.onnx.json")
-  const config = { binary, library, model, metadata }
-
-  if (!(await runtimeComplete(config))) {
-    const archive = path.join(root, selected.archive)
-    await ensureDownload(
-      `https://huggingface.co/turenlabs/Vigil/resolve/${REPOSITORY_REVISION}/runtime/${RUNTIME_VERSION}/${selected.archive}`,
-      archive,
-      selected.sha256,
-      MAX_DOWNLOAD_BYTES,
-    )
-    await extract(archive, installRoot, selected.directory)
-  }
-  if (!(await runtimeComplete(config))) throw new Error("Vigil runtime package is incomplete")
-  if (process.platform !== "win32") await fs.chmod(binary, 0o700)
-
-  const metadataValue = JSON.parse(await fs.readFile(metadata, "utf8")) as {
-    readonly model?: { readonly sha256?: string }
-  }
-  if (metadataValue.model?.sha256 !== MODEL_SHA256) throw new Error("Vigil metadata does not bind the pinned model")
-  return config
+async function loadBundled() {
+  const root = process.env.FORGE_VIGIL_PATH ?? path.join(path.dirname(process.execPath), "vigil")
+  if (!(await directory(root))) return undefined
+  const value = runtimeConfig(root)
+  // Release packaging signs native files after staging, which necessarily changes their package hashes.
+  if (!(await runtimeComplete(value, false))) throw new Error("Bundled Vigil runtime package is incomplete")
+  if (process.platform !== "win32") await fs.chmod(value.binary, 0o700)
+  return value
 }
 
-async function runtimeComplete(config: Config) {
+function runtimeConfig(root: string): Config {
+  return {
+    binary: path.join(root, process.platform === "win32" ? "vigil-compact.exe" : "vigil-compact"),
+    library: path.join(root, runtimeLibrary()),
+    model: path.join(root, "compact-model.onnx"),
+    metadata: path.join(root, "compact-model.onnx.json"),
+  }
+}
+
+async function runtimeComplete(config: Config, verifyNative = true) {
   if (!(await file(config.binary)) || !(await file(config.library))) return false
   if (!(await file(config.model)) || !(await file(config.metadata))) return false
   const checksums = await fs.readFile(path.join(path.dirname(config.binary), "SHA256SUMS"), "utf8").catch(() => "")
@@ -237,71 +234,14 @@ async function runtimeComplete(config: Config) {
       return match ? [[match[2], match[1]] as const] : []
     }),
   )
-  for (const filename of [config.binary, config.library, config.model, config.metadata]) {
+  const files = verifyNative ? [config.binary, config.library, config.model, config.metadata] : [config.model, config.metadata]
+  for (const filename of files) {
     const digest = expected.get(path.basename(filename))
     if (!digest || (await sha256File(filename)) !== digest) return false
   }
   return (
     expected.get("compact-model.onnx") === MODEL_SHA256 && expected.get("compact-model.onnx.json") === METADATA_SHA256
   )
-}
-
-async function ensureDownload(url: string, destination: string, expected: string, maximum: number) {
-  if ((await file(destination)) && (await sha256File(destination)) === expected) return
-  await fs.mkdir(path.dirname(destination), { recursive: true })
-  const temporary = `${destination}.download-${process.pid}-${Date.now()}`
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(60_000) })
-    if (!response.ok) throw new Error(`Vigil download failed with HTTP ${response.status}`)
-    const declared = Number(response.headers.get("content-length"))
-    if (Number.isFinite(declared) && declared > maximum) throw new Error("Vigil download is too large")
-    const bytes = await boundedBody(response, maximum)
-    if (crypto.createHash("sha256").update(bytes).digest("hex") !== expected) {
-      throw new Error("Vigil download checksum mismatch")
-    }
-    await fs.writeFile(temporary, bytes, { mode: 0o600 })
-    await fs.rename(temporary, destination)
-  } finally {
-    await fs.rm(temporary, { force: true }).catch(() => {})
-  }
-}
-
-async function extract(archive: string, destination: string, expectedDirectory: string) {
-  const staging = `${destination}.installing-${process.pid}-${Date.now()}`
-  await fs.rm(staging, { recursive: true, force: true })
-  await fs.mkdir(staging, { recursive: true })
-  try {
-    const result = await Process.run(["tar", "-xf", archive, "-C", staging], {
-      abort: AbortSignal.timeout(30_000),
-      timeout: 2_000,
-      nothrow: true,
-    })
-    if (result.code !== 0 || !(await directory(path.join(staging, expectedDirectory)))) {
-      throw new Error(`Vigil runtime extraction failed: ${result.stderr.toString().trim() || `exit ${result.code}`}`)
-    }
-    await fs.rm(destination, { recursive: true, force: true })
-    await fs.rename(staging, destination)
-  } finally {
-    await fs.rm(staging, { recursive: true, force: true }).catch(() => {})
-  }
-}
-
-async function boundedBody(response: Response, maximum: number) {
-  if (!response.body) return Buffer.alloc(0)
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let size = 0
-  while (true) {
-    const next = await reader.read()
-    if (next.done) break
-    size += next.value.byteLength
-    if (size > maximum) {
-      await reader.cancel("Vigil download is too large").catch(() => {})
-      throw new Error("Vigil download is too large")
-    }
-    chunks.push(next.value)
-  }
-  return Buffer.concat(chunks, size)
 }
 
 function runtimeLibrary() {

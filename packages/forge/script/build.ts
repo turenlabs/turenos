@@ -44,6 +44,7 @@ const generated = await import("./generate.ts")
 
 import { Script } from "@turenlabs/script"
 import pkg from "../package.json"
+import { stageVigil } from "./vigil"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -261,6 +262,7 @@ for (const item of targets) {
     await cp(path.join(binaryPackage.root, ".."), path.join("dist", name, "bin", binaryPackage.name), {
       recursive: true,
     })
+  await stageVigil(item, path.join("dist", name, "bin", "vigil"))
   await Bun.write(path.join("dist", name, "bin", "package.json"), JSON.stringify({ type: "module" }, null, 2))
 
   // Smoke test: only run if binary is for current platform

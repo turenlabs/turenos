@@ -203,6 +203,55 @@ jobs:
           FORGE_VERSION: ${{ needs.preflight.outputs.version }}
         run: bun --cwd packages/forge script/build.ts --skip-install --platform
 
+      - name: Verify bundled Vigil runtimes on Linux
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          for root in packages/forge/dist/forge-linux-*; do
+            if [[ "$root" == *musl* ]]; then
+              docker run --rm \
+                -v "$PWD/$root/bin/vigil:/vigil:ro" \
+                -v "$PWD/packages/forge/test/fixtures/vigil-skill:/skill:ro" \
+                alpine:3.24 sh -lc 'LD_LIBRARY_PATH=/vigil /vigil/vigil-compact --require-model --model /vigil/compact-model.onnx --metadata /vigil/compact-model.onnx.json --runtime-lib /vigil/libonnxruntime.so --format json /skill' > vigil-result.json
+            else
+              "$root/bin/vigil/vigil-compact" --require-model \
+                --model "$root/bin/vigil/compact-model.onnx" \
+                --metadata "$root/bin/vigil/compact-model.onnx.json" \
+                --runtime-lib "$root/bin/vigil/libonnxruntime.so" \
+                --format json packages/forge/test/fixtures/vigil-skill > vigil-result.json
+            fi
+            jq -e '.model_loaded == true and .fallback_used == false' vigil-result.json
+          done
+
+      - name: Verify bundled Vigil runtimes on macOS
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          for root in packages/forge/dist/forge-darwin-*; do
+            "$root/bin/vigil/vigil-compact" --require-model \
+              --model "$root/bin/vigil/compact-model.onnx" \
+              --metadata "$root/bin/vigil/compact-model.onnx.json" \
+              --runtime-lib "$root/bin/vigil/libonnxruntime.dylib" \
+              --format json packages/forge/test/fixtures/vigil-skill > vigil-result.json
+            jq -e '.model_loaded == true and .fallback_used == false' vigil-result.json
+          done
+
+      - name: Verify bundled Vigil runtimes on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem packages/forge/dist -Directory -Filter "forge-windows-*" | ForEach-Object {
+            $vigil = Join-Path $_.FullName "bin/vigil"
+            $result = & (Join-Path $vigil "vigil-compact.exe") --require-model `
+              --model (Join-Path $vigil "compact-model.onnx") `
+              --metadata (Join-Path $vigil "compact-model.onnx.json") `
+              --runtime-lib (Join-Path $vigil "onnxruntime.dll") `
+              --format json packages/forge/test/fixtures/vigil-skill | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or -not $result.model_loaded -or $result.fallback_used) {
+              throw "Bundled Vigil verification failed for $($_.Name)"
+            }
+          }
+
       - name: Stage non-Windows runtime archives
         if: runner.os != 'Windows'
         working-directory: packages/forge/dist
@@ -236,9 +285,7 @@ jobs:
         with:
           name: ${{ matrix.settings.artifact }}
           if-no-files-found: error
-          path: |
-            packages/forge/dist/forge-windows-*/bin/forge.exe
-            packages/forge/dist/forge-windows-*/bin/licenses/**
+          path: packages/forge/dist/forge-windows-*/bin/**
 
   sign-runtime-macos:
     needs: [preflight, build-runtime]
@@ -290,6 +337,14 @@ jobs:
             codesign --force --timestamp --options runtime \
               --entitlements packages/desktop/resources/entitlements.plist --sign "$identity" "$binary"
             codesign --verify --strict --verbose=2 "$binary"
+            vigil=$(find "$dir" -type f -path '*/vigil/vigil-compact' | head -1)
+            library=$(find "$dir" -type f -path '*/vigil/libonnxruntime.dylib' | head -1)
+            test -n "$vigil"
+            test -n "$library"
+            codesign --force --timestamp --options runtime --sign "$identity" "$library"
+            codesign --force --timestamp --options runtime --sign "$identity" "$vigil"
+            codesign --verify --strict --verbose=2 "$library"
+            codesign --verify --strict --verbose=2 "$vigil"
             target="$PWD/signed/$(basename "$archive")"
             (cd "$dir" && zip -q -r "$target" .)
             xcrun notarytool submit "$target" --apple-id "$APPLE_ID" \
@@ -340,17 +395,20 @@ jobs:
         env:
           EXPECTED_VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          $files = @(Get-ChildItem unsigned -Recurse -Filter forge.exe)
-          if ($files.Count -ne 3) {
-            throw "Expected 3 Windows runtime binaries, found $($files.Count)"
+          $forge = @(Get-ChildItem unsigned -Recurse -Filter forge.exe)
+          $vigil = @(Get-ChildItem unsigned -Recurse -Filter vigil-compact.exe)
+          $onnx = @(Get-ChildItem unsigned -Recurse -Filter onnxruntime.dll)
+          if ($forge.Count -ne 3 -or $vigil.Count -ne 3 -or $onnx.Count -ne 3) {
+            throw "Expected 3 Forge, 3 Vigil, and 3 ONNX runtime binaries, found $($forge.Count), $($vigil.Count), and $($onnx.Count)"
           }
+          $files = @($forge + $vigil + $onnx)
           & ./script/sign-windows.ps1 @($files.FullName)
           foreach ($file in $files) {
             $signature = Get-AuthenticodeSignature $file.FullName
             if ($signature.Status -ne "Valid") {
               throw "Invalid signature for $($file.FullName): $($signature.Status)"
             }
-            if ($file.FullName -notmatch "arm64") {
+            if ($file.Name -eq "forge.exe" -and $file.FullName -notmatch "arm64") {
               $reported = (& $file.FullName --version).Trim()
               if ($reported -ne $env:EXPECTED_VERSION) {
                 throw "$($file.FullName) reports $reported; expected $env:EXPECTED_VERSION"
@@ -585,6 +643,8 @@ jobs:
             lipo -archs "$1/Contents/MacOS/$executable" | grep -Eq "(^| )${expected_arch}( |$)"
             codesign --verify --strict --verbose=2 "$1/Contents/Resources/forge-cli"
             lipo -archs "$1/Contents/Resources/forge-cli" | grep -Eq "(^| )${expected_arch}( |$)"
+            codesign --verify --strict --verbose=2 "$1/Contents/Resources/vigil/vigil-compact"
+            lipo -archs "$1/Contents/Resources/vigil/vigil-compact" | grep -Eq "(^| )${expected_arch}( |$)"
             while IFS= read -r native; do codesign --verify --strict --verbose=2 "$native"; done \
               < <(find "$1/Contents/Resources/native" -type f -name '*.node')
           }

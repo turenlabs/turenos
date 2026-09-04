@@ -766,6 +766,10 @@
         "solid-js": "^1.9.0",
       },
     },
+    "packages/vigil-runtime": {
+      "name": "@turenlabs/vigil-runtime",
+      "version": "0.9.0-beta.3",
+    },
     "packages/wasm-inspect-wasm": {
       "name": "@turenlabs/wasm-inspect-wasm",
       "version": "0.1.0",
@@ -1853,6 +1857,8 @@
     "@turenlabs/stng-core-wasm": ["@turenlabs/stng-core-wasm@workspace:packages/stng-core-wasm"],
 
     "@turenlabs/ui": ["@turenlabs/ui@workspace:packages/ui"],
+
+    "@turenlabs/vigil-runtime": ["@turenlabs/vigil-runtime@workspace:packages/vigil-runtime"],
 
     "@turenlabs/wasm-inspect-wasm": ["@turenlabs/wasm-inspect-wasm@workspace:packages/wasm-inspect-wasm"],
 

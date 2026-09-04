@@ -183,6 +183,11 @@ const verifyPackage: NonNullable<Configuration["afterPack"]> = async (context) =
       "forensic-tools/windows-artifacts/dist/turen_windows_artifacts_wasm_bg.wasm",
       "forensic-tools/rebuild-timeline/dist/turen_rebuild_timeline_wasm.js",
       "forensic-tools/rebuild-timeline/dist/turen_rebuild_timeline_wasm_bg.wasm",
+      "vigil/SHA256SUMS",
+      "vigil/compact-model.onnx",
+      "vigil/compact-model.onnx.json",
+      `vigil/${context.electronPlatformName === "win32" ? "vigil-compact.exe" : "vigil-compact"}`,
+      `vigil/${context.electronPlatformName === "darwin" ? "libonnxruntime.dylib" : context.electronPlatformName === "win32" ? "onnxruntime.dll" : "libonnxruntime.so"}`,
     ].map((file) =>
       access(path.join(resources, file)).catch(() => {
         throw new Error(`Packaged decompile artifact is missing: ${file}`)
@@ -337,7 +342,7 @@ const getBase = (appId: string): Configuration => ({
     {
       from: "resources/",
       to: ".",
-      filter: ["forge-cli*"],
+      filter: ["forge-cli*", "vigil/**"],
     },
     {
       from: "native/",

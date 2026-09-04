@@ -1,4 +1,5 @@
 import { $ } from "bun"
+import { dirname } from "node:path"
 
 export type Channel = "dev" | "beta" | "prod"
 
@@ -64,6 +65,8 @@ export async function copyBinaryToSidecarFolder(source: string) {
   await $`mkdir -p ${dir}`
   const dest = windowsify(`${dir}/forge-cli`)
   await $`cp ${source} ${dest}`
+  await $`rm -rf ${dir}/vigil`
+  await $`cp -R ${dirname(source)}/vigil ${dir}/vigil`
   if (process.platform === "win32" && process.env.GITHUB_ACTIONS === "true") {
     await $`pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File ../../script/sign-windows.ps1 ${dest}`
   }

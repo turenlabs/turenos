@@ -1,0 +1,19 @@
+{
+  "vigilRevision": "eb565b761f6cf1870a282cefffab065d33d49ec0",
+  "vigilVersion": "v0.9.0-beta.3",
+  "modelSha256": "a56667baba56811b35dd7dffc75270f8c0d3f42de88f35dd198666a663e17f1e",
+  "darwinX64": {
+    "go": "1.26.2",
+    "onnxRuntime": "1.24.3",
+    "onnxRuntimeSource": "https://github.com/microsoft/onnxruntime/archive/refs/tags/v1.24.3.tar.gz",
+    "deploymentTarget": "13.0"
+  },
+  "musl": {
+    "distribution": "Alpine Linux 3.24",
+    "onnxRuntime": "1.24.4-r1",
+    "go": {
+      "amd64": "1.26.2",
+      "arm64": "1.26.3-r0"
+    }
+  }
+}

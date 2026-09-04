@@ -1,0 +1,13 @@
+{
+  "name": "@turenlabs/vigil-runtime",
+  "version": "0.9.0-beta.3",
+  "private": true,
+  "license": "OpenMDW-1.1",
+  "files": [
+    "LICENSE",
+    "README.md",
+    "SHA256SUMS",
+    "SOURCE.json",
+    "runtime"
+  ]
+}

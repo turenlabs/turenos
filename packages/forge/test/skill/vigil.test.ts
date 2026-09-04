@@ -44,7 +44,7 @@ describe("Vigil skill scanner", () => {
   test("selects only published runtime targets", () => {
     expect(Vigil.target("darwin", "arm64")?.archive).toBe("vigil-compact-darwin-arm64.tar.gz")
     expect(Vigil.target("linux", "x64")?.archive).toBe("vigil-compact-linux-amd64.tar.gz")
-    expect(Vigil.target("darwin", "x64")).toBeUndefined()
+    expect(Vigil.target("darwin", "x64")?.archive).toBe("vigil-compact-darwin-amd64.tar.gz")
   })
 
   test("binds review identity to every model-visible skill field", () => {

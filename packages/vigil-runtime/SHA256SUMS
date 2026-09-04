@@ -1,0 +1,8 @@
+b47164c9e7db7cdc199f5212e90c9865202f0c54fd05fe9225bd9dda4d170436  runtime/vigil-compact-darwin-arm64.tar.gz
+54c43cbad6ee28089d3ce0683153d36d033bf06e94012e9690917f1d86488a13  runtime/vigil-compact-darwin-amd64.tar.gz
+d4479903615788ebd1c1217318070cbb202639d5993099d9f9eece3d7a256af6  runtime/vigil-compact-linux-amd64.tar.gz
+a344dac51a6a2691061494ae5ea24e5f8edab7a468d3ee9fad5efd14986b95d2  runtime/vigil-compact-linux-arm64.tar.gz
+c490611518dd44cc756d33b0abe77b1e855468625c10f496e000868ef4e6dd98  runtime/vigil-compact-linux-amd64-musl.tar.gz
+e06109d349befb63b3ca764d76c7de89514acf84338399921ac780f4c53a912f  runtime/vigil-compact-linux-arm64-musl.tar.gz
+4bd13101707028b096efdc6114679f95652a77af465758b8190270e61b5fd2b0  runtime/vigil-compact-windows-amd64.tar.gz
+b019e4bb25bbca973668fa7cc1fa0cd5a1c35c8f7d088f3e4fa6d34cdd4979a2  runtime/vigil-compact-windows-arm64.tar.gz
