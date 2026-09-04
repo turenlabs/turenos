@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
+import path from "node:path"
 import { Extension } from "@turenlabs/schema"
 import { Vigil } from "../../src/skill/vigil"
 import type { Process } from "../../src/util/process"
@@ -57,7 +58,9 @@ describe("Vigil skill scanner", () => {
     let staging = ""
     const run = (async (command: string[], options: { env?: NodeJS.ProcessEnv | null }) => {
       staging = command.at(-1) ?? ""
-      expect(options.env).toBeNull()
+      expect(options.env).toEqual(
+        process.platform === "linux" ? { LD_LIBRARY_PATH: path.dirname(config.library) } : null,
+      )
       expect(await fs.readFile(`${staging}/SKILL.md`, "utf8")).toBe("Report evidence-supported findings only.")
       await expect(fs.stat(`${staging}/extension.json`)).rejects.toThrow()
       return {
