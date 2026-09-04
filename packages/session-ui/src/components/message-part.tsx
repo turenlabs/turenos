@@ -67,6 +67,9 @@ import { attached, inline, kind, typeLabel } from "./message-file"
 import { readPartText } from "./message-part-text"
 import { taskThinkingState } from "./task-thinking-state"
 import { toolResultCleared } from "./tool-cleared"
+import { partDefaultOpen } from "./part-default-open"
+
+export { partDefaultOpen } from "./part-default-open"
 import type { MarkdownImageResolver } from "./markdown-image"
 
 async function writeClipboard(text: string): Promise<boolean> {
@@ -742,16 +745,6 @@ export function renderable(part: PartType, showReasoningSummaries = true) {
   if (part.type === "text") return !!part.text?.trim()
   if (part.type === "reasoning") return showReasoningSummaries && !!part.text?.trim()
   return !!PART_MAPPING[part.type]
-}
-
-function toolDefaultOpen(tool: string, shell = false, edit = false) {
-  if (tool === "bash") return shell
-  if (tool === "edit" || tool === "write" || tool === "apply_patch") return edit
-}
-
-export function partDefaultOpen(part: PartType, shell = false, edit = false) {
-  if (part.type !== "tool") return
-  return toolDefaultOpen(part.tool, shell, edit)
 }
 
 export function AssistantParts(props: {
