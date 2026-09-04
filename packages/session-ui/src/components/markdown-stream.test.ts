@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test"
-import { canReusePendingBlock, project, stream } from "./markdown-stream"
+import { canCommitStreamResult, canReusePendingBlock, project, stream } from "./markdown-stream"
 
 describe("markdown stream", () => {
+  test("slow parsing makes monotonic progress during continuous streaming", () => {
+    expect(canCommitStreamResult("**Hello** world grows", "**Hello", "**Hello** world")).toBe(true)
+    expect(canCommitStreamResult("**Hello** world grows", "**Hello** world", "**Hello")).toBe(false)
+    expect(canCommitStreamResult("replacement", "old content", "old")).toBe(false)
+    expect(canCommitStreamResult("replacement grows", "old content", "replacement")).toBe(true)
+    expect(canCommitStreamResult("short", "short", "shortened earlier content")).toBe(false)
+  })
   test("heals incomplete emphasis while streaming", () => {
     expect(stream("hello **world", true)).toEqual([{ raw: "hello **world", src: "hello **world**", mode: "live" }])
     expect(stream("say `code", true)).toEqual([{ raw: "say `code", src: "say `code`", mode: "live" }])
@@ -130,6 +137,21 @@ describe("markdown stream", () => {
   })
 
   test("only reuses pending blocks with compatible identity and content", () => {
+    expect(
+      canReusePendingBlock(
+        { mode: "live", raw: "- **Stable** list" },
+        { mode: "full", raw: "- **Stable** list\n\n", src: "" },
+      ),
+    ).toBe(true)
+    expect(
+      canReusePendingBlock(
+        { mode: "live", raw: "**Stable** text" },
+        { mode: "live", raw: "**Stable** text grows", src: "" },
+      ),
+    ).toBe(true)
+    expect(
+      canReusePendingBlock({ mode: "live", raw: "old response" }, { mode: "live", raw: "replacement", src: "" }),
+    ).toBe(false)
     expect(
       canReusePendingBlock({ mode: "full", raw: "First\n\n" }, { mode: "full", raw: "# Inserted\n\n", src: "" }),
     ).toBe(false)
