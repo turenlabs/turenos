@@ -441,7 +441,7 @@ const lowerMessages = Effect.fn("AnthropicMessages.lowerMessages")(function* (
           continue
         }
         if (part.type === "media") {
-          content.push(yield* lowerImage(part))
+          content.push({ ...(yield* lowerImage(part)), cache_control: cacheControl(breakpoints, part.cache) })
           continue
         }
         return yield* ProviderShared.unsupportedContent("Anthropic Messages", "user", ["text", "media"])

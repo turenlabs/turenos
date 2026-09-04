@@ -514,7 +514,7 @@ describe("Bedrock Converse route", () => {
         messages: [
           {
             role: "user",
-            content: [{ image: { format: "png", source: { bytes: "AQIDBAU=" } } }],
+            content: [{ image: { format: "png", source: { bytes: "AQIDBAU=" } } }, { cachePoint: { type: "default" } }],
           },
         ],
       })
@@ -545,6 +545,7 @@ describe("Bedrock Converse route", () => {
               { document: { format: "pdf", name: "report.pdf", source: { bytes: "UERGREFUQQ==" } } },
               // Falls back to a stable placeholder when filename is missing.
               { document: { format: "csv", name: "document.csv", source: { bytes: "Q1NWREFUQQ==" } } },
+              { cachePoint: { type: "default" } },
             ],
           },
         ],

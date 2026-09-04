@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { CacheHint, LLM, Message } from "../src"
+import { CacheHint, LLM, Message, ToolCallPart } from "../src"
 import { Auth, LLMClient } from "../src/route"
 import { AmazonBedrock } from "../src/providers"
-import * as AnthropicMessages from "../src/protocols/anthropic-messages"
-import * as Gemini from "../src/protocols/gemini"
-import * as OpenAIChat from "../src/protocols/openai-chat"
+import { AnthropicMessages } from "../src/protocols/anthropic-messages"
+import { Gemini } from "../src/protocols/gemini"
+import { OpenAIChat } from "../src/protocols/openai-chat"
 import { applyCachePolicy } from "../src/cache-policy"
 import { it } from "./lib/effect"
 
@@ -88,6 +88,99 @@ describe("applyCachePolicy", () => {
     LLMClient.prepare(LLM.request({ model: anthropicModel, system: "Sys", messages, cache: "auto" })).pipe(
       Effect.map((prepared) => (prepared.body as { messages: unknown }).messages),
     )
+
+  it.effect("auto advances through tool results while keeping the stable user boundary", () =>
+    Effect.gen(function* () {
+      const messages = [
+        Message.user("Inspect the repository"),
+        ...Array.from({ length: 24 }, (_, index) => [
+          Message.assistant([ToolCallPart.make({ id: `call_${index}`, name: "read", input: { index } })]),
+          Message.tool({ id: `call_${index}`, name: "read", result: `file contents ${index}` }),
+        ]).flat(),
+        internalContext("goal: 123 tokens remaining"),
+      ]
+      const request = LLM.request({
+        model: anthropicModel,
+        system: "Sys",
+        tools: [{ name: "read", description: "Read a file", inputSchema: { type: "object" } }],
+        messages,
+      })
+      const prepared = yield* LLMClient.prepare(request)
+      const body = prepared.body as {
+        messages: Array<{ content: Array<{ cache_control?: unknown; type: string }> }>
+      }
+      expect(body.messages[0]?.content[0]?.cache_control).toEqual({ type: "ephemeral" })
+      expect(body.messages.at(-2)?.content[0]).toMatchObject({
+        type: "tool_result",
+        cache_control: { type: "ephemeral" },
+      })
+      expect(body.messages.at(-1)?.content[0]?.cache_control).toBeUndefined()
+      expect(JSON.stringify(prepared.body).match(/"cache_control"/g)?.length).toBe(4)
+      expect(JSON.stringify(request)).not.toContain('"cache":')
+      const next = yield* LLMClient.prepare(
+        LLM.updateRequest(request, {
+          messages: [...messages.slice(0, -1), internalContext("goal: 99 tokens remaining")],
+        }),
+      )
+      expect((next.body as typeof body).messages.slice(0, -1)).toEqual(body.messages.slice(0, -1))
+
+      const bedrock = yield* LLMClient.prepare(LLM.updateRequest(request, { model: bedrockModel }))
+      expect(bedrock.body).toMatchObject({
+        messages: expect.arrayContaining([
+          { role: "user", content: [{ toolResult: expect.anything() }, { cachePoint: { type: "default" } }] },
+        ]),
+      })
+    }),
+  )
+
+  it.effect("auto caches trailing image content instead of stopping at preceding text", () =>
+    Effect.gen(function* () {
+      const messages = [
+        Message.user([
+          { type: "text", text: "Inspect this image" },
+          { type: "media", mediaType: "image/png", data: "data:image/png;base64,aGVsbG8=" },
+        ]),
+      ]
+      const prepared = yield* LLMClient.prepare(LLM.request({ model: anthropicModel, messages }))
+      expect(prepared.body).toMatchObject({
+        messages: [
+          {
+            content: [
+              { type: "text", cache_control: undefined },
+              { type: "image", cache_control: { type: "ephemeral" } },
+            ],
+          },
+        ],
+      })
+      const bedrock = yield* LLMClient.prepare(LLM.request({ model: bedrockModel, messages }))
+      expect(bedrock.body).toMatchObject({
+        messages: [
+          {
+            content: [
+              { text: "Inspect this image" },
+              { image: expect.anything() },
+              { cachePoint: { type: "default" } },
+            ],
+          },
+        ],
+      })
+    }),
+  )
+
+  test("auto skips reasoning-only tails and granular user caching stays user-only", () => {
+    const messages = [
+      Message.user("Start"),
+      Message.tool({ id: "call", name: "read", result: "contents" }),
+      Message.assistant([{ type: "reasoning", text: "thinking", encrypted: "signature" }]),
+    ]
+    const request = LLM.request({ model: anthropicModel, messages })
+    const cached = applyCachePolicy(request)
+    expect(cached.messages[1]?.content[0]).toHaveProperty("cache")
+    expect(cached.messages[2]?.content[0]).not.toHaveProperty("cache")
+    const explicit = applyCachePolicy(LLM.updateRequest(request, { cache: { messages: "latest-user-message" } }))
+    expect(explicit.messages[0]?.content[0]).toHaveProperty("cache")
+    expect(explicit.messages[1]?.content[0]).not.toHaveProperty("cache", expect.anything())
+  })
 
   it.effect("'auto' skips per-turn internal-context user messages when placing the breakpoint", () =>
     Effect.gen(function* () {

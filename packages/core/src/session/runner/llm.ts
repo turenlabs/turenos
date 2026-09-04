@@ -705,6 +705,9 @@ const layer = Layer.effect(
         attachmentDeps,
         entries.map((entry) => entry.message),
       )
+      // Budget the materialized bytes sent to the provider, not unresolved file:
+      // references whose contents can be much larger than a flat media estimate.
+      const measured = entries.map((entry, index) => ({ ...entry, message: context[index]! }))
       const previousAssistant = entries.findLast(
         (entry): entry is typeof entry & { readonly message: SessionMessage.Assistant } =>
           entry.message.type === "assistant",
@@ -872,7 +875,7 @@ const layer = Layer.effect(
           entries: history,
           model,
           request,
-          measured: entries,
+          measured,
         }))
       )
         return yield* Effect.die(continueAfterCompaction(currentStep))
@@ -881,7 +884,7 @@ const layer = Layer.effect(
       // shrink it to what the window still holds. A no-op for every healthy request.
       // Clamp against the pruned view: the wire request was built from `entries`, so measuring
       // `history` would re-count freed bytes and shrink the allowance for no reason.
-      const wireRequest = SessionCompaction.clampOutput({ entries, model, request })
+      const wireRequest = SessionCompaction.clampOutput({ entries: measured, model, request })
       yield* startupPhase("provider_request_ready", {
         messages: wireRequest.messages.length,
         tools: wireRequest.tools.length,
