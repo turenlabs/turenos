@@ -12,7 +12,7 @@
     "distribution": "Alpine Linux 3.24",
     "onnxRuntime": "1.24.4-r1",
     "go": {
-      "amd64": "1.26.2",
+      "amd64": "1.26.3-r0",
       "arm64": "1.26.3-r0"
     }
   }

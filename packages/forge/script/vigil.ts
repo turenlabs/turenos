@@ -24,6 +24,7 @@ export async function stageVigil(
   const archive = path.join(import.meta.dirname, "../../vigil-runtime/runtime", `${name}.tar.gz`)
   const expected = (await Bun.file(path.join(import.meta.dirname, "../../vigil-runtime/SHA256SUMS")).text())
     .split("\n")
+    .map((line) => line.trim())
     .find((line) => line.endsWith(`runtime/${name}.tar.gz`))
     ?.split(/\s+/)[0]
   if (!expected) throw new Error(`Vigil checksum is missing for ${name}`)
