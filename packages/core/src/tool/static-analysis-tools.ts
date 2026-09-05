@@ -46,7 +46,19 @@ const operations = [
   ],
   [
     "disassemble",
-    "Disassemble a bounded x86/x64 byte range with iced-x86 compiled to WebAssembly. The bytes are never executed.",
+    "Disassemble bounded x86/x64 or ARM64 bytes with bundled WebAssembly decoders. The bytes are never executed.",
+  ],
+  [
+    "function_flow",
+    "Decode one bounded x86/x64 or ARM64 byte range into instructions, direct branch/call targets, and basic blocks. Indirect targets remain unresolved; this is not global function discovery or a complete call graph.",
+  ],
+  [
+    "vba_extract",
+    "Extract bounded VBA module source from OLE or OOXML without executing macros. Returns original source bytes and a text preview; compiled p-code is not decompiled.",
+  ],
+  [
+    "dotnet_methods",
+    "Inspect .NET MethodDef metadata and bounded raw IL bytes from a PE assembly. Does not execute code or produce high-level decompilation.",
   ],
   [
     "scan_embedded",
@@ -54,9 +66,12 @@ const operations = [
   ],
   [
     "detect_packer",
-    "Detect common packer markers such as UPX, MPRESS, Themida, and ASPack from bytes and PE section names.",
+    "Report evidence-backed packer heuristics using a reviewed MIT-licensed DIE section-name subset and literal markers. Findings are indicators, not proof of packing or malware.",
   ],
-  ["list_archive", "List ZIP or tar archive members from bytes without writing extracted paths to disk."],
+  [
+    "list_archive",
+    "List ZIP, tar, gzip-tar, ar, cpio, and bounded plain-header 7z archive members without extracting paths. Encrypted/encoded 7z headers, RAR, and unsupported codecs fail explicitly.",
+  ],
   [
     "parse_pdf",
     "Parse bounded PDF header, object, stream, JavaScript, Launch, OpenAction, and encryption indicators from bytes.",
@@ -109,7 +124,7 @@ const layer = Layer.effectDiscard(
         "extract_archive_entry",
         Tool.make({
           description:
-            "Extract one ZIP or tar member into a separately specified output file with the bundled WebAssembly runtime. Archive paths are never written; only the selected entry bytes are created at outputPath.",
+            "Extract one selected ZIP, tar, gzip-tar, ar, cpio, or supported plain-header 7z member into an approved new output file. Archive paths are never written; encrypted and unsupported formats fail explicitly.",
           input: Schema.Struct({
             path: Path,
             outputPath: Schema.NonEmptyString.annotate({ description: "Destination file for the extracted entry." }),
@@ -166,7 +181,7 @@ const layer = Layer.effectDiscard(
                 sha256?: string
                 contentBase64?: string
               }
-              if (!payload.contentBase64)
+              if (typeof payload.contentBase64 !== "string")
                 return yield* new ToolFailure({
                   message: payload.name ? `Unable to extract ${payload.name}` : "Unable to extract archive entry",
                 })
@@ -246,9 +261,12 @@ function extraInput(name: string) {
           description: "Entropy window size in bytes. Defaults to 256; range 16-4096.",
         }),
     })
-  if (name === "disassemble")
+  if (name === "disassemble" || name === "function_flow")
     return Schema.Struct({
       path: Path,
+      architecture: Schema.Literals(["x86", "x86_64", "arm64"]).pipe(Schema.optional).annotate({
+        description: "Decoder architecture. Defaults to x86; bitness selects 16/32/64. ARM64 requires 64-bit width.",
+      }),
       offset: NonNegativeInt.pipe(Schema.optional).annotate({
         description: "File offset to start disassembly. Defaults to 0.",
       }),
@@ -261,6 +279,24 @@ function extraInput(name: string) {
       address: NonNegativeInt.pipe(Schema.optional).annotate({
         description: "Virtual address for the first instruction. Defaults to offset.",
       }),
+    })
+  if (name === "vba_extract" || name === "dotnet_methods")
+    return Schema.Struct({
+      path: Path,
+      index: NonNegativeInt.pipe(Schema.optional).annotate({
+        description: "Select exactly one zero-based module or method index.",
+      }),
+      offset: NonNegativeInt.pipe(Schema.optional).annotate({
+        description: "First record index when listing. Defaults to 0.",
+      }),
+      maxResults: PositiveInt.check(Schema.isLessThanOrEqualTo(4096))
+        .pipe(Schema.optional)
+        .annotate({ description: "Maximum records to return. Defaults to 64; ignored when index selects one record." }),
+      maxOutputBytes: PositiveInt.check(Schema.isBetween({ minimum: 256, maximum: 4194304 }))
+        .pipe(Schema.optional)
+        .annotate({
+          description: "Serialized result budget; each source or IL item is independently capped at 64 KiB.",
+        }),
     })
   if (name === "scan_embedded")
     return Schema.Struct({
@@ -275,14 +311,22 @@ function extraInput(name: string) {
 function optionsFrom(name: string, input: Record<string, unknown>) {
   if (name === "hash_digest") return { algorithm: input.algorithm ?? "sha256" }
   if (name === "entropy_scan") return { window: input.window ?? 256 }
-  if (name === "disassemble")
+  if (name === "disassemble" || name === "function_flow")
     return {
+      architecture: input.architecture ?? "x86",
       offset: input.offset ?? 0,
       length: input.length ?? 64,
       bitness: input.bitness ?? 64,
       address: input.address,
     }
   if (name === "scan_embedded") return { maxResults: input.maxResults ?? 64 }
+  if (name === "vba_extract" || name === "dotnet_methods")
+    return {
+      index: input.index,
+      offset: input.offset,
+      maxResults: input.maxResults,
+      maxOutputBytes: input.maxOutputBytes,
+    }
   return {}
 }
 

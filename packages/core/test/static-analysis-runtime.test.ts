@@ -38,6 +38,9 @@ const names = [
   "fuzzy_hash",
   "import_hash",
   "disassemble",
+  "function_flow",
+  "vba_extract",
+  "dotnet_methods",
   "scan_embedded",
   "detect_packer",
   "list_archive",
@@ -56,6 +59,52 @@ const names = [
 ]
 
 describe("StaticAnalysisRuntime", () => {
+  it.live("executes bounded security extensions without replacing legacy parsers", () =>
+    Effect.gen(function* () {
+      const runtime = yield* StaticAnalysisRuntime.Service
+      const arm = yield* runtime.analyze({
+        operation: "disassemble",
+        bytes: Uint8Array.from([0x1f, 0x20, 0x03, 0xd5, 0xc0, 0x03, 0x5f, 0xd6]),
+        options: { architecture: "arm64", length: 8, address: 4096 },
+      })
+      expect(arm.result).toMatchObject({
+        architecture: "arm64",
+        instructions: [
+          { address: "0x1000", bytes: "1f2003d5", text: "nop" },
+          { address: "0x1004", bytes: "c0035fd6", text: "ret" },
+        ],
+      })
+      const flow = yield* runtime.analyze({
+        operation: "function_flow",
+        bytes: Uint8Array.from([0x90, 0xc3]),
+        options: { length: 2 },
+      })
+      expect(flow.result).toMatchObject({ architecture: "x86_64", edges: [{ kind: "return" }] })
+      const packer = yield* runtime.analyze({
+        operation: "detect_packer",
+        bytes: new TextEncoder().encode("UPX!"),
+        options: {},
+      })
+      expect(packer.result).toMatchObject({
+        ruleSet: { license: "MIT" },
+        matches: [{ name: "UPX", confidence: "low" }],
+      })
+      const ar = new TextEncoder().encode("!<arch>\nhello/          0           0     0     100644  3         `\nabc\n")
+      const listed = yield* runtime.analyze({ operation: "list_archive", bytes: ar, options: {} })
+      expect(listed.result).toMatchObject({ format: "ar", entries: [{ name: "hello", size: 3 }] })
+      const extracted = yield* runtime.analyze({
+        operation: "extract_archive_entry",
+        bytes: ar,
+        options: { index: 0, maxOutputBytes: 3 },
+      })
+      expect(extracted.result).toMatchObject({ format: "ar", contentBase64: "YWJj" })
+      for (const operation of ["vba_extract", "dotnet_methods"])
+        expect(
+          yield* runtime.analyze({ operation, bytes: Uint8Array.of(1), options: {} }).pipe(Effect.flip),
+        ).toBeInstanceOf(Error)
+    }),
+  )
+
   it.live("executes identify, hash, disassemble, and archive WASM operations", () =>
     Effect.gen(function* () {
       const runtime = yield* StaticAnalysisRuntime.Service
@@ -114,7 +163,7 @@ describe("StaticAnalysisRuntime", () => {
     }),
   )
 
-  testEffect(Layer.empty).live("registers twenty-one agent-facing tools", () =>
+  testEffect(Layer.empty).live("registers the shipped static-analysis tools", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
       (tmp) =>
@@ -134,6 +183,28 @@ describe("StaticAnalysisRuntime", () => {
           })
           expect(result.type).toBe("text")
           if (result.type === "text") expect(result.value).toContain('"magic": "pdf"')
+          const header = [
+            "empty/".padEnd(16),
+            "0".padEnd(12),
+            "0".padEnd(6),
+            "0".padEnd(6),
+            "100644".padEnd(8),
+            "0".padEnd(10),
+            "`\n",
+          ].join("")
+          yield* Effect.promise(() => fs.writeFile(`${tmp.path}/empty.ar`, `!<arch>\n${header}`))
+          const extracted = yield* executeTool(registry, {
+            sessionID: SessionV2.ID.make("ses_static_analysis_test"),
+            ...toolIdentity,
+            call: {
+              type: "tool-call",
+              id: "call-extract-empty",
+              name: "extract_archive_entry",
+              input: { path: "empty.ar", outputPath: "empty.bin", index: 0 },
+            },
+          })
+          expect(extracted.type).toBe("text")
+          expect((yield* Effect.promise(() => fs.readFile(`${tmp.path}/empty.bin`))).length).toBe(0)
         }).pipe(
           Effect.provide(
             AppNodeBuilder.build(

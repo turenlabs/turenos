@@ -246,11 +246,7 @@ for (const item of targets) {
   )
   await cp(yaraRoot, path.join("dist", name, "bin", "yara-x", "dist"), { recursive: true })
   await cp(path.join(yaraRoot, "../package.json"), path.join("dist", name, "bin", "yara-x", "package.json"))
-  await cp(emailSecurityRoot, path.join("dist", name, "bin", "email-security", "dist"), { recursive: true })
-  await cp(
-    path.join(emailSecurityRoot, "../package.json"),
-    path.join("dist", name, "bin", "email-security", "package.json"),
-  )
+  await cp(path.join(emailSecurityRoot, ".."), path.join("dist", name, "bin", "email-security"), { recursive: true })
   await cp(emailAuthenticateRoot, path.join("dist", name, "bin", "email-authenticate", "dist"), { recursive: true })
   await cp(
     path.join(emailAuthenticateRoot, "../package.json"),

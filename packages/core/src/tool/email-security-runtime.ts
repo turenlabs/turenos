@@ -35,7 +35,14 @@ export interface SanitizedHtml {
   readonly truncated: boolean
 }
 
+export interface ExtractInput {
+  readonly bytes: Uint8Array
+  readonly index: number
+  readonly maxOutputBytes: number
+}
+
 export interface Interface {
+  readonly extractAttachment: (input: ExtractInput) => Effect.Effect<Uint8Array, Error>
   readonly inspect: (input: Input) => Effect.Effect<Result, Error>
   readonly sanitizeHtml: (html: string) => Effect.Effect<SanitizedHtml, Error>
 }
@@ -46,6 +53,7 @@ type Response =
   | { readonly type: "completed"; readonly result: unknown }
   | { readonly type: "failed"; readonly error: string }
 type Request =
+  | { readonly kind: "extract"; readonly input: ExtractInput }
   | { readonly kind: "inspect"; readonly input: Input }
   | { readonly kind: "sanitize"; readonly html: string }
 
@@ -89,7 +97,7 @@ const layer = Layer.effect(
               })
               signal.addEventListener("abort", onAbort, { once: true })
               if (signal.aborted) return onAbort()
-              if (request.kind === "inspect") {
+              if (request.kind === "inspect" || request.kind === "extract") {
                 const bytes = new Uint8Array(request.input.bytes)
                 worker.postMessage({ ...request, input: { ...request.input, bytes } }, [bytes.buffer])
                 return
@@ -101,6 +109,19 @@ const layer = Layer.effect(
       )
 
     return Service.of({
+      extractAttachment: (input) => {
+        if (!Number.isInteger(input.index) || input.index < 0 || input.index >= 256)
+          return Effect.fail(new Error("invalid_attachment_index"))
+        if (
+          !Number.isInteger(input.maxOutputBytes) ||
+          input.maxOutputBytes < 1 ||
+          input.maxOutputBytes > 8 * 1024 * 1024
+        )
+          return Effect.fail(new Error("invalid_max_output_bytes"))
+        if (input.bytes.length === 0 || input.bytes.length > 32 * 1024 * 1024)
+          return Effect.fail(new Error("Email input must be between 1 byte and 32 MiB"))
+        return run<Uint8Array>({ kind: "extract", input })
+      },
       inspect: (input) => run<Result>({ kind: "inspect", input }),
       sanitizeHtml: (html) => run<SanitizedHtml>({ kind: "sanitize", html }),
     })

@@ -128,6 +128,8 @@ export function SessionLiveDock(props: {
               data-action={`session-live-dock-${item.value}`}
               data-selected={props.view() === item.value ? "true" : undefined}
               aria-pressed={props.view() === item.value}
+              aria-label={item.label}
+              title={item.label}
               class="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-2 text-[11px] text-v2-text-muted outline-none transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-strong focus-visible:outline-2 focus-visible:outline-v2-border-border-focus sm:px-3"
               classList={{ "bg-v2-background-bg-layer-02 text-v2-text-strong": props.view() === item.value }}
               onClick={() => {
@@ -136,7 +138,7 @@ export function SessionLiveDock(props: {
               }}
             >
               <Icon name={item.icon} size="small" />
-              {item.label}
+              <span data-slot="session-view-label">{item.label}</span>
             </button>
           )}
         </For>
@@ -149,6 +151,7 @@ export function SessionLiveDock(props: {
             .join(", ")}
           aria-expanded={store.moreOpen}
           aria-haspopup="menu"
+          title="More session views"
           aria-controls={store.moreOpen ? menuID : undefined}
           aria-pressed={!!secondary()}
           class="relative flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-2 text-[11px] text-v2-text-muted outline-none transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-strong focus-visible:outline-2 focus-visible:outline-v2-border-border-focus sm:px-3"
@@ -161,7 +164,7 @@ export function SessionLiveDock(props: {
           }}
         >
           <Icon name="dot-grid" size="small" />
-          More
+          <span data-slot="session-view-label">More</span>
           <Show when={activeAgents() > 0 || failedAgents() > 0}>
             <span
               class="absolute right-1 top-1 size-1.5 rounded-full"

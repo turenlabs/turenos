@@ -3,7 +3,9 @@ export * as EmailSecurityTools from "./email-security-tools"
 import { ToolFailure } from "@turenlabs/llm"
 import { Effect, Layer, Schema } from "effect"
 import { lookup } from "mime-types"
+import { createHash } from "node:crypto"
 import { makeLocationNode } from "../effect/app-node"
+import { FileMutation } from "../file-mutation"
 import { FSUtil } from "../fs-util"
 import { LocationMutation } from "../location-mutation"
 import { PermissionV2 } from "../permission"
@@ -24,8 +26,8 @@ const MAX_MODEL_OUTPUT_CHARS = 32 * 1024
 const MAX_FIELD_CHARS = 2_048
 const MAX_DISPLAY_CHARS = 512
 const MAX_WARNING_CHARS = 512
-const ATTACHMENT_EXTRACTION_UNAVAILABLE =
-  "Attachment byte extraction is unavailable from the bounded email-security WASM API; no attachment bytes were returned or analyzed."
+const ATTACHMENT_METADATA_ONLY =
+  "This inspection returns metadata only; use email_extract_attachment to save one selected attachment for separate analysis. No attachment bytes were returned or analyzed here."
 const GENERIC_MIME_TYPES = new Set([
   "application/octet-stream",
   "application/x-download",
@@ -49,8 +51,9 @@ const AttachmentInput = Schema.Struct({
   attachmentIndex: NonNegativeInt.check(Schema.isLessThanOrEqualTo(MAX_ATTACHMENT_COUNT - 1))
     .pipe(Schema.optional)
     .annotate({
-    description: "Zero-based attachment index. Combine with attachmentName only when both identify the same attachment.",
-  }),
+      description:
+        "Zero-based attachment index. Combine with attachmentName only when both identify the same attachment.",
+    }),
   attachmentName: Schema.NonEmptyString.pipe(Schema.optional).annotate({
     description: "Exact attachment filename. It must identify one attachment when used without attachmentIndex.",
   }),
@@ -77,6 +80,7 @@ const layer = Layer.effectDiscard(
     const fs = yield* FSUtil.Service
     const permission = yield* PermissionV2.Service
     const runtime = yield* EmailSecurityRuntime.Service
+    const files = yield* FileMutation.Service
 
     yield* tools
       .register({
@@ -96,19 +100,21 @@ const layer = Layer.effectDiscard(
                   includeAttachmentData: false,
                   maxIocs: input.maxIocs ?? 2048,
                 })
-                .pipe(Effect.mapError((error) => new ToolFailure({ message: `Unable to inspect ${input.path}: ${error.message}` })))
+                .pipe(
+                  Effect.mapError(
+                    (error) => new ToolFailure({ message: `Unable to inspect ${input.path}: ${error.message}` }),
+                  ),
+                )
               return { path: file.resource, report: serializeReport({ path: file.resource, ...result }) }
             }).pipe(
               Effect.mapError((error) =>
-                error instanceof ToolFailure
-                  ? error
-                  : new ToolFailure({ message: `Unable to inspect ${input.path}` }),
+                error instanceof ToolFailure ? error : new ToolFailure({ message: `Unable to inspect ${input.path}` }),
               ),
             ),
         }),
         email_attachment_inspect: Tool.make({
           description:
-            "Inspect one explicitly selected MIME attachment's bounded metadata, or explicitly list all bounded attachment metadata. Attachment bytes are never returned; byte extraction is unavailable from the current email-security WASM API, so binary and YARA analysis are not attempted here.",
+            "Inspect one explicitly selected MIME attachment's bounded metadata, or explicitly list all bounded attachment metadata. Attachment bytes are never returned here; use email_extract_attachment to save one attachment for separate binary or YARA analysis.",
           input: AttachmentInput,
           output: Output,
           toModelOutput: ({ output }) => [{ type: "text", text: boundedModelOutput(output.report) }],
@@ -119,7 +125,8 @@ const layer = Layer.effectDiscard(
                 .inspect({ bytes: file.bytes, includeBodies: false, includeAttachmentData: false, maxIocs: 0 })
                 .pipe(
                   Effect.mapError(
-                    (error) => new ToolFailure({ message: `Unable to inspect attachments in ${input.path}: ${error.message}` }),
+                    (error) =>
+                      new ToolFailure({ message: `Unable to inspect attachments in ${input.path}: ${error.message}` }),
                   ),
                 )
               const attachments = inspected.attachments.slice(0, MAX_ATTACHMENT_COUNT).map(normalizeAttachment)
@@ -141,8 +148,7 @@ const layer = Layer.effectDiscard(
                       selection: { mode: "all", status: "metadata_only" },
                       attachments: attachments.slice(0, input.maxAttachments ?? MAX_ATTACHMENT_COUNT),
                       warnings: boundedWarnings(inspected.warnings),
-                      truncated:
-                        truncated || attachments.length > (input.maxAttachments ?? MAX_ATTACHMENT_COUNT),
+                      truncated: truncated || attachments.length > (input.maxAttachments ?? MAX_ATTACHMENT_COUNT),
                     })
               return { path: file.resource, report }
             }).pipe(
@@ -150,6 +156,93 @@ const layer = Layer.effectDiscard(
                 error instanceof ToolFailure
                   ? error
                   : new ToolFailure({ message: `Unable to inspect attachments in ${input.path}` }),
+              ),
+            ),
+        }),
+        email_extract_attachment: Tool.make({
+          description:
+            "Decode one explicitly indexed MIME attachment offline with the bundled WebAssembly parser and save it to an approved new outputPath. Attachment filenames are never used as paths; existing files are never overwritten. Maximum output is 8 MiB. No network access or execution occurs.",
+          input: Schema.Struct({
+            path: Schema.NonEmptyString.annotate({ description: "RFC 5322/MIME source email (maximum 32 MiB)." }),
+            outputPath: Schema.NonEmptyString.annotate({
+              description: "Exact destination for the attachment; must not already exist.",
+            }),
+            index: NonNegativeInt.check(Schema.isLessThanOrEqualTo(255)).annotate({
+              description: "Required zero-based attachment index from email_attachment_inspect.",
+            }),
+            maxOutputBytes: PositiveInt.check(Schema.isLessThanOrEqualTo(8 * 1024 * 1024))
+              .pipe(Schema.optional)
+              .annotate({
+                description: "Maximum decoded attachment size. Defaults to 1 MiB; maximum 8 MiB.",
+              }),
+          }),
+          output: Schema.Struct({
+            path: Schema.String,
+            outputPath: Schema.String,
+            index: NonNegativeInt,
+            size: NonNegativeInt,
+            sha256: Schema.String,
+          }),
+          toModelOutput: ({ output }) => [{ type: "text", text: JSON.stringify(output) }],
+          execute: (input, context) =>
+            Effect.gen(function* () {
+              const source = yield* read(input.path, "email_extract_attachment", context, mutation, fs, permission)
+              const sourceTarget = yield* mutation.resolve({ path: input.path, kind: "file" })
+              const target = yield* mutation.resolve({ path: input.outputPath, kind: "file" })
+              if (target.canonical === sourceTarget.canonical || target.resource === source.resource)
+                return yield* new ToolFailure({ message: "Attachment output must not overwrite the source email" })
+              const permissionSource = {
+                type: "tool" as const,
+                messageID: context.assistantMessageID,
+                callID: context.toolCallID,
+              }
+              if (target.externalDirectory)
+                yield* permission.assert({
+                  ...LocationMutation.externalDirectoryPermission(target.externalDirectory),
+                  sessionID: context.sessionID,
+                  agent: context.agent,
+                  source: permissionSource,
+                })
+              yield* permission.assert({
+                action: "edit",
+                resources: [target.resource],
+                save: ["*"],
+                sessionID: context.sessionID,
+                agent: context.agent,
+                source: permissionSource,
+              })
+              const maxOutputBytes = input.maxOutputBytes ?? 1024 * 1024
+              const bytes = yield* runtime.extractAttachment({
+                bytes: source.bytes,
+                index: input.index,
+                maxOutputBytes,
+              })
+              if (bytes.length > maxOutputBytes || bytes.length > 8 * 1024 * 1024)
+                return yield* new ToolFailure({ message: "Extracted attachment exceeds output limit" })
+              const sha256 = createHash("sha256").update(bytes).digest("hex")
+              const finalTarget = yield* mutation.resolve({ path: input.outputPath, kind: "file" })
+              if (finalTarget.canonical !== target.canonical || finalTarget.resource !== target.resource)
+                return yield* new ToolFailure({ message: "Attachment output path changed during analysis" })
+              yield* files
+                .create({ target: finalTarget, content: bytes })
+                .pipe(
+                  Effect.mapError(
+                    () =>
+                      new ToolFailure({ message: `Unable to create ${input.outputPath}; output must be a new file` }),
+                  ),
+                )
+              return {
+                path: source.resource,
+                outputPath: target.resource,
+                index: input.index,
+                size: bytes.length,
+                sha256,
+              }
+            }).pipe(
+              Effect.mapError((error) =>
+                error instanceof ToolFailure
+                  ? error
+                  : new ToolFailure({ message: `Unable to extract attachment: ${error.message}` }),
               ),
             ),
         }),
@@ -163,10 +256,16 @@ const layer = Layer.effectDiscard(
             Effect.gen(function* () {
               const file = yield* read(input.path, "email_link_analyze", context, mutation, fs, permission)
               const inspected = yield* runtime
-                .inspect({ bytes: file.bytes, includeBodies: true, includeAttachmentData: false, maxIocs: MAX_LINK_CANDIDATES })
+                .inspect({
+                  bytes: file.bytes,
+                  includeBodies: true,
+                  includeAttachmentData: false,
+                  maxIocs: MAX_LINK_CANDIDATES,
+                })
                 .pipe(
                   Effect.mapError(
-                    (error) => new ToolFailure({ message: `Unable to inspect links in ${input.path}: ${error.message}` }),
+                    (error) =>
+                      new ToolFailure({ message: `Unable to inspect links in ${input.path}: ${error.message}` }),
                   ),
                 )
               const candidates = collectLinkCandidates(inspected)
@@ -178,8 +277,7 @@ const layer = Layer.effectDiscard(
                   path: file.resource,
                   links: findings,
                   warnings: boundedWarnings(inspected.warnings),
-                  truncated:
-                    inspected.truncated || candidates.truncated || candidates.values.length > maxLinks,
+                  truncated: inspected.truncated || candidates.truncated || candidates.values.length > maxLinks,
                 }),
               }
             }).pipe(
@@ -198,19 +296,30 @@ const layer = Layer.effectDiscard(
           }),
           output: HtmlOutput,
           toModelOutput: ({ output }) => [
-            { type: "text", text: boundedModelOutput(`${output.html}${output.truncated ? "\n[output truncated]" : ""}`) },
+            {
+              type: "text",
+              text: boundedModelOutput(`${output.html}${output.truncated ? "\n[output truncated]" : ""}`),
+            },
           ],
           execute: (input, context) =>
             Effect.gen(function* () {
               const file = yield* read(input.path, "email_sanitize_html", context, mutation, fs, permission)
               const inspected = yield* runtime
                 .inspect({ bytes: file.bytes, includeBodies: true, includeAttachmentData: false, maxIocs: 0 })
-                .pipe(Effect.mapError((error) => new ToolFailure({ message: `Unable to inspect ${input.path}: ${error.message}` })))
+                .pipe(
+                  Effect.mapError(
+                    (error) => new ToolFailure({ message: `Unable to inspect ${input.path}: ${error.message}` }),
+                  ),
+                )
               const body = inspected.bodies.find((item) => item.content_type === "text/html")
               if (!body) return yield* new ToolFailure({ message: `${input.path} has no HTML body` })
               const sanitized = yield* runtime
                 .sanitizeHtml(body.value)
-                .pipe(Effect.mapError((error) => new ToolFailure({ message: `Unable to sanitize ${input.path}: ${error.message}` })))
+                .pipe(
+                  Effect.mapError(
+                    (error) => new ToolFailure({ message: `Unable to sanitize ${input.path}: ${error.message}` }),
+                  ),
+                )
               const html = boundedString(sanitized.html, MAX_REPORT_CHARS)
               return {
                 path: file.resource,
@@ -219,9 +328,7 @@ const layer = Layer.effectDiscard(
               }
             }).pipe(
               Effect.mapError((error) =>
-                error instanceof ToolFailure
-                  ? error
-                  : new ToolFailure({ message: `Unable to sanitize ${input.path}` }),
+                error instanceof ToolFailure ? error : new ToolFailure({ message: `Unable to sanitize ${input.path}` }),
               ),
             ),
         }),
@@ -233,7 +340,14 @@ const layer = Layer.effectDiscard(
 export const node = makeLocationNode({
   name: "tool/email-security",
   layer,
-  deps: [ToolRegistry.node, LocationMutation.node, FSUtil.node, PermissionV2.node, EmailSecurityRuntime.node],
+  deps: [
+    ToolRegistry.node,
+    LocationMutation.node,
+    FSUtil.node,
+    PermissionV2.node,
+    EmailSecurityRuntime.node,
+    FileMutation.node,
+  ],
 })
 
 type AttachmentInputType = typeof AttachmentInput.Type
@@ -416,13 +530,17 @@ function normalizeAttachment(raw: Record<string, unknown>, index: number): Attac
     content_disposition: disposition ?? null,
     size: numberField(raw, ["size", "length", "content_length", "contentLength"]),
     content_id: stringField(raw, ["content_id", "contentId", "cid"]) ?? null,
-    transfer_encoding: stringField(raw, ["content_transfer_encoding", "contentTransferEncoding", "transfer_encoding"]) ?? null,
+    transfer_encoding:
+      stringField(raw, ["content_transfer_encoding", "contentTransferEncoding", "transfer_encoding"]) ?? null,
     expected_content_type: expected ?? null,
     mime_filename_mismatch: mismatch,
   }
 }
 
-function selectAttachment(input: AttachmentInputType, attachments: ReadonlyArray<AttachmentMetadata>): AttachmentSelection {
+function selectAttachment(
+  input: AttachmentInputType,
+  attachments: ReadonlyArray<AttachmentMetadata>,
+): AttachmentSelection {
   const hasIndex = input.attachmentIndex !== undefined
   const hasName = input.attachmentName !== undefined
 
@@ -435,11 +553,12 @@ function selectAttachment(input: AttachmentInputType, attachments: ReadonlyArray
       ? attachments[input.attachmentIndex!]
       : undefined
     : undefined
-  if (hasIndex && !byIndex)
-    return { type: "error", message: `Attachment index ${input.attachmentIndex} was not found` }
+  if (hasIndex && !byIndex) return { type: "error", message: `Attachment index ${input.attachmentIndex} was not found` }
 
   const byName = hasName
-    ? attachments.find((attachment) => attachment.filename === input.attachmentName || attachment.name === input.attachmentName)
+    ? attachments.find(
+        (attachment) => attachment.filename === input.attachmentName || attachment.name === input.attachmentName,
+      )
     : undefined
   if (hasName && !byName) return { type: "error", message: `Attachment ${input.attachmentName} was not found` }
   if (byIndex && byName && byIndex.index !== byName.index)
@@ -450,7 +569,7 @@ function selectAttachment(input: AttachmentInputType, attachments: ReadonlyArray
 }
 
 function serializeAttachmentReport(input: AttachmentReportInput) {
-  const warnings = [...input.warnings, ATTACHMENT_EXTRACTION_UNAVAILABLE]
+  const warnings = [...input.warnings, ATTACHMENT_METADATA_ONLY]
   const build = (attachments: ReadonlyArray<AttachmentMetadata>, truncated: boolean) => ({
     schema_version: 1,
     path: boundedString(input.path, MAX_FIELD_CHARS),
@@ -460,7 +579,7 @@ function serializeAttachmentReport(input: AttachmentReportInput) {
     analysis: "metadata_only",
     attachment_bytes_analyzed: false,
     warnings,
-    limitations: [ATTACHMENT_EXTRACTION_UNAVAILABLE],
+    limitations: [ATTACHMENT_METADATA_ONLY],
     truncated,
   })
 
@@ -472,9 +591,7 @@ function serializeAttachmentReport(input: AttachmentReportInput) {
     count = count === 1 ? 0 : Math.floor(count / 2)
     report = encodeReport(build(input.attachments.slice(0, count), input.truncated || count < input.attachments.length))
   }
-  return report.length <= MAX_REPORT_CHARS
-    ? report
-    : serializeReport(build([], true))
+  return report.length <= MAX_REPORT_CHARS ? report : serializeReport(build([], true))
 }
 
 function collectLinkCandidates(result: Result): LinkCandidates {
@@ -546,10 +663,7 @@ function analyzeLink(candidate: LinkCandidate): LinkFinding {
   if ((scheme === "http" || scheme === "https") && !host) findings.push("missing_host")
   if (userinfo) findings.push("userinfo")
   if (ipLiteral) findings.push("ip_literal")
-  if (
-    parsed?.port &&
-    !((scheme === "http" && parsed.port === "80") || (scheme === "https" && parsed.port === "443"))
-  )
+  if (parsed?.port && !((scheme === "http" && parsed.port === "80") || (scheme === "https" && parsed.port === "443")))
     findings.push("non_default_port")
   if (extension) findings.push(`suspicious_extension:${extension}`)
   if (host?.split(".").some((label) => label.toLowerCase().startsWith("xn--"))) findings.push("punycode_host")
@@ -625,7 +739,8 @@ function boundedModelOutput(report: string) {
 function serializeReport(value: unknown) {
   const report = encodeReport(value)
   if (report.length <= MAX_REPORT_CHARS) return report
-  const path = isRecord(value) && typeof value.path === "string" ? boundedString(value.path, MAX_FIELD_CHARS) : undefined
+  const path =
+    isRecord(value) && typeof value.path === "string" ? boundedString(value.path, MAX_FIELD_CHARS) : undefined
   return encodeReport({
     ...(path ? { path } : {}),
     warnings: ["Email security report exceeded the output cap; the report was reduced to a bounded summary."],
@@ -684,14 +799,21 @@ function scanField(record: Record<string, unknown>, keys: ReadonlyArray<string>)
   return undefined
 }
 
-function extractAnchorCandidates(text: string, source: string, add: (value: string, source: string, displayText?: string) => void) {
+function extractAnchorCandidates(
+  text: string,
+  source: string,
+  add: (value: string, source: string, displayText?: string) => void,
+) {
   const anchors = /<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`]+))[^>]*>([\s\S]*?)<\/a\s*>/gi
   let match: RegExpExecArray | null
   while ((match = anchors.exec(text)) !== null) {
     const href = match[1] ?? match[2] ?? match[3]
     if (!href) continue
     const displayText = boundedString(
-      (match[4] ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
+      (match[4] ?? "")
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
       MAX_DISPLAY_CHARS,
     )
     add(href, `${source}:anchor`, displayText || undefined)
@@ -717,12 +839,9 @@ function firstURLToken(text: string) {
 function trimLink(value: string) {
   let result = value.trim()
   while (/[.,!?;:]$/.test(result)) result = result.slice(0, -1)
-  while (result.endsWith(")") && countCharacter(result, ")") > countCharacter(result, "("))
-    result = result.slice(0, -1)
-  while (result.endsWith("]") && countCharacter(result, "]") > countCharacter(result, "["))
-    result = result.slice(0, -1)
-  while (result.endsWith("}") && countCharacter(result, "}") > countCharacter(result, "{"))
-    result = result.slice(0, -1)
+  while (result.endsWith(")") && countCharacter(result, ")") > countCharacter(result, "(")) result = result.slice(0, -1)
+  while (result.endsWith("]") && countCharacter(result, "]") > countCharacter(result, "[")) result = result.slice(0, -1)
+  while (result.endsWith("}") && countCharacter(result, "}") > countCharacter(result, "{")) result = result.slice(0, -1)
   return result
 }
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "forge",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "TurenOS, the batteries-included security engineering workbench",
   "private": true,
   "type": "module",

@@ -78,35 +78,14 @@ import {
   type PartRef,
 } from "./message-part-group"
 import { ToolDetails } from "./tool-details"
+import { binarySnapshot } from "./binary-snapshot"
+import { BinaryViewer } from "./binary-viewer"
+import { writeClipboard } from "./clipboard"
 
 export { groupParts, sameGroups, type PartGroup, type PartRef } from "./message-part-group"
 
 export { partDefaultOpen } from "./part-default-open"
 import type { MarkdownImageResolver } from "./markdown-image"
-
-async function writeClipboard(text: string): Promise<boolean> {
-  const body = typeof document === "undefined" ? undefined : document.body
-  if (body) {
-    const textarea = document.createElement("textarea")
-    textarea.value = text
-    textarea.setAttribute("readonly", "")
-    textarea.style.position = "fixed"
-    textarea.style.opacity = "0"
-    textarea.style.pointerEvents = "none"
-    body.appendChild(textarea)
-    textarea.select()
-    const copied = document.execCommand("copy")
-    body.removeChild(textarea)
-    if (copied) return true
-  }
-
-  const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard
-  if (!clipboard?.writeText) return false
-  return clipboard.writeText(text).then(
-    () => true,
-    () => false,
-  )
-}
 
 function ShellSubmessage(props: { text: string; animate?: boolean }) {
   let widthRef: HTMLSpanElement | undefined
@@ -1430,7 +1409,7 @@ function ToolFileAccordion(props: { path: string; actions?: JSX.Element; childre
  * The mark itself lives in rule.css (`data-rule="notch"`); this set is only the
  * question of which tools earn one.
  */
-const BLOCK_TOOLS = new Set(["bash", "edit", "write", "apply_patch", "todowrite", "question"])
+const BLOCK_TOOLS = new Set(["bash", "edit", "write", "apply_patch", "todowrite", "question", "hexview", "disassemble"])
 
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
@@ -1696,6 +1675,47 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
       </div>
     </Show>
   )
+}
+
+for (const name of ["hexview", "disassemble"]) {
+  ToolRegistry.register({
+    name,
+    render(props) {
+      const data = useData()
+      const snapshot = createMemo(() =>
+        props.status === "completed"
+          ? binarySnapshot(props.tool, props.input, props.metadata, props.output)
+          : undefined,
+      )
+      return (
+        <BasicTool
+          {...props}
+          icon="code"
+          trigger={{
+            title: name === "hexview" ? "Hex View" : "Disassembly",
+            subtitle: typeof props.input.path === "string" ? getFilename(props.input.path) : "",
+          }}
+        >
+          <Show when={snapshot()} fallback={<ToolDetails input={props.input} output={props.output} />}>
+            {(value) => (
+              <>
+                <Show when={data.openBinaryInspector}>
+                  <button
+                    type="button"
+                    class="binary-inspector-open"
+                    onClick={() => data.openBinaryInspector?.(value())}
+                  >
+                    Open Inspector
+                  </button>
+                </Show>
+                <BinaryViewer snapshot={value()} />
+              </>
+            )}
+          </Show>
+        </BasicTool>
+      )
+    },
+  })
 }
 
 ToolRegistry.register({

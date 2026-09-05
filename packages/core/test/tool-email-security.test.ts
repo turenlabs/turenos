@@ -72,6 +72,7 @@ describe("EmailSecurityTools", () => {
           expect((yield* toolDefinitions(registry)).map((tool) => tool.name)).toEqual([
             "email_inspect",
             "email_attachment_inspect",
+            "email_extract_attachment",
             "email_link_analyze",
             "email_sanitize_html",
           ])
@@ -106,7 +107,7 @@ describe("EmailSecurityTools", () => {
           if (attachment.type !== "text") return
           expect(attachment.value).toContain('"filename": "invoice.exe"')
           expect(attachment.value).toContain('"mime_filename_mismatch": true')
-          expect(attachment.value).toContain("Attachment byte extraction is unavailable")
+          expect(attachment.value).toContain("use email_extract_attachment")
 
           const links = yield* executeTool(registry, {
             sessionID: SessionV2.ID.make("ses_email_links_test"),
@@ -150,11 +151,20 @@ describe("EmailSecurityTools", () => {
         }).pipe(
           Effect.provide(
             AppNodeBuilder.build(
-              LayerNode.group([ToolRegistry.node, ToolRegistry.toolsNode, LocationMutation.node, EmailSecurityRuntime.node, EmailSecurityTools.node]),
+              LayerNode.group([
+                ToolRegistry.node,
+                ToolRegistry.toolsNode,
+                LocationMutation.node,
+                EmailSecurityRuntime.node,
+                EmailSecurityTools.node,
+              ]),
               [
                 [
                   Location.node,
-                  Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(tmp.path) }))),
+                  Layer.succeed(
+                    Location.Service,
+                    Location.Service.of(location({ directory: AbsolutePath.make(tmp.path) })),
+                  ),
                 ],
                 [PermissionV2.node, permission],
                 [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],

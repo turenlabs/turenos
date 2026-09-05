@@ -2,6 +2,7 @@
 @import "@turenlabs/session-ui/styles";
 @import "@turenlabs/ui/v2/styles/tailwind.css";
 @import "tw-animate-css";
+@import "./components/prompt-toolbar.css";
 
 @font-face {
   font-family: "JetBrainsMono Nerd Font Mono";

@@ -24,6 +24,8 @@ dist
 !packages/libpcap-wasm/dist/**
 !packages/static-unpack-wasm/dist/
 !packages/static-unpack-wasm/dist/**
+!packages/static-analysis-wasm/dist/
+!packages/static-analysis-wasm/dist/**
 !packages/email-security-wasm/dist/
 !packages/email-security-wasm/dist/**
 !packages/email-authenticate-wasm/dist/

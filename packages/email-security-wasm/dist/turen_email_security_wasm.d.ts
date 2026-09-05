@@ -1,6 +1,8 @@
 /* tslint:disable */
 /* eslint-disable */
 
+export function extract_attachment(bytes: Uint8Array, index: number, max_output_bytes: number): Uint8Array;
+
 export function inspect(bytes: Uint8Array, options_json: string): string;
 
 export function sanitize_html(html: string): string;
@@ -9,12 +11,13 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly extract_attachment: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly inspect: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly sanitize_html: (a: number, b: number, c: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
-    readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
-    readonly __wbindgen_export3: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_export3: (a: number, b: number, c: number, d: number) => number;
 }
 
 export type SyncInitInput = BufferSource | WebAssembly.Module;

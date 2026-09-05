@@ -1,0 +1,92 @@
+[data-component="prompt-toolbar"] {
+  container: prompt-toolbar / inline-size;
+
+  [data-slot="prompt-toolbar-row"] {
+    display: flex;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 36px;
+    margin-inline: auto;
+    padding: 3px;
+    border: 1px solid var(--v2-border-border-base);
+    border-radius: 10px;
+    background: var(--v2-background-bg-layer-01);
+  }
+
+  [data-component="session-live-dock"] {
+    flex-shrink: 0;
+  }
+
+  [data-component="session-live-dock"] nav {
+    display: flex;
+    width: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  [data-component="session-live-dock"] nav button {
+    height: 28px;
+    padding-inline: 8px;
+    border-radius: 6px;
+    font-size: 11px;
+  }
+
+  [data-component="session-live-dock"] + [data-component="prompt-mode-dock"] {
+    border-left: 1px solid var(--v2-border-border-base);
+    margin-left: 4px;
+    padding-left: 4px;
+  }
+
+  [data-component="prompt-mode-dock"] [data-component="button-v2"] {
+    padding-inline: 6px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  [data-action="prompt-model"] {
+    max-width: 150px;
+  }
+
+  [data-component="prompt-variant-control"] {
+    min-width: 0;
+    flex-shrink: 0;
+  }
+
+  [data-action="prompt-model-variant"] {
+    max-width: 110px;
+  }
+}
+
+@container prompt-toolbar (max-width: 640px) {
+  [data-component="prompt-toolbar"] [data-slot="session-view-label"] {
+    display: none;
+  }
+
+  [data-component="prompt-toolbar"] [data-component="session-live-dock"] nav button {
+    width: 28px;
+    padding-inline: 0;
+  }
+
+  [data-component="prompt-toolbar"] [data-component="session-live-dock"] [role="menu"] {
+    left: 0;
+    right: auto;
+  }
+}
+
+@container prompt-toolbar (max-width: 400px) {
+  [data-component="prompt-toolbar"] [data-action="prompt-model"] {
+    max-width: 100px;
+  }
+
+  [data-component="prompt-toolbar"] [data-action="prompt-model-variant"] {
+    max-width: 74px;
+  }
+
+  [data-component="prompt-toolbar"] [data-slot="fast-mode-state"] {
+    display: none;
+  }
+}

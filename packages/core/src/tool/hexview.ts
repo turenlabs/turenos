@@ -37,6 +37,7 @@ export const Output = Schema.Struct({
   path: Schema.String,
   offset: NonNegativeInt,
   length: NonNegativeInt,
+  bytes: Schema.String,
   nextOffset: NonNegativeInt.pipe(Schema.optional),
   content: Schema.String,
 })
@@ -96,6 +97,7 @@ const layer = Layer.effectDiscard(
                   path: file.resource,
                   offset,
                   length: selected.length,
+                  bytes: Array.from(selected, (byte) => byte.toString(16).padStart(2, "0")).join(""),
                   ...(nextOffset === undefined ? {} : { nextOffset }),
                   content: format(selected, offset, input.width ?? 16),
                 })

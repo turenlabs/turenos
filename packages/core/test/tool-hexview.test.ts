@@ -14,7 +14,7 @@ import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
 import { location } from "./fixture/location"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
-import { executeTool, toolDefinitions, toolIdentity } from "./lib/tool"
+import { executeTool, settleTool, toolDefinitions, toolIdentity } from "./lib/tool"
 
 const permission = Layer.succeed(
   PermissionV2.Service,
@@ -38,18 +38,24 @@ describe("HexviewTool", () => {
           yield* Effect.promise(() => fs.writeFile(`${tmp.path}/sample.bin`, Buffer.from("0001024142437fff", "hex")))
           const registry = yield* ToolRegistry.Service
           expect((yield* toolDefinitions(registry)).map((tool) => tool.name)).toEqual(["hexview"])
-          expect(
-            yield* executeTool(registry, {
-              sessionID: SessionV2.ID.make("ses_hexview_test"),
-              ...toolIdentity,
-              call: {
-                type: "tool-call",
-                id: "call-hexview",
-                name: "hexview",
-                input: { path: "sample.bin", offset: 1, length: 5, width: 8 },
-              },
-            }),
-          ).toEqual({
+          const settlement = yield* settleTool(registry, {
+            sessionID: SessionV2.ID.make("ses_hexview_test"),
+            ...toolIdentity,
+            call: {
+              type: "tool-call",
+              id: "call-hexview",
+              name: "hexview",
+              input: { path: "sample.bin", offset: 1, length: 5, width: 8 },
+            },
+          })
+          expect(settlement.output?.structured).toMatchObject({
+            path: "sample.bin",
+            offset: 1,
+            length: 5,
+            nextOffset: 6,
+            bytes: "0102414243",
+          })
+          expect(settlement.result).toEqual({
             type: "text",
             value: [
               "sample.bin [0x00000001..0x00000006)",

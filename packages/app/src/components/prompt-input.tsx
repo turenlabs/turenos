@@ -1331,7 +1331,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Popover.Portal>
               <Popover.Content
                 data-component="model-effort-popover"
-                class="z-[60] w-[320px] overflow-hidden rounded-md bg-v2-background-bg-layer-01 p-0 shadow-[var(--v2-elevation-floating)] outline-none"
+                class="z-[60] w-[320px] max-w-[calc(100vw-16px)] overflow-hidden rounded-md bg-v2-background-bg-layer-01 p-0 shadow-[var(--v2-elevation-floating)] outline-none"
               >
                 {effortControl()}
               </Popover.Content>
@@ -1624,7 +1624,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           style={control()}
           onClick={toggleFastMode}
         >
-          {fastMode()?.enabled ? "Fast on" : "Fast off"}
+          <span>
+            Fast<span data-slot="fast-mode-state">{fastMode()?.enabled ? " on" : " off"}</span>
+          </span>
         </ButtonV2>
       </TooltipV2>
     </Show>
@@ -1677,18 +1679,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       <Switch>
         <Match when={props.controls.newLayoutDesigns}>
           <div class="flex w-full flex-col gap-2">
-            <div class="flex w-full flex-wrap items-center justify-center gap-2">
-              <Show when={props.sessionDock}>{props.sessionDock}</Show>
-              <Show when={!providersLoading()}>
-                <div
-                  data-component="prompt-mode-dock"
-                  class="flex min-h-12 max-w-full shrink-0 items-center justify-center gap-1 rounded-[18px] border border-v2-border-border-base bg-v2-background-bg-layer-01 px-2 shadow-[var(--v2-elevation-floating)] backdrop-blur-md"
-                >
-                  <ComposerModelControl state={modelControlState()} />
-                  {variantControl()}
-                  {fastControl()}
-                </div>
-              </Show>
+            <div data-component="prompt-toolbar" class="w-full">
+              <div data-slot="prompt-toolbar-row">
+                <Show when={props.sessionDock}>{props.sessionDock}</Show>
+                <Show when={!providersLoading()}>
+                  <div data-component="prompt-mode-dock" class="flex min-w-0 items-center">
+                    <ComposerModelControl state={modelControlState()} />
+                    {variantControl()}
+                    {fastControl()}
+                  </div>
+                </Show>
+              </div>
             </div>
             <DockShellForm
               data-component={newSession() ? "session-new-composer" : "session-composer"}

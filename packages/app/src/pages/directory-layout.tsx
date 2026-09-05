@@ -1,8 +1,20 @@
 import { DataProvider } from "@turenlabs/session-ui/context"
+import type { BinarySnapshot } from "@turenlabs/session-ui/binary-viewer"
 import { showToast } from "@/utils/toast"
 import { base64Encode } from "@turenlabs/core/util/encode"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
-import { type Accessor, createEffect, createMemo, createResource, onCleanup, type ParentProps, Show } from "solid-js"
+import {
+  type Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  on,
+  onCleanup,
+  type ParentProps,
+  Show,
+} from "solid-js"
 import { useLanguage } from "@/context/language"
 import { LocalProvider } from "@/context/local"
 import { SDKProvider } from "@/context/sdk"
@@ -12,6 +24,11 @@ import { Schema } from "effect"
 import type { ServerConnection } from "@/context/server"
 import { sessionHref } from "@/utils/session-route"
 import { useServerSync } from "@/context/server-sync"
+
+export const BinaryInspectorContext = createContext<{
+  snapshot: Accessor<BinarySnapshot | undefined>
+  close: () => void
+}>()
 
 export function DirectoryDataProvider(
   props: ParentProps<{
@@ -26,6 +43,9 @@ export function DirectoryDataProvider(
   const sync = useSync()
   const serverSync = useServerSync()
   const directory = () => (typeof props.directory === "function" ? props.directory() : props.directory)
+  const [binarySnapshot, setBinarySnapshot] = createSignal<BinarySnapshot>()
+  const binaryInspector = { snapshot: binarySnapshot, close: () => setBinarySnapshot(undefined) }
+  createEffect(on(() => [params.id, directory(), props.server?.()], binaryInspector.close))
   const slug = createMemo(() => base64Encode(directory()))
   const href = (sessionID: string) => {
     const server = props.server?.()
@@ -65,8 +85,11 @@ export function DirectoryDataProvider(
           directory={directory}
           onNavigateToSession={(sessionID: string) => navigate(href(sessionID))}
           onSessionHref={href}
+          onOpenBinaryInspector={setBinarySnapshot}
         >
-          <LocalProvider>{props.children}</LocalProvider>
+          <BinaryInspectorContext.Provider value={binaryInspector}>
+            <LocalProvider>{props.children}</LocalProvider>
+          </BinaryInspectorContext.Provider>
         </DataProvider>
       )}
     </Show>

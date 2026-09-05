@@ -1,6 +1,7 @@
 import type { Message, Session, Part, SnapshotFileDiff, SessionStatus } from "@turenlabs/sdk/v2"
 import { createSimpleContext } from "@turenlabs/ui/context"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
+import type { BinarySnapshot } from "../components/binary-snapshot"
 
 type Model = {
   id: string
@@ -87,6 +88,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     directory: string
     onNavigateToSession?: NavigateToSessionFn
     onSessionHref?: SessionHrefFn
+    onOpenBinaryInspector?: (snapshot: BinarySnapshot) => void
   }) => {
     return {
       get store() {
@@ -97,6 +99,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       },
       navigateToSession: props.onNavigateToSession,
       sessionHref: props.onSessionHref,
+      openBinaryInspector: props.onOpenBinaryInspector,
     }
   },
 })
