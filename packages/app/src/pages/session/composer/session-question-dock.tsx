@@ -14,6 +14,7 @@ import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useServerSDK } from "@/context/server-sdk"
 import { ScopedKey } from "@/utils/server-scope"
 import { formatServerError } from "@/utils/server-errors"
+import { focusSessionRequestOption } from "./session-request-focus"
 
 const cache = new Map<string, { tab: number; answers: QuestionAnswer[]; custom: string[]; customOn: boolean[] }>()
 
@@ -162,7 +163,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
     )
   }
 
-  const focus = (i: number) => {
+  const focus = (i: number, initial = false) => {
     const next = clamp(i)
     setStore("focus", next)
     if (store.editing) return
@@ -170,7 +171,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
     focusFrame = requestAnimationFrame(() => {
       focusFrame = undefined
       const el = next === options().length ? customRef : optsRef[next]
-      el?.focus()
+      focusSessionRequestOption({ target: el, root, initial })
     })
   }
 
@@ -196,7 +197,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
       if (raf !== undefined) cancelAnimationFrame(raf)
     })
 
-    focus(pickFocus())
+    focus(pickFocus(), true)
   })
 
   createEffect(() => {
@@ -255,12 +256,12 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
   const sending = createMemo(() => replyMutation.isPending || rejectMutation.isPending)
 
   const reply = async (answers: QuestionAnswer[]) => {
-    if (sending()) return
+    if (sending() || replied) return
     await replyMutation.mutateAsync(answers)
   }
 
   const reject = async () => {
-    if (sending()) return
+    if (sending() || replied) return
     await rejectMutation.mutateAsync()
   }
 
@@ -639,9 +640,6 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
             </form>
           </Show>
         </div>
-        <Show when={!store.minimized}>
-          <div data-slot="question-hint">{language.t("session.question.typingHint")}</div>
-        </Show>
       </DockPrompt>
     </div>
   )

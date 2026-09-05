@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Effect, Layer, Schema } from "effect"
+import { DateTime, Effect, Layer, Schema } from "effect"
 import { Database } from "@turenlabs/core/database/database"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -12,7 +12,13 @@ import { SessionV2 } from "@turenlabs/core/session"
 import { SessionExecution } from "@turenlabs/core/session/execution"
 import { SessionProjector } from "@turenlabs/core/session/projector"
 import { SessionStore } from "@turenlabs/core/session/store"
-import { SessionTable } from "@turenlabs/core/session/sql"
+import { eq } from "drizzle-orm"
+import { SessionEvent } from "@turenlabs/core/session/event"
+import { SessionMessage } from "@turenlabs/core/session/message"
+import { SessionInput } from "@turenlabs/core/session/input"
+import { ModelV2 } from "@turenlabs/core/model"
+import { ProviderV2 } from "@turenlabs/core/provider"
+import { SessionMessageTable, SessionTable } from "@turenlabs/core/session/sql"
 import { testEffect } from "./lib/effect"
 
 const projects = Layer.succeed(
@@ -162,6 +168,179 @@ describe("SessionV2.history", () => {
       const error = yield* session.history({ sessionID: SessionV2.ID.make("ses_missing"), limit: 10 }).pipe(Effect.flip)
 
       expect(error._tag).toBe("Session.NotFoundError")
+    }),
+  )
+})
+
+describe("SessionV2 human transcript", () => {
+  it.effect("pages durable turns through multiple compactions, retained tails, and committed revert", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionV2.Service
+      const events = yield* EventV2.Service
+      const created = yield* session.create({ location })
+      const expected: SessionMessage.ID[] = []
+      const checkpoints: SessionMessage.ID[] = []
+      const users: SessionMessage.ID[] = []
+      for (let turn = 0; turn < 5; turn++) {
+        const messageID = SessionMessage.ID.create()
+        users.push(messageID)
+        expected.push(messageID)
+        yield* events.publish(SessionEvent.Prompted, {
+          sessionID: created.id,
+          messageID,
+          timestamp: DateTime.makeUnsafe(turn),
+          prompt: { text: `Human turn ${turn}` },
+          delivery: "steer",
+        })
+        const assistantMessageID = SessionMessage.ID.create()
+        expected.push(assistantMessageID)
+        yield* events.publish(SessionEvent.Step.Started, {
+          sessionID: created.id,
+          assistantMessageID,
+          timestamp: DateTime.makeUnsafe(turn),
+          agent: "build",
+          model: { id: ModelV2.ID.make("test"), providerID: ProviderV2.ID.make("test") },
+        })
+        yield* events.publish(SessionEvent.Text.Started, {
+          sessionID: created.id,
+          assistantMessageID,
+          timestamp: DateTime.makeUnsafe(turn),
+          textID: `text_${turn}`,
+        })
+        yield* events.publish(SessionEvent.Text.Ended, {
+          sessionID: created.id,
+          assistantMessageID,
+          timestamp: DateTime.makeUnsafe(turn),
+          textID: `text_${turn}`,
+          text: `Answer ${turn}`,
+        })
+        const ended = yield* events.publish(SessionEvent.Step.Ended, {
+          sessionID: created.id,
+          assistantMessageID,
+          timestamp: DateTime.makeUnsafe(turn),
+          finish: "stop",
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        })
+        if (turn !== 1 && turn !== 3) continue
+        const messageIDCheckpoint = SessionMessage.ID.create()
+        checkpoints.push(messageIDCheckpoint)
+        expected.push(messageIDCheckpoint)
+        yield* events.publish(SessionEvent.Compaction.Ended, {
+          sessionID: created.id,
+          messageID: messageIDCheckpoint,
+          timestamp: DateTime.makeUnsafe(turn),
+          reason: "manual",
+          text: `Summary through ${turn}`,
+          recent: "",
+          throughSeq: ended.durable!.seq,
+        })
+      }
+      for (const order of ["asc", "desc"] as const) {
+        const collected: SessionMessage.ID[] = []
+        let cursor: { id: SessionMessage.ID; direction: "next" } | undefined
+        for (;;) {
+          const page = yield* session.messages({ sessionID: created.id, order, cursor, limit: 3 })
+          if (page.length === 0) break
+          collected.push(...page.map((message) => message.id))
+          cursor = { id: page.at(-1)!.id, direction: "next" }
+        }
+        expect(collected).toEqual(order === "asc" ? expected : expected.toReversed())
+        expect(new Set(collected).size).toBe(expected.length)
+      }
+      const modelContext = yield* session.context(created.id)
+      expect(modelContext.map((message) => message.id)).toEqual([checkpoints[1], ...expected.slice(-2)])
+      expect(modelContext[0]).toMatchObject({ summary: "Summary through 3" })
+      expect(yield* session.message({ sessionID: created.id, messageID: expected[1]! })).toMatchObject({
+        type: "assistant",
+        content: [{ type: "text", text: "Answer 0" }],
+      })
+      yield* events.publish(SessionEvent.RevertEvent.Staged, {
+        sessionID: created.id,
+        timestamp: DateTime.makeUnsafe(6),
+        revert: { messageID: users[2]!, files: [] },
+      })
+      expect((yield* session.messages({ sessionID: created.id, order: "asc" })).map((message) => message.id)).toEqual(
+        expected,
+      )
+      yield* events.publish(SessionEvent.RevertEvent.Committed, {
+        sessionID: created.id,
+        timestamp: DateTime.makeUnsafe(7),
+        messageID: users[2]!,
+      })
+      expect((yield* session.messages({ sessionID: created.id, order: "asc" })).map((message) => message.id)).toEqual(
+        expected.slice(0, expected.indexOf(users[2]!) + 1),
+      )
+      expect(
+        yield* session.messages({ sessionID: created.id, cursor: { id: checkpoints[1]!, direction: "next" } }),
+      ).toEqual([])
+      expect(yield* session.message({ sessionID: created.id, messageID: expected.at(-1)! })).toBeUndefined()
+      const database = yield* Database.Service
+      yield* database.db.delete(SessionTable).where(eq(SessionTable.id, created.id)).run()
+      expect((yield* session.messages({ sessionID: created.id }).pipe(Effect.flip))._tag).toBe("Session.NotFoundError")
+    }),
+  )
+
+  it.effect("preserves provenance across admission, promotion, old projections, and exact retry", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionV2.Service
+      const events = yield* EventV2.Service
+      const database = yield* Database.Service
+      const created = yield* session.create({ location })
+      const userID = SessionMessage.ID.create()
+      const prompt = { text: "Explain <forge-team-board-update> in this log." }
+      const admitted = yield* session.prompt({ sessionID: created.id, id: userID, prompt, resume: false })
+      const boardID = SessionMessage.ID.create()
+      yield* SessionInput.admit(database.db, events, {
+        sessionID: created.id,
+        id: boardID,
+        prompt: { text: "Quiet coordination" },
+        delivery: "steer",
+        source: "subagent_board",
+        kind: "prompt",
+        location,
+      })
+      expect((yield* session.pendingInputs(created.id)).map((input) => input.source)).toEqual([
+        "user",
+        "subagent_board",
+      ])
+      yield* SessionInput.promoteSteers(database.db, events, created.id, Number.MAX_SAFE_INTEGER)
+      expect(
+        (yield* session.messages({ sessionID: created.id, order: "asc" })).map(
+          (message) => message.type === "user" && message.source,
+        ),
+      ).toEqual(["user", "subagent_board"])
+      const board = yield* database.db
+        .select()
+        .from(SessionMessageTable)
+        .where(eq(SessionMessageTable.id, boardID))
+        .get()
+      const legacyData = { ...board!.data, source: undefined }
+      yield* database.db
+        .update(SessionMessageTable)
+        .set({ data: legacyData })
+        .where(eq(SessionMessageTable.id, boardID))
+        .run()
+      expect(yield* session.message({ sessionID: created.id, messageID: boardID })).toMatchObject({
+        source: "subagent_board",
+      })
+      expect((yield* session.messages({ sessionID: created.id, order: "asc" }))[1]).toMatchObject({
+        source: "subagent_board",
+      })
+      expect(yield* session.prompt({ sessionID: created.id, id: userID, prompt, resume: false })).toMatchObject({
+        id: admitted.id,
+        source: "user",
+        prompt,
+        admittedSeq: admitted.admittedSeq,
+      })
+      expect(
+        (yield* session.messages({ sessionID: created.id })).filter((message) => message.id === userID),
+      ).toHaveLength(1)
+      expect(
+        (yield* session
+          .prompt({ sessionID: created.id, id: boardID, prompt: { text: "Quiet coordination" }, resume: false })
+          .pipe(Effect.flip))._tag,
+      ).toBe("Session.PromptConflictError")
     }),
   )
 })

@@ -20,6 +20,7 @@ for (const file of required) {
 
 const input = Uint8Array.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
 const worker = new Worker(workerPath)
+let timer: ReturnType<typeof setTimeout> | undefined
 try {
   await Promise.race([
     new Promise<void>((resolve, reject) => {
@@ -41,11 +42,12 @@ try {
       })
       worker.postMessage({ bytes: input, options: { maxSections: 16 } })
     }),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Desktop WASM inspect worker timed out")), 15_000),
-    ),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("Desktop WASM inspect worker timed out")), 15_000)
+    }),
   ])
 } finally {
+  clearTimeout(timer)
   await worker.terminate()
 }
 

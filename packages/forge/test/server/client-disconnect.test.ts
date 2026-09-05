@@ -11,15 +11,8 @@ import * as ClientDisconnect from "../../src/server/shared/client-disconnect"
 // `src/server/server.ts` -> `serverLayer`). The client is a raw `net.Socket`
 // so the disconnect is a genuine TCP teardown, not a fetch abort.
 //
-// Background: Bun 1.3.14's `node:http` server shim stops reporting peer
-// disconnects on a connection once the request body has been fully consumed.
-// `nodeEventsFired` below is the built-in negative control -- those listeners
-// are attached at request entry, *before* the body is read, and on Bun they
-// still never fire. Only the native-handle poll inside `ClientDisconnect`
-// observes the hangup. See the comment block in
-// `src/server/shared/client-disconnect.ts` for the full reproduction.
-
-const isBun = typeof process.versions.bun === "string"
+// Bun 1.4.1 reports native disconnect events after body consumption. Keep this
+// positive transport regression so a future runtime cannot silently strand work.
 
 type Probe = {
   readonly bodyLength: number
@@ -48,8 +41,11 @@ type ProbeOptions = {
   /** Called once the request body has been fully consumed. */
   readonly onBodyConsumed: () => void
   readonly waitMillis: number
+  readonly afterClose: boolean
 }
 
+// Keep the probe alive after the transport interrupts the request fiber so it can
+// report the watcher result, including when watching starts after disconnection.
 const handle = (request: HttpServerRequest.HttpServerRequest, options: ProbeOptions) =>
   Effect.gen(function* () {
     const source = NodeHttpServerRequest.toIncomingMessage(request)
@@ -57,21 +53,24 @@ const handle = (request: HttpServerRequest.HttpServerRequest, options: ProbeOpti
     const record = () => {
       nodeEventsFired = true
     }
-    // The "just register the watcher earlier" hypothesis, attached before
-    // anything touches the body. Kept as the negative control.
+    // Observe the runtime events independently of the watcher.
     source.once("aborted", record)
     source.socket.once("close", record)
 
-    // Consuming the body is what disables Bun's disconnect detection.
+    // Drain the body before teardown, matching admitted mutating API requests.
     const body = yield* request.text
+    const closed = options.afterClose
+      ? new Promise<void>((resolve) => source.socket.once("close", () => resolve()))
+      : undefined
     options.onBodyConsumed()
+    if (closed) yield* Effect.promise(() => closed)
 
     const disconnectObserved = yield* ClientDisconnect.use(request, (signal) =>
       waitForAbort(signal, options.waitMillis),
     )
     options.onProbe({ bodyLength: body.length, nodeEventsFired, disconnectObserved })
     return HttpServerResponse.text("done")
-  })
+  }).pipe(Effect.uninterruptible)
 
 const probeServer = (options: ProbeOptions) =>
   Effect.gen(function* () {
@@ -86,7 +85,10 @@ const probeServer = (options: ProbeOptions) =>
  * Sends a body-carrying POST from a raw socket, waits until the server has
  * drained the body, then either kills the connection or leaves it open.
  */
-async function post(port: number, options: { readonly disconnect: boolean; readonly bodyConsumed: Promise<void> }) {
+async function post(
+  port: number,
+  options: { readonly disconnect: "destroy" | "end" | false; readonly bodyConsumed: Promise<void> },
+) {
   const socket = Net.connect(port, "127.0.0.1")
   socket.on("error", () => {})
   socket.on("data", () => {})
@@ -99,7 +101,8 @@ async function post(port: number, options: { readonly disconnect: boolean; reado
       `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
   )
   await options.bodyConsumed
-  if (options.disconnect) socket.destroy()
+  if (options.disconnect === "destroy") socket.destroy()
+  if (options.disconnect === "end") socket.end()
   return socket
 }
 
@@ -109,13 +112,14 @@ function deferred<A>() {
   return { promise, resolve }
 }
 
-const run = (disconnect: boolean, waitMillis: number) =>
+const run = (disconnect: "destroy" | "end" | false, waitMillis: number, afterClose = false) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const probe = deferred<Probe>()
       const bodyConsumed = deferred<void>()
       const port = yield* probeServer({
         waitMillis,
+        afterClose,
         onProbe: probe.resolve,
         onBodyConsumed: () => bodyConsumed.resolve(),
       })
@@ -127,21 +131,22 @@ const run = (disconnect: boolean, waitMillis: number) =>
   )
 
 describe("client disconnect", () => {
-  test("is observed after a body-carrying POST is torn down mid-flight", async () => {
-    const probe = await run(true, 5_000)
+  test.each(["destroy", "end"] as const)(
+    "observes a consumed POST disconnected with %s",
+    async (disconnect) => {
+      const probe = await run(disconnect, 5_000)
+      expect(probe.bodyLength).toBeGreaterThan(0)
+      expect(probe.disconnectObserved).toBe(true)
+      expect(probe.nodeEventsFired).toBe(true)
+    },
+    20_000,
+  )
 
+  test("observes a disconnect that happened before watching began", async () => {
+    const probe = await run("destroy", 5_000, true)
     expect(probe.bodyLength).toBeGreaterThan(0)
     expect(probe.disconnectObserved).toBe(true)
-
-    // On Bun the stock Node events are silent even though they were attached
-    // before the body was read -- this is what the fix works around.
-    //
-    // THIS ASSERTION IS DELIBERATELY BACKWARDS: it passes while Bun is BROKEN.
-    // If it ever fails here, that is good news, not a regression -- Bun started
-    // reporting the disconnect on its own. Follow the "CAN I DELETE THIS YET?"
-    // block in `src/server/shared/client-disconnect.ts` to rip out the
-    // native-handle poll, then delete this assertion.
-    if (isBun) expect(probe.nodeEventsFired).toBe(false)
+    expect(probe.nodeEventsFired).toBe(true)
   }, 20_000)
 
   test("is not reported while the client is still connected", async () => {

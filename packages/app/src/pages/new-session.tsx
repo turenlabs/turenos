@@ -31,7 +31,7 @@ import { useTitlebarRightMount } from "@/components/titlebar"
 import { useCommandPalette } from "@/context/command"
 import { useSurfaceCommands } from "@/pages/session/use-surface-commands"
 import { useProviders } from "@/hooks/use-providers"
-import { useSettingsCommand } from "@/components/settings-dialog"
+import { useSettingsCommand, useSettingsDialog } from "@/components/settings-dialog"
 import { Persist, persisted } from "@/utils/persist"
 import { showToast } from "@/utils/toast"
 import createPresence from "solid-presence"
@@ -59,6 +59,7 @@ export default function NewSessionPage() {
   const navigate = useNavigate()
   const providers = useProviders(() => sdk().directory)
   useSettingsCommand()
+  const showProviders = useSettingsDialog("providers")
   const route = useSessionKey()
   const [searchParams, setSearchParams] = useSearchParams<{ draftId?: string; prompt?: string }>()
   const local = useLocal()
@@ -228,7 +229,7 @@ export default function NewSessionPage() {
             <ProviderTip
               ready={() => serverSync().child(sdk().directory)[0].provider_ready}
               connected={() => providers.paid().length > 0}
-              openProviders={() => navigate("/extend/catalog?kind=provider")}
+              openProviders={showProviders}
             />
           </div>
         </div>

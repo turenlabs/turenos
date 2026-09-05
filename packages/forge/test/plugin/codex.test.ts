@@ -170,6 +170,7 @@ describe("plugin.codex", () => {
             "gpt-5.6-sol",
             "gpt-5.6-terra",
             "gpt-5.6-luna",
+            "gpt-6-astra",
             "gpt-5.7-pro",
             "gpt-5.3-codex-spark",
           ].map((id) => [id, { id, api: { id }, limit, cost: {}, options: {} }]),
@@ -198,7 +199,7 @@ describe("plugin.codex", () => {
     // to 500k/372k -- pre-release figures that stayed behind after the models
     // shipped at 1.05M/922k, halving the usable window and driving compaction
     // at roughly twice the necessary rate.
-    for (const id of ["gpt-5.4", "gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+    for (const id of ["gpt-5.4", "gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra"]) {
       expect(models[id]?.limit).toEqual(limit)
     }
     // Cost is still zeroed: that one really is a Codex fact, since the turn
@@ -211,6 +212,7 @@ describe("plugin.codex", () => {
     const apiModels = await hooks.provider!.models!(provider as never, { auth: { type: "api" } } as never)
     expect(apiModels["gpt-5.3-codex-spark"]).toBeUndefined()
     expect(apiModels["gpt-5.6-sol"]).toBeDefined()
+    expect(apiModels["gpt-6-astra"]).toBeDefined()
   })
 
   test("deduplicates concurrent Codex token refreshes", async () => {

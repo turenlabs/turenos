@@ -6,6 +6,7 @@ import ArrowShrink01Icon from "@hugeicons/core-free-icons/ArrowShrink01Icon"
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon"
 import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon"
 import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon"
+import ConnectIcon from "@hugeicons/core-free-icons/ConnectIcon"
 import ContainerIcon from "@hugeicons/core-free-icons/ContainerIcon"
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon"
 import Folder01Icon from "@hugeicons/core-free-icons/Folder01Icon"
@@ -58,6 +59,7 @@ const icons = {
   collapse: ArrowShrink01Icon,
   check: Tick02Icon,
   monitor: ComputerIcon,
+  connections: ConnectIcon,
   "workspace-new": PackageAddIcon,
   "workspace-isolated": ContainerIcon,
   workspace: Package01Icon,

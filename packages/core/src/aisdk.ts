@@ -47,7 +47,8 @@ function wrapSSE(res: Response, ms: number, ctl: AbortController) {
         const id = setTimeout(() => {
           const err = new Error("SSE read timed out")
           ctl.abort(err)
-          void reader.cancel(err)
+          // Aborting fetch can reject cancellation too; the read reports the timeout below.
+          void reader.cancel(err).catch(() => undefined)
           reject(err)
         }, ms)
 

@@ -3,6 +3,7 @@ import { describe, expect } from "bun:test"
 import type { LanguageModelV3 } from "@ai-sdk/provider"
 import { Effect } from "effect"
 import { Catalog } from "@turenlabs/core/catalog"
+import { Credential } from "@turenlabs/core/credential"
 import { Integration } from "@turenlabs/core/integration"
 import { ModelV2 } from "@turenlabs/core/model"
 import { PluginV2 } from "@turenlabs/core/plugin"
@@ -10,6 +11,9 @@ import { PluginHost } from "@turenlabs/core/plugin/host"
 import { OpenAIPlugin } from "@turenlabs/core/plugin/provider/openai"
 import { OpenAICodex } from "@turenlabs/core/plugin/provider/openai-codex"
 import { ProviderV2 } from "@turenlabs/core/provider"
+import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
+import { LLM } from "@turenlabs/llm"
+import { LLMClient } from "@turenlabs/llm/route"
 import { testEffect } from "../lib/effect"
 import { PluginTestLayer } from "./fixture"
 
@@ -42,6 +46,88 @@ function fakeSelectorSdk(calls: string[]) {
 }
 
 describe("OpenAIPlugin", () => {
+  it.effect("offers the Astra fallback through API-key and ChatGPT OAuth Responses routes", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const aisdk = yield* AISDK.Service
+      const calls: string[] = []
+      yield* addPlugin()
+      const model = required(yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("gpt-6-astra")))
+
+      expect(model).toMatchObject({
+        name: "GPT-6 Astra",
+        api: { id: "gpt-6-astra", type: "aisdk", package: "@ai-sdk/openai" },
+        capabilities: { tools: true, input: ["text", "image"], output: ["text"] },
+        limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+        status: "active",
+        enabled: true,
+      })
+      expect(model.cost).toEqual([
+        { input: 10, output: 50, cache: { read: 1, write: 12.5 } },
+        { tier: { type: "context", size: 272_000 }, input: 20, output: 75, cache: { read: 2, write: 25 } },
+      ])
+      expect(model.variants.map((variant) => [variant.id, variant.body.reasoningEffort])).toEqual([
+        ["low", "low"],
+        ["medium", "medium"],
+        ["high", "high"],
+        ["xhigh", "xhigh"],
+        ["max", "max"],
+      ])
+      yield* aisdk.runLanguage({ model, sdk: fakeSelectorSdk(calls), options: {} })
+      expect(calls).toEqual(["responses:gpt-6-astra"])
+
+      for (const credential of [
+        Credential.Key.make({ type: "key", key: "test-key" }),
+        Credential.OAuth.make({
+          type: "oauth",
+          methodID: Integration.MethodID.make("chatgpt-browser"),
+          access: "test-access",
+          refresh: "test-refresh",
+          expires: Date.now() + 60_000,
+          metadata: { accountID: "test-account" },
+        }),
+      ]) {
+        expect(SessionRunnerModel.selectableWithCredential(model, credential)).toBe(true)
+        const resolved = yield* SessionRunnerModel.fromCatalogModelWithAISDK(model, credential)
+        const prepared = yield* LLMClient.prepare(LLM.request({ model: resolved, prompt: "Hello" }))
+        expect(resolved.route.id).toBe("openai-responses")
+        expect(resolved.route.defaults?.limits).toMatchObject(model.limit)
+        expect(resolved.route.endpoint.baseURL).toBe(
+          credential.type === "oauth" ? OpenAICodex.API_ENDPOINT : "https://api.openai.com/v1",
+        )
+        expect(prepared.body).toMatchObject({
+          model: "gpt-6-astra",
+          store: false,
+          include: ["reasoning.encrypted_content"],
+        })
+      }
+      expect(OpenAICodex.eligible("gpt-6-astra", "pro")).toBe(false)
+    }),
+  )
+
+  it.effect("preserves upstream Astra metadata and explicit request options", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      yield* catalog.transform((draft) => {
+        draft.provider.update(ProviderV2.ID.openai, (provider) => {
+          provider.api = { type: "aisdk", package: "@ai-sdk/openai" }
+        })
+        draft.model.update(ProviderV2.ID.openai, ModelV2.ID.make("gpt-6-astra"), (model) => {
+          model.name = "Upstream Astra"
+          model.limit = { context: 2_000_000, output: 256_000 }
+          model.cost = [{ input: 3, output: 9, cache: { read: 0.3, write: 0 } }]
+          model.variants = [{ id: ModelV2.VariantID.make("high"), headers: {}, body: { reasoningEffort: "high" } }]
+          model.request.body = { include: [], reasoningSummary: "auto" }
+          model.enabled = false
+          model.time.released = 123
+        })
+      })
+      const upstream = yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("gpt-6-astra"))
+      yield* addPlugin()
+      expect(yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("gpt-6-astra"))).toEqual(upstream)
+    }),
+  )
+
   it.effect("maps Daybreak API IDs to Codex model IDs", () =>
     Effect.sync(() => {
       expect(OpenAICodex.eligible("daybreak-blue-latest")).toBe(true)

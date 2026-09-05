@@ -44,6 +44,7 @@ export function parseOptions(args: string[]): Options {
   if (mode !== "effect" && mode !== "coverage" && mode !== "auth") throw new Error(`invalid --mode ${mode}`)
   return {
     mode,
+    shard: parseShard(option(args, "--shard")),
     include: option(args, "--include"),
     startAt: option(args, "--start-at"),
     stopAt: option(args, "--stop-at"),
@@ -67,6 +68,13 @@ export function matches(options: Options, scenario: Scenario) {
 }
 
 export function selectedScenarios(options: Options, scenarios: Scenario[]) {
+  if (options.shard && (options.include || options.startAt || options.stopAt))
+    throw new Error("--shard cannot be combined with scenario filters")
+  if (options.shard) {
+    const shard = options.shard
+    if (shard.total > scenarios.length) throw new Error("--shard would create empty scenario partitions")
+    return scenarios.filter((_, index) => index % shard.total === shard.index - 1)
+  }
   const included = scenarios.filter((scenario) => matches(options, scenario))
   const start = options.startAt ? included.findIndex((scenario) => matchesName(options.startAt!, scenario)) : 0
   const end = options.stopAt
@@ -82,9 +90,13 @@ function matchesName(value: string, scenario: Scenario) {
 }
 
 function option(args: string[], name: string) {
-  const index = args.indexOf(name)
-  if (index === -1) return undefined
-  return args[index + 1]
+  const found = args.flatMap((value, index) =>
+    value === name ? [args[index + 1]] : value.startsWith(`${name}=`) ? [value.slice(name.length + 1)] : [],
+  )
+  if (found.length === 0) return undefined
+  if (found.length > 1) throw new Error(`duplicate ${name}`)
+  if (!found[0] || found[0].startsWith("--")) throw new Error(`missing value for ${name}`)
+  return found[0]
 }
 
 function parseScenarioTimeout(input: string) {
@@ -95,4 +107,26 @@ function parseScenarioTimeout(input: string) {
 function isScenarioTimeout(input: string): input is ScenarioTimeout {
   const [amount, unit, extra] = input.trim().split(/\s+/)
   return extra === undefined && amount !== undefined && Number.isFinite(Number(amount)) && durationUnits.has(unit ?? "")
+}
+
+function parseShard(input: string | undefined) {
+  if (input === undefined) return undefined
+  if (!/^[1-9]\d*\/[1-9]\d*$/.test(input)) throw new Error(`invalid --shard ${input}; expected index/total`)
+  const values = input.split("/").map(Number)
+  const index = values[0]!
+  const total = values[1]!
+  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(total) || index > total)
+    throw new Error(`invalid --shard ${input}; expected 1 <= index <= total`)
+  return { index, total }
+}
+
+export function failureRatchet(results: Result[], known: Set<string>) {
+  const failures = results.filter((result) => result.status === "fail")
+  return {
+    unexpected: failures.filter((result) => !known.has(result.scenario.name)),
+    fixed: results
+      .filter((result) => result.status === "pass" && known.has(result.scenario.name))
+      .map((result) => result.scenario.name)
+      .sort(),
+  }
 }

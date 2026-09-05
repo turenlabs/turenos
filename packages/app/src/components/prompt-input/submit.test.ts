@@ -1,6 +1,10 @@
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
+import { createPromptState } from "@/context/prompt-state"
 import type { Prompt, usePrompt } from "@/context/prompt"
 import type { ModelSelection } from "@/context/local"
+import { ServerScope } from "@/utils/server-scope"
+import { createPromptAdmission } from "./prompt-admission"
+import { Worktree } from "@/utils/worktree"
 import type { SessionGoalInfo } from "@turenlabs/sdk/v2/client"
 
 let createPromptSubmit: typeof import("./submit").createPromptSubmit
@@ -9,6 +13,9 @@ let readPromptAdmission: typeof import("./submit").readPromptAdmission
 
 const createdClients: string[] = []
 const createdSessions: string[] = []
+const createInputs: Array<{ id?: string }> = []
+const createErrors: unknown[] = []
+let draftPlacement = { type: "draft", draftID: "draft-1", server: "project-server", directory: "/repo/main" }
 const optimistic: Array<{
   directory?: string
   sessionID?: string
@@ -49,6 +56,9 @@ const projectedMessageIDs = new Set<string>()
 const inputStatuses = new Map<string, "admitted" | "promoted" | "cancelled">()
 const extensionLists: string[] = []
 const abortOrder: string[] = []
+const interrupted: Array<{ directory: string; sessionID: string }> = []
+const interruptErrors: unknown[] = []
+const todoWrites: unknown[][] = []
 const toasts: Array<{ title?: string; description?: string }> = []
 const restoredPrompts: Prompt[] = []
 const configuredCommands: Array<{ name: string; source?: "command" | "mcp" | "skill" }> = []
@@ -61,9 +71,13 @@ let search: { draftId?: string } = {}
 let selected = "/repo/worktree-a"
 let variant: string | undefined
 let createSessionGate: Promise<void> | undefined
+let createWorktreeGate: Promise<void> | undefined
 let v2CommandGate: Promise<void> | undefined
+let v2PromptGate: Promise<void> | undefined
 let sdkScope = "local"
 let resetCount = 0
+let interruptGate: Promise<void> | undefined
+let selectedClient: ReturnType<typeof clientFor> | undefined
 
 type CapturedPrompt = ReturnType<ReturnType<typeof usePrompt>["capture"]>
 
@@ -75,6 +89,7 @@ const prompt = {
   current: () => promptValue,
   cursor: () => 0,
   dirty: () => true,
+  save: async () => true,
   model: {
     current: () => undefined,
     set: () => undefined,
@@ -98,8 +113,10 @@ const prompt = {
 
 const clientFor = (directory: string) => {
   createdClients.push(directory)
-  const create = async () => {
+  const create = async (input: { id?: string } = {}) => {
+    createInputs.push(input)
     await createSessionGate
+    if (createErrors.length) throw createErrors.shift()
     createdSessions.push(directory)
     const id = `session-${createdSessions.length}`
     return {
@@ -122,6 +139,7 @@ const clientFor = (directory: string) => {
     v2: {
       session: {
         create,
+        active: async () => ({ data: { data: {} as Record<string, boolean> } }),
         get: async ({ sessionID }: { sessionID: string }) => {
           v2Gets.push(sessionID)
           return {
@@ -146,6 +164,7 @@ const clientFor = (directory: string) => {
           const sessionID = payload.sessionID as string
           v2Prompts.push(sessionID)
           v2PromptPayloads.push(payload)
+          await v2PromptGate
           if (v2PromptErrors.length) throw v2PromptErrors.shift()
           return { data: undefined }
         },
@@ -176,8 +195,11 @@ const clientFor = (directory: string) => {
           await v2CommandGate
           return { data: undefined }
         },
-        interrupt: async () => {
+        interrupt: async ({ sessionID }: { sessionID: string }) => {
           abortOrder.push("interrupt")
+          interrupted.push({ directory, sessionID })
+          await interruptGate
+          if (interruptErrors.length) throw interruptErrors.shift()
           return { data: undefined }
         },
       },
@@ -197,7 +219,10 @@ const clientFor = (directory: string) => {
       abort: async () => ({ data: undefined }),
     },
     worktree: {
-      create: async () => ({ data: { directory: `${directory}/new` } }),
+      create: async () => {
+        await createWorktreeGate
+        return { data: { directory: `${directory}/new` } }
+      },
     },
     extension: {
       list: async () => {
@@ -215,17 +240,40 @@ const clientFor = (directory: string) => {
   }
 }
 
+function admissionForTest() {
+  const values = new Map<string, string>()
+  return createPromptAdmission({
+    storage: {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => {
+        values.set(key, value)
+      },
+      removeItem: (key) => {
+        values.delete(key)
+      },
+      keys: () => [...values.keys()],
+    },
+  })
+}
+
 function followupPromptInput(messageID: string, optimisticCalls: string[], statuses?: string[]) {
+  let revision = 0
   return {
+    scope: ServerScope.local,
+    admission: admissionForTest(),
     client: clientFor("/repo/followup") as unknown as Parameters<typeof sendFollowupDraft>[0]["client"],
     serverSync: {
       session: {
-        set: (_key: string, _sessionID: string, value: { type: string }) => statuses?.push(value.type),
+        set: (_key: string, _sessionID: string, value: { type: string }) => {
+          revision++
+          statuses?.push(value.type)
+        },
       },
     } as unknown as Parameters<typeof sendFollowupDraft>[0]["serverSync"],
     sync: {
       data: { command: [], session_working: () => false },
       session: {
+        statusRevision: () => revision,
         optimistic: {
           add: () => optimisticCalls.push("add"),
           remove: () => optimisticCalls.push("remove"),
@@ -319,7 +367,12 @@ beforeAll(async () => {
 
   mock.module("@/context/tabs", () => ({
     useTabs: () => ({
-      draft: () => ({ server: "project-server" }),
+      draft: () => draftPlacement,
+      get store() {
+        return [draftPlacement]
+      },
+      state: (tab: { type: string; sessionId?: string }) =>
+        tab.type === "session" ? (capturePrompt?.({ id: tab.sessionId }) ?? prompt) : (capturePrompt?.() ?? prompt),
       promoteDraft: (draftID: string, session: { server: string; sessionId: string }) => {
         promotionOperations.push("promote")
         promotedDrafts.push({ draftID, ...session })
@@ -354,9 +407,13 @@ beforeAll(async () => {
   mock.module("@/context/sdk", () => ({
     useSDK: () => {
       const sdk = {
-        scope: sdkScope,
+        get scope() {
+          return sdkScope
+        },
         directory: "/repo/main",
-        client: rootClient,
+        get client() {
+          return selectedClient ?? rootClient
+        },
         url: "http://localhost:4096",
         createClient(opts: any) {
           return clientFor(opts.directory)
@@ -370,6 +427,7 @@ beforeAll(async () => {
     useSync: () => () => ({
       data: { command: configuredCommands, session_working: () => false },
       session: {
+        statusRevision: () => 0,
         optimistic: {
           add: (value: (typeof optimistic)[number]) => {
             optimistic.push(value)
@@ -390,7 +448,9 @@ beforeAll(async () => {
     useServerSync: () => () => ({
       session: {
         remember: () => undefined,
-        set: () => undefined,
+        set: (...args: unknown[]) => {
+          if (args[0] === "todo") todoWrites.push(args)
+        },
       },
       child: (directory: string) => {
         syncedDirectories.push(directory)
@@ -434,6 +494,9 @@ beforeAll(async () => {
 beforeEach(() => {
   createdClients.length = 0
   createdSessions.length = 0
+  createInputs.length = 0
+  createErrors.length = 0
+  draftPlacement = { type: "draft", draftID: "draft-1", server: "project-server", directory: "/repo/main" }
   optimistic.length = 0
   optimisticSeeded.length = 0
   optimisticRemovals.length = 0
@@ -447,7 +510,9 @@ beforeEach(() => {
   selected = "/repo/worktree-a"
   variant = undefined
   createSessionGate = undefined
+  createWorktreeGate = undefined
   v2CommandGate = undefined
+  v2PromptGate = undefined
   sdkScope = "local"
   resetCount = 0
   v2Prompts.length = 0
@@ -470,6 +535,11 @@ beforeEach(() => {
   inputStatuses.clear()
   extensionLists.length = 0
   abortOrder.length = 0
+  interrupted.length = 0
+  interruptErrors.length = 0
+  todoWrites.length = 0
+  interruptGate = undefined
+  selectedClient = undefined
   toasts.length = 0
   restoredPrompts.length = 0
   configuredCommands.length = 0
@@ -481,7 +551,299 @@ beforeEach(() => {
   for (const key of Object.keys(storedSessions)) delete storedSessions[key]
 })
 
+function stopControls(onAbort?: () => Promise<void>) {
+  return createPromptSubmit({
+    prompt,
+    info: () => ({ id: "session-1" }),
+    imageAttachments: () => [],
+    commentCount: () => 0,
+    mode: () => "normal",
+    working: () => true,
+    editor: () => undefined,
+    queueScroll: () => undefined,
+    promptLength: () => 2,
+    addToHistory: () => undefined,
+    resetHistoryNavigation: () => undefined,
+    setMode: () => undefined,
+    setPopover: () => undefined,
+    onAbort,
+  })
+}
+
+function newDraftControls(info: () => { id: string } | undefined = () => undefined, shouldQueue?: () => boolean) {
+  return createPromptSubmit({
+    prompt,
+    info,
+    imageAttachments: () => [],
+    commentCount: () => 0,
+    mode: () => "normal",
+    working: () => false,
+    editor: () => undefined,
+    queueScroll: () => undefined,
+    promptLength: () => 2,
+    addToHistory: () => undefined,
+    resetHistoryNavigation: () => undefined,
+    setMode: () => undefined,
+    setPopover: () => undefined,
+    newSessionWorktree: () => selected,
+    shouldQueue,
+  })
+}
+const submitEvent = () => ({ preventDefault() {} }) as unknown as Event
+const waitUntil = async (ready: () => boolean) => {
+  const deadline = Date.now() + 1000
+  while (!ready() && Date.now() < deadline) await Bun.sleep(1)
+  expect(ready()).toBe(true)
+}
+
 describe("prompt submit worktree selection", () => {
+  test("coalesces an existing composer's double Enter without swallowing a later identical prompt", async () => {
+    params = { id: "session-1" }
+    const source = createPromptState({ prompt: "first prompt" })
+    capturePrompt = () => source
+    const gate = Promise.withResolvers<void>()
+    v2PromptGate = gate.promise
+    let busy = false
+    const controls = newDraftControls(
+      () => ({ id: "session-1" }),
+      () => busy,
+    )
+    const first = controls.handleSubmit(submitEvent())
+    busy = true
+    const duplicate = controls.handleSubmit(submitEvent())
+    expect(duplicate).toBe(first)
+    await waitUntil(() => v2PromptPayloads.length === 1)
+    expect(source.current()[0]).toMatchObject({ content: "" })
+    source.set([{ type: "text", content: "first prompt", start: 0, end: 12 }])
+    const next = controls.handleSubmit(submitEvent())
+    expect(next).not.toBe(first)
+    await waitUntil(() => v2PromptPayloads.length === 2)
+    gate.resolve()
+    await Promise.all([first, next])
+    expect(v2PromptPayloads[0].id).not.toBe(v2PromptPayloads[1].id)
+  })
+
+  test.each([false, true])("reconciles rejected-send activity from the server: active=%s", async (active) => {
+    v2PromptErrors.push(Object.assign(new Error("invalid prompt"), { status: 400 }))
+    const statuses: string[] = []
+    const input = followupPromptInput(`rejected-active-${active}`, [], statuses)
+    const client = clientFor("/repo/followup")
+    client.v2.session.active = async () => ({
+      data: { data: Object.fromEntries<boolean>(active ? [["session-followup", true]] : []) },
+    })
+    input.client = client as unknown as typeof input.client
+    expect(await sendFollowupDraft(input)).toBe("rejected")
+    expect(statuses).toEqual(active ? ["busy"] : ["busy", "idle"])
+  })
+
+  test("a rejected-send activity check cannot overwrite a newer status", async () => {
+    v2PromptErrors.push(Object.assign(new Error("invalid prompt"), { status: 400 }))
+    const statuses: string[] = []
+    const input = followupPromptInput("rejected-newer-status", [], statuses)
+    const client = clientFor("/repo/followup")
+    client.v2.session.active = async () => {
+      input.serverSync.session.set("session_status", "session-followup", { type: "busy" })
+      return { data: { data: {} } }
+    }
+    input.client = client as unknown as typeof input.client
+    expect(await sendFollowupDraft(input)).toBe("rejected")
+    expect(statuses).toEqual(["busy", "busy"])
+  })
+
+  test("bounds draft hydration and never promotes after its deadline", async () => {
+    search = { draftId: "draft-1" }
+    const source = createPromptState({ prompt: "first prompt" })
+    const gate = Promise.withResolvers<boolean>()
+    const session = {
+      ...createPromptState(),
+      ready: Object.assign(() => false, { promise: gate.promise }),
+      save: async () => true,
+    }
+    capturePrompt = (scope) => (scope ? session : source)
+    await newDraftControls().handleSubmit(submitEvent())
+    gate.resolve(true)
+    await Bun.sleep(10)
+    expect(source.current()[0]).toMatchObject({ content: "first prompt" })
+    expect(promotedDrafts).toHaveLength(0)
+    expect(v2PromptPayloads).toHaveLength(0)
+    expect(toasts).toHaveLength(1)
+  }, 10_000)
+
+  test("bounds destination persistence, preserves the draft, and allows retry after a late save", async () => {
+    search = { draftId: "draft-1" }
+    const source = createPromptState({ prompt: "first prompt" })
+    const gate = Promise.withResolvers<boolean>()
+    const session = { ...createPromptState(), save: () => gate.promise }
+    capturePrompt = (scope) => (scope ? session : source)
+    const controls = newDraftControls()
+    await controls.handleSubmit(submitEvent())
+    gate.resolve(true)
+    await Bun.sleep(10)
+    expect(source.current()[0]).toMatchObject({ content: "first prompt" })
+    expect(promotedDrafts).toHaveLength(0)
+    expect(v2PromptPayloads).toHaveLength(0)
+    await controls.handleSubmit(submitEvent())
+    expect(v2PromptPayloads).toHaveLength(1)
+  }, 10_000)
+
+  test("coalesces double Enter during delayed Session creation", async () => {
+    search = { draftId: "draft-1" }
+    const gate = Promise.withResolvers<void>()
+    createSessionGate = gate.promise
+    const controls = newDraftControls()
+    const first = controls.handleSubmit(submitEvent())
+    const second = controls.handleSubmit(submitEvent())
+    expect(second).toBe(first)
+    await waitUntil(() => createInputs.length === 1)
+    gate.resolve()
+    await first
+    expect(createdSessions).toHaveLength(1)
+    expect(v2PromptPayloads).toHaveLength(1)
+  })
+
+  test("preserves a reopened draft's newer prompt and model through delayed creation", async () => {
+    search = { draftId: "draft-1" }
+    const first = createPromptState({ prompt: "first prompt" })
+    const reopened = createPromptState({ prompt: "next prompt", model: { providerID: "next", modelID: "model" } })
+    const session = { ...createPromptState(), save: async () => true }
+    let source = first
+    capturePrompt = (scope) => (scope ? session : source)
+    const gate = Promise.withResolvers<void>()
+    createSessionGate = gate.promise
+    const sending = newDraftControls().handleSubmit(submitEvent())
+    await waitUntil(() => createInputs.length === 1)
+    source = reopened
+    gate.resolve()
+    await sending
+    expect(v2PromptPayloads[0].prompt).toMatchObject({ text: "first prompt" })
+    expect(session.current()[0]).toMatchObject({ content: "next prompt" })
+    expect(session.model.current()).toEqual({ providerID: "next", modelID: "model" })
+    expect(promotedDrafts).toHaveLength(1)
+  })
+
+  test("retains the original draft and makes no POST when destination persistence fails", async () => {
+    search = { draftId: "draft-1" }
+    const first = createPromptState({ prompt: "first prompt" })
+    const session = { ...createPromptState(), save: async () => false }
+    capturePrompt = (scope) => (scope ? session : first)
+    await newDraftControls().handleSubmit(submitEvent())
+    expect(first.current()[0]).toMatchObject({ content: "first prompt" })
+    expect(promotedDrafts).toHaveLength(0)
+    expect(v2PromptPayloads).toHaveLength(0)
+    expect(toasts.some((toast) => toast.description?.includes("safely moved"))).toBe(true)
+  })
+
+  test("retains a draft edited while its destination save is pending", async () => {
+    search = { draftId: "draft-1" }
+    const first = createPromptState({ prompt: "first prompt" })
+    const gate = Promise.withResolvers<boolean>()
+    let saving = false
+    const session = {
+      ...createPromptState(),
+      save: () => {
+        saving = true
+        return gate.promise
+      },
+    }
+    capturePrompt = (scope) => (scope ? session : first)
+    const sending = newDraftControls().handleSubmit(submitEvent())
+    await waitUntil(() => saving)
+    first.set([{ type: "text", content: "newer while saving", start: 0, end: 18 }])
+    gate.resolve(true)
+    await sending
+    expect(first.current()[0]).toMatchObject({ content: "newer while saving" })
+    expect(promotedDrafts).toHaveLength(0)
+    expect(v2PromptPayloads).toHaveLength(0)
+  })
+
+  test("releases failed creation ownership and retries the same Session identity", async () => {
+    search = { draftId: "draft-1" }
+    createErrors.push(new Error("offline"))
+    const controls = newDraftControls()
+    await controls.handleSubmit(submitEvent())
+    expect(v2PromptPayloads).toHaveLength(0)
+    await controls.handleSubmit(submitEvent())
+    expect(createInputs).toHaveLength(2)
+    expect(createInputs[0].id).toBe(createInputs[1].id)
+    expect(v2PromptPayloads).toHaveLength(1)
+  })
+
+  test("binds creation retry identity to selected placement", async () => {
+    search = { draftId: "draft-1" }
+    createErrors.push(new Error("lost response"))
+    const controls = newDraftControls()
+    await controls.handleSubmit(submitEvent())
+    selected = "/repo/worktree-b"
+    await controls.handleSubmit(submitEvent())
+    expect(createInputs).toHaveLength(2)
+    expect(createInputs[0].id).not.toBe(createInputs[1].id)
+  })
+
+  test("preserves changed project placement during delayed creation", async () => {
+    search = { draftId: "draft-1" }
+    const source = createPromptState({ prompt: "first prompt" })
+    const session = { ...createPromptState(), save: async () => true }
+    capturePrompt = (scope) => (scope ? session : source)
+    const gate = Promise.withResolvers<void>()
+    createSessionGate = gate.promise
+    const sending = newDraftControls().handleSubmit(submitEvent())
+    await waitUntil(() => createInputs.length === 1)
+    draftPlacement = { ...draftPlacement, directory: "/project-b" }
+    gate.resolve()
+    await sending
+    expect(promotedDrafts).toHaveLength(0)
+    expect(source.current()[0]).toMatchObject({ content: "first prompt" })
+    expect(v2PromptPayloads).toHaveLength(0)
+  })
+
+  test("captures new-session intent before worktree creation and later navigation", async () => {
+    search = { draftId: "draft-1" }
+    selected = "create"
+    const gate = Promise.withResolvers<void>()
+    createWorktreeGate = gate.promise
+    let info: { id: string } | undefined
+    const sending = newDraftControls(() => info).handleSubmit(submitEvent())
+    await Bun.sleep(1)
+    params.id = "existing-other-session"
+    info = { id: "existing-other-session" }
+    gate.resolve()
+    await waitUntil(() => createdSessions.length === 1)
+    Worktree.ready(ServerScope.local, "/repo/main/new")
+    await sending
+    expect(createdSessions).toHaveLength(1)
+    expect(v2PromptPayloads[0].sessionID).toBe("session-1")
+    expect(v2PromptPayloads[0].sessionID).not.toBe("existing-other-session")
+  })
+
+  test("keeps requests and promotion scoped to the server captured before creation", async () => {
+    search = { draftId: "draft-1" }
+    const gate = Promise.withResolvers<void>()
+    createSessionGate = gate.promise
+    const sending = newDraftControls().handleSubmit(submitEvent())
+    await waitUntil(() => createInputs.length === 1)
+    sdkScope = "different-server"
+    selectedClient = clientFor("/other-server")
+    gate.resolve()
+    await sending
+    expect(createdSessions).toEqual(["/repo/worktree-a"])
+    expect(promoted).toHaveLength(0)
+    expect(activationStarts).toHaveLength(0)
+    expect(v2PromptPayloads).toHaveLength(1)
+  })
+
+  test("bounds hung creation and permits a later exact-identity retry", async () => {
+    search = { draftId: "draft-1" }
+    createSessionGate = new Promise(() => {})
+    const controls = newDraftControls()
+    await controls.handleSubmit(submitEvent())
+    expect(v2PromptPayloads).toHaveLength(0)
+    createSessionGate = undefined
+    await controls.handleSubmit(submitEvent())
+    expect(createInputs).toHaveLength(2)
+    expect(createInputs[0].id).toBe(createInputs[1].id)
+    expect(v2PromptPayloads).toHaveLength(1)
+  }, 15_000)
+
   test("reads the latest worktree accessor value per submit", async () => {
     const submit = createPromptSubmit({
       prompt,
@@ -728,6 +1090,8 @@ describe("prompt submit worktree selection", () => {
     const optimisticCalls: string[] = []
     const client = clientFor("/repo/followup")
     const input = {
+      scope: ServerScope.local,
+      admission: admissionForTest(),
       client: client as unknown as Parameters<typeof sendFollowupDraft>[0]["client"],
       serverSync: {
         session: {
@@ -832,8 +1196,12 @@ describe("prompt submit worktree selection", () => {
     const statuses: string[] = []
     const optimisticCalls: string[] = []
 
-    expect(await sendFollowupDraft(followupPromptInput("msg_prompt_pending", optimisticCalls, statuses))).toBe(true)
-    expect(v2PromptPayloads).toHaveLength(5)
+    const input = followupPromptInput("msg_prompt_pending", optimisticCalls, statuses)
+    expect(await sendFollowupDraft(input)).toBe("unknown")
+    expect(await input.admission.check(input.scope, input.draft.sessionID, input.messageID, input.client)).toBe(
+      "pending",
+    )
+    expect(v2PromptPayloads).toHaveLength(4)
     expect(new Set(v2PromptPayloads.map((payload) => payload.id))).toEqual(new Set(["msg_prompt_pending"]))
     expect(v2PendingInputReads).toEqual(["session-followup"])
     expect(v2MessageReads).toEqual([])
@@ -841,7 +1209,7 @@ describe("prompt submit worktree selection", () => {
     expect(optimisticCalls).toEqual(["add"])
   })
 
-  test("keeps an exhausted optimistic prompt visible after authoritative reads report failure", async () => {
+  test("retains exact retry identity when a missing read can precede a late commit", async () => {
     v2PromptErrors.push(
       new TypeError("Failed to fetch"),
       new TypeError("Failed to fetch"),
@@ -852,14 +1220,17 @@ describe("prompt submit worktree selection", () => {
     const statuses: string[] = []
     const optimisticCalls: string[] = []
 
-    await expect(
-      sendFollowupDraft(followupPromptInput("msg_prompt_failed", optimisticCalls, statuses)),
-    ).rejects.toThrow("Failed to fetch")
-    expect(v2PromptPayloads).toHaveLength(5)
+    const input = followupPromptInput("msg_prompt_failed", optimisticCalls, statuses)
+    expect(await sendFollowupDraft(input)).toBe("unknown")
+    expect(await input.admission.check(input.scope, input.draft.sessionID, input.messageID, input.client)).toBe(
+      "missing",
+    )
+    expect(input.admission.get(input.scope, input.draft.sessionID, input.messageID)?.payload.id).toBe(input.messageID)
+    expect(v2PromptPayloads).toHaveLength(4)
     expect(new Set(v2PromptPayloads.map((payload) => payload.id))).toEqual(new Set(["msg_prompt_failed"]))
     expect(v2PendingInputReads).toEqual(["session-followup"])
     expect(v2MessageReads).toEqual(["msg_prompt_failed"])
-    expect(statuses).toEqual(["busy", "idle"])
+    expect(statuses).toEqual(["busy"])
     expect(optimisticCalls).toEqual(["add"])
   })
 
@@ -896,6 +1267,7 @@ describe("prompt submit worktree selection", () => {
       "msg_missing",
       "msg_pending_unknown",
       "msg_projected_unknown",
+      "msg_session_missing",
     ])
   })
 
@@ -1267,6 +1639,63 @@ describe("prompt submit worktree selection", () => {
     await submit.abort()
 
     expect(abortOrder).toEqual(["pause", "interrupt"])
+  })
+
+  test("keeps task state and reports a failed Stop so it can be retried", async () => {
+    params = { id: "session-1" }
+    const submit = stopControls()
+    interruptErrors.push(new Error("Server unreachable"))
+    await submit.abort()
+    expect(todoWrites).toEqual([])
+    expect(submit.interrupting()).toBe(false)
+    expect(toasts).toContainEqual({ title: "session.interrupt.error", description: "Server unreachable" })
+    await submit.abort()
+    expect(interrupted).toHaveLength(2)
+    expect(todoWrites).toEqual([])
+  })
+
+  test("coalesces Stop requests and keeps task state until acknowledgement", async () => {
+    params = { id: "session-1" }
+    const gate = Promise.withResolvers<void>()
+    interruptGate = gate.promise
+    const submit = stopControls()
+    const first = submit.abort()
+    expect(submit.interrupting()).toBe(true)
+    expect(submit.abort()).toBe(first)
+    await Promise.resolve()
+    expect(interrupted).toHaveLength(1)
+    expect(todoWrites).toEqual([])
+    await submit.handleSubmit({ preventDefault: () => undefined } as Event, true)
+    expect(v2Prompts).toEqual([])
+    gate.resolve()
+    await first
+    expect(submit.interrupting()).toBe(false)
+    expect(todoWrites).toEqual([])
+  })
+
+  test("Stop remains on its captured server and session while a goal pause waits", async () => {
+    params = { id: "session-1" }
+    const gate = Promise.withResolvers<void>()
+    const submit = stopControls(() => gate.promise)
+    const stopping = submit.abort()
+    params.id = "session-2"
+    sdkScope = "other-server"
+    selectedClient = clientFor("/other/server")
+    expect(submit.interrupting()).toBe(false)
+    gate.resolve()
+    await stopping
+    expect(interrupted).toEqual([{ directory: "/repo/main", sessionID: "session-1" }])
+    expect(todoWrites).toEqual([])
+  })
+
+  test("a failed goal pause leaves task state intact and does not interrupt", async () => {
+    params = { id: "session-1" }
+    const submit = stopControls(() => Promise.reject(new Error("Goal pause failed")))
+    await submit.abort()
+    expect(interrupted).toEqual([])
+    expect(todoWrites).toEqual([])
+    expect(submit.interrupting()).toBe(false)
+    expect(toasts).toContainEqual({ title: "session.interrupt.error", description: "Goal pause failed" })
   })
 
   test("preserves a goal draft and surfaces an actionable transcript-adoption error", async () => {

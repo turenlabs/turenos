@@ -110,7 +110,7 @@ let toolExecutionsStarted: Deferred.Deferred<void> | undefined
 let toolExecutionsReady = 5
 let activeToolExecutions = 0
 let maxActiveToolExecutions = 0
-/** Long enough that a serial run is unmistakable, short enough to keep the suite quick. */
+/** A distinguishable duration on either the test clock or the live approval test. */
 const SLOW_TOOL_DELAY = Duration.millis(120)
 let approvalGate: Deferred.Deferred<void> | undefined
 let approvalPrompted: Deferred.Deferred<void> | undefined
@@ -244,10 +244,7 @@ const echo = Layer.effectDiscard(
         output: Schema.Struct({}),
         execute: () => Effect.die("unexpected tool defect"),
       }),
-      // Deliberately slow, on the *live* clock. Concurrency is only observable as a duration: a
-      // tool that resolves instantly makes "all at once" and "one after another" produce identical
-      // transcripts, so the fan-out tests below assert wall-clock against this delay rather than
-      // call ordering or a counter alone.
+      // A real Effect sleep makes both duration and active concurrency observable.
       slow: Tool.make({
         description: "Sleep for a measurable interval",
         input: Schema.Struct({ text: Schema.String }),
@@ -258,6 +255,9 @@ const echo = Layer.effectDiscard(
             executions.push(text)
             activeToolExecutions++
             maxActiveToolExecutions = Math.max(maxActiveToolExecutions, activeToolExecutions)
+            if (executions.length === toolExecutionsReady && toolExecutionsStarted) {
+              yield* Deferred.succeed(toolExecutionsStarted, undefined)
+            }
             yield* Effect.sleep(SLOW_TOOL_DELAY)
             return { text }
           }).pipe(Effect.ensuring(Effect.sync(() => activeToolExecutions--))),
@@ -2578,14 +2578,8 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  /**
-   * The fan-out contract, stated as a duration.
-   *
-   * These run on the live clock (`it.live`) because they are the only assertions in this file
-   * whose subject *is* elapsed time. A counter alone would not settle the question -- a rig that
-   * resolves tools instantly reports the same counter whether it ran them together or in turn --
-   * so the tool sleeps for a real, distinguishable interval and the assertion is on wall-clock.
-   */
+  // Advance only once every tool in the expected wave has entered. This tests actual
+  // sleep duration and concurrency without including unrelated CI scheduling delays.
   const slowCalls = (count: number) => [
     LLMEvent.stepStart({ index: 0 }),
     ...Array.from({ length: count }, (_, index) =>
@@ -2601,7 +2595,7 @@ describe("SessionRunnerLLM", () => {
   ]
   const slowDelayMs = Duration.toMillis(SLOW_TOOL_DELAY)
 
-  it.live("settles independent tool calls from one assistant message in max, not sum, of their durations", () =>
+  it.effect("settles independent tool calls from one assistant message in max, not sum, of their durations", () =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -2612,16 +2606,21 @@ describe("SessionRunnerLLM", () => {
       response = []
       responses = [slowCalls(6), finalTurn]
 
+      toolExecutionsReady = 6
+      toolExecutionsStarted = yield* Deferred.make<void>()
       const started = yield* Clock.currentTimeMillis
-      yield* session.resume(sessionID)
+      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
+      yield* Deferred.await(toolExecutionsStarted)
+      yield* TestClock.adjust(slowDelayMs - 1)
+      expect(activeToolExecutions).toBe(6)
+      expect(requests).toHaveLength(1)
+      yield* TestClock.adjust(1)
+      yield* Fiber.join(run)
       const elapsed = (yield* Clock.currentTimeMillis) - started
 
       expect(executions).toHaveLength(6)
       expect(maxActiveToolExecutions).toBe(6)
-      // Serial would be 6 * delay. Half of that is a floor no serial run can slip under, and the
-      // margin above one delay absorbs scheduling noise without ever admitting a serial run.
-      expect(elapsed).toBeGreaterThanOrEqual(slowDelayMs)
-      expect(elapsed).toBeLessThan(slowDelayMs * 3)
+      expect(elapsed).toBe(slowDelayMs)
       // Completion order is irrelevant to the transcript: parts are created when the call is
       // announced and settled in place by call id, so the model sees the model's own ordering.
       expect(yield* session.context(sessionID)).toMatchObject([
@@ -2639,7 +2638,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.live("bounds the fan-out of one assistant message rather than forking every call at once", () =>
+  it.effect("bounds the fan-out of one assistant message rather than forking every call at once", () =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -2651,17 +2650,30 @@ describe("SessionRunnerLLM", () => {
       response = []
       responses = [slowCalls(oversized), finalTurn]
 
+      toolExecutionsReady = SessionRunnerLLM.TOOL_CONCURRENCY_LIMIT
+      toolExecutionsStarted = yield* Deferred.make<void>()
       const started = yield* Clock.currentTimeMillis
-      yield* session.resume(sessionID)
+      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
+      yield* Deferred.await(toolExecutionsStarted)
+      yield* TestClock.adjust(slowDelayMs - 1)
+      expect(executions).toHaveLength(SessionRunnerLLM.TOOL_CONCURRENCY_LIMIT)
+      expect(activeToolExecutions).toBe(SessionRunnerLLM.TOOL_CONCURRENCY_LIMIT)
+      expect(requests).toHaveLength(1)
+
+      toolExecutionsReady = oversized
+      toolExecutionsStarted = yield* Deferred.make<void>()
+      yield* TestClock.adjust(1)
+      yield* Deferred.await(toolExecutionsStarted)
+      yield* TestClock.adjust(slowDelayMs - 1)
+      expect(activeToolExecutions).toBe(4)
+      expect(requests).toHaveLength(1)
+      yield* TestClock.adjust(1)
+      yield* Fiber.join(run)
       const elapsed = (yield* Clock.currentTimeMillis) - started
 
       expect(executions).toHaveLength(oversized)
       expect(maxActiveToolExecutions).toBe(SessionRunnerLLM.TOOL_CONCURRENCY_LIMIT)
-      // The bound is visible as time as well as as a counter: an over-limit batch necessarily takes
-      // more than one delay, because the tail cannot start until the head releases a permit.
-      expect(elapsed).toBeGreaterThan(slowDelayMs)
-      // ...and still nowhere near serial, which would be `oversized * delay`.
-      expect(elapsed).toBeLessThan(slowDelayMs * (oversized / 2))
+      expect(elapsed).toBe(slowDelayMs * 2)
       expect(requests).toHaveLength(2)
     }),
   )

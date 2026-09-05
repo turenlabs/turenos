@@ -153,7 +153,7 @@ body[data-new-layout] [data-timeline-row="UserMessage"] {
 
 /* ── The terminal pass ──
  *
- * The transcript is set as terminal output: one mono face, one small size, one
+ * The transcript is set as terminal output: one mono face, a readable prose size, one
  * left-aligned stream. Everything below extends the TUI recovery that the rule
  * column started — hierarchy comes from dimness and weight, never from chrome.
  *
@@ -168,19 +168,19 @@ body[data-new-layout] [data-session-title],
 body[data-new-layout] [data-timeline-virtual-content] {
   --font-family-sans: var(--v2-font-family-mono);
   --v2-font-family-sans: var(--v2-font-family-mono);
-  --font-size-base: 12.5px;
-  --font-size-small: 12px;
+  --font-size-base: 14px;
+  --font-size-small: 13px;
   font-family: var(--v2-font-family-mono);
-  font-size: 12.5px;
+  font-size: var(--font-size-base);
   line-height: 1.5;
   letter-spacing: 0;
 }
 
 body[data-new-layout] [data-timeline-virtual-content] {
-  /* Density: terminal-tight. Halving --v2-cell-y halves both spacing rules at
+  /* Density: preserve a quiet gap at structural boundaries. --v2-cell-y sets both spacing rules at
      once — the TurnGap row (2 cells) and the data-separate blank line (1 cell)
-     both read it, so the whole rhythm compresses without touching either. */
-  --v2-cell-y: 10px;
+     both read it, so spacing stays consistent as text wraps. */
+  --v2-cell-y: 12px;
 
   /* The gutter widens from 10px to 18px so it can carry glyph prefixes (❯, #)
      as well as the 2px hung rules; the container below pads the text column
@@ -202,13 +202,13 @@ body[data-new-layout] [data-timeline-virtual-content] {
      the signalling. */
   [data-component="tool-trigger"] {
     [data-slot="basic-tool-tool-info"] {
-      font-size: 12.5px;
+      font-size: var(--font-size-small);
     }
 
     [data-slot="basic-tool-tool-title"],
     [data-slot="basic-tool-tool-subtitle"],
     [data-slot="basic-tool-tool-arg"] {
-      font-size: 12.5px;
+      font-size: var(--font-size-small);
       font-weight: var(--font-weight-regular);
       color: var(--v2-text-text-muted);
     }
@@ -220,56 +220,57 @@ body[data-new-layout] [data-timeline-virtual-content] {
 
   [data-component="task-tool-card"] {
     [data-component="task-tool-title"] {
-      font-size: 12.5px;
+      font-size: var(--font-size-small);
       font-weight: var(--font-weight-regular);
       letter-spacing: 0;
       text-transform: lowercase;
     }
 
     [data-slot="basic-tool-tool-subtitle"] {
-      font-size: 12.5px;
+      font-size: var(--font-size-small);
       letter-spacing: 0;
     }
   }
 
   [data-component="edit-trigger"] [data-slot="message-part-title"],
   [data-component="write-trigger"] [data-slot="message-part-title"] {
-    font-size: 12.5px;
+    font-size: var(--font-size-small);
     font-weight: var(--font-weight-regular);
   }
 
   /* The collapsed context group header joins the command lines it summarises. */
   [data-slot="context-tool-group-title"] {
-    font-size: 12.5px;
+    font-size: var(--font-size-small);
     font-weight: var(--font-weight-regular);
     color: var(--v2-text-text-muted);
   }
 
   /* basic-tool-v2 hard-codes 13px/-0.04px for Inter; the mono face wants the
-     shared size and no negative tracking. */
+     shared detail size and no negative tracking. */
   [data-slot="basic-tool-v2-title"],
   [data-slot="basic-tool-v2-subtitle"],
   [data-slot="basic-tool-v2-arg"] {
-    font-size: 12.5px;
+    font-size: var(--font-size-small);
     letter-spacing: 0;
   }
 
   /* Prose: terminal output, not an article. Headings compress to one step so
      they read as emphasis rather than typography. */
   [data-component="markdown"] {
-    line-height: 150%;
+    font-size: var(--font-size-base);
+    line-height: 160%;
   }
 
   [data-component="markdown"] :is(h1, h2) {
-    font-size: 13px;
+    font-size: 15px;
   }
 
   [data-component="markdown"] :is(h3, h4, h5, h6) {
-    font-size: 12.5px;
+    font-size: var(--font-size-base);
   }
 
   [data-component="bash-output"] [data-slot="bash-pre"] code {
-    font-size: 12.5px;
+    font-size: var(--font-size-small);
   }
 
   /* Reasoning is commentary: dim, and marked with the comment glyph in the
@@ -279,7 +280,7 @@ body[data-new-layout] [data-timeline-virtual-content] {
 
     [data-component="markdown"] {
       margin-top: 8px;
-      font-size: 12.5px;
+      font-size: var(--font-size-small);
     }
 
     &::before {

@@ -25,6 +25,7 @@ export function printHeader(
   console.log(
     `${color.dim}mode=${options.mode} selected=${selected.length} scenarioTimeout=${Duration.format(options.scenarioTimeout)} effectRoutes=${effectRoutes.length} missing=${missing.length} extra=${extra.length}${color.reset}`,
   )
+  if (options.shard) console.log(`${color.dim}shard=${options.shard.index}/${options.shard.total}${color.reset}`)
   console.log("")
 }
 

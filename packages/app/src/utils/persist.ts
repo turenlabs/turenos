@@ -28,6 +28,8 @@ const GLOBAL_STORAGE = "forge.global.dat"
 const WINDOW_STORAGE = "forge.window"
 const LOCAL_PREFIX = "forge."
 const fallback = new Map<string, boolean>()
+const failedWrites = new Map<string, { storage: Storage; value: string }>()
+let quotaNotified = false
 
 const CACHE_MAX_ENTRIES = 500
 const CACHE_MAX_BYTES = 8 * 1024 * 1024
@@ -116,7 +118,10 @@ function evict(storage: Storage, keep: string, value: string) {
   for (const index of indexes) {
     const name = storage.key(index)
     if (!name) continue
-    if (!name.startsWith(LOCAL_PREFIX)) continue
+    if (!name.startsWith(LOCAL_PREFIX) || name.startsWith("forge.draft.")) continue
+    // Prompt, comments, tabs and recovery history are irreplaceable user state.
+    // Only caches whose owners can rebuild them may make room for another write.
+    if (!/(?:^|[:\n\0])(?:file-view|tabs\.info|command\.catalog\.v1)$/.test(name)) continue
     if (name === keep) continue
     const stored = storage.getItem(name)
     items.push({ key: name, size: stored?.length ?? 0 })
@@ -144,23 +149,49 @@ function write(storage: Storage, key: string, value: string) {
   try {
     storage.setItem(key, value)
     cacheSet(key, value)
+    failedWrites.delete(key)
+    if (failedWrites.size === 0) quotaNotified = false
     return true
   } catch (error) {
     if (!quota(error)) throw error
   }
 
-  try {
-    storage.removeItem(key)
-    cacheDelete(key)
-    storage.setItem(key, value)
-    cacheSet(key, value)
+  // setItem is atomic on quota failure. Deleting the previous value before
+  // retrying would turn a failed save into permanent loss of the saved draft.
+  if (evict(storage, key, value)) {
+    failedWrites.delete(key)
+    if (failedWrites.size === 0) quotaNotified = false
     return true
-  } catch (error) {
-    if (!quota(error)) throw error
   }
+  failedWrites.set(key, { storage, value })
+  if (!quotaNotified) void notifyQuotaFailure()
+  return false
+}
 
-  const ok = evict(storage, key, value)
-  return ok
+async function notifyQuotaFailure() {
+  quotaNotified = true
+  const { showToast } = await import("./toast")
+  if (failedWrites.size === 0) return
+  showToast({
+    title: "Changes could not be saved",
+    description:
+      "Browser storage is full. Your previous saved data is intact. Keep this window open, free space, then retry saving.",
+    persistent: true,
+    actions: [{ label: "Retry saving", onClick: retryFailedWrites }],
+  })
+}
+
+function retryFailedWrites() {
+  quotaNotified = false
+  // Keep the latest attempted value per key. A later successful save or explicit
+  // removal clears this entry, so Retry cannot overwrite newer intent.
+  for (const [key, entry] of [...failedWrites]) {
+    try {
+      write(entry.storage, key, entry.value)
+    } catch {
+      if (!quotaNotified) void notifyQuotaFailure()
+    }
+  }
 }
 
 function snapshot(value: unknown) {
@@ -216,10 +247,11 @@ function normalize(defaults: unknown, raw: string, migrate?: (value: unknown) =>
 function readCurrent(input: {
   storage: SyncStorage
   key: string
+  pending?: string
   defaults: unknown
   migrate?: (value: unknown) => unknown
 }) {
-  const raw = input.storage.getItem(input.key)
+  const raw = input.pending ?? input.storage.getItem(input.key)
   if (raw === null) return
   const next = normalize(input.defaults, raw, input.migrate)
   if (next === undefined) {
@@ -249,7 +281,7 @@ function migrateLegacy(input: {
       continue
     }
     input.current.setItem(input.key, next)
-    store.removeItem(input.key)
+    if (input.current.getItem(input.key) === next) store.removeItem(input.key)
     return next
   }
 
@@ -265,7 +297,7 @@ function migrateLegacy(input: {
       continue
     }
     input.current.setItem(input.key, next)
-    input.legacyStore.removeItem(key)
+    if (input.current.getItem(input.key) === next) input.legacyStore.removeItem(key)
     return next
   }
 
@@ -314,7 +346,7 @@ async function migrateLegacyAsync(input: {
       continue
     }
     await input.current.setItem(input.key, next).catch(() => undefined)
-    await store.removeItem(input.key).catch(() => undefined)
+    if ((await input.current.getItem(input.key).catch(() => undefined)) === next) await removeAsync(store, input.key)
     return next
   }
 
@@ -330,7 +362,8 @@ async function migrateLegacyAsync(input: {
       continue
     }
     await input.current.setItem(input.key, next).catch(() => undefined)
-    await input.legacyStore.removeItem(key).catch(() => undefined)
+    if ((await input.current.getItem(input.key).catch(() => undefined)) === next)
+      await removeAsync(input.legacyStore, key)
     return next
   }
 
@@ -407,10 +440,13 @@ function localStorageWithPrefix(prefix: string): SyncStorage {
         fallbackSet(scope)
         return
       }
-      fallbackSet(scope)
+      // Quota is recoverable: a later edit or explicit retry can save after the
+      // user frees space. Do not permanently disable writes for this scope.
     },
     removeItem: (key) => {
       const name = item(key)
+      failedWrites.delete(name)
+      if (failedWrites.size === 0) quotaNotified = false
       cacheDelete(name)
       if (fallbackDisabled(scope)) return
       try {
@@ -449,9 +485,11 @@ function localStorageDirect(): SyncStorage {
         fallbackSet(scope)
         return
       }
-      fallbackSet(scope)
+      // Keep quota failures retryable while preserving the previous value.
     },
     removeItem: (key) => {
+      failedWrites.delete(key)
+      if (failedWrites.size === 0) quotaNotified = false
       cacheDelete(key)
       if (fallbackDisabled(scope)) return
       try {
@@ -470,9 +508,11 @@ export function draftPersistedKeys() {
 }
 
 export const PersistTesting = {
+  retryFailedWrites,
   localStorageDirect,
   localStorageWithPrefix,
   migrateLegacy,
+  migrateLegacyAsync,
   normalize,
   resolveTarget,
   windowStorage,
@@ -570,7 +610,9 @@ export async function updatePersisted(
   if (!storage) return
 
   try {
-    const raw = await storage.getItem(target.key)
+    const raw =
+      (!isDesktop && failedWrites.get(target.storage ? `${target.storage}:${target.key}` : target.key)?.value) ||
+      (await storage.getItem(target.key))
     if (raw === null || raw === undefined) return
     const parsed = parse(raw)
     if (parsed === undefined) return
@@ -594,7 +636,13 @@ export async function writePersisted(
   const encoded = JSON.stringify(value)
   try {
     await storage.setItem(target.key, encoded)
-    return (await storage.getItem(target.key)) === encoded
+    // Destructive handoffs need backing-store evidence, never the generic
+    // adapter's fallback cache after an inaccessible browser storage read.
+    const saved =
+      platform?.platform === "desktop" && platform.storage
+        ? await storage.getItem(target.key)
+        : localStorage.getItem(target.storage ? `${target.storage}:${target.key}` : target.key)
+    return saved === encoded
   } catch {
     return false
   }
@@ -634,7 +682,15 @@ export function persisted<T>(
 
       const api: SyncStorage = {
         getItem: (key) => {
-          const value = readCurrent({ storage: current, key, defaults, migrate: config.migrate })
+          // A reopened view must retain the latest in-memory edit after a failed save.
+          // Direct storage reads remain durable-only for admission and migration verification.
+          const value = readCurrent({
+            storage: current,
+            key,
+            pending: failedWrites.get(config.storage ? `${config.storage}:${key}` : key)?.value,
+            defaults,
+            migrate: config.migrate,
+          })
           if (value !== undefined) return value
           return migrateLegacy({
             current,

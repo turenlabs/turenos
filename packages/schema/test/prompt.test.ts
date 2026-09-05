@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { DateTime, Option, Schema } from "effect"
 import { Prompt, TextPart } from "../src/prompt"
 import { PromptInput } from "../src/prompt-input"
+import { SessionInput } from "../src/session-input"
 import { SessionMessage } from "../src/session-message"
 
 const part = TextPart.make({
@@ -98,5 +99,22 @@ describe("Prompt structured text parts", () => {
         }),
       ),
     ).toBeTrue()
+  })
+})
+
+describe("Session input provenance", () => {
+  test("uses one canonical source and leaves historical missing provenance unspecified", () => {
+    expect(SessionInput.Source).toBe(SessionMessage.Source)
+    const user = {
+      id: SessionMessage.ID.make("msg_legacy"),
+      type: "user" as const,
+      text: "<forge-team-board-update>",
+      time: { created: DateTime.makeUnsafe(0) },
+    }
+    const encode = Schema.encodeSync(SessionMessage.User)
+    expect(encode(SessionMessage.User.make({ ...user, source: undefined }))).not.toHaveProperty("source")
+    expect(Schema.decodeUnknownSync(SessionMessage.User)(encode(SessionMessage.User.make(user))).source).toBeUndefined()
+    expect(encode(SessionMessage.User.make({ ...user, source: "user" })).source).toBe("user")
+    expect(encode(SessionMessage.User.make({ ...user, source: "subagent_board" })).source).toBe("subagent_board")
   })
 })

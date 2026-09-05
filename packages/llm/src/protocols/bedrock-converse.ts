@@ -327,6 +327,8 @@ const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
         }
         if (part.type === "media") {
           content.push(yield* BedrockMedia.lower(part))
+          const cachePoint = BedrockCache.block(breakpoints, part.cache)
+          if (cachePoint) content.push(cachePoint)
           continue
         }
       }

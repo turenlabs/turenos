@@ -21,6 +21,7 @@ export type JsonObject = Record<string, unknown>
 
 export type Options = {
   mode: Mode
+  shard?: { index: number; total: number }
   include: string | undefined
   startAt: string | undefined
   stopAt: string | undefined

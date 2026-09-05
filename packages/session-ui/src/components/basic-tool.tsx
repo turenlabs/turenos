@@ -18,6 +18,7 @@ import { Collapsible } from "@turenlabs/ui/collapsible"
 import type { IconProps } from "@turenlabs/ui/icon"
 import { TextShimmer } from "@turenlabs/ui/text-shimmer"
 import { toolArgs, toolLabel } from "./basic-tool-args"
+import { ToolDetails } from "./tool-details"
 
 export type TriggerTitle = {
   title: string
@@ -325,6 +326,10 @@ export function GenericTool(props: {
   status?: string
   hideDetails?: boolean
   input?: Record<string, unknown>
+  output?: string
+  defaultOpen?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
   const i18n = useI18n()
   const label = createMemo(() => toolLabel(props.input))
@@ -347,7 +352,13 @@ export function GenericTool(props: {
         subtitle: label()?.value,
         args: args(),
       }}
-      hideDetails={props.hideDetails}
-    />
+      hideDetails={props.hideDetails || (!Object.keys(props.input ?? {}).length && props.output === undefined)}
+      defaultOpen={props.defaultOpen}
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      defer
+    >
+      <ToolDetails input={props.input} output={props.output} />
+    </BasicTool>
   )
 }

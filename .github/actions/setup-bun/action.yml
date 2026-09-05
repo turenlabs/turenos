@@ -5,6 +5,10 @@ inputs:
     description: "Additional flags to pass to 'bun install'"
     required: false
     default: ""
+  dependency-cache:
+    description: "Restore and save Bun's download cache"
+    required: false
+    default: "true"
 runs:
   using: "composite"
   steps:
@@ -35,19 +39,28 @@ runs:
         bun-version-file: ${{ !steps.bun-url.outputs.url && 'package.json' || '' }}
         bun-download-url: ${{ steps.bun-url.outputs.url }}
 
+    # Bun hardlinks packages on Windows. The default cache is on C:, while the
+    # checkout is on D:, which forces an expensive copy fallback for every file.
+    - name: Keep Windows package cache on the checkout volume
+      if: runner.os == 'Windows'
+      shell: bash
+      run: echo "BUN_INSTALL_CACHE_DIR=$RUNNER_TEMP/bun-install-cache" >> "$GITHUB_ENV"
+
     - name: Get cache directory
       id: cache
       shell: bash
       run: echo "dir=$(bun pm cache)" >> "$GITHUB_OUTPUT"
 
+    # Cache archives from the previous Windows volume must not be restored under the new layout.
     - name: Restore Bun dependencies
+      if: inputs.dependency-cache == 'true'
       id: bun-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.cache.outputs.dir }}
-        key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+        key: ${{ runner.os }}-bun-${{ runner.os == 'Windows' && 'checkout-volume-v1-' || '' }}${{ hashFiles('**/bun.lock') }}
         restore-keys: |
-          ${{ runner.os }}-bun-
+          ${{ runner.os }}-bun-${{ runner.os == 'Windows' && 'checkout-volume-v1-' || '' }}
 
     - name: Install setuptools for distutils compatibility
       run: python3 -m pip install setuptools || pip install setuptools || true
@@ -66,8 +79,8 @@ runs:
       shell: bash
 
     - name: Save Bun dependencies
-      if: steps.bun-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+      if: inputs.dependency-cache == 'true' && steps.bun-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.cache.outputs.dir }}
-        key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+        key: ${{ runner.os }}-bun-${{ runner.os == 'Windows' && 'checkout-volume-v1-' || '' }}${{ hashFiles('**/bun.lock') }}

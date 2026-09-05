@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { loadSessionV2MessageWindow, SESSION_V2_MESSAGE_PAGE_LIMIT } from "../goal/session-v2-message-window"
+import type { SessionMessage } from "@turenlabs/sdk/v2/client"
+import { presentSessionV2Messages, mergeSessionV2Presentation } from "../goal/session-v2-presentation"
 import { generateSessionMessages, smallProfile } from "./session-load-fixture"
 
 /**
@@ -149,5 +151,110 @@ describe("session load fixture", () => {
     expect(types.has("user")).toBe(true)
     expect(types.has("assistant")).toBe(true)
     expect(types.has("compaction")).toBe(true)
+  })
+})
+
+describe("compacted human scrollback", () => {
+  const messages: SessionMessage[] = Array.from({ length: 75 }, (_, turn) => [
+    { id: `msg_user_${turn}`, type: "user" as const, text: `Prompt ${turn}`, time: { created: turn * 3 } },
+    {
+      id: `msg_answer_${turn}`,
+      type: "assistant" as const,
+      agent: "build",
+      model: { providerID: "test", id: "test" },
+      time: { created: turn * 3 + 1 },
+      content: [{ id: `prt_${turn}`, type: "text" as const, text: `Answer ${turn}` }],
+    },
+    ...(turn % 25 === 24
+      ? [
+          {
+            id: `msg_compaction_${turn}`,
+            type: "compaction" as const,
+            reason: "auto" as const,
+            summary: `Summary ${turn}`,
+            recent: "",
+            time: { created: turn * 3 + 2 },
+          },
+        ]
+      : []),
+  ]).flat()
+  const present = (values: SessionMessage[]) =>
+    presentSessionV2Messages({
+      sessionID: "ses_long",
+      directory: "/repo",
+      agent: "build",
+      model: { providerID: "test", modelID: "test" },
+      messages: values,
+    })
+  const load = async (cursor?: string) => {
+    const offset = Number(cursor ?? 0)
+    return {
+      data: messages.toReversed().slice(offset, offset + 20),
+      cursor: { next: offset + 20 < messages.length ? String(offset + 20) : undefined },
+    }
+  }
+
+  test("load older and reconnect retain every turn once through three checkpoints", async () => {
+    let window = await loadSessionV2MessageWindow({ load, minimum: 20 })
+    while (!window.complete) {
+      const previous = new Set(present(window.messages).messages.map((message) => message.id))
+      window = await loadSessionV2MessageWindow({
+        load,
+        minimum: window.messages.length + 20,
+        until: window.messages[0]!.id,
+      })
+      const current = new Set(present(window.messages).messages.map((message) => message.id))
+      previous.forEach((id) => expect(current.has(id)).toBe(true))
+    }
+    const initial = present(window.messages)
+    const reconnect = present(
+      (await loadSessionV2MessageWindow({ load, minimum: window.messages.length, until: messages[0]!.id })).messages,
+    )
+    const merged = mergeSessionV2Presentation({
+      messages: initial.messages,
+      parts: Object.fromEntries(initial.parts.map((entry) => [entry.id, entry.parts])),
+      previousOwnedMessageIDs: new Set(initial.messages.map((message) => message.id)),
+      presentation: reconnect,
+      removeMissing: false,
+    })
+    expect(merged.messages.map((message) => message.id)).toEqual(messages.map((message) => message.id))
+    expect(new Set(merged.messages.map((message) => message.id)).size).toBe(messages.length)
+    expect(
+      merged.parts
+        .flatMap((entry) => entry.parts)
+        .filter((part) => part.type === "text" && part.metadata?.compactionSummary === true),
+    ).toHaveLength(3)
+    merged.messages
+      .filter((message) => message.role === "assistant")
+      .forEach((message, index) => expect(message.parentID).toBe(`msg_user_${index}`))
+  })
+
+  test("internal notifications alone are not a visible turn boundary", async () => {
+    const source: SessionMessage[] = [
+      messages[0]!,
+      ...Array.from(
+        { length: 60 },
+        (_, index): SessionMessage => ({
+          id: `msg_board_${index}`,
+          type: "user",
+          source: "subagent_board",
+          text: "Quiet update",
+          time: { created: index + 1 },
+        }),
+      ),
+      { ...messages[1]!, time: { created: 100 } },
+    ]
+    const result = await loadSessionV2MessageWindow({
+      minimum: 20,
+      load: async (cursor) => {
+        const offset = Number(cursor ?? 0)
+        return {
+          data: source.toReversed().slice(offset, offset + 20),
+          cursor: { next: offset + 20 < source.length ? String(offset + 20) : undefined },
+        }
+      },
+    })
+    expect(present(result.messages).messages.map((message) => message.id)).toEqual([messages[0]!.id, messages[1]!.id])
+    expect(present(result.messages).messages[1]).toMatchObject({ parentID: messages[0]!.id })
   })
 })

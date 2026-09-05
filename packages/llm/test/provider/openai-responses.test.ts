@@ -698,38 +698,41 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
-  it.effect("requests encrypted reasoning by default for GPT-5 reasoning models", () =>
-    Effect.gen(function* () {
-      // The native OpenAI facade configures GPT-5 stateless (store: false) with
-      // reasoningSummary: "auto" by default. Without `include`, a follow-up
-      // turn cannot replay reasoning state, so the facade also opts into
-      // `reasoning.encrypted_content` automatically.
-      const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
-        LLM.request({
-          model: OpenAI.configure({ baseURL: "https://api.openai.test/v1/", apiKey: "test" }).responses("gpt-5.2"),
-          prompt: "hi",
-        }),
-      )
+  for (const id of ["gpt-5.2", "gpt-6-astra"]) {
+    it.effect(`requests encrypted reasoning by default for ${id}`, () =>
+      Effect.gen(function* () {
+        // The native OpenAI facade configures reasoning models stateless (store: false) with
+        // reasoningSummary: "auto" by default. Without `include`, a follow-up
+        // turn cannot replay reasoning state, so the facade also opts into
+        // `reasoning.encrypted_content` automatically.
+        const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+          LLM.request({
+            model: OpenAI.configure({ baseURL: "https://api.openai.test/v1/", apiKey: "test" }).responses(id),
+            prompt: "hi",
+          }),
+        )
 
-      expect(prepared.body.store).toBe(false)
-      expect(prepared.body.include).toEqual(["reasoning.encrypted_content"])
-      expect(prepared.body.reasoning).toEqual({ effort: "medium", summary: "auto" })
-    }),
-  )
+        expect(prepared.body.store).toBe(false)
+        expect(prepared.body.include).toEqual(["reasoning.encrypted_content"])
+        expect(prepared.body.reasoning).toEqual({ effort: "medium", summary: "auto" })
+      }),
+    )
 
-  it.effect("lets callers opt out of the GPT-5 default include", () =>
-    Effect.gen(function* () {
-      const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
-        LLM.request({
-          model: OpenAI.configure({ baseURL: "https://api.openai.test/v1/", apiKey: "test" }).responses("gpt-5.2"),
-          prompt: "hi",
-          providerOptions: { openai: { include: [] } },
-        }),
-      )
+    it.effect(`lets callers override ${id} reasoning defaults`, () =>
+      Effect.gen(function* () {
+        const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+          LLM.request({
+            model: OpenAI.configure({ baseURL: "https://api.openai.test/v1/", apiKey: "test" }).responses(id),
+            prompt: "hi",
+            providerOptions: { openai: { include: [], reasoningEffort: id === "gpt-6-astra" ? "max" : "high" } },
+          }),
+        )
 
-      expect(prepared.body.include).toBeUndefined()
-    }),
-  )
+        expect(prepared.body.include).toBeUndefined()
+        expect(prepared.body.reasoning?.effort).toBe(id === "gpt-6-astra" ? "max" : "high")
+      }),
+    )
+  }
 
   it.effect("request OpenAI provider options override route defaults", () =>
     Effect.gen(function* () {

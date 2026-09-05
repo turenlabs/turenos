@@ -18,7 +18,14 @@ import { Icon as IconV2 } from "@turenlabs/ui/v2/icon"
 import { IconButtonV2 } from "@turenlabs/ui/v2/icon-button-v2"
 import { TooltipV2 } from "@turenlabs/ui/v2/tooltip-v2"
 import { bundledLanguages } from "shiki"
-import { canReusePendingBlock, project, type Block, type Projection } from "./markdown-stream"
+import {
+  canCommitStreamResult,
+  canReusePendingBlock,
+  canReusePendingDocument,
+  project,
+  type Block,
+  type Projection,
+} from "./markdown-stream"
 import {
   disposeStreamingCode,
   highlightStreamingCode,
@@ -383,6 +390,7 @@ export function Markdown(
   )
   const [html, setHtml] = createSignal(initialResult(local.text, local.cacheKey, projection(), owner))
   let htmlGeneration = 0
+  let disposed = false
   createEffect(() => {
     const src = {
       text: local.text,
@@ -460,11 +468,21 @@ export function Markdown(
         )
     }
     void resolve().then((result) => {
-      if (generation !== htmlGeneration) return
+      if (disposed) return
+      // A continuous stream can outpace parsing forever. Commit completed
+      // prefixes as they arrive, but never resurrect replaced or older content.
+      if (
+        generation !== htmlGeneration &&
+        (!local.streaming || !canCommitStreamResult(local.text, html().text, result.text))
+      )
+        return
       setHtml(result)
     })
   })
-  onCleanup(() => htmlGeneration++)
+  onCleanup(() => {
+    disposed = true
+    htmlGeneration++
+  })
 
   let copyCleanup: (() => void) | undefined
   const imageCleanups: Array<() => void> = []
@@ -543,6 +561,9 @@ function pendingBlocks(
   if (!result) return []
   if (!projection || result.text === projection.text) return result.blocks
   const initial = result.blocks.length === 1 && result.blocks[0]?.key === "initial"
+  // Completion collapses the projection to one full-document parse. Keep all
+  // rendered blocks until it resolves, including when pacing flushes a tail.
+  if (!initial && result.blocks.length > 0 && canReusePendingDocument(result.text, projection)) return result.blocks
   return projection.blocks.map((block, index) => {
     const current = initial ? undefined : result.blocks[index]
     if (current && canReusePendingBlock(current, block)) return current

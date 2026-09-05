@@ -21,16 +21,23 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  tests:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+      checks: write
+
   preflight:
+    needs: tests
     runs-on: ubuntu-24.04
     outputs:
       sha: ${{ steps.version.outputs.sha }}
       version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Checkout dev
+      - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: dev
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Setup Bun
@@ -45,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           canonical=$(tr -d '[:space:]' < VERSION)
-          if [ "${{ github.ref_name }}" != "dev" ]; then
+          if [ "${{ github.ref }}" != "refs/heads/dev" ]; then
             echo "Release workflow must run from dev" >&2
             exit 1
           fi
@@ -152,19 +159,6 @@ jobs:
 
       - name: Typecheck
         run: bun turbo typecheck --concurrency=2
-
-      - name: Unit tests
-        env:
-          GITHUB_ACTIONS: "false"
-        run: bun turbo test --concurrency=1
-
-      - name: Generated client gate
-        working-directory: packages/client
-        run: bun run check:generated
-
-      - name: HTTP API contract gate
-        working-directory: packages/forge
-        run: bun run test:httpapi
 
   build-runtime:
     needs: preflight

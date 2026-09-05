@@ -52,7 +52,7 @@ export function runScenario(options: Options) {
 }
 
 function runActive(options: Options, scenario: ActiveScenario) {
-  if (options.mode === "auth") return runAuth(scenario)
+  if (options.mode === "auth") return runAuth(options, scenario)
 
   return withContext(options, scenario, "shared", (ctx) =>
     Effect.gen(function* () {
@@ -66,12 +66,14 @@ function runActive(options: Options, scenario: ActiveScenario) {
   )
 }
 
-function runAuth(scenario: ActiveScenario) {
+function runAuth(options: Options, scenario: ActiveScenario) {
   return Effect.gen(function* () {
     const result = yield* callAuthProbe(scenario, "missing")
     if (scenario.auth === "protected") {
       if (result.status !== 401) throw new Error(`auth expected 401, got ${result.status}`)
-      const authed = yield* callAuthProbe(scenario, "valid")
+      // Valid credentials reach real route work; the enclosing scenario owns its full budget.
+      const authed = yield* callAuthProbe(scenario, "valid", Duration.toMillis(options.scenarioTimeout))
+      if (authed.timedOut) throw new Error("valid auth probe timed out")
       if (authed.status === 401) throw new Error("auth rejected valid credentials")
       return
     }

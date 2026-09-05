@@ -5,6 +5,7 @@ import {
 } from "../goal/session-v2-message-window"
 import { generateSessionMessages, revampV2Profile, type SessionLoadProfile } from "./session-load-fixture"
 import { createPageServer, formatStages, measureSessionLoad } from "./session-load-stages"
+import { GlobalRegistrator } from "@happy-dom/global-registrator"
 
 /**
  * Stage-by-stage timing of the session tab-switch pipeline, drain versus window.
@@ -14,8 +15,8 @@ import { createPageServer, formatStages, measureSessionLoad } from "./session-lo
  *
  * Two loading strategies over one identical fixture:
  *
- *   drain   every page of history, ascending — what the shipped controller does
- *   window  the newest page, descending, extended back to a turn boundary — the fix
+ *   drain   every page of history, ascending — full-history reference
+ *   window  the newest page, descending, extended back to a turn boundary — current loader
  *
  * Everything after the load is the same code in both runs, so a difference in `present`, `store`
  * or `rows` is attributable to how much history was materialised and to nothing else.
@@ -55,7 +56,7 @@ async function run(label: string, profile: SessionLoadProfile) {
     overheadMs: () => drainServer.serializeMs,
   })
   process.stdout.write(
-    formatStages("DRAIN  (every page, ascending — shipped)", drain, {
+    formatStages("DRAIN  (every page, ascending — reference)", drain, {
       requests: drainServer.requests,
       MiB: (drainServer.bytesServed / 1024 / 1024).toFixed(1),
     }) + "\n\n",
@@ -70,7 +71,7 @@ async function run(label: string, profile: SessionLoadProfile) {
     overheadMs: () => windowServer.serializeMs,
   })
   process.stdout.write(
-    formatStages("WINDOW (newest page, descending — fix)", windowed, {
+    formatStages("WINDOW (newest page, descending — current)", windowed, {
       requests: windowServer.requests,
       MiB: (windowServer.bytesServed / 1024 / 1024).toFixed(1),
     }) + "\n\n",
@@ -86,3 +87,4 @@ async function run(label: string, profile: SessionLoadProfile) {
 }
 
 await run("revamp-v2", revampV2Profile)
+await GlobalRegistrator.unregister()

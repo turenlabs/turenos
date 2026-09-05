@@ -526,7 +526,10 @@ export const Terminal = (props: TerminalProps) => {
             )
           : client.pty.get({ ptyID: id }, { throwOnError: false })
         )
-          .then((result) => result.response.status === 404)
+          .then((result) => {
+            if (!result.response) throw result.error ?? new Error("PTY inspection failed before receiving a response")
+            return result.response.status === 404
+          })
           .catch((err) => {
             debugTerminal("failed to inspect terminal session", err)
             return false
@@ -554,6 +557,7 @@ export const Terminal = (props: TerminalProps) => {
           throw err
         })
         if (!result) return
+        if (!result.response) throw result.error ?? new Error("PTY connect ticket failed before receiving a response")
         if (result.response.status === 200) {
           if (local.pty.shared && result.data && "data" in result.data) return result.data.data.ticket
           if (result.data && "ticket" in result.data) return result.data.ticket

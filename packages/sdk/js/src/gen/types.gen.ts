@@ -880,6 +880,7 @@ export type GlobalEvent = {
           messageID: string
           prompt: Prompt
           delivery: "steer" | "queue"
+          source?: "user" | "subagent_board"
         }
       }
     | {
@@ -1920,27 +1921,7 @@ export type AgentConfig = {
   steps?: number
   maxSteps?: number
   permission?: PermissionConfig
-  [key: string]:
-    | unknown
-    | string
-    | {
-        [key: string]: boolean
-      }
-    | boolean
-    | "subagent"
-    | "primary"
-    | "all"
-    | string
-    | "primary"
-    | "secondary"
-    | "accent"
-    | "success"
-    | "warning"
-    | "error"
-    | "info"
-    | number
-    | PermissionConfig
-    | undefined
+  [key: string]: unknown
 }
 
 export type FormatterConfig =
@@ -2367,6 +2348,7 @@ export type Provider = {
   id: string
   name: string
   source: "env" | "config" | "custom" | "api"
+  auth?: "api" | "oauth" | "wellknown"
   env: Array<string>
   key?: string
   options: {
@@ -4045,6 +4027,7 @@ export type SyncEventSessionNextPrompted = {
       messageID: string
       prompt: Prompt
       delivery: "steer" | "queue"
+      source?: "user" | "subagent_board"
     }
   }
 }
@@ -5366,6 +5349,7 @@ export type SessionInputAdmitted = {
   sessionID: string
   prompt: Prompt
   delivery: "steer" | "queue"
+  source?: "user" | "subagent_board"
   agent?: string
   model?: ModelRef
   timeCreated: number
@@ -5477,6 +5461,7 @@ export type SessionMessageUser = {
   time: {
     created: number
   }
+  source?: "user" | "subagent_board"
   text: string
   parts?: PromptTextParts
   files?: Array<PromptFileAttachment>
@@ -5655,6 +5640,7 @@ export type SessionInputOutboxItem = {
   sessionID: string
   prompt: Prompt
   delivery: "steer" | "queue"
+  source?: "user" | "subagent_board"
   agent?: string
   model?: ModelRef
   timeCreated: number
@@ -5760,6 +5746,7 @@ export type SessionNextPrompted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
+    source?: "user" | "subagent_board"
   }
 }
 
@@ -8094,6 +8081,7 @@ export type EventSessionNextPrompted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
+    source?: "user" | "subagent_board"
   }
 }
 

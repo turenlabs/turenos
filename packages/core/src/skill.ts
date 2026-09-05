@@ -7,7 +7,7 @@ import { Skill } from "@turenlabs/schema/skill"
 import { AgentV2 } from "./agent"
 import { ConfigMarkdown } from "./config/markdown"
 import { FSUtil } from "./fs-util"
-import { PermissionV2 } from "./permission"
+import { PermissionRules } from "./permission/rules"
 import { AbsolutePath } from "./schema"
 import { State } from "./state"
 import { ExtensionRuntime } from "./extension"
@@ -26,7 +26,7 @@ export const Info = Skill.Info
 export type Info = Skill.Info
 
 export const available = (skills: ReadonlyArray<Info>, agent: AgentV2.Info) =>
-  skills.filter((skill) => PermissionV2.evaluate("skill", skill.name, agent.permissions).effect !== "deny")
+  skills.filter((skill) => PermissionRules.evaluate("skill", skill.name, agent.permissions).effect !== "deny")
 
 export type Data = {
   sources: Types.DeepMutable<Source>[]

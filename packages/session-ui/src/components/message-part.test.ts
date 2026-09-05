@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import type { ToolPart } from "@turenlabs/sdk/v2"
+import { partDefaultOpen } from "./part-default-open"
 import { readPartText } from "./message-part-text"
 import { taskThinkingState } from "./task-thinking-state"
 import { toolResultCleared } from "./tool-cleared"
@@ -71,5 +73,22 @@ describe("taskThinkingState", () => {
   test("uses working for planning and unknown subagents", () => {
     expect(taskThinkingState("plan")).toBe("working")
     expect(taskThinkingState(undefined)).toBe("working")
+  })
+})
+
+describe("partDefaultOpen", () => {
+  test("opens failures while leaving successful routine work collapsed", () => {
+    const part = (status: "completed" | "error") =>
+      ({
+        type: "tool",
+        tool: "bash",
+        state:
+          status === "error"
+            ? { status, input: {}, error: "failed", time: { start: 1, end: 2 } }
+            : { status, input: {}, output: "ok", title: "", metadata: {}, time: { start: 1, end: 2 } },
+      }) as ToolPart
+
+    expect(partDefaultOpen(part("error"))).toBe(true)
+    expect(partDefaultOpen(part("completed"))).toBe(false)
   })
 })

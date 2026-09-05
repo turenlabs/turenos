@@ -135,6 +135,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
             id: event.data.messageID,
             type: "user",
             metadata: event.metadata,
+            source: event.data.source,
             text: event.data.prompt.text,
             parts: event.data.prompt.parts,
             files: event.data.prompt.files,

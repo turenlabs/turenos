@@ -90,6 +90,7 @@ export type PromptInputHistory = {
 
 export type PromptInputSubmission = {
   abort: () => Promise<void> | void
+  interrupting?: () => boolean
   handleSubmit: (event: Event, steer?: boolean) => Promise<void> | void
 }
 
@@ -172,7 +173,7 @@ export interface PromptInputProps {
   newSessionWorktree?: string
   onNewSessionWorktreeReset?: () => void
   shouldQueue?: () => boolean
-  onAbort?: () => Promise<void> | void
+  onAbort?: (signal: AbortSignal) => Promise<void> | void
   onSubmit?: () => void
   onPendingPrompt?: (prompt: Prompt | undefined) => void
   toolbar?: JSX.Element
@@ -381,7 +382,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (stopping()) {
       return (
         <div class="flex items-center gap-2">
-          <span>{language.t("prompt.action.stop")}</span>
+          <span>{language.t(interrupting?.() ? "prompt.action.stopping" : "prompt.action.stop")}</span>
           <span class="text-icon-base text-12-medium text-[10px]!">{language.t("common.key.esc")}</span>
         </div>
       )
@@ -1350,7 +1351,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     props.controls.model.selection.set({ providerID: target.provider.id, modelID: target.id })
     restoreFocus()
   }
-  const { abort, handleSubmit } =
+  const { abort, handleSubmit, interrupting } =
     props.submission ??
     createPromptSubmit({
       prompt,
@@ -1612,11 +1613,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }))
   const fastControl = () => (
     <Show when={!providersLoading() && store.mode !== "shell" && fastMode()}>
-      <TooltipV2
-        placement="top"
-        gutter={4}
-        value={fastMode()?.enabled ? "Turn off fast mode" : "Turn on fast mode"}
-      >
+      <TooltipV2 placement="top" gutter={4} value={fastMode()?.enabled ? "Turn off fast mode" : "Turn on fast mode"}>
         <ButtonV2
           data-action="prompt-model-fast"
           variant={fastMode()?.enabled ? "outline" : "ghost-muted"}
@@ -1857,7 +1854,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <IconButton
                     data-action="prompt-submit"
                     type="submit"
-                    disabled={!working() && blank()}
+                    disabled={interrupting?.() || (!working() && blank())}
+                    aria-busy={interrupting?.()}
                     tabIndex={store.mode === "normal" ? undefined : -1}
                     icon={stopping() ? "stop" : store.mode === "shell" ? "arrow-undo-down" : "arrow-up"}
                     variant="primary"
@@ -1866,7 +1864,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       "background-image":
                         "linear-gradient(180deg,var(--v2-alpha-light-20) 0%,var(--v2-alpha-light-0) 100%),linear-gradient(90deg,var(--v2-background-bg-contrast) 0%,var(--v2-background-bg-contrast) 100%)",
                     }}
-                    aria-label={stopping() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
+                    aria-label={language.t(
+                      interrupting?.()
+                        ? "prompt.action.stopping"
+                        : stopping()
+                          ? "prompt.action.stop"
+                          : "prompt.action.send",
+                    )}
                   />
                 </TooltipV2>
               </div>
@@ -2008,12 +2012,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <IconButton
                       data-action="prompt-submit"
                       type="submit"
-                      disabled={!working() && blank()}
+                      disabled={interrupting?.() || (!working() && blank())}
+                      aria-busy={interrupting?.()}
                       tabIndex={store.mode === "normal" ? undefined : -1}
                       icon={stopping() ? "stop" : store.mode === "shell" ? "arrow-undo-down" : "arrow-up"}
                       variant="primary"
                       class="size-8"
-                      aria-label={stopping() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
+                      aria-label={language.t(
+                        interrupting?.()
+                          ? "prompt.action.stopping"
+                          : stopping()
+                            ? "prompt.action.stop"
+                            : "prompt.action.send",
+                      )}
                     />
                   </Tooltip>
                 </div>

@@ -3,7 +3,8 @@ import type { FilePartSource } from "@turenlabs/sdk/v2/client"
 import { batch, createMemo, type Accessor } from "solid-js"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import type { FileSelection } from "@/context/file"
-import { Persist, persisted } from "@/utils/persist"
+import { usePlatform } from "@/context/platform"
+import { Persist, persisted, writePersisted } from "@/utils/persist"
 import type { ServerScope } from "@/utils/server-scope"
 
 interface PartBase {
@@ -246,8 +247,16 @@ function createPromptStateValue(store: PromptStore, setStore: SetStoreFunction<P
 }
 
 function createPersistedPrompt(target: ReturnType<typeof promptTarget>, initial?: InitialPrompt) {
+  const platform = usePlatform()
   const [store, setStore, _, ready] = persisted(target, createStore<PromptStore>(promptStore(initial)))
-  return { ready, ...createPromptStateValue(store, setStore) }
+  return {
+    ready,
+    async save() {
+      const value = JSON.stringify(store)
+      return (await writePersisted(target, platform, JSON.parse(value))) && JSON.stringify(store) === value
+    },
+    ...createPromptStateValue(store, setStore),
+  }
 }
 
 export function createPromptSession(serverScope: ServerScope, scope: PromptScope, initial?: InitialPrompt) {

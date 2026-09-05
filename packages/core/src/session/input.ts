@@ -37,6 +37,7 @@ const fromRow = (row: typeof SessionInputTable.$inferSelect): Admitted =>
     sessionID: SessionSchema.ID.make(row.session_id),
     prompt: decodePrompt(row.prompt),
     delivery: row.delivery,
+    source: row.source,
     ...(row.agent === null ? {} : { agent: row.agent }),
     ...(row.model === null ? {} : { model: row.model }),
     timeCreated: DateTime.makeUnsafe(row.time_created),
@@ -161,6 +162,7 @@ export const findIdentity = Effect.fn("SessionInput.findIdentity")(function* (
       ? {
           admitted: Admitted.make({
             ...row.input.admitted,
+            source: row.input.source ?? "user",
             timeCreated: DateTime.makeUnsafe(row.input.admitted.timeCreated),
           }),
           command: row.input.command,
@@ -229,6 +231,7 @@ export const admit = Effect.fn("SessionInput.admit")(function* (
                 sessionID: input.sessionID,
                 prompt: input.prompt,
                 delivery: input.delivery,
+                source: input.source ?? "user",
                 agent: input.agent,
                 model: input.model,
                 timeCreated: timestamp,
@@ -353,6 +356,7 @@ export const projectPrompted = Effect.fn("SessionInput.projectPrompted")(functio
     readonly delivery: Delivery
     readonly timeCreated: DateTime.Utc
     readonly promotedSeq: number
+    readonly source?: Source
   },
 ) {
   const identity = yield* findIdentity(db, input.id)
@@ -361,7 +365,8 @@ export const projectPrompted = Effect.fn("SessionInput.projectPrompted")(functio
       identity.owner !== "input" ||
       identity.state !== "active" ||
       !identity.admitted ||
-      !matchesProjection(identity.admitted, input)
+      !matchesProjection(identity.admitted, input) ||
+      (input.source !== undefined && (identity.source ?? "user") !== input.source)
     )
       return yield* Effect.die(new LifecycleConflict({ id: input.id }))
   } else {
@@ -373,6 +378,7 @@ export const projectPrompted = Effect.fn("SessionInput.projectPrompted")(functio
         owner: "input",
         kind: "prompt",
         input: {
+          source: input.source,
           admitted: {
             admittedSeq: input.promotedSeq,
             id: input.id,
@@ -425,7 +431,7 @@ export const projectPrompted = Effect.fn("SessionInput.projectPrompted")(functio
       session_id: input.sessionID,
       prompt: encodePrompt(input.prompt),
       delivery: input.delivery,
-      source: "user",
+      source: input.source ?? "user",
       admitted_seq: input.promotedSeq,
       promoted_seq: input.promotedSeq,
       time_created: DateTime.toEpochMillis(input.timeCreated),
@@ -643,6 +649,7 @@ const publish = Effect.fn("SessionInput.publish")(function* (
           messageID: id,
           prompt: decodePrompt(row.prompt),
           delivery: row.delivery,
+          source: row.source,
         },
         { commit: () => markPromoted },
       )

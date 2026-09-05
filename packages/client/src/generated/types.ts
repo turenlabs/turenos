@@ -1465,6 +1465,7 @@ export type SessionsPromptOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
+    readonly source?: "user" | "subagent_board"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -1663,6 +1664,7 @@ export type SessionsCommandOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
+    readonly source?: "user" | "subagent_board"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2087,6 +2089,7 @@ export type SessionsContextOutput = {
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }
+        readonly source?: "user" | "subagent_board"
         readonly text: string
         readonly parts?: ReadonlyArray<{
           readonly id: string
@@ -2316,6 +2319,7 @@ export type SessionsPendingInputsOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
+    readonly source?: "user" | "subagent_board"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2381,6 +2385,7 @@ export type SessionsInputStatusOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
+    readonly source?: "user" | "subagent_board"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2462,6 +2467,7 @@ export type SessionsOutboxOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
+    readonly source?: "user" | "subagent_board"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2585,6 +2591,7 @@ export type SessionsHistoryOutput = {
             }>
           }
           readonly delivery: "steer" | "queue"
+          readonly source?: "user" | "subagent_board"
         }
       }
     | {
@@ -3670,6 +3677,7 @@ export type SessionsEventsOutput =
           }>
         }
         readonly delivery: "steer" | "queue"
+        readonly source?: "user" | "subagent_board"
       }
     }
   | {
@@ -4631,6 +4639,7 @@ export type SessionsMessageOutput = {
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }
+        readonly source?: "user" | "subagent_board"
         readonly text: string
         readonly parts?: ReadonlyArray<{
           readonly id: string
@@ -4843,6 +4852,7 @@ export type MessagesListOutput = {
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }
+        readonly source?: "user" | "subagent_board"
         readonly text: string
         readonly parts?: ReadonlyArray<{
           readonly id: string

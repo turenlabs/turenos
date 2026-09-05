@@ -17,6 +17,7 @@ import { SessionEvent } from "./event"
 import { SessionMessage } from "./message"
 import { SessionSchema } from "./schema"
 import { Token } from "../util/token"
+import { toLLMMessages } from "./runner/to-llm-message"
 
 const DEFAULT_BUFFER = 20_000
 // Measured against a real 24/7 corpus (533 sessions, 5.6 days): at 8k the median
@@ -1234,8 +1235,6 @@ const wireTokens = (message: SessionMessage.Message) => {
       const output = part.state.status === "completed" ? serializeToolOutput(part.state) : ""
       return total + Token.estimate(input) + Token.estimate(output)
     }, 0)
-  // User, system, synthetic, and compaction messages carry their full text in the
-  // summarization view already; only their attachments need the flat media price.
   return Token.estimate(serializeMessage(message))
 }
 
@@ -1270,20 +1269,17 @@ export const reportedOccupancy = (entries: readonly Entry[], model: Model) => {
   // The baseline's own locally executed tool results settled after its usage was measured, so
   // they are in neither the reported count nor the entries that follow it. Without them the
   // gate lags one step's tool output behind reality.
-  const settledAfterBaseline = baseline.content.reduce(
-    (total, part) =>
-      part.type === "tool" && part.state.status === "completed" && part.provider?.executed !== true
-        ? total + Token.estimate(serializeToolOutput(part.state))
-        : total,
-    0,
-  )
-  return entries.slice(index + 1).reduce(
-    (total, entry) => {
-      const files = entry.message.type === "user" ? (entry.message.files?.length ?? 0) : 0
-      return total + wireTokens(entry.message) + files * MEDIA_TOKENS
-    },
-    contextTotal(baseline.tokens) + settledAfterBaseline,
-  )
+  // Lower the actual results, including failures and media, rather than the
+  // summarizer's text view. Failed tools and attached source files cost tokens too.
+  const results = toLLMMessages([baseline], model).filter((message) => message.role === "tool")
+  const settledAfterBaseline = results.length === 0 ? 0 : estimateRequest(LLM.request({ model, messages: results }))
+  return entries
+    .slice(index + 1)
+    .reduce(
+      (total, entry) =>
+        total + estimateRequest(LLM.request({ model, messages: toLLMMessages([entry.message], model) })),
+      contextTotal(baseline.tokens) + settledAfterBaseline,
+    )
 }
 
 /**

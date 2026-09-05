@@ -42,7 +42,7 @@ const original = {
 
 type ServerPath = "default" | "raw"
 type Sdk = ReturnType<typeof createForgeClient>
-type SdkResult = { response: Response; data?: unknown; error?: unknown }
+type SdkResult = { response?: Response; data?: unknown; error?: unknown }
 type Captured = { status: number; data?: unknown; error?: unknown }
 type ProjectFixture = { sdk: Sdk; directory: string }
 type TestServices =
@@ -110,11 +110,10 @@ function call<T>(request: () => Promise<T>) {
 
 function capture(request: () => Promise<SdkResult>) {
   return call(request).pipe(
-    Effect.map((result) => ({
-      status: result.response.status,
-      data: result.data,
-      error: result.error,
-    })),
+    Effect.map((result) => {
+      if (!result.response) throw result.error ?? new Error("SDK request did not receive an HTTP response")
+      return { status: result.response.status, data: result.data, error: result.error }
+    }),
   )
 }
 
@@ -128,9 +127,9 @@ function captureThrown(request: () => Promise<unknown>) {
   })
 }
 
-function expectStatus(request: () => Promise<{ response: Response }>, status: number) {
+function expectStatus(request: () => Promise<{ response?: Response }>, status: number) {
   return call(request).pipe(
-    Effect.tap((result) => Effect.sync(() => expect(result.response.status).toBe(status))),
+    Effect.tap((result) => Effect.sync(() => expect(result.response?.status).toBe(status))),
     Effect.asVoid,
   )
 }
@@ -298,12 +297,12 @@ describe("HttpApi SDK", () => {
       const health = yield* call(() => sdk.global.health())
       const log = yield* call(() => sdk.app.log({ service: "httpapi-sdk-test", level: "info", message: "hello" }))
 
-      expect(health.response.status).toBe(200)
+      expect(health.response?.status).toBe(200)
       expect(health.data).toMatchObject({ healthy: true })
       expect(yield* firstEvent((signal) => sdk.global.event({ signal }))).toMatchObject({
         payload: { type: "server.connected" },
       })
-      expect(log.response.status).toBe(200)
+      expect(log.response?.status).toBe(200)
       expect(log.data).toBe(true)
     }),
   )
@@ -317,11 +316,11 @@ describe("HttpApi SDK", () => {
         const session = yield* call(() => sdk.session.create({ title: "sdk" }))
         const listed = yield* call(() => sdk.session.list({ roots: true, limit: 10 }))
 
-        expect(file.response.status).toBe(200)
+        expect(file.response?.status).toBe(200)
         expect(file.data).toMatchObject({ content: "hello" })
-        expect(session.response.status).toBe(200)
+        expect(session.response?.status).toBe(200)
         expect(session.data).toMatchObject({ title: "sdk" })
-        expect(listed.response.status).toBe(200)
+        expect(listed.response?.status).toBe(200)
         expect(listed.data?.map((item) => item.id)).toContain(session.data?.id)
 
         yield* Effect.all([
@@ -346,11 +345,24 @@ describe("HttpApi SDK", () => {
       const result = yield* call(() => sdk.provider.list())
       const openai = result.data?.all.find((item) => item.id === "openai")
 
-      expect(result.response.status).toBe(200)
+      expect(result.response?.status).toBe(200)
       expect(openai).toBeDefined()
       expect(openai?.models["daybreak-blue-latest"]).toBeDefined()
       expect(openai?.models["daybreak-red-latest"]).toBeDefined()
       expect(openai?.models["gpt-5.6-cyber"]).toBeDefined()
+      expect(openai?.models["gpt-6-astra"]).toMatchObject({
+        name: "GPT-6 Astra",
+        limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+        capabilities: { reasoning: true, temperature: false, toolcall: true },
+        options: { include: ["reasoning.encrypted_content"] },
+      })
+      expect(Object.keys(openai?.models["gpt-6-astra"]?.variants ?? {})).toEqual([
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+      ])
     }),
   )
 
@@ -369,7 +381,7 @@ describe("HttpApi SDK", () => {
         process.env.OPENAI_API_KEY = "test-openai-key"
 
         const result = yield* call(() => sdk.provider.list())
-        expect(result.response.status).toBe(200)
+        expect(result.response?.status).toBe(200)
         expect(result.data?.connected).toContain("openai")
       }),
   )
@@ -392,7 +404,7 @@ describe("HttpApi SDK", () => {
         )
         const url = new URL(request!.url)
 
-        expect(found.response.status).toBe(200)
+        expect(found.response?.status).toBe(200)
         expect(found.data).toMatchObject({ data: [{ path: "hello.txt", type: "file" }] })
         expect(url.searchParams.get("directory")).toBe(directory)
         expect(url.searchParams.get("workspace")).toBe(workspaceID)

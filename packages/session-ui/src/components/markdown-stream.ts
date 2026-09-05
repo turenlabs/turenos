@@ -86,9 +86,20 @@ export function stream(text: string, live: boolean): Block[] {
 }
 
 export function canReusePendingBlock(current: Pick<Block, "mode" | "raw"> | undefined, next: Block) {
-  if (!current || current.mode !== next.mode) return false
-  if (next.mode === "code") return next.raw.startsWith(current.raw)
-  return current.raw === next.raw
+  if (!current) return false
+  if (current.mode !== next.mode && !(current.mode === "live" && next.mode === "full")) return false
+  // Keep already-rendered formatting while an append is parsed. Replacing it
+  // with raw Markdown on every delta makes lists, headings and links flicker.
+  return next.raw.startsWith(current.raw)
+}
+
+export function canReusePendingDocument(rendered: string, next: Projection) {
+  return next.blocks.length === 1 && next.blocks[0]?.mode === "full" && next.text.startsWith(rendered)
+}
+
+/** Accept useful async progress without reviving replaced text or moving backwards. */
+export function canCommitStreamResult(text: string, rendered: string, completed: string) {
+  return text.startsWith(completed) && (!text.startsWith(rendered) || completed.length >= rendered.length)
 }
 
 export function project(previous: Projection | undefined, text: string, live: boolean): Projection {

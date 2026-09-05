@@ -3,6 +3,21 @@ import { dict as en } from "./en"
 type Keys = keyof typeof en
 
 export const dict = {
+  "ui.tool.reflectionRead": "读取会话笔记",
+  "ui.tool.reflectionState": "更新会话笔记",
+  "ui.tool.reflectionComplete": "检查会话进展",
+  "ui.tool.boardRead": "读取团队笔记",
+  "ui.tool.boardPost": "分享团队笔记",
+  "ui.toolDetails.input": "输入",
+  "ui.toolDetails.output": "输出",
+  "ui.toolDetails.download": "下载完整结果",
+  "ui.toolDetails.previous": "上一页",
+  "ui.toolDetails.next": "下一页",
+  "ui.toolDetails.page": "第 {{page}} 页，共 {{pages}} 页",
+  "ui.sessionTurn.status.working": "处理中",
+  "ui.messagePart.context.activity": "会话活动",
+  "ui.messagePart.context.operation.one": "{{count}} 次上下文操作",
+  "ui.messagePart.context.operation.other": "{{count}} 次上下文操作",
   "ui.sessionReview.title": "会话变更",
   "ui.sessionReview.title.git": "Git 变更",
   "ui.sessionReview.title.branch": "分支变更",

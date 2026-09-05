@@ -3,6 +3,21 @@ import { dict as en } from "./en"
 type Keys = keyof typeof en
 
 export const dict = {
+  "ui.tool.reflectionRead": "Sitzungsnotizen lesen",
+  "ui.tool.reflectionState": "Sitzungsnotizen aktualisieren",
+  "ui.tool.reflectionComplete": "Sitzungsfortschritt prüfen",
+  "ui.tool.boardRead": "Teamnotizen lesen",
+  "ui.tool.boardPost": "Teamnotizen teilen",
+  "ui.toolDetails.input": "Eingabe",
+  "ui.toolDetails.output": "Ausgabe",
+  "ui.toolDetails.download": "Vollständiges Ergebnis herunterladen",
+  "ui.toolDetails.previous": "Zurück",
+  "ui.toolDetails.next": "Weiter",
+  "ui.toolDetails.page": "{{page}} von {{pages}}",
+  "ui.sessionTurn.status.working": "In Bearbeitung",
+  "ui.messagePart.context.activity": "Sitzungsaktivität",
+  "ui.messagePart.context.operation.one": "{{count}} Kontextvorgang",
+  "ui.messagePart.context.operation.other": "{{count}} Kontextvorgänge",
   "ui.sessionReview.title": "Sitzungsänderungen",
   "ui.sessionReview.title.git": "Git-Änderungen",
   "ui.sessionReview.title.branch": "Branch-Änderungen",

@@ -7,6 +7,7 @@ import {
   pushClosedTabs,
   removeClosedTabs,
   takeClosedTab,
+  unretainedDraftIDs,
   type ClosedTab,
 } from "./closed-tabs"
 import { migrateTabs, tabHref, tabKey, type SessionTab, type Tab } from "./tab"
@@ -62,10 +63,12 @@ describe("closed tab stack", () => {
     expect(stack).toEqual([{ tab: sessionTab("a"), index: 2 }])
   })
 
-  test("ignores draft tabs", () => {
-    const draft: Tab = { type: "draft", draftID: "d1", server, directory: "/tmp" }
+  test("records draft identity and project selection without sharing the tab object", () => {
+    const draft: Tab = { type: "draft", draftID: "d1", server, directory: "/tmp", worktree: "/tmp/branch" }
 
-    expect(pushClosedTab([], draft, 0)).toEqual([])
+    const stack = pushClosedTab([], draft, 0)
+    expect(stack).toEqual([{ tab: draft, index: 0 }])
+    expect(stack[0]!.tab).not.toBe(draft)
   })
 
   test("caps the stack size", () => {
@@ -75,8 +78,8 @@ describe("closed tab stack", () => {
     )
 
     expect(stack).toHaveLength(25)
-    expect(stack[0]?.tab.sessionId).toBe("s5")
-    expect(stack.at(-1)?.tab.sessionId).toBe("s29")
+    expect(stack[0]?.tab).toEqual(sessionTab("s5"))
+    expect(stack.at(-1)?.tab).toEqual(sessionTab("s29"))
   })
 
   test("pops the most recently closed tab", () => {
@@ -86,7 +89,7 @@ describe("closed tab stack", () => {
     ]
     const result = takeClosedTab(stack, [])
 
-    expect(result.entry?.tab.sessionId).toBe("b")
+    expect(result.entry?.tab).toEqual(sessionTab("b"))
     expect(result.stack).toEqual([{ tab: sessionTab("a"), index: 0 }])
   })
 
@@ -98,7 +101,7 @@ describe("closed tab stack", () => {
         { tab: sessionTab("c"), index: 2 },
       ],
     )
-    const restored = [sessionTab("a"), sessionTab("d")]
+    const restored: Tab[] = [sessionTab("a"), sessionTab("d")]
     const first = takeClosedTab(stack, restored)
     restored.splice(first.entry!.index, 0, first.entry!.tab)
     const second = takeClosedTab(first.stack, restored)
@@ -114,7 +117,7 @@ describe("closed tab stack", () => {
     ]
     const result = takeClosedTab(stack, [sessionTab("b")])
 
-    expect(result.entry?.tab.sessionId).toBe("a")
+    expect(result.entry?.tab).toEqual(sessionTab("a"))
     expect(result.stack).toEqual([])
   })
 
@@ -133,6 +136,55 @@ describe("closed tab stack", () => {
     ]
 
     expect(removeClosedTabs(stack, server, ["a"])).toEqual([{ tab: sessionTab("b"), index: 1 }])
+  })
+
+  test("skips an already reopened draft without replacing its newer project selection", () => {
+    const draft: Tab = { type: "draft", draftID: "d1", server, directory: "/old" }
+    const current = { ...draft, directory: "/new" }
+    const result = takeClosedTab(pushClosedTab([], draft, 0), [current])
+
+    expect(result).toEqual({ stack: [] })
+    expect(unretainedDraftIDs([draft], [current])).toEqual([])
+    expect(current.directory).toBe("/new")
+  })
+
+  test("deduplicates a closed tab before applying the retention limit", () => {
+    const draft: Tab = { type: "draft", draftID: "d1", server, directory: "/old" }
+    const stack = pushClosedTab(pushClosedTab([], draft, 0), { ...draft, directory: "/new" }, 2)
+    expect(stack).toEqual([{ tab: { ...draft, directory: "/new" }, index: 2 }])
+  })
+
+  test("only purges draft storage outside both open tabs and recovery history", () => {
+    const drafts: Tab[] = Array.from({ length: 30 }, (_, index) => ({
+      type: "draft",
+      draftID: `d${index}`,
+      server,
+      directory: "/tmp",
+    }))
+    const stack = pushClosedTabs(
+      [],
+      drafts.map((tab, index) => ({ tab, index })),
+    )
+
+    expect(stack).toHaveLength(25)
+    expect(
+      unretainedDraftIDs(
+        drafts,
+        stack.map((entry) => entry.tab),
+      ),
+    ).toEqual(["d25", "d26", "d27", "d28", "d29"])
+    expect(unretainedDraftIDs([...drafts, drafts[29]!], [...stack.map((entry) => entry.tab), drafts[29]!])).toEqual([
+      "d25",
+      "d26",
+      "d27",
+      "d28",
+    ])
+  })
+
+  test("removing sessions leaves unrelated draft recovery intact", () => {
+    const draft: Tab = { type: "draft", draftID: "a", server, directory: "/tmp" }
+    const stack = pushClosedTab(pushClosedTab([], sessionTab("a"), 0), draft, 1)
+    expect(removeClosedTabs(stack, server, ["a"])).toEqual([{ tab: draft, index: 1 }])
   })
 
   test("selects the left neighbor when the active tab closes", () => {

@@ -145,6 +145,14 @@
 
 [data-component="tabs-v2"][data-variant="settings"] {
   height: 100%;
+  position: relative;
+}
+
+.settings-v2-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
 }
 
 [data-component="dialog-v2"][data-variant="settings"] [data-slot="dialog-container"] {

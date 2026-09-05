@@ -2386,6 +2386,45 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     return Effect.runPromise(harness.compaction.compactIfNeeded({ sessionID, entries, model: request.model, request }))
   }
 
+  test("counts rendered source attachments after provider-reported usage", () => {
+    const baseline = measuredTurn("attachment_baseline", { input: 30_000 })
+    const text = "export const value = 123\n".repeat(4_000)
+    const attached = SessionMessage.User.make({
+      ...user("attached_source", "Review this file"),
+      files: [
+        {
+          mime: "text/plain",
+          name: "source.ts",
+          uri: `data:text/plain;base64,${Buffer.from(text).toString("base64")}`,
+        },
+      ],
+    })
+    const occupancy = SessionCompaction.reportedOccupancy([baseline, entry(attached)], model())
+    expect(occupancy).toBeGreaterThan(50_000)
+    expect(occupancy).toBeLessThan(60_000)
+  })
+
+  test("counts failed local tool output that settles after provider usage", () => {
+    const baseline = measuredTurn("error_baseline", { input: 30_000 })
+    if (baseline.message.type !== "assistant") throw new Error("expected assistant usage")
+    const failed = SessionMessage.Assistant.make({
+      ...baseline.message,
+      content: [
+        {
+          ...tool({ id: "failed", name: "read" }),
+          state: {
+            status: "error",
+            input: {},
+            content: [],
+            structured: {},
+            error: { type: "unknown", message: "failure".repeat(12_000) },
+          },
+        },
+      ],
+    })
+    expect(SessionCompaction.reportedOccupancy([{ ...baseline, message: failed }], model())).toBeGreaterThan(50_000)
+  })
+
   /** One-user-message request, by default against a 200k/10k model. */
   const requestCarrying = (
     content: ReadonlyArray<Record<string, unknown>>,

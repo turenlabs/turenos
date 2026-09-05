@@ -31,6 +31,7 @@ const input = new Uint8Array(64)
 input.set(new TextEncoder().encode("HDR0"))
 new DataView(input.buffer).setUint32(4, 28, true)
 const worker = new Worker(path.join(isolated, "binwalk-scan-worker.js"))
+let timer: ReturnType<typeof setTimeout> | undefined
 try {
   await Promise.race([
     new Promise<void>((resolve, reject) => {
@@ -46,9 +47,12 @@ try {
       })
       worker.postMessage({ bytes: input, options: { maxFindings: 16 } })
     }),
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Desktop binwalk scan worker timed out")), 20_000)),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("Desktop binwalk scan worker timed out")), 20_000)
+    }),
   ])
 } finally {
+  clearTimeout(timer)
   await worker.terminate()
   await rm(isolated, { recursive: true, force: true })
 }

@@ -36,6 +36,7 @@ import { LobbyConfigurationError, normalizeLobbyAPIURL } from "@/pages/lobby-cli
 import { SettingsServerPicker, SettingsServerScope } from "../settings-server-picker"
 import { SettingsMcpRuntimeV2 } from "./mcp-runtime"
 import { SettingsPageHeaderV2 } from "./page-header"
+import { toggleLabelKey } from "./toggle-label"
 
 /**
  * `VITE_FORGE_CHANNEL` is a build-time define (see `packages/app/vite.js`), so
@@ -542,7 +543,7 @@ const SettingsGeneralContent: Component<{
                   })
                 }
               >
-                {language.t("settings.general.row.semanticMemory.enabled")}
+                {language.t(toggleLabelKey(serverSync().data.config.semantic_memory?.enabled))}
               </Switch>
             </div>
           </SettingsRowV2>
@@ -562,7 +563,7 @@ const SettingsGeneralContent: Component<{
                 disabled={!yolk() || yolkState.loading || yolkPending()}
                 onChange={updateYolk}
               >
-                {language.t("settings.general.row.semanticMemory.enabled")}
+                {language.t(toggleLabelKey(yolk()?.enabled))}
               </Switch>
               <Show when={yolkState.error && !yolk()}>
                 <ButtonV2 size="normal" variant="neutral" onClick={() => void refetchYolk()}>
@@ -591,7 +592,7 @@ const SettingsGeneralContent: Component<{
                   })
                 }
               >
-                {language.t("settings.general.row.harnessSelfModification.enabled")}
+                {language.t(toggleLabelKey(serverSync().data.config.experimental?.harness_self_modification))}
               </Switch>
             </div>
           </SettingsRowV2>

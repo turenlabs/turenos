@@ -18,6 +18,7 @@ for (const file of required) {
 }
 
 const worker = new Worker(workerPath)
+let timer: ReturnType<typeof setTimeout> | undefined
 try {
   await Promise.race([
     new Promise<void>((resolve, reject) => {
@@ -67,9 +68,12 @@ try {
         },
       })
     }),
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Desktop email security worker timed out")), 15_000)),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("Desktop email security worker timed out")), 15_000)
+    }),
   ])
 } finally {
+  clearTimeout(timer)
   await worker.terminate()
 }
 

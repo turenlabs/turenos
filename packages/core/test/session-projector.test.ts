@@ -724,7 +724,7 @@ describe("SessionProjector", () => {
       })
       const sessions = yield* SessionV2.Service
       const firstPage = yield* sessions.messages({ sessionID, limit: 1, order: "asc" })
-      expect(firstPage.map((message) => message.type)).toEqual(["compaction"])
+      expect(firstPage).toMatchObject([{ id: summarizedID, type: "synthetic", text: "summarized" }])
       const secondPage = yield* sessions.messages({
         sessionID,
         limit: 1,
@@ -739,7 +739,7 @@ describe("SessionProjector", () => {
           order: "asc",
           cursor: { id: secondPage[0]!.id, direction: "previous" },
         }),
-      ).toMatchObject([{ id: compactionID, type: "compaction" }])
+      ).toMatchObject([{ id: summarizedID, type: "synthetic" }])
       expect(yield* sessions.message({ sessionID, messageID: summarizedID })).toMatchObject({
         id: summarizedID,
         type: "synthetic",

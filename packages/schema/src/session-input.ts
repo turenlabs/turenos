@@ -18,7 +18,7 @@ export const Status = Schema.Literals(["admitted", "promoted", "cancelled"])
 export type Status = typeof Status.Type
 
 /** Durable origin used for advisory inbox coalescing and recovery. */
-export const Source = Schema.Literals(["user", "subagent_board"])
+export const Source = SessionMessage.Source
 export type Source = typeof Source.Type
 
 export interface CommandIntent extends Schema.Schema.Type<typeof CommandIntent> {}
@@ -37,6 +37,7 @@ export const Admitted = Schema.Struct({
   sessionID: SessionID,
   prompt: Prompt,
   delivery: Delivery,
+  source: Source.pipe(optional),
   agent: Agent.ID.pipe(optional),
   model: Model.Ref.pipe(optional),
   timeCreated: DateTimeUtcFromMillis,

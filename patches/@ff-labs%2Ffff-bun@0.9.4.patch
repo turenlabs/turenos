@@ -1,0 +1,92 @@
+diff --git a/src/ffi.ts b/src/ffi.ts
+index 75fb584c294f1d3b90d287f925a8fdb5c9c83cc2..92384da676b700750944a0ccb6150eacaedae0c6 100644
+--- a/src/ffi.ts
++++ b/src/ffi.ts
+@@ -386,7 +386,7 @@ const FCO_ENABLE_FS_ROOT_SCANNING = 80;
+ const FCO_ENABLE_HOME_DIR_SCANNING = 81;
+ 
+ function readResultEnvelope(
+-  resultPtr: Pointer | null,
++  resultPtr: Pointer | bigint | null,
+ ): { success: true; handlePtr: number; intValue: number } | Result<never> {
+   if (resultPtr === null) {
+     return err("FFI returned null pointer");
+@@ -409,21 +409,21 @@ function readResultEnvelope(
+ }
+ 
+ /** Parse a FffResult that carries a bool in int_value (0 = false, nonzero = true). */
+-function parseBoolResult(resultPtr: Pointer | null): Result<boolean> {
++function parseBoolResult(resultPtr: Pointer | bigint | null): Result<boolean> {
+   const envelope = readResultEnvelope(resultPtr);
+   if (!("success" in envelope)) return envelope;
+   return { ok: true, value: envelope.intValue !== 0 };
+ }
+ 
+ /** Parse a FffResult that carries an integer in int_value. */
+-function parseIntResult(resultPtr: Pointer | null): Result<number> {
++function parseIntResult(resultPtr: Pointer | bigint | null): Result<number> {
+   const envelope = readResultEnvelope(resultPtr);
+   if (!("success" in envelope)) return envelope;
+   return { ok: true, value: envelope.intValue };
+ }
+ 
+ /** Parse a FffResult that carries a string in handle (freed with fff_free_string). */
+-function parseStringResult(resultPtr: Pointer | null): Result<string | null> {
++function parseStringResult(resultPtr: Pointer | bigint | null): Result<string | null> {
+   const envelope = readResultEnvelope(resultPtr);
+   if (!("success" in envelope)) return envelope;
+ 
+@@ -436,7 +436,7 @@ function parseStringResult(resultPtr: Pointer | null): Result<string | null> {
+ }
+ 
+ /** Parse a FffResult that carries a JSON string in handle. */
+-function parseJsonResult<T>(resultPtr: Pointer | null): Result<T> {
++function parseJsonResult<T>(resultPtr: Pointer | bigint | null): Result<T> {
+   const envelope = readResultEnvelope(resultPtr);
+   if (!("success" in envelope)) return envelope;
+ 
+@@ -457,7 +457,7 @@ function parseJsonResult<T>(resultPtr: Pointer | null): Result<T> {
+ }
+ 
+ /** Parse a FffResult with no payload (void, success/error only). */
+-function parseVoidResult(resultPtr: Pointer | null): Result<void> {
++function parseVoidResult(resultPtr: Pointer | bigint | null): Result<void> {
+   const envelope = readResultEnvelope(resultPtr);
+   if (!("success" in envelope)) return envelope;
+   return { ok: true, value: undefined };
+@@ -660,7 +660,7 @@ function readScoreStruct(p: number): Score {
+ /**
+  * Parse an FffSearchResult from a raw pointer, then free native memory.
+  */
+-function parseSearchResult(resultPtr: Pointer | null): Result<SearchResult> {
++function parseSearchResult(resultPtr: Pointer | bigint | null): Result<SearchResult> {
+   if (resultPtr === null) {
+     return err("FFI returned null pointer");
+   }
+@@ -749,7 +749,7 @@ function readDirItemStruct(p: number): DirItem {
+  * Parse an FffDirSearchResult from a raw FffResult pointer, then free native memory.
+  */
+ function parseDirSearchResult(
+-  resultPtr: Pointer | null,
++  resultPtr: Pointer | bigint | null,
+ ): Result<DirSearchResult> {
+   if (resultPtr === null) {
+     return err("FFI returned null pointer");
+@@ -854,7 +854,7 @@ function readMixedItemStruct(p: number): MixedItem {
+  * Parse an FffMixedSearchResult from a raw FffResult pointer, then free native memory.
+  */
+ function parseMixedSearchResult(
+-  resultPtr: Pointer | null,
++  resultPtr: Pointer | bigint | null,
+ ): Result<MixedSearchResult> {
+   if (resultPtr === null) {
+     return err("FFI returned null pointer");
+@@ -1057,7 +1057,7 @@ function readGrepMatchStruct(p: number): GrepMatch {
+ /**
+  * Parse an FffGrepResult from a raw FffResult pointer, then free native memory.
+  */
+-function parseGrepResult(resultPtr: Pointer | null): Result<GrepResult> {
++function parseGrepResult(resultPtr: Pointer | bigint | null): Result<GrepResult> {
+   const envelope = readResultEnvelope(resultPtr);
+   if (!("success" in envelope)) return envelope;
+ 

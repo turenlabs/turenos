@@ -19,6 +19,7 @@ import { createVirtualizer, defaultRangeExtractor, elementScroll, type VirtualIt
 import { Accordion } from "@turenlabs/ui/accordion"
 import { Button } from "@turenlabs/ui/button"
 import { Card } from "@turenlabs/ui/card"
+import { CompactionSummary } from "./compaction-summary"
 import {
   ContextToolGroup,
   Message,
@@ -70,6 +71,7 @@ import { useSettings } from "@/context/settings"
 import { useTabs } from "@/context/tabs"
 import { legacySessionHref, requireServerKey, sessionHref } from "@/utils/session-route"
 import { useSDK } from "@/context/sdk"
+import { PromptAdmissionStatus } from "@/components/prompt-input/prompt-admission-status"
 import { useSync } from "@/context/sync"
 import { notifySessionTabsRemoved } from "@/components/titlebar-session-events"
 import {
@@ -1321,6 +1323,7 @@ export function MessageTimeline(props: {
                       </div>
                     )}
                   </Show>
+                  <PromptAdmissionStatus sessionID={message().sessionID} messageID={message().id} />
                 </div>
               )}
             </Show>
@@ -1329,6 +1332,12 @@ export function MessageTimeline(props: {
       }
       case "TurnDivider": {
         const turnDividerRow = row as Accessor<TimelineRowByTag<"TurnDivider">>
+        const summary = createMemo(
+          () =>
+            getMsgParts(turnDividerRow().userMessageID).flatMap((part) =>
+              part.type === "text" && part.metadata?.compactionSummary === true ? [part.text] : [],
+            )[0],
+        )
         return (
           <TimelineRowFrame row={turnDividerRow}>
             <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
@@ -1338,6 +1347,13 @@ export function MessageTimeline(props: {
                     turnDividerRow().label === "compaction" ? "ui.messagePart.compaction" : "ui.message.interrupted",
                   )}
                 />
+                <Show when={summary()}>
+                  <CompactionSummary
+                    text={summary() ?? ""}
+                    label={language.t("session.compaction.summary")}
+                    onSizeChange={onSizeChange}
+                  />
+                </Show>
               </div>
             </div>
           </TimelineRowFrame>

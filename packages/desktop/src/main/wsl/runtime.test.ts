@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { detectOutputEncoding } from "./runtime"
+import { detectOutputEncoding } from "./output-encoding"
 
 test("detects UTF-16LE output without a BOM at the heuristic boundary", () => {
   expect(detectOutputEncoding(Uint8Array.from([65, 0, 66, 1, 67, 1]))).toBe("utf-16le")

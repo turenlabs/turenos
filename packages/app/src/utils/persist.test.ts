@@ -9,6 +9,8 @@ type WritePersistedType = typeof import("./persist").writePersisted
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>()
+  maxBytes = Infinity
+  failReads = false
   readonly events: string[] = []
   readonly calls = { get: 0, set: 0, remove: 0 }
 
@@ -25,6 +27,7 @@ class MemoryStorage implements Storage {
   }
 
   getItem(key: string) {
+    if (this.failReads) throw new Error("storage unavailable")
     this.calls.get += 1
     this.events.push(`get:${key}`)
     if (key.startsWith("opencode.throw")) throw new Error("storage get failed")
@@ -36,6 +39,11 @@ class MemoryStorage implements Storage {
     this.events.push(`set:${key}`)
     if (key.startsWith("opencode.quota")) throw new DOMException("quota", "QuotaExceededError")
     if (key.startsWith("opencode.throw")) throw new Error("storage set failed")
+    const bytes = [...this.values].reduce(
+      (total, [storedKey, storedValue]) => total + (storedKey === key ? 0 : storedKey.length + storedValue.length),
+      0,
+    )
+    if (bytes + key.length + value.length > this.maxBytes) throw new DOMException("quota", "QuotaExceededError")
     this.values.set(key, value)
   }
 
@@ -68,6 +76,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   storage.clear()
+  storage.maxBytes = Infinity
+  storage.failReads = false
   storage.events.length = 0
   storage.calls.get = 0
   storage.calls.set = 0
@@ -79,12 +89,127 @@ beforeEach(() => {
 })
 
 describe("persist localStorage resilience", () => {
+  test("verified writes reject fallback cache evidence when backing storage cannot be read", async () => {
+    const target = Persist.draft("verified-quota", "prompt")
+    expect(await writePersisted(target, undefined, { text: "saved" })).toBe(true)
+    storage.failReads = true
+    expect(await writePersisted(target, undefined, { text: "saved" })).toBe(false)
+    storage.failReads = false
+    removePersisted(target)
+  })
+
   test("does not cache values as persisted when quota write and eviction fail", () => {
     const storageApi = persistTesting.localStorageWithPrefix("opencode.quota.scope")
     storageApi.setItem("value", '{"value":1}')
 
     expect(storage.getItem("opencode.quota.scope:value")).toBeNull()
     expect(storageApi.getItem("value")).toBeNull()
+    storageApi.removeItem("value")
+  })
+
+  test("quota preserves prior drafts and recovery metadata while evicting only rebuildable caches", () => {
+    const draft = persistTesting.localStorageWithPrefix("forge.draft.quota-test.dat")
+    const other = persistTesting.localStorageWithPrefix("forge.draft.other-test.dat")
+    const window = persistTesting.localStorageWithPrefix("forge.window.quota-test.dat")
+    const cache = persistTesting.localStorageWithPrefix("forge.global.dat")
+    draft.setItem("draft:prompt", "saved prompt")
+    draft.setItem("draft:file-view", "saved draft view")
+    other.setItem("draft:prompt", "other draft")
+    window.setItem("tabs.closed", "saved recovery history")
+    cache.setItem("command.catalog.v1", "cache".repeat(100))
+    storage.maxBytes = 350
+    draft.setItem("draft:prompt", "latest prompt")
+    expect(draft.getItem("draft:prompt")).toBe("latest prompt")
+    expect(draft.getItem("draft:file-view")).toBe("saved draft view")
+    expect(other.getItem("draft:prompt")).toBe("other draft")
+    expect(window.getItem("tabs.closed")).toBe("saved recovery history")
+    expect(cache.getItem("command.catalog.v1")).toBeNull()
+    expect(storage.events.filter((event) => event.startsWith("remove:"))).toEqual([
+      "remove:forge.global.dat:command.catalog.v1",
+    ])
+  })
+
+  test("failed replacement keeps its saved value and retries the latest edit after space is freed", () => {
+    const draft = persistTesting.localStorageWithPrefix("forge.draft.retry-quota.dat")
+    draft.setItem("draft:prompt", "saved")
+    storage.maxBytes = 1
+    draft.setItem("draft:prompt", "first unsaved edit")
+    draft.setItem("draft:prompt", "latest unsaved edit")
+    expect(storage.getItem("forge.draft.retry-quota.dat:draft:prompt")).toBe("saved")
+    expect(storage.events.some((event) => event.startsWith("remove:"))).toBe(false)
+    storage.maxBytes = Infinity
+    persistTesting.retryFailedWrites()
+    expect(draft.getItem("draft:prompt")).toBe("latest unsaved edit")
+    draft.setItem("draft:prompt", "next edit")
+    expect(draft.getItem("draft:prompt")).toBe("next edit")
+  })
+
+  test("successful edits and explicit removals supersede failed-save retries", () => {
+    const draft = persistTesting.localStorageWithPrefix("forge.draft.stale-quota.dat")
+    draft.setItem("draft:prompt", "saved")
+    storage.maxBytes = 1
+    draft.setItem("draft:prompt", "failed old edit")
+    storage.maxBytes = Infinity
+    draft.setItem("draft:prompt", "new saved edit")
+    persistTesting.retryFailedWrites()
+    expect(draft.getItem("draft:prompt")).toBe("new saved edit")
+    storage.maxBytes = 1
+    draft.setItem("draft:prompt", "another failed edit")
+    draft.removeItem("draft:prompt")
+    storage.maxBytes = Infinity
+    persistTesting.retryFailedWrites()
+    expect(draft.getItem("draft:prompt")).toBeNull()
+  })
+
+  test("quota during migration keeps the original saved prompt", () => {
+    const legacy = persistTesting.localStorageDirect()
+    const current = persistTesting.localStorageWithPrefix("forge.draft.migration-quota.dat")
+    legacy.setItem("old-prompt", '{"text":"saved prompt"}')
+    storage.maxBytes = 1
+    expect(
+      persistTesting.migrateLegacy({
+        current,
+        legacyStore: legacy,
+        stores: [],
+        keys: ["old-prompt"],
+        key: "draft:prompt",
+        defaults: { text: "" },
+      }),
+    ).toBe('{"text":"saved prompt"}')
+    expect(legacy.getItem("old-prompt")).toBe('{"text":"saved prompt"}')
+    expect(current.getItem("draft:prompt")).toBeNull()
+    storage.maxBytes = Infinity
+    persistTesting.retryFailedWrites()
+    expect(current.getItem("draft:prompt")).toBe('{"text":"saved prompt"}')
+  })
+
+  test("failed asynchronous migration does not delete its source", async () => {
+    const removed: string[] = []
+    const current = {
+      getItem: async () => null,
+      setItem: async () => {
+        throw new Error("disk full")
+      },
+      removeItem: async () => undefined,
+    }
+    const legacy = {
+      getItem: async () => '{"text":"saved prompt"}',
+      setItem: async () => undefined,
+      removeItem: async (key: string) => {
+        removed.push(key)
+      },
+    }
+    expect(
+      await persistTesting.migrateLegacyAsync({
+        current,
+        legacyStore: legacy,
+        stores: [],
+        keys: ["old-prompt"],
+        key: "draft:prompt",
+        defaults: { text: "" },
+      }),
+    ).toBe('{"text":"saved prompt"}')
+    expect(removed).toEqual([])
   })
 
   test("disables only the failing scope when storage throws", () => {

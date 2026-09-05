@@ -374,23 +374,6 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@forge/v2/Session") {}
 
-const pageVisibleMessages = (
-  messages: readonly SessionMessage.Message[],
-  input: {
-    readonly order: "asc" | "desc"
-    readonly limit?: number
-    readonly cursor?: { readonly id: SessionMessage.ID; readonly direction: "previous" | "next" }
-  },
-) => {
-  const ordered = input.order === "asc" ? [...messages] : messages.toReversed()
-  if (!input.cursor) return input.limit === undefined ? ordered : ordered.slice(0, input.limit)
-  const anchor = ordered.findIndex((message) => message.id === input.cursor?.id)
-  if (anchor < 0) return []
-  if (input.cursor.direction === "next")
-    return input.limit === undefined ? ordered.slice(anchor + 1) : ordered.slice(anchor + 1, anchor + 1 + input.limit)
-  return input.limit === undefined ? ordered.slice(0, anchor) : ordered.slice(Math.max(0, anchor - input.limit), anchor)
-}
-
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -435,8 +418,13 @@ const layer = Layer.effect(
     })
     const decodeMessage = Schema.decodeUnknownEffect(SessionMessage.Message)
     const isDurableSessionEvent = Schema.is(SessionEvent.Durable)
-    const decode = (row: typeof SessionMessageTable.$inferSelect) =>
-      decodeMessage({ ...row.data, id: row.id, type: row.type }).pipe(
+    const decode = (row: typeof SessionMessageTable.$inferSelect, source?: SessionInput.Source | null) =>
+      decodeMessage({
+        ...row.data,
+        ...(row.type === "user" && source ? { source } : {}),
+        id: row.id,
+        type: row.type,
+      }).pipe(
         Effect.mapError(
           () =>
             new MessageDecodeError({
@@ -883,12 +871,6 @@ const layer = Layer.effect(
         yield* adoption.ensure(session)
         const direction = input.cursor?.direction ?? "next"
         const requestedOrder = input.order ?? "desc"
-        if (yield* SessionHistory.latestCompaction(primary, input.sessionID))
-          return pageVisibleMessages(yield* store.context(input.sessionID), {
-            order: requestedOrder,
-            limit: input.limit,
-            cursor: input.cursor,
-          })
         const order = direction === "previous" ? (requestedOrder === "asc" ? "desc" : "asc") : requestedOrder
         const anchor = input.cursor
           ? yield* primary
@@ -909,15 +891,19 @@ const layer = Layer.effect(
         const where = boundary
           ? and(eq(SessionMessageTable.session_id, input.sessionID), boundary)
           : eq(SessionMessageTable.session_id, input.sessionID)
+        // Human scrollback follows durable order. Model context is selected separately by SessionHistory.
         const query = primary
-          .select()
+          .select({ message: SessionMessageTable, source: SessionInputTable.source })
           .from(SessionMessageTable)
+          .leftJoin(SessionInputTable, eq(SessionInputTable.id, SessionMessageTable.id))
           .where(where)
           .orderBy(order === "asc" ? asc(SessionMessageTable.seq) : desc(SessionMessageTable.seq))
         const rows = yield* (input.limit === undefined ? query.all() : query.limit(input.limit).all()).pipe(
           Effect.orDie,
         )
-        return yield* Effect.forEach(direction === "previous" ? rows.toReversed() : rows, decode)
+        return yield* Effect.forEach(direction === "previous" ? rows.toReversed() : rows, (row) =>
+          decode(row.message, row.source),
+        )
       }),
       message: Effect.fn("V2Session.message")(function* (input) {
         const session = yield* result.get(input.sessionID)

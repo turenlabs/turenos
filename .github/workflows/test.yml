@@ -1,15 +1,17 @@
-# TurenOS cross-platform test suite.
+# Complete cross-platform coverage, partitioned into jobs with a five-minute budget.
 name: test
 
 on:
   push:
-    branches:
-      - dev
+    branches: [dev, "release-*"]
   pull_request:
+  merge_group:
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Keep reusable test cancellation separate from the caller workflow.
+  group: test-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -21,16 +23,39 @@ env:
 
 jobs:
   unit:
-    name: unit (${{ matrix.settings.name }})
+    name: ${{ matrix.name }}
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
-        settings:
-          - name: linux
-            host: ubuntu-latest
-          - name: windows
-            host: windows-latest
-    runs-on: ${{ matrix.settings.host }}
+        include:
+          - { name: "core (1/3)", host: ubuntu-latest, directory: packages/core, command: "bun run test --shard=1/3" }
+          - { name: "core (2/3)", host: ubuntu-latest, directory: packages/core, command: "bun run test --shard=2/3" }
+          - { name: "core (3/3)", host: ubuntu-latest, directory: packages/core, command: "bun run test --shard=3/3" }
+          - { name: "forge (1/4)", host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=1/4" }
+          - { name: "forge (2/4)", host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=2/4" }
+          - { name: "forge (3/4)", host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=3/4" }
+          - { name: "forge (4/4)", host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=4/4" }
+          - {
+              name: "packages (linux)",
+              host: ubuntu-latest,
+              directory: ".",
+              command: "bun .github/scripts/test-packages.ts",
+            }
+          - {
+              name: "unit (windows 1/2)",
+              host: windows-latest,
+              directory: ".",
+              command: "bun .github/scripts/test-packages.ts --shard=1/2",
+              transport: true,
+            }
+          - {
+              name: "unit (windows 2/2)",
+              host: windows-latest,
+              directory: ".",
+              command: "bun .github/scripts/test-packages.ts --shard=2/2",
+            }
+    runs-on: ${{ matrix.host }}
     defaults:
       run:
         shell: bash
@@ -38,71 +63,102 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24"
+          ref: ${{ github.sha }}
 
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
+        with:
+          # Keep the existing Windows hoisted install; Bun rewrites its platform lock metadata.
+          install-flags: >-
+            ${{ runner.os != 'Windows' && '--frozen-lockfile' ||
+            '--filter ./packages/app --filter ./packages/client --filter ./packages/codemode
+            --filter ./packages/effect-drizzle-sqlite --filter ./packages/extensions
+            --filter ./packages/http-recorder --filter ./packages/httpapi-codegen
+            --filter ./packages/llm --filter ./packages/plugin --filter ./packages/script
+            --filter ./packages/sdk/js --filter ./packages/sdk-next --filter ./packages/session-ui
+            --filter ./packages/ui' }}
+          # Use a cold cache on the checkout volume; validate misses against the same budget.
+          # Keep installation and native build scripts; only omit cache transport.
+          dependency-cache: ${{ runner.os != 'Windows' }}
 
       - name: Configure git identity
         run: |
           git config --global user.email "bot@turen.dev"
           git config --global user.name "turen"
 
-      - name: Cache Turbo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: node_modules/.cache/turbo
-          key: turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-${{ github.sha }}
-          restore-keys: |
-            turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-
-            turbo-${{ runner.os }}-
+      - name: Verify complete suite inventory
+        run: bun .github/scripts/test-packages.ts --verify
 
-      # Linux covers every package. Core and Forge exercise POSIX process and filesystem
-      # behavior, so Windows runs the remaining portable package suites.
       - name: Run unit tests
-        timeout-minutes: 45
-        run: |
-          export GITHUB_ACTIONS=false
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            for directory in \
-              packages/app \
-              packages/client \
-              packages/codemode \
-              packages/effect-drizzle-sqlite \
-              packages/extensions \
-              packages/http-recorder \
-              packages/httpapi-codegen \
-              packages/llm \
-              packages/plugin \
-              packages/script \
-              packages/sdk/js \
-              packages/sdk-next \
-              packages/session-ui \
-              packages/ui
-            do
-              bun --cwd "$directory" test
-            done
-            exit 0
-          fi
-          bun turbo test --concurrency=1
+        working-directory: ${{ matrix.directory }}
+        run: ${{ matrix.command }}
         env:
+          GITHUB_ACTIONS: "false"
           FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER: ${{ runner.os == 'Windows' && 'true' || 'false' }}
 
+      # Exercise the actual Node HTTP transport on Windows without loading the
+      # POSIX-only Forge suite preload. The file also remains in the Forge shards.
+      - name: Verify Windows client disconnects
+        if: runner.os == 'Windows' && matrix.transport == true
+        working-directory: packages/script
+        run: bun test ../forge/test/server/client-disconnect.test.ts --timeout 20000
+
+  httpapi:
+    name: HTTP API (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: coverage, arguments: "--mode coverage" }
+          - { name: auth, arguments: "--mode auth" }
+          - { name: "effect 1/3", arguments: "--mode effect --shard 1/3" }
+          - { name: "effect 2/3", arguments: "--mode effect --shard 2/3" }
+          - { name: "effect 3/3", arguments: "--mode effect --shard 3/3" }
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --frozen-lockfile
+      - name: Configure git identity
+        run: |
+          git config --global user.email "bot@turen.dev"
+          git config --global user.name "turen"
+      - name: Run HttpApi gate
+        working-directory: packages/forge
+        run: bun run test:httpapi ${{ matrix.arguments }}
+
+  generated:
+    name: Generated client
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --frozen-lockfile
       - name: Check generated client
-        if: runner.os == 'Linux'
         working-directory: packages/client
         run: bun run check:generated
 
-      # Runs coverage, auth and effect as three independent gates. They used to be chained
-      # with `&&` behind coverage, which always failed on pre-existing uncovered routes, so
-      # auth and effect never executed here.
-      - name: Run HttpApi exerciser gates
-        if: runner.os == 'Linux'
-        timeout-minutes: 30
-        working-directory: packages/forge
-        run: bun run test:httpapi
+  test:
+    name: test
+    if: always()
+    needs: [unit, httpapi, generated]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require every suite and gate
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node -e 'const jobs = Object.values(JSON.parse(process.env.RESULTS)); if (jobs.some(job => job.result !== "success")) process.exit(1)'

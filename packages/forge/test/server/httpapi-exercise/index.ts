@@ -24,9 +24,9 @@ import { array, boolean, check, isRecord, message, object, stable } from "./asse
 import { controlledPtyInput, http, route } from "./dsl"
 import { cleanupExercisePaths, exerciseConfigDirectory, exerciseDatabasePath, exerciseGlobalRoot } from "./environment"
 import { color, printHeader, printResults } from "./report"
-import { coverageResult, parseOptions, routeKey, routeKeys, selectedScenarios } from "./routing"
+import { coverageResult, failureRatchet, parseOptions, routeKey, routeKeys, selectedScenarios } from "./routing"
 import { runScenario } from "./runner"
-import { disposeApps } from "./backend"
+import { disposeApps, prepareAuthApp } from "./backend"
 import { runtime } from "./runtime"
 import { type Scenario } from "./types"
 
@@ -1632,6 +1632,7 @@ const main = Effect.gen(function* () {
   const modules = yield* Effect.promise(() => runtime())
   const effectRoutes = routeKeys(OpenApi.fromApi(modules.PublicApi))
   const selected = selectedScenarios(options, scenarios)
+  // Route debt is always checked against the complete catalog, including on execution shards.
   const missing = effectRoutes.filter((route) => !scenarios.some((scenario) => route === routeKey(scenario)))
   const extra = scenarios.filter((scenario) => !effectRoutes.includes(routeKey(scenario)))
 
@@ -1639,6 +1640,8 @@ const main = Effect.gen(function* () {
     database: exerciseDatabasePath,
     global: exerciseGlobalRoot,
   })
+
+  if (options.mode === "auth") yield* prepareAuthApp()
 
   const results =
     options.mode === "coverage"
@@ -1665,16 +1668,16 @@ const main = Effect.gen(function* () {
     // are recorded by name so the gate blocks on *new* breakage instead of on known debt.
     // Unlike a missing route, a scenario can fail for environment-dependent reasons, so a
     // recorded failure that now passes is reported but does not fail the run.
-    const unexpected = failures.filter((result) => !known.has(result.scenario.name))
-    const fixed = [...known].filter((name) => !failures.some((result) => result.scenario.name === name)).sort()
-    for (const result of unexpected) console.log(`${color.red}NEW FAIL${color.reset} ${result.scenario.name}`)
-    for (const name of fixed)
+    // Other shards have not executed here, so only observed passes can be reported as fixed.
+    const ratchet = failureRatchet(results, known)
+    for (const result of ratchet.unexpected) console.log(`${color.red}NEW FAIL${color.reset} ${result.scenario.name}`)
+    for (const name of ratchet.fixed)
       console.log(
         `${color.yellow}FIXED${color.reset} ${name} ${color.dim}(remove from ${options.knownFailures})${color.reset}`,
       )
-    if (unexpected.length > 0)
+    if (ratchet.unexpected.length > 0)
       return yield* Effect.fail(
-        new Error(`${unexpected.length} scenario(s) failed that are not recorded as known failures`),
+        new Error(`${ratchet.unexpected.length} scenario(s) failed that are not recorded as known failures`),
       )
   } else if (failures.length > 0) {
     return yield* Effect.fail(new Error("one or more scenarios failed"))

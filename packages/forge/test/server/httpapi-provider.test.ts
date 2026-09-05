@@ -465,7 +465,7 @@ describe("provider HttpApi", () => {
       const configBody = yield* configResponse.json
       expect(hasProviderWithFetch(providerBody, "all")).toBe(false)
       expect(hasProviderWithFetch(configBody, "providers")).toBe(false)
-      expect(providerByID(providerBody, "all", "google")).toBeDefined()
+      expect(providerByID(providerBody, "all", "google")).toMatchObject({ auth: "oauth" })
       expect(providerByID(configBody, "providers", "google")).toBeDefined()
     }),
     { ...projectOptions, init: writeFunctionOptionsPlugin },

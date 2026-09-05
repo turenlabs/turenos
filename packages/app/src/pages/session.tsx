@@ -1315,7 +1315,7 @@ export default function Page() {
     }
 
     if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
-      if (composer.blocked() || isChildSession()) return
+      if (isChildSession()) return
       const input = inputRef
       if (!input) return
       input.focus()
@@ -2429,11 +2429,11 @@ export default function Page() {
             }}
             shouldQueue={queueEnabled}
             goal={goal}
-            onAbort={async () => {
+            onAbort={async (signal) => {
               const id = params.id
               if (!id) return
               if (goal.goal()?.status !== "active") return
-              await goal.pause(id)
+              await goal.pause(id, { signal })
             }}
           />
         }
@@ -2576,6 +2576,10 @@ export default function Page() {
               toolsLoading={() => sessionTools.isLoading}
               toolsError={() => (sessionTools.error instanceof Error ? sessionTools.error.message : undefined)}
               onRefreshTools={() => void sessionTools.refetch()}
+              onRevealTool={(call) => {
+                setLiveDockView("history")
+                queueMicrotask(() => revealMessage(call.message.id))
+              }}
               files={() => liveChangedFiles().length}
               agents={liveAgents}
               swarm={liveSwarm}
@@ -2711,7 +2715,16 @@ export default function Page() {
                   {subagentDock()}
                 </Show>
               )}
-              context={() => <SessionContextTab />}
+              context={() => (
+                <SessionContextTab
+                  objective={() => goal.goal()?.objective}
+                  todos={composer.todos}
+                  onRevealMessage={(messageID) => {
+                    setLiveDockView("history")
+                    queueMicrotask(() => revealMessage(messageID))
+                  }}
+                />
+              )}
               changes={reviewPanelV2}
               terminal={() => <TerminalPanelV2 alwaysOpen />}
               history={timelineContent}

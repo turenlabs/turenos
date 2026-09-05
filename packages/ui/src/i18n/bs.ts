@@ -3,6 +3,21 @@ import { dict as en } from "./en"
 type Keys = keyof typeof en
 
 export const dict = {
+  "ui.tool.reflectionRead": "Pročitaj bilješke sesije",
+  "ui.tool.reflectionState": "Ažuriraj bilješke sesije",
+  "ui.tool.reflectionComplete": "Pregledaj napredak sesije",
+  "ui.tool.boardRead": "Pročitaj bilješke tima",
+  "ui.tool.boardPost": "Podijeli bilješke tima",
+  "ui.toolDetails.input": "Ulaz",
+  "ui.toolDetails.output": "Izlaz",
+  "ui.toolDetails.download": "Preuzmi cijeli rezultat",
+  "ui.toolDetails.previous": "Prethodna",
+  "ui.toolDetails.next": "Sljedeća",
+  "ui.toolDetails.page": "{{page}} od {{pages}}",
+  "ui.sessionTurn.status.working": "Rad u toku",
+  "ui.messagePart.context.activity": "Aktivnost sesije",
+  "ui.messagePart.context.operation.one": "{{count}} operacija konteksta",
+  "ui.messagePart.context.operation.other": "{{count}} operacija konteksta",
   "ui.sessionReview.title": "Promjene sesije",
   "ui.sessionReview.title.git": "Git promjene",
   "ui.sessionReview.title.branch": "Promjene na grani",

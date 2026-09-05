@@ -52,8 +52,13 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       const catalog = yield* Catalog.Service
       const integrationsService = yield* Integration.Service
       const integrations = yield* integrationsService.list()
-      const [all, available, models] = yield* Effect.all(
-        [catalog.provider.all(), catalog.provider.available(), SessionRunnerModel.available()],
+      const [all, available, models, auth] = yield* Effect.all(
+        [
+          catalog.provider.all(),
+          catalog.provider.available(),
+          SessionRunnerModel.available(),
+          credentials.all().pipe(Effect.orDie),
+        ],
         { concurrency: "unbounded" },
       )
       const integrationByID = new Map(integrations.map((item) => [item.id, item]))
@@ -61,13 +66,14 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
         models.filter((model) => model.status !== "deprecated"),
         (model) => model.providerID,
       )
-      const providers = all.map((item) =>
-        Provider.fromCatalogProvider(
+      const providers = all.map((item) => ({
+        ...Provider.fromCatalogProvider(
           item,
           modelsByProvider.get(item.id) ?? [],
           integrationByID.get(item.integrationID ?? Integration.ID.make(item.id)),
         ),
-      )
+        auth: auth[item.id]?.type,
+      }))
       const defaults: Record<string, string> = {}
       for (const model of models) {
         if (model.status === "deprecated" || !model.enabled || defaults[model.providerID]) continue

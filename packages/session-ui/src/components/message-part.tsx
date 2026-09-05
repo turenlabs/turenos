@@ -65,8 +65,23 @@ import { animate } from "motion"
 import { useLocation } from "@solidjs/router"
 import { attached, inline, kind, typeLabel } from "./message-file"
 import { readPartText } from "./message-part-text"
+import { createPacedValue } from "./text-stream"
 import { taskThinkingState } from "./task-thinking-state"
 import { toolResultCleared } from "./tool-cleared"
+import { partDefaultOpen } from "./part-default-open"
+import {
+  groupParts,
+  sameGroups,
+  isContextGroupTool,
+  isCoordinationTool,
+  type PartGroup,
+  type PartRef,
+} from "./message-part-group"
+import { ToolDetails } from "./tool-details"
+
+export { groupParts, sameGroups, type PartGroup, type PartRef } from "./message-part-group"
+
+export { partDefaultOpen } from "./part-default-open"
 import type { MarkdownImageResolver } from "./markdown-image"
 
 async function writeClipboard(text: string): Promise<boolean> {
@@ -252,90 +267,6 @@ function MessageActionButton(
 export type PartComponent = Component<MessagePartProps>
 
 export const PART_MAPPING: Record<string, PartComponent | undefined> = {}
-
-const TEXT_RENDER_PACE_MS = 24
-const TEXT_RENDER_IMMEDIATE = 512
-const TEXT_RENDER_SNAP = /[\s.,!?;:)\]]/
-
-function step(size: number) {
-  if (size <= 12) return 2
-  if (size <= 48) return 4
-  if (size <= 96) return 8
-  return Math.min(256, Math.ceil(size / 4))
-}
-
-function next(text: string, start: number) {
-  const end = Math.min(text.length, start + step(text.length - start))
-  const max = Math.min(text.length, end + 8)
-  for (let i = end; i < max; i++) {
-    if (TEXT_RENDER_SNAP.test(text[i] ?? "")) return i + 1
-  }
-  return end
-}
-
-function createPacedValue(getValue: () => string, live?: () => boolean) {
-  const [value, setValue] = createSignal(getValue())
-  let shown = getValue()
-  let timeout: ReturnType<typeof setTimeout> | undefined
-
-  const clear = () => {
-    if (!timeout) return
-    clearTimeout(timeout)
-    timeout = undefined
-  }
-
-  const sync = (text: string) => {
-    shown = text
-    setValue(text)
-  }
-
-  const run = () => {
-    timeout = undefined
-    const text = getValue()
-    if (!live?.()) {
-      sync(text)
-      return
-    }
-    if (!text.startsWith(shown) || text.length <= shown.length) {
-      sync(text)
-      return
-    }
-    if (text.length - shown.length <= TEXT_RENDER_IMMEDIATE) {
-      sync(text)
-      return
-    }
-    const end = next(text, shown.length)
-    sync(text.slice(0, end))
-    if (end < text.length) timeout = setTimeout(run, TEXT_RENDER_PACE_MS)
-  }
-
-  createEffect(() => {
-    const text = getValue()
-    if (!live?.()) {
-      clear()
-      sync(text)
-      return
-    }
-    if (!text.startsWith(shown) || text.length < shown.length) {
-      clear()
-      sync(text)
-      return
-    }
-    if (text.length - shown.length <= TEXT_RENDER_IMMEDIATE) {
-      clear()
-      sync(text)
-      return
-    }
-    if (text.length === shown.length || timeout) return
-    timeout = setTimeout(run, TEXT_RENDER_PACE_MS)
-  })
-
-  onCleanup(() => {
-    clear()
-  })
-
-  return value
-}
 
 function PacedMarkdown(props: {
   text: string
@@ -572,6 +503,16 @@ export function getToolInfo(
         icon: "bubble-5",
         title: i18n.t("ui.tool.questions"),
       }
+    case "reflection_read":
+      return { icon: "brain", title: i18n.t("ui.tool.reflectionRead") }
+    case "reflection_state":
+      return { icon: "brain", title: i18n.t("ui.tool.reflectionState") }
+    case "reflection_complete":
+      return { icon: "brain", title: i18n.t("ui.tool.reflectionComplete") }
+    case "board_read":
+      return { icon: "subagent", title: i18n.t("ui.tool.boardRead") }
+    case "board_post":
+      return { icon: "subagent", title: i18n.t("ui.tool.boardPost") }
     case "skill":
       return {
         icon: "brain",
@@ -629,7 +570,6 @@ function taskSession(
     .sort((a, b) => (b.time.created ?? 0) - (a.time.created ?? 0))[0]?.id
 }
 
-const CONTEXT_GROUP_TOOLS = new Set(["read", "glob", "grep", "list"])
 const HIDDEN_TOOLS = new Set(["todowrite"])
 
 function list<T>(value: T[] | undefined | null, fallback: T[]) {
@@ -642,91 +582,6 @@ function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   if (!a || !b) return false
   if (a.length !== b.length) return false
   return a.every((x, i) => x === b[i])
-}
-
-export type PartRef = {
-  messageID: string
-  partID: string
-}
-
-export type PartGroup =
-  | {
-      key: string
-      type: "part"
-      ref: PartRef
-    }
-  | {
-      key: string
-      type: "context"
-      refs: PartRef[]
-    }
-
-function sameRef(a: PartRef, b: PartRef) {
-  return a.messageID === b.messageID && a.partID === b.partID
-}
-
-function sameGroup(a: PartGroup, b: PartGroup) {
-  if (a === b) return true
-  if (a.key !== b.key) return false
-  if (a.type !== b.type) return false
-  if (a.type === "part") {
-    if (b.type !== "part") return false
-    return sameRef(a.ref, b.ref)
-  }
-  if (b.type !== "context") return false
-  if (a.refs.length !== b.refs.length) return false
-  return a.refs.every((ref, i) => sameRef(ref, b.refs[i]!))
-}
-
-export function sameGroups(a: readonly PartGroup[] | undefined, b: readonly PartGroup[] | undefined) {
-  if (a === b) return true
-  if (!a || !b) return false
-  if (a.length !== b.length) return false
-  return a.every((item, i) => sameGroup(item, b[i]!))
-}
-
-export function groupParts(parts: { messageID: string; part: PartType }[]) {
-  const result: PartGroup[] = []
-  let start = -1
-
-  const flush = (end: number) => {
-    if (start < 0) return
-    const first = parts[start]
-    const last = parts[end]
-    if (!first || !last) {
-      start = -1
-      return
-    }
-    result.push({
-      key: `context:${first.part.id}`,
-      type: "context",
-      refs: parts.slice(start, end + 1).map((item) => ({
-        messageID: item.messageID,
-        partID: item.part.id,
-      })),
-    })
-    start = -1
-  }
-
-  parts.forEach((item, index) => {
-    if (isContextGroupTool(item.part)) {
-      if (start < 0) start = index
-      return
-    }
-
-    flush(index - 1)
-    result.push({
-      key: `part:${item.messageID}:${item.part.id}`,
-      type: "part",
-      ref: {
-        messageID: item.messageID,
-        partID: item.part.id,
-      },
-    })
-  })
-
-  flush(parts.length - 1)
-  return result
 }
 
 function index<T extends { id: string }>(items: readonly T[]) {
@@ -742,16 +597,6 @@ export function renderable(part: PartType, showReasoningSummaries = true) {
   if (part.type === "text") return !!part.text?.trim()
   if (part.type === "reasoning") return showReasoningSummaries && !!part.text?.trim()
   return !!PART_MAPPING[part.type]
-}
-
-function toolDefaultOpen(tool: string, shell = false, edit = false) {
-  if (tool === "bash") return shell
-  if (tool === "edit" || tool === "write" || tool === "apply_patch") return edit
-}
-
-export function partDefaultOpen(part: PartType, shell = false, edit = false) {
-  if (part.type !== "tool") return
-  return toolDefaultOpen(part.tool, shell, edit)
 }
 
 export function AssistantParts(props: {
@@ -858,10 +703,6 @@ export function AssistantParts(props: {
   )
 }
 
-function isContextGroupTool(part: PartType): part is ToolPart {
-  return part.type === "tool" && CONTEXT_GROUP_TOOLS.has(part.tool)
-}
-
 function contextToolDetail(part: ToolPart): string | undefined {
   const info = getToolInfo(
     part.tool,
@@ -922,7 +763,7 @@ function contextToolTrigger(part: ToolPart, i18n: ReturnType<typeof useI18n>) {
       const info = getToolInfo(part.tool, input, "metadata" in part.state ? part.state.metadata : undefined)
       return {
         title: info.title,
-        subtitle: info.subtitle || contextToolDetail(part),
+        subtitle: isCoordinationTool(part.tool) ? part.tool : info.subtitle || contextToolDetail(part),
         args: [],
       }
     }
@@ -933,7 +774,8 @@ function contextToolSummary(parts: ToolPart[]) {
   const read = parts.filter((part) => part.tool === "read").length
   const search = parts.filter((part) => part.tool === "glob" || part.tool === "grep").length
   const list = parts.filter((part) => part.tool === "list").length
-  return { read, search, list }
+  const coordination = parts.filter((part) => isCoordinationTool(part.tool)).length
+  return { read, search, list, coordination }
 }
 
 function ExaOutput(props: { output?: string }) {
@@ -1111,8 +953,12 @@ export function ContextToolGroup(props: {
             <span data-slot="context-tool-group-label" class="shrink-0">
               <ToolStatusTitle
                 active={pending()}
-                activeText={i18n.t("ui.sessionTurn.status.gatheringContext")}
-                doneText={i18n.t("ui.sessionTurn.status.gatheredContext")}
+                activeText={i18n.t(
+                  summary().coordination ? "ui.sessionTurn.status.working" : "ui.sessionTurn.status.gatheringContext",
+                )}
+                doneText={i18n.t(
+                  summary().coordination ? "ui.messagePart.context.activity" : "ui.sessionTurn.status.gatheredContext",
+                )}
                 split={false}
               />
             </span>
@@ -1140,6 +986,12 @@ export function ContextToolGroup(props: {
                     one: i18n.t("ui.messagePart.context.list.one"),
                     other: i18n.t("ui.messagePart.context.list.other"),
                   },
+                  {
+                    key: "coordination",
+                    count: summary().coordination,
+                    one: i18n.t("ui.messagePart.context.operation.one"),
+                    other: i18n.t("ui.messagePart.context.operation.other"),
+                  },
                 ]}
                 fallback=""
               />
@@ -1153,32 +1005,21 @@ export function ContextToolGroup(props: {
           <Index each={props.parts}>
             {(partAccessor) => {
               const trigger = createMemo(() => contextToolTrigger(partAccessor(), i18n))
-              const running = createMemo(
-                () => partAccessor().state.status === "pending" || partAccessor().state.status === "running",
-              )
+              const output = () => {
+                const state = partAccessor().state
+                return state.status === "completed" ? state.output : undefined
+              }
               return (
-                <div data-slot="context-tool-group-item">
-                  <div data-component="tool-trigger">
-                    <div data-slot="basic-tool-tool-trigger-content">
-                      <div data-slot="basic-tool-tool-info">
-                        <div data-slot="basic-tool-tool-info-structured">
-                          <div data-slot="basic-tool-tool-info-main">
-                            <span data-slot="basic-tool-tool-title">
-                              <TextShimmer text={trigger().title} active={running()} />
-                            </span>
-                            <Show when={!running() && trigger().subtitle}>
-                              <span data-slot="basic-tool-tool-subtitle">{trigger().subtitle}</span>
-                            </Show>
-                            <Show when={!running() && trigger().args?.length}>
-                              <For each={trigger().args}>
-                                {(arg) => <span data-slot="basic-tool-tool-arg">{arg}</span>}
-                              </For>
-                            </Show>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                <div data-slot="context-tool-group-item" data-timeline-part-id={partAccessor().id}>
+                  <BasicTool
+                    icon={getToolInfo(partAccessor().tool).icon}
+                    trigger={trigger()}
+                    status={partAccessor().state.status}
+                    defer
+                    onOpenChange={props.onSizeChange}
+                  >
+                    <ToolDetails input={partAccessor().state.input} output={output()} />
+                  </BasicTool>
                 </div>
               )
             }}
@@ -1810,26 +1651,13 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     <Show when={text()}>
       <div data-component="text-part" data-timeline-part-id={part().id}>
         <div data-slot="text-part-body">
-          <Show
-            when={streaming()}
-            fallback={
-              <Markdown
-                text={text()}
-                cacheKey={part().id}
-                streaming={false}
-                resolveImage={props.resolveMarkdownImage}
-                onImageSettled={props.onContentRendered}
-              />
-            }
-          >
-            <PacedMarkdown
-              text={text()}
-              cacheKey={part().id}
-              streaming={streaming()}
-              resolveImage={props.resolveMarkdownImage}
-              onImageSettled={props.onContentRendered}
-            />
-          </Show>
+          <PacedMarkdown
+            text={text()}
+            cacheKey={part().id}
+            streaming={streaming()}
+            resolveImage={props.resolveMarkdownImage}
+            onImageSettled={props.onContentRendered}
+          />
         </div>
         <Show when={showCopy()}>
           <div data-slot="text-part-copy-wrapper" data-interrupted={interrupted() ? "" : undefined}>
@@ -1864,9 +1692,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   return (
     <Show when={text()}>
       <div data-component="reasoning-part" data-timeline-part-id={part().id}>
-        <Show when={streaming()} fallback={<Markdown text={text()} cacheKey={part().id} streaming={false} />}>
-          <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
-        </Show>
+        <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
       </div>
     </Show>
   )

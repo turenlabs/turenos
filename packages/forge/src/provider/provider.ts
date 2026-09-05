@@ -62,7 +62,8 @@ function wrapSSE(res: Response, ms: number, ctl: AbortController) {
         const id = setTimeout(() => {
           const err = new ProviderError.ResponseStreamError("SSE read timed out")
           ctl.abort(err)
-          void reader.cancel(err)
+          // Aborting fetch can reject cancellation too; the read reports the timeout below.
+          void reader.cancel(err).catch(() => undefined)
           reject(err)
         }, ms)
 
@@ -1052,6 +1053,7 @@ export const Info = Schema.Struct({
   id: ProviderV2.ID,
   name: Schema.String,
   source: Schema.Literals(["env", "config", "custom", "api"]),
+  auth: optional(Schema.Literals(["api", "oauth", "wellknown"])),
   env: Schema.Array(Schema.String),
   key: optional(Schema.String),
   options: Schema.Record(Schema.String, Schema.Any),

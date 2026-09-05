@@ -21,10 +21,12 @@ describe("prompt submission state", () => {
   test("moves first-submit restoration and context to the promoted session", () => {
     const draft = createPromptState()
     const session = createPromptState()
+    draft.set([{ type: "text", content: "first prompt", start: 0, end: 12 }])
+    draft.context.add({ type: "file", path: "src/index.ts" })
     const submission = createPromptSubmissionState({
       target: draft,
-      prompt: [{ type: "text", content: "first prompt", start: 0, end: 12 }],
-      context: [{ key: "file:src/index.ts:undefined:undefined", type: "file", path: "src/index.ts" }],
+      prompt: draft.current(),
+      context: draft.context.items().slice(),
     })
 
     submission.retarget(session)
@@ -38,7 +40,7 @@ describe("prompt submission state", () => {
     expect(session.context.items()[0]).toMatchObject({ type: "file", path: "src/index.ts" })
   })
 
-  test("clears the original first-submit prompt after retargeting", () => {
+  test("clears the promoted composer while leaving source disposal to the tab owner", () => {
     const workspace = createPromptState()
     const session = createPromptState()
     workspace.set([{ type: "text", content: "first prompt", start: 0, end: 12 }])
@@ -51,7 +53,7 @@ describe("prompt submission state", () => {
     submission.retarget(session)
     submission.clear()
 
-    expect(workspace.current()[0]).toMatchObject({ type: "text", content: "" })
+    expect(workspace.current()[0]).toMatchObject({ type: "text", content: "first prompt" })
     expect(session.current()[0]).toMatchObject({ type: "text", content: "" })
   })
 

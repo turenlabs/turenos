@@ -3,6 +3,21 @@ import { dict as en } from "./en"
 type Keys = keyof typeof en
 
 export const dict = {
+  "ui.tool.reflectionRead": "Oturum notlarını oku",
+  "ui.tool.reflectionState": "Oturum notlarını güncelle",
+  "ui.tool.reflectionComplete": "Oturum ilerlemesini incele",
+  "ui.tool.boardRead": "Ekip notlarını oku",
+  "ui.tool.boardPost": "Ekip notlarını paylaş",
+  "ui.toolDetails.input": "Girdi",
+  "ui.toolDetails.output": "Çıktı",
+  "ui.toolDetails.download": "Tam sonucu indir",
+  "ui.toolDetails.previous": "Önceki",
+  "ui.toolDetails.next": "Sonraki",
+  "ui.toolDetails.page": "{{page}} / {{pages}}",
+  "ui.sessionTurn.status.working": "Çalışıyor",
+  "ui.messagePart.context.activity": "Oturum etkinliği",
+  "ui.messagePart.context.operation.one": "{{count}} bağlam işlemi",
+  "ui.messagePart.context.operation.other": "{{count}} bağlam işlemi",
   "ui.sessionReview.title": "Oturum değişiklikleri",
   "ui.sessionReview.title.git": "Git değişiklikleri",
   "ui.sessionReview.title.branch": "Dal değişiklikleri",

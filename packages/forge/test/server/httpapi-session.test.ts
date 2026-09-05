@@ -1004,6 +1004,7 @@ describe("session HttpApi", () => {
           id: SessionMessage.ID.make("msg_http_prompt"),
           status: "admitted",
           sessionID: session.id,
+          source: "user",
           prompt: { text: "hello" },
           delivery: "steer",
           admittedSeq: admitted!.admitted_seq,
@@ -2905,6 +2906,66 @@ describe("session HttpApi", () => {
       }),
     { git: true, config: { formatter: false, lsp: false } },
     { timeout: 15000 },
+  )
+
+  it.instance(
+    "pages the human transcript across checkpoints without expanding model context",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const headers = { "x-forge-directory": test.directory }
+        const session = yield* createSession({ title: "compacted transcript" })
+        const events = yield* EventV2.Service
+        const sessionID = SessionV2.ID.make(session.id)
+        const expected: string[] = []
+        for (let index = 0; index < 5; index++) {
+          const messageID = SessionMessage.ID.create()
+          expected.push(messageID)
+          const prompted = yield* events.publish(SessionEvent.Prompted, {
+            sessionID,
+            messageID,
+            prompt: { text: `Human ${index}` },
+            delivery: "steer",
+            source: "user",
+            timestamp: DateTime.makeUnsafe(index),
+          })
+          if (index !== 1 && index !== 3) continue
+          const checkpoint = SessionMessage.ID.create()
+          expected.push(checkpoint)
+          yield* events.publish(SessionEvent.Compaction.Ended, {
+            sessionID,
+            messageID: checkpoint,
+            text: `Summary ${index}`,
+            recent: "",
+            reason: "manual",
+            throughSeq: prompted.durable!.seq,
+            timestamp: DateTime.makeUnsafe(index),
+          })
+        }
+        const actual: string[] = []
+        let cursor: string | undefined
+        for (;;) {
+          const page = yield* requestJson<{ data: Array<{ id: string }>; cursor: { next?: string } }>(
+            `/api/session/${session.id}/message?${new URLSearchParams(cursor ? { cursor, limit: "2" } : { order: "asc", limit: "2" })}`,
+            { headers },
+          )
+          actual.push(...page.data.map((message) => message.id))
+          if (!page.cursor.next) break
+          cursor = page.cursor.next
+        }
+        expect(actual).toEqual(expected)
+        expect(new Set(actual).size).toBe(expected.length)
+        const context = yield* requestJson<{ data: Array<{ id: string }> }>(`/api/session/${session.id}/context`, {
+          headers,
+        })
+        expect(context.data.map((message) => message.id)).toEqual(expected.slice(-2))
+        const original = yield* requestJson<{ data: { text: string; source: string } }>(
+          `/api/session/${session.id}/message/${expected[0]}`,
+          { headers },
+        )
+        expect(original.data).toMatchObject({ text: "Human 0", source: "user" })
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
   )
 
   it.instance(

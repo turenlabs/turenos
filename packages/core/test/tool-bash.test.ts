@@ -2,7 +2,7 @@ import fs from "fs/promises"
 import { realpathSync } from "node:fs"
 import path from "path"
 import { describe, expect, test } from "bun:test"
-import { Duration, Effect, Fiber, Layer } from "effect"
+import { Deferred, Duration, Effect, Fiber, Layer } from "effect"
 import * as TestClock from "effect/testing/TestClock"
 import { ChildProcess } from "effect/unstable/process"
 import { FSUtil } from "@turenlabs/core/fs-util"
@@ -78,17 +78,18 @@ const appProcess = Layer.succeed(
  * already fired, but the losing fiber's finalizer is still blocked waiting for
  * the OS to report the child closed. Nothing below the tool can settle now.
  */
-const wedgedProcess = Layer.succeed(
-  AppProcess.Service,
-  AppProcess.Service.of({
-    run: (command: ChildProcess.Command, options?: AppProcess.RunOptions) =>
-      Effect.suspend(() => {
-        if (command._tag !== "StandardCommand") throw new Error("expected standard command")
-        runs.push({ command: command.command, cwd: command.options.cwd, shell: command.options.shell, options })
-        return Effect.never
-      }),
-  } as unknown as AppProcess.Interface),
-)
+const wedgedProcess = (started: Deferred.Deferred<void>) =>
+  Layer.succeed(
+    AppProcess.Service,
+    AppProcess.Service.of({
+      run: (command: ChildProcess.Command, options?: AppProcess.RunOptions) =>
+        Effect.suspend(() => {
+          if (command._tag !== "StandardCommand") throw new Error("expected standard command")
+          runs.push({ command: command.command, cwd: command.options.cwd, shell: command.options.shell, options })
+          return Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never))
+        }),
+    } as unknown as AppProcess.Interface),
+  )
 const config = Layer.succeed(
   Config.Service,
   Config.Service.of({
@@ -509,26 +510,41 @@ describe("BashTool", () => {
   it.effect("settles when process teardown outlives the timeout instead of hanging forever", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
-      (tmp) => {
-        reset()
-        return withTool(
-          tmp.path,
-          (registry) =>
-            Effect.gen(function* () {
-              const fiber = yield* settleTool(registry, call({ command: "sleep 600", timeout: 1_000 })).pipe(
-                Effect.forkChild,
-              )
-              // The tool resolves the workdir and stats it before it arms the
-              // deadline, so step the clock rather than jumping it once.
-              for (let step = 0; step < 30; step++) yield* TestClock.adjust(Duration.seconds(1))
-              const settled = yield* Fiber.join(fiber)
-              expect(runs).toHaveLength(1)
-              expect(settled.result.type).toBe("error")
-              expect(String(settled.result.value)).toContain("did not terminate within")
-            }),
-          wedgedProcess,
-        )
-      },
+      (tmp) =>
+        Effect.gen(function* () {
+          reset()
+          const permissionEntered = yield* Deferred.make<void>()
+          const permissionRelease = yield* Deferred.make<void>()
+          const processStarted = yield* Deferred.make<void>()
+          afterPermission = () =>
+            Deferred.succeed(permissionEntered, undefined).pipe(Effect.andThen(Deferred.await(permissionRelease)))
+          yield* withTool(
+            tmp.path,
+            (registry) =>
+              Effect.gen(function* () {
+                const fiber = yield* settleTool(registry, call({ command: "sleep 600", timeout: 1_000 })).pipe(
+                  Effect.forkChild,
+                )
+                yield* Deferred.await(permissionEntered)
+                // Preflight may still be waiting on real filesystem IO after any
+                // number of virtual clock steps. Reproduce that ordering explicitly.
+                yield* TestClock.adjust(Duration.seconds(30))
+                expect(runs).toHaveLength(0)
+                yield* Deferred.succeed(permissionRelease, undefined)
+                yield* Deferred.await(processStarted)
+                // Process entry follows the last filesystem read. Only now can
+                // advancing the test clock reach the tool's termination deadline.
+                yield* TestClock.adjust(Duration.millis(1_000 + BashTool.TERMINATION_GRACE_MS - 1))
+                expect(fiber.pollUnsafe()).toBeUndefined()
+                yield* TestClock.adjust(Duration.millis(1))
+                const settled = yield* Fiber.join(fiber)
+                expect(runs).toHaveLength(1)
+                expect(settled.result.type).toBe("error")
+                expect(String(settled.result.value)).toContain("did not terminate within")
+              }),
+            wedgedProcess(processStarted),
+          )
+        }),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),
   )

@@ -3,6 +3,7 @@ import { createStore } from "solid-js/store"
 import type { SessionRecoveryOutcome } from "@turenlabs/sdk/v2/client"
 import { useSDK, type DirectorySDK } from "@/context/sdk"
 import { Identifier } from "@/utils/id"
+import { ScopedKey } from "@/utils/server-scope"
 import { createSessionOwnership } from "@/pages/session/session-ownership"
 import { markSessionV2 } from "./session-v2-delta-gate"
 import {
@@ -30,12 +31,12 @@ export function createSessionGoalController(input: {
   recovery?: ReturnType<typeof createSessionGoalRecovery>
 }) {
   const sdk = useSDK()
-  const owner = createSessionOwnership(input.sessionKey)
+  const owner = createSessionOwnership(() => JSON.stringify([sdk().scope, input.sessionKey()]))
   const recovery = input.recovery ?? createSessionGoalRecovery()
   const [store, setStore] = createStore({
     goals: {} as Record<string, SessionGoalInfo | undefined>,
-    loading: {} as Record<string, boolean | undefined>,
-    pending: {} as Record<string, boolean | undefined>,
+    loading: {} as Record<string, number | undefined>,
+    pending: {} as Record<string, number | undefined>,
     mode: false,
     editRequest: 0,
   })
@@ -43,69 +44,72 @@ export function createSessionGoalController(input: {
   const hydrationGuard = createSessionGoalHydrationGuard()
 
   createEffect(() => {
+    sdk().scope
     input.sessionKey()
     setStore("mode", false)
   })
 
   createEffect(() => {
     const sessionID = input.sessionID()
-    const client = sdk().client
+    const current = sdk()
+    const captured = owner.capture()
     const request = ++hydration
-    const events = sessionID ? hydrationGuard.capture(sessionID) : 0
     if (!sessionID) return
+    const key = ScopedKey.from(current.scope, sessionID)
+    const events = hydrationGuard.capture(key)
 
-    setStore("loading", sessionID, true)
-    const goalRequest = client.v2.session.goal
+    setStore("loading", key, request)
+    const goalRequest = current.client.v2.session.goal
       .get({ sessionID })
       .then((result) => {
-        if (request !== hydration || input.sessionID() !== sessionID) return
-        if (!hydrationGuard.current(sessionID, events)) return
+        if (request !== hydration || !captured.current()) return
+        if (!hydrationGuard.current(key, events)) return
         const goal = (result.data?.data ?? null) as SessionGoalInfo | null
-        setStore("goals", sessionID, (current) => applySessionGoalSnapshot(current, goal ?? undefined))
+        setStore("goals", key, (current) => applySessionGoalSnapshot(current, goal ?? undefined))
       })
       .catch(() => undefined)
     const recoveryProbe = createSessionRecoveryProbe({
       recovery,
-      scope: sdk().scope,
+      scope: current.scope,
       sessionID,
-      resume: () => client.v2.session.resume({ sessionID }).then((result) => result.data!.data),
+      resume: () => current.client.v2.session.resume({ sessionID }).then((result) => result.data!.data),
       onInterrupted: (outcome) => {
-        if (request !== hydration || input.sessionID() !== sessionID) return
-        hydrationGuard.advance(sessionID)
+        if (request !== hydration || !captured.current()) return
+        hydrationGuard.advance(key)
         input.onInterrupted?.(outcome)
-        const recoveredEvents = hydrationGuard.capture(sessionID)
-        return client.v2.session.goal.get({ sessionID }).then((result) => {
-          if (request !== hydration || input.sessionID() !== sessionID) return
-          if (!hydrationGuard.current(sessionID, recoveredEvents)) return
+        const recoveredEvents = hydrationGuard.capture(key)
+        return current.client.v2.session.goal.get({ sessionID }).then((result) => {
+          if (request !== hydration || !captured.current()) return
+          if (!hydrationGuard.current(key, recoveredEvents)) return
           const goal = (result.data?.data ?? null) as SessionGoalInfo | null
-          setStore("goals", sessionID, (current) => applySessionGoalSnapshot(current, goal ?? undefined))
+          setStore("goals", key, (current) => applySessionGoalSnapshot(current, goal ?? undefined))
         })
       },
       onFailure: (failure) => {
-        if (request !== hydration || input.sessionID() !== sessionID) return
+        if (request !== hydration || !captured.current()) return
         input.onRecoveryError?.(failure)
       },
     })
     const recoveryRequest = recoveryProbe.run()
 
     void Promise.all([goalRequest, recoveryRequest]).finally(() => {
-      if (request !== hydration || input.sessionID() !== sessionID) return
-      setStore("loading", sessionID, false)
+      if (store.loading[key] === request) setStore("loading", key, undefined)
     })
   })
 
   createEffect(() => {
     const current = sdk()
+    const scope = current.scope
     const updated = current.event.on("session.next.goal.updated", (event) => {
-      const sessionID = event.properties.sessionID
-      hydrationGuard.advance(sessionID)
+      const key = ScopedKey.from(scope, event.properties.sessionID)
+      hydrationGuard.advance(key)
       // Admission details are deliberately ignored; only the public goal snapshot belongs in UI state.
-      setStore("goals", sessionID, (goal) => applySessionGoalSnapshot(goal, event.properties.goal))
+      setStore("goals", key, (goal) => applySessionGoalSnapshot(goal, event.properties.goal))
     })
     const cleared = current.event.on("session.next.goal.cleared", (event) => {
-      const sessionID = event.properties.sessionID
-      hydrationGuard.advance(sessionID)
-      setStore("goals", sessionID, (goal) =>
+      const key = ScopedKey.from(scope, event.properties.sessionID)
+      hydrationGuard.advance(key)
+      setStore("goals", key, (goal) =>
         clearSessionGoalSnapshot(goal, {
           goalID: event.properties.goalID,
           revision: event.properties.revision,
@@ -118,13 +122,15 @@ export function createSessionGoalController(input: {
     })
   })
 
-  const run = async <T>(sessionID: string, mutation: () => Promise<T>) => {
-    const captured = owner.capture()
-    setStore("pending", sessionID, true)
-    return mutation().finally(() => {
-      if (!captured.current()) return
-      setStore("pending", sessionID, false)
-    })
+  const run = async <T>(key: string, mutation: () => Promise<T>) => {
+    setStore("pending", key, (count) => (count ?? 0) + 1)
+    try {
+      return await mutation()
+    } finally {
+      // Navigation changes the view, not ownership of the outstanding mutation.
+      // Release only this operation; a newer operation may still be waiting.
+      setStore("pending", key, (count) => (count && count > 1 ? count - 1 : undefined))
+    }
   }
 
   const start = (value: {
@@ -133,10 +139,14 @@ export function createSessionGoalController(input: {
     agent?: string
     model?: { providerID: string; id: string; variant?: string }
     client?: DirectorySDK["client"]
+    scope?: DirectorySDK["scope"]
   }) => {
     const client = value.client ?? sdk().client
+    const scope = value.scope ?? sdk().scope
+    const sessionKey = ScopedKey.from(scope, value.sessionID)
+    const captured = owner.capture()
     const key = [
-      sdk().scope,
+      scope,
       value.sessionID,
       value.objective,
       value.agent ?? "",
@@ -151,7 +161,7 @@ export function createSessionGoalController(input: {
     goalSetAttempts.set(key, attempt)
     if (attempt.promise) return attempt.promise
 
-    const promise = run(value.sessionID, () =>
+    const promise = run(sessionKey, () =>
       client.v2.session.goal
         .set({
           sessionID: value.sessionID,
@@ -166,10 +176,10 @@ export function createSessionGoalController(input: {
         .then((result) => result.data!.data),
     ).then((goal) => {
       markSessionV2(value.sessionID)
-      hydrationGuard.advance(value.sessionID)
-      setStore("goals", value.sessionID, (current) => applySessionGoalSnapshot(current, goal))
+      hydrationGuard.advance(sessionKey)
+      setStore("goals", sessionKey, (current) => applySessionGoalSnapshot(current, goal))
       goalSetAttempts.delete(key)
-      setStore("mode", false)
+      if (captured.current() && scope === sdk().scope) setStore("mode", false)
       return goal
     })
     attempt.promise = promise
@@ -184,11 +194,15 @@ export function createSessionGoalController(input: {
     objective: string
     goal?: SessionGoalInfo
     client?: DirectorySDK["client"]
+    scope?: DirectorySDK["scope"]
   }) => {
-    const goal = value.goal ?? store.goals[value.sessionID]
+    const scope = value.scope ?? sdk().scope
+    const key = ScopedKey.from(scope, value.sessionID)
+    const captured = owner.capture()
+    const goal = value.goal ?? store.goals[key]
     if (!goal) return Promise.reject(new Error("No active goal"))
     const client = value.client ?? sdk().client
-    return run(value.sessionID, () =>
+    return run(key, () =>
       client.v2.session.goal
         .edit({
           sessionID: value.sessionID,
@@ -200,19 +214,21 @@ export function createSessionGoalController(input: {
         })
         .then((result) => result.data!.data),
     ).then((next) => {
-      hydrationGuard.advance(value.sessionID)
-      setStore("goals", value.sessionID, (current) => applySessionGoalSnapshot(current, next))
-      setStore("mode", false)
+      hydrationGuard.advance(key)
+      setStore("goals", key, (current) => applySessionGoalSnapshot(current, next))
+      if (captured.current() && scope === sdk().scope) setStore("mode", false)
       return next
     })
   }
 
   const status = (sessionID: string, next: SessionGoalStatus, current?: SessionGoalInfo) => {
-    const goal = current ?? store.goals[sessionID]
+    const source = sdk()
+    const key = ScopedKey.from(source.scope, sessionID)
+    const goal = current ?? store.goals[key]
     if (!goal) return Promise.reject(new Error("No active goal"))
-    return run(sessionID, () =>
-      sdk()
-        .client.v2.session.goal.status({
+    return run(key, () =>
+      source.client.v2.session.goal
+        .status({
           sessionID,
           sessionGoalStatusPayload: {
             goalID: goal.id,
@@ -222,54 +238,61 @@ export function createSessionGoalController(input: {
         })
         .then((result) => result.data!.data),
     ).then((value) => {
-      hydrationGuard.advance(sessionID)
-      setStore("goals", sessionID, (current) => applySessionGoalSnapshot(current, value))
+      hydrationGuard.advance(key)
+      setStore("goals", key, (current) => applySessionGoalSnapshot(current, value))
       return value
     })
   }
 
-  const pause = (sessionID: string) => {
-    const goal = store.goals[sessionID]
+  const pause = (sessionID: string, options?: { signal?: AbortSignal }) => {
+    const source = sdk()
+    const key = ScopedKey.from(source.scope, sessionID)
+    const goal = store.goals[key]
     if (!goal) return Promise.reject(new Error("No active goal"))
     if (goal.status === "paused") return Promise.resolve(goal)
     if (goal.status !== "active") return Promise.reject(new Error("Goal is not active"))
 
-    return run(sessionID, async () => {
-      const client = sdk().client
+    return run(key, async () => {
+      const client = source.client
       const pauseCurrent = async (current: SessionGoalInfo, retries: number): Promise<SessionGoalInfo> =>
         client.v2.session.goal
-          .status({
-            sessionID,
-            sessionGoalStatusPayload: {
-              goalID: current.id,
-              expectedRevision: current.revision,
-              status: "paused",
+          .status(
+            {
+              sessionID,
+              sessionGoalStatusPayload: {
+                goalID: current.id,
+                expectedRevision: current.revision,
+                status: "paused",
+              },
             },
-          })
+            options,
+          )
           .then((result) => result.data!.data)
           .catch(async (error) => {
-            if (retries === 0) throw error
-            const response = await client.v2.session.goal.get({ sessionID })
+            if (retries === 0 || options?.signal?.aborted) throw error
+            const response = await client.v2.session.goal.get({ sessionID }, options)
             const latest = (response.data?.data ?? null) as SessionGoalInfo | null
             if (!latest || latest.id !== goal.id) throw error
-            setStore("goals", sessionID, (value) => applySessionGoalSnapshot(value, latest))
+            setStore("goals", key, (value) => applySessionGoalSnapshot(value, latest))
             if (latest.status === "paused") return latest
             if (latest.status !== "active") throw error
             return pauseCurrent(latest, retries - 1)
           })
       return pauseCurrent(goal, 2)
     }).then((value) => {
-      hydrationGuard.advance(sessionID)
-      setStore("goals", sessionID, (current) => applySessionGoalSnapshot(current, value))
+      hydrationGuard.advance(key)
+      setStore("goals", key, (current) => applySessionGoalSnapshot(current, value))
       return value
     })
   }
 
   const clear = (sessionID: string) => {
-    const goal = store.goals[sessionID]
+    const source = sdk()
+    const key = ScopedKey.from(source.scope, sessionID)
+    const goal = store.goals[key]
     if (!goal) return Promise.resolve()
-    return run(sessionID, async () => {
-      const client = sdk().client
+    return run(key, async () => {
+      const client = source.client
       const clearCurrent = async (current: SessionGoalInfo, retries: number): Promise<SessionGoalInfo | undefined> =>
         client.v2.session.goal
           .clear({
@@ -286,13 +309,13 @@ export function createSessionGoalController(input: {
             const latest = (response.data?.data ?? null) as SessionGoalInfo | null
             if (!latest) return
             if (latest.id !== goal.id) throw error
-            setStore("goals", sessionID, (value) => applySessionGoalSnapshot(value, latest))
+            setStore("goals", key, (value) => applySessionGoalSnapshot(value, latest))
             return clearCurrent(latest, retries - 1)
           })
       return clearCurrent(goal, 2)
     }).then((cleared) => {
-      hydrationGuard.advance(sessionID)
-      setStore("goals", sessionID, (current) =>
+      hydrationGuard.advance(key)
+      setStore("goals", key, (current) =>
         clearSessionGoalSnapshot(current, { goalID: goal.id, revision: cleared?.revision ?? goal.revision }),
       )
     })
@@ -300,7 +323,7 @@ export function createSessionGoalController(input: {
 
   const current = () => {
     const sessionID = input.sessionID()
-    return sessionID ? store.goals[sessionID] : undefined
+    return sessionID ? store.goals[ScopedKey.from(sdk().scope, sessionID)] : undefined
   }
 
   return {
@@ -309,18 +332,18 @@ export function createSessionGoalController(input: {
     mode: () => store.mode,
     loading: () => {
       const sessionID = input.sessionID()
-      return sessionID ? !!store.loading[sessionID] : false
+      return sessionID ? !!store.loading[ScopedKey.from(sdk().scope, sessionID)] : false
     },
     pending: () => {
       const sessionID = input.sessionID()
-      return sessionID ? !!store.pending[sessionID] : false
+      return sessionID ? !!store.pending[ScopedKey.from(sdk().scope, sessionID)] : false
     },
     editRequest: () => store.editRequest,
     toggleMode: () => setStore("mode", (value) => !value),
     setMode: (value: boolean) => setStore("mode", value),
     requestEdit: () => {
       const sessionID = input.sessionID()
-      if (!sessionID || !store.goals[sessionID] || store.goals[sessionID]?.status === "complete") {
+      if (!sessionID || !current() || current()?.status === "complete") {
         setStore("mode", true)
         return
       }

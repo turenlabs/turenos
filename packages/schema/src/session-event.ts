@@ -109,7 +109,7 @@ export type Moved = typeof Moved.Type
 export const Prompted = Event.define({
   type: "session.next.prompted",
   ...options,
-  schema: PromptFields,
+  schema: { ...PromptFields, source: SessionInput.Source.pipe(optional) },
 })
 export type Prompted = typeof Prompted.Type
 

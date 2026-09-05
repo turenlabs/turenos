@@ -10,6 +10,27 @@ import type {
 } from "@turenlabs/sdk/v2/client"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
+import { usePlatform } from "@/context/platform"
+import { useLanguage } from "@/context/language"
+import { showToast } from "@/utils/toast"
+import { promptAdmissionFor } from "@/components/prompt-input/prompt-admission"
+import {
+  sessionPromptOutbox,
+  sessionPromptPending,
+  sessionPromptStartup,
+  sessionEventPromptPending,
+} from "./session-prompt-state"
+export {
+  sessionPromptOutbox,
+  sessionPromptPending,
+  sessionPromptStartup,
+  sessionEventPromptPending,
+  createSessionPromptOutboxStore,
+  createSessionPromptPendingStore,
+  createSessionPromptStartupStore,
+  type PromptPendingDelivery,
+  type SessionPromptPendingChange,
+} from "./session-prompt-state"
 import { createSessionOwnership } from "@/pages/session/session-ownership"
 import { sessionInteractionTrace } from "@/utils/session-interaction-trace"
 import { mergeSessionV2Presentation, presentSessionV2Messages } from "./session-v2-presentation"
@@ -177,6 +198,8 @@ export function createSessionV2TimelineController(input: {
 }) {
   const sdk = useSDK()
   const sync = useSync()
+  const admission = promptAdmissionFor(usePlatform())
+  const language = useLanguage()
   const owner = createSessionOwnership(input.sessionKey)
   const owned = new Map<string, Set<string>>()
   const v2Sessions = sessionV2DeltaGate
@@ -242,7 +265,7 @@ export function createSessionV2TimelineController(input: {
       messages,
       pendingInputs,
     })
-    const outbox = sessionPromptOutbox.presentation(sessionID)
+    const outbox = sessionPromptOutbox.presentation(sessionID, sdk().scope)
     const presentedIDs = new Set(presentation.messages.map((message) => message.id))
     outbox.messages.forEach((message) => {
       if (presentedIDs.has(message.id)) return
@@ -282,12 +305,14 @@ export function createSessionV2TimelineController(input: {
     // Mark before live deltas race the first projected assistant part into the snapshot.
     v2Sessions.observeSnapshot(sessionID)
     // A full read is still only a bounded window. Tool settlement and pagination therefore merge
-    // it into the last visible transcript; only a structural boundary (revert/compaction/cold
+    // it into the last visible transcript; only a structural boundary (revert/cold
     // open) may remove rows that are absent from that window.
     const projection = mergeSessionV2Presentation({
       messages: sync().data.message[sessionID] ?? [],
       parts: sync().data.part,
-      previousOwnedMessageIDs: owned.get(sessionID) ?? new Set(),
+      previousOwnedMessageIDs: authoritative
+        ? new Set((sync().data.message[sessionID] ?? []).map((message) => message.id))
+        : (owned.get(sessionID) ?? new Set()),
       presentation,
       preservedMessageIDs: new Set(sessionPromptPending.ids()),
       removeMissing: authoritative,
@@ -392,19 +417,26 @@ export function createSessionV2TimelineController(input: {
    * The existing window metadata is what makes a live re-projection non-destructive. `minimum` is
    * the count the session already had, so a refresh never shows the user less than they were
    * looking at; `until` pins the far edge to the oldest message already loaded, so messages
-   * appended since do not push the tail of the window off the end. Authoritative resets skip both
-   * anchors because a revert or checkpoint may have removed the old edge.
+   * appended since do not push the tail of the window off the end. Authoritative reads keep the
+   * loaded count but drop the ID anchor because a revert may have removed that message.
    */
-  const messages = async (sessionID: string, signal: AbortSignal, authoritative: boolean) => {
+  const messages = async (
+    sessionID: string,
+    signal: AbortSignal,
+    authoritative: boolean,
+    client: ReturnType<typeof sdk>["client"],
+    currentOwner: () => boolean,
+  ) => {
     const current = windows.get(sessionID)
     const requestedMinimum = requestedMinimums.get(sessionID)
     const result = await loadSessionV2Window({
       sessionID,
       signal,
-      request: (payload, options) => sdk().client.v2.session.messages(payload, options),
-      minimum: authoritative ? undefined : Math.max(current?.count ?? 0, requestedMinimum ?? 0) || undefined,
+      request: (payload, options) => client.v2.session.messages(payload, options),
+      minimum: Math.max(current?.count ?? 0, requestedMinimum ?? 0) || undefined,
       until: authoritative ? undefined : current?.oldest,
     })
+    if (!currentOwner()) return { messages: result.messages, stable: false as const }
     if (authoritative && result.messages.length === 0) return { messages: result.messages, stable: false as const }
     if (!authoritative && !sessionV2MessageWindowHasContinuity({ ...result, current }))
       return { messages: result.messages, stable: false as const }
@@ -444,14 +476,11 @@ export function createSessionV2TimelineController(input: {
     await requestSnapshot(sessionID, "full")
   }
 
-  const pendingInputs = (sessionID: string, signal: AbortSignal): Promise<SessionInputAdmitted[]> =>
-    sdk()
-      .client.v2.session.pendingInputs({ sessionID }, { signal })
-      .then((response) => [...response.data!.data])
-
   const restaked = new Map<string, number>()
   const snapshots = createSessionSnapshotQueue(async (sessionID, mode, authoritative) => {
+    const scope = sdk().scope
     const captured = owner.capture()
+    const client = sdk().client
     const through = deltaSequence
     const abort = new AbortController()
     snapshotAborts.add(abort)
@@ -459,74 +488,46 @@ export function createSessionV2TimelineController(input: {
     sessionInteractionTrace("snapshot.started", { sessionID, mode, authoritative })
     // Read inbox state first: if an input is promoted between these reads, it appears
     // in both results and is deduplicated by ID. The reverse order could miss it in both.
-    const result = await pendingInputs(sessionID, abort.signal)
+    const result = await client.v2.session
+      .pendingInputs({ sessionID }, { signal: abort.signal })
+      .then((response) => [...response.data!.data])
       .then(async (pending) => ({
         pending,
-        snapshot:
-          mode === "full"
-            ? await messages(sessionID, abort.signal, authoritative)
-            : {
-                messages: await sdk()
-                  .client.v2.session.context({ sessionID }, { signal: abort.signal })
-                  .then((response) => response.data!.data),
-                stable: true as const,
-              },
+        // Incremental and settled refreshes share the human transcript. Model context can reorder
+        // preserved tails around checkpoints and must never be used to parent UI messages.
+        snapshot: await messages(sessionID, abort.signal, authoritative, client, captured.current),
       }))
-      .finally(() => snapshotAborts.delete(abort))
+      .catch((error) => {
+        snapshotAborts.delete(abort)
+        throw error
+      })
     const projectedIDs = new Set(
       result.snapshot.messages.filter((message) => message.type === "user").map((message) => message.id),
     )
     const pendingIDs = sessionUnprojectedInputIDs(projectedIDs, result.pending)
     const previousPendingIDs = pendingProjectionIDs.get(sessionID) ?? new Set<string>()
-    const statusIDs = new Set([...sessionPromptOutbox.ids(sessionID), ...previousPendingIDs])
+    const statusIDs = new Set([...sessionPromptOutbox.ids(sessionID, scope), ...previousPendingIDs])
+    const statuses = new Map<string, "admitted" | "promoted" | "cancelled">()
     const cancelledIDs = new Set<string>()
     await Promise.all(
       [...statusIDs]
         .filter((messageID) => !projectedIDs.has(messageID) && !pendingIDs.has(messageID))
         .map(async (messageID) => {
           try {
-            const status = await sdk().client.v2.session.inputStatus({ sessionID, messageID })
+            const status = await client.v2.session.inputStatus(
+              { sessionID, messageID },
+              { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(5_000)]) },
+            )
             const value = status.data?.data?.status
             if (value) {
-              sessionPromptOutbox.applyStatus(messageID, value)
+              statuses.set(messageID, value)
               if (value === "cancelled") cancelledIDs.add(messageID)
             }
           } catch {
             // Missing or unreachable status is ambiguous; retain the row.
           }
         }),
-    )
-    if (cancelledIDs.size > 0) {
-      batch(() => {
-        sync().set(
-          "message",
-          sessionID,
-          reconcile(
-            (sync().data.message[sessionID] ?? []).filter((message) => !cancelledIDs.has(message.id)),
-            { key: "id" },
-          ),
-        )
-        cancelledIDs.forEach((messageID) => {
-          sync().set("part", messageID, reconcile([], { key: "id" }))
-          sessionPromptStartup.clear(messageID)
-          sessionPromptPending.clear(messageID)
-          owned.get(sessionID)?.delete(messageID)
-        })
-      })
-    }
-    pendingProjectionIDs.set(
-      sessionID,
-      new Set([...pendingIDs, ...[...previousPendingIDs].filter((messageID) => !cancelledIDs.has(messageID))]),
-    )
-    sessionPromptOutbox.reconcile(sessionID, result.snapshot.messages)
-    sessionInteractionTrace("snapshot.loaded", {
-      durationMs: performance.now() - snapshotStarted,
-      sessionID,
-      mode,
-      authoritative,
-      messages: result.snapshot.messages.length,
-      pendingInputs: result.pending.length,
-    })
+    ).finally(() => snapshotAborts.delete(abort))
     const outcome = sessionSnapshotOutcome({
       sessionMatches: isRequestedSession(sessionID),
       owned: captured.current(),
@@ -552,7 +553,49 @@ export function createSessionV2TimelineController(input: {
       throw sessionTranscriptUnavailableError(sessionID)
     }
     restaked.delete(sessionID)
-    if (mode === "full" && !result.snapshot.stable) {
+    statuses.forEach((status, messageID) => {
+      sessionPromptOutbox.applyStatus(messageID, status, scope)
+      admission.settle(
+        scope,
+        sessionID,
+        messageID,
+        status === "admitted" ? "pending" : status === "promoted" ? "projected" : "cancelled",
+      )
+    })
+    projectedIDs.forEach((messageID) => admission.settle(scope, sessionID, messageID, "projected"))
+    pendingIDs.forEach((messageID) => admission.settle(scope, sessionID, messageID, "pending"))
+    if (cancelledIDs.size > 0) {
+      batch(() => {
+        sync().set(
+          "message",
+          sessionID,
+          reconcile(
+            (sync().data.message[sessionID] ?? []).filter((message) => !cancelledIDs.has(message.id)),
+            { key: "id" },
+          ),
+        )
+        cancelledIDs.forEach((messageID) => {
+          sync().set("part", messageID, reconcile([], { key: "id" }))
+          sessionPromptStartup.clear(messageID)
+          sessionPromptPending.clear(messageID)
+          owned.get(sessionID)?.delete(messageID)
+        })
+      })
+    }
+    pendingProjectionIDs.set(
+      sessionID,
+      new Set([...pendingIDs, ...[...previousPendingIDs].filter((messageID) => !cancelledIDs.has(messageID))]),
+    )
+    sessionPromptOutbox.reconcile(sessionID, result.snapshot.messages, scope)
+    sessionInteractionTrace("snapshot.loaded", {
+      durationMs: performance.now() - snapshotStarted,
+      sessionID,
+      mode,
+      authoritative,
+      messages: result.snapshot.messages.length,
+      pendingInputs: result.pending.length,
+    })
+    if (!result.snapshot.stable) {
       if (authoritative) {
         const attempts = authoritativeRetries.get(sessionID) ?? 0
         if (attempts < SESSION_V2_AUTHORITATIVE_RETRY_LIMIT) {
@@ -569,10 +612,9 @@ export function createSessionV2TimelineController(input: {
         fullProjectionVersions.set(sessionID, (fullProjectionVersions.get(sessionID) ?? 0) + 1)
         return
       }
-      // Keep the last complete visible history and let an incremental context read catch up. The
-      // queue folds an authoritative request, if one arrived meanwhile, back into the next pass.
-      void snapshots.request(sessionID, "context").catch(() => undefined)
-      return
+      // Retain the visible transcript when a transient read cannot reach its old edge. A later
+      // refresh can catch up; only an explicit revert may remove previously loaded conversation.
+      throw sessionTranscriptUnavailableError(sessionID)
     }
     authoritativeRetries.delete(sessionID)
     project(sessionID, result.snapshot.messages, result.pending, through, mode === "full" && authoritative)
@@ -728,6 +770,60 @@ export function createSessionV2TimelineController(input: {
 
   createEffect(() => {
     const sessionID = input.sessionID()
+    const current = sdk()
+    const currentSync = sync()
+    const captured = owner.capture()
+    if (!sessionID) return
+    let reportedError: string | undefined
+    const watcher = admission.watch({
+      scope: current.scope,
+      sessionID,
+      client: current.client,
+      online: () => navigator.onLine,
+      onCancelled: (messageID) => {
+        if (!captured.current() || !isRequestedSession(sessionID)) return
+        currentSync.session.optimistic.remove({ directory: current.directory, sessionID, messageID })
+        currentSync.set("message", sessionID, (messages) =>
+          (messages ?? []).filter((message) => message.id !== messageID),
+        )
+        currentSync.set("part", messageID, reconcile([], { key: "id" }))
+        sessionPromptStartup.clear(messageID)
+        sessionPromptPending.clear(messageID)
+        pendingProjectionIDs.get(sessionID)?.delete(messageID)
+        owned.get(sessionID)?.delete(messageID)
+      },
+      onChange: () => {
+        if (!captured.current() || !isRequestedSession(sessionID)) return
+        const error = admission.error()
+        if (error && error !== reportedError)
+          showToast({ title: language.t("session.message.delivery.saveFailed"), description: error })
+        reportedError = error
+        const outbox = sessionPromptOutbox.presentation(sessionID, current.scope)
+        outbox.messages.forEach((message) => {
+          if ((currentSync.data.message[sessionID] ?? []).some((current) => current.id === message.id)) return
+          currentSync.session.optimistic.add({
+            directory: current.directory,
+            sessionID,
+            message,
+            parts: outbox.parts.find((entry) => entry.id === message.id)?.parts ?? [],
+          })
+        })
+      },
+    })
+    const online = () => watcher.refresh()
+    const offline = () => watcher.pause()
+    window.addEventListener("online", online)
+    window.addEventListener("offline", offline)
+    onCleanup(() => {
+      watcher.dispose()
+      window.removeEventListener("online", online)
+      window.removeEventListener("offline", offline)
+    })
+  })
+
+  createEffect(() => {
+    const sessionID = input.sessionID()
+    const scope = sdk().scope
     const client = sdk().client
     if (!sessionID) return
     const activeSessionID = sessionID
@@ -787,7 +883,15 @@ export function createSessionV2TimelineController(input: {
           // in a revert must still mark its message as awaiting promotion, and the status
           // line must see every lifecycle event.
           const promptPending = sessionEventPromptPending(event)
-          if (promptPending) sessionPromptPending.apply(promptPending)
+          if (promptPending) {
+            sessionPromptPending.apply(promptPending)
+            admission.settle(
+              scope,
+              activeSessionID,
+              promptPending.messageID,
+              promptPending.type === "set" ? "pending" : "projected",
+            )
+          }
           sessionTurnActivity.reduce(activeSessionID, event)
           // Ahead of the busy transition, because a retry is a *more* specific answer than "busy"
           // and must not be flattened into it. A rate-limited turn writes nothing to the
@@ -818,7 +922,7 @@ export function createSessionV2TimelineController(input: {
             continue
           }
           if (event.type === "session.next.compaction.ended") {
-            void requestSnapshot(activeSessionID, "full", { authoritative: true }).catch(() => undefined)
+            void requestSnapshot(activeSessionID, "full").catch(() => undefined)
             continue
           }
           if (event.type === "session.next.tool.success" || event.type === "session.next.tool.failed") {
@@ -842,9 +946,9 @@ export function createSessionV2TimelineController(input: {
         if (stopped || !captured.current()) return
         cursor = response.data!.latest
         retry = 250
-        // Reconcile state through the captured cursor before subscribing after it. A promotion
-        // between the cold-open snapshot and this cursor read would otherwise be skipped by both.
-        await requestSnapshot(activeSessionID, "context")
+        // Reconcile state through the captured cursor before subscribing after it. Promotions
+        // and reverts committed while this tab was closed are skipped by the new subscription.
+        await requestSnapshot(activeSessionID, "full", { authoritative: true })
         await connect()
       } catch {
         schedule(() => void prime())
@@ -1024,104 +1128,6 @@ export function sessionEventStatusTransition(
  * visible in the transcript yet not being acted on, which is worth saying out loud under
  * the message row. This maps one durable event to the pending-state change it implies.
  */
-export type PromptPendingDelivery = "steer" | "queue"
-
-export type SessionPromptPendingChange =
-  | { readonly type: "set"; readonly messageID: string; readonly delivery: PromptPendingDelivery }
-  | { readonly type: "clear"; readonly messageID: string }
-
-export function sessionEventPromptPending(event: SessionDurableEvent): SessionPromptPendingChange | undefined {
-  if (event.type === "session.next.prompt.admitted")
-    return { type: "set", messageID: event.data.messageID, delivery: event.data.delivery }
-  if (event.type === "session.next.prompted") return { type: "clear", messageID: event.data.messageID }
-  return undefined
-}
-
-export function createSessionPromptPendingStore() {
-  const [pending, setPending] = createStore<
-    Record<string, { delivery: PromptPendingDelivery; label: boolean } | undefined>
-  >({})
-  return {
-    delivery: (messageID: string) => {
-      const value = pending[messageID]
-      return value?.label ? value.delivery : undefined
-    },
-    ids: () => Object.keys(pending).filter((messageID) => pending[messageID] !== undefined),
-    // The optimistic path: a message rendered before its admitted event arrives is marked
-    // here by the sender, and the admitted event simply re-confirms the same value.
-    mark: (messageID: string, delivery: PromptPendingDelivery, options?: { label?: boolean }) =>
-      setPending(messageID, { delivery, label: options?.label ?? true }),
-    clear: (messageID: string) => setPending(messageID, undefined),
-    has: (messageID: string) => pending[messageID] !== undefined,
-    apply: (change: SessionPromptPendingChange) =>
-      setPending(change.messageID, change.type === "set" ? { delivery: change.delivery, label: true } : undefined),
-  }
-}
-
-export function createSessionPromptOutboxStore() {
-  const [entries, setEntries] = createStore<
-    Record<string, { sessionID: string; message: Message; parts: Part[] } | undefined>
-  >({})
-  return {
-    put: (entry: { sessionID: string; message: Message; parts: Part[] }) => setEntries(entry.message.id, entry),
-    clear: (messageID: string) => setEntries(messageID, undefined),
-    presentation: (sessionID: string) => {
-      const current = Object.values(entries).filter(
-        (entry): entry is { sessionID: string; message: Message; parts: Part[] } =>
-          entry !== undefined && entry.sessionID === sessionID,
-      )
-      return {
-        messages: current.map((entry) => entry.message),
-        parts: current.map((entry) => ({ id: entry.message.id, parts: entry.parts })),
-      }
-    },
-    ids: (sessionID: string) =>
-      Object.values(entries)
-        .filter((entry) => entry?.sessionID === sessionID)
-        .map((entry) => entry!.message.id),
-    applyStatus: (messageID: string, status: "admitted" | "promoted" | "cancelled") => {
-      if (status === "cancelled") setEntries(messageID, undefined)
-    },
-    reconcile: (sessionID: string, messages: readonly SessionMessage[]) => {
-      const projected = new Set(messages.filter((message) => message.type === "user").map((message) => message.id))
-      Object.values(entries).forEach((entry) => {
-        if (!entry || entry.sessionID !== sessionID || !projected.has(entry.message.id)) return
-        setEntries(entry.message.id, undefined)
-      })
-    },
-  }
-}
-
-/**
- * Module-scoped for the same reason as `sessionV2DeltaGate`: the reducer lives in the
- * per-session controller while the readers (timeline rows, the composer's optimistic send
- * path) mount in unrelated component trees. Message IDs are globally unique, so a flat map
- * needs no session scoping, and entries are removed on promotion or send failure.
- */
-export const sessionPromptPending = createSessionPromptPendingStore()
-export const sessionPromptOutbox = createSessionPromptOutboxStore()
-
-export function createSessionPromptStartupStore() {
-  const [entries, setEntries] = createStore<Record<string, string | undefined>>({})
-  return {
-    mark: (sessionID: string, messageID: string) => setEntries(messageID, sessionID),
-    clear: (messageID: string) => setEntries(messageID, undefined),
-    clearSession: (sessionID: string) => {
-      Object.entries(entries).forEach(([messageID, owner]) => {
-        if (owner === sessionID) setEntries(messageID, undefined)
-      })
-    },
-    clearResponded: (messages: ReadonlyArray<Message>) => {
-      messages.forEach((message) => {
-        if (message.role === "assistant") setEntries(message.parentID, undefined)
-      })
-    },
-    has: (messageID: string) => entries[messageID] !== undefined,
-  }
-}
-
-export const sessionPromptStartup = createSessionPromptStartupStore()
-
 /**
  * What the live turn is doing right now, folded from the same durable stream the
  * controller already drains. This is the whole input to the transcript's status line —

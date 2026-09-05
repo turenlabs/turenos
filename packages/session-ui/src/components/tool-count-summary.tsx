@@ -15,7 +15,8 @@ export function AnimatedCountList(props: { items: CountItem[]; fallback?: string
 
   return (
     <span data-component="tool-count-summary" class={props.class}>
-      <span data-slot="tool-count-summary-empty" data-active={showEmpty() ? "true" : "false"}>
+      <span class="sr-only">{toolCountSummary(props.items, fallback())}</span>
+      <span aria-hidden="true" data-slot="tool-count-summary-empty" data-active={showEmpty() ? "true" : "false"}>
         <span data-slot="tool-count-summary-empty-inner">{fallback()}</span>
       </span>
 
@@ -31,10 +32,14 @@ export function AnimatedCountList(props: { items: CountItem[]; fallback?: string
 
           return (
             <>
-              <span data-slot="tool-count-summary-prefix" data-active={active() && hasPrev() ? "true" : "false"}>
+              <span
+                aria-hidden="true"
+                data-slot="tool-count-summary-prefix"
+                data-active={active() && hasPrev() ? "true" : "false"}
+              >
                 ,
               </span>
-              <span data-slot="tool-count-summary-item" data-active={active() ? "true" : "false"}>
+              <span aria-hidden="true" data-slot="tool-count-summary-item" data-active={active() ? "true" : "false"}>
                 <span data-slot="tool-count-summary-item-inner">
                   <AnimatedCountLabel
                     one={item().one}
@@ -48,5 +53,17 @@ export function AnimatedCountList(props: { items: CountItem[]; fallback?: string
         }}
       </Index>
     </span>
+  )
+}
+
+export function toolCountSummary(items: CountItem[], fallback = "") {
+  return (
+    items
+      .filter((item) => item.count > 0)
+      .map((item) => {
+        const count = Math.round(item.count)
+        return (count === 1 ? item.one : item.other).replace(/{{\s*count\s*}}/g, String(count))
+      })
+      .join(", ") || fallback
   )
 }

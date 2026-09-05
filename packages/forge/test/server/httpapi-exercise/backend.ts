@@ -1,6 +1,7 @@
 import { ConfigProvider, Effect, Layer } from "effect"
 import { HttpRouter } from "effect/unstable/http"
 import { parse } from "./assertions"
+import { initializeAuthApp, withAuthProbeDeadline } from "./auth-readiness"
 import { exerciseAuthDirectory } from "./environment"
 import { runtime, type Runtime } from "./runtime"
 import type { ActiveScenario, BackendApp, CallResult, CaptureMode, SeededContext } from "./types"
@@ -18,26 +19,31 @@ export function call(scenario: ActiveScenario, ctx: SeededContext<unknown>, opti
   )
 }
 
-export function callAuthProbe(scenario: ActiveScenario, credentials: "missing" | "valid" = "missing") {
-  return Effect.promise(async () => {
-    const controller = new AbortController()
-    return Promise.race([
-      Promise.resolve(
-        app(await runtime(), { auth: { password: "secret" } }).request(
-          toAuthProbeRequest(scenario, credentials, controller.signal),
-        ),
-      ).then((response) => capture(response, scenario.capture)),
-      Bun.sleep(1_000).then(() => {
-        controller.abort("auth probe timed out")
-        return {
-          status: 0,
-          contentType: "",
-          text: "auth probe timed out",
-          body: undefined,
-          timedOut: true,
-        }
-      }),
-    ])
+export function prepareAuthApp() {
+  return Effect.promise(() => runtime()).pipe(
+    Effect.flatMap((modules) =>
+      initializeAuthApp(app(modules, { auth: { password: "secret" } }), exerciseAuthDirectory),
+    ),
+  )
+}
+
+export function callAuthProbe(scenario: ActiveScenario, credentials: "missing" | "valid" = "missing", timeout = 1_000) {
+  return Effect.promise(async (signal) => {
+    const backend = app(await runtime(), { auth: { password: "secret" } })
+    return (
+      (await withAuthProbeDeadline(
+        signal,
+        async (signal) =>
+          capture(await backend.request(toAuthProbeRequest(scenario, credentials, signal)), scenario.capture),
+        timeout,
+      )) ?? {
+        status: 0,
+        contentType: "",
+        text: "auth probe timed out",
+        body: undefined,
+        timedOut: true,
+      }
+    )
   })
 }
 

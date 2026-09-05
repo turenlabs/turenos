@@ -10,7 +10,14 @@ import { usePlatform } from "./platform"
 import { uuid } from "@/utils/uuid"
 import { SessionTabsRemovedDetail } from "@/components/titlebar-session-events"
 import { createTabMemory } from "./tab-memory"
-import { nextTabAfterClose, pushClosedTabs, removeClosedTabs, takeClosedTab, type ClosedTab } from "./closed-tabs"
+import {
+  nextTabAfterClose,
+  pushClosedTabs,
+  removeClosedTabs,
+  takeClosedTab,
+  unretainedDraftIDs,
+  type ClosedTab,
+} from "./closed-tabs"
 import { createDraftPromptSession, type PromptModel } from "./prompt-state"
 import { startupTrace } from "@/utils/startup-trace"
 import { currentTabIndexForClose, currentTabIndexForSessionRemoval, isServerRoute } from "./tab-removal"
@@ -120,7 +127,12 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
     }
 
     const updateClosed = (update: (stack: ClosedTab[]) => ClosedTab[]) => {
-      const apply = () => setClosed((stack) => update(stack))
+      const apply = () => {
+        const previous = [...closed]
+        const next = update(previous)
+        setClosed(() => next)
+        removeUnretainedDrafts(previous.map((entry) => entry.tab))
+      }
       if (closedReady()) {
         apply()
         return
@@ -142,6 +154,12 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
 
     const removeDraftPersisted = (draftID: string) => {
       for (const key of draftPersistedKeys()) removePersisted(Persist.draft(draftID, key), platform)
+    }
+
+    const removeUnretainedDrafts = (candidates: Tab[]) => {
+      for (const draftID of unretainedDraftIDs(candidates, [...store, ...closed.map((entry) => entry.tab)])) {
+        removeDraftPersisted(draftID)
+      }
     }
 
     const removeInfo = (key: string) => {
@@ -177,10 +195,10 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
     })
 
     createEffect(() => {
-      if (!closedReady()) return
+      if (!closedReady() || !ready()) return
       const servers = new Set(server.list.map(ServerConnection.key))
       const next = closed.filter((entry) => servers.has(entry.tab.server))
-      if (next.length !== closed.length) setClosed(() => next)
+      if (next.length !== closed.length) updateClosed(() => next)
     })
 
     createEffect(() => {
@@ -226,6 +244,10 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
     }
 
     const removeTabs = (targets: Tab[], recordClosed = false) => {
+      if (recordClosed && !closedReady()) {
+        void closedReady.promise?.then(() => removeTabs(targets, true))
+        return
+      }
       const keys = new Set(targets.map(tabKey))
       const removed = store.flatMap((tab, index) => (keys.has(tabKey(tab)) ? [{ tab, index }] : []))
       if (!removed.length) return
@@ -249,9 +271,9 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
             store.slice(currentIndex + 1).find((tab) => !keys.has(tabKey(tab))) ??
             null)
         : undefined
-      if (recordClosed) {
-        updateClosed((stack) => pushClosedTabs(stack, removed))
-      }
+      // Record recovery before removing open tabs. A close during hydration
+      // waits above so a relaunch cannot strand an unsaved draft outside both.
+      if (recordClosed) updateClosed((stack) => pushClosedTabs(stack, removed))
       batch(() => {
         updateGroups((groups) => removeTabsFromTabGroups(groups, targets))
         setStore((tabs) => tabs.filter((tab) => !keys.has(tabKey(tab))))
@@ -265,8 +287,10 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
         const key = tabKey(entry.tab)
         memory.remove(key)
         removeInfo(key)
-        if (entry.tab.type === "draft") removeDraftPersisted(entry.tab.draftID)
+        if (entry.tab.type === "draft" && !recordClosed) removeDraftPersisted(entry.tab.draftID)
       }
+      // A batch can close more tabs than the recovery limit retains.
+      if (recordClosed) removeUnretainedDrafts(removed.map((entry) => entry.tab))
     }
 
     const removeTab = (index: number) => {
@@ -314,7 +338,10 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
       async newDraft(draft: Omit<DraftTab, "type" | "draftID">, prompt?: string, model?: PromptModel) {
         const draftID = uuid()
         const tab = { type: "draft" as const, draftID, ...draft }
-        memory.ensure(tabKey(tab), "prompt", () => createDraftPromptSession(draftID, { prompt, model }))
+        const state = memory.ensure(tabKey(tab), "prompt", () => createDraftPromptSession(draftID, { prompt, model }))
+        // This identity is new. Persist supplied defaults before the user can
+        // close it; makePersisted otherwise only writes after the first edit.
+        if (prompt !== undefined || model !== undefined) state.set(state.current(), state.cursor())
         batch(() => {
           setStore(
             produce((tabs) => {
@@ -347,6 +374,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
         batch(() => {
           if (current) updateGroups((groups) => replaceTabInTabGroups(groups, current, next))
           setStore((tabs) => promoteDraftTab(tabs, draftID, next))
+          updateClosed((stack) => stack.filter((entry) => entry.tab.type !== "draft" || entry.tab.draftID !== draftID))
           if (recentKey() === `draft:${draftID}`) setRecentKey(tabKey(next))
           if (active) navigateTab(next)
         })
@@ -419,15 +447,17 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
         removeTabs([tab], true)
       },
       reopenClosedTab() {
-        if (!closedReady()) {
-          void closedReady.promise?.then(() => actions.reopenClosedTab())
+        if (!closedReady() || !ready()) {
+          void Promise.all([closedReady.promise, ready.promise]).then(() => actions.reopenClosedTab())
           return
         }
         const result = takeClosedTab(closed, store)
         if (result.stack.length === closed.length) return
-        setClosed(() => result.stack)
         const entry = result.entry
-        if (!entry) return
+        if (!entry) {
+          updateClosed(() => result.stack)
+          return
+        }
         const index = Math.min(entry.index, store.length)
         batch(() => {
           setStore(
@@ -436,6 +466,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
               tabs.splice(index, 0, entry.tab)
             }),
           )
+          updateClosed(() => result.stack)
           navigateTab(entry.tab)
         })
       },

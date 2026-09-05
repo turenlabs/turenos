@@ -146,7 +146,6 @@ export function createSessionComposerRegionController(input: {
     setDockRef: input.setDockRef,
     parentID,
     child: () => !!parentID(),
-    showComposer: () => !input.state.blocked() || !!parentID(),
     handoffPrompt: () => getSessionHandoff(input.sessionKey())?.prompt,
     promptReady: () => sessionPromptReady(input.prompt.ready),
     dock: () => (store.ready && input.state.dock()) || value() > 0.001,

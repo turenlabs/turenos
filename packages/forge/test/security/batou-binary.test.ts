@@ -15,9 +15,6 @@ import {
   resetBatouDownloadState,
 } from "@/security/batou-binary"
 
-/** Flush microtasks + the mocked fetch resolution so the single-flight run settles. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 5))
-
 /** PATH empty so which() never resolves a batou that happens to be installed on the dev box. */
 const NO_PATH: NodeJS.ProcessEnv = { PATH: "" }
 
@@ -151,7 +148,11 @@ test("batouStatus reports installed with the pinned version for a cached binary"
 test("batouStatus walks downloading → failed with a sanitized reason, then backs off", async () => {
   let release: (response: Response) => void = () => {}
   const gate = new Promise<Response>((resolve) => (release = resolve))
-  const fetchImpl = mock(() => gate)
+  const entered = Promise.withResolvers<void>()
+  const fetchImpl = mock(() => {
+    entered.resolve()
+    return gate
+  })
   const opts = {
     env: NO_PATH,
     platform: "linux" as const,
@@ -161,14 +162,16 @@ test("batouStatus walks downloading → failed with a sanitized reason, then bac
   }
 
   const pending = ensureBatouBinary(opts)
-  await settle() // let ensure reach the awaited fetch so `inflight` is set.
-  expect(fetchImpl).toHaveBeenCalledTimes(1)
-  // Mid-flight the row shows "downloading" (no detail — nothing to say yet).
-  expect(await batouStatus(NO_PATH)).toEqual({ status: "downloading" })
-
-  release(jsonResponse(new TextEncoder().encode("not the real batou binary")))
+  try {
+    await entered.promise // Filesystem lookup can take longer than an event-loop tick.
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    // Mid-flight the row shows "downloading" (no detail — nothing to say yet).
+    expect(await batouStatus(NO_PATH)).toEqual({ status: "downloading" })
+  } finally {
+    release(jsonResponse(new TextEncoder().encode("not the real batou binary")))
+    await pending
+  }
   expect(await pending).toBeUndefined()
-  await settle() // let the single-flight `finally` clear `inflight`.
 
   const failed = await batouStatus(NO_PATH)
   expect(failed.status).toBe("failed")
@@ -192,7 +195,6 @@ test("batouStatus surfaces a sanitized HTTP reason on a failed fetch", async () 
     fetchImpl: fetchImpl as unknown as typeof fetch,
     logger: () => {},
   })
-  await settle()
   const status = await batouStatus(NO_PATH)
   expect(status.status).toBe("failed")
   expect(status.detail).toBe("download failed (HTTP 503)")
@@ -203,7 +205,11 @@ test("batouStatus surfaces a sanitized HTTP reason on a failed fetch", async () 
 test("concurrent ensure calls share one status and one fetch", async () => {
   let release: (response: Response) => void = () => {}
   const gate = new Promise<Response>((resolve) => (release = resolve))
-  const fetchImpl = mock(() => gate)
+  const entered = Promise.withResolvers<void>()
+  const fetchImpl = mock(() => {
+    entered.resolve()
+    return gate
+  })
   const opts = {
     env: NO_PATH,
     platform: "linux" as const,
@@ -214,11 +220,14 @@ test("concurrent ensure calls share one status and one fetch", async () => {
 
   const a = ensureBatouBinary(opts)
   const b = ensureBatouBinary(opts)
-  await settle()
-  expect(fetchImpl).toHaveBeenCalledTimes(1)
-  expect(await batouStatus(NO_PATH)).toEqual({ status: "downloading" })
-
-  release(jsonResponse(new TextEncoder().encode("mismatch")))
+  try {
+    await entered.promise
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(await batouStatus(NO_PATH)).toEqual({ status: "downloading" })
+  } finally {
+    release(jsonResponse(new TextEncoder().encode("mismatch")))
+    await Promise.all([a, b])
+  }
   expect(await Promise.all([a, b])).toEqual([undefined, undefined])
 })
 
@@ -234,7 +243,6 @@ test("beginBatouDownload clears the failure backoff so an explicit re-enable ret
 
   // First attempt fails and arms the backoff.
   await ensureBatouBinary(opts)
-  await settle()
   expect((await batouStatus(NO_PATH)).status).toBe("failed")
   expect(fetchImpl).toHaveBeenCalledTimes(1)
 
@@ -246,6 +254,6 @@ test("beginBatouDownload clears the failure backoff so an explicit re-enable ret
   // dispatched synchronously, so the count advances before the run can settle.
   beginBatouDownload(opts)
   expect(fetchImpl).toHaveBeenCalledTimes(2)
-  await settle()
+  await ensureBatouBinary(opts)
   expect((await batouStatus(NO_PATH)).status).toBe("failed")
 })

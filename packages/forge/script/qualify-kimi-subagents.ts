@@ -102,6 +102,7 @@ try {
     model: { providerID, id: modelID },
     location: { directory: workspace },
   })
+  if (!created.response) throw new Error(`Session create transport failed: ${safe(created.error)}`)
   if (created.response.status !== 200)
     throw new Error(`Session create failed with HTTP ${created.response.status}: ${safe(created.error)}`)
   const sessionID = String(record(record(created.data).data).id)
@@ -126,6 +127,7 @@ try {
       ].join(" "),
     },
   })
+  if (!prompted.response) throw new Error(`Session prompt transport failed: ${safe(prompted.error)}`)
   if (prompted.response.status !== 200)
     throw new Error(`Session prompt failed with HTTP ${prompted.response.status}: ${safe(prompted.error)}`)
   const taskStarted = Date.now()

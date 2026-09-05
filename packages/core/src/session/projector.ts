@@ -455,11 +455,12 @@ function run(db: DatabaseService, event: SessionEvent.Event) {
 function insertMessage(db: DatabaseService, event: SessionEvent.Event, message: SessionMessage.Message) {
   if (event.durable === undefined) return Effect.die("Durable Session event is missing aggregate sequence")
   const sequence = event.durable.seq
-  const encoded = encodeMessage(message)
-  const { id, type, ...data } = encoded
   return Effect.gen(function* () {
-    const messageID = SessionMessage.ID.make(id)
+    const messageID = message.id
     const identity = yield* SessionInput.findIdentity(db, messageID)
+    const { id, type, ...data } = encodeMessage(
+      message.type === "user" ? { ...message, source: identity?.source ?? message.source } : message,
+    )
     if (message.type === "user") {
       if (
         identity?.owner !== "input" ||
@@ -671,6 +672,7 @@ const layer = Layer.effectDiscard(
           delivery: event.data.delivery,
           timeCreated: event.data.timestamp,
           promotedSeq: event.durable.seq,
+          source: event.data.source,
         })
         yield* run(db, event)
       }),

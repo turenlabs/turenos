@@ -164,6 +164,105 @@ describe("presentSessionV2Messages", () => {
     expect(result.parts.map((entry) => entry.id)).toEqual([user.id])
   })
 
+  test("keeps subagent board notifications out of the transcript while preserving assistant ownership", () => {
+    const result = present([
+      user,
+      {
+        id: "msg_board",
+        type: "user",
+        source: "subagent_board",
+        text: [
+          "A subagent posted an update to the shared team board.",
+          "<forge-team-board-update>",
+          '{"title":"Internal lead"}',
+          "</forge-team-board-update>",
+        ].join("\n"),
+        time: { created: 2 },
+      },
+      {
+        id: "msg_assistant",
+        type: "assistant",
+        agent: "build",
+        model: { providerID: "provider", id: "model" },
+        time: { created: 3, completed: 4 },
+        content: [{ id: "text_1", type: "text", text: "I incorporated the lead." }],
+      },
+    ])
+
+    expect(result.messages.map((message) => message.id)).toEqual(["msg_user", "msg_assistant"])
+    expect(result.parts.map((entry) => entry.id)).toEqual(["msg_user", "msg_assistant"])
+    expect(result.messages.at(-1)).toMatchObject({ parentID: "msg_user" })
+  })
+
+  test("does not project a pending subagent board notification", () => {
+    const result = present(
+      [user],
+      [
+        {
+          admittedSeq: 2,
+          id: "msg_board_pending",
+          source: "subagent_board",
+          sessionID: "ses_goal",
+          prompt: {
+            text: 'A subagent posted an update <forge-team-board-update> {"title":"lead"} </forge-team-board-update>',
+          },
+          delivery: "steer",
+          timeCreated: 2,
+        },
+      ],
+    )
+
+    expect(result.messages.map((message) => message.id)).toEqual(["msg_user"])
+    expect(result.parts.map((entry) => entry.id)).toEqual(["msg_user"])
+  })
+
+  test("retains literal coordination markers in historical and explicit human input", () => {
+    const result = present(
+      [
+        { ...user, text: "Explain <forge-team-board-update> in this log." },
+        {
+          ...user,
+          id: "msg_human",
+          source: "user",
+          text: "<forge-team-board-update>literal</forge-team-board-update>",
+        },
+        {
+          id: "msg_answer",
+          type: "assistant",
+          agent: "build",
+          model: { providerID: "provider", id: "model" },
+          time: { created: 3 },
+          content: [{ id: "prt_answer", type: "text", text: "It is a marker." }],
+        },
+      ],
+      [
+        {
+          id: "msg_pending_literal",
+          sessionID: "ses_goal",
+          admittedSeq: 4,
+          delivery: "steer",
+          prompt: { text: "Also explain <forge-team-board-update>." },
+          timeCreated: 4,
+        },
+      ],
+    )
+    expect(result.messages.map((message) => message.id)).toEqual([
+      "msg_user",
+      "msg_human",
+      "msg_answer",
+      "msg_pending_literal",
+    ])
+    expect(result.messages[2]).toMatchObject({ parentID: "msg_human" })
+  })
+
+  test("hides coordination by provenance even without its historical text marker", () => {
+    expect(
+      present([user, { ...user, id: "msg_board", source: "subagent_board", text: "New lead" }]).messages.map(
+        (message) => message.id,
+      ),
+    ).toEqual([user.id])
+  })
+
   test("uses the assistant route as the authoritative user-message receipt", () => {
     const result = present([
       user,
@@ -337,6 +436,37 @@ describe("presentSessionV2Messages", () => {
     expect(state(assistant()).time.compacted).toBeUndefined()
   })
 
+  test("retains a prune mark on failed tools for context inspection", () => {
+    const result = present([
+      user,
+      {
+        id: "msg_failed",
+        type: "assistant",
+        agent: "build",
+        model: { providerID: "provider", id: "model" },
+        time: { created: 2 },
+        content: [
+          {
+            id: "call_failed",
+            type: "tool",
+            name: "bash",
+            time: { created: 2, ran: 3, completed: 4, pruned: 5 },
+            state: {
+              status: "error",
+              input: { command: "bun test" },
+              error: { name: "Error", message: "failed" },
+              structured: {},
+              content: [{ type: "text", text: "failure output" }],
+            },
+          },
+        ],
+      },
+    ] as SessionMessage[])
+
+    const part = result.parts.find((item) => item.id === "msg_failed")?.parts[0]
+    expect(part?.type === "tool" ? part.metadata : undefined).toMatchObject({ prunedAt: 5 })
+  })
+
   test("presents a durable shell command as one deterministic user turn and bash tool result", () => {
     const result = present([
       {
@@ -421,7 +551,7 @@ describe("presentSessionV2Messages", () => {
     })
   })
 
-  test("clears pre-checkpoint rows and re-parents the retried turn below the compaction boundary", () => {
+  test("retains pre-checkpoint rows and re-parents the retried turn below the compaction boundary", () => {
     const result = present([
       user,
       {
@@ -459,6 +589,8 @@ describe("presentSessionV2Messages", () => {
         message.role === "assistant" ? message.parentID : undefined,
       ]),
     ).toEqual([
+      ["msg_user", "user", undefined],
+      ["msg_before", "assistant", "msg_user"],
       ["msg_compaction", "user", undefined],
       ["msg_after", "assistant", "msg_compaction"],
     ])
@@ -469,6 +601,15 @@ describe("presentSessionV2Messages", () => {
         messageID: "msg_compaction",
         type: "compaction",
         auto: true,
+      },
+      {
+        id: "msg_compaction_summary",
+        sessionID: "ses_goal",
+        messageID: "msg_compaction",
+        type: "text",
+        text: "## Objective\n- ship it",
+        synthetic: true,
+        metadata: { compactionSummary: true },
       },
     ])
 
@@ -660,7 +801,7 @@ describe("presentSessionV2Messages", () => {
     expect(result.messages.map((message) => message.id)).toEqual(["msg_history", "msg_optimistic"])
   })
 
-  test("removes compacted V2 rows while preserving legacy timeline rows", () => {
+  test("removes missing V2 rows while preserving unowned legacy timeline rows", () => {
     const legacy = {
       id: "msg_legacy",
       sessionID: "ses_goal",
@@ -686,6 +827,33 @@ describe("presentSessionV2Messages", () => {
     expect(result.messages).toEqual([legacy])
     expect(result.parts).toEqual([{ id: legacy.id, parts: [legacyPart] }])
     expect(result.removedMessageIDs).toEqual(["msg_old_v2"])
+  })
+
+  test("authoritative reconnect removes offscreen-reverted cached turns and their parts", () => {
+    const before = present([
+      user,
+      { ...user, id: "msg_reverted", text: "Removed after tab closed", time: { created: 2 } },
+      {
+        id: "msg_reverted_answer",
+        type: "assistant",
+        agent: "build",
+        model: { providerID: "provider", id: "model" },
+        time: { created: 3 },
+        content: [{ id: "prt_reverted", type: "text", text: "Old answer" }],
+      },
+    ])
+    const after = present([user])
+    const result = mergeSessionV2Presentation({
+      messages: before.messages,
+      parts: Object.fromEntries(before.parts.map((entry) => [entry.id, entry.parts])),
+      // Priming adopts the cached rows, including those owned by the previous controller.
+      previousOwnedMessageIDs: new Set(before.messages.map((message) => message.id)),
+      presentation: after,
+      removeMissing: true,
+    })
+    expect(result.messages.map((message) => message.id)).toEqual([user.id])
+    expect(result.parts.map((entry) => entry.id)).toEqual([user.id])
+    expect(result.removedMessageIDs).toEqual(["msg_reverted", "msg_reverted_answer"])
   })
 
   test("preserves authoritative API order when branded IDs are not chronological", () => {

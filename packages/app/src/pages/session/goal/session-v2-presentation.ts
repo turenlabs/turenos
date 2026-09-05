@@ -126,6 +126,9 @@ export function presentSessionV2Messages(input: {
       return
     }
     if (message.type === "user") {
+      // Board updates are admitted as user-context inputs so the model can reconcile them, but
+      // they are internal coordination traffic rather than a turn the user authored.
+      if (message.source === "subagent_board") return
       appendUser(message)
       return
     }
@@ -174,9 +177,7 @@ export function presentSessionV2Messages(input: {
       return
     }
     if (message.type === "compaction") {
-      // A checkpoint is the visible history boundary even if pagination raced its commit.
-      messages.length = 0
-      parts.length = 0
+      // Compaction changes model context, while the human transcript retains earlier turns.
       // V1 recorded compaction as a bare `role: "user"` message carrying a single
       // `compaction` part, and the shipped timeline still keys its "Session compacted"
       // divider off exactly that shape (timeline/rows.ts reads `userParts.some(p => p.type
@@ -206,6 +207,15 @@ export function presentSessionV2Messages(input: {
             messageID: message.id,
             type: "compaction",
             auto: message.reason === "auto",
+          },
+          {
+            id: `${message.id}_summary`,
+            sessionID: input.sessionID,
+            messageID: message.id,
+            type: "text",
+            text: message.summary,
+            synthetic: true,
+            metadata: { compactionSummary: true },
           },
         ],
       })
@@ -281,6 +291,7 @@ export function presentSessionV2Messages(input: {
   const projected = new Set(messages.map((message) => message.id))
   input.pendingInputs?.forEach((pending) => {
     if (projected.has(pending.id)) return
+    if (pending.source === "subagent_board") return
     projected.add(pending.id)
     appendUser(
       {
@@ -433,6 +444,7 @@ function presentTool(sessionID: string, messageID: string, tool: SessionMessageA
   const metadata = {
     ...(tool.provider?.executed ? { providerExecuted: true } : {}),
     ...(tool.provider?.metadata ?? {}),
+    ...(tool.time.pruned ? { prunedAt: tool.time.pruned } : {}),
   }
   const base = {
     id: tool.id,

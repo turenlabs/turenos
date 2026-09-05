@@ -22,6 +22,22 @@ const OPENAI_PROVIDER_ID = ProviderV2.ID.openai
 const REASONING_EFFORTS = ["none", "low", "medium", "high", "xhigh", "max"]
 const OPENAI_MODELS = [
   {
+    id: "gpt-6-astra",
+    name: "GPT-6 Astra",
+    fallback: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+    cost: [
+      { input: 10, output: 50, cache: { read: 1, write: 12.5 } },
+      {
+        tier: { type: "context" as const, size: 272_000 },
+        input: 20,
+        output: 75,
+        cache: { read: 2, write: 25 },
+      },
+    ],
+  },
+  {
     id: "daybreak-blue-latest",
     name: "Daybreak Blue",
     limit: { context: 1_050_000, input: 922_000, output: 128_000 },
@@ -192,6 +208,8 @@ export const OpenAIPlugin = define({
           }
         })
         for (const definition of OPENAI_MODELS) {
+          // Let models.dev supply Astra's metadata as soon as its direct OpenAI entry lands.
+          if (definition.fallback && evt.model.get(OPENAI_PROVIDER_ID, ModelV2.ID.make(definition.id))) continue
           evt.model.update(OPENAI_PROVIDER_ID, ModelV2.ID.make(definition.id), (model) => {
             model.name = definition.name
             model.api = {
@@ -200,7 +218,7 @@ export const OpenAIPlugin = define({
               package: "@ai-sdk/openai",
             }
             model.capabilities = { tools: true, input: ["text", "image"], output: ["text"] }
-            model.variants = REASONING_EFFORTS.map((id) => ({
+            model.variants = (definition.reasoningEfforts ?? REASONING_EFFORTS).map((id) => ({
               id,
               headers: {},
               body: { reasoningEffort: id },
@@ -212,6 +230,10 @@ export const OpenAIPlugin = define({
             model.limit = definition.limit
           })
         }
+        evt.model.update(OPENAI_PROVIDER_ID, ModelV2.ID.make("gpt-6-astra"), (model) => {
+          // Stateless turns need the encrypted reasoning to continue without discarding it.
+          model.request.body.include ??= ["reasoning.encrypted_content"]
+        })
         for (const item of evt.provider.list()) {
           if (item.provider.api.type !== "aisdk") continue
           if (item.provider.api.package !== "@ai-sdk/openai") continue

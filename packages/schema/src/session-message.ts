@@ -41,9 +41,14 @@ export const ModelSwitched = Schema.Struct({
   model: Model.Ref,
 }).annotate({ identifier: "Session.Message.ModelSwitched" })
 
+/** Durable input provenance; absent on older messages whose source is unknown. */
+export const Source = Schema.Literals(["user", "subagent_board"])
+export type Source = typeof Source.Type
+
 export interface User extends Schema.Schema.Type<typeof User> {}
 export const User = Schema.Struct({
   ...Base,
+  source: Source.pipe(optional),
   text: Prompt.fields.text,
   parts: Prompt.fields.parts,
   files: Prompt.fields.files,

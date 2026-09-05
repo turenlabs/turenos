@@ -8,7 +8,7 @@ import { SessionHistory } from "./history"
 import { MessageDecodeError } from "./error"
 import { SessionMessage } from "./message"
 import { SessionSchema } from "./schema"
-import { SessionMessageTable, SessionTable } from "./sql"
+import { SessionInputTable, SessionMessageTable, SessionTable } from "./sql"
 import { fromRow } from "./info"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
 
@@ -46,15 +46,21 @@ const layer = Layer.effect(
       }),
       message: Effect.fn("SessionStore.message")(function* (messageID) {
         const row = yield* db
-          .select()
+          .select({ message: SessionMessageTable, source: SessionInputTable.source })
           .from(SessionMessageTable)
+          .leftJoin(SessionInputTable, eq(SessionInputTable.id, SessionMessageTable.id))
           .where(eq(SessionMessageTable.id, messageID))
           .get()
           .pipe(Effect.orDie)
         return row
           ? {
-              sessionID: SessionSchema.ID.make(row.session_id),
-              message: yield* decodeMessage({ ...row.data, id: row.id, type: row.type }).pipe(Effect.orDie),
+              sessionID: SessionSchema.ID.make(row.message.session_id),
+              message: yield* decodeMessage({
+                ...row.message.data,
+                ...(row.message.type === "user" && row.source ? { source: row.source } : {}),
+                id: row.message.id,
+                type: row.message.type,
+              }).pipe(Effect.orDie),
             }
           : undefined
       }),

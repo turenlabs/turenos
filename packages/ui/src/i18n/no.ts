@@ -2,6 +2,22 @@ import { dict as en } from "./en"
 type Keys = keyof typeof en
 
 export const dict: Record<Keys, string> = {
+  "ui.tool.reflectionRead": "Les øktnotater",
+  "ui.tool.reflectionState": "Oppdater øktnotater",
+  "ui.tool.reflectionComplete": "Gjennomgå øktens fremdrift",
+  "ui.tool.boardRead": "Les teamnotater",
+  "ui.tool.boardPost": "Del teamnotater",
+  "ui.toolDetails.input": "Inndata",
+  "ui.toolDetails.output": "Utdata",
+  "ui.toolDetails.download": "Last ned hele resultatet",
+  "ui.toolDetails.previous": "Forrige",
+  "ui.toolDetails.next": "Neste",
+  "ui.toolDetails.page": "{{page}} av {{pages}}",
+  "ui.sessionTurn.status.working": "Arbeider",
+  "ui.messagePart.context.activity": "Øktaktivitet",
+  "ui.messagePart.context.operation.one": "{{count}} konteksthandling",
+  "ui.messagePart.context.operation.other": "{{count}} konteksthandlinger",
+
   "ui.sessionReview.title": "Sesjonsendringer",
   "ui.sessionReview.title.lastTurn": "Endringer i siste tur",
   "ui.sessionReview.diffStyle.unified": "Samlet",

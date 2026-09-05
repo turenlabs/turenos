@@ -13,6 +13,8 @@
  */
 import path from "path"
 import { randomBytes, randomUUID } from "node:crypto"
+import { parseArgs } from "node:util"
+import { parseOptions } from "../test/server/httpapi-exercise/routing"
 
 const packageRoot = path.dirname(import.meta.dir)
 const exercise = path.join(packageRoot, "script", "httpapi-exercise.ts")
@@ -21,7 +23,15 @@ const knownFailures = path.join(packageRoot, "test", "server", "httpapi-exercise
 const secretVaultKeyID = `httpapi-${randomUUID()}`
 const secretVaultKey = randomBytes(32).toString("base64")
 
-const modes = ["coverage", "auth", "effect"] as const
+const args = parseArgs({
+  args: Bun.argv.slice(2),
+  options: { mode: { type: "string" }, shard: { type: "string" } },
+  strict: true,
+  allowPositionals: false,
+}).values
+const options = parseOptions(Bun.argv.slice(2))
+if (args.shard && !args.mode) throw new Error("--shard requires an explicit --mode")
+const modes = args.mode ? [options.mode] : (["coverage", "auth", "effect"] as const)
 
 const failed: string[] = []
 for (const mode of modes) {
@@ -33,6 +43,8 @@ for (const mode of modes) {
       exercise,
       "--mode",
       mode,
+      "--progress",
+      ...(args.shard ? ["--shard", args.shard] : []),
       "--fail-on-missing",
       "--fail-on-skip",
       "--missing-baseline",

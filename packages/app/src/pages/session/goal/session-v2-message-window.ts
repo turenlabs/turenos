@@ -51,7 +51,11 @@ export type SessionV2MessageWindow<T> = {
  * Extending the window back to a turn boundary is what makes windowing safe.
  */
 export function startsSessionV2Turn(message: SessionMessage) {
-  return message.type === "user" || message.type === "shell" || message.type === "compaction"
+  return (
+    (message.type === "user" && message.source !== "subagent_board") ||
+    message.type === "shell" ||
+    message.type === "compaction"
+  )
 }
 
 /**
