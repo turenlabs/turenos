@@ -253,6 +253,7 @@ export function createSessionV2TimelineController(input: {
     pendingInputs: readonly SessionInputAdmitted[],
     through: number,
     authoritative: boolean,
+    pendingRevision: number,
   ) => {
     const captured = owner.capture()
     if (!captured.current() || !isRequestedSession(sessionID)) return
@@ -300,7 +301,7 @@ export function createSessionV2TimelineController(input: {
     const pendingInputIDs = sessionUnprojectedInputIDs(projectedInputIDs, pendingInputs)
     pendingInputs
       .filter((pending) => pendingInputIDs.has(pending.id))
-      .forEach((pending) => sessionPromptPending.mark(pending.id, pending.delivery))
+      .forEach((pending) => sessionPromptPending.mark(pending.id, pending.delivery, { through: pendingRevision }))
     // A successful V2 snapshot identifies the session even when a brand-new transcript is empty.
     // Mark before live deltas race the first projected assistant part into the snapshot.
     v2Sessions.observeSnapshot(sessionID)
@@ -482,6 +483,7 @@ export function createSessionV2TimelineController(input: {
     const captured = owner.capture()
     const client = sdk().client
     const through = deltaSequence
+    const pendingRevision = sessionPromptPending.revision()
     const abort = new AbortController()
     snapshotAborts.add(abort)
     const snapshotStarted = performance.now()
@@ -554,6 +556,7 @@ export function createSessionV2TimelineController(input: {
     }
     restaked.delete(sessionID)
     statuses.forEach((status, messageID) => {
+      if (status !== "admitted") sessionPromptPending.clear(messageID)
       sessionPromptOutbox.applyStatus(messageID, status, scope)
       admission.settle(
         scope,
@@ -608,7 +611,7 @@ export function createSessionV2TimelineController(input: {
         // revert before the first visible turn). Commit that answer rather than falling back to
         // an additive context merge that would resurrect rows the server removed.
         windows.delete(sessionID)
-        project(sessionID, result.snapshot.messages, result.pending, through, true)
+        project(sessionID, result.snapshot.messages, result.pending, through, true, pendingRevision)
         fullProjectionVersions.set(sessionID, (fullProjectionVersions.get(sessionID) ?? 0) + 1)
         return
       }
@@ -617,7 +620,14 @@ export function createSessionV2TimelineController(input: {
       throw sessionTranscriptUnavailableError(sessionID)
     }
     authoritativeRetries.delete(sessionID)
-    project(sessionID, result.snapshot.messages, result.pending, through, mode === "full" && authoritative)
+    project(
+      sessionID,
+      result.snapshot.messages,
+      result.pending,
+      through,
+      mode === "full" && authoritative,
+      pendingRevision,
+    )
     if (mode === "full") fullProjectionVersions.set(sessionID, (fullProjectionVersions.get(sessionID) ?? 0) + 1)
   })
   const requestSnapshot = (sessionID: string, mode: SnapshotMode, options?: SnapshotOptions) => {

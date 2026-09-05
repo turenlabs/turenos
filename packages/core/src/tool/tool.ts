@@ -229,7 +229,7 @@ const isParameterlessUnion = (input: JsonSchema.JsonSchema) => {
 }
 
 function toToolInputSchema(schema: Schema.Top): JsonSchema.JsonSchema {
-  const input = inlineRootReference(toJsonSchema(schema))
+  const input = flattenConstraints(inlineRootReference(toJsonSchema(schema)))
   if (input.type !== undefined) return input
   // Provider function arguments are always keyed objects, so make the root contract explicit for strict
   // Anthropic-compatible APIs that reject an untyped tool input schema.
@@ -239,4 +239,61 @@ function toToolInputSchema(schema: Schema.Top): JsonSchema.JsonSchema {
   // added) and Gemini cannot recognise it as an empty object at all.
   const { anyOf: _union, ...rest } = input as JsonSchema.JsonSchema & { readonly anyOf?: unknown }
   return { ...rest, type: "object", properties: {} }
+}
+
+// Keep bounds beside the type/items they constrain instead of requiring tool-schema
+// consumers to combine constraint-only allOf arms with sibling array item fields.
+function flattenConstraints(schema: JsonSchema.JsonSchema): JsonSchema.JsonSchema {
+  const result = Object.fromEntries(
+    Object.entries(schema).map(([key, value]) => {
+      if (
+        ["properties", "patternProperties", "$defs", "definitions", "dependentSchemas"].includes(key) &&
+        isRecord(value)
+      )
+        return [
+          key,
+          Object.fromEntries(
+            Object.entries(value).map(([name, item]) => [name, isRecord(item) ? flattenConstraints(item) : item]),
+          ),
+        ]
+      if (["allOf", "anyOf", "oneOf", "prefixItems"].includes(key) && Array.isArray(value))
+        return [key, value.map((item) => (isRecord(item) ? flattenConstraints(item) : item))]
+      if (
+        ["items", "additionalProperties", "contains", "not", "if", "then", "else", "propertyNames"].includes(key) &&
+        isRecord(value)
+      )
+        return [key, flattenConstraints(value)]
+      return [key, value]
+    }),
+  )
+  if (!Array.isArray(result.allOf)) return result
+  const bounds = new Set([
+    "minLength",
+    "maxLength",
+    "pattern",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "minProperties",
+    "maxProperties",
+    "description",
+  ])
+  const keys = new Set(Object.keys(result))
+  const canFlatten = result.allOf.every(
+    (item) =>
+      isRecord(item) &&
+      Object.keys(item).every((key) => {
+        if (!bounds.has(key) || keys.has(key)) return false
+        keys.add(key)
+        return true
+      }),
+  )
+  if (!canFlatten) return result
+  const { allOf, ...rest } = result
+  return Object.assign(rest, ...allOf)
 }

@@ -348,6 +348,14 @@ describe("SubagentTool", () => {
       expect(created.result.type).not.toBe("error")
       expect(retried.result).toEqual(created.result)
       expect(tasks).toHaveLength(1)
+      expect(tools.definitions.find((tool) => tool.name === SubagentTool.spawnName)?.inputSchema).toMatchObject({
+        properties: {
+          commands: {
+            anyOf: [{ type: "array", maxItems: 32, items: { type: "string", minLength: 1 } }, { type: "null" }],
+            description: expect.stringContaining("active workspace root"),
+          },
+        },
+      })
       expect(wakes).toEqual([tasks[0]!.childSessionID])
       expect(tasks[0]).toMatchObject({
         agent: "explore",

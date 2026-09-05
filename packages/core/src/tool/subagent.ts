@@ -166,7 +166,7 @@ const layer = Layer.effect(
               .pipe(Schema.check(Schema.isMaxLength(MAX_COMMANDS)), Schema.optional)
               .annotate({
                 description:
-                  "Exact complete shell command strings this child may execute. Omit to disable shell execution.",
+                  'Exact complete shell command strings, executed only from the active workspace root (workdir omitted or "."). For package checks, include a CLI directory option in the grant, e.g. bun --cwd packages/core typecheck. Omit to disable shell execution.',
               }),
           }),
           output: SpawnOutput,

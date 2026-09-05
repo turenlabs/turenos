@@ -50,4 +50,8 @@ test("release workflow signs and requires every published desktop format", () =>
   expect(workflow).toContain("gpg --batch --yes --armor --detach-sign")
   expect(workflow).toContain("xcrun notarytool submit")
   expect(workflow).toContain("Get-AuthenticodeSignature")
+  expect(workflow).toContain("packages/desktop/dist/latest*.yml")
+  expect(workflow).toContain("packages/desktop/dist/*.blockmap")
+  expect(workflow).toContain("bun packages/desktop/scripts/update-artifacts.ts release-assets")
+  expect(workflow).toContain('bun packages/desktop/scripts/update-artifacts.ts "$verify_dir" "$VERSION"')
 })

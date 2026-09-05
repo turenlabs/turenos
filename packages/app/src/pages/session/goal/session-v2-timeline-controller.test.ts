@@ -720,6 +720,29 @@ describe("sessionPromptPending", () => {
     expect(store.has("msg_hidden")).toBe(false)
   })
 
+  test("admission and snapshot confirmation preserve an idle send's suppressed label", () => {
+    const store = createSessionPromptPendingStore()
+    store.mark("msg_idle", "steer", { label: false })
+    store.apply({ type: "set", messageID: "msg_idle", delivery: "steer" })
+    expect(store.has("msg_idle")).toBe(true)
+    expect(store.delivery("msg_idle")).toBeUndefined()
+    store.mark("msg_idle", "steer", { through: store.revision() })
+    expect(store.delivery("msg_idle")).toBeUndefined()
+  })
+
+  test("a stale pending snapshot cannot resurrect a promoted prompt", () => {
+    const store = createSessionPromptPendingStore()
+    store.mark("msg_queue", "queue")
+    const through = store.revision()
+    store.apply({ type: "clear", messageID: "msg_queue" })
+    store.mark("msg_queue", "queue", { through })
+    expect(store.has("msg_queue")).toBe(false)
+    expect(store.ids()).toEqual([])
+    expect(store.delivery("msg_queue")).toBeUndefined()
+    store.mark("msg_other", "queue", { through })
+    expect(store.delivery("msg_other")).toBe("queue")
+  })
+
   test("treats an authoritative user message as stronger than a stale pending-input snapshot", () => {
     expect([
       ...sessionUnprojectedInputIDs(new Set(["msg_projected"]), [{ id: "msg_projected" }, { id: "msg_waiting" }]),

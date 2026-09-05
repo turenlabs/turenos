@@ -375,7 +375,9 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
       sessionPromptStartup.clear(messageID)
       sessionPromptPending.clear(messageID)
     }
-    if (outcome === "rejected" && optimisticRevision !== undefined)
+    // Delivery uncertainty is not evidence of an active run. Keep the exact-ID
+    // intent, but release optimistic busy when the server confirms it is idle.
+    if (outcome !== "admitted" && optimisticRevision !== undefined)
       await timedRequest((signal) => input.client.v2.session.active({ signal }), undefined, 5_000)
         .then((response) => {
           if (input.sync.session.statusRevision(input.draft.sessionID) !== optimisticRevision) return

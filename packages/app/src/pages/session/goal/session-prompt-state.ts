@@ -19,7 +19,24 @@ export function createSessionPromptPendingStore() {
   const [pending, setPending] = createStore<
     Record<string, { delivery: PromptPendingDelivery; label: boolean } | undefined>
   >({})
+  let revision = 0
+  const revisions = new Map<string, number>()
+  const mark = (
+    messageID: string,
+    delivery: PromptPendingDelivery,
+    options?: { label?: boolean; through?: number },
+  ) => {
+    // A snapshot started before promotion must not restore its pending label.
+    if (options?.through !== undefined && (revisions.get(messageID) ?? 0) > options.through) return
+    revisions.set(messageID, ++revision)
+    setPending(messageID, { delivery, label: options?.label ?? pending[messageID]?.label ?? true })
+  }
+  const clear = (messageID: string) => {
+    revisions.set(messageID, ++revision)
+    setPending(messageID, undefined)
+  }
   return {
+    revision: () => revision,
     delivery: (messageID: string) => {
       const value = pending[messageID]
       return value?.label ? value.delivery : undefined
@@ -27,12 +44,11 @@ export function createSessionPromptPendingStore() {
     ids: () => Object.keys(pending).filter((messageID) => pending[messageID] !== undefined),
     // The optimistic path: a message rendered before its admitted event arrives is marked
     // here by the sender, and the admitted event simply re-confirms the same value.
-    mark: (messageID: string, delivery: PromptPendingDelivery, options?: { label?: boolean }) =>
-      setPending(messageID, { delivery, label: options?.label ?? true }),
-    clear: (messageID: string) => setPending(messageID, undefined),
+    mark,
+    clear,
     has: (messageID: string) => pending[messageID] !== undefined,
     apply: (change: SessionPromptPendingChange) =>
-      setPending(change.messageID, change.type === "set" ? { delivery: change.delivery, label: true } : undefined),
+      change.type === "set" ? mark(change.messageID, change.delivery) : clear(change.messageID),
   }
 }
 

@@ -309,7 +309,14 @@ const artifactArch = process.env.RUST_TARGET?.startsWith("x86_64")
 const getBase = (appId: string): Configuration => ({
   artifactName: `turenos-desktop-\${os}-${artifactArch}.\${ext}`,
   afterPack: verifyPackage,
-  publish: [{ provider: "github", owner: "turenio", repo: "turen" }],
+  publish: [
+    {
+      provider: "github",
+      owner: "turenlabs",
+      repo: "turenos",
+      channel: `latest-${artifactArch === "${arch}" ? process.arch : artifactArch}`,
+    },
+  ],
   directories: {
     output: "dist",
     buildResources: "resources",
@@ -410,6 +417,7 @@ const getBase = (appId: string): Configuration => ({
     icon: `resources/icons/icon.ico`,
     signtoolOptions: {
       sign: signWindows,
+      publisherName: "Turen Labs, Inc",
     },
     target: ["nsis"],
   },

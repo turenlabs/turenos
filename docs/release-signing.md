@@ -81,6 +81,54 @@ Do not publish a draft until every platform job, signature verification,
 notarization submission, checksum verification, and downloaded-release
 verification has passed.
 
+## Public Desktop updates
+
+Starting with 1.0.5, production Desktop checks public GitHub Releases in
+`turenlabs/turenos` at launch and every ten minutes. Updates download in the
+background; installation requires the user's restart action. Development and
+beta builds do not auto-update. Users on 1.0.4 or earlier must manually install
+1.0.5 once to enable subsequent updates.
+
+Build and sign in `turenio/turen` as before, then copy the complete private
+release to the public repository without rebuilding or renaming assets.
+The desktop package embeds the public repository, not a GitHub token.
+
+The private release workflow includes and verifies six architecture-specific
+update manifests, plus the generated `.blockmap` files. Separate channels avoid
+parallel x64/arm64 builds overwriting one another's metadata:
+
+| Platform | x64 | arm64 |
+| --- | --- | --- |
+| macOS | `latest-x64-mac.yml` | `latest-arm64-mac.yml` |
+| Windows | `latest-x64.yml` | `latest-arm64.yml` |
+| Linux | `latest-x64-linux.yml` | `latest-arm64-linux-arm64.yml` |
+
+Copy **every release asset**, including manifests, blockmaps, checksums, and
+detached signatures. Do not copy only installers. Keep the public release a
+draft until the complete upload has been downloaded again and verified. Run
+this verifier from the private source checkout against the downloaded public
+draft, in addition to the signature/checksum checks below:
+
+```bash
+bun packages/desktop/scripts/update-artifacts.ts /path/to/downloaded-public-draft 1.0.5
+```
+
+The verifier checks all six feeds, their version, architecture, referenced
+artifacts, SHA-512 hashes, and required blockmaps. Linux feeds must include
+AppImage, deb, and rpm artifacts. Publish the verified public draft as a stable
+release with the matching `v1.0.5` tag so clients can discover it. Future releases
+must retain these feeds and artifact naming conventions.
+
+Before shipping, smoke-test signed packaged apps on supported platforms:
+install the candidate, point a test installation at a newer draft/test feed,
+download an update, explicitly restart, and verify version, retained user data,
+and sidecar shutdown. Never publish a fake newer stable version to exercise the
+production feed. Windows updates require the `Turen Labs, Inc` signer;
+macOS retains Electron's native signature checks.
+
+The 1.0.5 source baseline also includes the merged chat queue reconciliation
+fix (#84) and delegation/reflection tool-contract fixes (#85).
+
 ## Verifying downloads
 
 Import the published key once, then verify the checksums and detached

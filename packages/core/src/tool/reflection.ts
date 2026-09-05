@@ -37,7 +37,10 @@ const layer = Layer.effectDiscard(
             "Persist the current prediction, explicit hypotheses, and next action before uncertain work; update it after external results so assumptions are resolved against evidence.",
           input: Schema.Struct({
             prediction: Reflection.WorkState.fields.prediction,
-            hypotheses: Reflection.WorkState.fields.hypotheses,
+            hypotheses: Reflection.WorkState.fields.hypotheses.annotate({
+              description:
+                "Each hypothesis requires claim (string) and status (open, supported, rejected, or inconclusive); evidence is an optional string.",
+            }),
             next_action: Reflection.WorkState.fields.nextAction,
           }),
           output: Reflection.WorkState,

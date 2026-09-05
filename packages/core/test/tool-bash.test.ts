@@ -162,6 +162,9 @@ describe("BashTool", () => {
             expect(definitions.map((tool) => tool.name)).toEqual(["bash"])
             expect(definitions[0]?.inputSchema).not.toHaveProperty("properties.background")
             expect(definitions[0]?.inputSchema).not.toHaveProperty("properties.description")
+            expect(definitions[0]?.inputSchema).toMatchObject({
+              properties: { workdir: { description: expect.stringContaining("Delegated tasks must omit workdir") } },
+            })
             expect(definitions[0]?.outputSchema).not.toHaveProperty("properties.output")
             expect(definitions[0]?.outputSchema).not.toHaveProperty("properties.command")
             expect(definitions[0]?.outputSchema).not.toHaveProperty("properties.cwd")
@@ -305,15 +308,24 @@ describe("BashTool", () => {
         Effect.gen(function* () {
           reset()
           denyAction = "external_directory"
-          yield* withTool(active.path, (registry) =>
-            executeTool(registry, call({ command: "pwd", workdir: outside.path })),
-          )
+          expect(
+            yield* withTool(active.path, (registry) =>
+              executeTool(registry, call({ command: "pwd", workdir: outside.path })),
+            ),
+          ).toMatchObject({ type: "error", value: expect.stringContaining("Permission denied: external_directory") })
           expect(assertions.map((item) => item.action)).toEqual(["external_directory"])
           expect(runs).toEqual([])
 
           reset()
           denyAction = "bash"
-          yield* withTool(active.path, (registry) => executeTool(registry, call({ command: "pwd" })))
+          expect(
+            yield* withTool(active.path, (registry) => executeTool(registry, call({ command: "pwd" }))),
+          ).toMatchObject({
+            type: "error",
+            value: expect.stringContaining(
+              "Delegated commands must match an exact grant and run from the active workspace root",
+            ),
+          })
           expect(assertions.map((item) => item.action)).toEqual(["bash"])
           expect(runs).toEqual([])
         }),

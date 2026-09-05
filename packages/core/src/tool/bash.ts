@@ -42,7 +42,8 @@ export const TERMINATION_GRACE_MS = 10 * 1_000
 export const Input = Schema.Struct({
   command: Schema.String.annotate({ description: "Shell command string to execute" }),
   workdir: Schema.String.pipe(Schema.optional).annotate({
-    description: "Working directory. Defaults to the active Location; relative paths resolve from that Location.",
+    description:
+      'Working directory. Defaults to the active Location; relative paths resolve from that Location. Delegated tasks must omit workdir or use "."; package-specific directory options must be included in the exact command grant instead.',
   }),
   timeout: PositiveInt.check(Schema.isLessThanOrEqualTo(MAX_TIMEOUT_MS))
     .pipe(Schema.optional)
@@ -125,6 +126,16 @@ const layer = Layer.effectDiscard(
     const appProcess = yield* AppProcess.Service
     const config = yield* Config.Service
     const permission = yield* PermissionV2.Service
+    const assertPermission = (input: PermissionV2.AssertInput) =>
+      permission.assert(input).pipe(
+        Effect.catchTag("PermissionV2.BlockedError", () =>
+          Effect.fail(
+            new ToolFailure({
+              message: `Permission denied: ${input.action}. No command was executed.${input.action === name ? ' Delegated commands must match an exact grant and run from the active workspace root (omit workdir or use "."). Ask the parent to correct the grant or assignment; do not retry the same denied call.' : ""}`,
+            }),
+          ),
+        ),
+      )
 
     yield* tools
       .register({
@@ -178,7 +189,7 @@ const layer = Layer.effectDiscard(
                 return yield* new ToolFailure({ message: ShellToolRouting.blockedMessage(recommendation) })
               const external = target.externalDirectory
               if (external)
-                yield* permission.assert({
+                yield* assertPermission({
                   ...LocationMutation.externalDirectoryPermission(external),
                   sessionID: context.sessionID,
                   agent: context.agent,
@@ -187,7 +198,7 @@ const layer = Layer.effectDiscard(
               const externalDirectories = yield* externalCommandDirectories(fs, input.command, target.canonical)
               for (const directory of externalDirectories) {
                 const resource = path.join(directory, "*").replaceAll("\\", "/")
-                yield* permission.assert({
+                yield* assertPermission({
                   action: "external_directory",
                   resources: [resource],
                   save: [resource],
@@ -200,7 +211,7 @@ const layer = Layer.effectDiscard(
                 (directory) =>
                   `Command argument references approved external directory ${path.join(directory, "*").replaceAll("\\", "/")}.`,
               )
-              yield* permission.assert({
+              yield* assertPermission({
                 action: name,
                 resources: [input.command],
                 save: [input.command],

@@ -623,32 +623,53 @@ describe("prompt submit worktree selection", () => {
     expect(v2PromptPayloads[0].id).not.toBe(v2PromptPayloads[1].id)
   })
 
-  test.each([false, true])("reconciles rejected-send activity from the server: active=%s", async (active) => {
-    v2PromptErrors.push(Object.assign(new Error("invalid prompt"), { status: 400 }))
+  test.each([
+    ["rejected", false],
+    ["rejected", true],
+    ["unknown", false],
+    ["unknown", true],
+  ] as const)("reconciles %s send activity from the server: active=%s", async (outcome, active) => {
+    v2PromptErrors.push(
+      ...Array.from({ length: outcome === "unknown" ? 4 : 1 }, () =>
+        outcome === "unknown"
+          ? new TypeError("Failed to fetch")
+          : Object.assign(new Error("invalid prompt"), { status: 400 }),
+      ),
+    )
     const statuses: string[] = []
-    const input = followupPromptInput(`rejected-active-${active}`, [], statuses)
+    const input = followupPromptInput(`${outcome}-active-${active}`, [], statuses)
     const client = clientFor("/repo/followup")
     client.v2.session.active = async () => ({
       data: { data: Object.fromEntries<boolean>(active ? [["session-followup", true]] : []) },
     })
     input.client = client as unknown as typeof input.client
-    expect(await sendFollowupDraft(input)).toBe("rejected")
+    expect(await sendFollowupDraft(input)).toBe(outcome)
     expect(statuses).toEqual(active ? ["busy"] : ["busy", "idle"])
+    expect(input.admission.get(input.scope, input.draft.sessionID, input.messageID)?.payload.id).toBe(input.messageID)
   })
 
-  test("a rejected-send activity check cannot overwrite a newer status", async () => {
-    v2PromptErrors.push(Object.assign(new Error("invalid prompt"), { status: 400 }))
-    const statuses: string[] = []
-    const input = followupPromptInput("rejected-newer-status", [], statuses)
-    const client = clientFor("/repo/followup")
-    client.v2.session.active = async () => {
-      input.serverSync.session.set("session_status", "session-followup", { type: "busy" })
-      return { data: { data: {} } }
-    }
-    input.client = client as unknown as typeof input.client
-    expect(await sendFollowupDraft(input)).toBe("rejected")
-    expect(statuses).toEqual(["busy", "busy"])
-  })
+  test.each(["rejected", "unknown"] as const)(
+    "a %s send activity check cannot overwrite a newer status",
+    async (outcome) => {
+      v2PromptErrors.push(
+        ...Array.from({ length: outcome === "unknown" ? 4 : 1 }, () =>
+          outcome === "unknown"
+            ? new TypeError("Failed to fetch")
+            : Object.assign(new Error("invalid prompt"), { status: 400 }),
+        ),
+      )
+      const statuses: string[] = []
+      const input = followupPromptInput("rejected-newer-status", [], statuses)
+      const client = clientFor("/repo/followup")
+      client.v2.session.active = async () => {
+        input.serverSync.session.set("session_status", "session-followup", { type: "busy" })
+        return { data: { data: {} } }
+      }
+      input.client = client as unknown as typeof input.client
+      expect(await sendFollowupDraft(input)).toBe(outcome)
+      expect(statuses).toEqual(["busy", "busy"])
+    },
+  )
 
   test("bounds draft hydration and never promotes after its deadline", async () => {
     search = { draftId: "draft-1" }
@@ -1205,7 +1226,7 @@ describe("prompt submit worktree selection", () => {
     expect(new Set(v2PromptPayloads.map((payload) => payload.id))).toEqual(new Set(["msg_prompt_pending"]))
     expect(v2PendingInputReads).toEqual(["session-followup"])
     expect(v2MessageReads).toEqual([])
-    expect(statuses).toEqual(["busy"])
+    expect(statuses).toEqual(["busy", "idle"])
     expect(optimisticCalls).toEqual(["add"])
   })
 
@@ -1230,7 +1251,7 @@ describe("prompt submit worktree selection", () => {
     expect(new Set(v2PromptPayloads.map((payload) => payload.id))).toEqual(new Set(["msg_prompt_failed"]))
     expect(v2PendingInputReads).toEqual(["session-followup"])
     expect(v2MessageReads).toEqual(["msg_prompt_failed"])
-    expect(statuses).toEqual(["busy"])
+    expect(statuses).toEqual(["busy", "idle"])
     expect(optimisticCalls).toEqual(["add"])
   })
 

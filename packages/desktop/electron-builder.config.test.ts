@@ -155,6 +155,7 @@ for (const channel of channels) {
     expect(config.dmg?.sign).toBe(true)
     expect(config.win?.target).toEqual(["nsis"])
     expect(config.win?.signtoolOptions?.sign).toBeFunction()
+    expect(config.win?.signtoolOptions?.publisherName).toBe("Turen Labs, Inc")
     expect(config.linux?.target).toEqual(["AppImage", "deb", "rpm"])
     expect(config.afterPack).toBeFunction()
     expect(config.files).toContain("!resources/forge-cli*")
@@ -171,7 +172,9 @@ for (const channel of channels) {
     expect(config.files).toContain("!out/main/chunks/static-analysis/**/*")
     expect(config.files).toContain("!out/main/chunks/forensic-tools/**/*")
     expect(config.asarUnpack).toBeUndefined()
-    expect(config.publish).toEqual([{ provider: "github", owner: "turenio", repo: "turen" }])
+    expect(config.publish).toEqual([
+      { provider: "github", owner: "turenlabs", repo: "turenos", channel: `latest-${process.arch}` },
+    ])
     expect(config.extraResources).toContainEqual({
       from: "resources/",
       to: ".",
@@ -207,6 +210,20 @@ test("desktop notice resources exist at their configured sources", async () => {
   expect(await Bun.file(thirdPartyInventoryResource.from).exists()).toBe(true)
   expect(await Bun.file(noticeResource.from).text()).toContain("licenses/Thinking-Orbs-MIT.txt")
   expect(await Bun.file(thinkingOrbsLicenseResource.from).text()).toContain("Copyright (c) 2026 Jakub Antalik")
+})
+
+test.each([
+  { target: "x86_64-apple-darwin", arch: "x64" },
+  { target: "aarch64-pc-windows-msvc", arch: "arm64" },
+])("update channel follows build target $target, not build host", async ({ target, arch }) => {
+  const previous = process.env.RUST_TARGET
+  process.env.RUST_TARGET = target
+  const module = await import(`./electron-builder.config.ts?target=${target}`)
+  if (previous === undefined) delete process.env.RUST_TARGET
+  else process.env.RUST_TARGET = previous
+  expect(module.default.publish).toEqual([
+    { provider: "github", owner: "turenlabs", repo: "turenos", channel: `latest-${arch}` },
+  ])
 })
 
 test("normalizes the legacy latest channel to prod", async () => {

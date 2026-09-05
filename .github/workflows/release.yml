@@ -598,6 +598,9 @@ jobs:
             if ($signature.SignerCertificate.Subject -notmatch "Turen Labs, Inc") {
               throw "$($signed.Name) was not signed by Turen Labs"
             }
+            if ($signature.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) -ne "Turen Labs, Inc") {
+              throw "$($signed.Name) does not match the Desktop updater publisher"
+            }
             if ($signature.SignerCertificate.Issuer -notmatch "Microsoft") {
               throw "$($signed.Name) was not signed through Azure Trusted Signing"
             }
@@ -711,6 +714,8 @@ jobs:
             packages/desktop/dist/*.AppImage
             packages/desktop/dist/*.deb
             packages/desktop/dist/*.rpm
+            packages/desktop/dist/latest*.yml
+            packages/desktop/dist/*.blockmap
 
   publish:
     needs: [preflight, build-runtime, sign-runtime-macos, sign-runtime-windows, build-desktop]
@@ -767,6 +772,9 @@ jobs:
           fingerprint=$(printf '%s' "$RELEASE_GPG_FINGERPRINT" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
           gpg --batch --list-secret-keys "$fingerprint" >/dev/null
           gpg --batch --armor --export "$fingerprint" > release-assets/RELEASE_SIGNING_KEY.asc
+
+      - name: Verify Desktop update feeds
+        run: bun packages/desktop/scripts/update-artifacts.ts release-assets "${{ needs.preflight.outputs.version }}"
 
       - name: Verify staged release and generate checksums
         env:
@@ -889,6 +897,7 @@ jobs:
           gh release upload "v${VERSION}" release-assets/* --repo "$GH_REPO" --clobber
           verify_dir=$(mktemp -d)
           gh release download "v${VERSION}" --repo "$GH_REPO" --dir "$verify_dir"
+          bun packages/desktop/scripts/update-artifacts.ts "$verify_dir" "$VERSION"
           (
             cd "$verify_dir"
             sha256sum -c SHA256SUMS

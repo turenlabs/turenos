@@ -54,6 +54,38 @@ describe("ReflectionTool", () => {
         "reflection_read",
         "reflection_state",
       ])
+      const definitions = yield* toolDefinitions(registry)
+      expect(definitions.find((tool) => tool.name === "reflection_state")?.inputSchema).toMatchObject({
+        properties: {
+          hypotheses: {
+            type: "array",
+            maxItems: 24,
+            items: {
+              type: "object",
+              required: ["claim", "status"],
+              properties: {
+                claim: { type: "string", minLength: 1, maxLength: 2000 },
+                status: { enum: ["open", "supported", "rejected", "inconclusive"] },
+              },
+            },
+          },
+        },
+      })
+
+      expect(
+        yield* executeTool(
+          registry,
+          call(
+            "reflection_state",
+            {
+              prediction: "Check the contract",
+              hypotheses: [{ text: "Wrong property", status: "open" }],
+              next_action: "Read the contract",
+            },
+            "call-reflection-invalid",
+          ),
+        ),
+      ).toMatchObject({ type: "error", value: expect.stringContaining("claim") })
 
       expect(
         yield* executeTool(

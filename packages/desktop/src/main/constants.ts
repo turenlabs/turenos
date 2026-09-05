@@ -11,6 +11,5 @@ export const CHANNEL: Channel = raw === "dev" || raw === "beta" || raw === "prod
  */
 export const IS_DEV: boolean = CHANNEL === "dev"
 
-// TurenOS releases are private. Electron's GitHub updater would require shipping a repository token,
-// so updates stay manual until TurenOS has an authenticated update service or public artifact channel.
-export const UPDATER_ENABLED = false
+// Production artifacts are mirrored to public GitHub Releases; no client token is needed.
+export const UPDATER_ENABLED = CHANNEL === "prod"
