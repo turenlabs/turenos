@@ -3,7 +3,7 @@ import { createRequire } from "node:module"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-/** Self-host the pinned editor's fonts without changing its other network behavior. */
+/** Self-host the pinned editor's fonts and use sandbox-compatible downloads. */
 export function whiteboardPlugin() {
   const entry = createRequire(import.meta.url).resolve("@excalidraw/excalidraw")
   const root = path.resolve(path.dirname(entry), "../..")
@@ -11,6 +11,11 @@ export function whiteboardPlugin() {
   if (manifest.version !== "0.18.1")
     throw new Error("Review the Excalidraw font fallback transform before upgrading 0.18.1")
   const dist = path.join(root, "dist").replaceAll("\\", "/") + "/"
+  const download = fileURLToPath(new URL("./src/components/whiteboard/download.ts", import.meta.url))
+  const fileAccess = createRequire(entry).resolve("browser-fs-access")
+  const adapterID = "\0forge:whiteboard-file-access"
+  const adapter = `export { fileOpen, directoryOpen, supported } from ${JSON.stringify(fileAccess)};
+export { fileSave } from ${JSON.stringify(download)};`
   const fonts = path.join(root, "dist/prod/fonts")
   const files = new Map(
     readdirSync(fonts, { recursive: true, withFileTypes: true })
@@ -29,7 +34,7 @@ export function whiteboardPlugin() {
     enforce: "pre",
     config() {
       // Keep CommonJS interop for the editor's dependencies while applying the
-      // same font-only patch before esbuild creates the development bundle.
+      // same patches before esbuild creates the development bundle.
       return {
         resolve: { dedupe: ["react", "react-dom"] },
         optimizeDeps: {
@@ -46,6 +51,15 @@ export function whiteboardPlugin() {
               {
                 name: "forge:whiteboard-fonts",
                 setup(build) {
+                  build.onResolve({ filter: /^browser-fs-access$/ }, (args) => {
+                    if (args.importer.replaceAll("\\", "/").startsWith(dist))
+                      return { path: adapterID, namespace: "whiteboard-file-access" }
+                  })
+                  build.onLoad({ filter: /.*/, namespace: "whiteboard-file-access" }, () => ({
+                    contents: adapter,
+                    loader: "js",
+                    resolveDir: root,
+                  }))
                   build.onLoad({ filter: /[\\/]dist[\\/].*\.js$/ }, (args) => {
                     if (!args.path.replaceAll("\\", "/").startsWith(dist)) return
                     return {
@@ -63,6 +77,12 @@ export function whiteboardPlugin() {
     },
     configResolved(config) {
       state.base = new URL(config.base, "http://vite.local/").pathname
+    },
+    resolveId(source, importer) {
+      if (source === "browser-fs-access" && importer?.replaceAll("\\", "/").startsWith(dist)) return adapterID
+    },
+    load(id) {
+      if (id === adapterID) return adapter
     },
     transform(code, id) {
       const filename = id.split("?", 1)[0].replaceAll("\\", "/")

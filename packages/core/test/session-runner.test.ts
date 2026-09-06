@@ -1,6 +1,8 @@
 import { describe, expect } from "bun:test"
 import fs from "node:fs"
 import path from "node:path"
+import { tmpdir } from "node:os"
+import { pathToFileURL } from "node:url"
 import {
   LLMClient,
   LLMError,
@@ -29,6 +31,8 @@ import { QuestionV2 } from "@turenlabs/core/question"
 import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionHarness } from "@turenlabs/core/session/harness"
+import { SessionCompaction } from "@turenlabs/core/session/compaction"
+import { SessionContextRequest } from "@turenlabs/core/session/context-request"
 import { Snapshot } from "@turenlabs/core/snapshot"
 import { ContextSnapshotDecodeError } from "@turenlabs/core/session/error"
 import { SessionEvent } from "@turenlabs/core/session/event"
@@ -58,6 +62,7 @@ import { ConfigCompaction } from "@turenlabs/core/config/compaction"
 import { Tool } from "@turenlabs/core/tool/tool"
 import {
   SessionContextEpochTable,
+  SessionContextRequestTable,
   SessionGoalTable,
   SessionGoalTurnTable,
   SessionInputTable,
@@ -576,6 +581,21 @@ const messageTexts = (request: LLMRequest, role: "user" | "system") =>
 const userTexts = (request: LLMRequest) => messageTexts(request, "user")
 const systemTexts = (request: LLMRequest) => messageTexts(request, "system")
 const requestSystemTexts = (request: LLMRequest) => request.system.map((part) => part.text)
+const runtimeTexts = (request: LLMRequest, previous?: LLMRequest) =>
+  request.messages.slice(previous?.messages.length ?? 0).flatMap((message) => {
+    const forge = message.metadata?.forge
+    return message.role === "system" &&
+      typeof forge === "object" &&
+      forge !== null &&
+      "internalContext" in forge &&
+      forge.internalContext === "runtime"
+      ? message.content.flatMap((part) => (part.type === "text" ? [part.text] : []))
+      : []
+  })
+const expectStablePrefix = (previous: LLMRequest, request: LLMRequest) => {
+  expect(request.system).toEqual(previous.system)
+  expect(request.messages.slice(0, previous.messages.length)).toEqual([...previous.messages])
+}
 
 const replaySessionProjection = (id: SessionV2.ID) =>
   Effect.gen(function* () {
@@ -786,6 +806,60 @@ const statusRow = (id: SessionV2.ID) =>
   })
 
 describe("SessionRunnerLLM", () => {
+  it.effect("pins file attachment bytes across tool turns and separate resumes", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const directory = yield* Effect.acquireRelease(
+        Effect.sync(() => fs.mkdtempSync(path.join(tmpdir(), "forge-rendered-frame-"))),
+        (directory) => Effect.sync(() => fs.rmSync(directory, { recursive: true, force: true })),
+      )
+      const file = path.join(directory, "context.txt")
+      yield* Effect.promise(() => Bun.write(file, "Original attachment bytes: café"))
+      const session = yield* SessionV2.Service
+      responses = [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "attachment-echo", name: "echo", input: { text: "checked" } }),
+          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+          LLMEvent.finish({ reason: "tool-calls" }),
+        ],
+        fragmentFixture("text", "attachment-final", ["Checked attachment"]).completeEvents,
+      ]
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({
+          text: "Check the attachment",
+          files: [{ uri: pathToFileURL(file).href, mime: "text/plain", name: "context.txt" }],
+        }),
+        resume: false,
+      })
+      toolExecutionsReady = 1
+      toolExecutionsStarted = yield* Deferred.make<void>()
+      toolExecutionGate = yield* Deferred.make<void>()
+      const running = yield* session.resume(sessionID).pipe(Effect.forkChild)
+      yield* Deferred.await(toolExecutionsStarted)
+      expect(userTexts(requests[0]!).join("\n")).toContain("Original attachment bytes: café")
+      yield* Effect.promise(() => Bun.write(file, "Changed during tool execution"))
+      yield* Deferred.succeed(toolExecutionGate, undefined)
+      yield* Fiber.join(running)
+      toolExecutionGate = undefined
+      toolExecutionsStarted = undefined
+      expect(requests).toHaveLength(2)
+      expectStablePrefix(requests[0]!, requests[1]!)
+      expect(userTexts(requests[1]!).join("\n")).not.toContain("Changed during tool execution")
+
+      yield* Effect.promise(() => Bun.write(file, "Changed between separate resumes"))
+      response = fragmentFixture("text", "attachment-resumed", ["Still checked"]).completeEvents
+      responses = undefined
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Check once more" }), resume: false })
+      yield* session.resume(sessionID)
+      expect(requests).toHaveLength(3)
+      expectStablePrefix(requests[1]!, requests[2]!)
+      expect(userTexts(requests[2]!).join("\n")).toContain("Original attachment bytes: café")
+      expect(userTexts(requests[2]!).join("\n")).not.toContain("Changed between separate resumes")
+    }),
+  )
+
   it.effect("advertises and executes a globally attached application tool", () =>
     Effect.gen(function* () {
       yield* setup
@@ -895,7 +969,7 @@ describe("SessionRunnerLLM", () => {
       expect(requests[0]?.tools.map((tool) => tool.name)).toContain("harness_upper")
       const firstRequest = requests[0]
       expect(firstRequest).toBeDefined()
-      expect(requestSystemTexts(firstRequest!).join("\n")).toContain("Harness adoption protocol")
+      expect(runtimeTexts(firstRequest!).join("\n")).toContain("Harness adoption protocol")
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Use the task-local helper" },
         {
@@ -1133,8 +1207,11 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests).toHaveLength(2)
-      expect(requestSystemTexts(requests[0]!).join("\n")).toContain("<reflection_checkpoint>")
-      expect(requestSystemTexts(requests[1]!).join("\n")).not.toContain("<reflection_checkpoint>")
+      expect(runtimeTexts(requests[0]!).join("\n")).toContain("<reflection_checkpoint>")
+      // Completing reflection explicitly resets the epoch and discards its rendered frame.
+      expect(runtimeTexts(requests[1]!).join("\n")).not.toContain("<reflection_checkpoint>")
+      expect(JSON.stringify(requests[1]!.messages)).not.toContain("<reflection_checkpoint>")
+      expect(requests[1]!.system).toEqual(requests[0]!.system)
       expect(yield* reflection.resetPending(sessionID)).toBe(false)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Continue with reflection" },
@@ -1305,6 +1382,78 @@ describe("SessionRunnerLLM", () => {
       ).toHaveLength(1)
       yield* replaySessionProjection(sessionID)
       expect(yield* session.messages({ sessionID })).toHaveLength(3)
+    }),
+  )
+
+  it.effect("bounds context update tails without compacting conversation or deleting replay events", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const { db } = yield* Database.Service
+      response = fragmentFixture("text", "context-answer", ["Original answer"]).completeEvents
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Original question" }), resume: false })
+      yield* session.resume(sessionID)
+      response = []
+      for (let index = 1; index <= 34; index++) {
+        systemBaseline = `Context revision ${index}`
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: `Question ${index}` }), resume: false })
+        yield* session.resume(sessionID)
+        expect(requests.at(-1)!.messages.filter((message) => message.role === "system").length).toBeLessThanOrEqual(16)
+      }
+
+      const request = requests.at(-1)!
+      expect(request.system.map((part) => part.text)).toEqual([defaultPrompt, "Context revision 34"])
+      expect(request.messages.filter((message) => message.role === "system")).toHaveLength(0)
+      expect(request.messages.filter((message) => message.role === "user")).toHaveLength(35)
+      expect(request.messages.find((message) => message.role === "assistant")?.content).toContainEqual({
+        type: "text",
+        text: "Original answer",
+      })
+      expect(
+        yield* db.select().from(EventTable).where(eq(EventTable.type, "session.next.context.updated.1")).all(),
+      ).toHaveLength(32)
+      const messages = yield* session.messages({ sessionID })
+      expect(messages.filter((message) => message.type === "system")).toHaveLength(32)
+      expect(messages.some((message) => message.type === "compaction")).toBe(false)
+      yield* replaySessionProjection(sessionID)
+      expect(yield* session.messages({ sessionID })).toEqual(messages)
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "After replay" }), resume: false })
+      yield* session.resume(sessionID)
+      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([defaultPrompt, "Context revision 34"])
+      expect(requests.at(-1)?.messages.filter((message) => message.role === "system")).toHaveLength(0)
+    }),
+  )
+
+  it.effect("defers context tail folding while unavailable and still reconciles available sources", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      skillBaselines.set(AgentV2.ID.make("build"), "Initial skills")
+      response = []
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "First" }), resume: false })
+      yield* session.resume(sessionID)
+      for (let index = 1; index <= 16; index++) {
+        systemBaseline = `Context revision ${index}`
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: `Question ${index}` }), resume: false })
+        yield* session.resume(sessionID)
+      }
+      systemUnavailable = true
+      skillBaselines.set(AgentV2.ID.make("build"), "Changed skills")
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Unavailable" }), resume: false })
+      yield* session.resume(sessionID)
+      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([
+        defaultPrompt,
+        "Initial context\n\nInitial skills",
+      ])
+      expect(systemTexts(requests.at(-1)!)).toContain("Context revision 16")
+      expect(systemTexts(requests.at(-1)!)).toContain("Changed skills")
+
+      systemUnavailable = false
+      skillBaselines.clear()
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Recovered" }), resume: false })
+      yield* session.resume(sessionID)
+      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([defaultPrompt, "Context revision 16"])
+      expect(requests.at(-1)?.messages.filter((message) => message.role === "system")).toHaveLength(0)
     }),
   )
 
@@ -4707,7 +4856,11 @@ describe("SessionRunnerLLM", () => {
       expect(continuation).toContain("<anti_drift_reminder>")
       expect(continuation).toContain("internally name the unmet objective requirement")
       expect(continuation).toContain(objective)
-      expect(userTexts(requests[2]!).some((text) => text.includes("<anti_drift_reminder>"))).toBe(false)
+      expect(
+        userTexts({ ...requests[2]!, messages: requests[2]!.messages.slice(requests[1]!.messages.length) }).some(
+          (text) => text.includes("<anti_drift_reminder>"),
+        ),
+      ).toBe(false)
       const { db } = yield* Database.Service
       expect(
         yield* db
@@ -6025,9 +6178,84 @@ describe("SessionRunnerLLM provider retry", () => {
 
       expect(requests).toHaveLength(4)
       const recovered = requests[3]!
-      expect(requestSystemTexts(recovered).some((text) => text.includes("previous provider stream ended"))).toBeTrue()
+      expect(runtimeTexts(recovered).some((text) => text.includes("previous provider stream ended"))).toBeTrue()
       expect(userTexts(recovered).some((text) => text.includes("previous provider stream ended"))).toBeFalse()
       expect(userTexts(recovered).some((text) => text.includes("Newest steer wins"))).toBeTrue()
+    }),
+  )
+
+  it.effect("counts appended runtime guidance after reported usage without double-counting older notes", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const todos = yield* SessionTodo.Service
+      const tools = yield* ToolRegistry.Service
+      const session = yield* SessionV2.Service
+      const database = yield* Database.Service
+      yield* todos.update({
+        sessionID,
+        todos: [{ content: "Verify the change", status: "in_progress", priority: "high" }],
+      })
+      yield* tools.register({
+        todowrite: Tool.make({
+          description: "Update the current todo list",
+          input: Schema.Struct({ todos: Schema.Array(SessionTodo.Info) }),
+          output: Schema.Struct({ updated: Schema.Boolean }),
+          execute: () => Effect.succeed({ updated: true }),
+        }),
+      })
+      responses = [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "runtime-budget-work", name: "echo", input: { text: "work" } }),
+          LLMEvent.stepFinish({
+            index: 0,
+            reason: "tool-calls",
+            usage: { inputTokens: 1_000, nonCachedInputTokens: 1_000, outputTokens: 10 },
+          }),
+          LLMEvent.finish({ reason: "tool-calls" }),
+        ],
+        fragmentFixture("text", "runtime-budget-final", ["Ready for review"]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Finish the change" }), resume: false })
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      expectStablePrefix(requests[0]!, requests[1]!)
+      const row = yield* database.db
+        .select()
+        .from(SessionContextRequestTable)
+        .where(eq(SessionContextRequestTable.session_id, sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      expect(row).toBeDefined()
+      const frame = yield* Schema.decodeUnknownEffect(SessionContextRequest.Frame)(row!.data)
+      const budget = frame.entries.at(-1)!.message
+      expect(budget.type).toBe("synthetic")
+      if (budget.type !== "synthetic") return yield* Effect.die("Missing runtime budget row")
+      expect(budget.text).toContain("previous provider turn made substantive progress")
+      const overhead = yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(budget.text)
+      expect(overhead).toEqual(
+        requests[1]!.messages.slice(requests[0]!.messages.length).filter((message) => message.role === "system"),
+      )
+      expect(frame.messages).toEqual(requests[1]!.messages)
+      expect(frame.entries.filter((entry) => entry.message.type !== "synthetic")).toHaveLength(frame.sources.length)
+      expect((yield* session.messages({ sessionID })).some((message) => message.id === budget.id)).toBe(false)
+
+      const occupancy = SessionCompaction.reportedOccupancy(frame.entries, model)!
+      const withoutNotes = SessionCompaction.reportedOccupancy(
+        frame.entries.filter((entry) => entry.message.type !== "synthetic"),
+        model,
+      )!
+      expect(withoutNotes).toBeGreaterThanOrEqual(1_010)
+      expect(occupancy - withoutNotes).toBeGreaterThan(100)
+      // The first turn's note precedes reported usage and must already be absorbed by it.
+      expect(frame.entries.filter((entry) => entry.message.type === "synthetic")).toHaveLength(2)
+      expect(
+        SessionCompaction.reportedOccupancy(
+          frame.entries.filter((entry) => entry.message.type !== "synthetic" || entry.message.id === budget.id),
+          model,
+        ),
+      ).toBe(occupancy)
     }),
   )
 
@@ -6076,10 +6304,14 @@ describe("SessionRunnerLLM provider retry", () => {
 
       expect(requests).toHaveLength(4)
       expect(userTexts(requests[0]!).at(-1)).toBe("Finish the change")
-      expect(requestSystemTexts(requests[0]!).at(-1)).toContain("<todo_checkpoint>")
-      expect(requestSystemTexts(requests[1]!).at(-1)).toContain("previous provider turn made substantive progress")
-      expect(JSON.stringify(requests[2])).not.toContain("<todo_")
-      expect(JSON.stringify(requests[3])).not.toContain("<todo_")
+      expect(runtimeTexts(requests[0]!).join("\n")).toContain("<todo_checkpoint>")
+      expect(runtimeTexts(requests[1]!, requests[0]!).join("\n")).toContain(
+        "previous provider turn made substantive progress",
+      )
+      expect(runtimeTexts(requests[2]!, requests[1]!).join("\n")).not.toContain("<todo_")
+      expect(runtimeTexts(requests[3]!, requests[2]!).join("\n")).not.toContain("<todo_")
+      requests.slice(1).forEach((request, index) => expectStablePrefix(requests[index]!, request))
+      expect(requestSystemTexts(requests[0]!).join("\n")).not.toContain("<todo_")
       expect(yield* todos.get(sessionID)).toEqual([
         { content: "Verify the completed change", status: "in_progress", priority: "high" },
       ])
@@ -6164,11 +6396,12 @@ describe("SessionRunnerLLM provider retry", () => {
       expect(userTexts(requests[1]).at(-2)).toContain("Historical sibling notification")
       expect(userTexts(requests[1]).at(-1)).toContain(task)
       expect(userTexts(requests[1]).at(-1)).toContain(currentTodo)
-      expect(JSON.stringify(requests[2].messages)).toContain(
+      expectStablePrefix(requests[1], requests[2])
+      expect(JSON.stringify(requests[2].messages)).not.toContain(
         "[Duplicate result cleared — identical content appears in a later call]",
       )
       expect(userTexts(requests[2]).at(-1)).toContain(currentTodo)
-      expect(JSON.stringify(requests[2].messages).match(/Historical runtime audit 0/g)).toHaveLength(1)
+      expect(JSON.stringify(requests[2].messages).match(/Historical runtime audit 0/g)).toHaveLength(2)
       expect(yield* (yield* SessionTodo.Service).get(sessionID)).toContainEqual({
         content: currentTodo,
         status: "in_progress",
@@ -6252,11 +6485,78 @@ describe("SessionRunnerLLM provider retry", () => {
 
       expect(requests).toHaveLength(2)
       expect(userTexts(requests[0]!).at(-1)).toBe("Replace the implementation")
-      expect(requestSystemTexts(requests[0]!).at(-1)).toContain("<todo_checkpoint>")
-      expect(JSON.stringify(requests[1])).not.toContain("<todo_")
+      expect(runtimeTexts(requests[0]!).join("\n")).toContain("<todo_checkpoint>")
+      expect(runtimeTexts(requests[1]!, requests[0]!).join("\n")).not.toContain("<todo_")
+      expectStablePrefix(requests[0]!, requests[1]!)
       expect(yield* todos.get(sessionID)).toEqual(completed)
     }),
   )
+
+  for (const source of ["subagent_board", "user"] as const)
+    it.effect(`only restarts todo guidance for human promotions: ${source}`, () =>
+      Effect.gen(function* () {
+        yield* setup
+        const todos = yield* SessionTodo.Service
+        const tools = yield* ToolRegistry.Service
+        yield* tools.register({
+          todowrite: Tool.make({
+            description: "Update the current todo list",
+            input: Schema.Struct({ todos: Schema.Array(SessionTodo.Info) }),
+            output: Schema.Struct({ updated: Schema.Boolean }),
+            execute: (input, context) =>
+              todos.update({ sessionID: context.sessionID, todos: input.todos }).pipe(Effect.as({ updated: true })),
+          }),
+        })
+        responses = [
+          [
+            LLMEvent.stepStart({ index: 0 }),
+            LLMEvent.toolCall({
+              id: "notification-todo-write",
+              name: "todowrite",
+              input: { todos: [{ content: "Check the release", status: "in_progress", priority: "high" }] },
+            }),
+            LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+            LLMEvent.finish({ reason: "tool-calls" }),
+          ],
+          [
+            LLMEvent.stepStart({ index: 0 }),
+            LLMEvent.toolCall({ id: "notification-work", name: "echo", input: { value: "checked" } }),
+            LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+            LLMEvent.finish({ reason: "tool-calls" }),
+          ],
+          fragmentFixture("text", "notification-todo-final", ["Release checked"]).completeEvents,
+        ]
+        const session = yield* SessionV2.Service
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Check the release" }), resume: false })
+        const database = yield* Database.Service
+        const events = yield* EventV2.Service
+        yield* SessionInput.admit(database.db, events, {
+          id: SessionMessage.ID.make(`msg_todo_promotion_${source}`),
+          sessionID,
+          prompt: Prompt.make({ text: "The release check has an update" }),
+          delivery: "queue",
+          source,
+          kind: "prompt",
+          location: (yield* session.get(sessionID)).location,
+        })
+        yield* session.resume(sessionID)
+
+        expect(requests).toHaveLength(3)
+        expect(runtimeTexts(requests[0]!).join("\n")).toContain("<todo_checkpoint>")
+        expect(runtimeTexts(requests[1]!, requests[0]!).join("\n").includes("<todo_checkpoint>")).toBe(
+          source === "user",
+        )
+        expect(userTexts(requests[1]!).some((text) => text.includes("The release check has an update"))).toBeTrue()
+        expectStablePrefix(requests[0]!, requests[1]!)
+        expectStablePrefix(requests[1]!, requests[2]!)
+        if (source === "subagent_board")
+          expect(runtimeTexts(requests[2]!, requests[1]!).join("\n")).not.toContain("<todo_")
+        if (source === "user")
+          expect(runtimeTexts(requests[2]!, requests[1]!).join("\n")).toContain(
+            "previous provider turn made substantive progress",
+          )
+      }),
+    )
 
   it.effect("nudges list creation after work starts without a durable list", () =>
     Effect.gen(function* () {
@@ -6286,7 +6586,7 @@ describe("SessionRunnerLLM provider retry", () => {
       yield* session.resume(sessionID)
 
       expect(requests).toHaveLength(2)
-      expect(requestSystemTexts(requests[1]!).at(-1)).toContain("No durable todo list exists yet")
+      expect(runtimeTexts(requests[1]!, requests[0]!).join("\n")).toContain("No durable todo list exists yet")
       expect(userTexts(requests[1]!).at(-1)).toBe("Start the multi-step work")
       expect(yield* todos.get(sessionID)).toEqual([])
     }),
@@ -6336,8 +6636,14 @@ describe("SessionRunnerLLM provider retry", () => {
       streamStarted = undefined
 
       expect(userTexts(requests[1]!).at(-1)).toBe("Answer this instead")
-      expect(JSON.stringify(requests[1]!.messages)).not.toContain("<todo_")
-      expect(requestSystemTexts(requests[1]!).at(-1)).toContain("<todo_checkpoint>")
+      expect(userTexts(requests[1]!).join("\n")).not.toContain("<todo_")
+      expect(runtimeTexts(requests[1]!, requests[0]!).join("\n")).toContain("<todo_checkpoint>")
+      expectStablePrefix(requests[0]!, requests[1]!)
+      const suffix = requests[1]!.messages.slice(requests[0]!.messages.length)
+      const runtimeIndex = suffix.findIndex((message) => message.role === "system")
+      const userIndex = suffix.findIndex((message) => message.role === "user")
+      expect(runtimeIndex).toBeGreaterThanOrEqual(0)
+      expect(userIndex).toBeGreaterThan(runtimeIndex)
     }),
   )
 })

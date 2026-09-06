@@ -108,6 +108,8 @@ export const dict = {
   "ui.messagePart.context.search.other": "{{count}} 次搜索",
   "ui.messagePart.context.list.one": "{{count}} 个列表",
   "ui.messagePart.context.list.other": "{{count}} 个列表",
+  "ui.messagePart.context.shell.one": "{{count}} 个 Shell 命令",
+  "ui.messagePart.context.shell.other": "{{count}} 个 Shell 命令",
   "ui.messagePart.diagnostic.error": "错误",
   "ui.messagePart.title.edit": "编辑",
   "ui.messagePart.title.write": "写入",

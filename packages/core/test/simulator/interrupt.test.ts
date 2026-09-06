@@ -119,6 +119,29 @@ describe("phase-precise interruption", () => {
     }),
   )
 
+  simulate("interrupting a pending question before step finish settles idle", (ctx) =>
+    Effect.gen(function* () {
+      ctx.provider.enqueue({
+        label: "question-without-step-finish",
+        events: [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "question-no-finish", name: "question", input: questionInput }),
+        ],
+        stallAfter: { count: 2 },
+      })
+      yield* ctx.user.prompt("Ask before the provider finishes its step.")
+      yield* ctx.phase.whenQuestionPending()
+      yield* ctx.user.interrupt()
+      yield* ctx.invariants.settled(ctx.sessionID, { expect: "idle", minRequests: 1 })
+      const messages = yield* ctx.services.store.context(ctx.sessionID).pipe(Effect.orDie)
+      const errored = erroredToolParts(messages)
+      if (errored.length !== 1 || errored[0]!.name !== "question")
+        throw new Error(
+          `expected exactly the question call to error, saw ${JSON.stringify(errored.map((part) => part.name))}`,
+        )
+    }),
+  )
+
   simulate("steer while a question is pending dismisses it and delivers the steer in a successor turn", (ctx) =>
     Effect.gen(function* () {
       ctx.provider.enqueue(replyWithTool("question", questionInput), reply("Followed the fallback plan."))

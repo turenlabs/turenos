@@ -335,6 +335,14 @@ const lowerMessages = Effect.fn("OpenAIChat.lowerMessages")(function* (request: 
   }
   for (const message of request.messages) {
     if (message.role === "system") {
+      // Only core-generated runtime notes carry this trusted internal marker.
+      const forge = message.metadata?.forge
+      if (ProviderShared.isRecord(forge) && forge.internalContext === "runtime") {
+        const content = yield* ProviderShared.systemUpdateText("OpenAI Chat", message)
+        flushImages()
+        messages.push({ role: "system", content: ProviderShared.joinText(content) })
+        continue
+      }
       const part = yield* ProviderShared.wrappedSystemUpdate("OpenAI Chat", message)
       if (pendingImages.length > 0) {
         messages.push({ role: "user", content: [...pendingImages.splice(0), { type: "text", text: part.text }] })

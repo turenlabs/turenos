@@ -104,6 +104,8 @@ export const dict = {
   "ui.messagePart.context.search.other": "{{count}} pesquisas",
   "ui.messagePart.context.list.one": "{{count}} lista",
   "ui.messagePart.context.list.other": "{{count}} listas",
+  "ui.messagePart.context.shell.one": "{{count}} comando shell",
+  "ui.messagePart.context.shell.other": "{{count}} comandos shell",
   "ui.messagePart.diagnostic.error": "Erro",
   "ui.messagePart.title.edit": "Editar",
   "ui.messagePart.title.write": "Escrever",

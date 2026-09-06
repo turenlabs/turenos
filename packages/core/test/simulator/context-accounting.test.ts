@@ -5,10 +5,7 @@
  * `context_length_exceeded` at ~79k *reported* tokens because shell dumps and stale tool
  * output were priced at their bounded summarization size (~2KB) instead of their wire size
  * (up to 1MB). These tests pin the whole chain — accumulation, gate, compaction cut,
- * overflow recovery, prune — not any single function.
- *
- * Restored after a shared-worktree overwrite; the prune scenario uses distinct tool outputs
- * because dedup (default-on since) would otherwise clear the older copy first.
+ * overflow recovery, and immutable rendered epochs — not any single function.
  */
 import { describe } from "bun:test"
 import { Effect } from "effect"
@@ -170,12 +167,9 @@ describe("context accounting end to end", () => {
     }),
   )
 
-  // Prune-by-default: stale tool output sheds without any compaction — the cheap path that
-  // keeps full summarization rare. The durable store truncates each preview to roughly 21KB, so
-  // twelve are needed to cross the 40k protect window plus the 20k minimum. Distinct source
-  // lengths keep their truncation markers distinct, so dedup cannot claim them — this scenario
-  // pins prune, not dedup.
-  simulate("prune sheds stale tool output without a compaction", (ctx) =>
+  // Cross the old pruning threshold without reaching the compaction budget. Even stale
+  // outputs must remain unchanged while the rendered epoch is still in use.
+  simulate("stale tool output remains immutable until an epoch rebuild", (ctx) =>
     Effect.gen(function* () {
       const TOOL_TURNS = 12
       for (let turn = 1; turn <= TOOL_TURNS; turn++)
@@ -204,15 +198,19 @@ describe("context accounting end to end", () => {
       )
       const finalMessages = JSON.stringify(records.at(-1)!.request.messages)
       expectEqual(
-        "sentinel replaced the stale output",
+        "no old output was replaced mid-epoch",
         finalMessages.includes("[Old tool result content cleared]"),
-        true,
+        false,
       )
-      // The shed is real: the protect window keeps roughly the newest three previews, so the
-      // final request must be materially smaller than all six.
-      const lastBytes = finalMessages.length
-      if (lastBytes > 200_000)
-        throw new Error(`prune left the stale previews on the wire: ${lastBytes} bytes in the final request`)
+      records.slice(1).forEach((record, index) => {
+        const previous = records[index]!.request
+        expectEqual("stable base", JSON.stringify(record.request.system), JSON.stringify(previous.system))
+        expectEqual(
+          "the previous request remains an exact prefix",
+          JSON.stringify(record.request.messages.slice(0, previous.messages.length)),
+          JSON.stringify(previous.messages),
+        )
+      })
     }),
   )
 })

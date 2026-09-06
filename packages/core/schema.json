@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "507508bc-51d4-4cd5-9d00-57f1f08573f1",
+  "id": "3c52bc7d-fd55-4e37-87e8-64452360c395",
   "prevIds": [
-    "6eeac031-44ba-4e05-98f6-a8dbaaf77afb"
+    "507508bc-51d4-4cd5-9d00-57f1f08573f1"
   ],
   "ddl": [
     {
@@ -140,6 +140,10 @@
     },
     {
       "name": "session_context_epoch",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_context_request",
       "entityType": "tables"
     },
     {
@@ -3756,6 +3760,66 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_context_request"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "session_context_request"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "generation",
+      "entityType": "columns",
+      "table": "session_context_request"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "identity",
+      "entityType": "columns",
+      "table": "session_context_request"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "baseline_seq",
+      "entityType": "columns",
+      "table": "session_context_request"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "reason",
+      "entityType": "columns",
+      "table": "session_context_request"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
       "name": "goal_id",
       "entityType": "columns",
       "table": "session_goal_identity"
@@ -5464,6 +5528,21 @@
       "columns": [
         "session_id"
       ],
+      "tableTo": "session_context_epoch",
+      "columnsTo": [
+        "session_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_context_request_session_id_session_context_epoch_session_id_fk",
+      "entityType": "fks",
+      "table": "session_context_request"
+    },
+    {
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
       "columnsTo": [
         "id"
@@ -5957,6 +6036,15 @@
       "nameExplicit": false,
       "name": "session_context_epoch_pk",
       "table": "session_context_epoch",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "session_id"
+      ],
+      "nameExplicit": false,
+      "name": "session_context_request_pk",
+      "table": "session_context_request",
       "entityType": "pks"
     },
     {

@@ -1,6 +1,6 @@
 export * as SessionContextEpoch from "./context-epoch"
 
-import { eq } from "drizzle-orm"
+import { and, eq, gt } from "drizzle-orm"
 import { DateTime, Effect, Schema } from "effect"
 import type { Database } from "../database/database"
 import { EventV2 } from "../event"
@@ -11,7 +11,7 @@ import { SessionHistory } from "./history"
 import { SessionInput } from "./input"
 import { SessionMessage } from "./message"
 import { SessionSchema } from "./schema"
-import { SessionContextEpochTable } from "./sql"
+import { SessionContextEpochTable, SessionMessageTable } from "./sql"
 
 type DatabaseService = Database.Interface["db"]
 
@@ -57,6 +57,32 @@ const prepareOnce = Effect.fnUntraced(function* (
     Effect.mapError((error) => new ContextSnapshotDecodeError({ sessionID, details: String(error) })),
   )
   const replacementSeq = compaction !== undefined && compaction.seq > stored.baseline_seq ? compaction.seq : undefined
+  if (replacementSeq === undefined) {
+    const updates = yield* db
+      .select({ seq: SessionMessageTable.seq })
+      .from(SessionMessageTable)
+      .where(
+        and(
+          eq(SessionMessageTable.session_id, sessionID),
+          eq(SessionMessageTable.type, "system"),
+          gt(SessionMessageTable.seq, stored.baseline_seq),
+        ),
+      )
+      .limit(16)
+      .all()
+      .pipe(Effect.orDie)
+    // Keep short tails cache-stable, but periodically fold updates into a complete baseline.
+    // The cutoff only hides system messages; durable events and conversation rows remain intact.
+    if (updates.length === 16) {
+      const folded = yield* SystemContext.replace(value, snapshot)
+      if (folded._tag === "ReplacementReady") {
+        const baselineSeq = yield* EventV2.latestSequence(db, sessionID)
+        yield* replace(db, sessionID, baselineSeq, folded.generation)
+        return { baseline: folded.generation.baseline, baselineSeq }
+      }
+      // A blocked fold must not prevent available sources from admitting ordinary updates.
+    }
+  }
   const result = replacementSeq
     ? yield* SystemContext.replace(value, snapshot)
     : yield* SystemContext.reconcile(value, snapshot)

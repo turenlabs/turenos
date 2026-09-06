@@ -465,6 +465,79 @@ describe("pruneEntries", () => {
     expect(toolOutputOf(original, "a1", "call_1")).toBe(staleOutput)
   })
 
+  test("board notifications do not advance output, input, or media pruning", () => {
+    const entries = [
+      entry(user("board_u1", "first")),
+      entry(
+        assistant("board_a1", [
+          tool({
+            id: "board_c1",
+            name: "write",
+            callInput: { path: "large.txt", content: "i".repeat(120_000) },
+            output: "a".repeat(200_000),
+          }),
+        ]),
+      ),
+      entry(
+        SessionMessage.User.make({
+          ...user("board_u2", "second"),
+          source: "user",
+          files: [{ uri: `data:image/png;base64,${"A".repeat(200_000)}`, mime: "image/png", name: "shot.png" }],
+        }),
+      ),
+      entry(assistant("board_a2", [tool({ id: "board_c2", name: "bash", output: "b".repeat(200_000) })])),
+    ]
+    const options = { enabled: true, dedup: true, inputs: true, media: true }
+    const before = SessionCompaction.pruneEntries(entries, options)
+    const notifications = [1, 2, 3].map((index) =>
+      entry(SessionMessage.User.make({ ...user(`board_${index}`, `notification ${index}`), source: "subagent_board" })),
+    )
+    const appended = [...entries, ...notifications]
+    const after = SessionCompaction.pruneEntries(appended, options)
+
+    expect(before.entries).toEqual(entries)
+    expect(after.entries).toEqual(appended)
+    expect(after.entries.slice(0, entries.length)).toEqual([...before.entries])
+    expect(after.count).toBe(0)
+    expect(after.freed).toBe(0)
+    expect(after.cleared).toEqual([])
+
+    // Actual prompts still advance the same reverse-scan window.
+    const advanced = SessionCompaction.pruneEntries(
+      [...appended, entry(user("board_u3", "third")), entry(user("board_u4", "fourth"))],
+      options,
+    )
+    expect(toolOutputOf(advanced.entries, "board_a1", "board_c1")).toBe(SessionCompaction.PRUNED_TEXT)
+    expect(toolOutputOf(advanced.entries, "board_a2", "board_c2")).toBe(SessionCompaction.PRUNED_TEXT)
+    const first = advanced.entries[1]!.message
+    if (first.type !== "assistant" || first.content[0]?.type !== "tool") throw new Error("expected tool")
+    expect(first.content[0].state.input).toEqual({ path: "large.txt", content: SessionCompaction.PRUNED_INPUT_TEXT })
+    const second = advanced.entries[2]!.message
+    if (second.type !== "user") throw new Error("expected user")
+    expect(second.files?.[0]?.uri).toBe("cleared:shot.png")
+    expect(advanced.freed).toBeGreaterThan(SessionCompaction.PRUNE_MINIMUM)
+  })
+
+  test.each([true, false])("honours durable marks in the board-expanded exemption with prune=%s", (enabled) => {
+    const entries = [
+      entry(user("marked_u1", "first")),
+      entry(assistant("marked_a1", [tool({ id: "marked_c1", name: "bash", output: staleOutput, pruned: true })])),
+      entry(user("marked_u2", "second")),
+      entry(assistant("marked_a2", [tool({ id: "marked_c2", name: "bash", output: protectedOutput })])),
+      entry(SessionMessage.User.make({ ...user("marked_board_1", "notification one"), source: "subagent_board" })),
+      entry(SessionMessage.User.make({ ...user("marked_board_2", "notification two"), source: "subagent_board" })),
+    ]
+    const result = SessionCompaction.pruneEntries(entries, { enabled, dedup: true })
+
+    expect(toolOutputOf(result.entries, "marked_a1", "marked_c1")).toBe(SessionCompaction.PRUNED_TEXT)
+    expect(toolOutputOf(result.entries, "marked_a2", "marked_c2")).toBe(protectedOutput)
+    expect(toolOutputOf(entries, "marked_a1", "marked_c1")).toBe(staleOutput)
+    expect(result.entries.map((item) => item.seq)).toEqual(entries.map((item) => item.seq))
+    expect(result.count).toBe(1)
+    expect(result.freed).toBe(0)
+    expect(result.cleared).toEqual([])
+  })
+
   test("a structured-only result is measured and cleared, not silently skipped", () => {
     // `ToolOutput.toResultValue` falls back to `structured` when `content` is empty, so measuring
     // content alone would report zero and prune would never reclaim a structured-only result --
@@ -955,6 +1028,36 @@ describe("select", () => {
     expect(selected).toMatchObject({ recent: "", throughSeq: firstAssistant.seq })
     expect(selected?.head).toContain("OLDER-INSTRUCTION")
     expect(selected?.head).not.toContain("CURRENT-EXACT-INSTRUCTION")
+  })
+
+  test("board notifications remain in the actual human turn for selection", () => {
+    const older = entry(assistant("select_board_a1", [{ type: "text", id: "select_board_text", text: "OLDER-ANSWER" }]))
+    const entries = [
+      entry(user("select_board_u1", "OLDER-INSTRUCTION")),
+      older,
+      entry(SessionMessage.User.make({ ...user("select_board_u2", "CURRENT-INSTRUCTION"), source: "user" })),
+      entry(assistant("select_board_a2", [{ type: "text", id: "select_board_work", text: "CURRENT-WORK" }])),
+      entry(SessionMessage.User.make({ ...user("select_board_1", "BOARD-ONE"), source: "subagent_board" })),
+      entry(SessionMessage.User.make({ ...user("select_board_2", "BOARD-TWO"), source: "subagent_board" })),
+    ]
+
+    for (const tokens of [0, 1_000_000]) {
+      const selected = SessionCompaction.select(entries, { tokens, turns: 1, preserveCurrentTurn: true })
+      expect(selected).toMatchObject({ recent: "", throughSeq: older.seq })
+      expect(selected?.head).toContain("OLDER-INSTRUCTION")
+      expect(selected?.head).not.toContain("CURRENT-INSTRUCTION")
+      expect(selected?.head).not.toContain("BOARD-ONE")
+    }
+
+    const selected = SessionCompaction.select(entries, { tokens: 1_000_000, turns: 1 })
+    expect(selected?.recent).toBe(
+      "[User]: CURRENT-INSTRUCTION\n\n[Assistant]: CURRENT-WORK\n\n[User]: BOARD-ONE\n\n[User]: BOARD-TWO",
+    )
+    // Notifications still consume tokens; only the human instruction is force-preserved.
+    const tight = SessionCompaction.select(entries, { tokens: 1, turns: 1 })
+    expect(tight?.recent).toContain("CURRENT-INSTRUCTION")
+    expect(tight?.recent).not.toContain("BOARD-TWO")
+    expect(tight?.head).toContain("BOARD-TWO")
   })
 })
 
@@ -2385,6 +2488,12 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     const harness = engine({ events: [delta(VALID_SUMMARY)] })
     return Effect.runPromise(harness.compaction.compactIfNeeded({ sessionID, entries, model: request.model, request }))
   }
+
+  test("zero-usage interrupted settlements do not erase the previous context measurement", () => {
+    const entries = [measuredTurn("before_interrupt", { input: 50_000 }), measuredTurn("interrupted", { input: 0 })]
+    expect(SessionCompaction.reportedOccupancy(entries, model())).toBeGreaterThan(50_000)
+    expect(SessionCompaction.reportedOccupancy([entries[1]!], model())).toBeUndefined()
+  })
 
   test("counts rendered source attachments after provider-reported usage", () => {
     const baseline = measuredTurn("attachment_baseline", { input: 30_000 })

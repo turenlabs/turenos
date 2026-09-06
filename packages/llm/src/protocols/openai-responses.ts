@@ -384,6 +384,13 @@ const lowerMessages = Effect.fn("OpenAIResponses.lowerMessages")(function* (requ
 
   for (const message of request.messages) {
     if (message.role === "system") {
+      // Only core-generated runtime notes carry this trusted internal marker.
+      const forge = message.metadata?.forge
+      if (ProviderShared.isRecord(forge) && forge.internalContext === "runtime") {
+        const content = yield* ProviderShared.systemUpdateText("OpenAI Responses", message)
+        input.push({ role: "system", content: ProviderShared.joinText(content) })
+        continue
+      }
       const part = yield* ProviderShared.wrappedSystemUpdate("OpenAI Responses", message)
       const previous = input.at(-1)
       if (previous && "role" in previous && previous.role === "user")

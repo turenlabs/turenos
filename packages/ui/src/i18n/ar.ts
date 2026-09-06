@@ -104,6 +104,8 @@ export const dict = {
   "ui.messagePart.context.search.other": "{{count}} عمليات بحث",
   "ui.messagePart.context.list.one": "{{count}} قائمة",
   "ui.messagePart.context.list.other": "{{count}} قوائم",
+  "ui.messagePart.context.shell.one": "{{count}} أمر shell",
+  "ui.messagePart.context.shell.other": "{{count}} أوامر shell",
   "ui.messagePart.diagnostic.error": "خطأ",
   "ui.messagePart.title.edit": "تحرير",
   "ui.messagePart.title.write": "كتابة",

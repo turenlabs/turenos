@@ -3,14 +3,36 @@ import { readFileSync, readdirSync } from "node:fs"
 import { createServer, request } from "node:http"
 import { createRequire } from "node:module"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { whiteboardPlugin } from "./whiteboard.vite.js"
 
-const root = path.resolve(path.dirname(createRequire(import.meta.url).resolve("@excalidraw/excalidraw")), "../..")
+const entry = createRequire(import.meta.url).resolve("@excalidraw/excalidraw")
+const root = path.resolve(path.dirname(entry), "../..")
+const fileAccess = createRequire(entry).resolve("browser-fs-access")
+const download = fileURLToPath(new URL("./src/components/whiteboard/download.ts", import.meta.url))
 const plugin = whiteboardPlugin()
 const transpiler = new Bun.Transpiler({ loader: "js" })
 const loads = []
+const resolves = []
 plugin.config().optimizeDeps.esbuildOptions.plugins[0].setup({
-  onLoad: (options, load) => loads.push({ options, load }),
+  onResolve: (options, resolve) => resolves.push({ options, resolve }),
+  onLoad: (options, load) => {
+    if (!options.namespace) loads.push({ options, load })
+  },
+})
+
+test("only editor file access is adapted in both bundlers", () => {
+  const importer = path.join(root, "dist/prod/index.js")
+  const id = plugin.resolveId("browser-fs-access", importer)
+  expect(id).toBeDefined()
+  expect(plugin.load(id)).toContain("export { fileSave }")
+  expect(plugin.load(id)).toContain(JSON.stringify(download))
+  expect(plugin.load(id)).toContain(JSON.stringify(fileAccess))
+  expect(plugin.load(id)).toContain("fileOpen, directoryOpen, supported")
+  expect(plugin.resolveId("browser-fs-access", "/src/unrelated.ts")).toBeUndefined()
+  expect(plugin.resolveId("other-library", importer)).toBeUndefined()
+  expect(resolves[0].resolve({ importer }).path).toBe(id)
+  expect(resolves[0].resolve({ importer: "/src/unrelated.ts" })).toBeUndefined()
 })
 
 for (const mode of ["dev", "prod"]) {
@@ -88,6 +110,8 @@ test("optimizer links the installed editor and its CommonJS dependencies into br
       .filter((item) => item.external),
   ).toEqual([])
   expect(output.text).toContain("ASSETS_FALLBACK_URL")
+  expect(output.text).toContain('document.createElement("a")')
+  expect(Object.keys(result.metafile.inputs).some((id) => id.endsWith("/whiteboard/download.ts"))).toBe(true)
   // The optimizer emits outside the package root, so Vite does not patch twice.
   expect(plugin.transform(output.text, output.path)).toBeUndefined()
 }, 30000)

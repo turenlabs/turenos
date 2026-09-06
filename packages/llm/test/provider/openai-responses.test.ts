@@ -189,6 +189,70 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
+  it.effect("keeps runtime notes native and chronological without changing prior inputs", () =>
+    Effect.gen(function* () {
+      const messages = [Message.user("Before."), Message.tool({ id: "call_1", name: "read", result: "Tool output." })]
+      const before = JSON.stringify(messages)
+      const prior = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(LLM.request({ model, messages }))
+      const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+        LLM.request({
+          model,
+          messages: [
+            ...messages,
+            Message.make({
+              role: "system",
+              content: "Runtime <note> & instructions.",
+              metadata: { forge: { internalContext: "runtime" } },
+            }),
+            Message.user("Next."),
+          ],
+        }),
+      )
+
+      expect(prepared.body.input).toEqual([
+        ...prior.body.input,
+        { role: "system", content: "Runtime <note> & instructions." },
+        { role: "user", content: [{ type: "input_text", text: "Next." }] },
+      ])
+      expect(JSON.stringify(messages)).toBe(before)
+      expect(prior.body.input).toEqual([
+        { role: "user", content: [{ type: "input_text", text: "Before." }] },
+        { type: "function_call_output", call_id: "call_1", output: JSON.stringify("Tool output.") },
+      ])
+    }),
+  )
+
+  it.effect("does not elevate a different internal context marker or a marked user", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.make({ role: "system", content: "<note>", metadata: { forge: { internalContext: "other" } } }),
+            Message.make({ role: "user", content: "User.", metadata: { forge: { internalContext: "runtime" } } }),
+          ],
+        }),
+      )
+      expect(prepared.body.input).toEqual([
+        { role: "user", content: [{ type: "input_text", text: "<system-update>\n&lt;note&gt;\n</system-update>" }] },
+        { role: "user", content: [{ type: "input_text", text: "User." }] },
+      ])
+    }),
+  )
+
+  for (const metadata of [undefined, { forge: { internalContext: "runtime" } }])
+    it.effect(`rejects non-text system content with ${metadata ? "runtime" : "ordinary"} metadata`, () =>
+      Effect.gen(function* () {
+        const error = yield* LLMClient.prepare(
+          LLM.request({
+            model,
+            messages: [Message.make({ role: "system", content: { type: "reasoning", text: "No." }, metadata })],
+          }),
+        ).pipe(Effect.flip)
+        expect(error.reason).toMatchObject({ _tag: "InvalidRequest" })
+      }),
+    )
+
   it.effect("prepares OpenAI Responses WebSocket target", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare(

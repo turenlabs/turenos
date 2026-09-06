@@ -103,6 +103,8 @@ export const dict = {
   "ui.messagePart.context.search.other": "{{count}} wyszukiwania",
   "ui.messagePart.context.list.one": "{{count}} lista",
   "ui.messagePart.context.list.other": "{{count}} listy",
+  "ui.messagePart.context.shell.one": "{{count}} polecenie terminala",
+  "ui.messagePart.context.shell.other": "{{count}} polecenia terminala",
   "ui.messagePart.diagnostic.error": "Błąd",
   "ui.messagePart.title.edit": "Edycja",
   "ui.messagePart.title.write": "Pisanie",

@@ -11,6 +11,7 @@ import {
 } from "@turenlabs/llm"
 import { ProviderShared } from "@turenlabs/llm/protocols"
 import { LobbySession } from "@turenlabs/schema/lobby-session"
+import { createHash } from "node:crypto"
 import { Cause, Clock, DateTime, Effect, FiberSet, Layer, Option, Scope, Semaphore, Stream } from "effect"
 import { AgentV2 } from "../../agent"
 import { AgentGuidance } from "../../agent/guidance"
@@ -36,6 +37,7 @@ import { GoalTool } from "../../tool/goal"
 import { TeamBoardTool } from "../../tool/team-board"
 import { ToolOutputStore } from "../../tool-output-store"
 import { SessionContextEpoch } from "../context-epoch"
+import { SessionContextRequest } from "../context-request"
 import { SessionCompaction } from "../compaction"
 import { SessionEvent } from "../event"
 import { SessionExecutionControl } from "../execution-control"
@@ -560,14 +562,18 @@ const layer = Layer.effect(
       | { readonly _tag: "ContinueAfterOverflowCompaction"; readonly step: number }
 
     class TurnTransitionError extends Error {
-      constructor(readonly transition: TurnTransition) {
+      constructor(
+        readonly transition: TurnTransition,
+        readonly todoPrompt: TodoPrompt | undefined,
+      ) {
         super()
       }
     }
 
-    const continueAfterCompaction = (step: number) => new TurnTransitionError({ _tag: "ContinueAfterCompaction", step })
-    const continueAfterOverflowCompaction = (step: number) =>
-      new TurnTransitionError({ _tag: "ContinueAfterOverflowCompaction", step })
+    const continueAfterCompaction = (step: number, todoPrompt: TodoPrompt | undefined) =>
+      new TurnTransitionError({ _tag: "ContinueAfterCompaction", step }, todoPrompt)
+    const continueAfterOverflowCompaction = (step: number, todoPrompt: TodoPrompt | undefined) =>
+      new TurnTransitionError({ _tag: "ContinueAfterOverflowCompaction", step }, todoPrompt)
 
     type GoalPrompt = "continuation" | "reminder"
     type TodoPrompt = SessionTodoGuidance.Prompt | "done"
@@ -598,7 +604,7 @@ const layer = Layer.effect(
       streamRecovery: StreamRecovery | undefined,
       recoverOverflow?: typeof compaction.compactAfterOverflow,
       compactBeforeTurn = true,
-    ) {
+    ): Effect.fn.Return<RunTurnResult, RunError, Scope.Scope> {
       const startupStartedAt = Date.now()
       const startupPhase = (phase: string, detail: Record<string, unknown> = {}) =>
         Effect.logInfo("Session runner startup phase", {
@@ -651,18 +657,20 @@ const layer = Layer.effect(
       const withToolPermit = Semaphore.makeUnsafe(TOOL_CONCURRENCY_LIMIT).withPermit
       const withTodoPermit = Semaphore.makeUnsafe(1).withPermit
       let needsContinuation = false
+      let userDeclined = false
+      let questionToolInFlight = false
       let currentStep = step
-      if (promotion) {
-        const cutoff = yield* EventV2.latestSequence(db, session.id)
+      const promotionCutoff = promotion ? yield* EventV2.latestSequence(db, session.id) : undefined
+      if (promotion && promotionCutoff !== undefined) {
         const markPromoted = () => {
           const progress = turnProgress.get(session.id)
           if (progress) progress.promoted = true
         }
         let promoted = 0
         if (promotion === "steer")
-          promoted = yield* SessionInput.promoteSteers(db, events, session.id, cutoff, markPromoted)
+          promoted = yield* SessionInput.promoteSteers(db, events, session.id, promotionCutoff, markPromoted)
         if (promotion === "queue") {
-          const steers = yield* SessionInput.promoteSteers(db, events, session.id, cutoff, markPromoted)
+          const steers = yield* SessionInput.promoteSteers(db, events, session.id, promotionCutoff, markPromoted)
           promoted += steers
           if (steers === 0)
             promoted += Number(yield* SessionInput.promoteNextQueued(db, events, session.id, markPromoted))
@@ -690,32 +698,25 @@ const layer = Layer.effect(
           ...LobbySession.capabilityRules(LobbySession.capabilityProfile(binding)),
         ],
       })
-      // Prune before the request is assembled, on every turn -- not only once the compaction
-      // threshold is crossed. Continuous pruning is what keeps a session under that threshold, so
-      // full summarisation stays rare, and it is affordable at this cadence because it is a pure
-      // scan over history that is already in memory. Its one durable write is the
-      // `Compaction.Pruned` mark, published only for results a pass *newly* cleared, so a steady
-      // state where the same prefix stays pruned costs no I/O at all.
       const history = yield* SessionHistory.entriesForRunner(db, session.id, system.baselineSeq)
-      const entries = yield* compaction.prune(session.id, history)
-      // Materializes and (for images) resizes prompt attachments before `toLLMMessages` lowers
-      // history into provider content -- see `attachment.ts`. `toLLMMessages` itself stays a pure,
-      // synchronous translation; only this step needs FileSystem/Image access.
-      const context = yield* SessionRunnerAttachment.materialize(
-        attachmentDeps,
-        entries.map((entry) => entry.message),
+      // Board notifications continue the current task; restarting its checkpoint cycle changes
+      // the leading system prefix and invalidates cached conversation history.
+      if (
+        promotionCutoff !== undefined &&
+        history.some(
+          (entry) =>
+            entry.seq > promotionCutoff && entry.message.type === "user" && entry.message.source !== "subagent_board",
+        )
       )
-      // Budget the materialized bytes sent to the provider, not unresolved file:
-      // references whose contents can be much larger than a flat media estimate.
-      const measured = entries.map((entry, index) => ({ ...entry, message: context[index]! }))
-      const previousAssistant = entries.findLast(
+        todoPrompt = "initial"
+      const previousAssistant = history.findLast(
         (entry): entry is typeof entry & { readonly message: SessionMessage.Assistant } =>
           entry.message.type === "assistant",
       )
       const followsBoardRead = previousAssistant?.message.content.some(
         (item) => item.type === "tool" && item.name === TeamBoardTool.readName && item.state.status === "completed",
       )
-      const inspectInputSource = followsBoardRead === true || entries.at(-1)?.message.type === "user"
+      const inspectInputSource = followsBoardRead === true || history.at(-1)?.message.type === "user"
       const [latestHumanInput, latestBoardInput] = inspectInputSource
         ? yield* Effect.all(
             [
@@ -732,7 +733,7 @@ const layer = Layer.effect(
             (latestBoardInput.promotedSeq ?? -1) > (latestHumanInput.promotedSeq ?? -1)))
           ? latestHumanInput
           : undefined
-      yield* startupPhase("history_ready", { entries: entries.length })
+      yield* startupPhase("history_ready", { entries: history.length })
       const toolSnapshot = toolsDisabled
         ? undefined
         : yield* toolSnapshots.materialize({
@@ -799,62 +800,136 @@ const layer = Layer.effect(
             })
           : undefined
       const promptCacheKey = /^ses_[0-9a-f]{64}$/.test(session.id) ? session.id.slice(4) : session.id
+      const base = [
+        agent.info?.system ?? ProviderPrompt.forModel(model.id),
+        system.baseline,
+        toolSnapshot?.snapshot.broker.visible.includes(McpTool.SEARCH_TOOL_NAME)
+          ? McpTool.DISCOVERY_SYSTEM_PROMPT
+          : undefined,
+      ]
+        .filter((part): part is string => part !== undefined && part.length > 0)
+        .map(SystemPart.make)
+      // Tool execution still uses this turn's materialization and permissions. A changed
+      // definition/model/base explicitly starts a new rendered epoch rather than pinning authority.
+      const identity = createHash("sha256")
+        .update(
+          JSON.stringify({
+            model: modelRef,
+            upstream: model.id,
+            route: model.route.id,
+            defaults: model.defaults,
+            routeDefaults: {
+              generation: model.route.defaults.generation,
+              providerOptions: model.route.defaults.providerOptions,
+            },
+            compatibility: model.compatibility,
+            agent: agent.id,
+            system: base,
+            tools: toolMaterialization?.definitions ?? [],
+          }),
+        )
+        .digest("hex")
+      const prepared = yield* SessionContextRequest.prepare(db, session.id, {
+        baselineSeq: system.baselineSeq,
+        identity,
+        history,
+      })
+      // Only rebuilds may reduce old history. Within an epoch, attachments and tool results
+      // are the bytes already rendered, not a fresh read or a new dedup/pruning decision.
+      const added = prepared.frame
+        ? history.slice(prepared.frame.sources.length)
+        : yield* compaction.prune(session.id, history)
+      const context = yield* SessionRunnerAttachment.materialize(
+        attachmentDeps,
+        added.map((entry) => entry.message),
+      )
+      const runtime = [
+        harnessPrompt(harnessState),
+        todoToolAvailable && todoPrompt && todoPrompt !== "done"
+          ? SessionTodoGuidance.prompt(todoPrompt, todoSnapshot)
+          : undefined,
+        streamRecovery?.userInputPromoted ? STREAM_RECOVERY_PROMPT : undefined,
+        reflectionPrompt,
+      ].filter((part): part is string => part !== undefined && part.length > 0)
+      const instructions = [
+        ...(runtime.length > 0
+          ? [
+              Message.make({
+                role: "system",
+                content: `These runtime instructions apply only to the immediately following assistant turn. Historical runtime instructions are not pending tasks. They do not replace the latest human request.\n${runtime.join("\n\n")}`,
+                metadata: { forge: { internalContext: "runtime" } },
+              }),
+            ]
+          : []),
+      ]
+      const notes = [
+        ...(currentTask
+          ? [
+              Message.make({
+                role: "user",
+                content: currentTaskAnchor(currentTask.prompt.text, lifecycleGoalAtStart, todoSnapshot),
+                metadata: { forge: { internalContext: "current-task" } },
+              }),
+            ]
+          : []),
+        ...(goalContext
+          ? [Message.make({ role: "user", content: goalContext, metadata: { forge: { internalContext: "goal" } } })]
+          : []),
+        ...(streamRecovery && !streamRecovery.userInputPromoted
+          ? [
+              Message.make({
+                role: "user",
+                content: STREAM_RECOVERY_PROMPT,
+                metadata: { forge: { internalContext: "provider-recovery" } },
+              }),
+            ]
+          : []),
+      ]
+      const turn = createHash("sha256")
+        .update(JSON.stringify({ seq: history.at(-1)?.seq, instructions, notes, isLastStep }))
+        .digest("hex")
+      const overhead =
+        prepared.frame?.turn === turn
+          ? []
+          : [...instructions, ...notes, ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : [])]
+      // These budget-only rows stay in the rendered frame, not the transcript or summary.
+      // Their position before the next assistant lets reported usage absorb older notes
+      // while still counting all notes appended since the last measured provider request.
+      const measured = [
+        ...(prepared.frame?.entries ?? []),
+        ...added.map((entry, index) => ({ ...entry, message: context[index]! })),
+        ...(overhead.length === 0
+          ? []
+          : [
+              {
+                seq: history.at(-1)?.seq ?? 0,
+                message: SessionMessage.Synthetic.make({
+                  id: SessionMessage.ID.make(`msg_${turn}`),
+                  sessionID: session.id,
+                  type: "synthetic",
+                  text: JSON.stringify(overhead),
+                  time: { created: yield* DateTime.now },
+                }),
+              },
+            ]),
+      ]
+      const messages = toLLMMessages(context, model)
+      // Insert one-turn guidance before new user input, never ahead of the cached prefix and
+      // never after a newly promoted human instruction. Retrying the same turn adds nothing.
+      const boundary = messages.findIndex((message) => message.role === "user")
+      const insertion = boundary === -1 ? messages.length : boundary
       const request = LLM.request({
         model,
         providerOptions: { openai: { promptCacheKey } },
         metadata: claudeMcpToken ? ClaudeCodeMcp.requestMetadata(claudeMcpToken) : undefined,
-        // An agent's own `system` replaces the provider prompt rather than stacking on top of it --
-        // that is how V1 behaved, and specialist agents (explore, worker, title, ...) depend on not
-        // inheriting a general coding-agent persona. Agents without one get the prompt for whatever
-        // model this turn actually resolved to, which is why this reads `model.id` (the upstream
-        // wire id) per turn instead of being folded into the durable `system.baseline` epoch.
-        // Todo bookkeeping must not be a trailing user message: it can outrank a newly promoted
-        // prompt and make a successful todo write trigger itself again on every continuation.
-        system: [
-          agent.info?.system ?? ProviderPrompt.forModel(model.id),
-          system.baseline,
-          toolSnapshot?.snapshot.broker.visible.includes(McpTool.SEARCH_TOOL_NAME)
-            ? McpTool.DISCOVERY_SYSTEM_PROMPT
-            : undefined,
-          harnessPrompt(harnessState),
-          todoToolAvailable && todoPrompt && todoPrompt !== "done"
-            ? SessionTodoGuidance.prompt(todoPrompt, todoSnapshot)
-            : undefined,
-          streamRecovery?.userInputPromoted ? STREAM_RECOVERY_PROMPT : undefined,
-          reflectionPrompt,
-        ]
-          .filter((part): part is string => part !== undefined && part.length > 0)
-          .map(SystemPart.make),
+        system: base,
         messages: [
-          ...toLLMMessages(context, model),
-          ...(currentTask
-            ? [
-                Message.make({
-                  role: "user",
-                  content: currentTaskAnchor(currentTask.prompt.text, lifecycleGoalAtStart, todoSnapshot),
-                  metadata: { forge: { internalContext: "current-task" } },
-                }),
-              ]
-            : []),
-          ...(goalContext
-            ? [
-                Message.make({
-                  role: "user",
-                  content: goalContext,
-                  metadata: { forge: { internalContext: "goal" } },
-                }),
-              ]
-            : []),
-          ...(streamRecovery && !streamRecovery.userInputPromoted
-            ? [
-                Message.make({
-                  role: "user",
-                  content: STREAM_RECOVERY_PROMPT,
-                  metadata: { forge: { internalContext: "provider-recovery" } },
-                }),
-              ]
-            : []),
-          ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : []),
+          ...(prepared.frame?.messages ?? []),
+          ...messages.slice(0, insertion),
+          ...(prepared.frame?.turn === turn ? [] : instructions),
+          ...messages.slice(insertion),
+          ...(prepared.frame?.turn === turn ? [] : notes),
+          ...(isLastStep && prepared.frame?.turn !== turn ? [Message.assistant(MAX_STEPS_PROMPT)] : []),
         ],
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: toolsDisabled ? "none" : undefined,
@@ -865,7 +940,7 @@ const layer = Layer.effect(
       // was destroying the very thing compaction exists to preserve: prune clears a tool result to
       // a 33-char sentinel, the summarizer then summarises the sentinel, and the content can never
       // re-enter context by any path -- not as raw output, not as a summary bullet. Pruning is a
-      // per-turn saving on something the summary is about to make durable; summarising its output
+      // rendering optimization on something the summary is about to make durable; summarising its output
       // makes the saving permanent. `select` bounds each tool result by `TOOL_OUTPUT_BUDGETS`
       // anyway, so the unpruned head costs at most that budget per call rather than the raw bytes.
       if (
@@ -878,13 +953,22 @@ const layer = Layer.effect(
           measured,
         }))
       )
-        return yield* Effect.die(continueAfterCompaction(currentStep))
+        return yield* Effect.die(continueAfterCompaction(currentStep, todoPrompt))
       // Inside the band the gate deliberately stopped reserving (`OUTPUT_RESERVE_CAP`), the
       // configured output allowance no longer fits `prompt + max_tokens <= context` validation;
       // shrink it to what the window still holds. A no-op for every healthy request.
-      // Clamp against the pruned view: the wire request was built from `entries`, so measuring
-      // `history` would re-count freed bytes and shrink the allowance for no reason.
+      // Clamp against the pinned view plus appended runtime overhead. Measuring raw history
+      // would re-count freed bytes and shrink the allowance for no reason.
       const wireRequest = SessionCompaction.clampOutput({ entries: measured, model, request })
+      yield* SessionContextRequest.save(db, session.id, {
+        baselineSeq: system.baselineSeq,
+        identity,
+        generation: prepared.generation,
+        reason: prepared.reason,
+        frame: { entries: measured, messages: request.messages, sources: prepared.sources, turn },
+      })
+      if (prepared.reason)
+        yield* startupPhase("context_epoch_rebuilt", { generation: prepared.generation, reason: prepared.reason })
       yield* startupPhase("provider_request_ready", {
         messages: wireRequest.messages.length,
         tools: wireRequest.tools.length,
@@ -1090,6 +1174,7 @@ const layer = Layer.effect(
               const isGoalUpdate = event.name === GoalTool.updateName
               const isTodoUpdate = event.name === "todowrite"
               if (!isGoalUpdate && !isTodoUpdate) substantiveWork = true
+              if (event.name === "question") questionToolInFlight = true
               const settle = toolMaterialization.settle({
                 sessionID: session.id,
                 agent: agent.id,
@@ -1105,7 +1190,13 @@ const layer = Layer.effect(
               // not be held hostage to a permit.
               yield* Effect.uninterruptibleMask((restore) =>
                 restore(settle).pipe(
+                  Effect.catchCause((cause) => {
+                    if (isUserDeclined(cause) || (event.name === "question" && Cause.hasInterrupts(cause)))
+                      userDeclined = true
+                    return Effect.failCause(cause)
+                  }),
                   Effect.flatMap((settlement) => {
+                    if (event.name === "question") questionToolInFlight = false
                     if (settlement.result.type !== "error") {
                       if (isTodoUpdate) todoUpdated = true
                     }
@@ -1225,7 +1316,7 @@ const layer = Layer.effect(
               activeTimeMsDelta: yield* activeTimeSince(goalStartedAt),
             })
             yield* goalTurn.checkpoint
-            return yield* Effect.die(continueAfterOverflowCompaction(currentStep))
+            return yield* Effect.die(continueAfterOverflowCompaction(currentStep, todoPrompt))
           }
           if (overflowRecoveryFailure) {
             yield* withPublication(
@@ -1293,17 +1384,20 @@ const layer = Layer.effect(
               yield* toolMaterialization.completeTurn({ sessionID: session.id, assistantMessageID })
             }
           }
-          if (stream._tag === "Failure" && Cause.hasInterrupts(stream.cause)) yield* FiberSet.clear(toolFibers)
+          const streamInterrupted = stream._tag === "Failure" && Cause.hasInterrupts(stream.cause)
+          if (streamInterrupted && questionToolInFlight) userDeclined = true
+          if (streamInterrupted && !questionToolInFlight) yield* FiberSet.clear(toolFibers)
           const regularSettled = yield* restore(awaitToolFibers(toolFibers)).pipe(Effect.exit)
-          const userDeclined = regularSettled._tag === "Failure" && isUserDeclined(regularSettled.cause)
           const unsettledToolNames = publisher.unsettledToolNames()
+          const interrupted =
+            streamInterrupted || (regularSettled._tag === "Failure" && Cause.hasInterrupts(regularSettled.cause))
+          userDeclined ||=
+            (regularSettled._tag === "Failure" && isUserDeclined(regularSettled.cause)) ||
+            (questionToolInFlight && interrupted)
           if (userDeclined) {
             yield* FiberSet.clear(toolFibers)
             yield* withPublication(publisher.failUnsettledTools("Tool execution interrupted"))
           }
-          const interrupted =
-            (stream._tag === "Failure" && Cause.hasInterrupts(stream.cause)) ||
-            (regularSettled._tag === "Failure" && Cause.hasInterrupts(regularSettled.cause))
           const turnInterrupted =
             interrupted &&
             !userDeclined &&
@@ -1315,7 +1409,7 @@ const layer = Layer.effect(
             // already inactive. A step-finish event marks the assistant inactive but leaves
             // durable `Step` settlement responsible for closure; interruption during the
             // following tool await must prevent that settlement from projecting a terminal idle.
-            if (!turnInterrupted && publisher.hasAssistantStarted())
+            if (!turnInterrupted && !userDeclined && publisher.hasAssistantStarted())
               yield* withPublication(publisher.failAssistant("Tool execution interrupted during settlement"))
             if (turnInterrupted) yield* withPublication(publisher.failAssistant("Provider turn interrupted"))
           }
@@ -1326,6 +1420,34 @@ const layer = Layer.effect(
             )
           }
           const stepSettlement = publisher.stepSettlement()
+          if (
+            userDeclined &&
+            interrupted &&
+            !stepSettlement &&
+            publisher.hasAssistantStarted() &&
+            !publisher.hasProviderError()
+          ) {
+            // Close the control-cancelled step even when the provider sent no finish event.
+            // These zero counters represent unavailable usage, not a measured empty prompt.
+            const emptyUsage = {
+              input: 0,
+              output: 0,
+              reasoning: 0,
+              cache: { read: 0, write: 0 },
+            }
+            yield* withPublication(
+              events.publish(SessionEvent.Step.Ended, {
+                sessionID: session.id,
+                timestamp: yield* DateTime.now,
+                assistantMessageID: yield* publisher.startAssistant(),
+                finish: "stop",
+                model: modelRef,
+                cost: 0,
+                tokens: emptyUsage,
+                billed: emptyUsage,
+              }),
+            )
+          }
           // Truncated provider stream: ensure a settlement is published even if step-finish never arrived.
           // A stream that ends cleanly without one leaves `stepSettlement` undefined, so nothing below
           // projects a durable settlement and the turn silently succeeds, consuming the prompt without any
@@ -1528,7 +1650,7 @@ const layer = Layer.effect(
                 goalPrompt,
                 knownGoal,
                 control,
-                todoPrompt,
+                defect.todoPrompt,
                 streamRecovery,
                 false,
               )
@@ -1574,7 +1696,7 @@ const layer = Layer.effect(
                   goalPrompt,
                   knownGoal,
                   control,
-                  todoPrompt,
+                  defect.todoPrompt,
                   streamRecovery,
                   false,
                 )
@@ -1585,7 +1707,7 @@ const layer = Layer.effect(
                 goalPrompt,
                 knownGoal,
                 control,
-                todoPrompt,
+                defect.todoPrompt,
                 streamRecovery,
                 false,
               )
@@ -1675,7 +1797,6 @@ const layer = Layer.effect(
             if (!needsContinuation) needsContinuation = hasPendingSteer || hasPendingQueue
             promotion = hasPendingSteer ? "steer" : hasPendingQueue ? "queue" : undefined
             streamRecovery = recoverStream ? { userInputPromoted: promotion !== undefined } : undefined
-            if (promotion) todoPrompt = "initial"
             goalPrompt = needsContinuation && result.goal?.status === "active" && !promotion ? "reminder" : undefined
           }
           const hasPendingSteer = yield* SessionInput.hasPending(db, input.sessionID, "steer")

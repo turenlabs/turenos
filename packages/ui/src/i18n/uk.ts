@@ -112,6 +112,8 @@ export const dict: Record<string, string> = {
   "ui.messagePart.context.search.other": "{{count}} пошуків",
   "ui.messagePart.context.list.one": "{{count}} список",
   "ui.messagePart.context.list.other": "{{count}} списків",
+  "ui.messagePart.context.shell.one": "{{count}} команда оболонки",
+  "ui.messagePart.context.shell.other": "{{count}} команд оболонки",
 
   "ui.list.loading": "Завантаження",
   "ui.list.empty": "Немає результатів",

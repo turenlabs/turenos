@@ -536,6 +536,17 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`session_context_request\` (
+          \`session_id\` text PRIMARY KEY,
+          \`data\` text NOT NULL,
+          \`generation\` integer NOT NULL,
+          \`identity\` text NOT NULL,
+          \`baseline_seq\` integer NOT NULL,
+          \`reason\` text NOT NULL,
+          CONSTRAINT \`fk_session_context_request_session_id_session_context_epoch_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_context_epoch\`(\`session_id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`session_goal_identity\` (
           \`goal_id\` text PRIMARY KEY,
           \`session_id\` text NOT NULL,

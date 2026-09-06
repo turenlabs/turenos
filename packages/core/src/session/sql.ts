@@ -337,6 +337,18 @@ export const SessionContextEpochTable = sqliteTable("session_context_epoch", {
   baseline_seq: integer().notNull(),
 })
 
+export const SessionContextRequestTable = sqliteTable("session_context_request", {
+  session_id: text()
+    .$type<SessionSchema.ID>()
+    .primaryKey()
+    .references(() => SessionContextEpochTable.session_id, { onDelete: "cascade" }),
+  data: text({ mode: "json" }).notNull().$type<unknown>(),
+  generation: integer().notNull(),
+  identity: text().notNull(),
+  baseline_seq: integer().notNull(),
+  reason: text().notNull(),
+})
+
 /** Durable declarative harness state and its snapshot history for one Session. */
 export const SessionHarnessTable = sqliteTable("session_harness", {
   session_id: text()

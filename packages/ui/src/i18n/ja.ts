@@ -103,6 +103,8 @@ export const dict = {
   "ui.messagePart.context.search.other": "{{count}} 件の検索",
   "ui.messagePart.context.list.one": "{{count}} 件のリスト",
   "ui.messagePart.context.list.other": "{{count}} 件のリスト",
+  "ui.messagePart.context.shell.one": "{{count}} 件のシェルコマンド",
+  "ui.messagePart.context.shell.other": "{{count}} 件のシェルコマンド",
   "ui.messagePart.diagnostic.error": "エラー",
   "ui.messagePart.title.edit": "編集",
   "ui.messagePart.title.write": "作成",

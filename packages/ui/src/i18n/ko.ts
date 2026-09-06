@@ -80,6 +80,8 @@ export const dict = {
   "ui.messagePart.context.search.other": "{{count}}개 검색",
   "ui.messagePart.context.list.one": "{{count}}개 목록",
   "ui.messagePart.context.list.other": "{{count}}개 목록",
+  "ui.messagePart.context.shell.one": "{{count}}개 셸 명령",
+  "ui.messagePart.context.shell.other": "{{count}}개 셸 명령",
   "ui.messagePart.diagnostic.error": "오류",
   "ui.messagePart.title.edit": "편집",
   "ui.messagePart.title.write": "작성",

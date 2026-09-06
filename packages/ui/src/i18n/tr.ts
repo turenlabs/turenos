@@ -110,6 +110,8 @@ export const dict = {
   "ui.messagePart.context.search.other": "{{count}} arama",
   "ui.messagePart.context.list.one": "{{count}} liste",
   "ui.messagePart.context.list.other": "{{count}} liste",
+  "ui.messagePart.context.shell.one": "{{count}} kabuk komutu",
+  "ui.messagePart.context.shell.other": "{{count}} kabuk komutu",
   "ui.messagePart.diagnostic.error": "Hata",
   "ui.messagePart.title.edit": "Düzenle",
   "ui.messagePart.title.write": "Yaz",

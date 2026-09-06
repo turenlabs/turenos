@@ -105,6 +105,8 @@ export const dict = {
   "ui.messagePart.context.search.other": "ค้นหา {{count}} รายการ",
   "ui.messagePart.context.list.one": "รายการ {{count}} รายการ",
   "ui.messagePart.context.list.other": "รายการ {{count}} รายการ",
+  "ui.messagePart.context.shell.one": "คำสั่งเชลล์ {{count}} รายการ",
+  "ui.messagePart.context.shell.other": "คำสั่งเชลล์ {{count}} รายการ",
   "ui.messagePart.diagnostic.error": "ข้อผิดพลาด",
   "ui.messagePart.title.edit": "แก้ไข",
   "ui.messagePart.title.write": "เขียน",
