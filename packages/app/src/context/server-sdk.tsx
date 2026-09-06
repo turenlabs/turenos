@@ -1,9 +1,10 @@
 import type { Event } from "@turenlabs/sdk/v2/client"
+import type { Forge } from "@turenlabs/client"
 import { createSimpleContext } from "@turenlabs/ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { type Accessor, batch, createMemo, onCleanup, onMount } from "solid-js"
-import { createSdkForServer } from "@/utils/server"
+import { authTokenFromCredentials, createSdkForServer } from "@/utils/server"
 import { useLanguage } from "./language"
 import { usePlatform } from "./platform"
 import { ServerConnection, useServer } from "./server"
@@ -264,6 +265,16 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
     scope,
     url: server.http.url,
     client: sdk,
+    async createProtocolClient(): Promise<ReturnType<typeof Forge.make>> {
+      const { Forge } = await import("@turenlabs/client")
+      return Forge.make({
+        baseUrl: server.http.url,
+        fetch: platform.fetch,
+        headers: server.http.password
+          ? { Authorization: `Basic ${authTokenFromCredentials({ username: server.http.username, password: server.http.password })}` }
+          : undefined,
+      })
+    },
     event: {
       on: emitter.on.bind(emitter),
       listen: emitter.listen.bind(emitter),

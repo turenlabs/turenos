@@ -1202,6 +1202,60 @@ const adaptGroup13 = (raw: RawClient["server.loop"]) => ({
   runCancel: Endpoint13_10(raw),
 })
 
+type Endpoint14_0Request = Parameters<RawClient["server.whiteboard"]["whiteboard.get"]>[0]
+type Endpoint14_0Input = { readonly sessionID: Endpoint14_0Request["params"]["sessionID"] }
+const Endpoint14_0 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint14_0Input) =>
+  raw["whiteboard.get"]({ params: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint14_1Request = Parameters<RawClient["server.whiteboard"]["whiteboard.update"]>[0]
+type Endpoint14_1Input = {
+  readonly sessionID: Endpoint14_1Request["params"]["sessionID"]
+  readonly patch: Endpoint14_1Request["payload"]["patch"]
+  readonly clientID: Endpoint14_1Request["payload"]["clientID"]
+  readonly username: Endpoint14_1Request["payload"]["username"]
+}
+const Endpoint14_1 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint14_1Input) =>
+  raw["whiteboard.update"]({
+    params: { sessionID: input["sessionID"] },
+    payload: { patch: input["patch"], clientID: input["clientID"], username: input["username"] },
+  }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint14_2Request = Parameters<RawClient["server.whiteboard"]["whiteboard.presence"]>[0]
+type Endpoint14_2Input = {
+  readonly sessionID: Endpoint14_2Request["params"]["sessionID"]
+  readonly clientID: Endpoint14_2Request["payload"]["clientID"]
+  readonly username: Endpoint14_2Request["payload"]["username"]
+  readonly pointer?: Endpoint14_2Request["payload"]["pointer"]
+  readonly selectedElementIds?: Endpoint14_2Request["payload"]["selectedElementIds"]
+}
+const Endpoint14_2 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint14_2Input) =>
+  raw["whiteboard.presence"]({
+    params: { sessionID: input["sessionID"] },
+    payload: {
+      clientID: input["clientID"],
+      username: input["username"],
+      pointer: input["pointer"],
+      selectedElementIds: input["selectedElementIds"],
+    },
+  }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint14_3Request = Parameters<RawClient["server.whiteboard"]["whiteboard.events"]>[0]
+type Endpoint14_3Input = { readonly sessionID: Endpoint14_3Request["params"]["sessionID"] }
+const Endpoint14_3 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint14_3Input) =>
+  Stream.unwrap(
+    raw["whiteboard.events"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((stream) => stream.pipe(Stream.mapError(mapClientError))),
+    ),
+  )
+
+const adaptGroup14 = (raw: RawClient["server.whiteboard"]) => ({
+  get: Endpoint14_0(raw),
+  update: Endpoint14_1(raw),
+  presence: Endpoint14_2(raw),
+  events: Endpoint14_3(raw),
+})
+
 const adaptClient = (raw: RawClient) => ({
   health: adaptGroup0(raw["server.health"]),
   location: adaptGroup1(raw["server.location"]),
@@ -1217,6 +1271,7 @@ const adaptClient = (raw: RawClient) => ({
   projectCopies: adaptGroup11(raw["server.projectCopy"]),
   memories: adaptGroup12(raw["server.memory"]),
   loops: adaptGroup13(raw["server.loop"]),
+  "server.whiteboard": adaptGroup14(raw["server.whiteboard"]),
 })
 
 export const make = (options?: { readonly baseUrl?: URL | string }) =>

@@ -1,6 +1,6 @@
 import type { Part, ToolPart } from "@turenlabs/sdk/v2"
 
-const CONTEXT_GROUP_TOOLS = new Set(["read", "glob", "grep", "list"])
+const CONTEXT_GROUP_TOOLS = new Set(["read", "glob", "grep", "list", "bash"])
 const COORDINATION_TOOLS = new Set([
   "reflection_read",
   "reflection_state",
@@ -14,13 +14,32 @@ export function isCoordinationTool(tool: string) {
 }
 
 export function isContextGroupTool(part: Part): part is ToolPart {
+  if (part.type === "tool" && part.tool === "bash" && part.state.status === "completed") {
+    const result: unknown = part.state.metadata?.structured ?? part.state.metadata
+    if (
+      result &&
+      typeof result === "object" &&
+      (("exit" in result && typeof result.exit === "number" && result.exit !== 0) ||
+        ("timeout" in result && result.timeout === true))
+    )
+      return false
+  }
   // Failures stay in the main transcript as individual error cards, even when
-  // surrounding successful reads and coordination calls collapse into a group.
+  // surrounding successful tools collapse into a group.
   return (
     part.type === "tool" &&
     part.state.status !== "error" &&
     (CONTEXT_GROUP_TOOLS.has(part.tool) || isCoordinationTool(part.tool))
   )
+}
+
+export function contextToolSummary(parts: ToolPart[]) {
+  const read = parts.filter((part) => part.tool === "read").length
+  const search = parts.filter((part) => part.tool === "glob" || part.tool === "grep").length
+  const list = parts.filter((part) => part.tool === "list").length
+  const shell = parts.filter((part) => part.tool === "bash").length
+  const coordination = parts.filter((part) => isCoordinationTool(part.tool)).length
+  return { read, search, list, shell, coordination }
 }
 
 export type PartRef = {

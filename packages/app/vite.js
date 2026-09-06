@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs"
 import solidPlugin from "vite-plugin-solid"
 import tailwindcss from "@tailwindcss/vite"
 import { fileURLToPath } from "url"
+import { whiteboardPlugin } from "./whiteboard.vite.js"
 
 const theme = fileURLToPath(new URL("./public/forge-theme-preload.js", import.meta.url))
 
@@ -52,6 +53,7 @@ export default [
       )
     },
   },
+  whiteboardPlugin(),
   tailwindcss(),
   solidPlugin(),
 ]

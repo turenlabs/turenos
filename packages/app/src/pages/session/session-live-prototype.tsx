@@ -138,6 +138,7 @@ export function SessionLivePrototype(props: {
   changes: () => JSX.Element
   harness?: () => JSX.Element
   terminal: () => JSX.Element
+  whiteboard: () => JSX.Element
 }) {
   const todos = () => props.todos?.() ?? []
   const todosReady = () => props.todosReady?.() ?? true
@@ -155,7 +156,7 @@ export function SessionLivePrototype(props: {
     batch(() => {
       if (next !== renderedSessionKey) {
         renderedSessionKey = next
-        setVisited({ context: false, history: false })
+        setVisited({ context: false, history: false, whiteboard: false })
       }
       setVisited(props.view(), true)
     })
@@ -263,6 +264,14 @@ export function SessionLivePrototype(props: {
                 )
               }
             />
+          </LivePanel>
+        </Show>
+      </div>
+
+      <div class="min-h-0 min-w-0 flex-1 overflow-hidden" classList={{ hidden: panelHidden("whiteboard") }}>
+        <Show when={visited.whiteboard && !deferRender()}>
+          <LivePanel scroll={false}>
+            <SessionLivePanelBoundary label="Whiteboard" content={props.whiteboard} />
           </LivePanel>
         </Show>
       </div>

@@ -6,11 +6,12 @@ import { SessionEvent } from "../src/session-event"
 import { SessionTodo } from "../src/session-todo"
 import { SessionV1 } from "../src/session-v1"
 import { WorkspaceEvent } from "../src/workspace-event"
+import { Whiteboard } from "../src/whiteboard"
 
 describe("public event manifest", () => {
   test("owns the complete public event surface", () => {
-    expect(EventManifest.ServerDefinitions.length).toBe(77)
-    expect(EventManifest.Definitions.length).toBe(103)
+    expect(EventManifest.ServerDefinitions.length).toBe(80)
+    expect(EventManifest.Definitions.length).toBe(106)
     expect(SessionV1.Event.Definitions).toEqual([
       SessionV1.Event.Created,
       SessionV1.Event.Updated,
@@ -23,11 +24,15 @@ describe("public event manifest", () => {
       SessionV1.Event.Diff,
       SessionV1.Event.Error,
     ])
-    expect(EventManifest.Latest.size).toBe(103)
-    expect(EventManifest.Durable.size).toBe(53)
+    expect(EventManifest.Latest.size).toBe(106)
+    expect(EventManifest.Durable.size).toBe(54)
   })
 
   test("uses canonical definitions for current public events", () => {
+    expect(EventManifest.Latest.get("session.whiteboard.updated")).toBe(Whiteboard.Updated)
+    expect(EventManifest.Latest.get("session.whiteboard.presence")).toBe(Whiteboard.Presence)
+    expect(EventManifest.Durable.get("session.whiteboard.updated.1")).toBe(Whiteboard.Updated)
+    expect(EventManifest.Durable.has("session.whiteboard.presence.1")).toBe(false)
     expect(Session.Event).toBe(SessionEvent)
     expect(Session.Event.Definitions).toBe(SessionEvent.Definitions)
     expect(Workspace.Event).toBe(WorkspaceEvent)

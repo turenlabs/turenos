@@ -95,5 +95,6 @@ export const migrations = (
     import("./migration/20260823211419_flawless_bastion"),
     import("./migration/20260823214409_session-task-recovery-indexes"),
     import("./migration/20260828141433_session-goal-remove-budget"),
+    import("./migration/20260905203821_session-whiteboard"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

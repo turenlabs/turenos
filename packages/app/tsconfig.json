@@ -22,6 +22,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "package.json"],
+  "include": ["src", "package.json", "whiteboard.vite.js", "whiteboard.vite.test.js"],
   "exclude": ["dist", "ts-dist"]
 }

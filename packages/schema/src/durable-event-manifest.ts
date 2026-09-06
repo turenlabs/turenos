@@ -4,6 +4,7 @@ import { Event } from "./event"
 import { SessionEvent } from "./session-event"
 import { SessionV1 } from "./session-v1"
 import { PentestEvent } from "./pentest-event"
+import { Whiteboard } from "./whiteboard"
 
 export const SessionDurable = {
   definitions: Event.durable(SessionEvent.DurableDefinitions),
@@ -14,4 +15,5 @@ export const Durable = Event.durable([
   ...SessionV1.Event.Definitions.filter((definition) => definition.durable !== undefined),
   ...SessionEvent.DurableDefinitions,
   ...PentestEvent.Definitions,
+  Whiteboard.Updated,
 ])

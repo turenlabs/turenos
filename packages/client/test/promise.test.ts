@@ -19,10 +19,12 @@ test("exposes every standard HTTP API group", () => {
     "projectCopies",
     "memories",
     "loops",
+    "server.whiteboard",
   ])
   expect(Object.keys(client.messages)).toEqual(["list"])
   expect(Object.keys(client.files)).toEqual(["list", "find"])
   expect(Object.keys(client.ptys)).toEqual(["list", "create", "get", "update", "remove"])
+  expect(Object.keys(client["server.whiteboard"])).toEqual(["get", "update", "presence", "events"])
 })
 
 test("sessions.get returns the wire projection", async () => {

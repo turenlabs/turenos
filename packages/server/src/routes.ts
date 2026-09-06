@@ -17,6 +17,7 @@ import { Loop } from "@turenlabs/core/loop"
 import { SessionExecutionLocal } from "@turenlabs/core/session/execution/local"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
 import { TeamBoard } from "@turenlabs/core/team/board"
+import { Whiteboard } from "@turenlabs/core/session/whiteboard"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
@@ -42,6 +43,7 @@ const applicationServices = LayerNode.group([
   SessionExecution.node,
   SessionTaskV2.node,
   TeamBoard.node,
+  Whiteboard.node,
   PermissionSaved.node,
   PtyTicket.node,
   Credential.node,

@@ -35,6 +35,7 @@ import { CarveEmbeddedTool } from "./carve-embedded"
 import { DebugSymbolsTools } from "./debug-symbols-tools"
 import { LobbyRoomContextTool } from "./lobby-room-context"
 import { FollowStream } from "./follow-stream"
+import { WhiteboardTool } from "./whiteboard"
 
 /**
  * Composes only the shipped Location-scoped built-in tool transforms.
@@ -78,7 +79,8 @@ export const node = makeLocationNode({
     BinaryAnalysisTools.node,
     StaticAnalysisTools.node,
     ProtocolInspectTools.node,
-    FollowStream.node,
+  FollowStream.node,
+  WhiteboardTool.node,
     ForensicTools.node,
     RosettaExecTool.node,
     WasmInspectTools.node,

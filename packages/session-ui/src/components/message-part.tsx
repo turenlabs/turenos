@@ -71,6 +71,7 @@ import { toolResultCleared } from "./tool-cleared"
 import { partDefaultOpen } from "./part-default-open"
 import {
   groupParts,
+  contextToolSummary,
   sameGroups,
   isContextGroupTool,
   isCoordinationTool,
@@ -749,14 +750,6 @@ function contextToolTrigger(part: ToolPart, i18n: ReturnType<typeof useI18n>) {
   }
 }
 
-function contextToolSummary(parts: ToolPart[]) {
-  const read = parts.filter((part) => part.tool === "read").length
-  const search = parts.filter((part) => part.tool === "glob" || part.tool === "grep").length
-  const list = parts.filter((part) => part.tool === "list").length
-  const coordination = parts.filter((part) => isCoordinationTool(part.tool)).length
-  return { read, search, list, coordination }
-}
-
 function ExaOutput(props: { output?: string }) {
   const links = createMemo(() => urls(props.output))
 
@@ -933,10 +926,14 @@ export function ContextToolGroup(props: {
               <ToolStatusTitle
                 active={pending()}
                 activeText={i18n.t(
-                  summary().coordination ? "ui.sessionTurn.status.working" : "ui.sessionTurn.status.gatheringContext",
+                  summary().coordination || summary().shell
+                    ? "ui.sessionTurn.status.working"
+                    : "ui.sessionTurn.status.gatheringContext",
                 )}
                 doneText={i18n.t(
-                  summary().coordination ? "ui.messagePart.context.activity" : "ui.sessionTurn.status.gatheredContext",
+                  summary().coordination || summary().shell
+                    ? "ui.messagePart.context.activity"
+                    : "ui.sessionTurn.status.gatheredContext",
                 )}
                 split={false}
               />
@@ -964,6 +961,12 @@ export function ContextToolGroup(props: {
                     count: summary().list,
                     one: i18n.t("ui.messagePart.context.list.one"),
                     other: i18n.t("ui.messagePart.context.list.other"),
+                  },
+                  {
+                    key: "shell",
+                    count: summary().shell,
+                    one: i18n.t("ui.messagePart.context.shell.one"),
+                    other: i18n.t("ui.messagePart.context.shell.other"),
                   },
                   {
                     key: "coordination",

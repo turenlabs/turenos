@@ -1,8 +1,10 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "6eeac031-44ba-4e05-98f6-a8dbaaf77afb",
-  "prevIds": ["1c0d8e86-112a-4b02-8706-5cd07a0a0ce0"],
+  "id": "507508bc-51d4-4cd5-9d00-57f1f08573f1",
+  "prevIds": [
+    "6eeac031-44ba-4e05-98f6-a8dbaaf77afb"
+  ],
   "ddl": [
     {
       "name": "agent_improvement_proposal",
@@ -26,6 +28,10 @@
     },
     {
       "name": "session_task",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_whiteboard",
       "entityType": "tables"
     },
     {
@@ -983,6 +989,56 @@
       "name": "time_completed",
       "entityType": "columns",
       "table": "session_task"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_whiteboard"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "session_whiteboard"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "elements",
+      "entityType": "columns",
+      "table": "session_whiteboard"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "files",
+      "entityType": "columns",
+      "table": "session_whiteboard"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "session_whiteboard"
     },
     {
       "type": "text",
@@ -4925,9 +4981,13 @@
       "table": "storage_state"
     },
     {
-      "columns": ["root_session_id"],
+      "columns": [
+        "root_session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -4936,9 +4996,13 @@
       "table": "agent_improvement_proposal"
     },
     {
-      "columns": ["project_id"],
+      "columns": [
+        "project_id"
+      ],
       "tableTo": "project",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -4947,9 +5011,13 @@
       "table": "workspace"
     },
     {
-      "columns": ["task_id"],
+      "columns": [
+        "task_id"
+      ],
       "tableTo": "session_task",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -4958,9 +5026,13 @@
       "table": "session_task_operation"
     },
     {
-      "columns": ["root_session_id"],
+      "columns": [
+        "root_session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -4969,9 +5041,13 @@
       "table": "session_task_operation"
     },
     {
-      "columns": ["actor_session_id"],
+      "columns": [
+        "actor_session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -4980,9 +5056,13 @@
       "table": "session_task_operation"
     },
     {
-      "columns": ["root_session_id"],
+      "columns": [
+        "root_session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -4991,9 +5071,13 @@
       "table": "session_task"
     },
     {
-      "columns": ["parent_session_id"],
+      "columns": [
+        "parent_session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5002,9 +5086,13 @@
       "table": "session_task"
     },
     {
-      "columns": ["parent_task_id"],
+      "columns": [
+        "parent_task_id"
+      ],
       "tableTo": "session_task",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5013,9 +5101,28 @@
       "table": "session_task"
     },
     {
-      "columns": ["root_session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_whiteboard_session_id_session_id_fk",
+      "entityType": "fks",
+      "table": "session_whiteboard"
+    },
+    {
+      "columns": [
+        "root_session_id"
+      ],
+      "tableTo": "session",
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5024,9 +5131,13 @@
       "table": "team_board_note"
     },
     {
-      "columns": ["active_account_id"],
+      "columns": [
+        "active_account_id"
+      ],
       "tableTo": "account",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
@@ -5035,9 +5146,13 @@
       "table": "account_state"
     },
     {
-      "columns": ["aggregate_id"],
+      "columns": [
+        "aggregate_id"
+      ],
       "tableTo": "event_sequence",
-      "columnsTo": ["aggregate_id"],
+      "columnsTo": [
+        "aggregate_id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5046,9 +5161,13 @@
       "table": "event"
     },
     {
-      "columns": ["loop_id"],
+      "columns": [
+        "loop_id"
+      ],
       "tableTo": "loop",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5057,9 +5176,13 @@
       "table": "loop_run"
     },
     {
-      "columns": ["wing_id"],
+      "columns": [
+        "wing_id"
+      ],
       "tableTo": "memory_wing",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5068,9 +5191,13 @@
       "table": "memory_drawer"
     },
     {
-      "columns": ["room_id"],
+      "columns": [
+        "room_id"
+      ],
       "tableTo": "memory_room",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5079,9 +5206,13 @@
       "table": "memory_drawer"
     },
     {
-      "columns": ["superseded_by"],
+      "columns": [
+        "superseded_by"
+      ],
       "tableTo": "memory_drawer",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
@@ -5090,9 +5221,13 @@
       "table": "memory_drawer"
     },
     {
-      "columns": ["wing_id"],
+      "columns": [
+        "wing_id"
+      ],
       "tableTo": "memory_wing",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5101,9 +5236,13 @@
       "table": "memory_room"
     },
     {
-      "columns": ["project_id"],
+      "columns": [
+        "project_id"
+      ],
       "tableTo": "project",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5112,9 +5251,13 @@
       "table": "memory_wing"
     },
     {
-      "columns": ["run_id"],
+      "columns": [
+        "run_id"
+      ],
       "tableTo": "pentest_run",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5123,9 +5266,13 @@
       "table": "pentest_evidence"
     },
     {
-      "columns": ["finding_id"],
+      "columns": [
+        "finding_id"
+      ],
       "tableTo": "pentest_finding",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5134,9 +5281,13 @@
       "table": "pentest_evidence"
     },
     {
-      "columns": ["run_id"],
+      "columns": [
+        "run_id"
+      ],
       "tableTo": "pentest_run",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5145,9 +5296,13 @@
       "table": "pentest_execution"
     },
     {
-      "columns": ["run_id"],
+      "columns": [
+        "run_id"
+      ],
       "tableTo": "pentest_run",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5156,9 +5311,13 @@
       "table": "pentest_finding"
     },
     {
-      "columns": ["run_id"],
+      "columns": [
+        "run_id"
+      ],
       "tableTo": "pentest_run",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5167,9 +5326,13 @@
       "table": "pentest_http_session"
     },
     {
-      "columns": ["run_id"],
+      "columns": [
+        "run_id"
+      ],
       "tableTo": "pentest_run",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5178,9 +5341,13 @@
       "table": "pentest_model_usage"
     },
     {
-      "columns": ["run_id"],
+      "columns": [
+        "run_id"
+      ],
       "tableTo": "pentest_run",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5189,9 +5356,13 @@
       "table": "pentest_report"
     },
     {
-      "columns": ["execution_id"],
+      "columns": [
+        "execution_id"
+      ],
       "tableTo": "pentest_execution",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "NO ACTION",
       "nameExplicit": false,
@@ -5200,9 +5371,13 @@
       "table": "pentest_report"
     },
     {
-      "columns": ["project_id"],
+      "columns": [
+        "project_id"
+      ],
       "tableTo": "project",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5211,9 +5386,13 @@
       "table": "permission"
     },
     {
-      "columns": ["project_id"],
+      "columns": [
+        "project_id"
+      ],
       "tableTo": "project",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5222,9 +5401,13 @@
       "table": "project_directory"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5233,9 +5416,13 @@
       "table": "message"
     },
     {
-      "columns": ["message_id"],
+      "columns": [
+        "message_id"
+      ],
       "tableTo": "message",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5244,9 +5431,13 @@
       "table": "part"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5255,9 +5446,13 @@
       "table": "provider_usage"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5266,9 +5461,13 @@
       "table": "session_context_epoch"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5277,9 +5476,13 @@
       "table": "session_goal_identity"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5288,9 +5491,13 @@
       "table": "session_goal"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5299,9 +5506,13 @@
       "table": "session_goal_turn"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5310,9 +5521,13 @@
       "table": "session_harness"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5321,9 +5536,13 @@
       "table": "session_input"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5332,9 +5551,13 @@
       "table": "session_message_identity"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5343,9 +5566,13 @@
       "table": "session_message"
     },
     {
-      "columns": ["project_id"],
+      "columns": [
+        "project_id"
+      ],
       "tableTo": "project",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5354,9 +5581,13 @@
       "table": "session"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5365,9 +5596,13 @@
       "table": "session_transcript_adoption"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5376,9 +5611,13 @@
       "table": "todo"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
-      "columnsTo": ["id"],
+      "columnsTo": [
+        "id"
+      ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -5387,315 +5626,424 @@
       "table": "session_share"
     },
     {
-      "columns": ["session_id", "assistant_message_id", "call_id"],
+      "columns": [
+        "session_id",
+        "assistant_message_id",
+        "call_id"
+      ],
       "nameExplicit": false,
       "name": "tool_execution_pk",
       "entityType": "pks",
       "table": "tool_execution"
     },
     {
-      "columns": ["email", "url"],
+      "columns": [
+        "email",
+        "url"
+      ],
       "nameExplicit": false,
       "name": "control_account_pk",
       "entityType": "pks",
       "table": "control_account"
     },
     {
-      "columns": ["run_id", "profile_id"],
+      "columns": [
+        "run_id",
+        "profile_id"
+      ],
       "nameExplicit": false,
       "name": "pentest_http_session_pk",
       "entityType": "pks",
       "table": "pentest_http_session"
     },
     {
-      "columns": ["run_id", "session_id", "assistant_message_id"],
+      "columns": [
+        "run_id",
+        "session_id",
+        "assistant_message_id"
+      ],
       "nameExplicit": false,
       "name": "pentest_model_usage_pk",
       "entityType": "pks",
       "table": "pentest_model_usage"
     },
     {
-      "columns": ["project_id", "directory"],
+      "columns": [
+        "project_id",
+        "directory"
+      ],
       "nameExplicit": false,
       "name": "project_directory_pk",
       "entityType": "pks",
       "table": "project_directory"
     },
     {
-      "columns": ["session_id", "assistant_message_id"],
+      "columns": [
+        "session_id",
+        "assistant_message_id"
+      ],
       "nameExplicit": false,
       "name": "provider_usage_pk",
       "entityType": "pks",
       "table": "provider_usage"
     },
     {
-      "columns": ["session_id", "position"],
+      "columns": [
+        "session_id",
+        "position"
+      ],
       "nameExplicit": false,
       "name": "todo_pk",
       "entityType": "pks",
       "table": "todo"
     },
     {
-      "columns": ["scope", "key"],
+      "columns": [
+        "scope",
+        "key"
+      ],
       "nameExplicit": false,
       "name": "storage_state_pk",
       "entityType": "pks",
       "table": "storage_state"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "agent_improvement_proposal_pk",
       "table": "agent_improvement_proposal",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "workspace_pk",
       "table": "workspace",
       "entityType": "pks"
     },
     {
-      "columns": ["name"],
+      "columns": [
+        "name"
+      ],
       "nameExplicit": false,
       "name": "data_migration_pk",
       "table": "data_migration",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "session_task_actor_claim_pk",
       "table": "session_task_actor_claim",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "session_task_operation_pk",
       "table": "session_task_operation",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "session_task_pk",
       "table": "session_task",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "session_id"
+      ],
+      "nameExplicit": false,
+      "name": "session_whiteboard_pk",
+      "table": "session_whiteboard",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "team_board_note_pk",
       "table": "team_board_note",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "account_state_pk",
       "table": "account_state",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "account_pk",
       "table": "account",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "credential_pk",
       "table": "credential",
       "entityType": "pks"
     },
     {
-      "columns": ["aggregate_id"],
+      "columns": [
+        "aggregate_id"
+      ],
       "nameExplicit": false,
       "name": "event_sequence_pk",
       "table": "event_sequence",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "event_pk",
       "table": "event",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "loop_run_pk",
       "table": "loop_run",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "loop_pk",
       "table": "loop",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "memory_drawer_pk",
       "table": "memory_drawer",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "memory_room_pk",
       "table": "memory_room",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "memory_wing_pk",
       "table": "memory_wing",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "pentest_evidence_pk",
       "table": "pentest_evidence",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "pentest_execution_pk",
       "table": "pentest_execution",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "pentest_finding_pk",
       "table": "pentest_finding",
       "entityType": "pks"
     },
     {
-      "columns": ["run_id"],
+      "columns": [
+        "run_id"
+      ],
       "nameExplicit": false,
       "name": "pentest_report_pk",
       "table": "pentest_report",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "pentest_run_pk",
       "table": "pentest_run",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "permission_pk",
       "table": "permission",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "project_pk",
       "table": "project",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "message_pk",
       "table": "message",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "part_pk",
       "table": "part",
       "entityType": "pks"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "nameExplicit": false,
       "name": "session_context_epoch_pk",
       "table": "session_context_epoch",
       "entityType": "pks"
     },
     {
-      "columns": ["goal_id"],
+      "columns": [
+        "goal_id"
+      ],
       "nameExplicit": false,
       "name": "session_goal_identity_pk",
       "table": "session_goal_identity",
       "entityType": "pks"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "nameExplicit": false,
       "name": "session_goal_pk",
       "table": "session_goal",
       "entityType": "pks"
     },
     {
-      "columns": ["assistant_message_id"],
+      "columns": [
+        "assistant_message_id"
+      ],
       "nameExplicit": false,
       "name": "session_goal_turn_pk",
       "table": "session_goal_turn",
       "entityType": "pks"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "nameExplicit": false,
       "name": "session_harness_pk",
       "table": "session_harness",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "session_input_pk",
       "table": "session_input",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "session_message_identity_pk",
       "table": "session_message_identity",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "session_message_pk",
       "table": "session_message",
       "entityType": "pks"
     },
     {
-      "columns": ["id"],
+      "columns": [
+        "id"
+      ],
       "nameExplicit": false,
       "name": "session_pk",
       "table": "session",
       "entityType": "pks"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "nameExplicit": false,
       "name": "session_transcript_adoption_pk",
       "table": "session_transcript_adoption",
       "entityType": "pks"
     },
     {
-      "columns": ["session_id"],
+      "columns": [
+        "session_id"
+      ],
       "nameExplicit": false,
       "name": "session_share_pk",
       "table": "session_share",
@@ -6934,28 +7282,36 @@
       "table": "session"
     },
     {
-      "columns": ["operation_id"],
+      "columns": [
+        "operation_id"
+      ],
       "nameExplicit": false,
       "name": "session_task_actor_claim_operation_id_unique",
       "entityType": "uniques",
       "table": "session_task_actor_claim"
     },
     {
-      "columns": ["child_session_id"],
+      "columns": [
+        "child_session_id"
+      ],
       "nameExplicit": false,
       "name": "session_task_child_session_id_unique",
       "entityType": "uniques",
       "table": "session_task"
     },
     {
-      "columns": ["message_id"],
+      "columns": [
+        "message_id"
+      ],
       "nameExplicit": false,
       "name": "session_goal_identity_message_id_unique",
       "entityType": "uniques",
       "table": "session_goal_identity"
     },
     {
-      "columns": ["goal_id"],
+      "columns": [
+        "goal_id"
+      ],
       "nameExplicit": false,
       "name": "session_goal_goal_id_unique",
       "entityType": "uniques",

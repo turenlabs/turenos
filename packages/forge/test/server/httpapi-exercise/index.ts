@@ -29,6 +29,7 @@ import { runScenario } from "./runner"
 import { disposeApps, prepareAuthApp } from "./backend"
 import { runtime } from "./runtime"
 import { type Scenario } from "./types"
+import { whiteboardScenarios } from "./whiteboard"
 
 function cursor(input: Record<string, unknown>) {
   return Buffer.from(JSON.stringify(input)).toString("base64url")
@@ -57,6 +58,7 @@ function mcpRuntimeStatus(body: unknown): asserts body is { settings: Record<str
 }
 
 const scenarios: Scenario[] = [
+  ...whiteboardScenarios,
   http.protected
     .get("/global/health", "global.health")
     .global()

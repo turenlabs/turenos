@@ -13,6 +13,7 @@ import { LocationHandler } from "./handlers/location"
 import { ProjectCopyHandler } from "./handlers/project-copy"
 import { MemoryHandler } from "./handlers/memory"
 import { LoopHandler } from "./handlers/loop"
+import { WhiteboardHandler } from "./handlers/whiteboard"
 
 export const handlers = Layer.mergeAll(
   HealthHandler,
@@ -29,4 +30,5 @@ export const handlers = Layer.mergeAll(
   ProjectCopyHandler,
   MemoryHandler,
   LoopHandler,
+  WhiteboardHandler,
 )

@@ -20,6 +20,7 @@ import {
   type ParentProps,
   untrack,
   useContext,
+  lazy,
 } from "solid-js"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { createMediaQuery } from "@solid-primitives/media"
@@ -66,6 +67,8 @@ import { useTabs } from "@/context/tabs"
 import { tabKey } from "@/context/tab"
 import { TerminalProvider, useTerminal } from "@/context/terminal"
 import { PromptInput } from "@/components/prompt-input"
+
+const SessionWhiteboard = lazy(() => import("./session/session-whiteboard"))
 import { useSettingsCommand } from "@/components/settings-dialog"
 import { setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { promptLength } from "@/components/prompt-input/history"
@@ -2563,6 +2566,7 @@ export default function Page() {
               view={liveView}
               onViewChange={setLiveDockView}
               sessionKey={sessionKey}
+              whiteboard={() => <SessionWhiteboard sessionID={params.id!} active={liveView() === "whiteboard"} />}
               deferRender={() => store.deferRender}
               objective={() => goal.goal()?.objective}
               todos={composer.todos}

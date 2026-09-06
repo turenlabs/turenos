@@ -111,6 +111,8 @@ export const dict: Record<string, string> = {
   "ui.messagePart.context.search.other": "{{count}} searches",
   "ui.messagePart.context.list.one": "{{count}} list",
   "ui.messagePart.context.list.other": "{{count}} lists",
+  "ui.messagePart.context.shell.one": "{{count}} shell command",
+  "ui.messagePart.context.shell.other": "{{count}} shell commands",
 
   "ui.list.loading": "Loading",
   "ui.list.empty": "No results",

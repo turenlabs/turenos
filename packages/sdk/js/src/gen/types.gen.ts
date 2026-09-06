@@ -86,6 +86,9 @@ export type Event =
   | EventPentestEvidenceRecorded
   | EventPentestFindingChanged
   | EventPentestReportGenerated
+  | EventSessionWhiteboardUpdated
+  | EventSessionWhiteboardPresence
+  | EventSessionWhiteboardConnected
   | EventTodoUpdated
   | EventLspUpdated
   | EventPermissionAsked
@@ -1613,6 +1616,31 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "session.whiteboard.updated"
+        properties: {
+          sessionID: string
+          revision: number
+          actor: WhiteboardActor
+        }
+      }
+    | {
+        id: string
+        type: "session.whiteboard.presence"
+        properties: {
+          sessionID: string
+          participants: Array<WhiteboardParticipant>
+        }
+      }
+    | {
+        id: string
+        type: "session.whiteboard.connected"
+        properties: {
+          sessionID: string
+          revision: number
+        }
+      }
+    | {
+        id: string
         type: "todo.updated"
         properties: {
           sessionID: string
@@ -1856,6 +1884,7 @@ export type GlobalEvent = {
     | SyncEventPentestEvidenceRecorded
     | SyncEventPentestFindingChanged
     | SyncEventPentestReportGenerated
+    | SyncEventSessionWhiteboardUpdated
 }
 
 /**
@@ -3371,6 +3400,9 @@ export type V2Event =
   | PentestEvidenceRecorded
   | PentestFindingChanged
   | PentestReportGenerated
+  | SessionWhiteboardUpdated
+  | SessionWhiteboardPresence
+  | SessionWhiteboardConnected
   | TodoUpdated
   | LspUpdated
   | PermissionAsked
@@ -3424,6 +3456,24 @@ export type LoopRunNotFoundError = {
   _tag: "LoopRunNotFoundError"
   loopID: string
   runID: string
+  message: string
+}
+
+export type WhiteboardNotFoundError = {
+  _tag: "WhiteboardNotFoundError"
+  sessionID: string
+}
+
+export type WhiteboardValidationError = {
+  _tag: "WhiteboardValidationError"
+  message: string
+}
+
+export type WhiteboardConflictError = {
+  _tag: "WhiteboardConflictError"
+  sessionID: string
+  expectedRevision: number
+  actualRevision: number
   message: string
 }
 
@@ -3809,6 +3859,23 @@ export type QuestionV2Tool = {
 }
 
 export type QuestionV2Answer = Array<string>
+
+export type WhiteboardActor = {
+  id: string
+  name: string
+  kind: "human" | "agent"
+}
+
+export type WhiteboardParticipant = {
+  clientID: string
+  username: string
+  pointer?: {
+    x: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    y: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  selectedElementIds?: Array<string>
+  updatedAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
 
 export type ProjectVcs = "git"
 
@@ -4823,6 +4890,22 @@ export type SyncEventPentestReportGenerated = {
     data: {
       runID: string
       generatedAt: number
+    }
+  }
+}
+
+export type SyncEventSessionWhiteboardUpdated = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "session.whiteboard.updated.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      revision: number
+      actor: WhiteboardActor
     }
   }
 }
@@ -7382,6 +7465,72 @@ export type PentestReportGenerated = {
   }
 }
 
+export type SessionWhiteboardUpdated = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.whiteboard.updated"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    revision: number
+    actor: WhiteboardActor
+  }
+}
+
+export type WhiteboardParticipant1 = {
+  clientID: string
+  username: string
+  pointer?: {
+    x: number | "NaN" | "Infinity" | "-Infinity"
+    y: number | "NaN" | "Infinity" | "-Infinity"
+  }
+  selectedElementIds?: Array<string>
+  updatedAt: number | "NaN" | "Infinity" | "-Infinity"
+}
+
+export type SessionWhiteboardPresence = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.whiteboard.presence"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    participants: Array<WhiteboardParticipant1>
+  }
+}
+
+export type SessionWhiteboardConnected = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.whiteboard.connected"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    revision: number
+  }
+}
+
 export type TodoUpdated = {
   id: string
   metadata?: {
@@ -7931,6 +8080,60 @@ export type LoopRun = {
     completed?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   }
 }
+
+export type WhiteboardElement = {
+  [key: string]: unknown
+}
+
+export type WhiteboardFile = {
+  id: string
+  mimeType: string
+  dataURL: string
+  created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  lastRetrieved?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type WhiteboardSnapshot = {
+  sessionID: string
+  revision: number
+  elements: Array<WhiteboardElement>
+  files: {
+    [key: string]: WhiteboardFile
+  }
+  updatedAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type WhiteboardPatch = {
+  elements: Array<WhiteboardElement>
+  files?: {
+    [key: string]: WhiteboardFile
+  }
+  baseRevision?: number
+}
+
+export type WhiteboardUpdateRequest = {
+  patch: WhiteboardPatch
+  clientID: string
+  username: string
+}
+
+export type WhiteboardPresenceInput = {
+  clientID: string
+  username: string
+  pointer?: {
+    x: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    y: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  selectedElementIds?: Array<string>
+}
+
+export type WhiteboardPresenceSnapshot = {
+  participants: Array<WhiteboardParticipant>
+}
+
+export type WhiteboardEvents = SessionWhiteboardUpdated | SessionWhiteboardPresence | SessionWhiteboardConnected
+
+export type WhiteboardEventsStream = string
 
 export type EventModelsDevRefreshed = {
   id: string
@@ -8875,6 +9078,45 @@ export type EventPentestReportGenerated = {
   properties: {
     runID: string
     generatedAt: number
+  }
+}
+
+export type EventSessionWhiteboardUpdated = {
+  id: string
+  type: "session.whiteboard.updated"
+  properties: {
+    sessionID: string
+    revision: number
+    actor: WhiteboardActor
+  }
+}
+
+export type WhiteboardParticipant2 = {
+  clientID: string
+  username: string
+  pointer?: {
+    x: number | "NaN" | "Infinity" | "-Infinity"
+    y: number | "NaN" | "Infinity" | "-Infinity"
+  }
+  selectedElementIds?: Array<string>
+  updatedAt: number | "NaN" | "Infinity" | "-Infinity"
+}
+
+export type EventSessionWhiteboardPresence = {
+  id: string
+  type: "session.whiteboard.presence"
+  properties: {
+    sessionID: string
+    participants: Array<WhiteboardParticipant2>
+  }
+}
+
+export type EventSessionWhiteboardConnected = {
+  id: string
+  type: "session.whiteboard.connected"
+  properties: {
+    sessionID: string
+    revision: number
   }
 }
 
@@ -17007,6 +17249,158 @@ export type V2LoopRunCancelResponses = {
 }
 
 export type V2LoopRunCancelResponse = V2LoopRunCancelResponses[keyof V2LoopRunCancelResponses]
+
+export type V2WhiteboardGetData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/whiteboard"
+}
+
+export type V2WhiteboardGetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * WhiteboardNotFoundError | SessionNotFoundError
+   */
+  404: WhiteboardNotFoundError | SessionNotFoundError
+}
+
+export type V2WhiteboardGetError = V2WhiteboardGetErrors[keyof V2WhiteboardGetErrors]
+
+export type V2WhiteboardGetResponses = {
+  /**
+   * Whiteboard.Snapshot
+   */
+  200: WhiteboardSnapshot
+}
+
+export type V2WhiteboardGetResponse = V2WhiteboardGetResponses[keyof V2WhiteboardGetResponses]
+
+export type V2WhiteboardUpdateData = {
+  body: WhiteboardUpdateRequest
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/whiteboard"
+}
+
+export type V2WhiteboardUpdateErrors = {
+  /**
+   * WhiteboardValidationError | InvalidRequestError
+   */
+  400: WhiteboardValidationError | InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * WhiteboardNotFoundError | SessionNotFoundError
+   */
+  404: WhiteboardNotFoundError | SessionNotFoundError
+  /**
+   * WhiteboardConflictError
+   */
+  409: WhiteboardConflictError
+}
+
+export type V2WhiteboardUpdateError = V2WhiteboardUpdateErrors[keyof V2WhiteboardUpdateErrors]
+
+export type V2WhiteboardUpdateResponses = {
+  /**
+   * Whiteboard.Snapshot
+   */
+  200: WhiteboardSnapshot
+}
+
+export type V2WhiteboardUpdateResponse = V2WhiteboardUpdateResponses[keyof V2WhiteboardUpdateResponses]
+
+export type V2WhiteboardPresenceData = {
+  body: WhiteboardPresenceInput
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/whiteboard/presence"
+}
+
+export type V2WhiteboardPresenceErrors = {
+  /**
+   * WhiteboardValidationError | InvalidRequestError
+   */
+  400: WhiteboardValidationError | InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * WhiteboardNotFoundError | SessionNotFoundError
+   */
+  404: WhiteboardNotFoundError | SessionNotFoundError
+  /**
+   * WhiteboardConflictError
+   */
+  409: WhiteboardConflictError
+}
+
+export type V2WhiteboardPresenceError = V2WhiteboardPresenceErrors[keyof V2WhiteboardPresenceErrors]
+
+export type V2WhiteboardPresenceResponses = {
+  /**
+   * Whiteboard.PresenceSnapshot
+   */
+  200: WhiteboardPresenceSnapshot
+}
+
+export type V2WhiteboardPresenceResponse = V2WhiteboardPresenceResponses[keyof V2WhiteboardPresenceResponses]
+
+export type V2WhiteboardEventsData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/whiteboard/events"
+}
+
+export type V2WhiteboardEventsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * WhiteboardNotFoundError | SessionNotFoundError
+   */
+  404: WhiteboardNotFoundError | SessionNotFoundError
+}
+
+export type V2WhiteboardEventsError = V2WhiteboardEventsErrors[keyof V2WhiteboardEventsErrors]
+
+export type V2WhiteboardEventsResponses = {
+  /**
+   * Success
+   */
+  200: {
+    id: string
+    event: string
+    data: WhiteboardEventsStream
+  }
+}
+
+export type V2WhiteboardEventsResponse = V2WhiteboardEventsResponses[keyof V2WhiteboardEventsResponses]
 
 export type PtyConnectData = {
   body?: never

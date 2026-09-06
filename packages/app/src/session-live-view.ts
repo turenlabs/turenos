@@ -7,3 +7,4 @@ export type SessionLiveView =
   | "activity"
   | "context"
   | "terminal"
+  | "whiteboard"

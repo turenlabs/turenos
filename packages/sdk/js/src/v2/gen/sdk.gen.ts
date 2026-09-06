@@ -480,6 +480,15 @@ import type {
   V2SessionTerminalShareResponses,
   V2SessionWaitErrors,
   V2SessionWaitResponses,
+  V2WhiteboardEventsErrors,
+  V2WhiteboardEventsResponse,
+  V2WhiteboardEventsResponses,
+  V2WhiteboardGetErrors,
+  V2WhiteboardGetResponses,
+  V2WhiteboardPresenceErrors,
+  V2WhiteboardPresenceResponses,
+  V2WhiteboardUpdateErrors,
+  V2WhiteboardUpdateResponses,
   VcsApplyErrors,
   VcsApplyResponses,
   VcsDiffErrors,
@@ -490,6 +499,8 @@ import type {
   VcsGetResponses,
   VcsStatusErrors,
   VcsStatusResponses,
+  WhiteboardPresenceInput,
+  WhiteboardUpdateRequest,
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
@@ -7875,6 +7886,116 @@ export class Loop extends HeyApiClient {
   }
 }
 
+export class Whiteboard extends HeyApiClient {
+  /**
+   * Read session whiteboard
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<V2WhiteboardGetResponses, V2WhiteboardGetErrors, ThrowOnError>({
+      url: "/api/session/{sessionID}/whiteboard",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Merge session whiteboard elements
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      whiteboardUpdateRequest: WhiteboardUpdateRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "whiteboardUpdateRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<V2WhiteboardUpdateResponses, V2WhiteboardUpdateErrors, ThrowOnError>({
+      url: "/api/session/{sessionID}/whiteboard",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Update ephemeral whiteboard presence
+   */
+  public presence<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      whiteboardPresenceInput: WhiteboardPresenceInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "whiteboardPresenceInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      V2WhiteboardPresenceResponses,
+      V2WhiteboardPresenceErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/whiteboard/presence",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Subscribe to session whiteboard notifications
+   */
+  public events<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError, V2WhiteboardEventsResponse>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).sse.get<
+      V2WhiteboardEventsResponses,
+      V2WhiteboardEventsErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/whiteboard/events",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class V2 extends HeyApiClient {
   private _health?: Health
   get health(): Health {
@@ -7939,6 +8060,11 @@ export class V2 extends HeyApiClient {
   private _loop?: Loop
   get loop(): Loop {
     return (this._loop ??= new Loop({ client: this.client }))
+  }
+
+  private _whiteboard?: Whiteboard
+  get whiteboard(): Whiteboard {
+    return (this._whiteboard ??= new Whiteboard({ client: this.client }))
   }
 }
 

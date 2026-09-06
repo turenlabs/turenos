@@ -31,6 +31,7 @@ import { SessionV1 } from "./session-v1"
 import { VcsEvent } from "./vcs-event"
 import { WorkspaceEvent } from "./workspace-event"
 import { WorktreeEvent } from "./worktree-event"
+import { Whiteboard } from "./whiteboard"
 
 const sessionV1DurableDefinitions = SessionV1.Event.Definitions.filter((definition) => definition.durable !== undefined)
 const sessionV1LiveDefinitions = SessionV1.Event.Definitions.filter((definition) => definition.durable === undefined)
@@ -55,6 +56,7 @@ const featureDefinitions = Event.inventory(
   ...Pty.Event.Definitions,
   ...Question.Event.Definitions,
   ...PentestEvent.Definitions,
+  ...Whiteboard.Definitions,
 )
 
 export const ServerDefinitions = Event.inventory(

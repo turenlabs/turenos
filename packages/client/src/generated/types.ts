@@ -114,6 +114,24 @@ export type LoopRunNotFoundError = {
 export const isLoopRunNotFoundError = (value: unknown): value is LoopRunNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "LoopRunNotFoundError"
 
+export type WhiteboardNotFoundError = { readonly _tag: "WhiteboardNotFoundError"; readonly sessionID: string }
+export const isWhiteboardNotFoundError = (value: unknown): value is WhiteboardNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "WhiteboardNotFoundError"
+
+export type WhiteboardValidationError = { readonly _tag: "WhiteboardValidationError"; readonly message: string }
+export const isWhiteboardValidationError = (value: unknown): value is WhiteboardValidationError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "WhiteboardValidationError"
+
+export type WhiteboardConflictError = {
+  readonly _tag: "WhiteboardConflictError"
+  readonly sessionID: string
+  readonly expectedRevision: number
+  readonly actualRevision: number
+  readonly message: string
+}
+export const isWhiteboardConflictError = (value: unknown): value is WhiteboardConflictError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "WhiteboardConflictError"
+
 export type HealthGetOutput = { readonly healthy: true }
 
 export type LocationGetInput = {
@@ -7129,3 +7147,186 @@ export type LoopsRunCancelOutput = {
     readonly completed?: number | undefined
   }
 }
+
+export type ServerWhiteboardGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type ServerWhiteboardGetOutput = {
+  readonly sessionID: string
+  readonly revision: number
+  readonly elements: ReadonlyArray<{ readonly [x: string]: JsonValue }>
+  readonly files: {
+    readonly [x: string]: {
+      readonly id: string
+      readonly mimeType: string
+      readonly dataURL: string
+      readonly created: number | "Infinity" | "-Infinity" | "NaN"
+      readonly lastRetrieved?: number | "Infinity" | "-Infinity" | "NaN"
+    }
+  }
+  readonly updatedAt: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type ServerWhiteboardUpdateInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly patch: {
+    readonly patch: {
+      readonly elements: ReadonlyArray<{ readonly [x: string]: JsonValue }>
+      readonly files?: {
+        readonly [x: string]: {
+          readonly id: string
+          readonly mimeType: string
+          readonly dataURL: string
+          readonly created: number | "Infinity" | "-Infinity" | "NaN"
+          readonly lastRetrieved?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+      }
+      readonly baseRevision?: number
+    }
+    readonly clientID: string
+    readonly username: string
+  }["patch"]
+  readonly clientID: {
+    readonly patch: {
+      readonly elements: ReadonlyArray<{ readonly [x: string]: JsonValue }>
+      readonly files?: {
+        readonly [x: string]: {
+          readonly id: string
+          readonly mimeType: string
+          readonly dataURL: string
+          readonly created: number | "Infinity" | "-Infinity" | "NaN"
+          readonly lastRetrieved?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+      }
+      readonly baseRevision?: number
+    }
+    readonly clientID: string
+    readonly username: string
+  }["clientID"]
+  readonly username: {
+    readonly patch: {
+      readonly elements: ReadonlyArray<{ readonly [x: string]: JsonValue }>
+      readonly files?: {
+        readonly [x: string]: {
+          readonly id: string
+          readonly mimeType: string
+          readonly dataURL: string
+          readonly created: number | "Infinity" | "-Infinity" | "NaN"
+          readonly lastRetrieved?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+      }
+      readonly baseRevision?: number
+    }
+    readonly clientID: string
+    readonly username: string
+  }["username"]
+}
+
+export type ServerWhiteboardUpdateOutput = {
+  readonly sessionID: string
+  readonly revision: number
+  readonly elements: ReadonlyArray<{ readonly [x: string]: JsonValue }>
+  readonly files: {
+    readonly [x: string]: {
+      readonly id: string
+      readonly mimeType: string
+      readonly dataURL: string
+      readonly created: number | "Infinity" | "-Infinity" | "NaN"
+      readonly lastRetrieved?: number | "Infinity" | "-Infinity" | "NaN"
+    }
+  }
+  readonly updatedAt: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type ServerWhiteboardPresenceInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly clientID: {
+    readonly clientID: string
+    readonly username: string
+    readonly pointer?: {
+      readonly x: number | "Infinity" | "-Infinity" | "NaN"
+      readonly y: number | "Infinity" | "-Infinity" | "NaN"
+    }
+    readonly selectedElementIds?: ReadonlyArray<string>
+  }["clientID"]
+  readonly username: {
+    readonly clientID: string
+    readonly username: string
+    readonly pointer?: {
+      readonly x: number | "Infinity" | "-Infinity" | "NaN"
+      readonly y: number | "Infinity" | "-Infinity" | "NaN"
+    }
+    readonly selectedElementIds?: ReadonlyArray<string>
+  }["username"]
+  readonly pointer?: {
+    readonly clientID: string
+    readonly username: string
+    readonly pointer?: {
+      readonly x: number | "Infinity" | "-Infinity" | "NaN"
+      readonly y: number | "Infinity" | "-Infinity" | "NaN"
+    }
+    readonly selectedElementIds?: ReadonlyArray<string>
+  }["pointer"]
+  readonly selectedElementIds?: {
+    readonly clientID: string
+    readonly username: string
+    readonly pointer?: {
+      readonly x: number | "Infinity" | "-Infinity" | "NaN"
+      readonly y: number | "Infinity" | "-Infinity" | "NaN"
+    }
+    readonly selectedElementIds?: ReadonlyArray<string>
+  }["selectedElementIds"]
+}
+
+export type ServerWhiteboardPresenceOutput = {
+  readonly participants: ReadonlyArray<{
+    readonly clientID: string
+    readonly username: string
+    readonly pointer?: {
+      readonly x: number | "Infinity" | "-Infinity" | "NaN"
+      readonly y: number | "Infinity" | "-Infinity" | "NaN"
+    }
+    readonly selectedElementIds?: ReadonlyArray<string>
+    readonly updatedAt: number | "Infinity" | "-Infinity" | "NaN"
+  }>
+}
+
+export type ServerWhiteboardEventsInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type ServerWhiteboardEventsOutput =
+  | {
+      readonly id: string
+      readonly metadata?: { readonly [x: string]: unknown }
+      readonly type: "session.whiteboard.updated"
+      readonly durable?: { readonly aggregateID: string; readonly seq: number; readonly version: number }
+      readonly location?: { readonly directory: string; readonly workspaceID?: string }
+      readonly data: {
+        readonly sessionID: string
+        readonly revision: number
+        readonly actor: { readonly id: string; readonly name: string; readonly kind: "human" | "agent" }
+      }
+    }
+  | {
+      readonly id: string
+      readonly metadata?: { readonly [x: string]: unknown }
+      readonly type: "session.whiteboard.presence"
+      readonly durable?: { readonly aggregateID: string; readonly seq: number; readonly version: number }
+      readonly location?: { readonly directory: string; readonly workspaceID?: string }
+      readonly data: {
+        readonly sessionID: string
+        readonly participants: ReadonlyArray<{
+          readonly clientID: string
+          readonly username: string
+          readonly pointer?: { readonly x: number; readonly y: number }
+          readonly selectedElementIds?: ReadonlyArray<string>
+          readonly updatedAt: number
+        }>
+      }
+    }
+  | {
+      readonly id: string
+      readonly metadata?: { readonly [x: string]: unknown }
+      readonly type: "session.whiteboard.connected"
+      readonly durable?: { readonly aggregateID: string; readonly seq: number; readonly version: number }
+      readonly location?: { readonly directory: string; readonly workspaceID?: string }
+      readonly data: { readonly sessionID: string; readonly revision: number }
+    }

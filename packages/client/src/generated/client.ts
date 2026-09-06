@@ -177,6 +177,14 @@ import type {
   LoopsRunGetOutput,
   LoopsRunCancelInput,
   LoopsRunCancelOutput,
+  ServerWhiteboardGetInput,
+  ServerWhiteboardGetOutput,
+  ServerWhiteboardUpdateInput,
+  ServerWhiteboardUpdateOutput,
+  ServerWhiteboardPresenceInput,
+  ServerWhiteboardPresenceOutput,
+  ServerWhiteboardEventsInput,
+  ServerWhiteboardEventsOutput,
 } from "./types"
 import { ClientError } from "./client-error"
 
@@ -1493,6 +1501,62 @@ export function make(options: ClientOptions) {
             path: `/api/loop/${encodeURIComponent(input.loopID)}/run/${encodeURIComponent(input.runID)}/cancel`,
             successStatus: 200,
             declaredStatuses: [409, 404, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    "server.whiteboard": {
+      get: (input: ServerWhiteboardGetInput, requestOptions?: RequestOptions) =>
+        request<ServerWhiteboardGetOutput>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/whiteboard`,
+            successStatus: 200,
+            declaredStatuses: [404, 400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      update: (input: ServerWhiteboardUpdateInput, requestOptions?: RequestOptions) =>
+        request<ServerWhiteboardUpdateOutput>(
+          {
+            method: "PATCH",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/whiteboard`,
+            body: { patch: input["patch"], clientID: input["clientID"], username: input["username"] },
+            successStatus: 200,
+            declaredStatuses: [404, 400, 409, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      presence: (input: ServerWhiteboardPresenceInput, requestOptions?: RequestOptions) =>
+        request<ServerWhiteboardPresenceOutput>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/whiteboard/presence`,
+            body: {
+              clientID: input["clientID"],
+              username: input["username"],
+              pointer: input["pointer"],
+              selectedElementIds: input["selectedElementIds"],
+            },
+            successStatus: 200,
+            declaredStatuses: [404, 400, 409, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      events: (
+        input: ServerWhiteboardEventsInput,
+        requestOptions?: RequestOptions,
+      ): AsyncIterable<ServerWhiteboardEventsOutput> =>
+        sse<ServerWhiteboardEventsOutput>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/whiteboard/events`,
+            successStatus: 200,
+            declaredStatuses: [404, 400, 401],
             empty: false,
           },
           requestOptions,

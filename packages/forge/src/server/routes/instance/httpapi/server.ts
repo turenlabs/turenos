@@ -60,6 +60,7 @@ import { Database } from "@turenlabs/core/database/database"
 import { Storage } from "@turenlabs/core/storage"
 import { Pentest } from "@turenlabs/core/pentest"
 import { TeamBoard } from "@turenlabs/core/team/board"
+import { Whiteboard } from "@turenlabs/core/session/whiteboard"
 import { PentestExecutionWorker } from "@/pentest/execution-worker"
 import { AppNodeBuilderV1 } from "@/effect/app-node-builder-v1"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -239,6 +240,7 @@ const app = LayerNode.group([
   ExtensionRuntime.node,
   Pentest.node,
   TeamBoard.node,
+  Whiteboard.node,
   PentestExecutionWorker.node,
   PermissionChecks.node,
   Auth.node,

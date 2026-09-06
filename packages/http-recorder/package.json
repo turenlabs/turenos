@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "name": "@turenlabs/http-recorder",
   "private": true,
   "description": "Record and replay Effect HTTP client traffic with deterministic cassettes",

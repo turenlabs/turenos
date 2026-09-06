@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import path from "node:path"
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs"
+import { createHash } from "node:crypto"
 
 const root = path.resolve(import.meta.dir, "..")
 const outputDirectory = path.join(root, "packages/desktop/resources/licenses")
@@ -152,10 +153,21 @@ const sourceKey = (value: string | undefined) =>
     .replace(/\.git$/, "")
     .replace(/^([^/:]+\/[^/]+)$/, "https://github.com/$1")
 
-const license = (pkg: PackageJson) => {
+const license = (pkg: PackageJson, directory: string) => {
   if (typeof pkg.license === "string") return pkg.license
   if (pkg.license?.type) return pkg.license.type
   const values = (pkg.licenses ?? []).flatMap((item) => (item.type ? [item.type] : []))
+  // khroma 2.1.0 omits manifest metadata; recognize only its exact shipped MIT notice.
+  // https://github.com/fabiospampinato/khroma/blob/4968165afb0d3d09be66497e7985a34f7bfe6d42/license
+  if (pkg.name === "khroma" && pkg.version === "2.1.0" && values.length === 0) {
+    const file = path.join(directory, "license")
+    if (
+      existsSync(file) &&
+      createHash("sha256").update(readFileSync(file)).digest("hex") ===
+        "66b333b0f66759a0b710459e03f7029abe17f4358114a128d2c972e642961b49"
+    )
+      return "MIT"
+  }
   return values.length === 0 ? "UNKNOWN" : values.join(" OR ")
 }
 
@@ -193,7 +205,7 @@ const collect = () => {
       const item = {
         name: pkg.name,
         version: pkg.version,
-        license: license(pkg),
+        license: license(pkg, directory),
         source: source(pkg),
         licenseFiles: licenseFiles(directory),
       }
