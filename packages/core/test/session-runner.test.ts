@@ -597,6 +597,74 @@ const expectStablePrefix = (previous: LLMRequest, request: LLMRequest) => {
   expect(request.messages.slice(0, previous.messages.length)).toEqual([...previous.messages])
 }
 
+// Adopt event-backed history without ever rendering a request. Unique old results exceed both
+// pruning budgets; duplicate results and a large write input exercise the other reduction paths.
+const adoptPrunableHistory = Effect.gen(function* () {
+  const session = yield* SessionV2.Service
+  const events = yield* EventV2.Service
+  const database = yield* Database.Service
+  const outputs = Array.from(
+    { length: 10 },
+    (_, index) => `${index < 2 ? "duplicate" : `old-${index}`} ${"x".repeat(60_000)}`,
+  )
+  const input = { filePath: "old.txt", content: "original write body ".repeat(300) }
+  for (const [index, output] of outputs.entries()) {
+    yield* session.prompt({ sessionID, prompt: Prompt.make({ text: `Historical request ${index}` }), resume: false })
+    yield* SessionInput.promoteSteers(database.db, events, sessionID, Number.MAX_SAFE_INTEGER)
+    const assistantMessageID = SessionMessage.ID.create()
+    const timestamp = yield* DateTime.now
+    const callID = `adopted-${index}`
+    yield* events.publish(SessionEvent.Step.Started, {
+      sessionID,
+      assistantMessageID,
+      timestamp,
+      agent: "build",
+      model: { id: ModelV2.ID.make("fake-model"), providerID: ProviderV2.ID.make("fake") },
+    })
+    yield* events.publish(SessionEvent.Tool.Input.Started, {
+      sessionID,
+      assistantMessageID,
+      timestamp,
+      callID,
+      name: index === 0 ? "write" : "echo",
+    })
+    yield* events.publish(SessionEvent.Tool.Input.Ended, {
+      sessionID,
+      assistantMessageID,
+      timestamp,
+      callID,
+      text: JSON.stringify(index === 0 ? input : { text: `old-${index}` }),
+    })
+    yield* events.publish(SessionEvent.Tool.Called, {
+      sessionID,
+      assistantMessageID,
+      timestamp,
+      callID,
+      tool: index === 0 ? "write" : "echo",
+      input: index === 0 ? input : { text: `old-${index}` },
+      provider: { executed: false },
+    })
+    yield* events.publish(SessionEvent.Tool.Success, {
+      sessionID,
+      assistantMessageID,
+      timestamp,
+      callID,
+      structured: {},
+      content: [{ type: "text", text: output }],
+      provider: { executed: false },
+    })
+    yield* events.publish(SessionEvent.Step.Ended, {
+      sessionID,
+      assistantMessageID,
+      timestamp,
+      finish: "stop",
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    })
+  }
+  return { outputs, input }
+})
+
 const replaySessionProjection = (id: SessionV2.ID) =>
   Effect.gen(function* () {
     const { db } = yield* Database.Service
@@ -1176,6 +1244,193 @@ describe("SessionRunnerLLM", () => {
       ])
       expect(yield* session.messages({ sessionID })).toHaveLength(2)
     }),
+  )
+
+  it.effect("keeps the request prefix and baseline stable across real reflection_state updates", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const reflection = yield* Reflection.Service
+      const database = yield* Database.Service
+      const states = [
+        {
+          prediction: "The check will pass",
+          hypotheses: [{ claim: "Prefix stays stable", status: "open" }],
+          next_action: "Run the check",
+        },
+        {
+          prediction: "The check passed",
+          hypotheses: [
+            { claim: "Prefix stays stable", status: "supported", evidence: "Requests retained their prefix" },
+          ],
+          next_action: "Report the result",
+        },
+      ]
+      const snapshots = []
+      for (const [index, state] of states.entries()) {
+        responses = [
+          [
+            LLMEvent.stepStart({ index: 0 }),
+            LLMEvent.toolCall({ id: `reflection-state-${index}`, name: "reflection_state", input: state }),
+            LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+            LLMEvent.finish({ reason: "tool-calls" }),
+          ],
+          fragmentFixture("text", `reflection-state-done-${index}`, ["State recorded"]).completeEvents,
+        ]
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: `Record work state ${index}` }), resume: false })
+        yield* session.resume(sessionID)
+        expect(yield* reflection.work(sessionID)).toMatchObject({
+          prediction: state.prediction,
+          hypotheses: state.hypotheses,
+          nextAction: state.next_action,
+        })
+        expect(yield* reflection.resetPending(sessionID)).toBe(false)
+        const frame = yield* database.db
+          .select()
+          .from(SessionContextRequestTable)
+          .where(eq(SessionContextRequestTable.session_id, sessionID))
+          .get()
+          .pipe(Effect.orDie)
+        expect(frame?.generation).toBe(1)
+        snapshots.push(
+          yield* database.db
+            .select()
+            .from(SessionContextEpochTable)
+            .where(eq(SessionContextEpochTable.session_id, sessionID))
+            .get()
+            .pipe(Effect.orDie),
+        )
+      }
+      expect(requests).toHaveLength(4)
+      requests.slice(1).forEach((request, index) => expectStablePrefix(requests[index]!, request))
+      expect(snapshots[0]).toBeDefined()
+      expect(snapshots[1]).toEqual(snapshots[0])
+      const tools = (yield* session.messages({ sessionID })).flatMap((message) =>
+        message.type === "assistant" ? message.content.filter((part) => part.type === "tool") : [],
+      )
+      expect(tools).toHaveLength(2)
+      expect(tools.every((tool) => tool.name === "reflection_state" && tool.state.status === "completed")).toBe(true)
+    }),
+  )
+
+  it.effect("does not prune adopted history when initial and reconfigured frames are below 75 percent", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const database = yield* Database.Service
+      const history = yield* adoptPrunableHistory
+      currentModel = Model.make({
+        id: "roomy",
+        provider: "fake",
+        route: OpenAIChat.route.with({ limits: { context: 1_000_000, output: 1_000 } }),
+      })
+      for (const index of [0, 1]) {
+        if (index === 1)
+          currentModel = Model.make({
+            id: "roomy-reconfigured",
+            provider: "fake",
+            route: OpenAIChat.route.with({ limits: { context: 1_000_000, output: 1_000 } }),
+          })
+        response = fragmentFixture("text", `adopted-done-${index}`, ["Done"]).completeEvents
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: `Current request ${index}` }), resume: false })
+        yield* session.resume(sessionID)
+        const request = requests[index]!
+        const wire = JSON.stringify(request.messages)
+        history.outputs.forEach((output) => expect(wire).toContain(output))
+        expect(wire.split(history.outputs[0]!).length - 1).toBe(2)
+        expect(wire).toContain(history.input.content)
+        expect(wire).not.toContain(SessionCompaction.PRUNED_TEXT)
+        expect(wire).not.toContain(SessionCompaction.PRUNED_DUPLICATE_TEXT)
+        expect(wire).not.toContain(SessionCompaction.PRUNED_INPUT_TEXT)
+        const row = yield* database.db
+          .select()
+          .from(SessionContextRequestTable)
+          .where(eq(SessionContextRequestTable.session_id, sessionID))
+          .get()
+          .pipe(Effect.orDie)
+        expect(row).toMatchObject({ generation: index + 1, reason: index === 0 ? "initial" : "configuration" })
+        const frame = yield* Schema.decodeUnknownEffect(SessionContextRequest.Frame)(row!.data)
+        expect(SessionCompaction.needsPruning({ entries: frame.entries, model: currentModel, request })).toBe(false)
+      }
+      expect(requests).toHaveLength(2)
+      expect((yield* session.messages({ sessionID })).some((message) => message.type === "compaction")).toBe(false)
+    }),
+  )
+
+  it.effect(
+    "prunes at 75 percent cached occupancy before the next provider call without summarizing or replaying",
+    () =>
+      Effect.gen(function* () {
+        yield* setup
+        const session = yield* SessionV2.Service
+        const database = yield* Database.Service
+        const history = yield* adoptPrunableHistory
+        currentModel = Model.make({
+          id: "cached-pressure",
+          provider: "fake",
+          route: OpenAIChat.route.with({ limits: { context: 1_000_000, output: 1_000 } }),
+        })
+        const executionCount = executions.length
+        responses = [
+          [
+            LLMEvent.stepStart({ index: 0 }),
+            LLMEvent.toolCall({ id: "pressure-work", name: "echo", input: { text: "current protected result" } }),
+            LLMEvent.stepFinish({
+              index: 0,
+              reason: "tool-calls",
+              usage: {
+                inputTokens: 750_000,
+                nonCachedInputTokens: 1_000,
+                cacheReadInputTokens: 749_000,
+                outputTokens: 0,
+              },
+            }),
+            LLMEvent.finish({ reason: "tool-calls" }),
+          ],
+          fragmentFixture("text", "pressure-done", ["Finished without a summary"]).completeEvents,
+        ]
+        yield* session.prompt({
+          sessionID,
+          prompt: Prompt.make({ text: "Protect this current user request" }),
+          resume: false,
+        })
+        yield* session.resume(sessionID)
+        expect(requests).toHaveLength(2)
+        expect(responses).toHaveLength(0)
+        expect(executions.slice(executionCount)).toEqual(["current protected result"])
+        expect(requests[1]!.system).toEqual(requests[0]!.system)
+        expect(JSON.stringify(requests[0]!.messages)).toContain(history.outputs[2]!)
+        expect(JSON.stringify(requests[0]!.messages)).not.toContain(SessionCompaction.PRUNED_TEXT)
+        const wire = JSON.stringify(requests[1]!.messages)
+        expect(wire).toContain(SessionCompaction.PRUNED_TEXT)
+        expect(wire).not.toContain(history.outputs[2]!)
+        expect(wire).toContain("current protected result")
+        expect(userTexts(requests[1]!)).toContain("Protect this current user request")
+        const row = yield* database.db
+          .select()
+          .from(SessionContextRequestTable)
+          .where(eq(SessionContextRequestTable.session_id, sessionID))
+          .get()
+          .pipe(Effect.orDie)
+        expect(row).toMatchObject({ generation: 2, reason: "pressure" })
+        const frame = yield* Schema.decodeUnknownEffect(SessionContextRequest.Frame)(row!.data)
+        expect(frame.messages).toEqual(requests[1]!.messages)
+        expect(
+          frame.entries
+            .filter((entry) => entry.message.type === "assistant")
+            .every((entry) => entry.message.type === "assistant" && entry.message.tokens === undefined),
+        ).toBe(true)
+        expect(
+          SessionCompaction.needsPruning({ entries: frame.entries, model: currentModel, request: requests[1]! }),
+        ).toBe(false)
+        const durable = yield* session.messages({ sessionID })
+        const raw = JSON.stringify(durable)
+        history.outputs.forEach((output) => expect(raw).toContain(output))
+        expect(durable.some((message) => message.type === "compaction")).toBe(false)
+        expect(durable.some((message) => message.type === "assistant" && message.tokens?.cache.read === 749_000)).toBe(
+          true,
+        )
+      }),
   )
 
   it.effect("runs a due reflection inside the worker loop and resets context before continuing", () =>

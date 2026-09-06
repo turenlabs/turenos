@@ -558,6 +558,7 @@ const layer = Layer.effect(
     type TurnTransition =
       // Automatic compaction completed; rebuild the request from compacted history.
       | { readonly _tag: "ContinueAfterCompaction"; readonly step: number }
+      | { readonly _tag: "ContinueAfterPruning"; readonly step: number }
       // Overflow compaction completed; rebuild once through the path without overflow recovery.
       | { readonly _tag: "ContinueAfterOverflowCompaction"; readonly step: number }
 
@@ -572,6 +573,8 @@ const layer = Layer.effect(
 
     const continueAfterCompaction = (step: number, todoPrompt: TodoPrompt | undefined) =>
       new TurnTransitionError({ _tag: "ContinueAfterCompaction", step }, todoPrompt)
+    const continueAfterPruning = (step: number, todoPrompt: TodoPrompt | undefined) =>
+      new TurnTransitionError({ _tag: "ContinueAfterPruning", step }, todoPrompt)
     const continueAfterOverflowCompaction = (step: number, todoPrompt: TodoPrompt | undefined) =>
       new TurnTransitionError({ _tag: "ContinueAfterOverflowCompaction", step }, todoPrompt)
 
@@ -834,11 +837,11 @@ const layer = Layer.effect(
         identity,
         history,
       })
-      // Only rebuilds may reduce old history. Within an epoch, attachments and tool results
-      // are the bytes already rendered, not a fresh read or a new dedup/pruning decision.
+      // A new frame replays durable clearings but does not introduce new reductions.
+      // Pressure is measured against the fully rendered request below.
       const added = prepared.frame
         ? history.slice(prepared.frame.sources.length)
-        : yield* compaction.prune(session.id, history)
+        : yield* compaction.prune(session.id, history, false)
       const context = yield* SessionRunnerAttachment.materialize(
         attachmentDeps,
         added.map((entry) => entry.message),
@@ -934,6 +937,57 @@ const layer = Layer.effect(
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: toolsDisabled ? "none" : undefined,
       })
+      if (
+        compactBeforeTurn &&
+        prepared.frame?.turn !== turn &&
+        SessionCompaction.needsPruning({ entries: measured, model, request })
+      ) {
+        // Rebuild from pinned bytes, not live files, and omit budget-only runtime rows.
+        const sourceIDs = new Set(history.map((entry) => entry.message.id))
+        const pinned = measured.filter((entry) => sourceIDs.has(entry.message.id))
+        const reduced = yield* compaction.prune(session.id, pinned)
+        if (reduced.some((entry, index) => JSON.stringify(entry.message) !== JSON.stringify(pinned[index]!.message))) {
+          // Usage measured before this rewrite no longer describes the new request.
+          const entries = reduced.map((entry) => ({
+            ...entry,
+            message: entry.message.type === "assistant" ? { ...entry.message, tokens: undefined } : entry.message,
+          }))
+          const cutoff = prepared.frame?.sources.length ?? 0
+          const tail = toLLMMessages(
+            entries.slice(cutoff).map((entry) => entry.message),
+            model,
+          )
+          const boundary = tail.findIndex((message) => message.role === "user")
+          const insertion = boundary === -1 ? tail.length : boundary
+          yield* SessionContextRequest.save(db, session.id, {
+            baselineSeq: system.baselineSeq,
+            identity,
+            generation: prepared.generation + (prepared.frame === undefined ? 0 : 1),
+            reason: "pressure",
+            frame: {
+              entries: [...entries, ...(overhead.length > 0 ? measured.slice(-1) : [])],
+              messages: [
+                ...toLLMMessages(
+                  entries.slice(0, cutoff).map((entry) => entry.message),
+                  model,
+                ),
+                ...tail.slice(0, insertion),
+                ...instructions,
+                ...tail.slice(insertion),
+                ...notes,
+                ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : []),
+              ],
+              sources: prepared.sources,
+              turn,
+            },
+          })
+          yield* startupPhase("context_epoch_rebuilt", {
+            generation: prepared.generation + (prepared.frame === undefined ? 0 : 1),
+            reason: "pressure",
+          })
+          return yield* Effect.die(continueAfterPruning(currentStep, todoPrompt))
+        }
+      }
       // Summarise the UNPRUNED history against the PRUNED request. The budget question is "does the
       // request the provider is about to receive still fit", so it must be asked of `request`. What
       // the summary is built from is a different question, and answering it with the pruned view
@@ -1709,7 +1763,7 @@ const layer = Layer.effect(
                 control,
                 defect.todoPrompt,
                 streamRecovery,
-                false,
+                defect.transition._tag === "ContinueAfterPruning",
               )
             }),
           ),

@@ -69,6 +69,7 @@ import { createPacedValue } from "./text-stream"
 import { taskThinkingState } from "./task-thinking-state"
 import { toolResultCleared } from "./tool-cleared"
 import { partDefaultOpen } from "./part-default-open"
+import { tokensPerSecond } from "./tokens-per-second"
 import {
   groupParts,
   contextToolSummary,
@@ -1590,6 +1591,14 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     })
   })
 
+  const speed = createMemo(() => {
+    if (props.message.role !== "assistant") return ""
+    const message = props.message as AssistantMessage
+    const value = tokensPerSecond(message.tokens.output, message.time)
+    if (value === undefined) return ""
+    return `${new Intl.NumberFormat(i18n.locale(), { maximumFractionDigits: 1 }).format(value)} tok/s`
+  })
+
   const meta = createMemo(() => {
     if (props.message.role !== "assistant") return ""
     const agent = (props.message as AssistantMessage).agent
@@ -1597,6 +1606,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
       agent ? agent[0]?.toUpperCase() + agent.slice(1) : "",
       model(),
       duration(),
+      speed(),
       interrupted() ? i18n.t("ui.message.interrupted") : "",
     ]
     return items.filter((x) => !!x).join(" \u00B7 ")

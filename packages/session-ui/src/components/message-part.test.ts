@@ -4,6 +4,29 @@ import { partDefaultOpen } from "./part-default-open"
 import { readPartText } from "./message-part-text"
 import { taskThinkingState } from "./task-thinking-state"
 import { toolResultCleared } from "./tool-cleared"
+import { tokensPerSecond } from "./tokens-per-second"
+
+describe("tokensPerSecond", () => {
+  test("calculates output tokens over the response duration, excluding earlier task time", () => {
+    expect(tokensPerSecond(120, { created: 56_000, completed: 60_000 })).toBe(30)
+  })
+
+  test("returns nothing when the duration cannot produce a rate", () => {
+    expect(tokensPerSecond(120, { created: 0 })).toBeUndefined()
+    expect(tokensPerSecond(120, { created: 0, completed: 0 })).toBeUndefined()
+    expect(tokensPerSecond(120, { created: 1, completed: 0 })).toBeUndefined()
+    expect(tokensPerSecond(120, { created: 0, completed: Number.POSITIVE_INFINITY })).toBeUndefined()
+    expect(tokensPerSecond(120, { created: Number.NaN, completed: 4_000 })).toBeUndefined()
+  })
+
+  test("rejects invalid token counts and permits measured zero output", () => {
+    const time = { created: 0, completed: 4_000 }
+    expect(tokensPerSecond(-1, time)).toBeUndefined()
+    expect(tokensPerSecond(Number.NaN, time)).toBeUndefined()
+    expect(tokensPerSecond(Number.POSITIVE_INFINITY, time)).toBeUndefined()
+    expect(tokensPerSecond(0, time)).toBe(0)
+  })
+})
 
 describe("readPartText", () => {
   test("returns empty string when accum is undefined and part text is undefined", () => {

@@ -20,6 +20,7 @@ import { Token } from "../util/token"
 import { toLLMMessages } from "./runner/to-llm-message"
 
 const DEFAULT_BUFFER = 20_000
+export const CONTEXT_TARGET = 0.75
 // Measured against a real 24/7 corpus (533 sessions, 5.6 days): at 8k the median
 // preserved tail was a single message — mean message is ~1.8k wire tokens — and
 // tail-only fact recall was 5.9%. 16k keeps ~4 messages for 18.7% recall, the best
@@ -1294,6 +1295,18 @@ export const reportedOccupancy = (entries: readonly Entry[], model: Model) => {
     )
 }
 
+/** Soft context pressure, independent of hard input/output reserves and request margins. */
+export const needsPruning = (input: {
+  readonly entries: readonly Entry[]
+  readonly model: Model
+  readonly request: LLMRequest
+}) => {
+  const context = input.model.route.defaults.limits?.context
+  if (context === undefined || !Number.isFinite(context) || context <= 0) return false
+  const occupancy = reportedOccupancy(input.entries, input.model) ?? estimateRequest(input.request)
+  return occupancy >= Math.floor(context * CONTEXT_TARGET)
+}
+
 /**
  * Shrink the request's output allowance to what the window can still hold.
  *
@@ -1457,24 +1470,21 @@ export const make = (dependencies: Dependencies) => {
   /**
    * Read-time tool-output pruning for one provider turn.
    *
-   * Called on every turn rather than only at the compaction threshold, because that is the whole
-   * point: pruning that runs continuously keeps a session under the threshold, so full
-   * summarization stays rare. It is affordable at that cadence because the scan itself is pure and
-   * I/O-free and the one durable write is bounded by *new* clearings: a turn that clears nothing
-   * new publishes nothing, so the steady state is a plain in-memory pass. V1 could only afford it
-   * once per drain because every pass wrote rows unconditionally. The runner is also the only
-   * place the model-facing context is assembled, so it is the only place pruning frees tokens.
+   * New reductions are pressure-gated by the caller. Rebuild-only calls pass `reduce: false`
+   * to honour durable marks without changing any other historical content. Only new clearings
+   * publish events; rebuilding an already-pruned view is a pure in-memory pass.
    */
   const prune = Effect.fn("SessionCompaction.prune")(function* <T extends { readonly message: SessionMessage.Message }>(
     sessionID: SessionSchema.ID,
     entries: readonly T[],
+    reduce = true,
   ) {
     const config = yield* loadSettings
     const result = pruneEntries(entries, {
-      enabled: config.prune,
-      dedup: config.dedupOutputs,
-      inputs: config.pruneInputs,
-      media: config.pruneMedia,
+      enabled: reduce && config.prune,
+      dedup: reduce && config.dedupOutputs,
+      inputs: reduce && config.pruneInputs,
+      media: reduce && config.pruneMedia,
       turns: config.turns,
     })
     if (result.count > 0)
@@ -1863,7 +1873,8 @@ export const make = (dependencies: Dependencies) => {
     const context = input.model.route.defaults.limits?.context
     // Debug, not a warning: a model with no declared context window is a catalog fact, and this
     // gate runs on every turn. `run` still warns when a compaction is genuinely attempted.
-    if (context === undefined || context <= 0) return yield* skip(input, "unknownContextWindow")
+    if (context === undefined || !Number.isFinite(context) || context <= 0)
+      return yield* skip(input, "unknownContextWindow")
     const output = effectiveOutput(input.request)
     // A buffer at or above the context would put every turn permanently over budget.
     const buffer = Math.min(config.buffer, Math.floor(context / 2))
@@ -1871,11 +1882,12 @@ export const make = (dependencies: Dependencies) => {
     // checkpoint; the media-aware character estimate only until then.
     const occupancy = reportedOccupancy(input.measured ?? input.entries, input.model) ?? estimateRequest(input.request)
     if (
+      occupancy < Math.floor(context * CONTEXT_TARGET) &&
       occupancy + REQUEST_MARGIN_TOKENS <=
-      usableBudget(
-        { context, input: input.model.route.defaults.limits?.input },
-        Math.max(Math.min(output, OUTPUT_RESERVE_CAP), buffer),
-      )
+        usableBudget(
+          { context, input: input.model.route.defaults.limits?.input },
+          Math.max(Math.min(output, OUTPUT_RESERVE_CAP), buffer),
+        )
     )
       return yield* skip(input, "notNeeded")
     return yield* compactAfterOverflow(input)

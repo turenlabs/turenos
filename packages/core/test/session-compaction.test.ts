@@ -2338,6 +2338,35 @@ describe("prune wiring", () => {
 
     expect(result.map((item) => item.seq)).toEqual(entries.map((item) => item.seq))
   })
+
+  test("rebuild-only pruning preserves outputs, duplicates, inputs and media without new events", async () => {
+    const harness = engine({ events: [] })
+    const marked = entry(assistant("marked", [tool({ id: "marked", name: "bash", output: large, pruned: true })]))
+    const media = entry(
+      SessionMessage.User.make({
+        ...user("old_media", "inspect"),
+        files: [{ uri: `data:image/png;base64,${"A".repeat(800_000)}`, mime: "image/png", name: "old.png" }],
+      }),
+    )
+    const write = entry(
+      assistant("old_write", [
+        tool({
+          id: "old_write",
+          name: "write",
+          output: large,
+          callInput: { path: "file.ts", content: "w".repeat(100_000) },
+        }),
+      ]),
+    )
+    const entries = [marked, media, write, ...prunable()]
+    const result = await Effect.runPromise(harness.compaction.prune(sessionID, entries, false))
+
+    expect(toolOutputOf(result, "marked", "marked")).toBe(SessionCompaction.PRUNED_TEXT)
+    expect(result.slice(1)).toEqual(entries.slice(1))
+    expect(toolOutputOf(result, "old_write", "old_write")).toBe(large)
+    expect(toolOutputOf(result, "a1", "call_1")).toBe(large)
+    expect(harness.published).toEqual([])
+  })
 })
 
 //
@@ -2390,21 +2419,19 @@ describe("the pre-flight gate budgets against the model's real window", () => {
   })
 
   test("a conversation genuinely over Opus 5's window still compacts", async () => {
-    // The reserve is capped at 32k rather than Opus's 128k output limit, so the prompt budget
-    // is 968k. 900k used to compact here; it now correctly does not (see the reserve-cap test).
+    // Both the 75% target and the hard capped-reserve budget are exceeded.
     expect(await gate(990_000, OPUS_5)).toBe(true)
   })
 
   // gpt-5.6-sol: { context: 1050000, input: 922000, output: 128000 }.
   //
-  // With the reserve capped at 32k the naive budget would be 1018k; the published 922k input
-  // cap is now the binding constraint and must be honoured on its own.
+  // The published 922k input cap remains a hard limit; the 75% target acts earlier.
   const GPT_5_6_SOL = { context: 1_050_000, input: 922_000, output: 128_000 }
 
-  test("gpt-5.6's input cap binds on its own now that the reserve is capped", async () => {
+  test("gpt-5.6 compacts above the target with or without its input cap", async () => {
     expect(await gate(950_000, GPT_5_6_SOL)).toBe(true)
-    // Without the input cap the same prompt fits the capped-reserve budget of 1018k.
-    expect(await gate(950_000, { context: 1_050_000, output: 128_000 })).toBe(false)
+    // Removing the hard input cap does not disable the soft context target.
+    expect(await gate(950_000, { context: 1_050_000, output: 128_000 })).toBe(true)
     expect(await gate(700_000, GPT_5_6_SOL)).toBe(false)
   })
 
@@ -2432,7 +2459,7 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     expect(await gate(1_030_000, { context: 1_048_576, output: 131_072 })).toBe(true)
   })
 
-  test("uses the effective configured generation limit instead of the catalog maximum", async () => {
+  test("a small configured generation limit does not bypass the context target", async () => {
     const configured = Model.make({
       id: "configured-output",
       provider: "provider",
@@ -2458,7 +2485,7 @@ describe("the pre-flight gate budgets against the model's real window", () => {
           request,
         }),
       ),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   /** A completed turn exactly as the projector stores it: provider-reported usage attached. */
@@ -2488,6 +2515,49 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     const harness = engine({ events: [delta(VALID_SUMMARY)] })
     return Effect.runPromise(harness.compaction.compactIfNeeded({ sessionID, entries, model: request.model, request }))
   }
+
+  test("pruning starts at exactly 75% provider-reported occupancy without a request margin", async () => {
+    expect(SessionCompaction.CONTEXT_TARGET).toBe(0.75)
+    const request = requestOf(1, { context: 200_000, output: 10_000 })
+    for (const [tokens, expected] of [
+      [149_800, false],
+      [150_000, true],
+      [150_200, true],
+    ] as const) {
+      const entries = [
+        ...history(),
+        entry(user(`target_u_${tokens}`, "start")),
+        measuredTurn(`target_${tokens}`, { input: tokens }),
+      ]
+      expect(SessionCompaction.needsPruning({ entries, model: request.model, request })).toBe(expected)
+      expect(await gateWith(entries, request)).toBe(expected)
+    }
+  })
+
+  test("pruning includes cached tokens in provider occupancy", () => {
+    const request = requestOf(1, { context: 200_000 })
+    const entries = [measuredTurn("cached_target", { input: 100_000, read: 40_000, write: 10_000 })]
+    expect(SessionCompaction.needsPruning({ entries, model: request.model, request })).toBe(true)
+  })
+
+  test("pruning falls back to media-aware request estimates and declines unknown windows", () => {
+    const request = {
+      model: model({ context: 200_000 }),
+      system: [],
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "media", mediaType: "image/png", data: `data:image/png;base64,${"A".repeat(800_000)}` }],
+        },
+      ],
+      tools: [],
+    } as unknown as LLMRequest
+    expect(SessionCompaction.needsPruning({ entries: [], model: request.model, request })).toBe(false)
+    expect(SessionCompaction.needsPruning({ entries: [], model: model({ context: 2_000 }), request })).toBe(true)
+    for (const context of [undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(SessionCompaction.needsPruning({ entries: [], model: model({ context }), request })).toBe(false)
+    }
+  })
 
   test("zero-usage interrupted settlements do not erase the previous context measurement", () => {
     const entries = [measuredTurn("before_interrupt", { input: 50_000 }), measuredTurn("interrupted", { input: 0 })]

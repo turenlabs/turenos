@@ -23,4 +23,5 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       - name: Run typecheck
-        run: bun turbo typecheck --concurrency=2
+        # Core and Forge each need several GiB; do not overlap them on a hosted runner.
+        run: bun turbo typecheck --concurrency=1

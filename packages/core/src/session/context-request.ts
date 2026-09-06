@@ -24,7 +24,7 @@ export const Frame = Schema.Struct({
   turn: Schema.String,
 })
 
-export type Reason = "initial" | "baseline" | "configuration" | "history"
+export type Reason = "initial" | "baseline" | "configuration" | "history" | "pressure"
 type DatabaseService = Database.Interface["db"]
 
 export const prepare = Effect.fn("SessionContextRequest.prepare")(function* (
