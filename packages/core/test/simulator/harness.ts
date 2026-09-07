@@ -103,6 +103,7 @@ import { Tool } from "@turenlabs/core/tool/tool"
 import { and, eq, isNull } from "drizzle-orm"
 import { DateTime, Deferred, Duration, Effect, Layer, LayerMap, Schema, Scope, Stream } from "effect"
 import { testEffect } from "../lib/effect"
+import type { UsageEmulator } from "./cache-emulator"
 
 // ---------------------------------------------------------------------------------------------
 // ScenarioProvider — the controllable in-process LLM client
@@ -203,6 +204,35 @@ const behaviorStream = (behavior: ScenarioBehavior, requestIndex: number): Strea
     }),
   )
 
+const withEmulatedUsage = (
+  request: LLMRequest,
+  label: string | undefined,
+  emulator: UsageEmulator,
+  stream: Stream.Stream<LLMEvent, LLMError>,
+): Stream.Stream<LLMEvent, LLMError> => {
+  let outputChars = 0
+  return stream.pipe(
+    Stream.mapEffect((event) =>
+      Effect.gen(function* () {
+        if (LLMEvent.is.textDelta(event)) outputChars += event.text.length
+        else if (LLMEvent.is.reasoningDelta(event)) outputChars += event.text.length
+        else if (LLMEvent.is.toolCall(event)) outputChars += JSON.stringify(event.input ?? null).length
+        // The publisher settles usage from `step-finish`, never from `finish`.
+        if (!LLMEvent.is.stepFinish(event)) return event
+        const usage = yield* emulator.observe(request, label, outputChars)
+        return usage === undefined
+          ? event
+          : LLMEvent.stepFinish({
+              index: event.index,
+              reason: event.reason,
+              usage,
+              ...(event.providerMetadata === undefined ? {} : { providerMetadata: event.providerMetadata }),
+            })
+      }),
+    ),
+  )
+}
+
 const client = Layer.succeed(
   LLMClient.Service,
   LLMClient.Service.of({
@@ -222,7 +252,9 @@ const client = Layer.succeed(
           const behavior = behaviorQueue.splice(index, 1)[0]!
           const requestIndex = requestLog.length
           requestLog.push({ request, label: behavior.label })
-          return behaviorStream(behavior, requestIndex)
+          const produced = behaviorStream(behavior, requestIndex)
+          const emulator = usageEmulatorOverride
+          return emulator === undefined ? produced : withEmulatedUsage(request, behavior.label, emulator, produced)
         }),
       )) as unknown as LLMClientShape["stream"],
     // Turns always stream; `generate` is only reached by background work (e.g. titling), which
@@ -349,6 +381,17 @@ const simTools = Layer.effectDiscard(
         toModelOutput: ({ output }) => [{ type: "text", text: output.text }],
         execute: ({ bytes }) => signalToolRunning("sim_huge").pipe(Effect.as({ text: "x".repeat(bytes) })),
       }),
+      sim_big: Tool.make({
+        description: "Return the requested number of bytes with small structured metadata.",
+        // The realistic tool shape (read/grep-like): metadata stays small while the
+        // text content carries the bulk. The durable 512KB cap estimates JSON at 8x,
+        // so this passes ~56KB through where sim_huge's mirrored structured output
+        // would be cut to ~5KB — the shape that actually reaches prune pressure.
+        input: Schema.Struct({ bytes: Schema.Number }),
+        output: Schema.Struct({ size: Schema.Number }),
+        toModelOutput: ({ input }) => [{ type: "text", text: "x".repeat(input.bytes) }],
+        execute: ({ bytes }) => signalToolRunning("sim_big").pipe(Effect.as({ size: bytes })),
+      }),
       sim_fail: Tool.make({
         description: "Fail with a typed tool failure.",
         input: Schema.Struct({ message: Schema.optional(Schema.String) }),
@@ -426,6 +469,13 @@ const referenceGuidance = Layer.mock(ReferenceGuidance.Service, { load: () => Ef
 let compactionOverride: Partial<ConstructorParameters<typeof ConfigCompaction.Info>[0]> = {}
 /** Per-scenario model context limit overrides to trigger natural compaction in tests. */
 let modelContextLimitOverride: { context?: number; output?: number } = {}
+/**
+ * Per-scenario usage emulator (cache-bench). When set, every scripted provider
+ * stream is wrapped to accumulate output chars and attach emulated `Usage` to
+ * the terminal `step-finish`, exercising the real usage pipeline end to end.
+ * Unset for every other suite: their streams flow untouched.
+ */
+let usageEmulatorOverride: UsageEmulator | undefined
 const config = Layer.succeed(
   Config.Service,
   Config.Service.of({
@@ -1086,6 +1136,8 @@ export interface SimulateOptions {
   readonly compaction?: typeof compactionOverride
   /** Model context limits to trigger natural compaction in this scenario. Default: 200k context, 4k output. */
   readonly modelContextLimit?: { context?: number; output?: number }
+  /** Usage emulator attached to every scripted provider stream (cache-bench only). */
+  readonly usageEmulator?: UsageEmulator
 }
 
 /** One scenario == one bun test on the live clock, with a 20s hang guard around the script. */
@@ -1097,6 +1149,7 @@ export const simulate = (name: string, script: ScenarioScript, options?: Simulat
       // when the returned Effect runs, so this is the last moment the override can land.
       compactionOverride = options?.compaction ?? {}
       modelContextLimitOverride = options?.modelContextLimit ?? {}
+      usageEmulatorOverride = options?.usageEmulator
       return runScenario(name, script) as Effect.Effect<unknown, unknown, any>
     },
     30_000,
@@ -1107,6 +1160,7 @@ simulate.only = (name: string, script: ScenarioScript, options?: SimulateOptions
     () => {
       compactionOverride = options?.compaction ?? {}
       modelContextLimitOverride = options?.modelContextLimit ?? {}
+      usageEmulatorOverride = options?.usageEmulator
       return runScenario(name, script) as Effect.Effect<unknown, unknown, any>
     },
     30_000,

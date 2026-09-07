@@ -126,9 +126,9 @@ export function presentSessionV2Messages(input: {
       return
     }
     if (message.type === "user") {
-      // Board updates are admitted as user-context inputs so the model can reconcile them, but
+      // Background updates are admitted as user-context inputs so the model can reconcile them, but
       // they are internal coordination traffic rather than a turn the user authored.
-      if (message.source === "subagent_board") return
+      if ((message.source ?? "user") !== "user") return
       appendUser(message)
       return
     }
@@ -291,7 +291,7 @@ export function presentSessionV2Messages(input: {
   const projected = new Set(messages.map((message) => message.id))
   input.pendingInputs?.forEach((pending) => {
     if (projected.has(pending.id)) return
-    if (pending.source === "subagent_board") return
+    if ((pending.source ?? "user") !== "user") return
     projected.add(pending.id)
     appendUser(
       {

@@ -33,6 +33,7 @@ import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
 import { ClaudeCodeProvider } from "./claude-code"
+import { MuseCodeProvider } from "./muse-code"
 import { ModelStorage } from "@/model-storage"
 import {
   assertConnectionPolicyOptions,
@@ -206,6 +207,13 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       return {
         autoload: result.status === "authenticated",
         options: result.status === "authenticated" ? { executable: result.executable } : {},
+      }
+    }),
+    "muse-code": Effect.fnUntraced(function* (input: Info) {
+      const result = yield* Effect.promise(() => MuseCodeProvider.probe(input.options.executable))
+      return {
+        autoload: result.status === "installed",
+        options: result.status === "installed" ? { executable: result.executable } : {},
       }
     }),
     anthropic: () =>
@@ -1695,6 +1703,7 @@ const layer = Layer.effect(
         )
         const claudeCode = ClaudeCodeProvider.info(modelsDev)
         catalog[ClaudeCodeProvider.ID] = claudeCode
+        catalog[MuseCodeProvider.ID] = MuseCodeProvider.info(modelsDev)
         catalog[ProviderV2.ID.make(OLLAMA_PROVIDER_ID)] = ollamaCatalogProvider()
         const database = mapValues(catalog, toPublicInfo)
 

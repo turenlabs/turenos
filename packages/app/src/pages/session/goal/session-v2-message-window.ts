@@ -52,7 +52,7 @@ export type SessionV2MessageWindow<T> = {
  */
 export function startsSessionV2Turn(message: SessionMessage) {
   return (
-    (message.type === "user" && message.source !== "subagent_board") ||
+    (message.type === "user" && (message.source ?? "user") === "user") ||
     message.type === "shell" ||
     message.type === "compaction"
   )

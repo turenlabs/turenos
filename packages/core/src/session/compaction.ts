@@ -775,7 +775,7 @@ export const pruneEntries = <T extends { readonly message: SessionMessage.Messag
     const message = entries[index]!.message
     // Everything at or before the newest compaction already sits behind a summary.
     if (message.type === "compaction") break scan
-    if (message.type === "user" && message.source !== "subagent_board") turns++
+    if (message.type === "user" && (message.source ?? "user") === "user") turns++
     // Exempt exactly what `select` preserves verbatim: `turns < N` leaves the newest N-1 complete
     // turns and the turn in progress untouched, which is the region `tailStart` keeps whole.
     if (turns < exempt) {
@@ -1018,7 +1018,7 @@ export const select = (
       text,
       tokens: wireTokens(entry.message),
       seq: entry.seq,
-      start: entry.message.type === "user" && entry.message.source !== "subagent_board",
+      start: entry.message.type === "user" && (entry.message.source ?? "user") === "user",
     })
   }
   if (items.length === 0) return

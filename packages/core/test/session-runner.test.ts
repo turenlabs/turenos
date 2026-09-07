@@ -1228,6 +1228,8 @@ describe("SessionRunnerLLM", () => {
         "reflection_read",
         "reflection_state",
         "reflection_complete",
+        "bash",
+        "shell_job",
         "harness_review_request",
         "handoff_session",
       ])
@@ -2620,6 +2622,8 @@ describe("SessionRunnerLLM", () => {
         "reflection_read",
         "reflection_state",
         "reflection_complete",
+        "bash",
+        "shell_job",
         "harness_review_request",
         "handoff_session",
       ])
@@ -6747,7 +6751,7 @@ describe("SessionRunnerLLM provider retry", () => {
     }),
   )
 
-  for (const source of ["subagent_board", "user"] as const)
+  for (const source of ["subagent_board", "shell_job", "user"] as const)
     it.effect(`only restarts todo guidance for human promotions: ${source}`, () =>
       Effect.gen(function* () {
         yield* setup
@@ -6804,8 +6808,7 @@ describe("SessionRunnerLLM provider retry", () => {
         expect(userTexts(requests[1]!).some((text) => text.includes("The release check has an update"))).toBeTrue()
         expectStablePrefix(requests[0]!, requests[1]!)
         expectStablePrefix(requests[1]!, requests[2]!)
-        if (source === "subagent_board")
-          expect(runtimeTexts(requests[2]!, requests[1]!).join("\n")).not.toContain("<todo_")
+        if (source !== "user") expect(runtimeTexts(requests[2]!, requests[1]!).join("\n")).not.toContain("<todo_")
         if (source === "user")
           expect(runtimeTexts(requests[2]!, requests[1]!).join("\n")).toContain(
             "previous provider turn made substantive progress",

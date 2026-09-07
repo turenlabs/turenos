@@ -164,44 +164,47 @@ describe("presentSessionV2Messages", () => {
     expect(result.parts.map((entry) => entry.id)).toEqual([user.id])
   })
 
-  test("keeps subagent board notifications out of the transcript while preserving assistant ownership", () => {
-    const result = present([
-      user,
-      {
-        id: "msg_board",
-        type: "user",
-        source: "subagent_board",
-        text: [
-          "A subagent posted an update to the shared team board.",
-          "<forge-team-board-update>",
-          '{"title":"Internal lead"}',
-          "</forge-team-board-update>",
-        ].join("\n"),
-        time: { created: 2 },
-      },
-      {
-        id: "msg_assistant",
-        type: "assistant",
-        agent: "build",
-        model: { providerID: "provider", id: "model" },
-        time: { created: 3, completed: 4 },
-        content: [{ id: "text_1", type: "text", text: "I incorporated the lead." }],
-      },
-    ])
+  test.each(["subagent_board", "shell_job"] as const)(
+    "keeps %s notifications out of the transcript while preserving assistant ownership",
+    (source) => {
+      const result = present([
+        user,
+        {
+          id: "msg_board",
+          type: "user",
+          source,
+          text: [
+            "A subagent posted an update to the shared team board.",
+            "<forge-team-board-update>",
+            '{"title":"Internal lead"}',
+            "</forge-team-board-update>",
+          ].join("\n"),
+          time: { created: 2 },
+        },
+        {
+          id: "msg_assistant",
+          type: "assistant",
+          agent: "build",
+          model: { providerID: "provider", id: "model" },
+          time: { created: 3, completed: 4 },
+          content: [{ id: "text_1", type: "text", text: "I incorporated the lead." }],
+        },
+      ])
 
-    expect(result.messages.map((message) => message.id)).toEqual(["msg_user", "msg_assistant"])
-    expect(result.parts.map((entry) => entry.id)).toEqual(["msg_user", "msg_assistant"])
-    expect(result.messages.at(-1)).toMatchObject({ parentID: "msg_user" })
-  })
+      expect(result.messages.map((message) => message.id)).toEqual(["msg_user", "msg_assistant"])
+      expect(result.parts.map((entry) => entry.id)).toEqual(["msg_user", "msg_assistant"])
+      expect(result.messages.at(-1)).toMatchObject({ parentID: "msg_user" })
+    },
+  )
 
-  test("does not project a pending subagent board notification", () => {
+  test.each(["subagent_board", "shell_job"] as const)("does not project a pending %s notification", (source) => {
     const result = present(
       [user],
       [
         {
           admittedSeq: 2,
           id: "msg_board_pending",
-          source: "subagent_board",
+          source,
           sessionID: "ses_goal",
           prompt: {
             text: 'A subagent posted an update <forge-team-board-update> {"title":"lead"} </forge-team-board-update>',

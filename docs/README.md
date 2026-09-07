@@ -22,6 +22,7 @@ the reference when prose and code appear together.
 ## Runtime and operations
 
 - [Claude Code](./claude-code.md): driving a local Claude Code subscription session.
+- [Muse Code](./muse-code.md): using the signed-in local Muse CLI with host-routed tools.
 - [Claude Code tool routing](./claude-code-tool-routing.md): routing `claude -p` tools through
   TurenOS policy and settlement boundaries.
 - [Secure storage](./secure-storage.md): encrypting credentials and sensitive files with the
@@ -43,6 +44,8 @@ the reference when prose and code appear together.
   local Potion hybrid retrieval.
 - [Shell tool routing](./shell-tool-routing.md): specialized discovery/search/mutation tools and
   the deterministic routing benchmark.
+- [Background shell jobs](./shell-jobs.md): nonblocking commands, session-owned output and cancellation,
+  completion delivery, and restart semantics.
 - [Dangerous commands](./dangerous-commands.md): recursive-delete guards, wrapper resistance, and
   limits of shell safety.
 

@@ -3,7 +3,7 @@ import { Tag } from "@turenlabs/ui/v2/badge-v2"
 import { useDialog } from "@turenlabs/ui/context/dialog"
 import { ProviderIcon } from "@turenlabs/ui/provider-icon"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
-import { shouldReauthenticateOnReconnect, useProviderConnection } from "@/hooks/use-provider-connection"
+import { useProviderConnection } from "@/hooks/use-provider-connection"
 import { createMemo, type Component, For, Show } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { useServerSDK } from "@/context/server-sdk"
@@ -107,17 +107,6 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
     }))
   })
 
-  const reconnect = (providerID: string) => {
-    // OpenAI drops its ChatGPT OAuth credential on disconnect. xAI keeps its
-    // credential so active sessions survive, so Connect must replace it rather
-    // than merely making the stale one visible again.
-    if (shouldReauthenticateOnReconnect(providerID)) {
-      connect(providerID)
-      return
-    }
-    void connection.reconnect(providerID)
-  }
-
   return (
     <>
       <SettingsPageHeaderV2
@@ -198,7 +187,7 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
                         </p>
                       </div>
                     </div>
-                    <ButtonV2 size="normal" variant="neutral" icon="plus" onClick={() => reconnect(item.id)}>
+                    <ButtonV2 size="normal" variant="neutral" icon="plus" onClick={() => connect(item.id)}>
                       {language.t("common.connect")}
                     </ButtonV2>
                   </div>

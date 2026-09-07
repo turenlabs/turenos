@@ -465,58 +465,61 @@ describe("pruneEntries", () => {
     expect(toolOutputOf(original, "a1", "call_1")).toBe(staleOutput)
   })
 
-  test("board notifications do not advance output, input, or media pruning", () => {
-    const entries = [
-      entry(user("board_u1", "first")),
-      entry(
-        assistant("board_a1", [
-          tool({
-            id: "board_c1",
-            name: "write",
-            callInput: { path: "large.txt", content: "i".repeat(120_000) },
-            output: "a".repeat(200_000),
+  test.each(["subagent_board", "shell_job"] as const)(
+    "%s notifications do not advance output, input, or media pruning",
+    (source) => {
+      const entries = [
+        entry(user("board_u1", "first")),
+        entry(
+          assistant("board_a1", [
+            tool({
+              id: "board_c1",
+              name: "write",
+              callInput: { path: "large.txt", content: "i".repeat(120_000) },
+              output: "a".repeat(200_000),
+            }),
+          ]),
+        ),
+        entry(
+          SessionMessage.User.make({
+            ...user("board_u2", "second"),
+            source: "user",
+            files: [{ uri: `data:image/png;base64,${"A".repeat(200_000)}`, mime: "image/png", name: "shot.png" }],
           }),
-        ]),
-      ),
-      entry(
-        SessionMessage.User.make({
-          ...user("board_u2", "second"),
-          source: "user",
-          files: [{ uri: `data:image/png;base64,${"A".repeat(200_000)}`, mime: "image/png", name: "shot.png" }],
-        }),
-      ),
-      entry(assistant("board_a2", [tool({ id: "board_c2", name: "bash", output: "b".repeat(200_000) })])),
-    ]
-    const options = { enabled: true, dedup: true, inputs: true, media: true }
-    const before = SessionCompaction.pruneEntries(entries, options)
-    const notifications = [1, 2, 3].map((index) =>
-      entry(SessionMessage.User.make({ ...user(`board_${index}`, `notification ${index}`), source: "subagent_board" })),
-    )
-    const appended = [...entries, ...notifications]
-    const after = SessionCompaction.pruneEntries(appended, options)
+        ),
+        entry(assistant("board_a2", [tool({ id: "board_c2", name: "bash", output: "b".repeat(200_000) })])),
+      ]
+      const options = { enabled: true, dedup: true, inputs: true, media: true }
+      const before = SessionCompaction.pruneEntries(entries, options)
+      const notifications = [1, 2, 3].map((index) =>
+        entry(SessionMessage.User.make({ ...user(`board_${index}`, `notification ${index}`), source })),
+      )
+      const appended = [...entries, ...notifications]
+      const after = SessionCompaction.pruneEntries(appended, options)
 
-    expect(before.entries).toEqual(entries)
-    expect(after.entries).toEqual(appended)
-    expect(after.entries.slice(0, entries.length)).toEqual([...before.entries])
-    expect(after.count).toBe(0)
-    expect(after.freed).toBe(0)
-    expect(after.cleared).toEqual([])
+      expect(before.entries).toEqual(entries)
+      expect(after.entries).toEqual(appended)
+      expect(after.entries.slice(0, entries.length)).toEqual([...before.entries])
+      expect(after.count).toBe(0)
+      expect(after.freed).toBe(0)
+      expect(after.cleared).toEqual([])
 
-    // Actual prompts still advance the same reverse-scan window.
-    const advanced = SessionCompaction.pruneEntries(
-      [...appended, entry(user("board_u3", "third")), entry(user("board_u4", "fourth"))],
-      options,
-    )
-    expect(toolOutputOf(advanced.entries, "board_a1", "board_c1")).toBe(SessionCompaction.PRUNED_TEXT)
-    expect(toolOutputOf(advanced.entries, "board_a2", "board_c2")).toBe(SessionCompaction.PRUNED_TEXT)
-    const first = advanced.entries[1]!.message
-    if (first.type !== "assistant" || first.content[0]?.type !== "tool") throw new Error("expected tool")
-    expect(first.content[0].state.input).toEqual({ path: "large.txt", content: SessionCompaction.PRUNED_INPUT_TEXT })
-    const second = advanced.entries[2]!.message
-    if (second.type !== "user") throw new Error("expected user")
-    expect(second.files?.[0]?.uri).toBe("cleared:shot.png")
-    expect(advanced.freed).toBeGreaterThan(SessionCompaction.PRUNE_MINIMUM)
-  })
+      // Actual prompts still advance the same reverse-scan window.
+      const advanced = SessionCompaction.pruneEntries(
+        [...appended, entry(user("board_u3", "third")), entry(user("board_u4", "fourth"))],
+        options,
+      )
+      expect(toolOutputOf(advanced.entries, "board_a1", "board_c1")).toBe(SessionCompaction.PRUNED_TEXT)
+      expect(toolOutputOf(advanced.entries, "board_a2", "board_c2")).toBe(SessionCompaction.PRUNED_TEXT)
+      const first = advanced.entries[1]!.message
+      if (first.type !== "assistant" || first.content[0]?.type !== "tool") throw new Error("expected tool")
+      expect(first.content[0].state.input).toEqual({ path: "large.txt", content: SessionCompaction.PRUNED_INPUT_TEXT })
+      const second = advanced.entries[2]!.message
+      if (second.type !== "user") throw new Error("expected user")
+      expect(second.files?.[0]?.uri).toBe("cleared:shot.png")
+      expect(advanced.freed).toBeGreaterThan(SessionCompaction.PRUNE_MINIMUM)
+    },
+  )
 
   test.each([true, false])("honours durable marks in the board-expanded exemption with prune=%s", (enabled) => {
     const entries = [

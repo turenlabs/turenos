@@ -15,7 +15,10 @@ import { PermissionV2 } from "@turenlabs/core/permission"
 import { AppProcess } from "@turenlabs/core/process"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { SessionV2 } from "@turenlabs/core/session"
+import { SessionMessage } from "@turenlabs/core/session/message"
 import { BashTool } from "@turenlabs/core/tool/bash"
+import { ShellJobTool } from "@turenlabs/core/tool/shell-job"
+import { ShellJob } from "@turenlabs/core/shell-job"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
 import { location } from "./fixture/location"
@@ -129,7 +132,13 @@ const withTool = <A, E, R>(
   }).pipe(
     Effect.provide(
       AppNodeBuilder.build(
-        LayerNode.group([ToolRegistry.node, ToolRegistry.toolsNode, LocationMutation.node, BashTool.node]),
+        LayerNode.group([
+          ToolRegistry.node,
+          ToolRegistry.toolsNode,
+          LocationMutation.node,
+          BashTool.node,
+          ShellJob.node,
+        ]),
         [
           [Location.node, activeLocation],
           [PermissionV2.node, permission],
@@ -145,12 +154,61 @@ const withTool = <A, E, R>(
 const call = (input: typeof BashTool.Input.Type, id = "call-bash") => ({
   sessionID,
   ...toolIdentity,
+  assistantMessageID: SessionMessage.ID.create(),
   call: { type: "tool-call" as const, id, name: "bash", input },
 })
 
 const it = testEffect(Layer.empty)
 
 describe("BashTool", () => {
+  if (process.platform !== "win32")
+    it.live(
+      "returns long commands as owned jobs and exposes observation under exact bash-only grants",
+      () =>
+        Effect.acquireUseRelease(
+          Effect.promise(() => tmpdir()),
+          (tmp) =>
+            withTool(
+              tmp.path,
+              (registry) =>
+                Effect.gen(function* () {
+                  reset()
+                  const jobs = yield* ShellJob.Service
+                  const materialized = yield* registry.materialize({
+                    permissions: [
+                      { action: "*", resource: "*", effect: "deny" },
+                      { action: "bash", resource: "sleep 2; printf finished", effect: "allow" },
+                    ],
+                    session: { shell_job: ShellJobTool.tool(jobs) },
+                  })
+                  expect(materialized.definitions.map((definition) => definition.name)).toContain("shell_job")
+                  const returned = yield* materialized.settle(call({ command: "sleep 2; printf finished" }))
+                  const structured = returned.output?.structured as { job_id: string; status: string }
+                  expect(structured.status).toBe("running")
+                  expect(structured.job_id).toStartWith("job_")
+                  const observed = yield* materialized.settle({
+                    sessionID,
+                    ...toolIdentity,
+                    assistantMessageID: SessionMessage.ID.create(),
+                    call: {
+                      type: "tool-call",
+                      id: "wait-background",
+                      name: "shell_job",
+                      input: { action: "wait", job_id: structured.job_id, timeout_ms: 5_000 },
+                    },
+                  })
+                  expect(observed.output?.structured).toMatchObject({
+                    jobs: [{ status: "completed", exit: 0, output: "finished" }],
+                  })
+                  expect(assertions.filter((assertion) => assertion.action === "bash")).toHaveLength(1)
+                }),
+              LayerNode.compile(AppProcess.node),
+            ),
+          (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+        ),
+      10_000,
+    )
+
   it.live("registers and returns structured successful output from the active Location", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
@@ -534,9 +592,10 @@ describe("BashTool", () => {
             tmp.path,
             (registry) =>
               Effect.gen(function* () {
-                const fiber = yield* settleTool(registry, call({ command: "sleep 600", timeout: 1_000 })).pipe(
-                  Effect.forkChild,
-                )
+                const fiber = yield* settleTool(
+                  registry,
+                  call({ command: "sleep 600", timeout: 1_000, foreground: true }),
+                ).pipe(Effect.forkChild)
                 yield* Deferred.await(permissionEntered)
                 // Preflight may still be waiting on real filesystem IO after any
                 // number of virtual clock steps. Reproduce that ordering explicitly.
@@ -596,7 +655,6 @@ test("keeps locked deferred parity TODOs visible", async () => {
     "Restore PowerShell and cmd-specific invocation/path handling on Windows.",
     "Add plugin shell.env environment augmentation once V2 plugin hooks exist.",
     "Add durable/live progress metadata streaming for long-running commands once V2 tool invocation progress context is wired.",
-    "Persist background job status and define restart recovery before exposing remote observation.",
     "Revisit process-group cleanup and platform coverage with shell-specific tests if current AppProcess semantics do not fully cover it.",
     "Revisit binary output handling if stdout/stderr decoding is text-only.",
     "Stream full shell output into managed storage while retaining only a bounded in-memory preview.",

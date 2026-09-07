@@ -71,6 +71,7 @@ import { llmClient } from "../../effect/app-node-platform"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
 import { and, eq } from "drizzle-orm"
 import { ClaudeCodeCLI } from "../../provider/claude-code"
+import { MuseCodeCLI } from "../../provider/muse-code"
 
 /**
  * Runs one durable coding-agent Session until it settles.
@@ -708,7 +709,7 @@ const layer = Layer.effect(
         promotionCutoff !== undefined &&
         history.some(
           (entry) =>
-            entry.seq > promotionCutoff && entry.message.type === "user" && entry.message.source !== "subagent_board",
+            entry.seq > promotionCutoff && entry.message.type === "user" && (entry.message.source ?? "user") === "user",
         )
       )
         todoPrompt = "initial"
@@ -719,7 +720,8 @@ const layer = Layer.effect(
       const followsBoardRead = previousAssistant?.message.content.some(
         (item) => item.type === "tool" && item.name === TeamBoardTool.readName && item.state.status === "completed",
       )
-      const inspectInputSource = followsBoardRead === true || history.at(-1)?.message.type === "user"
+      const lastMessage = history.at(-1)?.message
+      const inspectInputSource = followsBoardRead === true || lastMessage?.type === "user"
       const [latestHumanInput, latestBoardInput] = inspectInputSource
         ? yield* Effect.all(
             [
@@ -732,6 +734,7 @@ const layer = Layer.effect(
       const currentTask =
         latestHumanInput &&
         (followsBoardRead === true ||
+          (lastMessage?.type === "user" && lastMessage.source === "shell_job") ||
           (latestBoardInput !== undefined &&
             (latestBoardInput.promotedSeq ?? -1) > (latestHumanInput.promotedSeq ?? -1)))
           ? latestHumanInput
@@ -789,7 +792,10 @@ const layer = Layer.effect(
         { concurrency: "unbounded" },
       )
       const providerTurnID = SessionMessage.ID.create()
-      const claudeTools = modelRef.providerID === ClaudeCodeCLI.ID ? (toolMaterialization?.definitions ?? []) : []
+      const claudeTools =
+        modelRef.providerID === ClaudeCodeCLI.ID || modelRef.providerID === MuseCodeCLI.ID
+          ? (toolMaterialization?.definitions ?? [])
+          : []
       type ClaudeToolCall = { readonly id: string; readonly name: string; readonly input: unknown }
       let executeClaudeTool = (_call: ClaudeToolCall): Effect.Effect<ToolResultValue, unknown> =>
         Effect.fail(new Error("Claude Code MCP tool execution started before the provider turn"))

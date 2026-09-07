@@ -11,6 +11,7 @@ import { McpTool } from "@turenlabs/core/tool/mcp"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
 import { SessionToolProvider } from "@turenlabs/core/tool/session-provider"
 import { SessionToolSnapshot } from "@turenlabs/core/tool/session-snapshot"
+import { ShellJobTool } from "@turenlabs/core/tool/shell-job"
 import { SubagentTool } from "@turenlabs/core/tool/subagent"
 import { TeamBoardTool } from "@turenlabs/core/tool/team-board"
 import { Tool } from "@turenlabs/core/tool/tool"
@@ -251,6 +252,7 @@ const itSnapshot = testEffect(
         Layer.mock(SessionTaskV2.Service, { authority: () => Effect.sync(() => snapshotAuthority) }),
       ],
       [HandoffTool.node, Layer.mock(HandoffTool.Service, { forExecution: () => Effect.succeed({}) })],
+      [ShellJobTool.node, Layer.mock(ShellJobTool.Service, { forExecution: () => Effect.succeed({}) })],
       [SessionTerminal.node, Layer.mock(SessionTerminal.Service, { get: () => Effect.succeed(undefined) })],
     ],
   ),

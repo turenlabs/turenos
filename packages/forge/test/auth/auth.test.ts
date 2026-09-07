@@ -56,6 +56,32 @@ function run<E>(
 }
 
 describe("Auth", () => {
+  test.each([
+    { provider: "anthropic", credential: new Auth.Api({ type: "api", key: "invalid-stale-api-key" }) },
+    {
+      provider: "xai",
+      credential: new Auth.Oauth({ type: "oauth", access: "stale-access", refresh: "stale-refresh", expires: 1 }),
+    },
+  ])("removes $provider credentials durably without affecting other providers", async ({ provider, credential }) => {
+    await run({ content: undefined, reads: 0 }, ({ auth }) =>
+      Effect.gen(function* () {
+        const first = yield* auth()
+        yield* first.set(provider, credential)
+        yield* first.set("retained", new Auth.Api({ type: "api", key: "other-provider-key" }))
+        const second = yield* auth()
+        expect(yield* second.get(provider)).toEqual(credential)
+
+        yield* first.remove(provider)
+        expect(yield* first.get(provider)).toBeUndefined()
+        expect(yield* second.get(provider)).toBeUndefined()
+        const reopened = yield* auth()
+        expect(yield* reopened.all()).toEqual({ retained: { type: "api", key: "other-provider-key" } })
+        yield* reopened.remove(provider)
+        expect(yield* reopened.get(provider)).toBeUndefined()
+      }),
+    )
+  })
+
   test("imports auth.json once, removes it, and keeps the destination authoritative", async () => {
     const legacy = {
       content: JSON.stringify({ anthropic: { type: "api", key: "legacy-secret" } }),

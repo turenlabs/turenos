@@ -19,6 +19,7 @@ import { KiloPlugin } from "./provider/kilo"
 import { LLMGatewayPlugin } from "./provider/llmgateway"
 import { MistralPlugin } from "./provider/mistral"
 import { MoonshotPlugin } from "./provider/moonshot"
+import { MuseCodePlugin } from "./provider/muse-code"
 import { NvidiaPlugin } from "./provider/nvidia"
 import { OllamaPlugin } from "./provider/ollama"
 import { OpenAIPlugin } from "./provider/openai"
@@ -59,6 +60,7 @@ export const ProviderPlugins: PluginInternal.Plugin<PluginInternal.Requirements 
   LLMGatewayPlugin,
   MistralPlugin,
   MoonshotPlugin,
+  MuseCodePlugin,
   NvidiaPlugin,
   OllamaPlugin,
   OpencodePlugin,

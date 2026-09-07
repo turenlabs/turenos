@@ -883,7 +883,7 @@ export type GlobalEvent = {
           messageID: string
           prompt: Prompt
           delivery: "steer" | "queue"
-          source?: "user" | "subagent_board"
+          source?: "user" | "subagent_board" | "shell_job"
         }
       }
     | {
@@ -895,7 +895,7 @@ export type GlobalEvent = {
           messageID: string
           prompt: Prompt
           delivery: "steer" | "queue"
-          source?: "user" | "subagent_board"
+          source?: "user" | "subagent_board" | "shell_job"
           agent?: string
           model?: ModelRef
           command?: SessionInputCommandIntent
@@ -4100,7 +4100,7 @@ export type SyncEventSessionNextPrompted = {
       messageID: string
       prompt: Prompt
       delivery: "steer" | "queue"
-      source?: "user" | "subagent_board"
+      source?: "user" | "subagent_board" | "shell_job"
     }
   }
 }
@@ -4119,7 +4119,7 @@ export type SyncEventSessionNextPromptAdmitted = {
       messageID: string
       prompt: Prompt
       delivery: "steer" | "queue"
-      source?: "user" | "subagent_board"
+      source?: "user" | "subagent_board" | "shell_job"
       agent?: string
       model?: ModelRef
       command?: SessionInputCommandIntent
@@ -5438,7 +5438,7 @@ export type SessionInputAdmitted = {
   sessionID: string
   prompt: Prompt
   delivery: "steer" | "queue"
-  source?: "user" | "subagent_board"
+  source?: "user" | "subagent_board" | "shell_job"
   agent?: string
   model?: ModelRef
   timeCreated: number
@@ -5550,7 +5550,7 @@ export type SessionMessageUser = {
   time: {
     created: number
   }
-  source?: "user" | "subagent_board"
+  source?: "user" | "subagent_board" | "shell_job"
   text: string
   parts?: PromptTextParts
   files?: Array<PromptFileAttachment>
@@ -5729,7 +5729,7 @@ export type SessionInputOutboxItem = {
   sessionID: string
   prompt: Prompt
   delivery: "steer" | "queue"
-  source?: "user" | "subagent_board"
+  source?: "user" | "subagent_board" | "shell_job"
   agent?: string
   model?: ModelRef
   timeCreated: number
@@ -5835,7 +5835,7 @@ export type SessionNextPrompted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board"
+    source?: "user" | "subagent_board" | "shell_job"
   }
 }
 
@@ -5857,7 +5857,7 @@ export type SessionNextPromptAdmitted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board"
+    source?: "user" | "subagent_board" | "shell_job"
     agent?: string
     model?: ModelRef
     command?: SessionInputCommandIntent
@@ -8428,7 +8428,7 @@ export type EventSessionNextPrompted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board"
+    source?: "user" | "subagent_board" | "shell_job"
   }
 }
 
@@ -8441,7 +8441,7 @@ export type EventSessionNextPromptAdmitted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board"
+    source?: "user" | "subagent_board" | "shell_job"
     agent?: string
     model?: ModelRef
     command?: SessionInputCommandIntent

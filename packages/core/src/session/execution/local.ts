@@ -192,7 +192,11 @@ const layer = Layer.effect(
             yield* scheduleAdvisoryWake(sessionID)
             return
           }
-          if (!(yield* SessionInput.hasPendingSource(primary, sessionID, "subagent_board"))) return
+          if (
+            !(yield* SessionInput.hasPendingSource(primary, sessionID, "subagent_board")) &&
+            !(yield* SessionInput.hasPendingSource(primary, sessionID, "shell_job"))
+          )
+            return
           yield* coordinator.wake(sessionID)
         }),
       )
@@ -259,7 +263,7 @@ const layer = Layer.effect(
           sql`
           SELECT max(${SessionInputTable.session_id}) AS sessionID
           FROM ${SessionInputTable}
-          WHERE ${SessionInputTable.source} = 'subagent_board'
+          WHERE ${SessionInputTable.source} IN ('subagent_board', 'shell_job')
             AND ${SessionInputTable.promoted_seq} IS NULL
             AND ${SessionInputTable.time_cancelled} IS NULL
         `,
@@ -269,7 +273,7 @@ const layer = Layer.effect(
       if (!highWaterSessionID) return
       const wakePage = (afterSessionID?: SessionSchema.ID): Effect.Effect<void> => {
         const conditions = [
-          sql`${SessionInputTable.source} = 'subagent_board'`,
+          sql`${SessionInputTable.source} IN ('subagent_board', 'shell_job')`,
           isNull(SessionInputTable.promoted_seq),
           isNull(SessionInputTable.time_cancelled),
           lte(SessionInputTable.session_id, SessionSchema.ID.make(highWaterSessionID)),
@@ -297,7 +301,7 @@ const layer = Layer.effect(
     })
     yield* events.subscribe(SessionEvent.PromptAdmitted).pipe(
       Stream.runForEach((event) =>
-        event.data.source === "subagent_board"
+        event.data.source === "subagent_board" || event.data.source === "shell_job"
           ? (coordinator.wakeAdvisory?.(event.data.sessionID) ?? Effect.void)
           : event.data.revert
             ? retryBoardNotifications(event.data.sessionID)

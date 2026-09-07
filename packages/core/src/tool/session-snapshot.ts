@@ -16,6 +16,7 @@ import { SessionTerminal } from "../session/terminal"
 import { HandoffTool } from "./handoff"
 import { McpTool } from "./mcp"
 import { SubagentTool } from "./subagent"
+import { ShellJobTool } from "./shell-job"
 import { ToolRegistry } from "./registry"
 import { SessionToolProvider } from "./session-provider"
 import { Tool } from "./tool"
@@ -99,6 +100,7 @@ const layer = Layer.effect(
     const registry = yield* ToolRegistry.Service
     const source = yield* McpTool.Source
     const subagents = yield* SubagentTool.Service
+    const shellJobs = yield* ShellJobTool.Service
     const tasks = yield* SessionTaskV2.Service
     const handoff = yield* HandoffTool.Service
     const terminal = yield* SessionTerminal.Service
@@ -242,6 +244,7 @@ const layer = Layer.effect(
       })
       const sessionTools = {
         ...providerTools,
+        ...(yield* shellJobs.forExecution({ sessionID: input.sessionID, control })),
         ...harnessTools,
         ...reviewTools,
         ...subagentTools,
@@ -398,6 +401,7 @@ export const node = makeLocationNode({
     SessionToolProvider.node,
     McpTool.sourceNode,
     SubagentTool.node,
+    ShellJobTool.node,
     SessionTaskV2.node,
     HandoffTool.node,
     SessionTerminal.node,

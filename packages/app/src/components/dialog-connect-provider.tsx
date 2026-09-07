@@ -188,7 +188,7 @@ function ProviderConnection(props: {
   onBack: () => void
   setBack: (handler: () => void) => void
 }) {
-  if (props.provider === "claude-code") return <ClaudeCodeConnection {...props} />
+  if (props.provider === "claude-code" || props.provider === "muse-code") return <LocalCliConnection {...props} />
 
   const dialog = useDialog()
   const serverSync = useServerSync()
@@ -831,13 +831,19 @@ function ProviderConnection(props: {
   )
 }
 
-function ClaudeCodeConnection(props: { provider: string; onBack: () => void; setBack: (handler: () => void) => void }) {
+function LocalCliConnection(props: { provider: string; onBack: () => void; setBack: (handler: () => void) => void }) {
   const dialog = useDialog()
   const serverSDK = useServerSDK()
   const serverSync = useServerSync()
   const language = useLanguage()
   const connection = useProviderConnection()
   const [state, setState] = createStore({ pending: false, error: undefined as string | undefined })
+  const muse = props.provider === "muse-code"
+  const provider = muse ? "Muse Code (local)" : "Claude Code (local)"
+  const notReady = () =>
+    muse
+      ? "Muse Code is not available. Install it, run muse login, then refresh."
+      : language.t("provider.connect.claudeCode.notReady")
 
   props.setBack(props.onBack)
 
@@ -848,15 +854,15 @@ function ClaudeCodeConnection(props: { provider: string; onBack: () => void; set
       await serverSDK().client.global.dispose()
       await serverSync().refreshProviders()
       if (!serverSync().data.provider.connected.includes(props.provider)) {
-        setState({ pending: false, error: language.t("provider.connect.claudeCode.notReady") })
+        setState({ pending: false, error: notReady() })
         return
       }
       dialog.close()
       showToast({
         variant: "success",
         icon: "circle-check",
-        title: language.t("provider.connect.toast.connected.title", { provider: "Claude Code (local)" }),
-        description: language.t("provider.connect.toast.connected.description", { provider: "Claude Code (local)" }),
+        title: language.t("provider.connect.toast.connected.title", { provider }),
+        description: language.t("provider.connect.toast.connected.description", { provider }),
       })
     } catch (error) {
       setState({
@@ -870,16 +876,18 @@ function ClaudeCodeConnection(props: { provider: string; onBack: () => void; set
     <div class="flex flex-col gap-6 px-2.5 pb-3">
       <div class="px-2.5 flex gap-4 items-center">
         <ProviderIcon id={props.provider} class="size-5 shrink-0 icon-strong-base" />
-        <div class="text-16-medium text-text-strong">
-          {language.t("provider.connect.title", { provider: "Claude Code (local)" })}
-        </div>
+        <div class="text-16-medium text-text-strong">{language.t("provider.connect.title", { provider })}</div>
       </div>
       <div class="px-2.5 pb-10 flex flex-col items-start gap-4">
-        <div class="text-14-regular text-text-base">{language.t("provider.connect.claudeCode.description")}</div>
+        <div class="text-14-regular text-text-base">
+          {muse
+            ? "Muse Code uses its own local login. Sign in with the command below, then refresh. No Meta API key is stored in TurenOS."
+            : language.t("provider.connect.claudeCode.description")}
+        </div>
         <TextField
           class="font-mono"
           label={language.t("provider.connect.claudeCode.command")}
-          value="claude auth login"
+          value={muse ? "muse login" : "claude auth login"}
           readOnly
           copyable
         />

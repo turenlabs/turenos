@@ -20,6 +20,7 @@ import { OpenAICodex } from "../../plugin/provider/openai-codex"
 import { ProviderV2 } from "../../provider"
 import { AISDKBridge } from "./aisdk-bridge"
 import { ClaudeCodeBridge } from "./claude-code-bridge"
+import { MuseCodeBridge } from "./muse-code-bridge"
 import { SessionSchema } from "../schema"
 
 export class ModelNotSelectedError extends Schema.TaggedErrorClass<ModelNotSelectedError>()(
@@ -1018,10 +1019,8 @@ const chatGPTOAuth = (
 export const supportedPackages = Object.freeze(Object.keys(adapters))
 
 /**
- * Claude Code is the one route in this runtime whose "server" is a local
- * subprocess. It carries no credential and no AI SDK package, so it bypasses
- * every adapter/bridge qualification below and goes straight to the CLI
- * transport.
+ * Local CLI routes carry no credential or AI SDK package, so they bypass the
+ * HTTP adapter qualification below and go straight to their CLI transport.
  */
 const claudeCodeModel = (model: ModelV2.Info) => ClaudeCodeBridge.model({ model, defaults: defaults(model) })
 
@@ -1030,6 +1029,8 @@ export const fromCatalogModel = (
   credential?: Credential.Value,
 ): Effect.Effect<Model, UnsupportedApiError | ProviderConfigurationError> => {
   if (ClaudeCodeBridge.isClaudeCode(model)) return Effect.succeed(claudeCodeModel(model))
+  if (MuseCodeBridge.isMuseCode(model))
+    return Effect.succeed(MuseCodeBridge.model({ model, defaults: defaults(model) }))
   if (
     model.providerID === ProviderV2.ID.openai &&
     model.api.id === "gpt-5.3-codex-spark" &&
@@ -1071,6 +1072,8 @@ export const fromCatalogModelWithAISDK = (
   credential?: Credential.Value,
 ): Effect.Effect<Model, UnsupportedApiError | ProviderConfigurationError, AISDK.Service> => {
   if (ClaudeCodeBridge.isClaudeCode(model)) return Effect.succeed(claudeCodeModel(model))
+  if (MuseCodeBridge.isMuseCode(model))
+    return Effect.succeed(MuseCodeBridge.model({ model, defaults: defaults(model) }))
   if (credential?.type === "oauth" && model.providerID === ProviderV2.ID.openai) return chatGPTOAuth(model, credential)
   if (
     model.api.type === "aisdk" &&
@@ -1164,6 +1167,7 @@ export const resolve = (
 
 export const supported = (model: ModelV2.Info) =>
   ClaudeCodeBridge.isClaudeCode(model) ||
+  MuseCodeBridge.isMuseCode(model) ||
   (model.api.type === "aisdk" &&
     ((adapterFor(model.api.package) !== undefined && nativeQualified(model)) || bridgeQualified(model)))
 
