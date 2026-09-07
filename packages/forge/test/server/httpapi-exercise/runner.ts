@@ -72,7 +72,13 @@ function runAuth(options: Options, scenario: ActiveScenario) {
     if (scenario.auth === "protected") {
       if (result.status !== 401) throw new Error(`auth expected 401, got ${result.status}`)
       // Valid credentials reach real route work; the enclosing scenario owns its full budget.
-      const authed = yield* callAuthProbe(scenario, "valid", Duration.toMillis(options.scenarioTimeout))
+      const setup = scenario.authSetup
+      if (setup) yield* setup.setup()
+      const authed = setup
+        ? yield* callAuthProbe(scenario, "valid", Duration.toMillis(options.scenarioTimeout)).pipe(
+            Effect.ensuring(setup.cleanup()),
+          )
+        : yield* callAuthProbe(scenario, "valid", Duration.toMillis(options.scenarioTimeout))
       if (authed.timedOut) throw new Error("valid auth probe timed out")
       if (authed.status === 401) throw new Error("auth rejected valid credentials")
       return

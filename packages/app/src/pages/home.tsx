@@ -75,6 +75,7 @@ import { fileManagerApp } from "@/utils/file-manager"
 import { sessionPermissionRequest, sessionQuestionRequest } from "@/pages/session/composer/session-request-tree"
 import { sessionNavStatus, type SessionNavStatus } from "@/pages/layout/session-nav-state"
 import { killRunningAgents } from "./home-kill-switch"
+import { LatestAutomationRuns } from "./loops/latest-runs"
 
 const HOME_SESSION_HEADER_STICKY_TOP = 12
 const HOME_SESSION_HEADER_TEXT_HEIGHT = 16
@@ -581,6 +582,7 @@ export function NewHome() {
                     fallback={<HomeSessionsEmpty onNewSession={newSessionProject() ? openNewSession : undefined} />}
                   >
                     <div ref={sessionHeaderOpacity.setContentRef} class="flex flex-col pb-16 pr-3 pt-3">
+                      <LatestAutomationRuns layout="home" />
                       <For each={groups()}>
                         {(group, index) => (
                           <>

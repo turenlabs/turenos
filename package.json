@@ -1,11 +1,11 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "forge",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "TurenOS, the batteries-included security engineering workbench",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.4.1",
+  "packageManager": "bun@1.4.2",
   "scripts": {
     "dev": "bun --cwd packages/desktop dev",
     "dev:desktop": "bun --cwd packages/desktop dev",

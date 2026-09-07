@@ -41,6 +41,7 @@ const SettingsAgentsContent: Component = () => {
                     data-action={`settings-agent-model-${agent.name}`}
                     options={data.modelOptions(agent)}
                     current={data.selectedModel(agent)}
+                    disabled={data.saving()}
                     value={modelOptionValue}
                     label={(model) => `${model.providerName} / ${model.modelName}`}
                     groupBy={(model) => model.providerName}

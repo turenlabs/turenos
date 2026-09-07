@@ -15,6 +15,7 @@ import { disposeMiddleware } from "./routes/instance/httpapi/lifecycle"
 import { WebSocketTracker } from "./routes/instance/httpapi/websocket-tracker"
 import { PublicApi } from "./routes/instance/httpapi/public"
 import type { CorsOptions } from "@turenlabs/server/cors"
+import { startScheduler } from "@turenlabs/server/intel/scheduler"
 import { lazy } from "@/util/lazy"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 
@@ -97,6 +98,13 @@ export async function runListenerStop(effect: Effect.Effect<void, unknown>) {
 const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unknown> = Effect.fn("Server.listen")(
   function* (opts: ListenOptions) {
     const state = yield* startWithPortFallback(opts)
+    // Intel feeds have no layer node, so the listener owns the 6h poll tick
+    // (stopped with the listener scope). Skipped under the test runner so
+    // server tests stay hermetic: no real feed traffic, no shared-state writes.
+    const intelScheduler = process.env.NODE_ENV === "test" ? undefined : startScheduler()
+    if (intelScheduler) {
+      yield* Scope.addFinalizer(state.scope, Effect.sync(() => intelScheduler.stop()))
+    }
     const address = yield* tcpAddress(state)
     const listenerUrl = makeURL(opts.hostname, address.port)
     const unpublishMdns = yield* setupMdns(opts, address.port, state.scope)

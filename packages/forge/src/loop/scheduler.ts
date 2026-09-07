@@ -3,13 +3,17 @@ export * as LoopScheduler from "./scheduler"
 import { makeGlobalNode } from "@turenlabs/core/effect/app-node"
 import { AgentV2 } from "@turenlabs/core/agent"
 import { Loop } from "@turenlabs/core/loop"
+import { EventV2 } from "@turenlabs/core/event"
 import { Location } from "@turenlabs/core/location"
 import { LocationServiceMap } from "@turenlabs/core/location-service-map"
 import { AbsolutePath } from "@turenlabs/core/schema"
+import { FileSystemWatcher } from "@turenlabs/schema/filesystem-watcher"
+import { SessionEvent } from "@turenlabs/schema/session-event"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { WorkspaceV2 } from "@turenlabs/core/workspace"
-import { Cause, Context, Duration, Effect, Exit, Layer, Option, Schema } from "effect"
+import path from "path"
+import { Cause, Context, Duration, Effect, Exit, Layer, Option, Schema, Stream } from "effect"
 
 const POLL_INTERVAL = Duration.seconds(5)
 const LEASE_MS = Duration.toMillis(Duration.minutes(5))
@@ -38,7 +42,17 @@ const layer = Layer.effect(
     const loops = yield* Loop.Service
     const sessions = yield* SessionV2.Service
     const locations = yield* LocationServiceMap.Service
+    const events = yield* EventV2.Service
     const owner = `${process.pid}:${crypto.randomUUID()}`
+    const context = yield* Effect.context()
+    const runFork = Effect.runForkWith(context)
+    const fileDebounce = new Map<string, NodeJS.Timeout>()
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        for (const timer of fileDebounce.values()) clearTimeout(timer)
+        fileDebounce.clear()
+      }),
+    )
 
     const execute = Effect.fn("LoopScheduler.execute")(function* (run: Loop.Run) {
       const heartbeat = Effect.gen(function* () {
@@ -113,6 +127,12 @@ const layer = Layer.effect(
             ),
           )
 
+          const triggerPayload: Readonly<Record<string, unknown>> = {
+            repository: execution.location.directory,
+            directory: execution.location.directory,
+            ...(execution.location.workspaceID ? { workspaceID: execution.location.workspaceID } : {}),
+            ...(run.triggerPayload ?? {}),
+          }
           const workflow = execution.workflow
           if (workflow) {
             let outputs = run.outputs
@@ -121,46 +141,76 @@ const layer = Layer.effect(
               (step, offset) =>
                 Effect.gen(function* () {
                   const index = run.currentStep + offset
-                  const messageID = SessionMessage.ID.make(`msg_loop_${run.id}_${step.id}`)
-                  const rendered = renderWorkflowStep(step, index, workflow.steps.length, {
-                    trigger: {
-                      type: run.trigger,
-                      scheduledAt: run.scheduledAt,
-                      payload: {
-                        repository: execution.location.directory,
-                        directory: execution.location.directory,
-                        ...(execution.location.workspaceID ? { workspaceID: execution.location.workspaceID } : {}),
-                      },
-                    },
+                  const context = {
+                    trigger: { type: run.trigger, scheduledAt: run.scheduledAt, payload: triggerPayload },
                     steps: outputs,
-                  })
-                  yield* sessions.prompt({
-                    id: messageID,
-                    sessionID: session.id,
-                    prompt: { text: rendered },
-                    resume: false,
-                    owner: "automation",
-                    // A step without its own selection inherits the Session's agent and
-                    // model, which the Automation set when the Session was created.
-                    ...(step.agent ? { agent: step.agent } : {}),
-                    ...(step.model ? { model: step.model } : {}),
-                  })
-                  yield* loops.startRun({ id: run.id, owner, sessionID: session.id, currentStep: index })
-                  yield* sessions.resumePending(session.id)
-                  const output = extractStepOutput(
-                    yield* sessions.messages({
+                  }
+                  const whenOutcome = tryEvaluateWhen(step.when, context)
+                  if (whenOutcome.error !== undefined) {
+                    if (!Loop.shouldContinueOnFailure(step)) return yield* Effect.die(whenOutcome.error)
+                    outputs = yield* recordContinuedFailure(
+                      loops,
+                      run.id,
+                      owner,
+                      session.id,
+                      index,
+                      step.id,
+                      whenOutcome.error,
+                    )
+                    return
+                  }
+                  if (!whenOutcome.value) {
+                    outputs = yield* recordSkippedStep(loops, run.id, owner, session.id, index, step.id)
+                    return
+                  }
+                  const messageID = SessionMessage.ID.make(`msg_loop_${run.id}_${step.id}`)
+                  const stepEffect = Effect.gen(function* () {
+                    const rendered = renderWorkflowStep(step, index, workflow.steps.length, context)
+                    yield* sessions.prompt({
+                      id: messageID,
                       sessionID: session.id,
-                      order: "asc",
-                      cursor: { id: messageID, direction: "next" },
-                    }),
+                      prompt: { text: rendered },
+                      resume: false,
+                      owner: "automation",
+                      // A step without its own selection inherits the Session's agent and
+                      // model, which the Automation set when the Session was created.
+                      ...(step.agent ? { agent: step.agent } : {}),
+                      ...(step.model ? { model: step.model } : {}),
+                    })
+                    yield* loops.startRun({ id: run.id, owner, sessionID: session.id, currentStep: index })
+                    yield* sessions.resumePending(session.id)
+                    const output = extractStepOutput(
+                      yield* sessions.messages({
+                        sessionID: session.id,
+                        order: "asc",
+                        cursor: { id: messageID, direction: "next" },
+                      }),
+                    )
+                    outputs = (yield* loops.completeRunStep({
+                      id: run.id,
+                      owner,
+                      currentStep: index,
+                      stepID: step.id,
+                      output,
+                    })).outputs
+                  })
+                  yield* stepEffect.pipe(
+                    Effect.catch((error) =>
+                      Loop.shouldContinueOnFailure(step)
+                        ? Effect.gen(function* () {
+                            outputs = yield* recordContinuedFailure(
+                              loops,
+                              run.id,
+                              owner,
+                              session.id,
+                              index,
+                              step.id,
+                              error,
+                            )
+                          })
+                        : Effect.die(error),
+                    ),
                   )
-                  outputs = (yield* loops.completeRunStep({
-                    id: run.id,
-                    owner,
-                    currentStep: index,
-                    stepID: step.id,
-                    output,
-                  })).outputs
                 }),
               { concurrency: 1, discard: true },
             )
@@ -211,25 +261,212 @@ const layer = Layer.effect(
       yield* loops.finishRun({ id: run.id, owner, status: "failed", error: formatCause(exit.cause) })
     })
 
+    const runClaimed = (run: Loop.Run) =>
+      execute(run).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logError("Loop run execution failed", { runID: run.id, cause: Cause.pretty(cause) }),
+        ),
+        Effect.forkScoped,
+      )
+
     const scan = Effect.gen(function* () {
       const due = yield* loops.claimDue({ owner, leaseMs: LEASE_MS, limit: CLAIM_LIMIT })
       yield* Effect.forEach(
         due.filter((run) => run.status === "claimed"),
-        (run) =>
-          execute(run).pipe(
-            Effect.catchCause((cause) =>
-              Effect.logError("Loop run execution failed", { runID: run.id, cause: Cause.pretty(cause) }),
-            ),
-            Effect.forkScoped,
-          ),
+        (run) => runClaimed(run),
         { discard: true },
       )
     }).pipe(Effect.catchCause((cause) => Effect.logError("Loop scheduler scan failed", { cause: Cause.pretty(cause) })))
 
+    const fireAndRun = (
+      loopID: string,
+      trigger: "file-change" | "session-end",
+      payload: Readonly<Record<string, unknown>>,
+    ) =>
+      loops
+        .fireEvent({ id: loopID, owner, trigger, payload, leaseMs: LEASE_MS })
+        .pipe(
+          Effect.flatMap((run) => (run.status === "claimed" ? runClaimed(run) : Effect.void)),
+          Effect.catch(() => Effect.void),
+        )
+
+    const fireAndExecuteDirect = (
+      loopID: string,
+      trigger: "file-change" | "session-end",
+      payload: Readonly<Record<string, unknown>>,
+    ) =>
+      loops.fireEvent({ id: loopID, owner, trigger, payload, leaseMs: LEASE_MS }).pipe(
+        Effect.flatMap((run) =>
+          run.status === "claimed"
+            ? execute(run).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logError("Loop run execution failed", { runID: run.id, cause: Cause.pretty(cause) }),
+                ),
+              )
+            : Effect.void,
+        ),
+        Effect.catch(() => Effect.void),
+      )
+
+    const queueFileEvent = (file: string) =>
+      Effect.gen(function* () {
+        const actives = yield* loops.list()
+        for (const info of actives) {
+          if (info.status !== "active") continue
+          if (info.eventTrigger?.type !== "file-change") continue
+          const relative = toLoopRelativePath(info.location.directory, file)
+          if (relative === undefined) continue
+          if (!Loop.matchesFileTrigger(info.eventTrigger, relative)) continue
+          const debounceMs = info.eventTrigger.debounceMs ?? Loop.FILE_CHANGE_DEBOUNCE_DEFAULT_MS
+          const payload = { file: relative, event: "change", directory: info.location.directory }
+          const existing = fileDebounce.get(info.id)
+          if (existing) clearTimeout(existing)
+          fileDebounce.set(
+            info.id,
+            setTimeout(() => {
+              fileDebounce.delete(info.id)
+              runFork(fireAndExecuteDirect(info.id, "file-change", payload))
+            }, debounceMs),
+          )
+        }
+      }).pipe(Effect.catchCause((cause) => Effect.logError("Loop file event failed", { cause: Cause.pretty(cause) })))
+
+    const handleSessionEnd = (
+      sessionID: string,
+      outcome: "success" | "failure",
+      agent: string | undefined,
+      directory: string | undefined,
+    ) =>
+      Effect.gen(function* () {
+        if (sessionID.startsWith("ses_loop_")) return
+        const actives = yield* loops.list()
+        for (const info of actives) {
+          if (info.status !== "active") continue
+          if (info.eventTrigger?.type !== "session-end") continue
+          if (directory !== undefined && directory !== info.location.directory) continue
+          const config = info.eventTrigger
+          if (config.outcomes !== undefined && !config.outcomes.includes(outcome)) continue
+          if (config.sessionID !== undefined && config.sessionID !== sessionID) continue
+          if (config.agent !== undefined && agent !== undefined && config.agent !== agent) continue
+          yield* fireAndRun(info.id, "session-end", {
+            sessionID,
+            outcome,
+            ...(agent === undefined ? {} : { agent }),
+            ...(directory === undefined ? {} : { directory }),
+          })
+        }
+      }).pipe(Effect.catchCause((cause) => Effect.logError("Loop session event failed", { cause: Cause.pretty(cause) })))
+
+    const fileStream = events.subscribe(FileSystemWatcher.Event.Updated).pipe(
+      Stream.runForEach((event) => queueFileEvent(event.data.file)),
+      Effect.catchCause((cause) => Effect.logError("Loop file watcher failed", { cause: Cause.pretty(cause) })),
+      Effect.forever,
+      Effect.forkScoped,
+    )
+
+    const sessionSuccess = events.subscribe(SessionEvent.Step.Ended).pipe(
+      Stream.runForEach((event) =>
+        Effect.gen(function* () {
+          const sessionID = event.data.sessionID as string
+          const directory = yield* sessionDirectory(sessions, sessionID)
+          const agent = yield* sessionAgent(sessions, sessionID)
+          yield* handleSessionEnd(sessionID, "success", agent, directory)
+        }),
+      ),
+      Effect.catchCause((cause) => Effect.logError("Loop session watcher failed", { cause: Cause.pretty(cause) })),
+      Effect.forever,
+      Effect.forkScoped,
+    )
+
+    const sessionFailure = events.subscribe(SessionEvent.Step.Failed).pipe(
+      Stream.runForEach((event) =>
+        Effect.gen(function* () {
+          const sessionID = event.data.sessionID as string
+          const directory = yield* sessionDirectory(sessions, sessionID)
+          const agent = yield* sessionAgent(sessions, sessionID)
+          yield* handleSessionEnd(sessionID, "failure", agent, directory)
+        }),
+      ),
+      Effect.catchCause((cause) => Effect.logError("Loop session watcher failed", { cause: Cause.pretty(cause) })),
+      Effect.forever,
+      Effect.forkScoped,
+    )
+
     yield* scan.pipe(Effect.andThen(Effect.sleep(POLL_INTERVAL)), Effect.forever, Effect.forkScoped)
+    yield* fileStream
+    yield* sessionSuccess
+    yield* sessionFailure
     return Service.of({})
   }),
 )
+
+function recordSkippedStep(
+  loops: Loop.Interface,
+  runID: string,
+  owner: string,
+  sessionID: string,
+  currentStep: number,
+  stepID: string,
+) {
+  return Effect.gen(function* () {
+    yield* loops.startRun({ id: runID, owner, sessionID, currentStep }).pipe(Effect.catch(() => Effect.void))
+    const after = yield* loops
+      .completeRunStep({ id: runID, owner, currentStep, stepID, output: { text: "", artifacts: [] } })
+      .pipe(Effect.catch(() => loops.getRun({ id: runID })))
+    return after.outputs
+  })
+}
+
+function recordContinuedFailure(
+  loops: Loop.Interface,
+  runID: string,
+  owner: string,
+  sessionID: string,
+  currentStep: number,
+  stepID: string,
+  error: unknown,
+) {
+  const message = error instanceof Error ? error.message : String(error)
+  const output: Loop.StepOutput = { text: `Step failed but continuing: ${message}`, artifacts: [] }
+  return Effect.gen(function* () {
+    yield* loops.startRun({ id: runID, owner, sessionID, currentStep }).pipe(Effect.catch(() => Effect.void))
+    const after = yield* loops
+      .completeRunStep({ id: runID, owner, currentStep, stepID, output })
+      .pipe(Effect.catch(() => loops.getRun({ id: runID })))
+    return after.outputs
+  })
+}
+
+function tryEvaluateWhen(
+  when: string | undefined,
+  context: Parameters<typeof Loop.evaluateWhen>[1],
+): { readonly value: boolean; readonly error?: undefined } | { readonly value: false; readonly error: unknown } {
+  try {
+    return { value: Loop.evaluateWhen(when, context) }
+  } catch (error) {
+    return { value: false, error }
+  }
+}
+
+export function toLoopRelativePath(loopDirectory: string, file: string) {
+  const relative = path.relative(loopDirectory, file)
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return undefined
+  return relative.split(path.sep).join("/")
+}
+
+function sessionDirectory(sessions: SessionV2.Interface, sessionID: string) {
+  return sessions.get(SessionV2.ID.make(sessionID)).pipe(
+    Effect.map((session) => (session.location?.directory as string | undefined) ?? undefined),
+    Effect.catch(() => Effect.succeed(undefined as string | undefined)),
+  )
+}
+
+function sessionAgent(sessions: SessionV2.Interface, sessionID: string) {
+  return sessions.get(SessionV2.ID.make(sessionID)).pipe(
+    Effect.map((session) => (session.agent as string | undefined) ?? undefined),
+    Effect.catch(() => Effect.succeed(undefined as string | undefined)),
+  )
+}
 
 function formatCause(cause: Cause.Cause<unknown>) {
   const failure = Cause.squash(cause)
@@ -312,5 +549,5 @@ export function extractStepOutput(messages: ReadonlyArray<SessionMessage.Message
 export const node = makeGlobalNode({
   service: Service,
   layer,
-  deps: [Loop.node, SessionV2.node, LocationServiceMap.node],
+  deps: [Loop.node, SessionV2.node, LocationServiceMap.node, EventV2.node],
 })

@@ -177,6 +177,22 @@ import type {
   LoopsRunGetOutput,
   LoopsRunCancelInput,
   LoopsRunCancelOutput,
+  ServerIntelAdvisoriesInput,
+  ServerIntelAdvisoriesOutput,
+  ServerIntelKevInput,
+  ServerIntelKevOutput,
+  ServerIntelNewsInput,
+  ServerIntelNewsOutput,
+  ServerIntelTrendsInput,
+  ServerIntelTrendsOutput,
+  ServerIntelFeedsOutput,
+  ServerIntelFeedAddInput,
+  ServerIntelFeedAddOutput,
+  ServerIntelFeedUpdateInput,
+  ServerIntelFeedUpdateOutput,
+  ServerIntelFeedsResetOutput,
+  ServerIntelStatusOutput,
+  ServerIntelPollOutput,
   ServerWhiteboardGetInput,
   ServerWhiteboardGetOutput,
   ServerWhiteboardUpdateInput,
@@ -1376,10 +1392,12 @@ export function make(options: ClientOptions) {
               skill: input["skill"],
               workflow: input["workflow"],
               intervalSeconds: input["intervalSeconds"],
+              cronExpression: input["cronExpression"],
               timezone: input["timezone"],
               startsAt: input["startsAt"],
               expiresAt: input["expiresAt"],
               paused: input["paused"],
+              eventTrigger: input["eventTrigger"],
             },
             successStatus: 200,
             declaredStatuses: [400, 409, 404, 401],
@@ -1412,12 +1430,14 @@ export function make(options: ClientOptions) {
               name: input["name"],
               prompt: input["prompt"],
               intervalSeconds: input["intervalSeconds"],
+              cronExpression: input["cronExpression"],
               timezone: input["timezone"],
               expiresAt: input["expiresAt"],
               agent: input["agent"],
               model: input["model"],
               skill: input["skill"],
               workflow: input["workflow"],
+              eventTrigger: input["eventTrigger"],
               resetAgent: input["resetAgent"],
               resetModel: input["resetModel"],
               resetSkill: input["resetSkill"],
@@ -1503,6 +1523,117 @@ export function make(options: ClientOptions) {
             declaredStatuses: [409, 404, 401, 400],
             empty: false,
           },
+          requestOptions,
+        ),
+    },
+    "server.intel": {
+      advisories: (input?: ServerIntelAdvisoriesInput, requestOptions?: RequestOptions) =>
+        request<ServerIntelAdvisoriesOutput>(
+          {
+            method: "GET",
+            path: `/api/intel/advisories`,
+            query: {
+              page: input?.["page"],
+              pageSize: input?.["pageSize"],
+              severity: input?.["severity"],
+              search: input?.["search"],
+            },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      kev: (input?: ServerIntelKevInput, requestOptions?: RequestOptions) =>
+        request<ServerIntelKevOutput>(
+          {
+            method: "GET",
+            path: `/api/intel/kev`,
+            query: { page: input?.["page"], pageSize: input?.["pageSize"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      news: (input?: ServerIntelNewsInput, requestOptions?: RequestOptions) =>
+        request<ServerIntelNewsOutput>(
+          {
+            method: "GET",
+            path: `/api/intel/news`,
+            query: { page: input?.["page"], pageSize: input?.["pageSize"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      trends: (input?: ServerIntelTrendsInput, requestOptions?: RequestOptions) =>
+        request<ServerIntelTrendsOutput>(
+          {
+            method: "GET",
+            path: `/api/intel/trends`,
+            query: { days: input?.["days"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      feeds: (requestOptions?: RequestOptions) =>
+        request<ServerIntelFeedsOutput>(
+          { method: "GET", path: `/api/intel/feeds`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+      feedAdd: (input: ServerIntelFeedAddInput, requestOptions?: RequestOptions) =>
+        request<ServerIntelFeedAddOutput>(
+          {
+            method: "POST",
+            path: `/api/intel/feeds`,
+            body: {
+              id: input["id"],
+              name: input["name"],
+              kind: input["kind"],
+              url: input["url"],
+              enabled: input["enabled"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 409, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      feedUpdate: (input: ServerIntelFeedUpdateInput, requestOptions?: RequestOptions) =>
+        request<ServerIntelFeedUpdateOutput>(
+          {
+            method: "PATCH",
+            path: `/api/intel/feeds/${encodeURIComponent(input.feedID)}`,
+            body: { name: input["name"], kind: input["kind"], url: input["url"], enabled: input["enabled"] },
+            successStatus: 200,
+            declaredStatuses: [400, 404, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      feedsReset: (requestOptions?: RequestOptions) =>
+        request<ServerIntelFeedsResetOutput>(
+          {
+            method: "POST",
+            path: `/api/intel/feeds/reset`,
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      status: (requestOptions?: RequestOptions) =>
+        request<ServerIntelStatusOutput>(
+          { method: "GET", path: `/api/intel/status`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
+      poll: (requestOptions?: RequestOptions) =>
+        request<ServerIntelPollOutput>(
+          { method: "POST", path: `/api/intel/poll`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
           requestOptions,
         ),
     },

@@ -7,6 +7,11 @@ const COORDINATION_TOOLS = new Set([
   "reflection_complete",
   "board_read",
   "board_post",
+  "spawn_agent",
+  "send_agent",
+  "wait_agents",
+  "interrupt_agent",
+  "list_agents",
 ])
 
 export function isCoordinationTool(tool: string) {

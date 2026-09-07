@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "3c52bc7d-fd55-4e37-87e8-64452360c395",
+  "id": "a2d89c97-4b24-4a24-a268-92e41781841e",
   "prevIds": [
-    "507508bc-51d4-4cd5-9d00-57f1f08573f1"
+    "3c52bc7d-fd55-4e37-87e8-64452360c395"
   ],
   "ddl": [
     {
@@ -1706,6 +1706,16 @@
     },
     {
       "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "trigger_payload",
+      "entityType": "columns",
+      "table": "loop_run"
+    },
+    {
+      "type": "text",
       "notNull": true,
       "autoincrement": false,
       "default": null,
@@ -2021,6 +2031,36 @@
       "default": null,
       "generated": null,
       "name": "timezone",
+      "entityType": "columns",
+      "table": "loop"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "cron_expression",
+      "entityType": "columns",
+      "table": "loop"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "trigger_type",
+      "entityType": "columns",
+      "table": "loop"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "trigger_config",
       "entityType": "columns",
       "table": "loop"
     },

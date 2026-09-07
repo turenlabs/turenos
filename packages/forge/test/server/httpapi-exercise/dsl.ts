@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { looksJson } from "./assertions"
 import type {
   ActiveScenario,
+  AuthSetup,
   AuthPolicy,
   BuilderState,
   CallResult,
@@ -31,6 +32,7 @@ class ScenarioBuilder<S = undefined> {
       mutates: false,
       reset: true,
       auth,
+      authSetup: undefined,
     }
   }
 
@@ -76,6 +78,10 @@ class ScenarioBuilder<S = undefined> {
 
   ticketBypass() {
     return this.auth("ticket-bypass")
+  }
+
+  authSetup(setup: AuthSetup["setup"], cleanup: AuthSetup["cleanup"]) {
+    return this.clone({ authSetup: { setup, cleanup } })
   }
 
   private auth(auth: AuthPolicy) {
@@ -163,6 +169,7 @@ class ScenarioBuilder<S = undefined> {
       mutates: state.mutates,
       reset: state.reset,
       auth: state.auth,
+      authSetup: state.authSetup,
     }
   }
 }

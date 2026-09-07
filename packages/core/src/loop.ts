@@ -23,7 +23,30 @@ export type ID = string
 export type RunID = string
 export type Status = "active" | "paused" | "expired"
 export type RunStatus = "claimed" | "running" | "succeeded" | "failed" | "cancelled" | "skipped" | "stale"
-export type Trigger = "scheduled" | "manual"
+export type Trigger = "scheduled" | "manual" | "file-change" | "session-end"
+
+export type Schedule =
+  | { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+  | { readonly type: "cron"; readonly seconds: number; readonly expression: string; readonly timezone: string }
+
+export type FileChangeConfig = {
+  readonly type: "file-change"
+  readonly paths: ReadonlyArray<string>
+  readonly debounceMs?: number
+}
+
+export type SessionEndConfig = {
+  readonly type: "session-end"
+  readonly outcomes?: ReadonlyArray<"success" | "failure">
+  readonly sessionID?: string
+  readonly agent?: string
+}
+
+export type EventTriggerConfig = FileChangeConfig | SessionEndConfig
+
+export const FILE_CHANGE_DEBOUNCE_DEFAULT_MS = 1_000
+export const FILE_CHANGE_DEBOUNCE_MAX_MS = 60_000
+export const EVENT_TRIGGER_TYPES: ReadonlyArray<EventTriggerConfig["type"]> = ["file-change", "session-end"]
 
 /** Per-step overrides; omitted fields inherit the Automation's own agent and model. */
 export type StepExecution = {
@@ -31,15 +54,23 @@ export type StepExecution = {
   readonly model?: ModelV2.Ref
 }
 
+/** Per-step flow control; `when` skips the step when falsy, `onFailure` decides whether a failure stops the run. */
+export type StepCondition = {
+  readonly when?: string
+  readonly onFailure?: "stop" | "continue"
+}
+
 export type WorkflowStep =
-  | ({ readonly id: string; readonly name: string; readonly type: "agent"; readonly prompt: string } & StepExecution)
+  | ({ readonly id: string; readonly name: string; readonly type: "agent"; readonly prompt: string } & StepExecution &
+      StepCondition)
   | ({
       readonly id: string
       readonly name: string
       readonly type: "skill"
       readonly skill: string
       readonly instructions: string
-    } & StepExecution)
+    } & StepExecution &
+      StepCondition)
 
 export type Workflow = {
   readonly version: 1
@@ -69,7 +100,8 @@ export type Info = {
   readonly skill?: string
   readonly workflow?: Workflow
   readonly status: Status
-  readonly schedule: { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+  readonly schedule: Schedule
+  readonly eventTrigger?: EventTriggerConfig
   readonly overlapPolicy: "skip"
   readonly startsAt: number
   readonly nextRunAt?: number
@@ -82,6 +114,7 @@ export type Run = {
   readonly loopID: ID
   readonly scheduledAt: number
   readonly trigger: Trigger
+  readonly triggerPayload?: Readonly<Record<string, unknown>>
   readonly status: RunStatus
   readonly currentStep: number
   readonly outputs: StepOutputs
@@ -114,11 +147,13 @@ export type CreateInput = {
   readonly model?: ModelV2.Ref
   readonly skill?: string
   readonly workflow?: Workflow
-  readonly intervalSeconds: number
+  readonly intervalSeconds?: number
+  readonly cronExpression?: string
   readonly timezone?: string
   readonly startsAt?: number
   readonly expiresAt?: number
   readonly paused?: boolean
+  readonly eventTrigger?: EventTriggerConfig
 }
 
 export type EditInput = {
@@ -126,12 +161,14 @@ export type EditInput = {
   readonly name?: string
   readonly prompt?: string
   readonly intervalSeconds?: number
+  readonly cronExpression?: string
   readonly timezone?: string
   readonly expiresAt?: number
   readonly agent?: AgentV2.ID
   readonly model?: ModelV2.Ref
   readonly skill?: string
   readonly workflow?: Workflow
+  readonly eventTrigger?: EventTriggerConfig
   readonly resetAgent?: boolean
   readonly resetModel?: boolean
   readonly resetSkill?: boolean
@@ -167,11 +204,18 @@ export interface Interface {
   readonly get: (id: ID) => Effect.Effect<Info, NotFoundError>
   readonly edit: (input: EditInput) => Effect.Effect<Info, NotFoundError | InvalidInputError | InvalidStateError>
   readonly pause: (id: ID) => Effect.Effect<Info, NotFoundError | InvalidStateError>
-  readonly resume: (id: ID) => Effect.Effect<Info, NotFoundError | InvalidStateError | ActiveLimitError>
+  readonly resume: (id: ID) => Effect.Effect<Info, NotFoundError | InvalidStateError | ActiveLimitError | InvalidInputError>
   readonly delete: (id: ID) => Effect.Effect<boolean, InvalidStateError>
   readonly runNow: (input: {
     readonly id: ID
     readonly owner: string
+    readonly leaseMs?: number
+  }) => Effect.Effect<Run, Error>
+  readonly fireEvent: (input: {
+    readonly id: ID
+    readonly owner: string
+    readonly trigger: "file-change" | "session-end"
+    readonly payload?: Readonly<Record<string, unknown>>
     readonly leaseMs?: number
   }) => Effect.Effect<Run, Error>
   readonly cancelRun: (input: {
@@ -240,8 +284,8 @@ const layer = Layer.effect(
     })
 
     const create = Effect.fn("Loop.create")(function* (input: CreateInput) {
-      const invalidInterval = validateInterval(input.intervalSeconds)
-      if (invalidInterval) return yield* invalidInterval
+      const schedule = validateScheduleInput(input)
+      if (schedule instanceof InvalidInputError) return yield* schedule
       if (!input.name.trim()) return yield* new InvalidInputError({ message: "A name is required" })
       const location = input.location ?? { directory: DEFAULT_LOCATION_DIRECTORY }
       if (!location.directory.trim())
@@ -258,6 +302,8 @@ const layer = Layer.effect(
         return yield* new InvalidInputError({ message: "Loops may run for at most seven days" })
       if (startsAt > expiresAt) return yield* new InvalidInputError({ message: "Start must not be after expiry" })
       const status = input.paused ? "paused" : "active"
+      const initialNext = computeInitialNextRun(schedule, startsAt, now)
+      if (initialNext instanceof InvalidInputError) return yield* initialNext
       const row = yield* db
         .transaction(
           (tx) =>
@@ -276,12 +322,28 @@ const layer = Layer.effect(
                   skill: input.skill,
                   workflow: input.workflow,
                   status,
-                  schedule_type: "interval",
-                  interval_seconds: input.intervalSeconds,
-                  timezone: input.timezone ?? "UTC",
+                  schedule_type: schedule.kind === "event" ? "interval" : schedule.scheduleType,
+                  interval_seconds:
+                    schedule.kind === "event"
+                      ? MIN_INTERVAL_SECONDS
+                      : schedule.scheduleType === "interval"
+                        ? schedule.seconds
+                        : MIN_INTERVAL_SECONDS,
+                  ...(schedule.kind === "event"
+                    ? {}
+                    : schedule.scheduleType === "cron"
+                      ? { cron_expression: schedule.expression }
+                      : {}),
+                  timezone: schedule.timezone,
+                  ...(schedule.kind === "event"
+                    ? {
+                        trigger_type: schedule.event.type,
+                        trigger_config: schedule.event,
+                      }
+                    : {}),
                   overlap_policy: "skip",
                   starts_at: startsAt,
-                  next_run_at: status === "active" ? startsAt : null,
+                  next_run_at: status === "active" ? initialNext : null,
                   expires_at: expiresAt,
                   time_created: now,
                   time_updated: now,
@@ -308,13 +370,22 @@ const layer = Layer.effect(
     })
 
     const edit = Effect.fn("Loop.edit")(function* (input: EditInput) {
-      const invalidInterval = input.intervalSeconds === undefined ? undefined : validateInterval(input.intervalSeconds)
-      if (invalidInterval) return yield* invalidInterval
+      const schedule = validateScheduleEdit(input)
+      if (schedule instanceof InvalidInputError) return yield* schedule
       if (input.name !== undefined && !input.name.trim())
         return yield* new InvalidInputError({ message: "A name is required" })
       const invalidWorkflow = input.workflow ? validateWorkflow(input.workflow) : undefined
       if (invalidWorkflow) return yield* invalidWorkflow
       const now = Date.now()
+      const nextForSchedule =
+        schedule.kind === "none"
+          ? undefined
+          : schedule.kind === "event"
+            ? null
+            : schedule.scheduleType === "interval"
+              ? now + schedule.seconds * 1_000
+              : computeCronNext(schedule.expression, schedule.timezone, now)
+      if (nextForSchedule instanceof InvalidInputError) return yield* nextForSchedule
       const result = yield* db
         .transaction(
           (tx) =>
@@ -333,17 +404,42 @@ const layer = Layer.effect(
                 .set({
                   name: input.name,
                   prompt: input.prompt,
-                  interval_seconds: input.intervalSeconds,
-                  timezone: input.timezone,
+                  ...(schedule.kind === "none"
+                    ? {}
+                    : schedule.kind === "event"
+                      ? {
+                          schedule_type: "interval",
+                          interval_seconds: MIN_INTERVAL_SECONDS,
+                          cron_expression: null,
+                          timezone: schedule.timezone,
+                          trigger_type: schedule.event.type,
+                          trigger_config: schedule.event,
+                        }
+                      : schedule.scheduleType === "interval"
+                        ? {
+                            schedule_type: "interval",
+                            interval_seconds: schedule.seconds,
+                            cron_expression: null,
+                            timezone: schedule.timezone,
+                            trigger_type: null,
+                            trigger_config: null,
+                          }
+                        : {
+                            schedule_type: "cron",
+                            interval_seconds: MIN_INTERVAL_SECONDS,
+                            cron_expression: schedule.expression,
+                            timezone: schedule.timezone,
+                            trigger_type: null,
+                            trigger_config: null,
+                          }),
+                  ...(input.timezone !== undefined && schedule.kind === "none" ? { timezone: input.timezone } : {}),
                   agent: input.resetAgent ? null : input.agent,
                   model: input.resetModel ? null : input.model,
                   skill: input.resetSkill ? null : input.skill,
                   workflow: input.workflow,
                   expires_at: input.expiresAt,
                   next_run_at:
-                    current.status === "active" && input.intervalSeconds !== undefined
-                      ? now + input.intervalSeconds * 1_000
-                      : undefined,
+                    current.status === "active" && schedule.kind !== "none" ? nextForSchedule : undefined,
                   time_updated: now,
                 })
                 .where(eq(LoopTable.id, input.id))
@@ -396,9 +492,16 @@ const layer = Layer.effect(
                 ))
               )
                 return { type: "limit" } as const
+              if (current.trigger_type === "file-change" || current.trigger_type === "session-end")
+                return { type: "event", row: current } as const
+              const next =
+                current.schedule_type === "cron" && current.cron_expression
+                  ? computeCronNext(current.cron_expression, current.timezone, now)
+                  : now + current.interval_seconds * 1_000
+              if (next instanceof InvalidInputError) return { type: "invalid", message: next.message } as const
               const row = yield* tx
                 .update(LoopTable)
-                .set({ status: "active", next_run_at: now + current.interval_seconds * 1_000, time_updated: now })
+                .set({ status: "active", next_run_at: next, time_updated: now })
                 .where(eq(LoopTable.id, id))
                 .returning()
                 .get()
@@ -407,6 +510,19 @@ const layer = Layer.effect(
           { behavior: "immediate" },
         )
         .pipe(Effect.orDie)
+      if (result.type === "event") {
+        const activated = yield* db
+          .update(LoopTable)
+          .set({ status: "active", next_run_at: null, time_updated: now })
+          .where(eq(LoopTable.id, id))
+          .returning()
+          .get()
+          .pipe(Effect.orDie)
+        if (!activated) return yield* new InvalidStateError({ id, message: "Loop changed concurrently" })
+        return toInfo(activated)
+      }
+      if (result.type === "invalid")
+        return yield* new InvalidInputError({ message: result.message })
       if (result.type === "not-found") return yield* new NotFoundError({ id })
       if (result.type === "state") return yield* new InvalidStateError({ id, message: result.message })
       if (result.type === "limit") return yield* new ActiveLimitError({ limit: MAX_ACTIVE })
@@ -477,6 +593,69 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
       if (result.type === "expired") return yield* new InvalidStateError({ id: input.id, message: "Loop has expired" })
+      return toRun(result.row)
+    })
+
+    const fireEvent = Effect.fn("Loop.fireEvent")(function* (input: {
+      readonly id: ID
+      readonly owner: string
+      readonly trigger: "file-change" | "session-end"
+      readonly payload?: Readonly<Record<string, unknown>>
+      readonly leaseMs?: number
+    }) {
+      const leaseMs = validateLease(input.leaseMs)
+      if (leaseMs instanceof InvalidInputError) return yield* leaseMs
+      const invalidPayload = validateTriggerPayload(input.payload)
+      if (invalidPayload) return yield* invalidPayload
+      const now = Date.now()
+      const result = yield* db
+        .transaction(
+          (tx) =>
+            Effect.gen(function* () {
+              const loop = yield* tx.select().from(LoopTable).where(eq(LoopTable.id, input.id)).get()
+              if (!loop) return { type: "not-found" } as const
+              if (loop.expires_at <= now) return { type: "expired" } as const
+              if (loop.status !== "active") return { type: "inactive" } as const
+              if ((loop.trigger_type ?? "scheduled") !== input.trigger) return { type: "mismatch" } as const
+              if (input.trigger === "session-end" && !matchesSessionEndFilter(loop.trigger_config, input.payload))
+                return { type: "filtered" } as const
+              const active = yield* activeRun(tx, input.id, now)
+              const latest = yield* tx
+                .select({ scheduledAt: LoopRunTable.scheduled_at })
+                .from(LoopRunTable)
+                .where(eq(LoopRunTable.loop_id, input.id))
+                .orderBy(desc(LoopRunTable.scheduled_at))
+                .limit(1)
+                .get()
+              const scheduledAt = Math.max(now, (latest?.scheduledAt ?? now - 1) + 1)
+              const row = yield* tx
+                .insert(LoopRunTable)
+                .values(
+                  runValues(
+                    loop,
+                    scheduledAt,
+                    input.trigger,
+                    active ? "skipped" : "claimed",
+                    now,
+                    active ? undefined : input.owner,
+                    active ? undefined : now + leaseMs,
+                    input.payload,
+                  ),
+                )
+                .returning()
+                .get()
+              return { type: "run", row } as const
+            }),
+          { behavior: "immediate" },
+        )
+        .pipe(Effect.orDie)
+      if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
+      if (result.type === "expired" || result.type === "inactive")
+        return yield* new InvalidStateError({ id: input.id, message: "Loop is not active" })
+      if (result.type === "mismatch")
+        return yield* new InvalidInputError({ message: `Loop does not listen for ${input.trigger} events` })
+      if (result.type === "filtered")
+        return yield* new InvalidInputError({ message: "Session event does not match this Loop's filter" })
       return toRun(result.row)
     })
 
@@ -586,10 +765,14 @@ const layer = Layer.effect(
                     .onConflictDoNothing()
                     .returning()
                     .get()
-                  const next = Math.max(
-                    scheduledAt + loop.interval_seconds * 1_000,
-                    now + loop.interval_seconds * 1_000,
-                  )
+                  const cronNext =
+                    loop.schedule_type === "cron" && loop.cron_expression
+                      ? computeCronNext(loop.cron_expression, loop.timezone, scheduledAt)
+                      : undefined
+                  const next =
+                    cronNext instanceof InvalidInputError || cronNext === undefined
+                      ? Math.max(scheduledAt + loop.interval_seconds * 1_000, now + loop.interval_seconds * 1_000)
+                      : cronNext
                   yield* tx
                     .update(LoopTable)
                     .set({
@@ -806,6 +989,7 @@ const layer = Layer.effect(
       resume,
       delete: remove,
       runNow,
+      fireEvent,
       cancelRun,
       listRuns,
       getRun: findRun,
@@ -821,14 +1005,508 @@ const layer = Layer.effect(
 
 export const node = makeGlobalNode({ service: Service, layer, deps: [Database.node] })
 
-function validateInterval(seconds: number) {
-  if (Number.isSafeInteger(seconds) && seconds >= MIN_INTERVAL_SECONDS) return
+function validateInterval(seconds: number | undefined) {
+  if (seconds !== undefined && Number.isSafeInteger(seconds) && seconds >= MIN_INTERVAL_SECONDS) return
   return new InvalidInputError({ message: `Interval must be an integer of at least ${MIN_INTERVAL_SECONDS} seconds` })
+}
+
+type ValidatedSchedule =
+  | { readonly kind: "scheduled"; readonly scheduleType: "interval"; readonly seconds: number; readonly timezone: string }
+  | {
+      readonly kind: "scheduled"
+      readonly scheduleType: "cron"
+      readonly expression: string
+      readonly timezone: string
+    }
+  | { readonly kind: "event"; readonly event: EventTriggerConfig; readonly timezone: string }
+
+function validateTimezone(timezone: string) {
+  if (!timezone.trim()) return new InvalidInputError({ message: "A timezone is required" })
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone })
+    return timezone
+  } catch {
+    return new InvalidInputError({ message: `Unsupported timezone: ${timezone}` })
+  }
+}
+
+function validateScheduleInput(input: CreateInput): ValidatedSchedule | InvalidInputError {
+  const timezoneResult = validateTimezone(input.timezone ?? "UTC")
+  if (timezoneResult instanceof InvalidInputError) return timezoneResult
+  const timezone = timezoneResult
+  if (input.eventTrigger !== undefined) {
+    if (input.intervalSeconds !== undefined || input.cronExpression !== undefined)
+      return new InvalidInputError({ message: "Event Automations must not set an interval or cron schedule" })
+    const invalidEvent = validateEventTrigger(input.eventTrigger)
+    if (invalidEvent) return invalidEvent
+    return { kind: "event", event: input.eventTrigger, timezone }
+  }
+  if (input.intervalSeconds !== undefined && input.cronExpression !== undefined)
+    return new InvalidInputError({ message: "Choose either an interval or a cron schedule, not both" })
+  if (input.cronExpression !== undefined) {
+    const invalidCron = validateCronExpression(input.cronExpression)
+    if (invalidCron) return invalidCron
+    return { kind: "scheduled", scheduleType: "cron", expression: input.cronExpression.trim(), timezone }
+  }
+  const invalidInterval = validateInterval(input.intervalSeconds)
+  if (invalidInterval) return invalidInterval
+  return { kind: "scheduled", scheduleType: "interval", seconds: input.intervalSeconds as number, timezone }
+}
+
+type ValidatedEditSchedule =
+  | ValidatedSchedule
+  | { readonly kind: "none" }
+
+function validateScheduleEdit(input: EditInput): ValidatedEditSchedule | InvalidInputError {
+  const hasInterval = input.intervalSeconds !== undefined
+  const hasCron = input.cronExpression !== undefined
+  const hasEvent = input.eventTrigger !== undefined
+  const count = (hasInterval ? 1 : 0) + (hasCron ? 1 : 0) + (hasEvent ? 1 : 0)
+  if (count > 1)
+    return new InvalidInputError({ message: "Choose either an interval, a cron schedule, or an event trigger" })
+  if (input.timezone !== undefined) {
+    const timezoneResult = validateTimezone(input.timezone)
+    if (timezoneResult instanceof InvalidInputError) return timezoneResult
+  }
+  if (hasEvent) {
+    const invalidEvent = validateEventTrigger(input.eventTrigger as EventTriggerConfig)
+    if (invalidEvent) return invalidEvent
+    return {
+      kind: "event",
+      event: input.eventTrigger as EventTriggerConfig,
+      timezone: input.timezone ?? "UTC",
+    }
+  }
+  if (hasCron) {
+    const invalidCron = validateCronExpression(input.cronExpression as string)
+    if (invalidCron) return invalidCron
+    return {
+      kind: "scheduled",
+      scheduleType: "cron",
+      expression: (input.cronExpression as string).trim(),
+      timezone: input.timezone ?? "UTC",
+    }
+  }
+  if (hasInterval) {
+    const invalidInterval = validateInterval(input.intervalSeconds)
+    if (invalidInterval) return invalidInterval
+    return {
+      kind: "scheduled",
+      scheduleType: "interval",
+      seconds: input.intervalSeconds as number,
+      timezone: input.timezone ?? "UTC",
+    }
+  }
+  return { kind: "none" }
+}
+
+function computeInitialNextRun(
+  schedule: ValidatedSchedule,
+  startsAt: number,
+  _now: number,
+): number | null | InvalidInputError {
+  if (schedule.kind === "event") return null
+  if (schedule.scheduleType === "interval") return startsAt
+  return computeCronNext(schedule.expression, schedule.timezone, startsAt - 1)
+}
+
+function validateTriggerPayload(payload: Readonly<Record<string, unknown>> | undefined) {
+  if (payload === undefined) return
+  const keys = Object.keys(payload)
+  if (keys.length > 20) return new InvalidInputError({ message: "Event payload has too many fields" })
+  for (const key of keys) {
+    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(key))
+      return new InvalidInputError({ message: `Unsupported event payload field: ${key}` })
+  }
+  const serialized = JSON.stringify(payload)
+  if (serialized.length > 8_000) return new InvalidInputError({ message: "Event payload is too large" })
+  return
 }
 
 function validateLease(leaseMs = DEFAULT_LEASE_MS) {
   if (Number.isSafeInteger(leaseMs) && leaseMs > 0) return leaseMs
   return new InvalidInputError({ message: "Lease must be a positive integer in milliseconds" })
+}
+
+function validateEventTrigger(trigger: EventTriggerConfig) {
+  if (trigger.type === "file-change") {
+    if (trigger.paths.length < 1 || trigger.paths.length > 20)
+      return new InvalidInputError({ message: "File-change triggers require between 1 and 20 path patterns" })
+    for (const pattern of trigger.paths) {
+      const invalid = validateGlobPattern(pattern)
+      if (invalid) return invalid
+    }
+    if (trigger.debounceMs !== undefined) {
+      if (!Number.isSafeInteger(trigger.debounceMs) || trigger.debounceMs < 0 || trigger.debounceMs > 60_000)
+        return new InvalidInputError({ message: "File-change debounce must be between 0 and 60000 ms" })
+    }
+    return
+  }
+  if (trigger.outcomes !== undefined) {
+    if (trigger.outcomes.length < 1 || trigger.outcomes.length > 2)
+      return new InvalidInputError({ message: "Session-end outcomes must list success and/or failure" })
+    for (const outcome of trigger.outcomes) {
+      if (outcome !== "success" && outcome !== "failure")
+        return new InvalidInputError({ message: `Unsupported session-end outcome: ${outcome}` })
+    }
+  }
+  if (trigger.sessionID !== undefined && !trigger.sessionID.trim())
+    return new InvalidInputError({ message: "Session-end sessionID must not be blank" })
+  if (trigger.agent !== undefined && !trigger.agent.trim())
+    return new InvalidInputError({ message: "Session-end agent must not be blank" })
+  return
+}
+
+function validateGlobPattern(pattern: string) {
+  if (!pattern.trim() || pattern.length > 256)
+    return new InvalidInputError({ message: `Unsupported file-change pattern: ${pattern}` })
+  if (pattern.startsWith("/") || /^[A-Za-z]:[\\/]/.test(pattern) || pattern.includes("\\"))
+    return new InvalidInputError({ message: `File-change patterns must be relative: ${pattern}` })
+  if (pattern.split("/").includes(".."))
+    return new InvalidInputError({ message: `File-change patterns must not escape the directory: ${pattern}` })
+  if (!/^[A-Za-z0-9_.\-/*?{}[\]!+,@()|]+$/.test(pattern))
+    return new InvalidInputError({ message: `Unsupported file-change pattern: ${pattern}` })
+  return
+}
+
+function matchesSessionEndFilter(
+  config: unknown,
+  payload: Readonly<Record<string, unknown>> | undefined,
+): boolean {
+  if (config === null || config === undefined) return true
+  const parsed = config as SessionEndConfig
+  if (parsed.type !== undefined && parsed.type !== "session-end") return true
+  if (parsed.outcomes !== undefined && payload?.["outcome"] !== undefined) {
+    const outcome = payload["outcome"]
+    if (typeof outcome === "string" && !(parsed.outcomes as ReadonlyArray<string>).includes(outcome)) return false
+  }
+  if (parsed.sessionID !== undefined && payload?.["sessionID"] !== undefined) {
+    if (payload["sessionID"] !== parsed.sessionID) return false
+  }
+  if (parsed.agent !== undefined && payload?.["agent"] !== undefined) {
+    if (payload["agent"] !== parsed.agent) return false
+  }
+  return true
+}
+
+export function evaluateWhen(
+  when: string | undefined,
+  context: {
+    readonly trigger: { readonly type: Trigger; readonly scheduledAt: number; readonly payload: Readonly<Record<string, unknown>> }
+    readonly steps: StepOutputs
+  },
+) {
+  if (when === undefined) return true
+  if (!when.trim()) return true
+  const resolved = resolveBindings(when, context).trim().toLowerCase()
+  if (resolved === "" || resolved === "false" || resolved === "0") return false
+  if (resolved === "no" || resolved === "off" || resolved === "skip") return false
+  if (resolved === "null" || resolved === "undefined") return false
+  return true
+}
+
+export function shouldContinueOnFailure(step: WorkflowStep) {
+  return step.onFailure === "continue"
+}
+
+export function matchesFilePattern(pattern: string, relativePath: string) {
+  return matchGlobSegments(splitGlob(pattern), splitGlob(relativePath), 0, 0)
+}
+
+function splitGlob(value: string) {
+  return value.split("/").filter((segment) => segment.length > 0)
+}
+
+function matchGlobSegments(pattern: ReadonlyArray<string>, path: ReadonlyArray<string>, pi: number, si: number): boolean {
+  if (pi >= pattern.length) return si >= path.length
+  if (pattern[pi] === "**") {
+    if (pi + 1 >= pattern.length) return true
+    for (let skip = si; skip <= path.length; skip++) {
+      if (matchGlobSegments(pattern, path, pi + 1, skip)) return true
+    }
+    return false
+  }
+  if (si >= path.length) return false
+  if (!matchGlobSegment(pattern[pi] as string, path[si] as string)) return false
+  return matchGlobSegments(pattern, path, pi + 1, si + 1)
+}
+
+function matchGlobSegment(pattern: string, value: string) {
+  let px = 0
+  let vx = 0
+  let star = -1
+  let mark = 0
+  while (vx < value.length) {
+    if (px < pattern.length && (pattern[px] === "?" || pattern[px] === value[vx])) {
+      px++
+      vx++
+      continue
+    }
+    if (px < pattern.length && pattern[px] === "*") {
+      star = px
+      mark = vx
+      px++
+      continue
+    }
+    if (star !== -1) {
+      px = star + 1
+      mark++
+      vx = mark
+      continue
+    }
+    return false
+  }
+  while (px < pattern.length && pattern[px] === "*") px++
+  return px >= pattern.length
+}
+
+export function matchesFileTrigger(config: FileChangeConfig, relativePath: string) {
+  return config.paths.some((pattern) => matchesFilePattern(pattern, relativePath))
+}
+
+type CronField = {
+  readonly values: ReadonlySet<number>
+  readonly restricted: boolean
+}
+
+type ParsedCron = {
+  readonly minute: CronField
+  readonly hour: CronField
+  readonly dayOfMonth: CronField
+  readonly month: CronField
+  readonly dayOfWeek: CronField
+}
+
+const CRON_MONTH_NAMES: Readonly<Record<string, number>> = {
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+}
+
+const CRON_DOW_NAMES: Readonly<Record<string, number>> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+}
+
+export function validateCronExpression(expression: string) {
+  if (!expression.trim() || expression.length > 120)
+    return new InvalidInputError({ message: "Cron expression must be five fields like '*/5 * * * *'" })
+  const parsed = parseCronExpression(expression)
+  if (parsed instanceof InvalidInputError) return parsed
+  return
+}
+
+export function parseCronExpression(expression: string): ParsedCron | InvalidInputError {
+  const fields = expression.trim().split(/\s+/)
+  if (fields.length !== 5)
+    return new InvalidInputError({ message: "Cron expression must have five fields: minute hour day month weekday" })
+  const minute = parseCronField(fields[0] as string, 0, 59, undefined)
+  if (minute instanceof InvalidInputError) return minute
+  const hour = parseCronField(fields[1] as string, 0, 23, undefined)
+  if (hour instanceof InvalidInputError) return hour
+  const dayOfMonth = parseCronField(fields[2] as string, 1, 31, undefined)
+  if (dayOfMonth instanceof InvalidInputError) return dayOfMonth
+  const month = parseCronField(fields[3] as string, 1, 12, CRON_MONTH_NAMES)
+  if (month instanceof InvalidInputError) return month
+  const dayOfWeek = parseCronField(fields[4] as string, 0, 7, CRON_DOW_NAMES)
+  if (dayOfWeek instanceof InvalidInputError) return dayOfWeek
+  const normalizedDow =
+    dayOfWeek.values.has(7) && !dayOfWeek.values.has(0)
+      ? { values: new Set([...dayOfWeek.values].map((value) => (value === 7 ? 0 : value))), restricted: true }
+      : dayOfWeek.values.has(7)
+        ? { values: new Set([...dayOfWeek.values].map((value) => (value === 7 ? 0 : value))), restricted: dayOfWeek.restricted }
+        : dayOfWeek
+  return { minute, hour, dayOfMonth, month, dayOfWeek: normalizedDow }
+}
+
+function parseCronField(
+  field: string,
+  min: number,
+  max: number,
+  names: Readonly<Record<string, number>> | undefined,
+): CronField | InvalidInputError {
+  if (field === "*") return { values: new Set(range(min, max)), restricted: false }
+  const values = new Set<number>()
+  for (const part of field.split(",")) {
+    const parsed = parseCronPart(part, min, max, names)
+    if (parsed instanceof InvalidInputError) return parsed
+    for (const value of parsed) values.add(value)
+  }
+  if (values.size === 0) return new InvalidInputError({ message: `Invalid cron field: ${field}` })
+  for (const value of values) {
+    if (value < min || value > max) return new InvalidInputError({ message: `Cron value out of range: ${field}` })
+  }
+  return { values, restricted: true }
+}
+
+function parseCronPart(
+  part: string,
+  min: number,
+  max: number,
+  names: Readonly<Record<string, number>> | undefined,
+): ReadonlyArray<number> | InvalidInputError {
+  const [rangePart, stepPart] = part.split("/")
+  if (stepPart !== undefined && !/^\d+$/.test(stepPart))
+    return new InvalidInputError({ message: `Invalid cron step: ${part}` })
+  const step = stepPart === undefined ? 1 : Number(stepPart)
+  if (!Number.isSafeInteger(step) || step < 1 || step > 59)
+    return new InvalidInputError({ message: `Invalid cron step: ${part}` })
+  if (rangePart === "*") return steppedRange(min, max, step)
+  if (rangePart === undefined || rangePart === "")
+    return new InvalidInputError({ message: `Invalid cron field part: ${part}` })
+  if (rangePart.includes("-")) {
+    const [lowRaw, highRaw] = rangePart.split("-")
+    const low = parseCronValue(lowRaw as string, names)
+    const high = parseCronValue(highRaw as string, names)
+    if (low === undefined || high === undefined)
+      return new InvalidInputError({ message: `Invalid cron range: ${part}` })
+    if (low > high) return new InvalidInputError({ message: `Invalid cron range: ${part}` })
+    return steppedRange(low, high, step)
+  }
+  const single = parseCronValue(rangePart, names)
+  if (single === undefined) return new InvalidInputError({ message: `Invalid cron value: ${part}` })
+  if (step !== 1) return steppedRange(single, max, step)
+  return [single]
+}
+
+function parseCronValue(raw: string, names: Readonly<Record<string, number>> | undefined) {
+  const lowered = raw.toLowerCase()
+  if (names && lowered in names) return names[lowered]
+  if (!/^\d+$/.test(raw)) return undefined
+  return Number(raw)
+}
+
+function range(min: number, max: number) {
+  const out: Array<number> = []
+  for (let value = min; value <= max; value++) out.push(value)
+  return out
+}
+
+function steppedRange(min: number, max: number, step: number) {
+  const out: Array<number> = []
+  for (let value = min; value <= max; value += step) out.push(value)
+  return out
+}
+
+export function computeCronNext(
+  expression: string,
+  timezone: string,
+  afterExclusiveMs: number,
+): number | InvalidInputError {
+  const parsed = parseCronExpression(expression)
+  if (parsed instanceof InvalidInputError) return parsed
+  const zone = validateTimezone(timezone)
+  if (zone instanceof InvalidInputError) return zone
+  return nextCronOccurrence(parsed, timezone, afterExclusiveMs)
+}
+
+const CRON_SEARCH_LIMIT_MINUTES = 525_600 + 62_640
+
+function nextCronOccurrence(parsed: ParsedCron, timezone: string, afterExclusiveMs: number) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+    hour12: false,
+  })
+  let wallClockUtc = wallClockAfter(formatter, timezone, afterExclusiveMs)
+  for (let checked = 0; checked < CRON_SEARCH_LIMIT_MINUTES; checked++) {
+    const parts = wallParts(wallClockUtc)
+    if (matchesCronParts(parsed, parts)) {
+      const candidate = wallToUtc(formatter, timezone, wallClockUtc)
+      if (candidate !== undefined && candidate > afterExclusiveMs) return candidate
+    }
+    wallClockUtc += 60_000
+  }
+  return new InvalidInputError({ message: "Cron schedule has no occurrence within the next thirteen months" })
+}
+
+function wallClockAfter(
+  formatter: Intl.DateTimeFormat,
+  timezone: string,
+  afterExclusiveMs: number,
+) {
+  const offset = tzOffsetMs(formatter, timezone, afterExclusiveMs)
+  const wallNow = afterExclusiveMs + offset
+  return Math.floor(wallNow / 60_000) * 60_000 + 60_000
+}
+
+function tzOffsetMs(formatter: Intl.DateTimeFormat, _timezone: string, utcMs: number) {
+  const parts = formatToParts(formatter, utcMs)
+  const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second)
+  return asUtc - (utcMs - (utcMs % 1_000))
+}
+
+function formatToParts(formatter: Intl.DateTimeFormat, utcMs: number) {
+  const found: Record<string, number> = {}
+  for (const part of formatter.formatToParts(new Date(utcMs))) {
+    if (part.type !== "literal") found[part.type] = Number(part.value)
+  }
+  return {
+    year: found["year"] as number,
+    month: found["month"] as number,
+    day: found["day"] as number,
+    hour: (found["hour"] as number) % 24,
+    minute: found["minute"] as number,
+    second: found["second"] as number,
+  }
+}
+
+function wallParts(wallClockUtc: number) {
+  const date = new Date(wallClockUtc)
+  return {
+    minute: date.getUTCMinutes(),
+    hour: date.getUTCHours(),
+    day: date.getUTCDate(),
+    month: date.getUTCMonth() + 1,
+    weekday: date.getUTCDay(),
+  }
+}
+
+function matchesCronParts(
+  parsed: ParsedCron,
+  parts: { readonly minute: number; readonly hour: number; readonly day: number; readonly month: number; readonly weekday: number },
+) {
+  if (!parsed.minute.values.has(parts.minute)) return false
+  if (!parsed.hour.values.has(parts.hour)) return false
+  if (!parsed.month.values.has(parts.month)) return false
+  const domMatch = parsed.dayOfMonth.values.has(parts.day)
+  const dowMatch = parsed.dayOfWeek.values.has(parts.weekday)
+  if (!parsed.dayOfMonth.restricted && !parsed.dayOfWeek.restricted) return true
+  if (parsed.dayOfMonth.restricted && !parsed.dayOfWeek.restricted) return domMatch
+  if (!parsed.dayOfMonth.restricted && parsed.dayOfWeek.restricted) return dowMatch
+  return domMatch || dowMatch
+}
+
+function wallToUtc(formatter: Intl.DateTimeFormat, _timezone: string, wallClockUtc: number) {
+  const guess = wallClockUtc - tzOffsetMs(formatter, _timezone, wallClockUtc)
+  const roundOne = wallClockUtc - tzOffsetMs(formatter, _timezone, guess)
+  const offset = tzOffsetMs(formatter, _timezone, roundOne)
+  const candidate = wallClockUtc - offset
+  const check = formatToParts(formatter, candidate)
+  const expected = wallParts(wallClockUtc)
+  const roundTrip = Date.UTC(check.year, check.month - 1, check.day, check.hour, check.minute)
+  if (roundTrip !== wallClockUtc) return undefined
+  if (check.minute !== expected.minute || check.hour !== expected.hour) return undefined
+  return candidate
 }
 
 function hasCapacity(
@@ -883,12 +1561,14 @@ function runValues(
   now: number,
   owner?: string,
   leaseExpiresAt?: number,
+  payload?: Readonly<Record<string, unknown>>,
 ) {
   return {
     id: Identifier.create("lrn", "ascending"),
     loop_id: loop.id,
     scheduled_at: scheduledAt,
     trigger,
+    ...(payload ? { trigger_payload: { ...payload } } : {}),
     status,
     current_step: 0,
     step_outputs: {},
@@ -909,6 +1589,11 @@ function runValues(
 }
 
 function toInfo(row: typeof LoopTable.$inferSelect): Info {
+  const eventTrigger = (row.trigger_config ?? undefined) as EventTriggerConfig | undefined
+  const schedule: Schedule =
+    row.schedule_type === "cron" && row.cron_expression
+      ? { type: "cron", seconds: row.interval_seconds, expression: row.cron_expression, timezone: row.timezone }
+      : { type: "interval", seconds: row.interval_seconds, timezone: row.timezone }
   return {
     id: row.id,
     name: row.name,
@@ -919,7 +1604,8 @@ function toInfo(row: typeof LoopTable.$inferSelect): Info {
     ...(row.skill ? { skill: row.skill } : {}),
     ...(row.workflow ? { workflow: row.workflow } : {}),
     status: row.status,
-    schedule: { type: "interval", seconds: row.interval_seconds, timezone: row.timezone },
+    schedule,
+    ...(eventTrigger ? { eventTrigger } : {}),
     overlapPolicy: "skip",
     startsAt: row.starts_at,
     ...(row.next_run_at === null ? {} : { nextRunAt: row.next_run_at }),
@@ -934,6 +1620,7 @@ function toRun(row: typeof LoopRunTable.$inferSelect): Run {
     loopID: row.loop_id,
     scheduledAt: row.scheduled_at,
     trigger: row.trigger,
+    ...(row.trigger_payload ? { triggerPayload: row.trigger_payload } : {}),
     status: row.status,
     currentStep: row.current_step,
     outputs: row.step_outputs,
@@ -982,28 +1669,49 @@ function validateWorkflow(workflow: Workflow) {
   )
   if (invalid)
     return new InvalidInputError({ message: "Every Automation step requires an expression-safe ID, name, and task" })
+  for (const step of workflow.steps) {
+    if (step.onFailure !== undefined && step.onFailure !== "stop" && step.onFailure !== "continue")
+      return new InvalidInputError({ message: `Automation step ${step.id} has an unsupported onFailure policy` })
+    if (step.when !== undefined && step.when.length > 2_000)
+      return new InvalidInputError({ message: `Automation step ${step.id} has a when condition that is too long` })
+  }
   for (const [index, step] of workflow.steps.entries()) {
-    const template = step.type === "agent" ? step.prompt : step.instructions
-    if (template.replace(BINDING, "").includes("{{") || template.replace(BINDING, "").includes("}}"))
-      return new InvalidInputError({ message: `Malformed Automation binding in step ${step.id}` })
-    for (const binding of parseBindings(template)) {
-      if (binding[0] === "trigger") {
-        const direct = binding.length === 2 && (binding[1] === "type" || binding[1] === "scheduledAt")
-        const payload =
-          binding.length === 3 &&
-          binding[1] === "payload" &&
-          ["repository", "directory", "workspaceID"].includes(binding[2])
-        if (!direct && !payload)
-          return new InvalidInputError({ message: `Unsupported Automation trigger binding: ${binding.join(".")}` })
-        continue
+    const templates = [step.type === "agent" ? step.prompt : step.instructions]
+    if (step.when !== undefined) templates.push(step.when)
+    for (const template of templates) {
+      if (template.replace(BINDING, "").includes("{{") || template.replace(BINDING, "").includes("}}"))
+        return new InvalidInputError({ message: `Malformed Automation binding in step ${step.id}` })
+      for (const binding of parseBindings(template)) {
+        const invalidBinding = validateBinding(binding, workflow, index, step.id)
+        if (invalidBinding) return invalidBinding
       }
-      if (binding[0] !== "steps" || (binding[2] !== "output" && binding[2] !== "artifacts"))
-        return new InvalidInputError({ message: `Unsupported Automation binding: ${binding.join(".")}` })
-      const source = workflow.steps.findIndex((item) => item.id === binding[1])
-      if (source < 0 || source >= index)
-        return new InvalidInputError({ message: `Automation step ${step.id} must reference an earlier step` })
     }
   }
+}
+
+function validateBinding(
+  binding: ReadonlyArray<string>,
+  workflow: Workflow,
+  index: number,
+  stepID: string,
+) {
+  if (binding[0] === "trigger") {
+    const direct = binding.length === 2 && (binding[1] === "type" || binding[1] === "scheduledAt")
+    const payload =
+      binding.length >= 3 &&
+      binding.length <= 4 &&
+      binding[1] === "payload" &&
+      /^[A-Za-z][A-Za-z0-9_-]*$/.test(binding[2] ?? "")
+    if (!direct && !payload)
+      return new InvalidInputError({ message: `Unsupported Automation trigger binding: ${binding.join(".")}` })
+    return
+  }
+  if (binding[0] !== "steps" || (binding[2] !== "output" && binding[2] !== "artifacts"))
+    return new InvalidInputError({ message: `Unsupported Automation binding: ${binding.join(".")}` })
+  const source = workflow.steps.findIndex((item) => item.id === binding[1])
+  if (source < 0 || source >= index)
+    return new InvalidInputError({ message: `Automation step ${stepID} must reference an earlier step` })
+  return
 }
 
 const BINDING = /{{\s*([A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z][A-Za-z0-9_-]*)+)\s*}}/g

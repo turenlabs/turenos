@@ -3,6 +3,8 @@ import { createMemo, createResource } from "solid-js"
 import { useModels, type ModelKey } from "@/context/models"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
+import { useLanguage } from "@/context/language"
+import { showToast } from "@/utils/toast"
 
 export type AgentModelOption = {
   providerID: string
@@ -29,6 +31,7 @@ export function useAgentSettings() {
   const serverSDK = useServerSDK()
   const serverSync = useServerSync()
   const models = useModels()
+  const language = useLanguage()
 
   const [agents, { refetch }] = createResource(
     serverSDK,
@@ -81,20 +84,24 @@ export function useAgentSettings() {
   }
 
   const setModel = (agent: Agent, model: AgentModelOption) => {
-    const config = serverSync().data.config
-    const agentConfig = config.agent?.[agent.name]
-
+    if (serverSync().data.reload === "pending") return
+    if (serverSync().data.config.agent?.[agent.name]?.model === modelOptionValue(model)) return
     void serverSync()
       .updateConfig({
         agent: {
           [agent.name]: {
-            ...agentConfig,
             model: modelOptionValue(model),
           },
         },
       })
       .then(() => refetch())
-      .catch(() => undefined)
+      .catch((error) => {
+        showToast({
+          variant: "error",
+          title: language.t("common.requestFailed"),
+          description: error instanceof Error ? error.message : String(error),
+        })
+      })
   }
 
   return {
@@ -104,5 +111,6 @@ export function useAgentSettings() {
     modelOptions,
     selectedModel,
     setModel,
+    saving: () => serverSync().data.reload === "pending",
   }
 }

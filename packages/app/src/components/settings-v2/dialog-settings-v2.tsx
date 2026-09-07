@@ -14,6 +14,7 @@ import { SettingsModelsV2 } from "./models"
 import { SettingsProvidersV2 } from "./providers"
 import "./settings-v2.css"
 import { SettingsServersV2 } from "./servers"
+import { SettingsIntelV2 } from "./intel"
 import { SettingsServerProvider } from "../settings-server-context"
 
 type SettingsNavigationItem = {
@@ -107,6 +108,7 @@ export const DialogSettings: Component<{
             language.t("settings.serverSettings.title"),
             "server shell permissions runtime mcp storage retention docker",
           ),
+          navigationItem("intel", "shield", "Threat intelligence", "intel manage feeds security advisories local rss"),
         ],
       },
       {
@@ -235,6 +237,9 @@ export const DialogSettings: Component<{
           </TabsV2.Content>
           <TabsV2.Content value="servers" class="settings-v2-panel">
             <SettingsServersV2 />
+          </TabsV2.Content>
+          <TabsV2.Content value="intel" class="settings-v2-panel">
+            <SettingsIntelV2 />
           </TabsV2.Content>
           <TabsV2.Content value="models" class="settings-v2-panel">
             <SettingsModelsV2 />

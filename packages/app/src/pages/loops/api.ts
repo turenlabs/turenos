@@ -1,6 +1,14 @@
-import type { AgentV2Info, ExtensionItem, ForgeClient, LoopInfo, LoopRun } from "@turenlabs/sdk/v2/client"
+import type { AgentV2Info, ExtensionItem, ForgeClient, LoopInfo } from "@turenlabs/sdk/v2/client"
 
-export type { LoopInfo, LoopRun }
+export type { LoopInfo }
+export type LoopSchedule = LoopInfo["schedule"]
+export type LoopEventTrigger = NonNullable<LoopInfo["eventTrigger"]>
+
+type Run = import("@turenlabs/sdk/v2/client").LoopRun
+// Older stored run responses may omit the current step.
+export type LoopRun = Omit<Run, "currentStep"> & {
+  readonly currentStep?: Run["currentStep"]
+}
 export type LoopLocation = LoopInfo["location"]
 export type AutomationWorkflow = NonNullable<LoopInfo["workflow"]>
 
@@ -31,8 +39,10 @@ export type LoopApi = {
     model?: { id: string; providerID: string; variant?: string }
     skill?: string
     workflow?: AutomationWorkflow
-    intervalSeconds: number
+    intervalSeconds?: number
+    cronExpression?: string
     timezone?: string
+    eventTrigger?: LoopEventTrigger
     startsAt?: number
     expiresAt?: number
     paused?: boolean
@@ -43,7 +53,9 @@ export type LoopApi = {
     name?: string
     prompt?: string
     intervalSeconds?: number
+    cronExpression?: string
     timezone?: string
+    eventTrigger?: LoopEventTrigger
     expiresAt?: number
     agent?: string | null
     model?: { id: string; providerID: string; variant?: string } | null

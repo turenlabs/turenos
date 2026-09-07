@@ -494,6 +494,16 @@ export function getToolInfo(
       return { icon: "subagent", title: i18n.t("ui.tool.boardRead") }
     case "board_post":
       return { icon: "subagent", title: i18n.t("ui.tool.boardPost") }
+    case "spawn_agent":
+      return { icon: "subagent", title: i18n.t("ui.tool.agentSpawn"), subtitle: input.description }
+    case "send_agent":
+      return { icon: "subagent", title: i18n.t("ui.tool.agentSend") }
+    case "wait_agents":
+      return { icon: "subagent", title: i18n.t("ui.tool.agentWait") }
+    case "interrupt_agent":
+      return { icon: "subagent", title: i18n.t("ui.tool.agentInterrupt") }
+    case "list_agents":
+      return { icon: "subagent", title: i18n.t("ui.tool.agentList") }
     case "skill":
       return {
         icon: "brain",
@@ -744,7 +754,7 @@ function contextToolTrigger(part: ToolPart, i18n: ReturnType<typeof useI18n>) {
       const info = getToolInfo(part.tool, input, "metadata" in part.state ? part.state.metadata : undefined)
       return {
         title: info.title,
-        subtitle: isCoordinationTool(part.tool) ? part.tool : info.subtitle || contextToolDetail(part),
+        subtitle: info.subtitle || (isCoordinationTool(part.tool) ? part.tool : contextToolDetail(part)),
         args: [],
       }
     }

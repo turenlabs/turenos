@@ -13,7 +13,7 @@ The builder is a node canvas: the schedule trigger, each workflow step, and Ture
 
 An Automation contains:
 
-- **Schedule trigger**: a fixed interval using `s`, `m`, `h`, or `d`, with a minimum of 60 seconds.
+- **Trigger**: an interval schedule, a cron schedule, or a local event trigger (file-change or session-end). Intervals use `s`, `m`, `h`, or `d`, with a minimum of 60 seconds.
 - **Workflow steps**: one to twelve ordered Agent or Skill steps. Steps can be added, removed, and reordered in the builder.
 - **Project**: the local project and permission boundary used by every step.
 - **Agent, model, and effort**: workflow-level execution choices. A model that advertises reasoning
@@ -36,11 +36,11 @@ Mention `@automations` in the composer to point an agent at this surface. The me
 
 Agents work through three tools:
 
-- `automation_list` reads every Automation with its status, interval, and steps.
-- `automation_create` creates one from a name, an interval, and ordered steps. Each step is an agent turn, or a skill turn when it names a skill. Step binding IDs are derived from step names using the same rule the builder uses.
-- `automation_update` renames, re-intervals, or replaces the steps of an existing Automation, and pauses, resumes, or deletes it.
+- `automation_list` reads every Automation with its status, schedule, and steps.
+- `automation_create` creates one from a name, exactly one trigger (an interval, a cron expression, or a local file-change / session-end event trigger), and ordered steps. Each step is an agent turn, or a skill turn when it names a skill. Step binding IDs are derived from step names using the same rule the builder uses. A step may also carry a `when` condition and an `on_failure` policy (see below).
+- `automation_update` renames, reschedules (interval, cron, or event trigger), or replaces the steps of an existing Automation, and pauses, resumes, or deletes it.
 
-Creating or changing an Automation goes through the permission system under the `automation_create` and `automation_update` actions, so agent-created schedules are approvable like any other durable side effect. An Automation created without an explicit directory runs in the session's own project directory.
+Creating or changing an Automation goes through the permission system under the `automation_create` and `automation_update` actions, so agent-created schedules are approvable like any other durable side effect. An Automation created without an explicit directory runs in the TurenOS default global data directory.
 
 ## Blueprints
 
@@ -52,6 +52,20 @@ The built-in catalog currently includes:
 - Daily briefing
 - CI failure triage
 - Docs drift
+
+## Schedule And Event Triggers
+
+An Automation fires on exactly one trigger: an interval, a cron schedule, or a local event. Switching trigger kinds later replaces the schedule; an Automation never combines them.
+
+**Cron schedules** use five fields — `minute hour day month weekday`, at most 120 characters — for example `0 9 * * MON-FRI` for 9am on weekdays. Fields accept `*`, lists (`1,15`), ranges (`9-17`, `MON-FRI`), and steps (`*/5`, `9-17/2`; steps run from 1 to 59). Month names (`JAN`–`DEC`) and weekday names (`SUN`–`SAT`) are case-insensitive, and `7` means Sunday just like `0`. When both day-of-month and day-of-week are restricted, a day matching either one fires.
+
+Cron fire times follow the Automation's IANA timezone (for example `America/New_York`); the default is `UTC`. Editing an Automation accepts at most one of a new interval, a new cron expression, or a new event trigger, and clears the previous schedule.
+
+**File-change triggers** watch the Automation's own directory: each of 1 to 20 relative glob patterns (at most 256 characters each, never absolute and never escaping the directory, e.g. `src/**/*.ts`) is matched against files changed under that directory, and files outside it are ignored. Rapid changes coalesce: after the last matching change, the Automation waits out its debounce (`debounceMs`, default 1000 ms, 0 to 60000 ms) before firing once.
+
+**Session-end triggers** fire when a local session in the Automation's directory ends. Optional filters narrow which endings count: `outcomes` (`success` and/or `failure`), a `sessionID`, and/or an `agent`. Omitted filters match anything, and the scheduler's own Automation runs never fire it.
+
+Event Automations have no ticking schedule: they stay active with no next run time until a matching event fires. If an event arrives while an earlier occurrence is still running, it is recorded as `skipped`, exactly like an overlapping interval tick. Events are delivered by the local scheduler only — there is no network trigger source.
 
 ## Step Data Bindings
 
@@ -73,6 +87,13 @@ Every completed step persists an immutable output containing display text, stric
 The selected project path is available as `trigger.payload.repository` and `trigger.payload.directory`. Future event triggers can add more fields under the same `trigger.payload` namespace without changing workflow expressions.
 
 This follows the same product pattern as Hermes Automation Blueprints while keeping creation, editing, execution, and delivery inside TurenOS.
+
+## Step Conditions
+
+A step may carry two flow-control fields:
+
+- `when`: an optional condition string. Bindings in it are resolved first, and the step is skipped when the result is blank or falsy: `""`, `false`, `0`, `no`, `off`, `skip`, `null`, or `undefined` (case-insensitive). Omit it to always run. At most 2000 characters.
+- `on_failure`: exactly `stop` or `continue`. `stop` fails the run at that step; `continue` records the error on the step and runs the next one. Omit it to stop. There is no `skip` policy — overlapping occurrences are what get recorded as `skipped`.
 
 ## Execution
 
@@ -104,8 +125,9 @@ Automation definitions and runs are stored in SQLite. Existing installations ret
 ## Limits
 
 - Minimum interval: 60 seconds.
+- Cron expression: five fields, at most 120 characters.
 - Maximum workflow steps: 12.
-- Maximum active Automations: 50.
+- Maximum active Automations: 50 overall, and 10 per project directory.
 - Maximum lifetime: seven days from creation.
 - Overlap policy: skip.
 

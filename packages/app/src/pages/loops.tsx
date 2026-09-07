@@ -9,6 +9,7 @@ import { TextareaV2 } from "@turenlabs/ui/v2/textarea-v2"
 import { TextInputV2 } from "@turenlabs/ui/v2/text-input-v2"
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useNavRail } from "@/components/nav-rail"
+import { useDialog } from "@turenlabs/ui/context/dialog"
 import { PageHeader } from "@/components/page-header"
 import { modelEffortDisplay } from "@/components/model-selection-display"
 import { useGlobal } from "@/context/global"
@@ -16,7 +17,39 @@ import { ServerConnection, useServer } from "@/context/server"
 import { sessionHref } from "@/utils/session-route"
 import { isRemovedProvider } from "@/hooks/provider-visibility"
 import { loopApi, loopCatalog, responseData, type LoopInfo, type LoopModel, type LoopRun } from "./loops/api"
+import {
+  buildTriggerInput,
+  formatInterval,
+  parseEventPaths,
+  parseInterval,
+  triggerFromAutomation,
+  validateCronExpression,
+  validateDebounceMs,
+  validateGlobPattern,
+  validateTimezone,
+  type SessionOutcomeFilter,
+  type TriggerDraft,
+  type TriggerKind,
+} from "./loops/trigger"
+import {
+  currentStepIndex,
+  failedCallout,
+  isActiveRun,
+  latestRunTone,
+  orderedStepOutputs,
+  runProgressLabel,
+  runTotal,
+  STEP_STATE_LABEL,
+  STEP_STATE_TONE,
+  stepChipFor,
+  stepDisplay,
+  stepState,
+  triggerSummary,
+  type StepState,
+} from "./loops/run-view"
 import { localLoopServer } from "./loops/local-server"
+import { nextRunLabel } from "./loops/latest-runs-data"
+import { RunChatDialog } from "./loops/run-chat"
 import { automationSortOptions, sortAutomations, type AutomationSort } from "./loops/sort"
 import {
   agentDraft,
@@ -51,20 +84,18 @@ type Workflow = NonNullable<LoopInfo["workflow"]>
 type StepType = StepDraft["type"]
 type NodeSelection = "trigger" | "delivery" | string
 
-const formatInterval = (seconds: number) => {
-  if (seconds % 86_400 === 0) return `${seconds / 86_400}d`
-  if (seconds % 3_600 === 0) return `${seconds / 3_600}h`
-  if (seconds % 60 === 0) return `${seconds / 60}m`
-  return `${seconds}s`
-}
+const TRIGGER_KIND_OPTIONS: Array<{ value: TriggerKind; label: string }> = [
+  { value: "interval", label: "Interval" },
+  { value: "cron", label: "Cron" },
+  { value: "file-change", label: "File change" },
+  { value: "session-end", label: "Session end" },
+]
 
-const parseInterval = (interval: string) => {
-  const match = interval.match(/^([1-9]\d*)([smhd])$/)
-  if (!match) return
-  const seconds = Number(match[1]) * { s: 1, m: 60, h: 3_600, d: 86_400 }[match[2] as "s" | "m" | "h" | "d"]
-  if (!Number.isSafeInteger(seconds)) return
-  return seconds
-}
+const SESSION_OUTCOME_OPTIONS: Array<{ value: SessionOutcomeFilter; label: string }> = [
+  { value: "both", label: "Both outcomes" },
+  { value: "success", label: "Success only" },
+  { value: "failure", label: "Failure only" },
+]
 
 const invalidStepBinding = (steps: readonly StepDraft[]) =>
   steps.find((step, index) => {
@@ -105,257 +136,121 @@ const runStatusLabel = (status: LoopRun["status"]) => {
   return "Cancelled"
 }
 
-const runStatusTone = (status: LoopRun["status"]) =>
-  status === "succeeded" ? "success" : status === "failed" ? "danger" : status === "stale" ? "warning" : "info"
-
-const latestRunSummary = (run: LoopRun | undefined) => {
-  if (!run)
-    return {
-      label: "NEVER RUN",
-      headline: "This automation has not run yet.",
-      detail: "Run it once to establish its health and output history.",
-    }
-  const scheduled = new Date(run.scheduledAt).toLocaleString()
-  if (run.status === "stale")
-    return {
-      label: "STALE",
-      headline: `Last run was stale on ${scheduled}.`,
-      detail: "Run it now or edit the schedule to resume useful work.",
-    }
-  if (run.status === "failed")
-    return {
-      label: "FAILED",
-      headline: `Last run failed on ${scheduled}.`,
-      detail: run.error ?? "Inspect the run output and retry after correcting the failure.",
-    }
-  if (run.status === "running" || run.status === "claimed")
-    return {
-      label: "RUNNING",
-      headline: "This automation is running now.",
-      detail: `Started from the ${run.trigger} trigger on ${scheduled}.`,
-    }
-  return {
-    label: "HEALTHY",
-    headline: `Last run completed on ${scheduled}.`,
-    detail: "The latest run completed without a reported error.",
-  }
-}
-
-function AutomationRunDetail(props: {
-  automation: LoopInfo
-  runs: LoopRun[]
-  busy: boolean
-  onBack: () => void
-  onEdit: () => void
-  onRunNow: () => void
-  onPause: () => void
-  onResume: () => void
-  onDelete: () => void
+function RunStepCard(props: {
+  stepID: string
+  name: string
+  index: number
+  total: number
+  state: StepState
+  output: LoopRun["outputs"][string]
 }) {
-  const [selectedRunID, setSelectedRunID] = createSignal<string | undefined>(props.runs[0]?.id)
-  const latest = () => props.runs[0]
-  const selectedRun = () => props.runs.find((run) => run.id === selectedRunID()) ?? latest()
-  const summary = () => latestRunSummary(latest())
-  const completed = () =>
-    props.runs.filter((run) => ["succeeded", "failed", "cancelled", "skipped"].includes(run.status))
-  const successRate = () => {
-    const items = completed()
-    if (!items.length) return "No completed runs"
-    return `${Math.round((items.filter((run) => run.status === "succeeded").length / items.length) * 100)}% clean`
+  const [expanded, setExpanded] = createSignal(false)
+  const [copied, setCopied] = createSignal(false)
+  const [mode, setMode] = createSignal<"text" | "json">(props.output.text ? "text" : "json")
+  let timer: number | undefined
+  onCleanup(() => window.clearTimeout(timer))
+  const hasJson = () => props.output.json !== undefined
+  const body = () =>
+    mode() === "json" && hasJson()
+      ? JSON.stringify(props.output.json, null, 2)
+      : props.output.text || JSON.stringify(props.output.json ?? null, null, 2)
+  const copy = () => {
+    const clipboard = navigator.clipboard
+    if (!clipboard) return
+    window.clearTimeout(timer)
+    void clipboard.writeText(body()).then(
+      () => {
+        setCopied(true)
+        timer = window.setTimeout(() => setCopied(false), 1_500)
+      },
+      () => setCopied(false),
+    )
   }
-  const definition = () => {
-    const steps = props.automation.workflow?.steps ?? []
-    return `Every ${formatInterval(props.automation.schedule.seconds)}, run ${steps.length || 1} step${steps.length === 1 ? "" : "s"} and deliver the result to TurenOS.`
-  }
-  const output = () => selectedRun() && Object.values(selectedRun()!.outputs)[0]
-
-  createEffect(() => {
-    if (!props.runs.some((run) => run.id === selectedRunID())) setSelectedRunID(props.runs[0]?.id)
-  })
 
   return (
-    <section data-component="automation-detail" class="flex min-h-full flex-col bg-v2-background-bg-base">
-      <header class="flex flex-wrap items-center justify-between gap-3 border-b border-v2-border-border-base px-5 py-4">
-        <div class="flex min-w-0 items-center gap-3">
-          <ButtonV2 data-action="automation-back" size="small" variant="ghost-muted" onClick={props.onBack}>
-            Automations
-          </ButtonV2>
-          <span class={`h-2 w-2 shrink-0 rounded-full ${STATUS_TONE[props.automation.status].split(" ")[0]}`} />
-          <h1 class="truncate text-[16px] text-v2-text-text-base [font-weight:620]">{props.automation.name}</h1>
+    <div
+      data-component="automation-run-step"
+      data-step-id={props.stepID}
+      class="rounded-[7px] border border-v2-border-border-subtle bg-v2-background-bg-layer-02 px-3 py-2"
+    >
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex min-w-0 items-center gap-2">
+          <span class={`shrink-0 rounded-full px-2 py-0.5 text-[10px] [font-weight:550] ${STEP_STATE_TONE[props.state]}`}>
+            {STEP_STATE_LABEL[props.state]}
+          </span>
+          <code class="truncate text-[10px] text-v2-text-text-base">
+            {props.index + 1}/{props.total} · {props.name}
+          </code>
         </div>
-        <div class="flex flex-wrap gap-2">
-          <ButtonV2 data-action="automation-edit-definition" size="small" variant="neutral" onClick={props.onEdit}>
-            Edit definition
-          </ButtonV2>
-          <ButtonV2
-            data-action="automation-run-now"
-            size="small"
-            variant="contrast"
-            onClick={props.onRunNow}
-            disabled={props.busy}
-          >
-            Run now
-          </ButtonV2>
-          <Show when={props.automation.status === "active"}>
-            <ButtonV2
-              data-action="automation-pause"
-              size="small"
-              variant="neutral"
-              onClick={props.onPause}
-              disabled={props.busy}
-            >
-              Pause
-            </ButtonV2>
-          </Show>
-          <Show when={props.automation.status === "paused"}>
-            <ButtonV2
-              data-action="automation-resume"
-              size="small"
-              variant="neutral"
-              onClick={props.onResume}
-              disabled={props.busy}
-            >
-              Resume
-            </ButtonV2>
-          </Show>
-          <ButtonV2
-            data-action="automation-delete"
-            size="small"
-            variant="danger"
-            onClick={props.onDelete}
-            disabled={props.busy}
-          >
-            Delete
-          </ButtonV2>
-        </div>
-      </header>
-
-      <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5">
-        <section class="border-l-4 border-v2-state-border-warning bg-v2-background-bg-layer-01 px-5 py-5">
-          <div class="flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-v2-state-fg-warning">
-            <span>{summary().label}</span>
-            <span class="text-v2-text-text-faint">·</span>
-            <span>Scheduled every {formatInterval(props.automation.schedule.seconds)}</span>
-          </div>
-          <h2 class="mt-2 max-w-4xl text-[22px] leading-8 text-v2-text-text-strong [font-weight:620]">
-            {summary().headline}
-          </h2>
-          <p class="mt-2 max-w-3xl text-[13px] leading-6 text-v2-text-text-muted">{summary().detail}</p>
-        </section>
-
-        <div class="grid grid-cols-2 border-y border-v2-border-border-base sm:grid-cols-3 lg:grid-cols-6">
-          <AutomationMeta label="Schedule" value={`Every ${formatInterval(props.automation.schedule.seconds)}`} />
-          <AutomationMeta label="Steps" value={`${props.automation.workflow?.steps.length ?? 1}`} />
-          <AutomationMeta label="Model" value={props.automation.model?.id ?? "Inherited"} />
-          <AutomationMeta label="Delivery" value="TurenOS" />
-          <AutomationMeta label="Runs" value={`${props.runs.length}`} />
-          <AutomationMeta
-            label="Health"
-            value={successRate()}
-            tone={successRate().endsWith("clean") ? "success" : undefined}
-          />
-        </div>
-
-        <div class="grid min-w-0 border border-v2-border-border-base lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
-          <section class="min-w-0">
-            <div class="flex items-center justify-between border-b border-v2-border-border-base px-5 py-4">
-              <h2 class="font-mono text-[11px] uppercase tracking-[0.14em] text-v2-text-text-muted">Recent runs</h2>
-              <span class="font-mono text-[10px] text-v2-text-text-faint">Click a run for its output</span>
-            </div>
-            <For
-              each={props.runs.slice(0, 12)}
-              fallback={
-                <p class="px-5 py-10 text-[12px] text-v2-text-text-muted">
-                  No runs yet. Run the automation to establish history.
-                </p>
-              }
-            >
-              {(run) => (
-                <button
-                  type="button"
-                  data-action="automation-run-select"
-                  data-run-id={run.id}
-                  aria-pressed={selectedRunID() === run.id}
-                  class={`flex w-full items-center gap-3 border-b border-v2-border-border-subtle px-5 py-3 text-left last:border-b-0 hover:bg-v2-background-bg-layer-01 ${selectedRunID() === run.id ? "bg-v2-background-bg-layer-01" : ""}`}
-                  onClick={() => setSelectedRunID(run.id)}
-                >
-                  <span class={`h-2 w-2 shrink-0 rounded-full ${RUN_TONE[run.status]}`} />
-                  <span class="w-28 shrink-0 font-mono text-[11px] text-v2-text-text-muted">
-                    {new Date(run.scheduledAt).toLocaleString()}
-                  </span>
-                  <span class="min-w-0 flex-1 truncate text-[13px] text-v2-text-text-base">
-                    {runStatusLabel(run.status).toLowerCase()} · {run.trigger}
-                  </span>
-                  <span class="shrink-0 font-mono text-[10px] text-v2-text-text-muted">{runDuration(run) ?? "—"}</span>
-                </button>
-              )}
-            </For>
-          </section>
-
-          <aside class="min-w-0 border-t border-v2-border-border-base lg:border-l lg:border-t-0">
-            <div class="border-b border-v2-border-border-base px-5 py-4">
-              <div class="font-mono text-[11px] uppercase tracking-[0.14em] text-v2-text-text-muted">Last 30 runs</div>
-              <div class="mt-4 flex h-16 items-end gap-1">
-                <For each={props.runs.slice(0, 30).toReversed()}>
-                  {(run) => (
-                    <span
-                      class={`min-w-0 flex-1 ${run.status === "succeeded" ? "h-12 bg-v2-state-fg-success" : run.status === "failed" ? "h-8 bg-v2-state-fg-danger" : "h-10 bg-v2-state-fg-warning"}`}
-                    />
-                  )}
-                </For>
-              </div>
-              <div class="mt-2 flex justify-between font-mono text-[10px] text-v2-text-text-muted">
-                <span>{props.runs.length ? new Date(props.runs.at(-1)!.scheduledAt).toLocaleDateString() : "—"}</span>
-                <span>{latest() ? runStatusLabel(latest()!.status).toLowerCase() : "no runs"}</span>
-              </div>
-            </div>
-            <div class="border-b border-v2-border-border-base px-5 py-4">
-              <div class="font-mono text-[11px] uppercase tracking-[0.14em] text-v2-text-text-muted">
-                {selectedRun() ? `Output · ${runStatusLabel(selectedRun()!.status)}` : "Output"}
-              </div>
-              <Show
-                when={output()}
-                fallback={
-                  <p class="mt-3 text-[12px] text-v2-text-text-muted">
-                    {selectedRun()?.error ?? "No output recorded for this run."}
-                  </p>
-                }
-              >
-                {(item) => (
-                  <pre class="mt-3 max-h-32 overflow-auto whitespace-pre-wrap text-[12px] leading-5 text-v2-text-text-base">
-                    {item().text ?? JSON.stringify(item().json, null, 2)}
-                  </pre>
-                )}
-              </Show>
-            </div>
-            <div class="px-5 py-4">
-              <div class="font-mono text-[11px] uppercase tracking-[0.14em] text-v2-text-text-muted">Definition</div>
-              <p class="mt-3 text-[13px] leading-5 text-v2-text-text-base">{definition()}</p>
+        <div class="flex shrink-0 items-center gap-2">
+          <span class="text-[10px] tabular-nums text-v2-text-text-muted">
+            {props.output.artifacts.length} artifact{props.output.artifacts.length === 1 ? "" : "s"}
+          </span>
+          <Show when={hasJson()}>
+            <span class="inline-flex overflow-hidden rounded-[5px] border border-v2-border-border-base font-mono text-[10px]">
               <button
                 type="button"
-                data-action="automation-edit-definition-inline"
-                class="mt-4 font-mono text-[11px] text-v2-text-text-info hover:text-v2-text-text-strong"
-                onClick={props.onEdit}
+                data-action="automation-run-view-text"
+                aria-pressed={mode() === "text"}
+                class={`px-2 py-0.5 outline-none ${mode() === "text" ? "bg-v2-background-bg-layer-03 text-v2-text-text-strong" : "text-v2-text-text-muted hover:text-v2-text-text-base"}`}
+                onClick={() => setMode("text")}
               >
-                Edit definition →
+                text
               </button>
-            </div>
-          </aside>
+              <button
+                type="button"
+                data-action="automation-run-view-json"
+                aria-pressed={mode() === "json"}
+                class={`px-2 py-0.5 outline-none ${mode() === "json" ? "bg-v2-background-bg-layer-03 text-v2-text-text-strong" : "text-v2-text-text-muted hover:text-v2-text-text-base"}`}
+                onClick={() => setMode("json")}
+              >
+                json
+              </button>
+            </span>
+          </Show>
+          <button
+            type="button"
+            data-action="automation-run-copy"
+            class="font-mono text-[10px] text-v2-text-text-info hover:text-v2-text-text-strong"
+            onClick={copy}
+          >
+            {copied() ? "Copied" : "Copy"}
+          </button>
+          <button
+            type="button"
+            data-action="automation-run-toggle"
+            aria-expanded={expanded()}
+            class="font-mono text-[10px] text-v2-text-text-info hover:text-v2-text-text-strong"
+            onClick={() => setExpanded(!expanded())}
+          >
+            {expanded() ? "Less" : "More"}
+          </button>
         </div>
       </div>
-    </section>
-  )
-}
-
-function AutomationMeta(props: { label: string; value: string; tone?: "success" }) {
-  return (
-    <div class="min-w-0 border-r border-v2-border-border-subtle px-4 py-3 last:border-r-0">
-      <div class="font-mono text-[10px] uppercase tracking-[0.12em] text-v2-text-text-muted">{props.label}</div>
-      <div
-        class={`mt-1 truncate font-mono text-[12px] ${props.tone === "success" ? "text-v2-state-fg-success" : "text-v2-text-text-base"}`}
+      <pre
+        class={`mt-1 whitespace-pre-wrap text-[11px] leading-4 text-v2-text-text-muted ${expanded() ? "" : "max-h-24 overflow-auto"}`}
       >
-        {props.value}
-      </div>
+        {body()}
+      </pre>
+      <Show when={props.output.artifacts.length}>
+        <ul class="mt-1 grid gap-1">
+          <For each={props.output.artifacts}>
+            {(artifact) => (
+              <li class="truncate font-mono text-[10px] text-v2-text-text-muted">
+                {artifact.type === "file" ? (
+                  <span>
+                    file · {artifact.name ?? artifact.uri} · {artifact.mime}
+                  </span>
+                ) : (
+                  <span>
+                    {artifact.type} · {artifact.path}
+                  </span>
+                )}
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
     </div>
   )
 }
@@ -401,19 +296,28 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
   const serverKey = ServerConnection.key(props.connection)
   const navigate = useNavigate()
   const navRail = useNavRail()
+  const dialog = useDialog()
   const params = useParams<{ id?: string }>()
-  const [search] = useSearchParams<{ directory?: string }>()
+  const [search] = useSearchParams<{ directory?: string; view?: string }>()
   const [loops, setLoops] = createSignal<LoopInfo[]>([])
   const [sort, setSort] = createSignal<AutomationSort>("created-desc")
   const [runHistory, setRunHistory] = createSignal<Record<string, LoopRun[]>>({})
   const [selected, setSelected] = createSignal<LoopInfo>()
   const [runs, setRuns] = createSignal<LoopRun[]>([])
-  const [tab, setTab] = createSignal<"overview" | "editor" | "runs">("editor")
+  const [tab, setTab] = createSignal<"editor" | "runs">("editor")
   const [selectedNode, setSelectedNode] = createSignal<NodeSelection>("trigger")
   const [insertAt, setInsertAt] = createSignal<number>()
   const [name, setName] = createSignal("")
   const [steps, setSteps] = createSignal<StepDraft[]>([])
   const [interval, setInterval] = createSignal("1h")
+  const [triggerKind, setTriggerKind] = createSignal<TriggerKind>("interval")
+  const [cronExpression, setCronExpression] = createSignal("")
+  const [timezone, setTimezone] = createSignal("UTC")
+  const [eventPaths, setEventPaths] = createSignal("")
+  const [debounceMs, setDebounceMs] = createSignal("")
+  const [sessionOutcomes, setSessionOutcomes] = createSignal<SessionOutcomeFilter>("both")
+  const [sessionID, setSessionID] = createSignal("")
+  const [eventAgent, setEventAgent] = createSignal("")
   const [directory, setDirectory] = createSignal("")
   const [agent, setAgent] = createSignal("")
   const [model, setModel] = createSignal("")
@@ -516,12 +420,34 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
     })),
   )
 
+  const resetTrigger = (trigger: TriggerDraft) => {
+    setTriggerKind(trigger.kind)
+    setInterval(trigger.interval)
+    setCronExpression(trigger.cronExpression)
+    setTimezone(trigger.timezone)
+    setEventPaths(trigger.eventPaths)
+    setDebounceMs(trigger.debounceMs)
+    setSessionOutcomes(trigger.sessionOutcomes)
+    setSessionID(trigger.sessionID)
+    setEventAgent(trigger.eventAgent)
+  }
+
   const resetForm = () => {
     setSelected()
     setRuns([])
     setName("")
     setSteps([agentDraft([])])
-    setInterval("1h")
+    resetTrigger({
+      kind: "interval",
+      interval: "1h",
+      cronExpression: "",
+      timezone: "UTC",
+      eventPaths: "",
+      debounceMs: "",
+      sessionOutcomes: "both",
+      sessionID: "",
+      eventAgent: "",
+    })
     setDirectory(search.directory ?? "")
     setAgent("")
     setModel("")
@@ -564,7 +490,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
           ? [{ ...skillDraft([], item.skill), skill: item.skill, instructions: item.prompt }]
           : [agentDraft([], "Agent task", item.prompt)],
     )
-    setInterval(formatInterval(item.schedule.seconds))
+    resetTrigger(triggerFromAutomation(item))
     setDirectory(item.location.directory)
     setAgent(item.agent ?? "")
     setModel(modelKey(item.model))
@@ -619,7 +545,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
     if (id && id !== "new") {
       setSelected()
       setRuns([])
-      setTab("overview")
+      setTab(search.view === "runs" ? "runs" : "editor")
     }
     void Promise.all([loadList(version), id && id !== "new" ? loadSelected(id, version) : Promise.resolve(resetForm())])
       .catch((cause) => {
@@ -684,6 +610,29 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
     updateStep(step.key, { instructions: `${step.instructions}${step.instructions ? "\n\n" : ""}${binding}` })
   }
 
+  /** Raw builder trigger state, validated and mapped to protocol fields on save. */
+  const triggerDraft = (): TriggerDraft => ({
+    kind: triggerKind(),
+    interval: interval(),
+    cronExpression: cronExpression(),
+    timezone: timezone(),
+    eventPaths: eventPaths(),
+    debounceMs: debounceMs(),
+    sessionOutcomes: sessionOutcomes(),
+    sessionID: sessionID(),
+    eventAgent: eventAgent(),
+  })
+
+  /** One-line canvas summary of the configured trigger. */
+  const triggerLabel = () => triggerSummary(triggerDraft())
+
+  /** Latest-run state for a canvas step node, inferred from outputs + currentStep. */
+  const stepChip = (stepID: string, index: number) => {
+    const run = runs()[0]
+    if (!run) return
+    return stepChipFor(run, stepID, index)
+  }
+
   /** Top-level keys of the referenced step's most recent JSON output, for property-binding chips. */
   const outputKeys = (sourceID: string) => {
     const json = runs().find((run) => run.outputs[sourceID]?.json !== undefined)?.outputs[sourceID]?.json
@@ -708,6 +657,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
         [],
       )
     setSelectedNode("trigger")
+    setTriggerKind("interval")
     if (blueprint === "blank") {
       setName("")
       setInterval("1h")
@@ -751,11 +701,12 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
 
   const save = async () => {
     if (loading() || (params.id !== undefined && params.id !== "new" && !selected())) return
-    const intervalSeconds = parseInterval(interval())
-    if (!name().trim() || !intervalSeconds || intervalSeconds < 60) {
-      setError("Enter a name and an interval of at least 60 seconds.")
+    const trigger = buildTriggerInput(triggerDraft())
+    if (!name().trim() || trigger.error) {
+      setError(trigger.error ?? "Enter a name and an interval of at least 60 seconds.")
       return
     }
+    const triggerInput = trigger.input
     if (!steps().length) {
       setError("Add at least one Agent or Skill step.")
       return
@@ -784,7 +735,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
       loopID: current?.id ?? "",
       name: name().trim(),
       prompt: legacyPrompt,
-      intervalSeconds,
+      ...triggerInput,
       agent: agent() || null,
       model: modelRef(model(), variant()),
       skill: null,
@@ -793,7 +744,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
     const createInput = {
       name: name().trim(),
       prompt: legacyPrompt,
-      intervalSeconds,
+      ...triggerInput,
       ...(directory() ? { location: { directory: directory() } } : {}),
       ...(agent() ? { agent: agent() } : {}),
       ...(modelRef(model(), variant()) ? { model: modelRef(model(), variant()) ?? undefined } : {}),
@@ -820,6 +771,21 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
       .then(refresh)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Automation action failed"))
       .finally(() => setBusy(false))
+  }
+
+  /** Read-only run conversation in place; the full session stays one click away. */
+  const viewChat = (automation: LoopInfo, run: LoopRun) => {
+    const sessionID = run.sessionID
+    if (!sessionID) return
+    dialog.show(() => (
+      <RunChatDialog
+        sessionID={sessionID}
+        title={`${automation.name} · run chat`}
+        subtitle={`${runStatusLabel(run.status)} · ${run.trigger} · ${new Date(Number(run.scheduledAt)).toLocaleString()}`}
+        client={context.sdk.client}
+        onOpenInChat={() => navigate(sessionHref(serverKey, sessionID))}
+      />
+    ))
   }
 
   const nodeClass = (active: boolean) => `automation-node${active ? " automation-node-selected" : ""}`
@@ -958,9 +924,21 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                           </div>
                           <Show when={runHistory()[item.id]?.[0]}>
                             {(run) => (
-                              <span class="mt-1 block truncate font-mono text-[10px] text-v2-text-text-muted">
+                              <span
+                                class={`mt-1 block truncate font-mono text-[10px] ${latestRunTone(run().status)}`}
+                              >
                                 {runStatusLabel(run().status).toLowerCase()} ·{" "}
                                 {new Date(run().scheduledAt).toLocaleDateString()}
+                                <Show when={isActiveRun(run())}>
+                                  {` · step ${currentStepIndex(run()) + 1} of ${item.workflow?.steps.length ?? Math.max(Object.keys(run().outputs).length, 1)}`}
+                                </Show>
+                              </span>
+                            )}
+                          </Show>
+                          <Show when={nextRunLabel(item)}>
+                            {(label) => (
+                              <span class="mt-1 block truncate font-mono text-[10px] text-v2-text-text-faint">
+                                {label()}
                               </span>
                             )}
                           </Show>
@@ -975,348 +953,341 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
         </Show>
 
         <main class="automation-workspace flex min-h-0 min-w-0 flex-col overflow-y-auto bg-v2-background-bg-layer-01 lg:overflow-hidden">
-          <Show when={selected()}>
-            {(item) => (
-              <Show when={tab() === "overview"}>
-                <AutomationRunDetail
-                  automation={item()}
-                  runs={runs()}
-                  busy={busy()}
-                  onBack={() => navigate("/automations")}
-                  onEdit={() => setTab("editor")}
-                  onRunNow={() => selectedAction((value) => api().runNow(value))}
-                  onPause={() => selectedAction((value) => api().pause(value))}
-                  onResume={() => selectedAction((value) => api().resume(value))}
-                  onDelete={() => {
-                    const current = item()
-                    if (busy() || !window.confirm(`Delete "${current.name}" and all of its run history?`)) return
-                    setBusy(true)
-                    void api()
-                      .delete({ loopID: current.id })
-                      .then(() => {
-                        navigate("/automations")
-                        void loadList()
-                      })
-                      .catch((cause) =>
-                        setError(cause instanceof Error ? cause.message : "Could not delete automation"),
-                      )
-                      .finally(() => setBusy(false))
-                  }}
-                />
-              </Show>
-            )}
-          </Show>
-          <Show when={!selected() || tab() !== "overview"}>
-            <div class="flex min-h-0 flex-1 flex-col gap-5 p-4 sm:p-5">
-              <header class="flex flex-col items-stretch gap-4 rounded-[12px] border border-v2-border-border-base bg-v2-background-bg-base px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                <div class="min-w-0 max-w-2xl">
-                  <div class="flex min-w-0 items-center gap-2">
-                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-v2-state-bg-info text-v2-state-fg-info">
-                      <IconV2 name="branch" size="small" />
-                    </span>
-                    <h2 class="truncate text-[16px] leading-tight text-v2-text-text-base [font-weight:620]">
-                      {selected() ? selected()!.name : name().trim() || "New automation"}
-                    </h2>
-                    <Show when={selected()}>
-                      {(item) => (
-                        <span
-                          class={`shrink-0 rounded-full px-2.5 py-1 text-[11px] [font-weight:550] ${STATUS_TONE[item().status]}`}
-                        >
-                          {item().status}
-                        </span>
-                      )}
-                    </Show>
-                  </div>
-                  <p class="mt-1 pl-9 text-[11px] leading-4 text-v2-text-text-muted">
-                    <Show when={selected()} fallback="Build a scheduled workflow that runs on your local server.">
-                      {(item) =>
-                        `${item().workflow?.steps.length ?? 1} steps · Every ${formatInterval(item().schedule.seconds)} · Local server`
-                      }
-                    </Show>
-                  </p>
-                </div>
-                <div class="flex shrink-0 flex-wrap gap-2">
-                  <ButtonV2
-                    data-action="automation-save"
-                    variant="contrast"
-                    disabled={busy() || loading() || (params.id !== undefined && params.id !== "new" && !selected())}
-                    onClick={() => void save()}
-                  >
-                    {selected() ? "Save changes" : "Create automation"}
-                  </ButtonV2>
+          <div class="flex min-h-0 flex-1 flex-col gap-5 p-4 sm:p-5">
+            <header class="flex flex-col items-stretch gap-4 rounded-[12px] border border-v2-border-border-base bg-v2-background-bg-base px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              <div class="min-w-0 max-w-2xl">
+                <div class="flex min-w-0 items-center gap-2">
+                  <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-v2-state-bg-info text-v2-state-fg-info">
+                    <IconV2 name="branch" size="small" />
+                  </span>
+                  <h2 class="truncate text-[16px] leading-tight text-v2-text-text-base [font-weight:620]">
+                    {selected() ? selected()!.name : name().trim() || "New automation"}
+                  </h2>
                   <Show when={selected()}>
                     {(item) => (
-                      <>
-                        <ButtonV2
-                          variant="neutral"
-                          disabled={busy()}
-                          onClick={() => selectedAction((value) => api().runNow(value))}
-                        >
-                          Run now
-                        </ButtonV2>
-                        <Show when={item().status === "active"}>
-                          <ButtonV2
-                            variant="neutral"
-                            disabled={busy()}
-                            onClick={() => selectedAction((value) => api().pause(value))}
-                          >
-                            Pause
-                          </ButtonV2>
-                        </Show>
-                        <Show when={item().status === "paused"}>
-                          <ButtonV2
-                            variant="neutral"
-                            disabled={busy()}
-                            onClick={() => selectedAction((value) => api().resume(value))}
-                          >
-                            Resume
-                          </ButtonV2>
-                        </Show>
-                        <ButtonV2
-                          variant="danger"
-                          disabled={busy()}
-                          onClick={() => {
-                            if (busy() || !window.confirm(`Delete "${item().name}" and all of its run history?`)) return
-                            setBusy(true)
-                            void api()
-                              .delete({ loopID: item().id })
-                              .then(() => {
-                                navigate("/automations")
-                                void loadList()
-                              })
-                              .catch((cause) =>
-                                setError(cause instanceof Error ? cause.message : "Could not delete automation"),
-                              )
-                              .finally(() => setBusy(false))
-                          }}
-                        >
-                          Delete
-                        </ButtonV2>
-                      </>
+                      <span
+                        class={`shrink-0 rounded-full px-2.5 py-1 text-[11px] [font-weight:550] ${STATUS_TONE[item().status]}`}
+                      >
+                        {item().status}
+                      </span>
                     )}
                   </Show>
                 </div>
-              </header>
-
-              <Show when={selected()}>
-                <div class="flex justify-center">
-                  <SegmentedControlV2
-                    aria-label="Automation view"
-                    value={tab()}
-                    onChange={(value) => setTab(value === "runs" ? "runs" : "editor")}
-                  >
-                    <SegmentedControlItemV2 value="editor" data-action="automation-tab-editor">
-                      Workflow
-                    </SegmentedControlItemV2>
-                    <SegmentedControlItemV2 value="runs" data-action="automation-tab-runs">
-                      Runs ({runs().length})
-                    </SegmentedControlItemV2>
-                  </SegmentedControlV2>
-                </div>
-              </Show>
-
-              <Show when={error()}>
-                {(message) => (
-                  <div
-                    role="alert"
-                    class="rounded-[9px] border border-v2-state-border-danger bg-v2-state-bg-danger px-4 py-3 text-[12px] text-v2-state-fg-danger"
-                  >
-                    {message()}
-                  </div>
-                )}
-              </Show>
-
-              <Show when={tab() === "editor" || !selected()}>
-                <Show when={!selected()}>
-                  <section aria-label="Starter blueprints">
-                    <div class="flex flex-wrap items-center gap-2 border-b border-v2-border-border-base pb-3">
-                      <span class="mr-2 font-mono text-[11px] uppercase tracking-[0.14em] text-v2-text-text-muted">
-                        Start from
-                      </span>
-                      <For
-                        each={[
-                          { id: "blank" as const, name: "Blank" },
-                          { id: "briefing" as const, name: "Daily briefing" },
-                          { id: "ci" as const, name: "CI failure triage" },
-                          { id: "docs" as const, name: "Docs drift" },
-                        ]}
-                      >
-                        {(blueprint) => (
-                          <button
-                            type="button"
-                            class="rounded-control px-3 py-2 text-[12px] text-v2-text-text-muted transition-colors hover:bg-v2-background-bg-layer-02 hover:text-v2-text-text-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-v2-border-border-focus"
-                            onClick={() => applyBlueprint(blueprint.id)}
-                          >
-                            {blueprint.name}
-                          </button>
-                        )}
-                      </For>
-                    </div>
-                  </section>
-                </Show>
-
-                <section
-                  data-component="loop-editor"
-                  class="grid min-h-0 min-w-0 flex-1 items-stretch overflow-hidden rounded-[10px] border border-v2-border-border-base bg-v2-background-bg-base min-[1100px]:grid-cols-[minmax(0,1fr)_340px]"
+                <p class="mt-1 pl-9 text-[11px] leading-4 text-v2-text-text-muted">
+                  <Show when={selected()} fallback="Build a scheduled workflow that runs on your local server.">
+                    {(item) => {
+                      const next = nextRunLabel(item())
+                      return `${item().workflow?.steps.length ?? 1} steps · Every ${formatInterval(item().schedule.seconds)} · Local server${next ? ` · ${next}` : ""}`
+                    }}
+                  </Show>
+                </p>
+              </div>
+              <div class="flex shrink-0 flex-wrap gap-2">
+                <ButtonV2
+                  data-action="automation-save"
+                  variant="contrast"
+                  disabled={busy() || loading() || (params.id !== undefined && params.id !== "new" && !selected())}
+                  onClick={() => void save()}
                 >
-                  <div
-                    data-component="loop-canvas"
-                    class="automation-canvas relative min-h-[470px] min-w-0 overflow-auto border-b border-v2-border-border-base lg:border-b-0"
-                  >
-                    <div class="pointer-events-none sticky left-0 top-0 z-10 flex h-10 items-center justify-between border-b border-v2-border-border-subtle bg-v2-background-bg-base/90 px-3 backdrop-blur-sm">
-                      <span class="text-[10px] uppercase tracking-[0.12em] text-v2-text-text-muted">Workflow map</span>
-                      <span class="rounded-full bg-v2-background-bg-layer-02 px-2 py-1 text-[10px] text-v2-text-text-muted">
-                        {steps().length + 2} nodes
-                      </span>
+                  {selected() ? "Save changes" : "Create automation"}
+                </ButtonV2>
+                <Show when={selected()}>
+                  {(item) => (
+                    <>
+                      <ButtonV2
+                        variant="neutral"
+                        disabled={busy()}
+                        onClick={() => selectedAction((value) => api().runNow(value))}
+                      >
+                        Run now
+                      </ButtonV2>
+                      <Show when={item().status === "active"}>
+                        <ButtonV2
+                          variant="neutral"
+                          disabled={busy()}
+                          onClick={() => selectedAction((value) => api().pause(value))}
+                        >
+                          Pause
+                        </ButtonV2>
+                      </Show>
+                      <Show when={item().status === "paused"}>
+                        <ButtonV2
+                          variant="neutral"
+                          disabled={busy()}
+                          onClick={() => selectedAction((value) => api().resume(value))}
+                        >
+                          Resume
+                        </ButtonV2>
+                      </Show>
+                      <ButtonV2
+                        variant="danger"
+                        disabled={busy()}
+                        onClick={() => {
+                          if (busy() || !window.confirm(`Delete "${item().name}" and all of its run history?`)) return
+                          setBusy(true)
+                          void api()
+                            .delete({ loopID: item().id })
+                            .then(() => {
+                              navigate("/automations")
+                              void loadList()
+                            })
+                            .catch((cause) =>
+                              setError(cause instanceof Error ? cause.message : "Could not delete automation"),
+                            )
+                            .finally(() => setBusy(false))
+                        }}
+                      >
+                        Delete
+                      </ButtonV2>
+                    </>
+                  )}
+                </Show>
+              </div>
+            </header>
+
+            <Show when={selected()}>
+              <div class="flex justify-center">
+                <SegmentedControlV2
+                  aria-label="Automation view"
+                  value={tab()}
+                  onChange={(value) => setTab(value === "runs" ? "runs" : "editor")}
+                >
+                  <SegmentedControlItemV2 value="editor" data-action="automation-tab-editor">
+                    Workflow
+                  </SegmentedControlItemV2>
+                  <SegmentedControlItemV2 value="runs" data-action="automation-tab-runs">
+                    Runs ({runs().length})
+                  </SegmentedControlItemV2>
+                </SegmentedControlV2>
+              </div>
+            </Show>
+
+            <Show when={error()}>
+              {(message) => (
+                <div
+                  role="alert"
+                  class="rounded-[9px] border border-v2-state-border-danger bg-v2-state-bg-danger px-4 py-3 text-[12px] text-v2-state-fg-danger"
+                >
+                  {message()}
+                </div>
+              )}
+            </Show>
+
+            <Show when={tab() === "editor" || !selected()}>
+              <Show when={!selected()}>
+                <section aria-label="Starter blueprints">
+                  <div class="flex flex-wrap items-center gap-2 border-b border-v2-border-border-base pb-3">
+                    <span class="mr-2 font-mono text-[11px] uppercase tracking-[0.14em] text-v2-text-text-muted">
+                      Start from
+                    </span>
+                    <For
+                      each={[
+                        { id: "blank" as const, name: "Blank" },
+                        { id: "briefing" as const, name: "Daily briefing" },
+                        { id: "ci" as const, name: "CI failure triage" },
+                        { id: "docs" as const, name: "Docs drift" },
+                      ]}
+                    >
+                      {(blueprint) => (
+                        <button
+                          type="button"
+                          class="rounded-control px-3 py-2 text-[12px] text-v2-text-text-muted transition-colors hover:bg-v2-background-bg-layer-02 hover:text-v2-text-text-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-v2-border-border-focus"
+                          onClick={() => applyBlueprint(blueprint.id)}
+                        >
+                          {blueprint.name}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </section>
+              </Show>
+
+              <section
+                data-component="loop-editor"
+                class="grid min-h-0 min-w-0 flex-1 items-stretch overflow-hidden rounded-[10px] border border-v2-border-border-base bg-v2-background-bg-base min-[1100px]:grid-cols-[minmax(0,1fr)_340px]"
+              >
+                <div
+                  data-component="loop-canvas"
+                  class="automation-canvas relative min-h-[470px] min-w-0 overflow-auto border-b border-v2-border-border-base lg:border-b-0"
+                >
+                  <div class="pointer-events-none sticky left-0 top-0 z-10 flex h-10 items-center justify-between border-b border-v2-border-border-subtle bg-v2-background-bg-base/90 px-3 backdrop-blur-sm">
+                    <span class="text-[10px] uppercase tracking-[0.12em] text-v2-text-text-muted">Workflow map</span>
+                    <span class="rounded-full bg-v2-background-bg-layer-02 px-2 py-1 text-[10px] text-v2-text-text-muted">
+                      {steps().length + 2} nodes
+                    </span>
+                  </div>
+                  <div class="automation-flow">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      data-node="trigger"
+                      class={`${nodeClass(selectedNode() === "trigger")} automation-node-trigger`}
+                      onClick={() => setSelectedNode("trigger")}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return
+                        event.preventDefault()
+                        setSelectedNode("trigger")
+                      }}
+                    >
+                      <div class="flex min-h-[74px] items-center">
+                        <span class="automation-node-icon">
+                          <IconV2 name="status" size="large" />
+                        </span>
+                        <div class="min-w-0 px-4 py-3">
+                          <p class="automation-node-kicker text-[10px] [font-weight:650]">Trigger</p>
+                          <p class="mt-1 truncate text-[13px] text-v2-text-text-base [font-weight:600]">
+                            {triggerLabel()}
+                          </p>
+                          <p class="mt-0.5 truncate text-[10px] text-v2-text-text-muted">
+                            {directory() || "Default local workspace"}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div class="automation-flow">
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        data-node="trigger"
-                        class={`${nodeClass(selectedNode() === "trigger")} automation-node-trigger`}
-                        onClick={() => setSelectedNode("trigger")}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter" && event.key !== " ") return
-                          event.preventDefault()
-                          setSelectedNode("trigger")
-                        }}
-                      >
-                        <div class="flex min-h-[74px] items-center">
-                          <span class="automation-node-icon">
-                            <IconV2 name="status" size="large" />
-                          </span>
-                          <div class="min-w-0 px-4 py-3">
-                            <p class="automation-node-kicker text-[10px] [font-weight:650]">Schedule trigger</p>
-                            <p class="mt-1 truncate text-[13px] text-v2-text-text-base [font-weight:600]">
-                              Every {interval() || "Not set"}
-                            </p>
-                            <p class="mt-0.5 truncate text-[10px] text-v2-text-text-muted">
-                              {directory() || "Default local workspace"}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
 
-                      <For each={steps()}>
-                        {(step, index) => (
-                          <>
-                            {connector(index())}
-                            <div
-                              role="button"
-                              tabIndex={0}
-                              data-node={step.id}
-                              class={`${nodeClass(selectedNode() === step.key)} automation-node-${step.type}`}
-                              onClick={() => setSelectedNode(step.key)}
-                              onKeyDown={(event) => {
-                                if (event.key !== "Enter" && event.key !== " ") return
-                                event.preventDefault()
-                                setSelectedNode(step.key)
-                              }}
-                            >
-                              <div class="flex min-h-[74px] min-w-0 items-center">
-                                <span class="automation-node-icon">
-                                  <IconV2 name={step.type === "agent" ? "terminal" : "skills"} size="large" />
-                                </span>
-                                <div class="min-w-0 flex-1 px-4 py-3">
-                                  <div class="flex items-center gap-2">
-                                    <p class="automation-node-kicker truncate text-[10px] [font-weight:650]">
-                                      {step.type === "agent" ? "Agent" : "Skill"} · Step {index() + 1}
-                                    </p>
-                                  </div>
-                                  <p class="mt-1 truncate text-[13px] text-v2-text-text-base [font-weight:600]">
-                                    {step.name || "Untitled step"}
+                    <For each={steps()}>
+                      {(step, index) => (
+                        <>
+                          {connector(index())}
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            data-node={step.id}
+                            class={`${nodeClass(selectedNode() === step.key)} automation-node-${step.type}`}
+                            onClick={() => setSelectedNode(step.key)}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter" && event.key !== " ") return
+                              event.preventDefault()
+                              setSelectedNode(step.key)
+                            }}
+                          >
+                            <div class="flex min-h-[74px] min-w-0 items-center">
+                              <span class="automation-node-icon">
+                                <IconV2 name={step.type === "agent" ? "terminal" : "skills"} size="large" />
+                              </span>
+                              <div class="min-w-0 flex-1 px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                  <p class="automation-node-kicker truncate text-[10px] [font-weight:650]">
+                                    {step.type === "agent" ? "Agent" : "Skill"} · Step {index() + 1}
                                   </p>
-                                  <p class="mt-0.5 truncate text-[10px] text-v2-text-text-muted">{stepSummary(step)}</p>
                                 </div>
-                                <span class="mr-4 rounded-full bg-v2-background-bg-layer-03 px-2 py-1 text-[10px] tabular-nums text-v2-text-text-muted">
-                                  {index() + 1}
-                                </span>
+                                <p class="mt-1 truncate text-[13px] text-v2-text-text-base [font-weight:600]">
+                                  {step.name || "Untitled step"}
+                                </p>
+                                <p class="mt-0.5 truncate text-[10px] text-v2-text-text-muted">{stepSummary(step)}</p>
                               </div>
+                              <Show when={stepChip(step.id, index())}>
+                                {(chip) => (
+                                  <span
+                                    class={`shrink-0 rounded-full px-2 py-1 text-[10px] [font-weight:550] ${chip().tone}`}
+                                  >
+                                    {chip().label}
+                                  </span>
+                                )}
+                              </Show>
+                              <span class="mr-4 rounded-full bg-v2-background-bg-layer-03 px-2 py-1 text-[10px] tabular-nums text-v2-text-text-muted">
+                                {index() + 1}
+                              </span>
                             </div>
-                          </>
-                        )}
-                      </For>
-
-                      {connector(steps().length)}
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        data-node="delivery"
-                        class={`${nodeClass(selectedNode() === "delivery")} automation-node-delivery`}
-                        onClick={() => setSelectedNode("delivery")}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter" && event.key !== " ") return
-                          event.preventDefault()
-                          setSelectedNode("delivery")
-                        }}
-                      >
-                        <div class="flex min-h-[74px] items-center">
-                          <span class="automation-node-icon">
-                            <IconV2 name="check" size="large" />
-                          </span>
-                          <div class="min-w-0 px-4 py-3">
-                            <p class="automation-node-kicker text-[10px] [font-weight:650]">Delivery</p>
-                            <p class="mt-1 text-[13px] text-v2-text-text-base [font-weight:600]">
-                              Send results to TurenOS
-                            </p>
-                            <p class="mt-0.5 text-[10px] text-v2-text-text-muted">
-                              Outputs and artifacts are saved with the run
-                            </p>
                           </div>
+                        </>
+                      )}
+                    </For>
+
+                    {connector(steps().length)}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      data-node="delivery"
+                      class={`${nodeClass(selectedNode() === "delivery")} automation-node-delivery`}
+                      onClick={() => setSelectedNode("delivery")}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return
+                        event.preventDefault()
+                        setSelectedNode("delivery")
+                      }}
+                    >
+                      <div class="flex min-h-[74px] items-center">
+                        <span class="automation-node-icon">
+                          <IconV2 name="check" size="large" />
+                        </span>
+                        <div class="min-w-0 px-4 py-3">
+                          <p class="automation-node-kicker text-[10px] [font-weight:650]">Delivery</p>
+                          <p class="mt-1 text-[13px] text-v2-text-text-base [font-weight:600]">
+                            Send results to TurenOS
+                          </p>
+                          <p class="mt-0.5 text-[10px] text-v2-text-text-muted">
+                            Outputs and artifacts are saved with the run
+                          </p>
                         </div>
                       </div>
-                      <div class="flex gap-2 pt-3">
-                        <ButtonV2
-                          size="small"
-                          variant="neutral"
-                          disabled={busy() || steps().length >= MAX_STEPS}
-                          onClick={() => addStep("agent", steps().length)}
-                        >
-                          + agent
-                        </ButtonV2>
-                        <ButtonV2
-                          size="small"
-                          variant="neutral"
-                          disabled={busy() || steps().length >= MAX_STEPS}
-                          onClick={() => addStep("skill", steps().length)}
-                        >
-                          + skill
-                        </ButtonV2>
-                      </div>
+                    </div>
+                    <div class="flex gap-2 pt-3">
+                      <ButtonV2
+                        size="small"
+                        variant="neutral"
+                        disabled={busy() || steps().length >= MAX_STEPS}
+                        onClick={() => addStep("agent", steps().length)}
+                      >
+                        + agent
+                      </ButtonV2>
+                      <ButtonV2
+                        size="small"
+                        variant="neutral"
+                        disabled={busy() || steps().length >= MAX_STEPS}
+                        onClick={() => addStep("skill", steps().length)}
+                      >
+                        + skill
+                      </ButtonV2>
                     </div>
                   </div>
+                </div>
 
-                  <aside
-                    data-component="loop-inspector"
-                    class="min-w-0 max-h-[660px] overflow-y-auto border-t border-v2-border-border-base bg-v2-background-bg-layer-01 p-4 [&_[data-component=select-v2-root]]:w-full min-[1100px]:border-l min-[1100px]:border-t-0"
-                  >
-                    <Show when={selectedNode() === "trigger"}>
-                      <h3 class="mb-4 text-[13px] text-v2-text-text-base [font-weight:600]">Schedule trigger</h3>
-                      <div class="grid min-w-0 gap-4">
-                        <FieldV2 class="min-w-0" invalid={!!error() && !name().trim()}>
-                          <FieldV2.Label>Name</FieldV2.Label>
-                          <TextInputV2
-                            class="!w-full !min-w-0"
-                            value={name()}
-                            placeholder="Daily CI sweep"
-                            disabled={busy()}
-                            onInput={(event) => setName(event.currentTarget.value)}
-                          />
-                        </FieldV2>
-                        <FieldV2 class="min-w-0">
-                          <FieldV2.Label>Project</FieldV2.Label>
-                          <SelectV2
-                            aria-label="Project"
-                            class="!w-full !min-w-0"
-                            options={directoryOptions()}
-                            current={directoryOptions().find((option) => option.value === directory())}
-                            value={(option) => option.value}
-                            label={(option) => option.label}
-                            onSelect={(option) => option && setDirectory(option.value)}
-                            disabled={!!selected() || busy()}
-                          />
-                        </FieldV2>
+                <aside
+                  data-component="loop-inspector"
+                  class="min-w-0 max-h-[660px] overflow-y-auto border-t border-v2-border-border-base bg-v2-background-bg-layer-01 p-4 [&_[data-component=select-v2-root]]:w-full min-[1100px]:border-l min-[1100px]:border-t-0"
+                >
+                  <Show when={selectedNode() === "trigger"}>
+                    <h3 class="mb-4 text-[13px] text-v2-text-text-base [font-weight:600]">Trigger</h3>
+                    <div class="grid min-w-0 gap-4">
+                      <FieldV2 class="min-w-0" invalid={!!error() && !name().trim()}>
+                        <FieldV2.Label>Name</FieldV2.Label>
+                        <TextInputV2
+                          class="!w-full !min-w-0"
+                          value={name()}
+                          placeholder="Daily CI sweep"
+                          disabled={busy()}
+                          onInput={(event) => setName(event.currentTarget.value)}
+                        />
+                      </FieldV2>
+                      <FieldV2 class="min-w-0">
+                        <FieldV2.Label>Project</FieldV2.Label>
+                        <SelectV2
+                          aria-label="Project"
+                          class="!w-full !min-w-0"
+                          options={directoryOptions()}
+                          current={directoryOptions().find((option) => option.value === directory())}
+                          value={(option) => option.value}
+                          label={(option) => option.label}
+                          onSelect={(option) => option && setDirectory(option.value)}
+                          disabled={!!selected() || busy()}
+                        />
+                      </FieldV2>
+                      <FieldV2 class="min-w-0">
+                        <FieldV2.Label>Trigger type</FieldV2.Label>
+                        <SelectV2
+                          aria-label="Trigger type"
+                          class="!w-full !min-w-0"
+                          options={TRIGGER_KIND_OPTIONS}
+                          current={TRIGGER_KIND_OPTIONS.find((option) => option.value === triggerKind())}
+                          value={(option) => option.value}
+                          label={(option) => option.label}
+                          onSelect={(option) => option && setTriggerKind(option.value)}
+                          disabled={busy()}
+                        />
+                        <FieldV2.Suffix>Intervals and cron run on a schedule; events fire on local activity.</FieldV2.Suffix>
+                      </FieldV2>
+                      <Show when={triggerKind() === "interval"}>
                         <FieldV2
                           class="min-w-0"
                           invalid={!!interval() && (!parseInterval(interval()) || parseInterval(interval())! < 60)}
@@ -1332,442 +1303,570 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                           />
                           <FieldV2.Suffix>Minimum 60s. Use s, m, h, or d.</FieldV2.Suffix>
                         </FieldV2>
+                      </Show>
+                      <Show when={triggerKind() === "cron"}>
+                        <FieldV2
+                          class="min-w-0"
+                          invalid={!!cronExpression() && !!validateCronExpression(cronExpression())}
+                        >
+                          <FieldV2.Label>Cron expression</FieldV2.Label>
+                          <TextInputV2
+                            class="!w-full !min-w-0"
+                            value={cronExpression()}
+                            placeholder="*/5 * * * *"
+                            disabled={busy()}
+                            onInput={(event) => setCronExpression(event.currentTarget.value)}
+                          />
+                          <FieldV2.Suffix>Five fields: minute hour day month weekday. Max 120 characters.</FieldV2.Suffix>
+                        </FieldV2>
+                      </Show>
+                      <Show when={triggerKind() === "file-change"}>
+                        <FieldV2
+                          class="min-w-0"
+                          invalid={parseEventPaths(eventPaths()).some((pattern) => validateGlobPattern(pattern))}
+                        >
+                          <FieldV2.Label>Path patterns</FieldV2.Label>
+                          <TextareaV2
+                            class="min-h-24 !w-full !min-w-0"
+                            rows={3}
+                            value={eventPaths()}
+                            placeholder={"src/**/*.ts\ntests/**/*.ts"}
+                            disabled={busy()}
+                            onInput={(event) => setEventPaths(event.currentTarget.value)}
+                          />
+                          <FieldV2.Suffix>One relative glob per line, scoped to the project directory.</FieldV2.Suffix>
+                        </FieldV2>
+                        <FieldV2
+                          class="min-w-0"
+                          invalid={!!debounceMs().trim() && !!validateDebounceMs(debounceMs())}
+                        >
+                          <FieldV2.Label>Debounce (ms)</FieldV2.Label>
+                          <TextInputV2
+                            class="!w-full !min-w-0"
+                            numeric
+                            value={debounceMs()}
+                            placeholder="1000"
+                            disabled={busy()}
+                            onInput={(event) => setDebounceMs(event.currentTarget.value)}
+                          />
+                          <FieldV2.Suffix>Optional. Batches rapid changes between 0 and 60000 ms.</FieldV2.Suffix>
+                        </FieldV2>
+                      </Show>
+                      <Show when={triggerKind() === "session-end"}>
+                        <FieldV2 class="min-w-0">
+                          <FieldV2.Label>Outcomes</FieldV2.Label>
+                          <SelectV2
+                            aria-label="Session outcomes"
+                            class="!w-full !min-w-0"
+                            options={SESSION_OUTCOME_OPTIONS}
+                            current={SESSION_OUTCOME_OPTIONS.find((option) => option.value === sessionOutcomes())}
+                            value={(option) => option.value}
+                            label={(option) => option.label}
+                            onSelect={(option) => option && setSessionOutcomes(option.value)}
+                            disabled={busy()}
+                          />
+                          <FieldV2.Suffix>Only fire for sessions ending with these outcomes.</FieldV2.Suffix>
+                        </FieldV2>
+                        <FieldV2 class="min-w-0">
+                          <FieldV2.Label>Session ID</FieldV2.Label>
+                          <TextInputV2
+                            class="!w-full !min-w-0"
+                            value={sessionID()}
+                            placeholder="Any session"
+                            disabled={busy()}
+                            onInput={(event) => setSessionID(event.currentTarget.value)}
+                          />
+                          <FieldV2.Suffix>Optional. Only fire for one session.</FieldV2.Suffix>
+                        </FieldV2>
                         <FieldV2 class="min-w-0">
                           <FieldV2.Label>Agent</FieldV2.Label>
-                          <SelectV2
-                            aria-label="Agent"
+                          <TextInputV2
                             class="!w-full !min-w-0"
-                            options={agentOptions()}
-                            current={agentOptions().find((option) => option.value === agent())}
-                            value={(option) => option.value}
-                            label={(option) => option.label}
-                            onSelect={(option) => option && setAgent(option.value)}
+                            value={eventAgent()}
+                            placeholder="Any agent"
                             disabled={busy()}
+                            onInput={(event) => setEventAgent(event.currentTarget.value)}
                           />
-                          <FieldV2.Suffix>Runs every step in this automation.</FieldV2.Suffix>
+                          <FieldV2.Suffix>Optional. Only fire for sessions run by this agent.</FieldV2.Suffix>
                         </FieldV2>
+                      </Show>
+                      <FieldV2 class="min-w-0" invalid={!!validateTimezone(timezone())}>
+                        <FieldV2.Label>Timezone</FieldV2.Label>
+                        <TextInputV2
+                          class="!w-full !min-w-0"
+                          value={timezone()}
+                          placeholder="UTC"
+                          disabled={busy()}
+                          onInput={(event) => setTimezone(event.currentTarget.value)}
+                        />
+                        <FieldV2.Suffix>IANA timezone for schedule fire times, e.g. America/New_York.</FieldV2.Suffix>
+                      </FieldV2>
+                      <FieldV2 class="min-w-0">
+                        <FieldV2.Label>Agent</FieldV2.Label>
+                        <SelectV2
+                          aria-label="Agent"
+                          class="!w-full !min-w-0"
+                          options={agentOptions()}
+                          current={agentOptions().find((option) => option.value === agent())}
+                          value={(option) => option.value}
+                          label={(option) => option.label}
+                          onSelect={(option) => option && setAgent(option.value)}
+                          disabled={busy()}
+                        />
+                        <FieldV2.Suffix>Runs every step in this automation.</FieldV2.Suffix>
+                      </FieldV2>
+                      <FieldV2 class="min-w-0">
+                        <FieldV2.Label>Model</FieldV2.Label>
+                        <SelectV2
+                          aria-label="Model"
+                          class="!w-full !min-w-0"
+                          options={modelOptions()}
+                          current={modelOptions().find((option) => option.value === model())}
+                          value={(option) => option.value}
+                          label={(option) => option.label}
+                          onSelect={(option) => option && setModel(option.value)}
+                          disabled={busy()}
+                        />
+                        <FieldV2.Suffix>
+                          {catalogLoading()
+                            ? "Loading available models..."
+                            : catalogError()
+                              ? "Could not load models. The selected model is still available."
+                              : catalog().models.filter((item) => item.enabled).length === 0
+                                ? "No models available."
+                                : "Select the model used by this automation."}
+                        </FieldV2.Suffix>
+                      </FieldV2>
+                      <Show when={triggerVariantOptions().length > 1}>
                         <FieldV2 class="min-w-0">
-                          <FieldV2.Label>Model</FieldV2.Label>
+                          <FieldV2.Label>Effort</FieldV2.Label>
                           <SelectV2
-                            aria-label="Model"
+                            aria-label="Effort"
                             class="!w-full !min-w-0"
-                            options={modelOptions()}
-                            current={modelOptions().find((option) => option.value === model())}
+                            options={triggerVariantOptions()}
+                            current={triggerVariantOptions().find((option) => option.value === variant())}
                             value={(option) => option.value}
                             label={(option) => option.label}
-                            onSelect={(option) => option && setModel(option.value)}
+                            onSelect={(option) => option && setVariant(option.value)}
                             disabled={busy()}
                           />
-                          <FieldV2.Suffix>
-                            {catalogLoading()
-                              ? "Loading available models..."
-                              : catalogError()
-                                ? "Could not load models. The selected model is still available."
-                                : catalog().models.filter((item) => item.enabled).length === 0
-                                  ? "No models available."
-                                  : "Select the model used by this automation."}
-                          </FieldV2.Suffix>
+                          <FieldV2.Suffix>Reasoning effort used by this model.</FieldV2.Suffix>
                         </FieldV2>
-                        <Show when={triggerVariantOptions().length > 1}>
-                          <FieldV2 class="min-w-0">
-                            <FieldV2.Label>Effort</FieldV2.Label>
-                            <SelectV2
-                              aria-label="Effort"
-                              class="!w-full !min-w-0"
-                              options={triggerVariantOptions()}
-                              current={triggerVariantOptions().find((option) => option.value === variant())}
-                              value={(option) => option.value}
-                              label={(option) => option.label}
-                              onSelect={(option) => option && setVariant(option.value)}
-                              disabled={busy()}
-                            />
-                            <FieldV2.Suffix>Reasoning effort used by this model.</FieldV2.Suffix>
-                          </FieldV2>
-                        </Show>
-                        <Show when={!selected()}>
-                          <FieldV2 class="min-w-0">
-                            <FieldV2.Label>Initial state</FieldV2.Label>
-                            <SelectV2
-                              aria-label="Initial state"
-                              class="!w-full !min-w-0"
-                              options={statusOptions}
-                              current={statusOptions.find((option) => option.value === initialStatus())}
-                              value={(option) => option.value}
-                              label={(option) => option.label}
-                              onSelect={(option) => option && setInitialStatus(option.value)}
-                              disabled={busy()}
-                            />
-                          </FieldV2>
-                        </Show>
-                      </div>
-                    </Show>
+                      </Show>
+                      <Show when={!selected()}>
+                        <FieldV2 class="min-w-0">
+                          <FieldV2.Label>Initial state</FieldV2.Label>
+                          <SelectV2
+                            aria-label="Initial state"
+                            class="!w-full !min-w-0"
+                            options={statusOptions}
+                            current={statusOptions.find((option) => option.value === initialStatus())}
+                            value={(option) => option.value}
+                            label={(option) => option.label}
+                            onSelect={(option) => option && setInitialStatus(option.value)}
+                            disabled={busy()}
+                          />
+                        </FieldV2>
+                      </Show>
+                    </div>
+                  </Show>
 
-                    <Show when={selectedStep()}>
-                      {(step) => (
-                        <>
-                          <div class="mb-4 flex items-center justify-between gap-2">
-                            <div class="min-w-0">
-                              <h3 class="text-[13px] text-v2-text-text-base [font-weight:600]">
-                                {step().type === "agent" ? "Agent step" : "Skill step"}
-                              </h3>
-                              <code class="mt-1 block truncate text-[10px] text-v2-text-text-muted">
-                                steps.{step().id}
-                              </code>
-                            </div>
-                            <div class="flex shrink-0 gap-1">
-                              <ButtonV2
-                                size="small"
-                                variant="neutral"
-                                disabled={busy() || steps().findIndex((item) => item.key === step().key) === 0}
-                                onClick={() => moveStep(step().key, -1)}
-                              >
-                                Up
-                              </ButtonV2>
-                              <ButtonV2
-                                size="small"
-                                variant="neutral"
-                                disabled={
-                                  busy() || steps().findIndex((item) => item.key === step().key) === steps().length - 1
-                                }
-                                onClick={() => moveStep(step().key, 1)}
-                              >
-                                Down
-                              </ButtonV2>
-                              <ButtonV2
-                                size="small"
-                                variant="danger"
-                                disabled={busy()}
-                                onClick={() => removeStep(step().key)}
-                              >
-                                Remove
-                              </ButtonV2>
-                            </div>
+                  <Show when={selectedStep()}>
+                    {(step) => (
+                      <>
+                        <div class="mb-4 flex items-center justify-between gap-2">
+                          <div class="min-w-0">
+                            <h3 class="text-[13px] text-v2-text-text-base [font-weight:600]">
+                              {step().type === "agent" ? "Agent step" : "Skill step"}
+                            </h3>
+                            <code class="mt-1 block truncate text-[10px] text-v2-text-text-muted">
+                              steps.{step().id}
+                            </code>
                           </div>
-                          <div class="grid min-w-0 gap-4">
-                            <FieldV2 class="min-w-0" invalid={!!error() && !step().name.trim()}>
-                              <FieldV2.Label>Step name</FieldV2.Label>
-                              <TextInputV2
-                                class="!w-full !min-w-0"
-                                value={step().name}
-                                placeholder={step().type === "agent" ? "Analyze changes" : "Run skill"}
-                                disabled={busy()}
-                                onInput={(event) =>
-                                  setSteps((items) => renameStep(items, step().key, event.currentTarget.value))
-                                }
-                              />
-                              <FieldV2.Suffix>Later steps reference this as steps.{step().id}.output</FieldV2.Suffix>
-                            </FieldV2>
-                            <Show
-                              when={step().type === "agent"}
-                              fallback={
-                                <>
-                                  <FieldV2 class="min-w-0">
-                                    <FieldV2.Label>Skill</FieldV2.Label>
-                                    <SelectV2
-                                      aria-label="Skill"
-                                      class="!w-full !min-w-0"
-                                      options={skillOptions()}
-                                      current={skillOptions().find(
-                                        (option) =>
-                                          option.value ===
-                                          (step().type === "skill"
-                                            ? (step() as StepDraft & { skill: string }).skill
-                                            : ""),
-                                      )}
-                                      value={(option) => option.value}
-                                      label={(option) => option.label}
-                                      onSelect={(option) => option && updateStep(step().key, { skill: option.value })}
-                                      disabled={!directory() || busy()}
-                                      placeholder={directory() ? "Select a skill" : "Select a project first"}
-                                    />
-                                  </FieldV2>
-                                  <FieldV2 class="min-w-0">
-                                    <FieldV2.Label>Instructions</FieldV2.Label>
-                                    <TextareaV2
-                                      class="min-h-24 !w-full !min-w-0"
-                                      rows={4}
-                                      value={
-                                        step().type === "skill"
-                                          ? (step() as StepDraft & { instructions: string }).instructions
-                                          : ""
-                                      }
-                                      placeholder="Optional context for this skill."
-                                      disabled={busy()}
-                                      onInput={(event) =>
-                                        updateStep(step().key, { instructions: event.currentTarget.value })
-                                      }
-                                    />
-                                  </FieldV2>
-                                </>
-                              }
+                          <div class="flex shrink-0 gap-1">
+                            <ButtonV2
+                              size="small"
+                              variant="neutral"
+                              disabled={busy() || steps().findIndex((item) => item.key === step().key) === 0}
+                              onClick={() => moveStep(step().key, -1)}
                             >
+                              Up
+                            </ButtonV2>
+                            <ButtonV2
+                              size="small"
+                              variant="neutral"
+                              disabled={
+                                busy() || steps().findIndex((item) => item.key === step().key) === steps().length - 1
+                              }
+                              onClick={() => moveStep(step().key, 1)}
+                            >
+                              Down
+                            </ButtonV2>
+                            <ButtonV2
+                              size="small"
+                              variant="danger"
+                              disabled={busy()}
+                              onClick={() => removeStep(step().key)}
+                            >
+                              Remove
+                            </ButtonV2>
+                          </div>
+                        </div>
+                        <div class="grid min-w-0 gap-4">
+                          <FieldV2 class="min-w-0" invalid={!!error() && !step().name.trim()}>
+                            <FieldV2.Label>Step name</FieldV2.Label>
+                            <TextInputV2
+                              class="!w-full !min-w-0"
+                              value={step().name}
+                              placeholder={step().type === "agent" ? "Analyze changes" : "Run skill"}
+                              disabled={busy()}
+                              onInput={(event) =>
+                                setSteps((items) => renameStep(items, step().key, event.currentTarget.value))
+                              }
+                            />
+                            <FieldV2.Suffix>Later steps reference this as steps.{step().id}.output</FieldV2.Suffix>
+                          </FieldV2>
+                          <Show
+                            when={step().type === "agent"}
+                            fallback={
+                              <>
+                                <FieldV2 class="min-w-0">
+                                  <FieldV2.Label>Skill</FieldV2.Label>
+                                  <SelectV2
+                                    aria-label="Skill"
+                                    class="!w-full !min-w-0"
+                                    options={skillOptions()}
+                                    current={skillOptions().find(
+                                      (option) =>
+                                        option.value ===
+                                        (step().type === "skill"
+                                          ? (step() as StepDraft & { skill: string }).skill
+                                          : ""),
+                                    )}
+                                    value={(option) => option.value}
+                                    label={(option) => option.label}
+                                    onSelect={(option) => option && updateStep(step().key, { skill: option.value })}
+                                    disabled={!directory() || busy()}
+                                    placeholder={directory() ? "Select a skill" : "Select a project first"}
+                                  />
+                                </FieldV2>
+                                <FieldV2 class="min-w-0">
+                                  <FieldV2.Label>Instructions</FieldV2.Label>
+                                  <TextareaV2
+                                    class="min-h-24 !w-full !min-w-0"
+                                    rows={4}
+                                    value={
+                                      step().type === "skill"
+                                        ? (step() as StepDraft & { instructions: string }).instructions
+                                        : ""
+                                    }
+                                    placeholder="Optional context for this skill."
+                                    disabled={busy()}
+                                    onInput={(event) =>
+                                      updateStep(step().key, { instructions: event.currentTarget.value })
+                                    }
+                                  />
+                                </FieldV2>
+                              </>
+                            }
+                          >
+                            <FieldV2 class="min-w-0">
+                              <FieldV2.Label>Prompt</FieldV2.Label>
+                              <TextareaV2
+                                class="min-h-32 !w-full !min-w-0"
+                                rows={6}
+                                value={
+                                  step().type === "agent" ? (step() as StepDraft & { prompt: string }).prompt : ""
+                                }
+                                placeholder="What should the agent accomplish in this step?"
+                                disabled={busy()}
+                                onInput={(event) => updateStep(step().key, { prompt: event.currentTarget.value })}
+                              />
+                            </FieldV2>
+                          </Show>
+                          <div class="grid min-w-0 gap-4 border-t border-v2-border-border-subtle pt-4">
+                            {/* Each select ignores a selection equal to what the step already has.
+                            These lists are rebuilt whenever the step changes, and the select is
+                            controlled, so it re-emits its current value on every rebuild; writing
+                            that value back would rebuild the list again, without end. */}
+                            <p class="text-[10px] uppercase tracking-[0.12em] text-v2-text-text-muted">Execution</p>
+                            <FieldV2 class="min-w-0">
+                              <FieldV2.Label>Agent</FieldV2.Label>
+                              <SelectV2
+                                aria-label="Step agent"
+                                class="!w-full !min-w-0"
+                                options={stepAgentOptions()}
+                                current={stepAgentOptions().find((option) => option.value === (step().agent ?? ""))}
+                                value={(option) => option.value}
+                                label={(option) => option.label}
+                                onSelect={(option) =>
+                                  option &&
+                                  option.value !== (step().agent ?? "") &&
+                                  updateStep(step().key, { agent: option.value || undefined })
+                                }
+                                disabled={busy()}
+                              />
+                            </FieldV2>
+                            <FieldV2 class="min-w-0">
+                              <FieldV2.Label>Model</FieldV2.Label>
+                              <SelectV2
+                                aria-label="Step model"
+                                class="!w-full !min-w-0"
+                                options={stepModelOptions()}
+                                current={stepModelOptions().find((option) => option.value === modelKey(step().model))}
+                                value={(option) => option.value}
+                                label={(option) => option.label}
+                                onSelect={(option) =>
+                                  option &&
+                                  option.value !== modelKey(step().model) &&
+                                  updateStep(step().key, {
+                                    model: modelRef(option.value, step().model?.variant) ?? undefined,
+                                  })
+                                }
+                                disabled={busy()}
+                              />
+                            </FieldV2>
+                            <Show when={stepVariantOptions().length > 1}>
                               <FieldV2 class="min-w-0">
-                                <FieldV2.Label>Prompt</FieldV2.Label>
-                                <TextareaV2
-                                  class="min-h-32 !w-full !min-w-0"
-                                  rows={6}
-                                  value={
-                                    step().type === "agent" ? (step() as StepDraft & { prompt: string }).prompt : ""
-                                  }
-                                  placeholder="What should the agent accomplish in this step?"
-                                  disabled={busy()}
-                                  onInput={(event) => updateStep(step().key, { prompt: event.currentTarget.value })}
-                                />
-                              </FieldV2>
-                            </Show>
-                            <div class="grid min-w-0 gap-4 border-t border-v2-border-border-subtle pt-4">
-                              {/* Each select ignores a selection equal to what the step already has.
-                              These lists are rebuilt whenever the step changes, and the select is
-                              controlled, so it re-emits its current value on every rebuild; writing
-                              that value back would rebuild the list again, without end. */}
-                              <p class="text-[10px] uppercase tracking-[0.12em] text-v2-text-text-muted">Execution</p>
-                              <FieldV2 class="min-w-0">
-                                <FieldV2.Label>Agent</FieldV2.Label>
+                                <FieldV2.Label>Effort</FieldV2.Label>
                                 <SelectV2
-                                  aria-label="Step agent"
+                                  aria-label="Step effort"
                                   class="!w-full !min-w-0"
-                                  options={stepAgentOptions()}
-                                  current={stepAgentOptions().find((option) => option.value === (step().agent ?? ""))}
+                                  options={stepVariantOptions()}
+                                  current={stepVariantOptions().find(
+                                    (option) => option.value === (step().model?.variant ?? ""),
+                                  )}
                                   value={(option) => option.value}
                                   label={(option) => option.label}
                                   onSelect={(option) =>
                                     option &&
-                                    option.value !== (step().agent ?? "") &&
-                                    updateStep(step().key, { agent: option.value || undefined })
-                                  }
-                                  disabled={busy()}
-                                />
-                              </FieldV2>
-                              <FieldV2 class="min-w-0">
-                                <FieldV2.Label>Model</FieldV2.Label>
-                                <SelectV2
-                                  aria-label="Step model"
-                                  class="!w-full !min-w-0"
-                                  options={stepModelOptions()}
-                                  current={stepModelOptions().find((option) => option.value === modelKey(step().model))}
-                                  value={(option) => option.value}
-                                  label={(option) => option.label}
-                                  onSelect={(option) =>
-                                    option &&
-                                    option.value !== modelKey(step().model) &&
+                                    option.value !== (step().model?.variant ?? "") &&
                                     updateStep(step().key, {
-                                      model: modelRef(option.value, step().model?.variant) ?? undefined,
+                                      model: modelRef(modelKey(step().model), option.value) ?? undefined,
                                     })
                                   }
                                   disabled={busy()}
                                 />
                               </FieldV2>
-                              <Show when={stepVariantOptions().length > 1}>
-                                <FieldV2 class="min-w-0">
-                                  <FieldV2.Label>Effort</FieldV2.Label>
-                                  <SelectV2
-                                    aria-label="Step effort"
-                                    class="!w-full !min-w-0"
-                                    options={stepVariantOptions()}
-                                    current={stepVariantOptions().find(
-                                      (option) => option.value === (step().model?.variant ?? ""),
-                                    )}
-                                    value={(option) => option.value}
-                                    label={(option) => option.label}
-                                    onSelect={(option) =>
-                                      option &&
-                                      option.value !== (step().model?.variant ?? "") &&
-                                      updateStep(step().key, {
-                                        model: modelRef(modelKey(step().model), option.value) ?? undefined,
-                                      })
-                                    }
-                                    disabled={busy()}
-                                  />
-                                </FieldV2>
-                              </Show>
-                            </div>
-                            <div>
-                              <p class="mb-2 text-[10px] uppercase tracking-[0.12em] text-v2-text-text-muted">
-                                Insert data
-                              </p>
-                              <div class="flex flex-wrap gap-1.5">
-                                <ButtonV2
-                                  size="small"
-                                  variant="neutral"
-                                  onClick={() => insertBinding(step(), "{{ trigger.type }}")}
-                                >
-                                  Trigger type
-                                </ButtonV2>
-                                <ButtonV2
-                                  size="small"
-                                  variant="neutral"
-                                  onClick={() => insertBinding(step(), "{{ trigger.scheduledAt }}")}
-                                >
-                                  Scheduled time
-                                </ButtonV2>
-                                <ButtonV2
-                                  size="small"
-                                  variant="neutral"
-                                  onClick={() => insertBinding(step(), "{{ trigger.payload.repository }}")}
-                                >
-                                  Project path
-                                </ButtonV2>
-                                <For
-                                  each={steps().slice(
-                                    0,
-                                    steps().findIndex((item) => item.key === step().key),
-                                  )}
-                                >
-                                  {(source) => (
-                                    <>
-                                      <ButtonV2
-                                        size="small"
-                                        variant="neutral"
-                                        onClick={() => insertBinding(step(), `{{ steps.${source.id}.output }}`)}
-                                      >
-                                        {source.id} output
-                                      </ButtonV2>
-                                      <ButtonV2
-                                        size="small"
-                                        variant="neutral"
-                                        onClick={() => insertBinding(step(), `{{ steps.${source.id}.artifacts }}`)}
-                                      >
-                                        {source.id} artifacts
-                                      </ButtonV2>
-                                      <For each={outputKeys(source.id)}>
-                                        {(key) => (
-                                          <ButtonV2
-                                            size="small"
-                                            variant="neutral"
-                                            onClick={() =>
-                                              insertBinding(step(), `{{ steps.${source.id}.output.${key} }}`)
-                                            }
-                                          >
-                                            {source.id} output.{key}
-                                          </ButtonV2>
-                                        )}
-                                      </For>
-                                    </>
-                                  )}
-                                </For>
-                              </div>
-                              <Show when={steps().findIndex((item) => item.key === step().key) === 0}>
-                                <p class="mt-2 text-[10px] text-v2-text-text-muted">
-                                  Step outputs become available to steps below this one.
-                                </p>
-                              </Show>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </Show>
-
-                    <Show when={selectedNode() === "delivery"}>
-                      <h3 class="mb-3 text-[13px] text-v2-text-text-base [font-weight:600]">TurenOS delivery</h3>
-                      <p class="text-[12px] leading-5 text-v2-text-text-muted">
-                        Each run executes in its own TurenOS Session. The final step's result is the run's outcome, and
-                        every step's output is captured in run history.
-                      </p>
-                    </Show>
-                  </aside>
-                </section>
-              </Show>
-
-              <Show when={tab() === "runs" && selected()}>
-                <section data-component="loop-runs" class={PANEL}>
-                  <div class="flex items-center justify-between border-b border-v2-border-border-base px-4 py-3">
-                    <h3 class="text-[13px] text-v2-text-text-base [font-weight:600]">Run history</h3>
-                    <span class="text-[11px] tabular-nums text-v2-text-text-muted">{runs().length} runs</span>
-                  </div>
-                  <For
-                    each={runs()}
-                    fallback={
-                      <div class="px-5 py-10 text-center text-[12px] text-v2-text-text-muted">
-                        No runs yet. Use "Run now" to trigger one.
-                      </div>
-                    }
-                  >
-                    {(run) => (
-                      <div class="flex items-start gap-4 border-b border-v2-border-border-base px-4 py-3 last:border-b-0">
-                        <span class={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${RUN_TONE[run.status]}`} />
-                        <div class="min-w-0 flex-1">
-                          <div class="flex flex-wrap items-center gap-2">
-                            <span class="text-[12px] capitalize text-v2-text-text-base [font-weight:550]">
-                              {run.status}
-                            </span>
-                            <span class="text-[11px] text-v2-text-text-muted">{run.trigger}</span>
-                            <span class="text-[11px] text-v2-text-text-muted">
-                              {new Date(run.scheduledAt).toLocaleString()}
-                            </span>
-                            <Show when={runDuration(run)}>
-                              {(value) => (
-                                <span class="text-[11px] tabular-nums text-v2-text-text-muted">{value()}</span>
-                              )}
                             </Show>
                           </div>
-                          <Show when={run.error}>
-                            {(message) => <p class="mt-1 truncate text-[11px] text-v2-state-fg-danger">{message()}</p>}
-                          </Show>
-                          <Show when={Object.entries(run.outputs).length}>
-                            <div class="mt-3 grid gap-2">
-                              <For each={Object.entries(run.outputs)}>
-                                {([stepID, output]) => (
-                                  <div class="rounded-[7px] border border-v2-border-border-subtle bg-v2-background-bg-layer-02 px-3 py-2">
-                                    <div class="flex items-center justify-between gap-3">
-                                      <code class="text-[10px] text-v2-text-text-base">{stepID}.output</code>
-                                      <span class="text-[10px] text-v2-text-text-muted">
-                                        {output.artifacts.length} artifact{output.artifacts.length === 1 ? "" : "s"}
-                                      </span>
-                                    </div>
-                                    <pre class="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-[11px] leading-4 text-v2-text-text-muted">
-                                      {output.json === undefined ? output.text : JSON.stringify(output.json, null, 2)}
-                                    </pre>
-                                  </div>
+                          <div>
+                            <p class="mb-2 text-[10px] uppercase tracking-[0.12em] text-v2-text-text-muted">
+                              Insert data
+                            </p>
+                            <div class="flex flex-wrap gap-1.5">
+                              <ButtonV2
+                                size="small"
+                                variant="neutral"
+                                onClick={() => insertBinding(step(), "{{ trigger.type }}")}
+                              >
+                                Trigger type
+                              </ButtonV2>
+                              <ButtonV2
+                                size="small"
+                                variant="neutral"
+                                onClick={() => insertBinding(step(), "{{ trigger.scheduledAt }}")}
+                              >
+                                Scheduled time
+                              </ButtonV2>
+                              <ButtonV2
+                                size="small"
+                                variant="neutral"
+                                onClick={() => insertBinding(step(), "{{ trigger.payload.repository }}")}
+                              >
+                                Project path
+                              </ButtonV2>
+                              <For
+                                each={steps().slice(
+                                  0,
+                                  steps().findIndex((item) => item.key === step().key),
+                                )}
+                              >
+                                {(source) => (
+                                  <>
+                                    <ButtonV2
+                                      size="small"
+                                      variant="neutral"
+                                      onClick={() => insertBinding(step(), `{{ steps.${source.id}.output }}`)}
+                                    >
+                                      {source.id} output
+                                    </ButtonV2>
+                                    <ButtonV2
+                                      size="small"
+                                      variant="neutral"
+                                      onClick={() => insertBinding(step(), `{{ steps.${source.id}.artifacts }}`)}
+                                    >
+                                      {source.id} artifacts
+                                    </ButtonV2>
+                                    <For each={outputKeys(source.id)}>
+                                      {(key) => (
+                                        <ButtonV2
+                                          size="small"
+                                          variant="neutral"
+                                          onClick={() =>
+                                            insertBinding(step(), `{{ steps.${source.id}.output.${key} }}`)
+                                          }
+                                        >
+                                          {source.id} output.{key}
+                                        </ButtonV2>
+                                      )}
+                                    </For>
+                                  </>
                                 )}
                               </For>
                             </div>
+                            <Show when={steps().findIndex((item) => item.key === step().key) === 0}>
+                              <p class="mt-2 text-[10px] text-v2-text-text-muted">
+                                Step outputs become available to steps below this one.
+                              </p>
+                            </Show>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </Show>
+
+                  <Show when={selectedNode() === "delivery"}>
+                    <h3 class="mb-3 text-[13px] text-v2-text-text-base [font-weight:600]">TurenOS delivery</h3>
+                    <p class="text-[12px] leading-5 text-v2-text-text-muted">
+                      Each run executes in its own TurenOS Session. The final step's result is the run's outcome, and
+                      every step's output is captured in run history.
+                    </p>
+                  </Show>
+                </aside>
+              </section>
+            </Show>
+
+            <Show when={tab() === "runs" && selected()}>
+              <section data-component="loop-runs" class={PANEL}>
+                <div class="flex items-center justify-between border-b border-v2-border-border-base px-4 py-3">
+                  <h3 class="text-[13px] text-v2-text-text-base [font-weight:600]">Run history</h3>
+                  <span class="text-[11px] tabular-nums text-v2-text-text-muted">{runs().length} runs</span>
+                </div>
+                <For
+                  each={runs()}
+                  fallback={
+                    <div class="px-5 py-10 text-center text-[12px] text-v2-text-text-muted">
+                      No runs yet. Use "Run now" to trigger one.
+                    </div>
+                  }
+                >
+                  {(run) => {
+                    const steps = () => selected()?.workflow?.steps ?? []
+                    const entries = () => orderedStepOutputs(run, steps())
+                    const total = () => runTotal(run, steps())
+                    const progress = () => runProgressLabel(run, steps())
+                    const failed = () => failedCallout(run, steps())
+                    return (
+                    <div class="flex items-start gap-4 border-b border-v2-border-border-base px-4 py-3 last:border-b-0">
+                      <span class={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${RUN_TONE[run.status]}`} />
+                      <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <span class="text-[12px] capitalize text-v2-text-text-base [font-weight:550]">
+                            {run.status}
+                          </span>
+                          <span class="text-[11px] text-v2-text-text-muted">{run.trigger}</span>
+                          <span class="text-[11px] text-v2-text-text-muted">
+                            {new Date(run.scheduledAt).toLocaleString()}
+                          </span>
+                          <Show when={runDuration(run)}>
+                            {(value) => (
+                              <span class="text-[11px] tabular-nums text-v2-text-text-muted">{value()}</span>
+                            )}
                           </Show>
                         </div>
-                        <Show
-                          when={
-                            run.sessionID && run.status !== "claimed" && run.status !== "running"
-                              ? run.sessionID
-                              : undefined
-                          }
-                        >
-                          {(sessionID) => (
+                        <Show when={progress()}>
+                          {(label) => (
+                            <p class="mt-1 text-[11px] text-v2-state-fg-warning">{label()}</p>
+                          )}
+                        </Show>
+                        <Show when={failed()}>
+                          {(line) => (
+                            <p class="mt-1 text-[11px] text-v2-state-fg-danger">
+                              {line()}
+                            </p>
+                          )}
+                        </Show>
+                        <Show when={run.error && run.status !== "failed"}>
+                          {(message) => <p class="mt-1 truncate text-[11px] text-v2-state-fg-danger">{message()}</p>}
+                        </Show>
+                        <Show when={entries().length}>
+                          <div class="mt-3 grid gap-2">
+                            <For each={entries()}>
+                              {([stepID, output]) => {
+                                const display = stepDisplay(stepID, steps(), total())
+                                return (
+                                  <RunStepCard
+                                    stepID={stepID}
+                                    name={display.name}
+                                    index={display.index}
+                                    total={display.total}
+                                    state={stepState(run, stepID, display.index)}
+                                    output={output}
+                                  />
+                                )
+                              }}
+                            </For>
+                          </div>
+                        </Show>
+                      </div>
+                      <Show
+                        when={
+                          run.sessionID && run.status !== "claimed" && run.status !== "running"
+                            ? run.sessionID
+                            : undefined
+                        }
+                      >
+                        {(sessionID) => (
+                          <div class="flex shrink-0 flex-col gap-2">
                             <ButtonV2
                               size="small"
                               variant="neutral"
+                              onClick={() => {
+                                const automation = selected()
+                                if (automation) viewChat(automation, run)
+                              }}
+                            >
+                              View chat
+                            </ButtonV2>
+                            <ButtonV2
+                              size="small"
+                              variant="ghost-muted"
                               onClick={() => navigate(sessionHref(serverKey, sessionID()))}
                             >
                               Open in agent chat
                             </ButtonV2>
-                          )}
-                        </Show>
-                        <Show when={run.status === "claimed" || run.status === "running"}>
-                          <ButtonV2
-                            size="small"
-                            variant="neutral"
-                            disabled={busy()}
-                            onClick={() => {
-                              const automation = selected()
-                              if (!automation || busy()) return
-                              setBusy(true)
-                              void api()
-                                .runCancel({ loopID: automation.id, runID: run.id })
-                                .then(refresh)
-                                .catch((cause) =>
-                                  setError(cause instanceof Error ? cause.message : "Could not cancel run"),
-                                )
-                                .finally(() => setBusy(false))
-                            }}
-                          >
-                            Cancel
-                          </ButtonV2>
-                        </Show>
-                      </div>
-                    )}
-                  </For>
-                </section>
-              </Show>
-            </div>
-          </Show>
+                          </div>
+                        )}
+                      </Show>
+                      <Show when={run.status === "claimed" || run.status === "running"}>
+                        <ButtonV2
+                          size="small"
+                          variant="neutral"
+                          disabled={busy()}
+                          onClick={() => {
+                            const automation = selected()
+                            if (!automation || busy()) return
+                            setBusy(true)
+                            void api()
+                              .runCancel({ loopID: automation.id, runID: run.id })
+                              .then(refresh)
+                              .catch((cause) =>
+                                setError(cause instanceof Error ? cause.message : "Could not cancel run"),
+                              )
+                              .finally(() => setBusy(false))
+                          }}
+                        >
+                          Cancel
+                        </ButtonV2>
+                      </Show>
+                    </div>
+                    )
+                  }}
+                </For>
+              </section>
+            </Show>
+          </div>
         </main>
       </div>
     </section>

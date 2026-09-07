@@ -15,6 +15,10 @@ export type Mode = "effect" | "coverage" | "auth"
 export type Comparison = "none" | "status" | "json"
 export type CaptureMode = "full" | "stream"
 export type AuthPolicy = "protected" | "public" | "public-bypass" | "ticket-bypass"
+export type AuthSetup = {
+  setup: () => Effect.Effect<void>
+  cleanup: () => Effect.Effect<void>
+}
 export type ProjectOptions = { git?: boolean; config?: Partial<ConfigV1.Info> }
 export type OpenApiSpec = { paths?: Record<string, Partial<Record<OpenApiMethod, unknown>>> }
 export type JsonObject = Record<string, unknown>
@@ -89,6 +93,7 @@ export type ActiveScenario = {
   mutates: boolean
   reset: boolean
   auth: AuthPolicy
+  authSetup: AuthSetup | undefined
 }
 
 export type BuilderState<S> = {
@@ -103,6 +108,7 @@ export type BuilderState<S> = {
   mutates: boolean
   reset: boolean
   auth: AuthPolicy
+  authSetup: AuthSetup | undefined
 }
 
 export type TodoScenario = {

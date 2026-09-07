@@ -96,6 +96,9 @@ import type {
   GlobalUpgradeResponses,
   InstanceDisposeErrors,
   InstanceDisposeResponses,
+  IntelFeedCreate,
+  IntelFeedUpdate,
+  IntelSeverity,
   LocationRef,
   LoopCreateInput,
   LoopEditInput,
@@ -303,6 +306,26 @@ import type {
   V2FsReadResponses,
   V2HealthGetErrors,
   V2HealthGetResponses,
+  V2IntelAdvisoriesErrors,
+  V2IntelAdvisoriesResponses,
+  V2IntelFeedAddErrors,
+  V2IntelFeedAddResponses,
+  V2IntelFeedsErrors,
+  V2IntelFeedsResetErrors,
+  V2IntelFeedsResetResponses,
+  V2IntelFeedsResponses,
+  V2IntelFeedUpdateErrors,
+  V2IntelFeedUpdateResponses,
+  V2IntelKevErrors,
+  V2IntelKevResponses,
+  V2IntelNewsErrors,
+  V2IntelNewsResponses,
+  V2IntelPollErrors,
+  V2IntelPollResponses,
+  V2IntelStatusErrors,
+  V2IntelStatusResponses,
+  V2IntelTrendsErrors,
+  V2IntelTrendsResponses,
   V2LocationGetErrors,
   V2LocationGetResponses,
   V2LoopCreateErrors,
@@ -7886,6 +7909,228 @@ export class Loop extends HeyApiClient {
   }
 }
 
+export class Intel extends HeyApiClient {
+  /**
+   * List security advisories
+   *
+   * List cached normalized security advisories newest first.
+   */
+  public advisories<ThrowOnError extends boolean = false>(
+    parameters?: {
+      page?: string
+      pageSize?: string
+      severity?: IntelSeverity
+      search?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "page" },
+            { in: "query", key: "pageSize" },
+            { in: "query", key: "severity" },
+            { in: "query", key: "search" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<V2IntelAdvisoriesResponses, V2IntelAdvisoriesErrors, ThrowOnError>({
+      url: "/api/intel/advisories",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List KEV items
+   *
+   * List cached CISA KEV items newest first.
+   */
+  public kev<ThrowOnError extends boolean = false>(
+    parameters?: {
+      page?: string
+      pageSize?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "page" },
+            { in: "query", key: "pageSize" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<V2IntelKevResponses, V2IntelKevErrors, ThrowOnError>({
+      url: "/api/intel/kev",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List security news
+   *
+   * List cached security news newest first.
+   */
+  public news<ThrowOnError extends boolean = false>(
+    parameters?: {
+      page?: string
+      pageSize?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "page" },
+            { in: "query", key: "pageSize" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<V2IntelNewsResponses, V2IntelNewsErrors, ThrowOnError>({
+      url: "/api/intel/news",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Advisory trends
+   *
+   * Daily advisory counts over a trailing window.
+   */
+  public trends<ThrowOnError extends boolean = false>(
+    parameters?: {
+      days?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "days" }] }])
+    return (options?.client ?? this.client).get<V2IntelTrendsResponses, V2IntelTrendsErrors, ThrowOnError>({
+      url: "/api/intel/trends",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List intel feeds
+   *
+   * List the effective intel feed list: built-in defaults plus per-user overrides.
+   */
+  public feeds<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<V2IntelFeedsResponses, V2IntelFeedsErrors, ThrowOnError>({
+      url: "/api/intel/feeds",
+      ...options,
+    })
+  }
+
+  /**
+   * Add intel feed
+   *
+   * Add a custom intel feed. The id is derived from the name when omitted.
+   */
+  public feedAdd<ThrowOnError extends boolean = false>(
+    parameters: {
+      intelFeedCreate: IntelFeedCreate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "intelFeedCreate", map: "body" }] }])
+    return (options?.client ?? this.client).post<V2IntelFeedAddResponses, V2IntelFeedAddErrors, ThrowOnError>({
+      url: "/api/intel/feeds",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Update intel feed
+   *
+   * Enable, disable, or edit an intel feed. Only provided fields change.
+   */
+  public feedUpdate<ThrowOnError extends boolean = false>(
+    parameters: {
+      feedID: string
+      intelFeedUpdate: IntelFeedUpdate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "feedID" },
+            { key: "intelFeedUpdate", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<V2IntelFeedUpdateResponses, V2IntelFeedUpdateErrors, ThrowOnError>({
+      url: "/api/intel/feeds/{feedID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Reset intel feeds
+   *
+   * Discard per-user feed overrides and restore the built-in defaults.
+   */
+  public feedsReset<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<V2IntelFeedsResetResponses, V2IntelFeedsResetErrors, ThrowOnError>({
+      url: "/api/intel/feeds/reset",
+      ...options,
+    })
+  }
+
+  /**
+   * Intel poll status
+   *
+   * Last poll times and per-feed status.
+   */
+  public status<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<V2IntelStatusResponses, V2IntelStatusErrors, ThrowOnError>({
+      url: "/api/intel/status",
+      ...options,
+    })
+  }
+
+  /**
+   * Poll intel feeds now
+   *
+   * Force an immediate feed poll (overlap-guarded, staleness ignored) and return the fresh status.
+   */
+  public poll<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<V2IntelPollResponses, V2IntelPollErrors, ThrowOnError>({
+      url: "/api/intel/poll",
+      ...options,
+    })
+  }
+}
+
 export class Whiteboard extends HeyApiClient {
   /**
    * Read session whiteboard
@@ -8060,6 +8305,11 @@ export class V2 extends HeyApiClient {
   private _loop?: Loop
   get loop(): Loop {
     return (this._loop ??= new Loop({ client: this.client }))
+  }
+
+  private _intel?: Intel
+  get intel(): Intel {
+    return (this._intel ??= new Intel({ client: this.client }))
   }
 
   private _whiteboard?: Whiteboard

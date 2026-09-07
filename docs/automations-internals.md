@@ -18,7 +18,7 @@ An Automation encapsulates:
 - A **prompt** that runs unchanged on each execution
 - A **project directory** where the run executes
 - An optional **agent** (CLI, GUI explorer, code agent, etc.) and **model** (Claude, Sonnet, etc.)
-- An **interval** and **expiration** date
+- A **schedule** — an interval, a cron expression, or a local event trigger — plus an **expiration** date
 - Durable **run history** with status, timing, and errors
 
 The Automation scheduler polls the database every 5 seconds, claims due occurrences atomically via SQLite's transaction guarantee, spawns a child Session, and persists output and status. Each run is isolated: if a run takes longer than the interval, the next due tick is recorded as `skipped`, not queued. If the sidecar crashes mid-run, recovery uses the same Session ID and message ID, so provider and tool side effects are idempotent.
@@ -28,13 +28,13 @@ The Automation scheduler polls the database every 5 seconds, claims due occurren
 Open **Automations** from the sidebar. The form accepts:
 
 - **Name**: a short identifier for the Automation (e.g. "Daily CI sweep")
-- **Prompt**: the prompt to run on each occurrence. It runs in a fresh Session with its own tools and context; nothing from the prior run is carried over
+- **Steps**: 1 to 12 ordered Agent or Skill steps that run in a fresh Session with its own tools and context; nothing from the prior run is carried over
 - **Project**: the local project directory; the Automation runs in that directory's context
-- **Interval**: a fixed duration between occurrences using `s`, `m`, `h`, or `d` (e.g. `5m`, `1h`, `1d`). Minimum is 60 seconds
+- **Schedule**: exactly one trigger — an **Interval** (a fixed duration between occurrences using `s`, `m`, `h`, or `d`, e.g. `5m`, `1h`, `1d`; minimum 60 seconds), a **Cron** expression (five fields `minute hour day month weekday`, at most 120 characters, e.g. `0 9 * * MON-FRI`), or a local **Event** trigger (file-change or session-end). Cron fire times follow the **Timezone** (an IANA name such as `America/New_York`, default `UTC`). Editing accepts at most one of a new interval, cron expression, or event trigger and replaces the previous schedule
 - **Agent**: optional selection of a specific Agent to run the prompt. If unset, the system default is used. Once set, every occurrence uses that Agent
 - **Model**: optional selection of a specific model/provider pair (e.g. Claude Opus from Anthropic). If unset, the system default is used. Once set, every occurrence uses that model
 
-Once created, the Automation appears in the list with its next scheduled run time. The **Run now** button starts an immediate execution without affecting the schedule. The **Pause** and **Resume** buttons pause the Automation without deleting it, and schedule the next run one interval after resuming. **Delete** removes the Automation entirely.
+Once created, the Automation appears in the list with its next scheduled run time. The **Run now** button starts an immediate execution without affecting the schedule. The **Pause** and **Resume** buttons pause the Automation without deleting it; resuming recomputes the next run from its schedule (one interval out, the next cron occurrence, or no scheduled time for event triggers). **Delete** removes the Automation entirely.
 
 ## Run History
 
@@ -42,7 +42,8 @@ Each Automation displays a **Run history** showing every scheduled and manual ex
 
 - **Scheduled**: a tick that was due and claimed by the scheduler
 - **Manual**: a run triggered by the **Run now** button
-- **Status**: `claimed` (waiting to start), `running` (in progress), `succeeded` (completed normally), `failed` (error or cancellation), `skipped` (overlapped with an active run), `stale` (lease expired before completion)
+- **Event**: a run fired by a matching file-change or session-end event
+- **Status**: `claimed` (waiting to start), `running` (in progress), `succeeded` (completed normally), `failed` (error), `cancelled` (explicit cancellation), `skipped` (overlapped with an active run, or an event that arrived while one was active), `stale` (lease expired before completion)
 - **Time**: when the run was created, started, and completed
 - **Error**: if present, the exception or cancellation reason
 - **Cancel**: available while claimed or running; stops the active Session and marks the run cancelled
@@ -52,23 +53,20 @@ Each Automation displays a **Run history** showing every scheduled and manual ex
 The composer supports a one-step quick command:
 
 ```text
-/loop 1h Check CI status and report failures
+/automation 1h Check CI status and report failures
 ```
 
 This creates an Automation with the given interval and prompt, using your current project directory. The Automation is paused until you open it to confirm settings.
 
 ## Mentioning Automations
 
-Mention `@loops` in the composer to point an agent at the Automations surface. The mention gives agents access to:
+Mention `@automations` in the composer to point an agent at the Automations surface. The mention gives agents access to:
 
-- `loop_list`: read every Automation with its status, interval, and next run time
-- `loop_create`: create a new Automation from a name, interval, and prompt
-- `loop_update`: edit name, interval, agent, model, or prompt on an existing Automation
-- `loop_pause`, `loop_resume`, `loop_delete`: manage Automation state
-- `loop_run_now`: trigger an immediate execution
-- `loop_run_cancel`: stop an active run
+- `automation_list`: read every Automation with its status, schedule, and next run time
+- `automation_create`: create a new Automation from a name, one trigger (interval, cron, or local event), and 1 to 12 ordered steps with optional per-step `when` / `on_failure`
+- `automation_update`: edit name, schedule, agent, model, or steps on an existing Automation, or pause, resume, or delete it via its status
 
-Agent actions go through the permission system, so agent-created Automations are approvable like any durable side effect.
+Immediate runs and run cancellation live in the app and the HTTP API below, not in agent tools. Agent actions go through the permission system, so agent-created Automations are approvable like any durable side effect.
 
 ## Execution
 
@@ -79,6 +77,10 @@ Each due occurrence follows these steps:
 3. The prompt is admitted with the selected agent and model
 4. Output, errors, and run status are persisted atomically
 5. The run status and error are visible in the Automation's run history
+
+### Step Conditions
+
+Each workflow step carries optional `when` (at most 2000 characters) and `onFailure` (`"stop"` or `"continue"`, default `stop`). There is no `"skip"` policy value. Before a step runs, its `when` bindings resolve against earlier step outputs and the trigger payload; a blank or missing condition always runs, otherwise the step is skipped when the resolved value, trimmed and lowercased, is one of `""`, `false`, `0`, `no`, `off`, `skip`, `null`, or `undefined`. A failed step with `onFailure: "continue"` records its error on the step and the run proceeds; any other failure fails the run.
 
 ### Overlap Policy
 
@@ -100,7 +102,8 @@ For example, if an Automation runs every hour and is paused for 8 hours, the nex
 ## Limits
 
 - **Minimum interval**: 60 seconds
-- **Maximum active Automations**: 50 per sidecar
+- **Cron expression**: five fields, at most 120 characters
+- **Maximum active Automations**: 50 globally, and 10 per project directory (directory plus workspace)
 - **Maximum lifetime**: 7 days from creation
 - **Overlap policy**: skip (no concurrent runs)
 
@@ -108,7 +111,7 @@ For example, if an Automation runs every hour and is paused for 8 hours, the nex
 
 Automation management always targets the canonical local sidecar. Listing Automations and their metadata reads a process-global SQLite index without opening or monitoring project directories. Project context is resolved only when configuring the Automation or at the moment of execution.
 
-The HTTP API routes use `/api/loop` naming for internal compatibility. The canonical app route is `/loops`; legacy `/loop` command submissions route through the local sidecar resolution.
+The HTTP API routes use `/api/loop` naming for internal compatibility. The canonical app route is `/automations`; legacy `/loops` links redirect there.
 
 ## Execution Context
 
@@ -143,9 +146,11 @@ The scheduler wakes every 5 seconds and:
 1. **Queries** `LoopTable` where `status = 'active'` and `next_run_at <= now()`, ordered by due time
 2. **Inserts** a new row into `LoopRunTable` with `status = 'claimed'` and an owner ID
 3. **Atomically claims** via the unique `(loop_id, scheduled_at)` constraint—only one owner succeeds
-4. **Updates** the Automation's `next_run_at` to `now() + interval` (or to expiration, if the Automation has 7 days left)
+4. **Updates** the Automation's `next_run_at` to `now() + interval` for interval schedules, or to the next cron occurrence for cron schedules
 
 If a due occurrence is inserted while an active run exists, the new row is inserted with `status = 'skipped'`.
+
+Event Automations never appear in the due query: they are stored active with `next_run_at = null` and gain runs only through the core `fireEvent` call. Resuming a paused cron Automation recomputes its next run from the cron expression; resuming an event Automation restores it with no next run time.
 
 ### Durability and Recovery
 
@@ -197,11 +202,20 @@ When claiming work:
 2. If yes, insert the new occurrence with `status = 'skipped'` and do not start it
 3. If no, insert with `status = 'claimed'` and proceed
 
-This prevents cascading runaway execution when a run's duration exceeds the interval.
+This prevents cascading runaway execution when a run's duration exceeds the interval. Event deliveries use the same rule: `fireEvent` on an Automation with an active run records the event as `skipped`.
+
+### Event Triggers
+
+Event Automations replace the ticking schedule with a local trigger stored as `trigger_type` / `trigger_config`:
+
+- **file-change** (`paths`, optional `debounceMs`): 1 to 20 relative glob patterns, each 1 to 256 characters, never absolute, never escaping the directory (`..`), and limited to `[A-Za-z0-9_.\-/*?{}[\]!+,@()|]`. The scheduler maps each changed file to a path relative to the Automation's directory, drops files outside it, and fires only on pattern match. Matches within `debounceMs` (default 1000, 0 to 60000) coalesce into one run per Automation, and the run payload carries `{ file, event: "change", directory }`.
+- **session-end** (`outcomes`, `sessionID`, `agent`, all optional): fires when a local session in the Automation's directory ends with a matching outcome (`success` / `failure`), session, and agent. Omitted filters match anything; the scheduler's own Automation runs (`ses_loop_*`) never fire it. Event payloads are limited to 20 fields and 8000 serialized characters.
+
+Both arrive through the core `fireEvent` call, which rejects a trigger-type mismatch, applies the session-end filter, and records `skipped` on overlap. `fireEvent` is local to the sidecar: the HTTP API below exposes create/list/get/edit/pause/resume/delete/run-now/run-list/run-get/run-cancel only, with no event endpoint.
 
 ### Time Zone Handling
 
-Automation intervals are always measured in absolute duration (seconds). The `timezone` field is stored for future use (e.g., to display "next run at 9am" in a user's local zone), but scheduling itself is UTC-based.
+Interval schedules are measured in absolute duration (seconds). Cron schedules instead fire on wall-clock time in the Automation's IANA `timezone` (default `UTC`; unrecognized names are rejected): the scheduler resolves the next matching minute in that zone, so occurrences follow local time. Event triggers carry a timezone field but do not tick, so it has no scheduling effect for them.
 
 ## Querying and Listing
 
@@ -234,5 +248,7 @@ All Automation operations target the local sidecar:
 - `GET /api/loop/:loopID/run` → list all runs (sorted by scheduled time, newest first)
 - `GET /api/loop/:loopID/run/:runID` → fetch one run's details
 - `POST /api/loop/:loopID/run/:runID/cancel` → stop an active run and mark it cancelled
+
+There is deliberately no event endpoint: `fireEvent` exists only on the core `Loop` service and is driven by the local scheduler's file watcher and session listeners.
 
 Agent and model are stored as `Agent.ID` and `Model.Ref` (opaque serialized objects) and are passed through to the child Session's `ModelOptions`.

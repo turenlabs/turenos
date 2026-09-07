@@ -6,7 +6,7 @@ Open an issue before beginning a large product or architecture change so the tru
 
 Requirements:
 
-- Bun 1.3.14, as pinned in `package.json`;
+- Bun 1.4.2, as pinned in `package.json`;
 - Git;
 - platform toolchains required by Electron or native dependencies.
 
@@ -18,8 +18,8 @@ bun dev
 If Bun is not installed globally, use the pinned runner through `npx`:
 
 ```bash
-npx --yes bun@1.3.14 install --frozen-lockfile
-npx --yes bun@1.3.14 run dev
+npx --yes bun@1.4.2 install --frozen-lockfile
+npx --yes bun@1.4.2 run dev
 ```
 
 Build the Desktop application:

@@ -521,7 +521,9 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
 
   const updateConfigMutation = useMutation(() => ({
     mutationFn: (config: Config) => serverSDK.client.global.config.update({ config }),
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Bootstrap only refreshes projects; settings read this independent config query.
+      await configQuery.refetch()
       bootstrap.refetch()
       // Configuration changes can affect provider visibility across every directory.
       void refreshProviders()

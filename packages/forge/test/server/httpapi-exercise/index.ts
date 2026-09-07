@@ -17,12 +17,16 @@
  * - `.json(...)` / `.jsonEffect(...)` assert response shape and optional side effects.
  * - `.mutating()` tells the runner to reset isolated state after destructive routes.
  */
+import { cleanupExercisePaths, exerciseConfigDirectory, exerciseDatabasePath, exerciseGlobalRoot } from "./environment"
 import { Effect } from "effect"
 import { OpenApi } from "effect/unstable/httpapi"
+import fs from "fs/promises"
 import path from "path"
+import { cachePath, emptyCache } from "@turenlabs/server/intel/ingest"
+import { readEffectiveFeeds, resetFeeds, updateFeed } from "@turenlabs/server/intel/feeds"
+import { DEFAULT_FEEDS } from "@turenlabs/server/intel/sources"
 import { array, boolean, check, isRecord, message, object, stable } from "./assertions"
 import { controlledPtyInput, http, route } from "./dsl"
-import { cleanupExercisePaths, exerciseConfigDirectory, exerciseDatabasePath, exerciseGlobalRoot } from "./environment"
 import { color, printHeader, printResults } from "./report"
 import { coverageResult, failureRatchet, parseOptions, routeKey, routeKeys, selectedScenarios } from "./routing"
 import { runScenario } from "./runner"
@@ -55,6 +59,84 @@ function mcpRuntimeStatus(body: unknown): asserts body is { settings: Record<str
   object(body)
   object(body.settings)
   array(body.backends)
+}
+
+function resetIntelFeeds() {
+  return resetFeeds().pipe(Effect.asVoid)
+}
+
+function writeIntelCache(cache: unknown) {
+  return Effect.promise(async () => {
+    const file = cachePath()
+    await fs.mkdir(path.dirname(file), { recursive: true })
+    await Bun.write(file, JSON.stringify(cache))
+  })
+}
+
+function seedIntelCache() {
+  return Effect.gen(function* () {
+    yield* resetIntelFeeds()
+    const now = Date.now()
+    const advisoryID = "CVE-HTTPAPI-0001"
+    const kevID = "CVE-HTTPAPI-0003"
+    const newsID = "https://example.invalid/httpapi-intel-news"
+    yield* writeIntelCache({
+      advisories: [
+        {
+          id: advisoryID,
+          title: "HTTP API fixture advisory",
+          severity: "critical",
+          cvss: 9.8,
+          publishedAt: now,
+          updatedAt: now,
+          source: "httpapi-fixture",
+          url: `https://example.invalid/advisories/${advisoryID}`,
+          summary: "Deterministic exerciser advisory.",
+        },
+        {
+          id: "GHSA-httpapi-0002",
+          title: "HTTP API fixture package issue",
+          severity: "medium",
+          publishedAt: now - 24 * 60 * 60 * 1_000,
+          updatedAt: now - 24 * 60 * 60 * 1_000,
+          source: "httpapi-fixture",
+          summary: "A second deterministic exerciser advisory.",
+        },
+      ],
+      kev: [
+        {
+          cveID: kevID,
+          vendor: "Fixture Vendor",
+          product: "Fixture Product",
+          name: "HTTP API fixture exploited vulnerability",
+          dateAdded: now,
+          url: `https://example.invalid/kev/${kevID}`,
+        },
+      ],
+      news: [
+        {
+          id: newsID,
+          title: "HTTP API fixture intel news",
+          url: newsID,
+          publishedAt: now,
+          source: "httpapi-fixture",
+          summary: "Deterministic exerciser news.",
+        },
+      ],
+      lastPollAt: now,
+      feeds: [{ feedID: "httpapi-fixture", lastPollAt: now, lastOk: true, itemCount: 2 }],
+    })
+    return { advisoryID, kevID, newsID, now }
+  })
+}
+
+function seedIntelPoll() {
+  return Effect.gen(function* () {
+    yield* resetIntelFeeds()
+    const feeds = yield* readEffectiveFeeds()
+    yield* Effect.forEach(feeds, (feed) => updateFeed(feed.id, { enabled: false }), { concurrency: 1 })
+    yield* writeIntelCache(emptyCache)
+  }).pipe(Effect.orDie)
 }
 
 const scenarios: Scenario[] = [
@@ -614,6 +696,150 @@ const scenarios: Scenario[] = [
     object(body)
     check(body.healthy === true, "v2 server should report healthy")
   }),
+  http.protected
+    .get("/api/intel/advisories", "v2.intel.advisories")
+    .seeded(() => seedIntelCache())
+    .at((ctx) => ({
+      path: "/api/intel/advisories?severity=critical&page=1&pageSize=1",
+      headers: ctx.headers(),
+    }))
+    .json(200, (body, ctx) => {
+      object(body)
+      array(body.items)
+      check(body.total === 1, "intel advisories should filter by severity")
+      check(body.page === 1 && body.pageSize === 1, "intel advisories should decode pagination")
+      const item = body.items[0]
+      check(isRecord(item) && item.id === ctx.state.advisoryID, "intel advisories should return the fixture item")
+    }),
+  http.protected
+    .get("/api/intel/kev", "v2.intel.kev")
+    .seeded(() => seedIntelCache())
+    .at((ctx) => ({ path: "/api/intel/kev?page=1&pageSize=1", headers: ctx.headers() }))
+    .json(200, (body, ctx) => {
+      object(body)
+      array(body.items)
+      check(body.total === 1 && body.pageSize === 1, "intel KEV should return a paged fixture")
+      const item = body.items[0]
+      check(isRecord(item) && item.cveID === ctx.state.kevID, "intel KEV should return the fixture item")
+    }),
+  http.protected
+    .get("/api/intel/news", "v2.intel.news")
+    .seeded(() => seedIntelCache())
+    .at((ctx) => ({ path: "/api/intel/news?page=1&pageSize=1", headers: ctx.headers() }))
+    .json(200, (body, ctx) => {
+      object(body)
+      array(body.items)
+      check(body.total === 1 && body.page === 1, "intel news should return a paged fixture")
+      const item = body.items[0]
+      check(isRecord(item) && item.id === ctx.state.newsID, "intel news should return the fixture item")
+    }),
+  http.protected
+    .get("/api/intel/status", "v2.intel.status")
+    .seeded(() => seedIntelCache())
+    .json(200, (body, ctx) => {
+      object(body)
+      array(body.feeds)
+      check(body.lastPollAt === ctx.state.now, "intel status should expose the fixture poll time")
+      check(body.nextPollAt === ctx.state.now + 6 * 60 * 60 * 1_000, "intel status should calculate the next poll")
+      const feed = body.feeds[0]
+      check(
+        isRecord(feed) && feed.feedID === "httpapi-fixture" && feed.lastOk === true,
+        "intel status should expose feed status",
+      )
+    }),
+  http.protected
+    .get("/api/intel/trends", "v2.intel.trends")
+    .seeded(() => seedIntelCache())
+    .at((ctx) => ({ path: "/api/intel/trends?days=7", headers: ctx.headers() }))
+    .json(200, (body) => {
+      object(body)
+      array(body.points)
+      check(body.windowDays === 7 && body.points.length === 7, "intel trends should honor the requested window")
+      check(
+        body.points.every(
+          (point) => isRecord(point) && typeof point.date === "string" && typeof point.count === "number",
+        ),
+        "intel trends should return dated counts",
+      )
+      check(
+        body.points.reduce<number>(
+          (total, point) => total + (isRecord(point) && typeof point.count === "number" ? point.count : 0),
+          0,
+        ) === 2,
+        "intel trends should count fixture advisories",
+      )
+    }),
+  http.protected
+    .get("/api/intel/feeds", "v2.intel.feeds")
+    .seeded(() => resetIntelFeeds())
+    .json(200, (body) => {
+      array(body)
+      check(stable(body) === stable(DEFAULT_FEEDS), "intel feeds should return the built-in defaults")
+    }),
+  http.protected
+    .patch("/api/intel/feeds/{feedID}", "v2.intel.feedUpdate")
+    .mutating()
+    .seeded(() => resetIntelFeeds())
+    .at((ctx) => ({
+      path: route("/api/intel/feeds/{feedID}", { feedID: "kev" }),
+      headers: ctx.headers(),
+      body: { enabled: false },
+    }))
+    .jsonEffect(200, (body) =>
+      Effect.sync(() => {
+        object(body)
+        check(body.id === "kev" && body.enabled === false, "intel feed update should disable the requested feed")
+      }).pipe(Effect.ensuring(resetIntelFeeds())),
+    ),
+  http.protected
+    .post("/api/intel/feeds", "v2.intel.feedAdd")
+    .mutating()
+    .seeded(() => resetIntelFeeds())
+    .at((ctx) => ({
+      path: "/api/intel/feeds",
+      headers: ctx.headers(),
+      body: { name: "HTTP API Fixture Feed", kind: "rss", url: "https://example.invalid/httpapi-feed.xml" },
+    }))
+    .jsonEffect(200, (body) =>
+      Effect.sync(() => {
+        object(body)
+        check(body.id === "http-api-fixture-feed", "intel feed add should derive a stable id")
+        check(body.kind === "rss" && body.enabled === true, "intel feed add should return the created feed")
+      }).pipe(Effect.ensuring(resetIntelFeeds())),
+    ),
+  http.protected
+    .post("/api/intel/feeds/reset", "v2.intel.feedsReset")
+    .mutating()
+    .seeded(() =>
+      Effect.gen(function* () {
+        yield* resetIntelFeeds()
+        yield* updateFeed("kev", { enabled: false })
+      }).pipe(Effect.orDie),
+    )
+    .at((ctx) => ({ path: "/api/intel/feeds/reset", headers: ctx.headers() }))
+    .jsonEffect(200, (body) =>
+      Effect.sync(() => {
+        array(body)
+        check(stable(body) === stable(DEFAULT_FEEDS), "intel feed reset should restore the built-in defaults")
+      }).pipe(Effect.ensuring(resetIntelFeeds())),
+    ),
+  http.protected
+    .post("/api/intel/poll", "v2.intel.poll")
+    .mutating()
+    .authSetup(
+      () => seedIntelPoll(),
+      () => resetIntelFeeds(),
+    )
+    .seeded(() => seedIntelPoll())
+    .at((ctx) => ({ path: "/api/intel/poll", headers: ctx.headers() }))
+    .jsonEffect(200, (body) =>
+      Effect.sync(() => {
+        object(body)
+        array(body.feeds)
+        check(body.feeds.length === 0, "intel poll should skip every disabled feed without network access")
+        check(body.lastPollAt === undefined && body.nextPollAt === undefined, "empty intel poll should remain stale")
+      }).pipe(Effect.ensuring(resetIntelFeeds())),
+    ),
   http.protected.get("/api/location", "v2.location.get").json(200, object),
   http.protected.get("/api/agent", "v2.agent.list").json(200, locationData(array)),
   http.protected.get("/api/command", "v2.command.list").json(200, locationData(array)),

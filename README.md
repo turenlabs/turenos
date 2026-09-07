@@ -44,11 +44,13 @@ Engineering documentation lives in [docs/](docs/README.md). Start with:
 - [Branding and compatibility](docs/branding.md) — why some `forge` identifiers remain stable.
 - [Secure storage](docs/secure-storage.md) — how credentials are encrypted.
 - [Memory](docs/memory.md) — durable project memory.
+- [Automations](docs/automations.md) — durable in-app workflows with interval/cron schedules,
+  per-step `when`/`onFailure` conditions, and local file-change/session-end event triggers.
 - [Token efficiency](docs/token-efficiency.md) — measured context cost against Claude Code and Codex.
 
 ## Develop
 
-TurenOS pins Bun 1.3.14.
+TurenOS pins Bun 1.4.2.
 
 ```bash
 bun install --frozen-lockfile

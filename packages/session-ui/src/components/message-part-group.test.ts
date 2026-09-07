@@ -32,6 +32,9 @@ test("a long run of reads and routine coordination stays one expandable group wi
     "board_read",
     "board_post",
     "reflection_complete",
+    "spawn_agent",
+    "send_agent",
+    "wait_agents",
   ]
   const parts = Array.from({ length: 700 }, (_, index) => tool(`part-${index}`, names[index % names.length]))
   const groups = groupParts(parts)
@@ -84,6 +87,24 @@ test("shell commands share a counted group with reads and running tools", () => 
     list: 0,
     shell: 2,
     coordination: 0,
+  })
+})
+
+test("agent operations are counted as session activity", () => {
+  const parts = [tool("spawn", "spawn_agent"), tool("send", "send_agent"), tool("wait", "wait_agents")]
+  expect(groupParts(parts)).toEqual([
+    {
+      key: "context:spawn",
+      type: "context",
+      refs: parts.map((item) => ({ messageID: item.messageID, partID: item.part.id })),
+    },
+  ])
+  expect(contextToolSummary(parts.map((item) => item.part))).toEqual({
+    read: 0,
+    search: 0,
+    list: 0,
+    shell: 0,
+    coordination: 3,
   })
 })
 

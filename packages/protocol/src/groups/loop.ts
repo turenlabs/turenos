@@ -12,15 +12,48 @@ export type ID = typeof ID.Type
 export const RunID = Schema.String
 export type RunID = typeof RunID.Type
 
-export const Schedule = Schema.Struct({
-  type: Schema.Literal("interval"),
-  seconds: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(60))),
-  timezone: Schema.String,
-}).annotate({ identifier: "Loop.Schedule" })
+export const Schedule = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("interval"),
+    seconds: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(60))),
+    timezone: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("cron"),
+    seconds: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(60))),
+    expression: Schema.String,
+    timezone: Schema.String,
+  }),
+]).annotate({ identifier: "Loop.Schedule" })
 export type Schedule = typeof Schedule.Type
 
 export const Status = Schema.Literals(["active", "paused", "expired"]).annotate({ identifier: "Loop.Status" })
 export type Status = typeof Status.Type
+
+export const Trigger = Schema.Literals(["scheduled", "manual", "file-change", "session-end"]).annotate({
+  identifier: "Loop.Trigger",
+})
+export type Trigger = typeof Trigger.Type
+
+export const FileChangeTrigger = Schema.Struct({
+  type: Schema.Literal("file-change"),
+  paths: Schema.Array(Schema.String),
+  debounceMs: Schema.optional(Schema.Number),
+}).annotate({ identifier: "Automation.FileChangeTrigger" })
+export type FileChangeTrigger = typeof FileChangeTrigger.Type
+
+export const SessionEndTrigger = Schema.Struct({
+  type: Schema.Literal("session-end"),
+  outcomes: Schema.optional(Schema.Array(Schema.Literals(["success", "failure"]))),
+  sessionID: Schema.optional(Schema.String),
+  agent: Schema.optional(Schema.String),
+}).annotate({ identifier: "Automation.SessionEndTrigger" })
+export type SessionEndTrigger = typeof SessionEndTrigger.Type
+
+export const EventTrigger = Schema.Union([FileChangeTrigger, SessionEndTrigger]).annotate({
+  identifier: "Automation.EventTrigger",
+})
+export type EventTrigger = typeof EventTrigger.Type
 
 /**
  * Per-step execution overrides. Omitted fields inherit the Automation's own agent and
@@ -31,6 +64,11 @@ const stepExecution = {
   model: Schema.optional(Model.Ref),
 }
 
+const stepCondition = {
+  when: Schema.optional(Schema.String),
+  onFailure: Schema.optional(Schema.Literals(["stop", "continue"])),
+}
+
 export const WorkflowStep = Schema.Union([
   Schema.Struct({
     id: Schema.String,
@@ -38,6 +76,7 @@ export const WorkflowStep = Schema.Union([
     type: Schema.Literal("agent"),
     prompt: Schema.String,
     ...stepExecution,
+    ...stepCondition,
   }),
   Schema.Struct({
     id: Schema.String,
@@ -46,6 +85,7 @@ export const WorkflowStep = Schema.Union([
     skill: Schema.String,
     instructions: Schema.String,
     ...stepExecution,
+    ...stepCondition,
   }),
 ]).annotate({ identifier: "Automation.WorkflowStep" })
 export type WorkflowStep = typeof WorkflowStep.Type
@@ -82,11 +122,13 @@ export const CreateInput = Schema.Struct({
   model: Schema.optional(Model.Ref),
   skill: Schema.optional(Schema.String),
   workflow: Schema.optional(Workflow),
-  intervalSeconds: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(60))),
+  intervalSeconds: Schema.optional(Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(60)))),
+  cronExpression: Schema.optional(Schema.String),
   timezone: Schema.optional(Schema.String),
   startsAt: Schema.optional(Schema.Number),
   expiresAt: Schema.optional(Schema.Number),
   paused: Schema.optional(Schema.Boolean),
+  eventTrigger: Schema.optional(EventTrigger),
 }).annotate({ identifier: "Loop.CreateInput" })
 export type CreateInput = typeof CreateInput.Type
 
@@ -94,12 +136,14 @@ export const EditInput = Schema.Struct({
   name: Schema.optional(Schema.String),
   prompt: Schema.optional(Schema.String),
   intervalSeconds: Schema.optional(Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(60)))),
+  cronExpression: Schema.optional(Schema.String),
   timezone: Schema.optional(Schema.String),
   expiresAt: Schema.optional(Schema.Number),
   agent: Schema.optional(Agent.ID),
   model: Schema.optional(Model.Ref),
   skill: Schema.optional(Schema.String),
   workflow: Schema.optional(Workflow),
+  eventTrigger: Schema.optional(EventTrigger),
   resetAgent: Schema.optional(Schema.Boolean),
   resetModel: Schema.optional(Schema.Boolean),
   resetSkill: Schema.optional(Schema.Boolean),
@@ -117,6 +161,7 @@ export const Info = Schema.Struct({
   model: Schema.optional(Model.Ref),
   skill: Schema.optional(Schema.String),
   workflow: Schema.optional(Workflow),
+  eventTrigger: Schema.optional(EventTrigger),
   overlapPolicy: Schema.Literal("skip"),
   startsAt: Schema.Number,
   expiresAt: Schema.Number,
@@ -130,7 +175,10 @@ export const Run = Schema.Struct({
   loopID: ID,
   scheduledAt: Schema.Number,
   status: Schema.Literals(["claimed", "running", "succeeded", "failed", "cancelled", "skipped", "stale"]),
-  trigger: Schema.Literals(["scheduled", "manual"]),
+  trigger: Schema.Literals(["scheduled", "manual", "file-change", "session-end"]),
+  triggerPayload: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  /** Zero-based index of the step currently executing (or attempted); outputs holds completed steps. */
+  currentStep: Schema.Number,
   sessionID: Schema.optional(Schema.String),
   outputs: Schema.Record(Schema.String, StepOutput),
   error: Schema.optional(Schema.String),

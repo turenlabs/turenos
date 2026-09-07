@@ -1077,11 +1077,13 @@ type Endpoint13_0Input = {
   readonly model?: Endpoint13_0Request["payload"]["model"]
   readonly skill?: Endpoint13_0Request["payload"]["skill"]
   readonly workflow?: Endpoint13_0Request["payload"]["workflow"]
-  readonly intervalSeconds: Endpoint13_0Request["payload"]["intervalSeconds"]
+  readonly intervalSeconds?: Endpoint13_0Request["payload"]["intervalSeconds"]
+  readonly cronExpression?: Endpoint13_0Request["payload"]["cronExpression"]
   readonly timezone?: Endpoint13_0Request["payload"]["timezone"]
   readonly startsAt?: Endpoint13_0Request["payload"]["startsAt"]
   readonly expiresAt?: Endpoint13_0Request["payload"]["expiresAt"]
   readonly paused?: Endpoint13_0Request["payload"]["paused"]
+  readonly eventTrigger?: Endpoint13_0Request["payload"]["eventTrigger"]
 }
 const Endpoint13_0 = (raw: RawClient["server.loop"]) => (input: Endpoint13_0Input) =>
   raw["loop.create"]({
@@ -1094,10 +1096,12 @@ const Endpoint13_0 = (raw: RawClient["server.loop"]) => (input: Endpoint13_0Inpu
       skill: input["skill"],
       workflow: input["workflow"],
       intervalSeconds: input["intervalSeconds"],
+      cronExpression: input["cronExpression"],
       timezone: input["timezone"],
       startsAt: input["startsAt"],
       expiresAt: input["expiresAt"],
       paused: input["paused"],
+      eventTrigger: input["eventTrigger"],
     },
   }).pipe(Effect.mapError(mapClientError))
 
@@ -1114,12 +1118,14 @@ type Endpoint13_3Input = {
   readonly name?: Endpoint13_3Request["payload"]["name"]
   readonly prompt?: Endpoint13_3Request["payload"]["prompt"]
   readonly intervalSeconds?: Endpoint13_3Request["payload"]["intervalSeconds"]
+  readonly cronExpression?: Endpoint13_3Request["payload"]["cronExpression"]
   readonly timezone?: Endpoint13_3Request["payload"]["timezone"]
   readonly expiresAt?: Endpoint13_3Request["payload"]["expiresAt"]
   readonly agent?: Endpoint13_3Request["payload"]["agent"]
   readonly model?: Endpoint13_3Request["payload"]["model"]
   readonly skill?: Endpoint13_3Request["payload"]["skill"]
   readonly workflow?: Endpoint13_3Request["payload"]["workflow"]
+  readonly eventTrigger?: Endpoint13_3Request["payload"]["eventTrigger"]
   readonly resetAgent?: Endpoint13_3Request["payload"]["resetAgent"]
   readonly resetModel?: Endpoint13_3Request["payload"]["resetModel"]
   readonly resetSkill?: Endpoint13_3Request["payload"]["resetSkill"]
@@ -1131,12 +1137,14 @@ const Endpoint13_3 = (raw: RawClient["server.loop"]) => (input: Endpoint13_3Inpu
       name: input["name"],
       prompt: input["prompt"],
       intervalSeconds: input["intervalSeconds"],
+      cronExpression: input["cronExpression"],
       timezone: input["timezone"],
       expiresAt: input["expiresAt"],
       agent: input["agent"],
       model: input["model"],
       skill: input["skill"],
       workflow: input["workflow"],
+      eventTrigger: input["eventTrigger"],
       resetAgent: input["resetAgent"],
       resetModel: input["resetModel"],
       resetSkill: input["resetSkill"],
@@ -1202,33 +1210,133 @@ const adaptGroup13 = (raw: RawClient["server.loop"]) => ({
   runCancel: Endpoint13_10(raw),
 })
 
-type Endpoint14_0Request = Parameters<RawClient["server.whiteboard"]["whiteboard.get"]>[0]
-type Endpoint14_0Input = { readonly sessionID: Endpoint14_0Request["params"]["sessionID"] }
-const Endpoint14_0 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint14_0Input) =>
+type Endpoint14_0Request = Parameters<RawClient["server.intel"]["intel.advisories"]>[0]
+type Endpoint14_0Input = {
+  readonly page?: Endpoint14_0Request["query"]["page"]
+  readonly pageSize?: Endpoint14_0Request["query"]["pageSize"]
+  readonly severity?: Endpoint14_0Request["query"]["severity"]
+  readonly search?: Endpoint14_0Request["query"]["search"]
+}
+const Endpoint14_0 = (raw: RawClient["server.intel"]) => (input?: Endpoint14_0Input) =>
+  raw["intel.advisories"]({
+    query: {
+      page: input?.["page"],
+      pageSize: input?.["pageSize"],
+      severity: input?.["severity"],
+      search: input?.["search"],
+    },
+  }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint14_1Request = Parameters<RawClient["server.intel"]["intel.kev"]>[0]
+type Endpoint14_1Input = {
+  readonly page?: Endpoint14_1Request["query"]["page"]
+  readonly pageSize?: Endpoint14_1Request["query"]["pageSize"]
+}
+const Endpoint14_1 = (raw: RawClient["server.intel"]) => (input?: Endpoint14_1Input) =>
+  raw["intel.kev"]({ query: { page: input?.["page"], pageSize: input?.["pageSize"] } }).pipe(
+    Effect.mapError(mapClientError),
+  )
+
+type Endpoint14_2Request = Parameters<RawClient["server.intel"]["intel.news"]>[0]
+type Endpoint14_2Input = {
+  readonly page?: Endpoint14_2Request["query"]["page"]
+  readonly pageSize?: Endpoint14_2Request["query"]["pageSize"]
+}
+const Endpoint14_2 = (raw: RawClient["server.intel"]) => (input?: Endpoint14_2Input) =>
+  raw["intel.news"]({ query: { page: input?.["page"], pageSize: input?.["pageSize"] } }).pipe(
+    Effect.mapError(mapClientError),
+  )
+
+type Endpoint14_3Request = Parameters<RawClient["server.intel"]["intel.trends"]>[0]
+type Endpoint14_3Input = { readonly days?: Endpoint14_3Request["query"]["days"] }
+const Endpoint14_3 = (raw: RawClient["server.intel"]) => (input?: Endpoint14_3Input) =>
+  raw["intel.trends"]({ query: { days: input?.["days"] } }).pipe(Effect.mapError(mapClientError))
+
+const Endpoint14_4 = (raw: RawClient["server.intel"]) => () =>
+  raw["intel.feeds"]({}).pipe(Effect.mapError(mapClientError))
+
+type Endpoint14_5Request = Parameters<RawClient["server.intel"]["intel.feedAdd"]>[0]
+type Endpoint14_5Input = {
+  readonly id?: Endpoint14_5Request["payload"]["id"]
+  readonly name: Endpoint14_5Request["payload"]["name"]
+  readonly kind: Endpoint14_5Request["payload"]["kind"]
+  readonly url: Endpoint14_5Request["payload"]["url"]
+  readonly enabled?: Endpoint14_5Request["payload"]["enabled"]
+}
+const Endpoint14_5 = (raw: RawClient["server.intel"]) => (input: Endpoint14_5Input) =>
+  raw["intel.feedAdd"]({
+    payload: {
+      id: input["id"],
+      name: input["name"],
+      kind: input["kind"],
+      url: input["url"],
+      enabled: input["enabled"],
+    },
+  }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint14_6Request = Parameters<RawClient["server.intel"]["intel.feedUpdate"]>[0]
+type Endpoint14_6Input = {
+  readonly feedID: Endpoint14_6Request["params"]["feedID"]
+  readonly name?: Endpoint14_6Request["payload"]["name"]
+  readonly kind?: Endpoint14_6Request["payload"]["kind"]
+  readonly url?: Endpoint14_6Request["payload"]["url"]
+  readonly enabled?: Endpoint14_6Request["payload"]["enabled"]
+}
+const Endpoint14_6 = (raw: RawClient["server.intel"]) => (input: Endpoint14_6Input) =>
+  raw["intel.feedUpdate"]({
+    params: { feedID: input["feedID"] },
+    payload: { name: input["name"], kind: input["kind"], url: input["url"], enabled: input["enabled"] },
+  }).pipe(Effect.mapError(mapClientError))
+
+const Endpoint14_7 = (raw: RawClient["server.intel"]) => () =>
+  raw["intel.feedsReset"]({}).pipe(Effect.mapError(mapClientError))
+
+const Endpoint14_8 = (raw: RawClient["server.intel"]) => () =>
+  raw["intel.status"]({}).pipe(Effect.mapError(mapClientError))
+
+const Endpoint14_9 = (raw: RawClient["server.intel"]) => () =>
+  raw["intel.poll"]({}).pipe(Effect.mapError(mapClientError))
+
+const adaptGroup14 = (raw: RawClient["server.intel"]) => ({
+  advisories: Endpoint14_0(raw),
+  kev: Endpoint14_1(raw),
+  news: Endpoint14_2(raw),
+  trends: Endpoint14_3(raw),
+  feeds: Endpoint14_4(raw),
+  feedAdd: Endpoint14_5(raw),
+  feedUpdate: Endpoint14_6(raw),
+  feedsReset: Endpoint14_7(raw),
+  status: Endpoint14_8(raw),
+  poll: Endpoint14_9(raw),
+})
+
+type Endpoint15_0Request = Parameters<RawClient["server.whiteboard"]["whiteboard.get"]>[0]
+type Endpoint15_0Input = { readonly sessionID: Endpoint15_0Request["params"]["sessionID"] }
+const Endpoint15_0 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint15_0Input) =>
   raw["whiteboard.get"]({ params: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint14_1Request = Parameters<RawClient["server.whiteboard"]["whiteboard.update"]>[0]
-type Endpoint14_1Input = {
-  readonly sessionID: Endpoint14_1Request["params"]["sessionID"]
-  readonly patch: Endpoint14_1Request["payload"]["patch"]
-  readonly clientID: Endpoint14_1Request["payload"]["clientID"]
-  readonly username: Endpoint14_1Request["payload"]["username"]
+type Endpoint15_1Request = Parameters<RawClient["server.whiteboard"]["whiteboard.update"]>[0]
+type Endpoint15_1Input = {
+  readonly sessionID: Endpoint15_1Request["params"]["sessionID"]
+  readonly patch: Endpoint15_1Request["payload"]["patch"]
+  readonly clientID: Endpoint15_1Request["payload"]["clientID"]
+  readonly username: Endpoint15_1Request["payload"]["username"]
 }
-const Endpoint14_1 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint14_1Input) =>
+const Endpoint15_1 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint15_1Input) =>
   raw["whiteboard.update"]({
     params: { sessionID: input["sessionID"] },
     payload: { patch: input["patch"], clientID: input["clientID"], username: input["username"] },
   }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint14_2Request = Parameters<RawClient["server.whiteboard"]["whiteboard.presence"]>[0]
-type Endpoint14_2Input = {
-  readonly sessionID: Endpoint14_2Request["params"]["sessionID"]
-  readonly clientID: Endpoint14_2Request["payload"]["clientID"]
-  readonly username: Endpoint14_2Request["payload"]["username"]
-  readonly pointer?: Endpoint14_2Request["payload"]["pointer"]
-  readonly selectedElementIds?: Endpoint14_2Request["payload"]["selectedElementIds"]
+type Endpoint15_2Request = Parameters<RawClient["server.whiteboard"]["whiteboard.presence"]>[0]
+type Endpoint15_2Input = {
+  readonly sessionID: Endpoint15_2Request["params"]["sessionID"]
+  readonly clientID: Endpoint15_2Request["payload"]["clientID"]
+  readonly username: Endpoint15_2Request["payload"]["username"]
+  readonly pointer?: Endpoint15_2Request["payload"]["pointer"]
+  readonly selectedElementIds?: Endpoint15_2Request["payload"]["selectedElementIds"]
 }
-const Endpoint14_2 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint14_2Input) =>
+const Endpoint15_2 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint15_2Input) =>
   raw["whiteboard.presence"]({
     params: { sessionID: input["sessionID"] },
     payload: {
@@ -1239,9 +1347,9 @@ const Endpoint14_2 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint14
     },
   }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint14_3Request = Parameters<RawClient["server.whiteboard"]["whiteboard.events"]>[0]
-type Endpoint14_3Input = { readonly sessionID: Endpoint14_3Request["params"]["sessionID"] }
-const Endpoint14_3 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint14_3Input) =>
+type Endpoint15_3Request = Parameters<RawClient["server.whiteboard"]["whiteboard.events"]>[0]
+type Endpoint15_3Input = { readonly sessionID: Endpoint15_3Request["params"]["sessionID"] }
+const Endpoint15_3 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint15_3Input) =>
   Stream.unwrap(
     raw["whiteboard.events"]({ params: { sessionID: input["sessionID"] } }).pipe(
       Effect.mapError(mapClientError),
@@ -1249,11 +1357,11 @@ const Endpoint14_3 = (raw: RawClient["server.whiteboard"]) => (input: Endpoint14
     ),
   )
 
-const adaptGroup14 = (raw: RawClient["server.whiteboard"]) => ({
-  get: Endpoint14_0(raw),
-  update: Endpoint14_1(raw),
-  presence: Endpoint14_2(raw),
-  events: Endpoint14_3(raw),
+const adaptGroup15 = (raw: RawClient["server.whiteboard"]) => ({
+  get: Endpoint15_0(raw),
+  update: Endpoint15_1(raw),
+  presence: Endpoint15_2(raw),
+  events: Endpoint15_3(raw),
 })
 
 const adaptClient = (raw: RawClient) => ({
@@ -1271,7 +1379,8 @@ const adaptClient = (raw: RawClient) => ({
   projectCopies: adaptGroup11(raw["server.projectCopy"]),
   memories: adaptGroup12(raw["server.memory"]),
   loops: adaptGroup13(raw["server.loop"]),
-  "server.whiteboard": adaptGroup14(raw["server.whiteboard"]),
+  "server.intel": adaptGroup14(raw["server.intel"]),
+  "server.whiteboard": adaptGroup15(raw["server.whiteboard"]),
 })
 
 export const make = (options?: { readonly baseUrl?: URL | string }) =>

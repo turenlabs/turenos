@@ -17,6 +17,7 @@ import { LocationGroup } from "./groups/location"
 import { ProjectCopyGroup } from "./groups/project-copy"
 import { MemoryGroup } from "./groups/memory"
 import { LoopGroup } from "./groups/loop"
+import { IntelGroup } from "./groups/intel"
 import { makeWhiteboardGroup } from "./groups/whiteboard"
 
 // Protocol owns middleware placement, while Server injects concrete keys so Core service identities stay downstream.
@@ -46,6 +47,7 @@ const makeApiFromGroup = <
     .add(ProjectCopyGroup.middleware(locationMiddleware))
     .add(MemoryGroup)
     .add(LoopGroup)
+    .add(IntelGroup)
     .add(makeWhiteboardGroup(sessionLocationMiddleware))
     .annotateMerge(
       OpenApi.annotations({

@@ -34,9 +34,11 @@ the reference when prose and code appear together.
 - [Durable subagent workstreams](./subagent-workstreams.md): nonblocking V2 delegation, shared-board
   updates, delivery/recovery semantics, tool availability, and verification.
 - [Automations](./automations.md): durable in-app workflows, reusable blueprints, ordered Agent and
-  Skill steps, and TurenOS delivery.
+  Skill steps, and TurenOS delivery — including interval/cron schedules, per-step `when`/`onFailure`
+  conditions, and local file-change/session-end event triggers.
 - [Automations internals](./automations-internals.md): scheduler, lease model, SQLite persistence,
-  and local HTTP surface behind Automations.
+  and local HTTP surface behind Automations. Event triggers fire via core-local `fireEvent`;
+  there is no `fireEvent` HTTP endpoint.
 - [Memory](./memory.md): durable project memory, native agent tools, SQLite storage, and optional
   local Potion hybrid retrieval.
 - [Shell tool routing](./shell-tool-routing.md): specialized discovery/search/mutation tools and

@@ -114,6 +114,14 @@ export type LoopRunNotFoundError = {
 export const isLoopRunNotFoundError = (value: unknown): value is LoopRunNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "LoopRunNotFoundError"
 
+export type IntelFeedNotFoundError = {
+  readonly _tag: "IntelFeedNotFoundError"
+  readonly feedID: string
+  readonly message: string
+}
+export const isIntelFeedNotFoundError = (value: unknown): value is IntelFeedNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "IntelFeedNotFoundError"
+
 export type WhiteboardNotFoundError = { readonly _tag: "WhiteboardNotFoundError"; readonly sessionID: string }
 export const isWhiteboardNotFoundError = (value: unknown): value is WhiteboardNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "WhiteboardNotFoundError"
@@ -5909,6 +5917,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -5918,15 +5928,33 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["name"]
   readonly prompt: {
     readonly name: string
@@ -5945,6 +5973,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -5954,15 +5984,33 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["prompt"]
   readonly location?: {
     readonly name: string
@@ -5981,6 +6029,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -5990,15 +6040,33 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["location"]
   readonly agent?: {
     readonly name: string
@@ -6017,6 +6085,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6026,15 +6096,33 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["agent"]
   readonly model?: {
     readonly name: string
@@ -6053,6 +6141,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6062,15 +6152,33 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["model"]
   readonly skill?: {
     readonly name: string
@@ -6089,6 +6197,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6098,15 +6208,33 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["skill"]
   readonly workflow?: {
     readonly name: string
@@ -6125,6 +6253,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6134,17 +6264,35 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["workflow"]
-  readonly intervalSeconds: {
+  readonly intervalSeconds?: {
     readonly name: string
     readonly prompt: string
     readonly location?: { readonly directory: string; readonly workspaceID?: string | null } | null
@@ -6161,6 +6309,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6170,16 +6320,90 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["intervalSeconds"]
+  readonly cronExpression?: {
+    readonly name: string
+    readonly prompt: string
+    readonly location?: { readonly directory: string; readonly workspaceID?: string | null } | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly skill?: string | null
+    readonly workflow?: {
+      readonly version: 1
+      readonly steps: ReadonlyArray<
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "agent"
+            readonly prompt: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "skill"
+            readonly skill: string
+            readonly instructions: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+      >
+      readonly delivery: { readonly type: "turen" }
+    } | null
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
+    readonly timezone?: string | null
+    readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
+    readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
+    readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
+  }["cronExpression"]
   readonly timezone?: {
     readonly name: string
     readonly prompt: string
@@ -6197,6 +6421,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6206,15 +6432,33 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["timezone"]
   readonly startsAt?: {
     readonly name: string
@@ -6233,6 +6477,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6242,15 +6488,33 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["startsAt"]
   readonly expiresAt?: {
     readonly name: string
@@ -6269,6 +6533,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6278,15 +6544,33 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["expiresAt"]
   readonly paused?: {
     readonly name: string
@@ -6305,6 +6589,8 @@ export type LoopsCreateInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6314,23 +6600,99 @@ export type LoopsCreateInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
-    readonly intervalSeconds: number
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
   }["paused"]
+  readonly eventTrigger?: {
+    readonly name: string
+    readonly prompt: string
+    readonly location?: { readonly directory: string; readonly workspaceID?: string | null } | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly skill?: string | null
+    readonly workflow?: {
+      readonly version: 1
+      readonly steps: ReadonlyArray<
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "agent"
+            readonly prompt: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "skill"
+            readonly skill: string
+            readonly instructions: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+      >
+      readonly delivery: { readonly type: "turen" }
+    } | null
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
+    readonly timezone?: string | null
+    readonly startsAt?: number | "Infinity" | "-Infinity" | "NaN" | null
+    readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
+    readonly paused?: boolean | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
+  }["eventTrigger"]
 }
 
 export type LoopsCreateOutput = {
   readonly id: string
   readonly name: string
   readonly prompt: string
-  readonly schedule: { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+  readonly schedule:
+    | { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+    | { readonly type: "cron"; readonly seconds: number; readonly expression: string; readonly timezone: string }
   readonly status: "active" | "paused" | "expired"
   readonly location: { readonly directory: string; readonly workspaceID?: string | null }
   readonly agent?: string | null
@@ -6346,6 +6708,8 @@ export type LoopsCreateOutput = {
           readonly prompt: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
       | {
           readonly id: string
@@ -6355,10 +6719,27 @@ export type LoopsCreateOutput = {
           readonly instructions: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
     >
     readonly delivery: { readonly type: "turen" }
   } | null
+  readonly eventTrigger?:
+    | (
+        | {
+            readonly type: "file-change"
+            readonly paths: ReadonlyArray<string>
+            readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+          }
+        | {
+            readonly type: "session-end"
+            readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+            readonly sessionID?: string | null
+            readonly agent?: string | null
+          }
+      )
+    | null
   readonly overlapPolicy: "skip"
   readonly startsAt: number | "Infinity" | "-Infinity" | "NaN"
   readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
@@ -6373,7 +6754,9 @@ export type LoopsListOutput = ReadonlyArray<{
   readonly id: string
   readonly name: string
   readonly prompt: string
-  readonly schedule: { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+  readonly schedule:
+    | { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+    | { readonly type: "cron"; readonly seconds: number; readonly expression: string; readonly timezone: string }
   readonly status: "active" | "paused" | "expired"
   readonly location: { readonly directory: string; readonly workspaceID?: string | null }
   readonly agent?: string | null
@@ -6389,6 +6772,8 @@ export type LoopsListOutput = ReadonlyArray<{
           readonly prompt: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
       | {
           readonly id: string
@@ -6398,10 +6783,27 @@ export type LoopsListOutput = ReadonlyArray<{
           readonly instructions: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
     >
     readonly delivery: { readonly type: "turen" }
   } | null
+  readonly eventTrigger?:
+    | (
+        | {
+            readonly type: "file-change"
+            readonly paths: ReadonlyArray<string>
+            readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+          }
+        | {
+            readonly type: "session-end"
+            readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+            readonly sessionID?: string | null
+            readonly agent?: string | null
+          }
+      )
+    | null
   readonly overlapPolicy: "skip"
   readonly startsAt: number | "Infinity" | "-Infinity" | "NaN"
   readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
@@ -6418,7 +6820,9 @@ export type LoopsGetOutput = {
   readonly id: string
   readonly name: string
   readonly prompt: string
-  readonly schedule: { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+  readonly schedule:
+    | { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+    | { readonly type: "cron"; readonly seconds: number; readonly expression: string; readonly timezone: string }
   readonly status: "active" | "paused" | "expired"
   readonly location: { readonly directory: string; readonly workspaceID?: string | null }
   readonly agent?: string | null
@@ -6434,6 +6838,8 @@ export type LoopsGetOutput = {
           readonly prompt: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
       | {
           readonly id: string
@@ -6443,10 +6849,27 @@ export type LoopsGetOutput = {
           readonly instructions: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
     >
     readonly delivery: { readonly type: "turen" }
   } | null
+  readonly eventTrigger?:
+    | (
+        | {
+            readonly type: "file-change"
+            readonly paths: ReadonlyArray<string>
+            readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+          }
+        | {
+            readonly type: "session-end"
+            readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+            readonly sessionID?: string | null
+            readonly agent?: string | null
+          }
+      )
+    | null
   readonly overlapPolicy: "skip"
   readonly startsAt: number | "Infinity" | "-Infinity" | "NaN"
   readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
@@ -6463,6 +6886,7 @@ export type LoopsEditInput = {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6478,6 +6902,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6487,10 +6913,27 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
@@ -6499,6 +6942,7 @@ export type LoopsEditInput = {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6514,6 +6958,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6523,10 +6969,27 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
@@ -6535,6 +6998,7 @@ export type LoopsEditInput = {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6550,6 +7014,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6559,18 +7025,36 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
   }["intervalSeconds"]
-  readonly timezone?: {
+  readonly cronExpression?: {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6586,6 +7070,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6595,10 +7081,83 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
+    readonly resetAgent?: boolean | null
+    readonly resetModel?: boolean | null
+    readonly resetSkill?: boolean | null
+  }["cronExpression"]
+  readonly timezone?: {
+    readonly name?: string | null
+    readonly prompt?: string | null
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
+    readonly timezone?: string | null
+    readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly skill?: string | null
+    readonly workflow?: {
+      readonly version: 1
+      readonly steps: ReadonlyArray<
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "agent"
+            readonly prompt: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "skill"
+            readonly skill: string
+            readonly instructions: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+      >
+      readonly delivery: { readonly type: "turen" }
+    } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
@@ -6607,6 +7166,7 @@ export type LoopsEditInput = {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6622,6 +7182,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6631,10 +7193,27 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
@@ -6643,6 +7222,7 @@ export type LoopsEditInput = {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6658,6 +7238,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6667,10 +7249,27 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
@@ -6679,6 +7278,7 @@ export type LoopsEditInput = {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6694,6 +7294,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6703,10 +7305,27 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
@@ -6715,6 +7334,7 @@ export type LoopsEditInput = {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6730,6 +7350,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6739,10 +7361,27 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
@@ -6751,6 +7390,7 @@ export type LoopsEditInput = {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6766,6 +7406,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6775,18 +7417,36 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
   }["workflow"]
-  readonly resetAgent?: {
+  readonly eventTrigger?: {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6802,6 +7462,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6811,10 +7473,83 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
+    readonly resetAgent?: boolean | null
+    readonly resetModel?: boolean | null
+    readonly resetSkill?: boolean | null
+  }["eventTrigger"]
+  readonly resetAgent?: {
+    readonly name?: string | null
+    readonly prompt?: string | null
+    readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
+    readonly timezone?: string | null
+    readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly skill?: string | null
+    readonly workflow?: {
+      readonly version: 1
+      readonly steps: ReadonlyArray<
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "agent"
+            readonly prompt: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "skill"
+            readonly skill: string
+            readonly instructions: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+      >
+      readonly delivery: { readonly type: "turen" }
+    } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
@@ -6823,6 +7558,7 @@ export type LoopsEditInput = {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6838,6 +7574,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6847,10 +7585,27 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
@@ -6859,6 +7614,7 @@ export type LoopsEditInput = {
     readonly name?: string | null
     readonly prompt?: string | null
     readonly intervalSeconds?: number | null
+    readonly cronExpression?: string | null
     readonly timezone?: string | null
     readonly expiresAt?: number | "Infinity" | "-Infinity" | "NaN" | null
     readonly agent?: string | null
@@ -6874,6 +7630,8 @@ export type LoopsEditInput = {
             readonly prompt: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
         | {
             readonly id: string
@@ -6883,10 +7641,27 @@ export type LoopsEditInput = {
             readonly instructions: string
             readonly agent?: string | null
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
           }
       >
       readonly delivery: { readonly type: "turen" }
     } | null
+    readonly eventTrigger?:
+      | (
+          | {
+              readonly type: "file-change"
+              readonly paths: ReadonlyArray<string>
+              readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+            }
+          | {
+              readonly type: "session-end"
+              readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+              readonly sessionID?: string | null
+              readonly agent?: string | null
+            }
+        )
+      | null
     readonly resetAgent?: boolean | null
     readonly resetModel?: boolean | null
     readonly resetSkill?: boolean | null
@@ -6897,7 +7672,9 @@ export type LoopsEditOutput = {
   readonly id: string
   readonly name: string
   readonly prompt: string
-  readonly schedule: { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+  readonly schedule:
+    | { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+    | { readonly type: "cron"; readonly seconds: number; readonly expression: string; readonly timezone: string }
   readonly status: "active" | "paused" | "expired"
   readonly location: { readonly directory: string; readonly workspaceID?: string | null }
   readonly agent?: string | null
@@ -6913,6 +7690,8 @@ export type LoopsEditOutput = {
           readonly prompt: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
       | {
           readonly id: string
@@ -6922,10 +7701,27 @@ export type LoopsEditOutput = {
           readonly instructions: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
     >
     readonly delivery: { readonly type: "turen" }
   } | null
+  readonly eventTrigger?:
+    | (
+        | {
+            readonly type: "file-change"
+            readonly paths: ReadonlyArray<string>
+            readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+          }
+        | {
+            readonly type: "session-end"
+            readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+            readonly sessionID?: string | null
+            readonly agent?: string | null
+          }
+      )
+    | null
   readonly overlapPolicy: "skip"
   readonly startsAt: number | "Infinity" | "-Infinity" | "NaN"
   readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
@@ -6942,7 +7738,9 @@ export type LoopsPauseOutput = {
   readonly id: string
   readonly name: string
   readonly prompt: string
-  readonly schedule: { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+  readonly schedule:
+    | { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+    | { readonly type: "cron"; readonly seconds: number; readonly expression: string; readonly timezone: string }
   readonly status: "active" | "paused" | "expired"
   readonly location: { readonly directory: string; readonly workspaceID?: string | null }
   readonly agent?: string | null
@@ -6958,6 +7756,8 @@ export type LoopsPauseOutput = {
           readonly prompt: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
       | {
           readonly id: string
@@ -6967,10 +7767,27 @@ export type LoopsPauseOutput = {
           readonly instructions: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
     >
     readonly delivery: { readonly type: "turen" }
   } | null
+  readonly eventTrigger?:
+    | (
+        | {
+            readonly type: "file-change"
+            readonly paths: ReadonlyArray<string>
+            readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+          }
+        | {
+            readonly type: "session-end"
+            readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+            readonly sessionID?: string | null
+            readonly agent?: string | null
+          }
+      )
+    | null
   readonly overlapPolicy: "skip"
   readonly startsAt: number | "Infinity" | "-Infinity" | "NaN"
   readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
@@ -6987,7 +7804,9 @@ export type LoopsResumeOutput = {
   readonly id: string
   readonly name: string
   readonly prompt: string
-  readonly schedule: { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+  readonly schedule:
+    | { readonly type: "interval"; readonly seconds: number; readonly timezone: string }
+    | { readonly type: "cron"; readonly seconds: number; readonly expression: string; readonly timezone: string }
   readonly status: "active" | "paused" | "expired"
   readonly location: { readonly directory: string; readonly workspaceID?: string | null }
   readonly agent?: string | null
@@ -7003,6 +7822,8 @@ export type LoopsResumeOutput = {
           readonly prompt: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
       | {
           readonly id: string
@@ -7012,10 +7833,27 @@ export type LoopsResumeOutput = {
           readonly instructions: string
           readonly agent?: string | null
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+          readonly when?: string | null
+          readonly onFailure?: "stop" | "continue" | null
         }
     >
     readonly delivery: { readonly type: "turen" }
   } | null
+  readonly eventTrigger?:
+    | (
+        | {
+            readonly type: "file-change"
+            readonly paths: ReadonlyArray<string>
+            readonly debounceMs?: number | "Infinity" | "-Infinity" | "NaN" | null
+          }
+        | {
+            readonly type: "session-end"
+            readonly outcomes?: ReadonlyArray<"success" | "failure"> | null
+            readonly sessionID?: string | null
+            readonly agent?: string | null
+          }
+      )
+    | null
   readonly overlapPolicy: "skip"
   readonly startsAt: number | "Infinity" | "-Infinity" | "NaN"
   readonly expiresAt: number | "Infinity" | "-Infinity" | "NaN"
@@ -7037,7 +7875,9 @@ export type LoopsRunNowOutput = {
   readonly loopID: string
   readonly scheduledAt: number
   readonly status: "claimed" | "running" | "succeeded" | "failed" | "cancelled" | "skipped" | "stale"
-  readonly trigger: "scheduled" | "manual"
+  readonly trigger: "scheduled" | "manual" | "file-change" | "session-end"
+  readonly triggerPayload?: { readonly [x: string]: unknown } | undefined
+  readonly currentStep: number
   readonly sessionID?: string | undefined
   readonly outputs: {
     readonly [x: string]: {
@@ -7065,7 +7905,9 @@ export type LoopsRunListOutput = ReadonlyArray<{
   readonly loopID: string
   readonly scheduledAt: number
   readonly status: "claimed" | "running" | "succeeded" | "failed" | "cancelled" | "skipped" | "stale"
-  readonly trigger: "scheduled" | "manual"
+  readonly trigger: "scheduled" | "manual" | "file-change" | "session-end"
+  readonly triggerPayload?: { readonly [x: string]: unknown } | undefined
+  readonly currentStep: number
   readonly sessionID?: string | undefined
   readonly outputs: {
     readonly [x: string]: {
@@ -7096,7 +7938,9 @@ export type LoopsRunGetOutput = {
   readonly loopID: string
   readonly scheduledAt: number
   readonly status: "claimed" | "running" | "succeeded" | "failed" | "cancelled" | "skipped" | "stale"
-  readonly trigger: "scheduled" | "manual"
+  readonly trigger: "scheduled" | "manual" | "file-change" | "session-end"
+  readonly triggerPayload?: { readonly [x: string]: unknown } | undefined
+  readonly currentStep: number
   readonly sessionID?: string | undefined
   readonly outputs: {
     readonly [x: string]: {
@@ -7127,7 +7971,9 @@ export type LoopsRunCancelOutput = {
   readonly loopID: string
   readonly scheduledAt: number
   readonly status: "claimed" | "running" | "succeeded" | "failed" | "cancelled" | "skipped" | "stale"
-  readonly trigger: "scheduled" | "manual"
+  readonly trigger: "scheduled" | "manual" | "file-change" | "session-end"
+  readonly triggerPayload?: { readonly [x: string]: unknown } | undefined
+  readonly currentStep: number
   readonly sessionID?: string | undefined
   readonly outputs: {
     readonly [x: string]: {
@@ -7146,6 +7992,218 @@ export type LoopsRunCancelOutput = {
     readonly started?: number | undefined
     readonly completed?: number | undefined
   }
+}
+
+export type ServerIntelAdvisoriesInput = {
+  readonly page?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly severity?: ("critical" | "high" | "medium" | "low" | "info") | undefined
+    readonly search?: string | undefined
+  }["page"]
+  readonly pageSize?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly severity?: ("critical" | "high" | "medium" | "low" | "info") | undefined
+    readonly search?: string | undefined
+  }["pageSize"]
+  readonly severity?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly severity?: ("critical" | "high" | "medium" | "low" | "info") | undefined
+    readonly search?: string | undefined
+  }["severity"]
+  readonly search?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly severity?: ("critical" | "high" | "medium" | "low" | "info") | undefined
+    readonly search?: string | undefined
+  }["search"]
+}
+
+export type ServerIntelAdvisoriesOutput = {
+  readonly items: ReadonlyArray<{
+    readonly id: string
+    readonly title: string
+    readonly severity: "critical" | "high" | "medium" | "low" | "info"
+    readonly cvss?: number | undefined
+    readonly publishedAt: number
+    readonly updatedAt: number
+    readonly source: string
+    readonly url?: string | undefined
+    readonly summary?: string | undefined
+  }>
+  readonly total: number
+  readonly page: number
+  readonly pageSize: number
+}
+
+export type ServerIntelKevInput = {
+  readonly page?: { readonly page?: number | undefined; readonly pageSize?: number | undefined }["page"]
+  readonly pageSize?: { readonly page?: number | undefined; readonly pageSize?: number | undefined }["pageSize"]
+}
+
+export type ServerIntelKevOutput = {
+  readonly items: ReadonlyArray<{
+    readonly cveID: string
+    readonly vendor: string
+    readonly product: string
+    readonly name: string
+    readonly dateAdded: number
+    readonly dueDate?: number | undefined
+    readonly url?: string | undefined
+  }>
+  readonly total: number
+  readonly page: number
+  readonly pageSize: number
+}
+
+export type ServerIntelNewsInput = {
+  readonly page?: { readonly page?: number | undefined; readonly pageSize?: number | undefined }["page"]
+  readonly pageSize?: { readonly page?: number | undefined; readonly pageSize?: number | undefined }["pageSize"]
+}
+
+export type ServerIntelNewsOutput = {
+  readonly items: ReadonlyArray<{
+    readonly id: string
+    readonly title: string
+    readonly url: string
+    readonly publishedAt: number
+    readonly source: string
+    readonly summary?: string | undefined
+  }>
+  readonly total: number
+  readonly page: number
+  readonly pageSize: number
+}
+
+export type ServerIntelTrendsInput = { readonly days?: { readonly days?: number | undefined }["days"] }
+
+export type ServerIntelTrendsOutput = {
+  readonly points: ReadonlyArray<{ readonly date: string; readonly count: number }>
+  readonly windowDays: number
+}
+
+export type ServerIntelFeedsOutput = ReadonlyArray<{
+  readonly id: string
+  readonly name: string
+  readonly kind: "kev" | "nvd" | "epss" | "github" | "rss"
+  readonly url: string
+  readonly enabled: boolean
+}>
+
+export type ServerIntelFeedAddInput = {
+  readonly id?: {
+    readonly id?: string | undefined
+    readonly name: string
+    readonly kind: "kev" | "nvd" | "epss" | "github" | "rss"
+    readonly url: string
+    readonly enabled?: boolean | undefined
+  }["id"]
+  readonly name: {
+    readonly id?: string | undefined
+    readonly name: string
+    readonly kind: "kev" | "nvd" | "epss" | "github" | "rss"
+    readonly url: string
+    readonly enabled?: boolean | undefined
+  }["name"]
+  readonly kind: {
+    readonly id?: string | undefined
+    readonly name: string
+    readonly kind: "kev" | "nvd" | "epss" | "github" | "rss"
+    readonly url: string
+    readonly enabled?: boolean | undefined
+  }["kind"]
+  readonly url: {
+    readonly id?: string | undefined
+    readonly name: string
+    readonly kind: "kev" | "nvd" | "epss" | "github" | "rss"
+    readonly url: string
+    readonly enabled?: boolean | undefined
+  }["url"]
+  readonly enabled?: {
+    readonly id?: string | undefined
+    readonly name: string
+    readonly kind: "kev" | "nvd" | "epss" | "github" | "rss"
+    readonly url: string
+    readonly enabled?: boolean | undefined
+  }["enabled"]
+}
+
+export type ServerIntelFeedAddOutput = {
+  readonly id: string
+  readonly name: string
+  readonly kind: "kev" | "nvd" | "epss" | "github" | "rss"
+  readonly url: string
+  readonly enabled: boolean
+}
+
+export type ServerIntelFeedUpdateInput = {
+  readonly feedID: { readonly feedID: string }["feedID"]
+  readonly name?: {
+    readonly name?: string | undefined
+    readonly kind?: ("kev" | "nvd" | "epss" | "github" | "rss") | undefined
+    readonly url?: string | undefined
+    readonly enabled?: boolean | undefined
+  }["name"]
+  readonly kind?: {
+    readonly name?: string | undefined
+    readonly kind?: ("kev" | "nvd" | "epss" | "github" | "rss") | undefined
+    readonly url?: string | undefined
+    readonly enabled?: boolean | undefined
+  }["kind"]
+  readonly url?: {
+    readonly name?: string | undefined
+    readonly kind?: ("kev" | "nvd" | "epss" | "github" | "rss") | undefined
+    readonly url?: string | undefined
+    readonly enabled?: boolean | undefined
+  }["url"]
+  readonly enabled?: {
+    readonly name?: string | undefined
+    readonly kind?: ("kev" | "nvd" | "epss" | "github" | "rss") | undefined
+    readonly url?: string | undefined
+    readonly enabled?: boolean | undefined
+  }["enabled"]
+}
+
+export type ServerIntelFeedUpdateOutput = {
+  readonly id: string
+  readonly name: string
+  readonly kind: "kev" | "nvd" | "epss" | "github" | "rss"
+  readonly url: string
+  readonly enabled: boolean
+}
+
+export type ServerIntelFeedsResetOutput = ReadonlyArray<{
+  readonly id: string
+  readonly name: string
+  readonly kind: "kev" | "nvd" | "epss" | "github" | "rss"
+  readonly url: string
+  readonly enabled: boolean
+}>
+
+export type ServerIntelStatusOutput = {
+  readonly lastPollAt?: number | undefined
+  readonly nextPollAt?: number | undefined
+  readonly feeds: ReadonlyArray<{
+    readonly feedID: string
+    readonly lastPollAt?: number | undefined
+    readonly lastOk?: boolean | undefined
+    readonly lastError?: string | undefined
+    readonly itemCount?: number | undefined
+  }>
+}
+
+export type ServerIntelPollOutput = {
+  readonly lastPollAt?: number | undefined
+  readonly nextPollAt?: number | undefined
+  readonly feeds: ReadonlyArray<{
+    readonly feedID: string
+    readonly lastPollAt?: number | undefined
+    readonly lastOk?: boolean | undefined
+    readonly lastError?: string | undefined
+    readonly itemCount?: number | undefined
+  }>
 }
 
 export type ServerWhiteboardGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }

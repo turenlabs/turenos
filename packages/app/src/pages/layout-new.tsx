@@ -1,5 +1,5 @@
-import { createEffect, type ParentProps } from "solid-js"
-import { useNavigate } from "@solidjs/router"
+import { createEffect, onMount, type ParentProps } from "solid-js"
+import { useLocation, useNavigate } from "@solidjs/router"
 import { AgentsPanel } from "@/components/agents-panel"
 import { AgentsPanelProvider } from "@/components/agents-panel-state"
 import { DebugBar } from "@/components/debug-bar"
@@ -15,7 +15,13 @@ export default function NewLayout(props: ParentProps) {
   const platform = usePlatform()
   const settings = useSettings()
   const navigate = useNavigate()
+  const location = useLocation()
   setNavigate(navigate)
+
+  // Only the initial entry redirects; returning to Agents at "/" stays there.
+  onMount(() => {
+    if (location.pathname === "/" && !location.search && !location.hash) navigate("/home", { replace: true })
+  })
 
   createEffect(() => setV2Toast(true))
 

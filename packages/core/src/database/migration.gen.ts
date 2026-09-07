@@ -97,5 +97,6 @@ export const migrations = (
     import("./migration/20260828141433_session-goal-remove-budget"),
     import("./migration/20260905203821_session-whiteboard"),
     import("./migration/20260906035111_session-context-request"),
+    import("./migration/20260907005826_loop-cron-event-triggers"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

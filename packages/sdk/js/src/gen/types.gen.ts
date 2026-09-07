@@ -3459,6 +3459,12 @@ export type LoopRunNotFoundError = {
   message: string
 }
 
+export type IntelFeedNotFoundError = {
+  _tag: "IntelFeedNotFoundError"
+  feedID: string
+  message: string
+}
+
 export type WhiteboardNotFoundError = {
   _tag: "WhiteboardNotFoundError"
   sessionID: string
@@ -7960,6 +7966,8 @@ export type AutomationWorkflowStep =
       prompt: string
       agent?: string
       model?: ModelRef
+      when?: string
+      onFailure?: "stop" | "continue"
     }
   | {
       id: string
@@ -7969,6 +7977,8 @@ export type AutomationWorkflowStep =
       instructions: string
       agent?: string
       model?: ModelRef
+      when?: string
+      onFailure?: "stop" | "continue"
     }
 
 export type AutomationWorkflow = {
@@ -7978,6 +7988,21 @@ export type AutomationWorkflow = {
     type: "turen"
   }
 }
+
+export type AutomationFileChangeTrigger = {
+  type: "file-change"
+  paths: Array<string>
+  debounceMs?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type AutomationSessionEndTrigger = {
+  type: "session-end"
+  outcomes?: Array<"success" | "failure">
+  sessionID?: string
+  agent?: string
+}
+
+export type AutomationEventTrigger = AutomationFileChangeTrigger | AutomationSessionEndTrigger
 
 export type LoopCreateInput = {
   name: string
@@ -7990,18 +8015,27 @@ export type LoopCreateInput = {
   model?: ModelRef
   skill?: string
   workflow?: AutomationWorkflow
-  intervalSeconds: number
+  intervalSeconds?: number
+  cronExpression?: string
   timezone?: string
   startsAt?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   expiresAt?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   paused?: boolean
+  eventTrigger?: AutomationEventTrigger
 }
 
-export type LoopSchedule = {
-  type: "interval"
-  seconds: number
-  timezone: string
-}
+export type LoopSchedule =
+  | {
+      type: "interval"
+      seconds: number
+      timezone: string
+    }
+  | {
+      type: "cron"
+      seconds: number
+      expression: string
+      timezone: string
+    }
 
 export type LoopStatus = "active" | "paused" | "expired"
 
@@ -8019,6 +8053,7 @@ export type LoopInfo = {
   model?: ModelRef
   skill?: string
   workflow?: AutomationWorkflow
+  eventTrigger?: AutomationEventTrigger
   overlapPolicy: "skip"
   startsAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   expiresAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
@@ -8033,12 +8068,14 @@ export type LoopEditInput = {
   name?: string
   prompt?: string
   intervalSeconds?: number
+  cronExpression?: string
   timezone?: string
   expiresAt?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   agent?: string
   model?: ModelRef
   skill?: string
   workflow?: AutomationWorkflow
+  eventTrigger?: AutomationEventTrigger
   resetAgent?: boolean
   resetModel?: boolean
   resetSkill?: boolean
@@ -8067,7 +8104,11 @@ export type LoopRun = {
   loopID: string
   scheduledAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   status: "claimed" | "running" | "succeeded" | "failed" | "cancelled" | "skipped" | "stale"
-  trigger: "scheduled" | "manual"
+  trigger: "scheduled" | "manual" | "file-change" | "session-end"
+  triggerPayload?: {
+    [key: string]: unknown
+  }
+  currentStep: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   sessionID?: string
   outputs: {
     [key: string]: AutomationStepOutput
@@ -8079,6 +8120,109 @@ export type LoopRun = {
     started?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
     completed?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   }
+}
+
+export type IntelSeverity = "critical" | "high" | "medium" | "low" | "info"
+
+export type IntelAdvisory = {
+  id: string
+  title: string
+  severity: IntelSeverity
+  cvss?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  publishedAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  updatedAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  source: string
+  url?: string
+  summary?: string
+}
+
+export type IntelAdvisoriesPage = {
+  items: Array<IntelAdvisory>
+  total: number
+  page: number
+  pageSize: number
+}
+
+export type IntelKevItem = {
+  cveID: string
+  vendor: string
+  product: string
+  name: string
+  dateAdded: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  dueDate?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  url?: string
+}
+
+export type IntelKevPage = {
+  items: Array<IntelKevItem>
+  total: number
+  page: number
+  pageSize: number
+}
+
+export type IntelNewsItem = {
+  id: string
+  title: string
+  url: string
+  publishedAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  source: string
+  summary?: string
+}
+
+export type IntelNewsPage = {
+  items: Array<IntelNewsItem>
+  total: number
+  page: number
+  pageSize: number
+}
+
+export type IntelTrendPoint = {
+  date: string
+  count: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type IntelTrendsResponse = {
+  points: Array<IntelTrendPoint>
+  windowDays: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type IntelFeedKind = "kev" | "nvd" | "epss" | "github" | "rss"
+
+export type IntelFeed = {
+  id: string
+  name: string
+  kind: IntelFeedKind
+  url: string
+  enabled: boolean
+}
+
+export type IntelFeedCreate = {
+  id?: string
+  name: string
+  kind: IntelFeedKind
+  url: string
+  enabled?: boolean
+}
+
+export type IntelFeedUpdate = {
+  name?: string
+  kind?: IntelFeedKind
+  url?: string
+  enabled?: boolean
+}
+
+export type IntelFeedStatus = {
+  feedID: string
+  lastPollAt?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  lastOk?: boolean
+  lastError?: string
+  itemCount?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type IntelStatusResponse = {
+  lastPollAt?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  nextPollAt?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  feeds: Array<IntelFeedStatus>
 }
 
 export type WhiteboardElement = {
@@ -17249,6 +17393,319 @@ export type V2LoopRunCancelResponses = {
 }
 
 export type V2LoopRunCancelResponse = V2LoopRunCancelResponses[keyof V2LoopRunCancelResponses]
+
+export type V2IntelAdvisoriesData = {
+  body?: never
+  path?: never
+  query?: {
+    page?: string
+    pageSize?: string
+    severity?: IntelSeverity
+    search?: string
+  }
+  url: "/api/intel/advisories"
+}
+
+export type V2IntelAdvisoriesErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2IntelAdvisoriesError = V2IntelAdvisoriesErrors[keyof V2IntelAdvisoriesErrors]
+
+export type V2IntelAdvisoriesResponses = {
+  /**
+   * Intel.AdvisoriesPage
+   */
+  200: IntelAdvisoriesPage
+}
+
+export type V2IntelAdvisoriesResponse = V2IntelAdvisoriesResponses[keyof V2IntelAdvisoriesResponses]
+
+export type V2IntelKevData = {
+  body?: never
+  path?: never
+  query?: {
+    page?: string
+    pageSize?: string
+  }
+  url: "/api/intel/kev"
+}
+
+export type V2IntelKevErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2IntelKevError = V2IntelKevErrors[keyof V2IntelKevErrors]
+
+export type V2IntelKevResponses = {
+  /**
+   * Intel.KevPage
+   */
+  200: IntelKevPage
+}
+
+export type V2IntelKevResponse = V2IntelKevResponses[keyof V2IntelKevResponses]
+
+export type V2IntelNewsData = {
+  body?: never
+  path?: never
+  query?: {
+    page?: string
+    pageSize?: string
+  }
+  url: "/api/intel/news"
+}
+
+export type V2IntelNewsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2IntelNewsError = V2IntelNewsErrors[keyof V2IntelNewsErrors]
+
+export type V2IntelNewsResponses = {
+  /**
+   * Intel.NewsPage
+   */
+  200: IntelNewsPage
+}
+
+export type V2IntelNewsResponse = V2IntelNewsResponses[keyof V2IntelNewsResponses]
+
+export type V2IntelTrendsData = {
+  body?: never
+  path?: never
+  query?: {
+    days?: string
+  }
+  url: "/api/intel/trends"
+}
+
+export type V2IntelTrendsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2IntelTrendsError = V2IntelTrendsErrors[keyof V2IntelTrendsErrors]
+
+export type V2IntelTrendsResponses = {
+  /**
+   * Intel.TrendsResponse
+   */
+  200: IntelTrendsResponse
+}
+
+export type V2IntelTrendsResponse = V2IntelTrendsResponses[keyof V2IntelTrendsResponses]
+
+export type V2IntelFeedsData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/intel/feeds"
+}
+
+export type V2IntelFeedsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2IntelFeedsError = V2IntelFeedsErrors[keyof V2IntelFeedsErrors]
+
+export type V2IntelFeedsResponses = {
+  /**
+   * Success
+   */
+  200: Array<IntelFeed>
+}
+
+export type V2IntelFeedsResponse = V2IntelFeedsResponses[keyof V2IntelFeedsResponses]
+
+export type V2IntelFeedAddData = {
+  body: IntelFeedCreate
+  path?: never
+  query?: never
+  url: "/api/intel/feeds"
+}
+
+export type V2IntelFeedAddErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2IntelFeedAddError = V2IntelFeedAddErrors[keyof V2IntelFeedAddErrors]
+
+export type V2IntelFeedAddResponses = {
+  /**
+   * Intel.Feed
+   */
+  200: IntelFeed
+}
+
+export type V2IntelFeedAddResponse = V2IntelFeedAddResponses[keyof V2IntelFeedAddResponses]
+
+export type V2IntelFeedUpdateData = {
+  body: IntelFeedUpdate
+  path: {
+    feedID: string
+  }
+  query?: never
+  url: "/api/intel/feeds/{feedID}"
+}
+
+export type V2IntelFeedUpdateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * IntelFeedNotFoundError
+   */
+  404: IntelFeedNotFoundError
+}
+
+export type V2IntelFeedUpdateError = V2IntelFeedUpdateErrors[keyof V2IntelFeedUpdateErrors]
+
+export type V2IntelFeedUpdateResponses = {
+  /**
+   * Intel.Feed
+   */
+  200: IntelFeed
+}
+
+export type V2IntelFeedUpdateResponse = V2IntelFeedUpdateResponses[keyof V2IntelFeedUpdateResponses]
+
+export type V2IntelFeedsResetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/intel/feeds/reset"
+}
+
+export type V2IntelFeedsResetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2IntelFeedsResetError = V2IntelFeedsResetErrors[keyof V2IntelFeedsResetErrors]
+
+export type V2IntelFeedsResetResponses = {
+  /**
+   * Success
+   */
+  200: Array<IntelFeed>
+}
+
+export type V2IntelFeedsResetResponse = V2IntelFeedsResetResponses[keyof V2IntelFeedsResetResponses]
+
+export type V2IntelStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/intel/status"
+}
+
+export type V2IntelStatusErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2IntelStatusError = V2IntelStatusErrors[keyof V2IntelStatusErrors]
+
+export type V2IntelStatusResponses = {
+  /**
+   * Intel.StatusResponse
+   */
+  200: IntelStatusResponse
+}
+
+export type V2IntelStatusResponse = V2IntelStatusResponses[keyof V2IntelStatusResponses]
+
+export type V2IntelPollData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/intel/poll"
+}
+
+export type V2IntelPollErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2IntelPollError = V2IntelPollErrors[keyof V2IntelPollErrors]
+
+export type V2IntelPollResponses = {
+  /**
+   * Intel.StatusResponse
+   */
+  200: IntelStatusResponse
+}
+
+export type V2IntelPollResponse = V2IntelPollResponses[keyof V2IntelPollResponses]
 
 export type V2WhiteboardGetData = {
   body?: never
