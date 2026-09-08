@@ -4,6 +4,15 @@
 - The default branch in this repo is `dev`.
 - Local `main` ref may not exist; use `dev` or `origin/dev` for diffs.
 
+## Releases
+
+- Use the committed orchestration in `docs/release-automation.md`. Do not recreate manual artifact-copy or public-mirror procedures from old session notes.
+- Prepare and merge the version change with normal CI first. From clean, synchronized `dev`, run `./script/release <version>`; GitHub Actions builds/signs privately, verifies and publishes the public release, then updates Homebrew.
+- If the private release already exists, use `./script/release <version> --publish-existing`. Never rebuild/re-sign a published version or overwrite published assets.
+- Keep build/signing credentials in `turenio/turen`. `PUBLIC_RELEASE_TOKEN` is a dedicated fine-grained token for `turenlabs/turenos` and `turenlabs/homebrew-turenos`; never upload a developer's general-purpose local login token.
+- Preserve the pinned signing identity, exact six source exclusions, public-only Git ancestry, non-force pushes, draft verification, and downgrade/concurrency guards.
+- A release is complete only after the workflow's public release, anonymous update-feed checks, and Homebrew verification succeed. Prefer quiet periodic status checks over streaming workflow logs.
+
 ## Branch Names
 
 Use a short branch name of at most three words, separated by hyphens. Do not use slashes or type prefixes such as `feat/` or `fix/`.

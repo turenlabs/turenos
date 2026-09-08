@@ -345,6 +345,29 @@ describe("persist localStorage resilience", () => {
     expect(storage.getItem(`${target.storage}:${target.key}`)).toBe('{"rooms":{"room_1":{"status":"ready"}}}')
   })
 
+  test("sanitizes values before writing them to durable storage", async () => {
+    const target = {
+      ...Persist.global("prompt"),
+      sanitize: (value: unknown) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return value
+        const prompt = (value as { prompt?: unknown }).prompt
+        if (!Array.isArray(prompt)) return value
+        return { ...value, prompt: prompt.filter((part) => (part as { type?: string }).type !== "image") }
+      },
+    }
+
+    await writePersisted(target, undefined, {
+      prompt: [
+        { type: "text", content: "look", start: 0, end: 4 },
+        { type: "image", dataUrl: `data:image/png;base64,${"A".repeat(1024)}` },
+      ],
+    })
+
+    expect(storage.getItem(`${target.storage}:${target.key}`)).toBe(
+      '{"prompt":[{"type":"text","content":"look","start":0,"end":4}]}',
+    )
+  })
+
   test("rejects when the storage backend cannot retain the value", async () => {
     const target = Persist.global("lobby-agents")
     const platform = {

@@ -1,0 +1,191 @@
+{
+  "version": "1.0.11",
+  "commit": "eac7dbe7a9919592f2399c1f4515906b8ef6845c",
+  "assets": [
+    {
+      "name": "RELEASE_SIGNING_KEY.asc",
+      "size": 461,
+      "sha256": "2560ffcc04cf16e3d77bc4cb1d53bc428da7515a8dec4b76e9da12e7f65736a5"
+    },
+    {
+      "name": "forge-darwin-arm64.zip",
+      "size": 71391935,
+      "sha256": "7c70899404e393eb8e8eb4dbf55188f356f383e2447dbb0f776a30681f84b367"
+    },
+    {
+      "name": "forge-darwin-x64-baseline.zip",
+      "size": 72416875,
+      "sha256": "680963038eb493990d61cb3c7de22bebd19a4903a8e6ab1330f317cbf225744d"
+    },
+    {
+      "name": "forge-darwin-x64.zip",
+      "size": 72416868,
+      "sha256": "db729fa5b8943d96a282c090d31e1b9f3ea8e2598a59be6d24929d25bc22954d"
+    },
+    {
+      "name": "forge-linux-arm64-musl.tar.gz",
+      "size": 77917590,
+      "sha256": "7b162200c75c6563b38090864870dcba0a553fccb5a820b28fe9924b3c726bec"
+    },
+    {
+      "name": "forge-linux-arm64.tar.gz",
+      "size": 78928413,
+      "sha256": "0c2bb73b01c205dc6d8dedfeed10548fbbdb70ff02793bea99fe197cf7955cb6"
+    },
+    {
+      "name": "forge-linux-x64-baseline-musl.tar.gz",
+      "size": 79643020,
+      "sha256": "83dc24f95ba5e6cc69231bcebc8e2577fa848d81a5ba18b7acbd40bdfb84ed6b"
+    },
+    {
+      "name": "forge-linux-x64-baseline.tar.gz",
+      "size": 80417495,
+      "sha256": "4e443896565f97bb5da68ce8518a322b01a0bc61782be6d73821546761e4bba8"
+    },
+    {
+      "name": "forge-linux-x64-musl.tar.gz",
+      "size": 79643205,
+      "sha256": "48e8b8d78d867b815c6c13288059b7fa870b3063fb678b9d6f374f4fd19a14b5"
+    },
+    {
+      "name": "forge-linux-x64.tar.gz",
+      "size": 80419376,
+      "sha256": "34003abb44af232530579b614e0e84533c476959fa052afe7a8d9eccd4d65af5"
+    },
+    {
+      "name": "forge-windows-arm64.zip",
+      "size": 79276997,
+      "sha256": "28ffc06fe2d069dba3495ad53e9c635d54868ec4ab4fc728b2d7a8258bbfb8a7"
+    },
+    {
+      "name": "forge-windows-x64-baseline.zip",
+      "size": 83169008,
+      "sha256": "1646bf3e44f224893191f32cbbfd7460a086fbec13a4f6f8334aef8d86f555b6"
+    },
+    {
+      "name": "forge-windows-x64.zip",
+      "size": 83169016,
+      "sha256": "3c5b3fa906c0296759a21c709033d91dcd8a9bfe8ffed77168fba0eab0e5a559"
+    },
+    {
+      "name": "latest-arm64-linux-arm64.yml",
+      "size": 719,
+      "sha256": "58d66a5fd9ddacb25e1e6c38f0af46bcc35faef9f546c78f5ecbc85374d60a52"
+    },
+    {
+      "name": "latest-arm64-mac.yml",
+      "size": 516,
+      "sha256": "bd3a7e0cdc7ff185c0e65a2e79e85815a8bb1f2f01fdffc93897434337c04b7f"
+    },
+    {
+      "name": "latest-arm64.yml",
+      "size": 356,
+      "sha256": "4e4dd45513c2d39b73f1454a661549d8212cb2197659094272969f906c660763"
+    },
+    {
+      "name": "latest-x64-linux.yml",
+      "size": 711,
+      "sha256": "e68063e6809cbbccd560e5e28811004f49e47767269450c7918decf418c7084d"
+    },
+    {
+      "name": "latest-x64-mac.yml",
+      "size": 510,
+      "sha256": "0a88c3f30e2f68fe7ecc7b90f0a29221cd07442ce79e40ebd0a384fb36a1161c"
+    },
+    {
+      "name": "latest-x64.yml",
+      "size": 352,
+      "sha256": "5e6cf132c5c3e98e164b7526cb74268b4186dcbcfeb867a006fc154db47e1bc5"
+    },
+    {
+      "name": "turenos-desktop-linux-arm64.AppImage",
+      "size": 290313231,
+      "sha256": "ae2db3c34ed2bd4d9c6bd597089e8c4fefb28ed1e05f33308901bf91b62913dd"
+    },
+    {
+      "name": "turenos-desktop-linux-arm64.deb",
+      "size": 222645700,
+      "sha256": "b7b791a8c85a0b80dcff3084a3461c37ae834a3ad4a9f2a6f2a39dfc78b094a3"
+    },
+    {
+      "name": "turenos-desktop-linux-arm64.rpm",
+      "size": 197852761,
+      "sha256": "8ff7fc1e19ec89f34abbfe955b65216bac0d64c2b2134d68fcd99828bfef782d"
+    },
+    {
+      "name": "turenos-desktop-linux-x64.AppImage",
+      "size": 290390523,
+      "sha256": "6a5b42b4054164ab6b9c73f80523a2cbb3366270858f694f12f558febfbb0f9d"
+    },
+    {
+      "name": "turenos-desktop-linux-x64.deb",
+      "size": 230977100,
+      "sha256": "6307241ae8abd4e4ca0987bfcf24fc8d3624609ed219e7e34f6c705eb383adc6"
+    },
+    {
+      "name": "turenos-desktop-linux-x64.rpm",
+      "size": 205810621,
+      "sha256": "cd2c0bb8305aacc38d63f221df037486df202709e14d20d6b266a3e28850124d"
+    },
+    {
+      "name": "turenos-desktop-mac-arm64.dmg",
+      "size": 273997364,
+      "sha256": "fce634493bb7499df4f687833cb14b62945ef332a0cec2dad83182d59e599430"
+    },
+    {
+      "name": "turenos-desktop-mac-arm64.dmg.blockmap",
+      "size": 284516,
+      "sha256": "2abe618feb9fa6df99d341ccd27f9bb1816939641b442291428a53b292e14ff1"
+    },
+    {
+      "name": "turenos-desktop-mac-arm64.zip",
+      "size": 271947429,
+      "sha256": "80a45b6de835f76dccc83679413f552ccd41c14151af110821bad4c4750f659b"
+    },
+    {
+      "name": "turenos-desktop-mac-arm64.zip.blockmap",
+      "size": 287487,
+      "sha256": "0b27cf95a1b620daedcac632b4f873b5347b792c949cac8fe7ef81e1480227b5"
+    },
+    {
+      "name": "turenos-desktop-mac-x64.dmg",
+      "size": 280803968,
+      "sha256": "2f357990aa36c467421428da596437c8196b30e58028ec6825a78730e99c8551"
+    },
+    {
+      "name": "turenos-desktop-mac-x64.dmg.blockmap",
+      "size": 292219,
+      "sha256": "564dcb5f89a21d5d50e5c0dfe1b737180b6dfc1803b89848115072fa352c3c4a"
+    },
+    {
+      "name": "turenos-desktop-mac-x64.zip",
+      "size": 278868569,
+      "sha256": "c190d46cc3ea8387d5b50db4f3ead9f17d54090f447f716f479b367b53d23d95"
+    },
+    {
+      "name": "turenos-desktop-mac-x64.zip.blockmap",
+      "size": 291747,
+      "sha256": "5a41ddf680103abdfe32d307e8d93784cf051b691e3b608b1dcd9bde877e93f9"
+    },
+    {
+      "name": "turenos-desktop-win-arm64.exe",
+      "size": 223003440,
+      "sha256": "4983426821fbe8a52e7d1540ac86d3808d7a8c945231821b28c0aac9078c0000"
+    },
+    {
+      "name": "turenos-desktop-win-arm64.exe.blockmap",
+      "size": 234858,
+      "sha256": "60147d986b4b59b52ac950285577fa00f99f33e7db64c5af944565133538eb00"
+    },
+    {
+      "name": "turenos-desktop-win-x64.exe",
+      "size": 234467848,
+      "sha256": "19a972ff240d854f7517014f903d34e761a52844843f79fe9cae7618770e5b92"
+    },
+    {
+      "name": "turenos-desktop-win-x64.exe.blockmap",
+      "size": 245542,
+      "sha256": "0bf08ce5d01c41d06b8cb4c90c57e0a0a1bc06226a90bb1eefa6033e93048944"
+    }
+  ]
+}

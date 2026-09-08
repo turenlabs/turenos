@@ -20,5 +20,6 @@ in the source tree and licenses/Thinking-Orbs-MIT.txt in TurenOS Desktop.
 
 Exact third-party runtime package versions, declared licenses, source locations,
 and installed license texts are distributed in licenses/THIRD_PARTY_NOTICES.txt
-and licenses/THIRD_PARTY_LICENSES.json. These files are regenerated from the
-runtime dependency closure before every Desktop build.
+and licenses/THIRD_PARTY_LICENSES.json. The human-readable index is available
+in Third-Party-Notices.md in the source repository. These files are regenerated
+from the runtime dependency closure before every Desktop build.

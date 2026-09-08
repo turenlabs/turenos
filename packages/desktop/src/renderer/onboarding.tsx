@@ -1,5 +1,13 @@
-import { ServerConnection, useProviders, useServer, useSettings, useSettingsDialog, useTabs } from "@turenlabs/app"
+import {
+  ServerConnection,
+  useProviders,
+  useServer,
+  useSettings,
+  useSettingsDialog,
+  useTabs,
+} from "@turenlabs/app"
 import { Button } from "@turenlabs/ui/button"
+import { Mark } from "@turenlabs/ui/logo"
 import { createMemo, createSignal, For, onMount, Show } from "solid-js"
 import { t } from "./i18n"
 import { selectedOnboardingDirectory, shouldShowFirstLaunchOnboarding } from "./onboarding-model"
@@ -38,14 +46,13 @@ export function DesktopFirstLaunchOnboarding(props: { initialUrl: string }) {
         servers: server.list.map(ServerConnection.key),
       })
 
-      setVisible(
-        shouldShowFirstLaunchOnboarding({
-          pending,
-          local: server.isLocal(),
-          initialUrl: props.initialUrl,
-          tabs: tabs.store.length,
-        }),
-      )
+      const shouldShow = shouldShowFirstLaunchOnboarding({
+        pending,
+        local: server.isLocal(),
+        initialUrl: props.initialUrl,
+        tabs: tabs.store.length,
+      })
+      setVisible(shouldShow)
     } catch (error) {
       console.error("[desktop-onboarding] first launch onboarding failed", error)
     }
@@ -86,8 +93,11 @@ export function DesktopFirstLaunchOnboarding(props: { initialUrl: string }) {
       <div class="desktop-onboarding" role="dialog" aria-modal="true" aria-labelledby="desktop-onboarding-title">
         <div class="desktop-onboarding-card">
           <aside class="desktop-onboarding-rail">
-            <div class="desktop-onboarding-mark">T</div>
-            <div class="desktop-onboarding-brand">TurenOS</div>
+            <div class="desktop-onboarding-brand">
+              <Mark class="desktop-onboarding-mark" />
+              <span>TurenOS</span>
+            </div>
+            <div class="desktop-onboarding-rail-label">{t("desktop.onboarding.rail.label")}</div>
             <div class="desktop-onboarding-progress">
               <For each={steps}>
                 {(item, index) => (
@@ -104,18 +114,34 @@ export function DesktopFirstLaunchOnboarding(props: { initialUrl: string }) {
                 )}
               </For>
             </div>
-            <p>{t("desktop.onboarding.local")}</p>
+            <div class="desktop-onboarding-rail-footer">
+              <p>
+                <span class="desktop-onboarding-live-dot" />
+                {t("desktop.onboarding.local")}
+              </p>
+              <a class="desktop-onboarding-docs external-link" href="https://docs.turen.io/">
+                {t("desktop.onboarding.docs")}
+                <span class="desktop-onboarding-docs-icon" aria-hidden="true">
+                  ↗
+                </span>
+              </a>
+            </div>
           </aside>
 
           <main class="desktop-onboarding-content">
             <div class="desktop-onboarding-counter">
-              {stepIndex() + 1} / {steps.length}
+              <span>SETUP</span> {String(stepIndex() + 1).padStart(2, "0")} / {String(steps.length).padStart(2, "0")}
             </div>
             <Show when={step() === "welcome"}>
               <section>
                 <span class="desktop-onboarding-kicker">{t("desktop.onboarding.welcome.kicker")}</span>
                 <h1 id="desktop-onboarding-title">{t("desktop.onboarding.welcome.title")}</h1>
                 <p>{t("desktop.onboarding.welcome.body")}</p>
+                <div class="desktop-onboarding-signal-row">
+                  <span>REPOSITORIES</span>
+                  <span>THREAT INTELLIGENCE</span>
+                  <span>EVIDENCE</span>
+                </div>
                 <div class="desktop-onboarding-preview">
                   <span>01</span>
                   <div>

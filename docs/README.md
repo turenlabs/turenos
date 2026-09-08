@@ -29,6 +29,8 @@ the reference when prose and code appear together.
   OS-protected Secret Vault.
 - [Release signing](./release-signing.md): native platform signatures, certificate handoff, and
   detached release verification.
+- [Automated releases](./release-automation.md): one-dispatch private builds, verified public
+  publication, Homebrew updates, credentials, and recovery without rebuilding.
 - [Quality gate](./quality-gate/README.md): TurenOS quality-gate architecture and operation.
 - [In-agent code review](./agent-review.md): intent-aware worker checks, risk-ranked adversarial
   review, authority boundaries, and research limits.

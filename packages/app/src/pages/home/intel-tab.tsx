@@ -25,6 +25,7 @@ import {
 type IntelPane = "board" | "kev" | "news"
 
 const PAGE_SIZE = 20
+const initialIntelPolls = new Set<string>()
 
 /**
  * Intel feed for Home: a zero-config security digest (Board/KEV/News)
@@ -137,6 +138,21 @@ function IntelContent(props: { connection: ServerConnection.Any }) {
     return api()
   }
 
+  function loadPanes(client: IntelApi, ticket: number) {
+    void loadStatus(client, ticket)
+    void Promise.all((['board', 'kev', 'news'] as const).map((target) => loadPane(client, ticket, target)))
+  }
+
+  async function loadInitial(client: IntelApi, ticket: number) {
+    try {
+      await client.poll()
+    } catch {
+      // Keep the cached snapshot usable when a source is temporarily unavailable.
+    }
+    if (!mounted.value || ticket !== version) return
+    loadPanes(client, ticket)
+  }
+
   function refresh() {
     const client = current()
     if (!client) return
@@ -172,8 +188,13 @@ function IntelContent(props: { connection: ServerConnection.Any }) {
         setApi(client)
         version += 1
         const ticket = version
-        void loadStatus(client, ticket)
-        void loadBoard(client, ticket)
+        const serverKey = ServerConnection.key(props.connection)
+        if (initialIntelPolls.has(serverKey)) {
+          loadPanes(client, ticket)
+          return
+        }
+        initialIntelPolls.add(serverKey)
+        void loadInitial(client, ticket)
       })
       .catch((startupError) => {
         // A stale connect racing a newer one must not clobber its client.

@@ -2333,7 +2333,7 @@ it.instance(
   }),
 )
 
-it.effect("opencode only loads once a credential is configured", () =>
+it.effect("retired opencode stays hidden while opencode-go loads with a credential", () =>
   Effect.gen(function* () {
     const noneDir = yield* tmpdirScoped()
     const keyedDir = yield* tmpdirScoped({
@@ -2355,9 +2355,7 @@ it.effect("opencode only loads once a credential is configured", () =>
     const keyed = yield* listIn(keyedDir)
 
     expect(none[ProviderV2.ID.opencode]).toBeUndefined()
-    const item = keyed[ProviderV2.ID.opencode]
-    expect(item).toBeDefined()
-    expect(Object.values(item.models).filter((model) => model.cost.input > 0).length).toBeGreaterThan(0)
+    expect(keyed[ProviderV2.ID.opencode]).toBeUndefined()
     // OpenCode Go is a catalog provider like any other: absent without a key, offered with one.
     expect(none[ProviderV2.ID.make("opencode-go")]).toBeUndefined()
     expect(keyed[ProviderV2.ID.make("opencode-go")]).toBeDefined()

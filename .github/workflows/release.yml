@@ -8,6 +8,11 @@ on:
         description: Exact version from the root VERSION file, without a leading v
         required: true
         type: string
+      publish_existing:
+        description: Verify and finish public/Homebrew publication of an already-published private release, without rebuilding
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -21,14 +26,47 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  release_context:
+    name: Validate release targets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.context.outputs.sha }}
+      version: ${{ steps.context.outputs.version }}
+    steps:
+      - name: Checkout trusted workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+      - name: Validate private source and publishing access
+        id: context
+        env:
+          PRIVATE_GH_TOKEN: ${{ github.token }}
+          PUBLIC_RELEASE_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          PUBLISH_EXISTING: ${{ inputs.publish_existing }}
+        run: |
+          set -euo pipefail
+          args=(--preflight --version "$RELEASE_VERSION")
+          if [ "$PUBLISH_EXISTING" = true ]; then args+=(--publish-existing); fi
+          bun script/release-distribute.ts "${args[@]}"
+
   tests:
+    needs: release_context
+    if: ${{ !inputs.publish_existing }}
     uses: ./.github/workflows/test.yml
     permissions:
       contents: read
       checks: write
 
   preflight:
-    needs: tests
+    needs: [release_context, tests]
     runs-on: ubuntu-24.04
     outputs:
       sha: ${{ steps.version.outputs.sha }}
@@ -872,7 +910,7 @@ jobs:
           RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
         run: |
           set -euo pipefail
-          git fetch origin dev --tags --force
+          git fetch origin dev --tags
           tag_sha=$(git rev-parse --verify --quiet "v${VERSION}^{commit}" 2>/dev/null || true)
           release_json=$(gh release view "v${VERSION}" --repo "$GH_REPO" \
             --json tagName,isDraft,targetCommitish 2>/dev/null || true)
@@ -916,3 +954,29 @@ jobs:
       - name: Remove release signing key
         if: always()
         run: rm -rf "$GNUPGHOME"
+
+  distribute:
+    name: Publish public release and Homebrew
+    needs: [release_context, publish]
+    if: ${{ always() && !cancelled() && needs.release_context.result == 'success' && (inputs.publish_existing || needs.publish.result == 'success') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      # Recovery uses the current trusted orchestrator, but copies only the signed tag's source tree.
+      - name: Checkout trusted workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+      - name: Verify, mirror, publish, and update Homebrew
+        env:
+          PRIVATE_GH_TOKEN: ${{ github.token }}
+          PUBLIC_RELEASE_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
+          RELEASE_VERSION: ${{ needs.release_context.outputs.version }}
+          RELEASE_SHA: ${{ needs.release_context.outputs.sha }}
+        run: bun script/release-distribute.ts --version "$RELEASE_VERSION" --source "$RELEASE_SHA"

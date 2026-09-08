@@ -171,7 +171,10 @@ await flush()
 assert.deepEqual(JSON.parse(JSON.stringify(restored.tabs.store)), [draft])
 const recovered = restored.prompt(draft.draftID)
 await recovered.ready.promise
-assert.deepEqual(JSON.parse(JSON.stringify(recovered.current())), parts)
+assert.deepEqual(
+  JSON.parse(JSON.stringify(recovered.current())),
+  parts.filter((part) => part.type !== "image"),
+)
 assert.equal(recovered.cursor(), 12)
 assert.deepEqual(JSON.parse(JSON.stringify(recovered.model.current())), model)
 assert.deepEqual(JSON.parse(JSON.stringify(recovered.context.items())), context)
@@ -306,6 +309,7 @@ const unsaved: Prompt = [
   { ...parts[1]!, start: 10, end: 23 },
   parts[2]!,
 ]
+const persistedUnsaved = unsaved.filter((part) => part.type !== "image")
 const unsavedModel = { ...model, variant: "max" }
 quota = true
 try {
@@ -332,7 +336,7 @@ try {
   assert.deepEqual(JSON.parse(JSON.stringify(reopened.tabs.store)), [browserDraft])
   const unsavedPrompt = reopened.prompt(browserDraft.draftID)
   await unsavedPrompt.ready.promise
-  assert.deepEqual(JSON.parse(JSON.stringify(unsavedPrompt.current())), unsaved)
+  assert.deepEqual(JSON.parse(JSON.stringify(unsavedPrompt.current())), persistedUnsaved)
   assert.equal(unsavedPrompt.cursor(), 9)
   assert.deepEqual(JSON.parse(JSON.stringify(unsavedPrompt.model.current())), unsavedModel)
   assert.deepEqual(JSON.parse(JSON.stringify(unsavedPrompt.context.items())), unsavedContext)
@@ -341,7 +345,7 @@ try {
   quota = false
   PersistTesting.retryFailedWrites()
   const retried = JSON.parse(localStorage.getItem(storageKey)!)
-  assert.deepEqual(retried.prompt, unsaved)
+  assert.deepEqual(retried.prompt, persistedUnsaved)
   assert.equal(retried.cursor, 9)
   assert.deepEqual(retried.model, unsavedModel)
   assert.deepEqual(retried.context.items, unsavedContext)
@@ -351,7 +355,7 @@ try {
   assert.deepEqual(JSON.parse(JSON.stringify(finalBrowser.tabs.store)), [browserDraft])
   const finalPrompt = finalBrowser.prompt(browserDraft.draftID)
   await finalPrompt.ready.promise
-  assert.deepEqual(JSON.parse(JSON.stringify(finalPrompt.current())), unsaved)
+  assert.deepEqual(JSON.parse(JSON.stringify(finalPrompt.current())), persistedUnsaved)
   assert.equal(finalPrompt.cursor(), 9)
   assert.deepEqual(JSON.parse(JSON.stringify(finalPrompt.context.items())), unsavedContext)
   finalBrowser.tabs.reopenClosedTab()

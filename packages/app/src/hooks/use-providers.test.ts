@@ -7,9 +7,9 @@ describe("provider visibility", () => {
     expect(isRemovedProvider("openai")).toBe(false)
   })
 
-  test("keeps OpenCode Zen available", () => {
-    expect(isRemovedProvider("opencode")).toBe(false)
-    expect(popularProviders).toContain("opencode")
+  test("withholds retired OpenCode Zen from every list", () => {
+    expect(isRemovedProvider("opencode")).toBe(true)
+    expect(popularProviders).not.toContain("opencode")
     expect(popularProviders).toContain("claude-code")
   })
 })

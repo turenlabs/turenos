@@ -4,13 +4,17 @@ TurenOS releases are built from the exact `dev` commit selected by the manual
 GitHub `release` workflow. The workflow fails before building when a signing
 input is absent or malformed.
 
+The workflow now owns public publication and Homebrew updates too. Use the
+[automated release runbook](./release-automation.md) for dispatch, the dedicated
+`PUBLIC_RELEASE_TOKEN`, and recovery without rebuilding.
+
 ## Platform policy
 
-| Platform | Native signature | Additional release signature |
-| --- | --- | --- |
-| macOS | Developer ID signing and Apple notarization for Desktop and standalone runtimes | Detached OpenPGP signature |
-| Windows | Azure Trusted Signing Authenticode signature with RFC 3161 timestamp | Detached OpenPGP signature |
-| Linux | Detached OpenPGP signatures for AppImage, deb, rpm, and runtime archives | Signed checksums and manifest |
+| Platform | Native signature                                                                | Additional release signature  |
+| -------- | ------------------------------------------------------------------------------- | ----------------------------- |
+| macOS    | Developer ID signing and Apple notarization for Desktop and standalone runtimes | Detached OpenPGP signature    |
+| Windows  | Azure Trusted Signing Authenticode signature with RFC 3161 timestamp            | Detached OpenPGP signature    |
+| Linux    | Detached OpenPGP signatures for AppImage, deb, rpm, and runtime archives        | Signed checksums and manifest |
 
 Every published file is covered by `release-manifest.json` and `SHA256SUMS`.
 Each file, the manifest, and the checksum list receives an armored detached
@@ -89,7 +93,7 @@ background; installation requires the user's restart action. Development and
 beta builds do not auto-update. Users on 1.0.4 or earlier must manually install
 1.0.5 once to enable subsequent updates.
 
-Build and sign in `turenio/turen` as before, then copy the complete private
+Build and sign in `turenio/turen`. The distribution job copies the complete private
 release to the public repository without rebuilding or renaming assets.
 The desktop package embeds the public repository, not a GitHub token.
 
@@ -97,26 +101,25 @@ The private release workflow includes and verifies six architecture-specific
 update manifests, plus the generated `.blockmap` files. Separate channels avoid
 parallel x64/arm64 builds overwriting one another's metadata:
 
-| Platform | x64 | arm64 |
-| --- | --- | --- |
-| macOS | `latest-x64-mac.yml` | `latest-arm64-mac.yml` |
-| Windows | `latest-x64.yml` | `latest-arm64.yml` |
-| Linux | `latest-x64-linux.yml` | `latest-arm64-linux-arm64.yml` |
+| Platform | x64                    | arm64                          |
+| -------- | ---------------------- | ------------------------------ |
+| macOS    | `latest-x64-mac.yml`   | `latest-arm64-mac.yml`         |
+| Windows  | `latest-x64.yml`       | `latest-arm64.yml`             |
+| Linux    | `latest-x64-linux.yml` | `latest-arm64-linux-arm64.yml` |
 
-Copy **every release asset**, including manifests, blockmaps, checksums, and
-detached signatures. Do not copy only installers. Keep the public release a
-draft until the complete upload has been downloaded again and verified. Run
-this verifier from the private source checkout against the downloaded public
-draft, in addition to the signature/checksum checks below:
+The orchestrator copies **every release asset**, including manifests, blockmaps,
+checksums, and detached signatures. It keeps the public release a draft until the
+complete upload has been downloaded again and verified. For manual diagnosis,
+this verifier remains available against downloaded artifacts:
 
 ```bash
-bun packages/desktop/scripts/update-artifacts.ts /path/to/downloaded-public-draft 1.0.5
+bun packages/desktop/scripts/update-artifacts.ts /path/to/downloaded-public-draft "$VERSION"
 ```
 
 The verifier checks all six feeds, their version, architecture, referenced
 artifacts, SHA-512 hashes, and required blockmaps. Linux feeds must include
-AppImage, deb, and rpm artifacts. Publish the verified public draft as a stable
-release with the matching `v1.0.5` tag so clients can discover it. Future releases
+AppImage, deb, and rpm artifacts. The workflow publishes the verified public draft
+with its matching version tag so clients can discover it. Future releases
 must retain these feeds and artifact naming conventions.
 
 Before shipping, smoke-test signed packaged apps on supported platforms:

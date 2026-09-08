@@ -1625,9 +1625,9 @@ function ollamaModelID(input: unknown) {
   return normalized
 }
 
-// Providers withheld from the runtime and suggestion catalogs. Empty today: OpenCode Go is still
-// published by models.dev, so it is offered like any other catalog provider.
-const removedProviders = new Set<string>()
+// Providers withheld from the runtime and suggestion catalogs. OpenCode Zen is retired;
+// OpenCode Go is still published by models.dev, so it is offered like any other catalog provider.
+const removedProviders = new Set<string>(["opencode"])
 
 export function isRemovedProvider(providerID: string) {
   return removedProviders.has(providerID)

@@ -21,6 +21,7 @@ type PersistTarget = {
   key: string
   legacy?: string[]
   migrate?: (value: unknown) => unknown
+  sanitize?: (value: unknown) => unknown
 }
 
 const LEGACY_STORAGE = "default.dat"
@@ -30,6 +31,7 @@ const LOCAL_PREFIX = "forge."
 const fallback = new Map<string, boolean>()
 const failedWrites = new Map<string, { storage: Storage; value: string }>()
 let quotaNotified = false
+let storageNotified = false
 
 const CACHE_MAX_ENTRIES = 500
 const CACHE_MAX_BYTES = 8 * 1024 * 1024
@@ -181,6 +183,20 @@ async function notifyQuotaFailure() {
   })
 }
 
+async function notifyStorageFailure(error: unknown) {
+  if (storageNotified) return
+  storageNotified = true
+  const { showToast } = await import("./toast")
+  const status = error && typeof error === "object" ? (error as { status?: unknown }).status : undefined
+  showToast({
+    title: "Draft could not be saved",
+    description:
+      status === 400
+        ? "This draft is too large for local storage. Your current edit is still open, but remove large attachments before closing this window."
+        : "Your current edit is still open, but local storage rejected the save. Remove large attachments and try again.",
+  })
+}
+
 function retryFailedWrites() {
   quotaNotified = false
   // Keep the latest attempted value per key. A later successful save or explicit
@@ -196,6 +212,15 @@ function retryFailedWrites() {
 
 function snapshot(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as unknown
+}
+
+function sanitizePersistedValue(sanitize: ((value: unknown) => unknown) | undefined, value: string) {
+  if (!sanitize) return value
+  try {
+    return JSON.stringify(sanitize(JSON.parse(value)))
+  } catch {
+    return value
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -623,7 +648,7 @@ export async function updatePersisted(
 }
 
 export async function writePersisted(
-  target: { storage?: string; key: string },
+  target: { storage?: string; key: string; sanitize?: (value: unknown) => unknown },
   platform: Platform | undefined,
   value: unknown,
 ) {
@@ -633,7 +658,7 @@ export async function writePersisted(
       : target.storage
         ? localStorageWithPrefix(target.storage)
         : localStorageDirect()
-  const encoded = JSON.stringify(value)
+  const encoded = JSON.stringify(target.sanitize ? target.sanitize(value) : value)
   try {
     await storage.setItem(target.key, encoded)
     // Destructive handoffs need backing-store evidence, never the generic
@@ -703,7 +728,7 @@ export function persisted<T>(
           })
         },
         setItem: (key, value) => {
-          current.setItem(key, value)
+          current.setItem(key, sanitizePersistedValue(config.sanitize, value))
         },
         removeItem: (key) => {
           current.removeItem(key)
@@ -734,7 +759,12 @@ export function persisted<T>(
         })
       },
       setItem: async (key, value) => {
-        await current.setItem(key, value).catch(() => undefined)
+        await current
+          .setItem(key, sanitizePersistedValue(config.sanitize, value))
+          .then(() => {
+            storageNotified = false
+          })
+          .catch((error) => notifyStorageFailure(error))
       },
       removeItem: async (key) => {
         await current.removeItem(key)

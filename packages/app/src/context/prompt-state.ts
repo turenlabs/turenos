@@ -180,9 +180,19 @@ function createPromptActions(setStore: SetStoreFunction<PromptStore>) {
 }
 
 function promptTarget(serverScope: ServerScope, scope: PromptScope) {
-  if ("draftID" in scope) return Persist.draft(scope.draftID, "prompt")
+  if ("draftID" in scope) return { ...Persist.draft(scope.draftID, "prompt"), sanitize: sanitizePersistedPrompt }
   const legacy = `${scope.dir}/prompt${scope.id ? "/" + scope.id : ""}.v2`
-  return Persist.serverScoped(serverScope, scope.dir, scope.id, "prompt", [legacy])
+  return { ...Persist.serverScoped(serverScope, scope.dir, scope.id, "prompt", [legacy]), sanitize: sanitizePersistedPrompt }
+}
+
+function sanitizePersistedPrompt(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value
+  const prompt = (value as { prompt?: unknown }).prompt
+  if (!Array.isArray(prompt)) return value
+  return {
+    ...value,
+    prompt: prompt.filter((part) => !part || typeof part !== "object" || (part as { type?: unknown }).type !== "image"),
+  }
 }
 
 function promptStore(initial?: InitialPrompt): PromptStore {
@@ -264,7 +274,7 @@ export function createPromptSession(serverScope: ServerScope, scope: PromptScope
 }
 
 export function createDraftPromptSession(draftID: string, initial?: InitialPrompt) {
-  return createPersistedPrompt(Persist.draft(draftID, "prompt"), initial)
+  return createPersistedPrompt({ ...Persist.draft(draftID, "prompt"), sanitize: sanitizePersistedPrompt }, initial)
 }
 
 export type PromptSession = ReturnType<typeof createPromptSession>
