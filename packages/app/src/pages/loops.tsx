@@ -13,7 +13,7 @@ import { useDialog } from "@turenlabs/ui/context/dialog"
 import { PageHeader } from "@/components/page-header"
 import { modelEffortDisplay } from "@/components/model-selection-display"
 import { useGlobal } from "@/context/global"
-import { ServerConnection, useServer } from "@/context/server"
+import { ServerConnection, serverName, useServer } from "@/context/server"
 import { sessionHref } from "@/utils/session-route"
 import { isRemovedProvider } from "@/hooks/provider-visibility"
 import { loopApi, loopCatalog, responseData, type LoopInfo, type LoopModel, type LoopRun } from "./loops/api"
@@ -47,7 +47,6 @@ import {
   triggerSummary,
   type StepState,
 } from "./loops/run-view"
-import { localLoopServer } from "./loops/local-server"
 import { nextRunLabel } from "./loops/latest-runs-data"
 import { RunChatDialog } from "./loops/run-chat"
 import { automationSortOptions, sortAutomations, type AutomationSort } from "./loops/sort"
@@ -256,15 +255,13 @@ function RunStepCard(props: {
 }
 
 /**
- * Automations is a canonical local-only surface, like Workbench: it always talks to the
- * local sidecar rather than to whichever server the rest of the app happens to have
- * selected. Resolving that connection here — instead of behind a ServerSDKProvider in the
- * router — keeps the route a plain page render and keeps every path this page produces
- * free of server scope.
+ * Automations follows the currently selected configured server. Resolving that connection
+ * here — instead of behind a ServerSDKProvider in the router — keeps the route a plain page
+ * render while allowing the same builder to target local or remote servers.
  */
 export default function LoopsPage() {
   const server = useServer()
-  const connection = createMemo(() => localLoopServer(server.list, server.scope))
+  const connection = createMemo(() => server.current)
 
   return (
     <Show when={connection()} keyed fallback={<LoopsUnavailable />}>
@@ -276,12 +273,12 @@ export default function LoopsPage() {
 function LoopsUnavailable() {
   return (
     <section data-component="loops-page" class={SURFACE}>
-      <PageHeader title="Automations" description="Visual workflows running on your local server" />
+      <PageHeader title="Automations" description="Visual workflows running on the selected server" />
       <div class="flex min-h-0 flex-1 items-center justify-center px-5 py-10 text-center">
         <div class="max-w-sm">
-          <p class="text-[13px] text-v2-text-text-base [font-weight:600]">Local server unavailable</p>
+          <p class="text-[13px] text-v2-text-text-base [font-weight:600]">No server configured</p>
           <p class="mt-2 text-[13px] leading-5 text-v2-text-text-muted">
-            Automations run on your local TurenOS server. Start it to create and manage automations.
+            Configure a TurenOS server to create and manage automations.
           </p>
         </div>
       </div>
@@ -291,9 +288,11 @@ function LoopsUnavailable() {
 
 function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
   const global = useGlobal()
+  const server = useServer()
   // `connection` is keyed by the caller, so the context and key resolve once per connection.
   const context = global.ensureServerCtx(props.connection)
   const serverKey = ServerConnection.key(props.connection)
+  const serverLabel = serverName(props.connection)
   const navigate = useNavigate()
   const navRail = useNavRail()
   const dialog = useDialog()
@@ -337,6 +336,10 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
   let runtimeVersion = 0
 
   const api = () => loopApi(context.sdk.client)
+  const serverOptions = createMemo(() =>
+    server.list.map((connection) => ({ key: ServerConnection.key(connection), label: serverName(connection) })),
+  )
+  const selectedServer = createMemo(() => serverOptions().find((option) => option.key === serverKey))
   const providerCatalog = createMemo(() => {
     const target = directory()
     return target ? context.sync.child(target)[0].provider : context.sync.data.provider
@@ -832,18 +835,35 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
       <Show when={params.id !== "new"}>
         <PageHeader
           title="Automations"
-          description="Visual workflows running on your local server"
+          description={`Visual workflows running on ${serverLabel}`}
           actions={
-            <ButtonV2
-              class="shrink-0 whitespace-nowrap"
-              data-action="automation-new"
-              size="small"
-              variant="neutral"
-              icon="plus"
-              onClick={() => navigate("/automations/new")}
-            >
-              New automation
-            </ButtonV2>
+            <div class="flex flex-wrap items-center justify-end gap-2">
+              <div class="flex items-center gap-2">
+                <span class="font-mono text-[10px] uppercase tracking-[0.1em] text-v2-text-text-muted">Run on</span>
+                <SelectV2
+                  data-action="automation-server"
+                  aria-label="Automation server"
+                  appearance="inline"
+                  options={serverOptions()}
+                  current={selectedServer()}
+                  value={(option) => option.key}
+                  label={(option) => option.label}
+                  onSelect={(option) => {
+                    if (option && option.key !== serverKey) server.setActive(option.key)
+                  }}
+                />
+              </div>
+              <ButtonV2
+                class="shrink-0 whitespace-nowrap"
+                data-action="automation-new"
+                size="small"
+                variant="neutral"
+                icon="plus"
+                onClick={() => navigate("/automations/new")}
+              >
+                New automation
+              </ButtonV2>
+            </div>
           }
         />
       </Show>
@@ -974,10 +994,10 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                   </Show>
                 </div>
                 <p class="mt-1 pl-9 text-[11px] leading-4 text-v2-text-text-muted">
-                  <Show when={selected()} fallback="Build a scheduled workflow that runs on your local server.">
+                  <Show when={selected()} fallback={`Build a scheduled workflow that runs on ${serverLabel}.`}>
                     {(item) => {
                       const next = nextRunLabel(item())
-                      return `${item().workflow?.steps.length ?? 1} steps · Every ${formatInterval(item().schedule.seconds)} · Local server${next ? ` · ${next}` : ""}`
+                      return `${item().workflow?.steps.length ?? 1} steps · Every ${formatInterval(item().schedule.seconds)} · ${serverLabel}${next ? ` · ${next}` : ""}`
                     }}
                   </Show>
                 </p>
@@ -1139,7 +1159,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                             {triggerLabel()}
                           </p>
                           <p class="mt-0.5 truncate text-[10px] text-v2-text-text-muted">
-                            {directory() || "Default local workspace"}
+                            {directory() || "Default workspace"}
                           </p>
                         </div>
                       </div>
@@ -1285,7 +1305,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                           onSelect={(option) => option && setTriggerKind(option.value)}
                           disabled={busy()}
                         />
-                        <FieldV2.Suffix>Intervals and cron run on a schedule; events fire on local activity.</FieldV2.Suffix>
+                        <FieldV2.Suffix>Intervals and cron run on a schedule; events fire on server activity.</FieldV2.Suffix>
                       </FieldV2>
                       <Show when={triggerKind() === "interval"}>
                         <FieldV2

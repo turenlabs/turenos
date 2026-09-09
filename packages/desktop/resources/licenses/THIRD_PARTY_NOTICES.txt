@@ -22018,6 +22018,37 @@ The build uses PCAP_TYPE=null and exposes only bounded memory-backed offline rea
 Retain all acknowledgements and notices in the accompanying LICENSE.
 
 --------------------------------------------------------------------------------
+@turenlabs/monodis-wasm@0.1.0
+License: MIT
+Source: git+ssh://git@github.com/turenio/wasm-tools.git
+
+--- NOTICE ---
+Mono monodis
+
+This product includes software from the Mono project
+(https://github.com/mono/mono), specifically the `mono/dis` disassembler
+and the required `mono/metadata`, `mono/utils`, `mono/eglib`, `mono/sgen`,
+and `mono/zlib` runtime sources.
+
+Copyright (c) Mono contributors. Licensed under the MIT license. See
+LICENSE-MONO for the full license text. Upstream license headers are
+preserved in the imported sources.
+
+Microsoft Patent Promise for Mono: Microsoft promises not to assert its
+Applicable Patents against you for making, using, selling, offering for
+sale, importing, or distributing Mono as defined in the upstream
+PATENTS.TXT, which ships with this distribution as PATENTS-MONO. Rights
+under the promise terminate if you sue alleging patent infringement by
+Mono, and claims infringed only by your modification of Mono or only by
+combination with third-party code are excluded. See PATENTS-MONO for the
+complete text.
+
+This distribution includes Turen-maintained WebAssembly build files and a
+memory-backed ABI bridge (`wasm/`, `Makefile.wasm`). No GPL build-time or
+C# class-library code from the Mono distribution is linked into this
+module.
+
+--------------------------------------------------------------------------------
 @turenlabs/protocol-inspect-wasm@0.1.0-turen.1
 License: MIT
 Source: git+ssh://git@github.com/turenio/wasm-tools.git

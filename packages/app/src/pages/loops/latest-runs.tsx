@@ -3,7 +3,6 @@ import { For, Show, createMemo, createSignal, onMount } from "solid-js"
 import { useGlobal } from "@/context/global"
 import { useServer } from "@/context/server"
 import { loopApi, responseData, type LoopInfo, type LoopRun } from "./api"
-import { localLoopServer } from "./local-server"
 import { isActiveRun } from "./run-view"
 
 import {
@@ -55,7 +54,7 @@ function CopyButton(props: { text: () => string }) {
 function useLatestRuns(limit: number) {
   const server = useServer()
   const global = useGlobal()
-  const connection = createMemo(() => localLoopServer(server.list, server.scope))
+  const connection = createMemo(() => server.current)
   const [loaded, setLoaded] = createSignal(false)
   const [entries, setEntries] = createSignal<ReadonlyArray<{ automation: LoopInfo; runs: LoopRun[] }>>([])
   onMount(() => {

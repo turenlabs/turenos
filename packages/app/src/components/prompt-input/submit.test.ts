@@ -352,6 +352,10 @@ beforeAll(async () => {
     useServer: () => ({ key: "server-key" }),
   }))
 
+  mock.module("@/context/server-sdk", () => ({
+    useServerSDK: () => () => ({ server: undefined }),
+  }))
+
   // `createPromptSubmit` runs as component setup in production, so it resolves the dialog context
   // up front the same way it resolves every other context. These tests drive it without a reactive
   // owner, so the context is stubbed here alongside the rest.

@@ -27,6 +27,7 @@ import {
   onCleanup,
   type ParentProps,
   Show,
+  Suspense,
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { CommandProvider, useCommand, useCommandPalette, type CommandOption } from "@/context/command"
@@ -94,6 +95,12 @@ const AnalysisPentestRunPage = () => (
   <AnalysisShell>
     <PentestRunPage />
   </AnalysisShell>
+)
+
+const AutomationsRoute = () => (
+  <Suspense fallback={<div class="size-full min-h-0 bg-v2-background-bg-deep" aria-busy="true" />}>
+    <AutomationsPage />
+  </Suspense>
 )
 
 const AnalysisAppSecPage = () => (
@@ -681,9 +688,9 @@ function Routes(props: { serverScoped?: JSX.Element }) {
         <Route path="/lobby/:roomID?" component={LobbyBetaRoute} />
         <Route path="/:dir/session/:id" component={NewLayoutLegacySessionRedirect} />
         <Route path="/server/:serverKey/session/:id" component={TargetSessionRoute} />
-        {/* Automations is local-only: the page resolves the local sidecar itself, so the
-            route needs no server targeting or SDK provider chain. */}
-        <Route path="/automations/:id?" component={AutomationsPage} />
+        {/* Automations resolves the currently selected configured server itself, so the
+            route stays server-agnostic while its page owns the SDK connection. */}
+        <Route path="/automations/:id?" component={AutomationsRoute} />
         <Route path="/loops/:id?" component={LoopsLegacyRedirect} />
         <Route path="/analysis" component={AnalysisIndexRedirect} />
         <Route path="/analysis/appsec" component={AnalysisAppSecPage} />

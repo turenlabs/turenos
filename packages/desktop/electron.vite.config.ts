@@ -13,7 +13,7 @@ const channel = (() => {
 })()
 
 const nodePtyPkg = `@lydell/node-pty-${process.platform}-${process.arch}`
-const binaryAssetNames = new Set(["goblin", "stng-core", "libpcap", "static-unpack"])
+const binaryAssetNames = new Set(["goblin", "stng-core", "libpcap", "static-unpack", "monodis"])
 const emailSecurityAsset = "email-security"
 const emailAuthenticateAsset = "email-authenticate"
 const wasmInspectAsset = "wasm-inspect"

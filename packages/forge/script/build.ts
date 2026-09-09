@@ -30,6 +30,7 @@ const binaryPackages = [
   ["stng-core", "@turenlabs/stng-core-wasm"],
   ["libpcap", "@turenlabs/libpcap-wasm"],
   ["static-unpack", "@turenlabs/static-unpack-wasm"],
+  ["monodis", "@turenlabs/monodis-wasm"],
   ["static-analysis", "@turenlabs/static-analysis-wasm"],
   ["protocol-inspect", "@turenlabs/protocol-inspect-wasm"],
   ["wifi-offline", "@turenlabs/wifi-offline-wasm"],

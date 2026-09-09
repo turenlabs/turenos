@@ -41,6 +41,7 @@ const names = [
   "function_flow",
   "vba_extract",
   "dotnet_methods",
+  "monodis",
   "scan_embedded",
   "detect_packer",
   "list_archive",
@@ -160,6 +161,13 @@ describe("StaticAnalysisRuntime", () => {
           externalLinks: { status: "present" },
         },
       })
+
+      const monodis = yield* runtime.analyze({
+        operation: "monodis",
+        bytes: Uint8Array.of(1, 2, 3),
+        options: {},
+      })
+      expect(monodis.result).toMatchObject({ text: expect.stringContaining("Error:") })
     }),
   )
 

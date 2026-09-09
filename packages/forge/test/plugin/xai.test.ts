@@ -161,7 +161,7 @@ describe("plugin.xai", () => {
 
       expect(captured[0].get("authorization")).toBe("Bearer live-token")
       expect(captured[0].get("x-keep")).toBe("yes")
-      expect(captured[0].get("user-agent")).toMatch(/^forge\//)
+      expect(captured[0].get("user-agent")).toMatch(/^TurenOS\//)
     })
 
     test("routes OAuth requests for the default API origin through the Grok CLI proxy", async () => {
@@ -240,7 +240,7 @@ describe("plugin.xai", () => {
       ])
       for (const request of captured) {
         expect(request.headers.get("authorization")).toBe("Bearer sk-live")
-        expect(request.headers.get("user-agent")).toBe(`forge/${InstallationVersion}`)
+        expect(request.headers.get("user-agent")).toBe(`TurenOS/${InstallationVersion}`)
         expect(request.headers.get("x-xai-token-auth")).toBeNull()
         expect(request.headers.get("x-grok-client-identifier")).toBeNull()
         expect(request.headers.get("x-grok-client-version")).toBeNull()
@@ -285,7 +285,7 @@ describe("plugin.xai", () => {
       ])
       for (const headers of captured) {
         expect(headers.get("authorization")).toBe("Bearer tok")
-        expect(headers.get("user-agent")).toMatch(/^forge\//)
+        expect(headers.get("user-agent")).toMatch(/^TurenOS\//)
       }
     })
 
@@ -748,7 +748,7 @@ describe("plugin.xai", () => {
         expect(request.method).toBe("POST")
         expect(request.headers.get("content-type")).toBe("application/x-www-form-urlencoded")
         expect(request.headers.get("accept")).toBe("application/json")
-        expect(request.headers.get("user-agent")).toMatch(/^forge\//)
+        expect(request.headers.get("user-agent")).toMatch(/^TurenOS\//)
         capturedBody = await request.text()
         return Response.json({ device_code: "DC", user_code: "UC", verification_uri: "https://x.ai/device" })
       })

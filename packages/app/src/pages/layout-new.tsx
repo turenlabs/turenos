@@ -53,8 +53,7 @@ export default function NewLayout(props: ParentProps) {
                 project/session column; collapse state lives in nav.rail.v1. */}
             <AgentsPanel />
             <main class="flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col items-start contain-strict">
-              {/* Route surfaces own their loading boundaries. A shell-wide Suspense lets
-                  session work join Router's transition and retain the outgoing draft. */}
+              {/* Route surfaces own their loading boundaries. */}
               {props.children}
             </main>
           </div>

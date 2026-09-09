@@ -1,0 +1,12 @@
+{
+  "name": "@turenlabs/monodis-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Turen-maintained Mono monodis CIL disassembler built for WebAssembly",
+  "main": "dist/monodis.js",
+  "files": [
+    "dist/"
+  ],
+  "license": "MIT",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

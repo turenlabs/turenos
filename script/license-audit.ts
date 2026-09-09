@@ -26,6 +26,7 @@ const attributedWorkspacePackages = new Set([
   "@turenlabs/wasm-inspect-wasm",
   "@turenlabs/debug-symbols-wasm",
   "@turenlabs/protocol-inspect-wasm",
+  "@turenlabs/monodis-wasm",
 ])
 const sourceBundledCopyleftPackages = new Set(["@turenlabs/static-unpack-wasm"])
 
@@ -36,6 +37,7 @@ const workspaceRoots = [
   "packages/desktop",
   "packages/forge",
   "packages/llm",
+  "packages/monodis-wasm",
   "packages/plugin",
   "packages/protocol",
   "packages/schema",

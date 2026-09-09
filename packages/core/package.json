@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "name": "@turenlabs/core",
   "type": "module",
   "license": "MIT",
@@ -63,6 +63,7 @@
     "@turenlabs/email-authenticate-wasm": "workspace:*",
     "@turenlabs/wasm-inspect-wasm": "workspace:*",
     "@turenlabs/binwalk-scan-wasm": "workspace:*",
+    "@turenlabs/monodis-wasm": "workspace:*",
     "@turenlabs/debug-symbols-wasm": "workspace:*",
     "drizzle-kit": "catalog:"
   },

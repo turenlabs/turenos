@@ -80,7 +80,7 @@ function authHeaders() {
   return {
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
-    "User-Agent": `forge/${InstallationVersion}`,
+    "User-Agent": `TurenOS/${InstallationVersion}`,
   }
 }
 
@@ -380,7 +380,7 @@ export async function SnowflakeCortexAuthPlugin(_input: PluginInput): Promise<Ho
                 }
               }
               headers.set("authorization", `Bearer ${currentOauth.access}`)
-              headers.set("User-Agent", `forge/${InstallationVersion}`)
+              headers.set("User-Agent", `TurenOS/${InstallationVersion}`)
 
               let body = init?.body
               if (body && typeof body === "string") {

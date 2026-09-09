@@ -384,6 +384,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@turenlabs/ghidra-decompiler-wasm` | `0.1.0` | Apache-2.0 | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
 | `@turenlabs/goblin-wasm` | `0.10.6-turen.1` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
 | `@turenlabs/libpcap-wasm` | `1.10.6-turen.1` | BSD-3-Clause | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
+| `@turenlabs/monodis-wasm` | `0.1.0` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
 | `@turenlabs/protocol-inspect-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
 | `@turenlabs/rebuild-timeline-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
 | `@turenlabs/static-analysis-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
@@ -1062,6 +1063,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `zustand` | `4.5.7` | MIT | [source](git+https://github.com/pmndrs/zustand.git) |
 | `zwitch` | `2.0.4` | MIT | [source](wooorm/zwitch) |
 
-Inventory total: **1040 resolved packages**.
+Inventory total: **1041 resolved packages**.
 
 This file is regenerated during the desktop prebuild. Do not edit generated inventory content by hand.

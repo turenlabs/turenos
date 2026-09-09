@@ -7,6 +7,7 @@ import { batch, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Show } from "solid-js"
 import { useTabs } from "@/context/tabs"
+import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync, type ServerSync } from "@/context/server-sync"
 import { useGlobal } from "@/context/global"
 import { useServer } from "@/context/server"
@@ -46,7 +47,6 @@ import {
 } from "@/pages/session/goal/session-prompt-state"
 import { loopApi, responseData } from "@/pages/loops/api"
 import { parseAutomationCommand, parseLoopCommand } from "@/pages/loops/loop-command"
-import { localLoopServer } from "@/pages/loops/local-server"
 import { deriveStepID } from "@/pages/loops/workflow"
 import type { SkillSlashInvocation } from "@/pages/session/skill-slash"
 
@@ -428,6 +428,7 @@ type PromptSubmitInput = {
 export function createPromptSubmit(input: PromptSubmitInput) {
   const navigate = useNavigate()
   const sdk = useSDK()
+  const serverSDK = useServerSDK()
   const sync = useSync()
   const serverSync = useServerSync()
   const global = useGlobal()
@@ -645,12 +646,12 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         showToast({ title: "Could not create automation", description: "Automations cannot include attachments" })
         return
       }
-      const localServer = localLoopServer(server.list, server.scope)
-      if (!localServer) {
-        showToast({ title: "Could not create automation", description: "Local server unavailable" })
+      const automationServer = serverSDK().server
+      if (!automationServer) {
+        showToast({ title: "Could not create automation", description: "Server unavailable" })
         return
       }
-      await loopApi(global.ensureServerCtx(localServer).sdk.client)
+      await loopApi(global.ensureServerCtx(automationServer).sdk.client)
         .create({
           ...automationCommand.value,
           location: { directory: sdk().directory },

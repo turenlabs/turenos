@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package",
   "name": "@turenlabs/script",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "private": true,
   "license": "MIT",
   "scripts": {

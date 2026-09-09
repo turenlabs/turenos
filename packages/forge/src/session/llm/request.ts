@@ -15,7 +15,7 @@ import type { Plugin } from "@/plugin"
 import { mergeDeep } from "remeda"
 import { SessionID } from "../schema"
 
-const USER_AGENT = `forge/${InstallationVersion}`
+const USER_AGENT = `TurenOS/${InstallationVersion}`
 
 type PrepareInput = {
   readonly user: SessionV1.User
@@ -228,10 +228,17 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
     params: hookedParams,
     tools,
     headers: {
-      "x-session-affinity": input.sessionID,
-      "X-Session-Id": input.sessionID,
-      ...(input.parentSessionID ? { "x-parent-session-id": input.parentSessionID } : {}),
-      "User-Agent": USER_AGENT,
+      ...(input.model.providerID.startsWith("opencode")
+        ? {
+            "x-opencode-session": input.sessionID,
+            "User-Agent": USER_AGENT,
+          }
+        : {
+            "x-session-affinity": input.sessionID,
+            "X-Session-Id": input.sessionID,
+            ...(input.parentSessionID ? { "x-parent-session-id": input.parentSessionID } : {}),
+            "User-Agent": USER_AGENT,
+          }),
       ...input.model.headers,
       ...hookedHeaders,
     },

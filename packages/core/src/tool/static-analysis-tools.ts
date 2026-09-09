@@ -61,6 +61,10 @@ const operations = [
     "Inspect .NET MethodDef metadata and bounded raw IL bytes from a PE assembly. Does not execute code or produce high-level decompilation.",
   ],
   [
+    "monodis",
+    "Disassemble one bounded .NET CIL image with the bundled Mono monodis WebAssembly module. The assembly is never executed and referenced assemblies are not loaded.",
+  ],
+  [
     "scan_embedded",
     "Scan one file for bounded embedded signatures such as ELF, PE, ZIP, PDF, gzip, PNG, JPEG, RAR, and 7z. This is scan-only; it does not extract to disk.",
   ],
@@ -305,6 +309,16 @@ function extraInput(name: string) {
         description: "Maximum embedded findings. Defaults to 64; maximum 4096.",
       }),
     })
+  if (name === "monodis")
+    return Schema.Struct({
+      path: Path,
+      table: Schema.String.check(Schema.isMaxLength(64)).pipe(Schema.optional).annotate({
+        description: "Optional monodis table flag such as --typedef or --method.",
+      }),
+      mscorlib: Schema.Boolean.pipe(Schema.optional),
+      forwardDecls: Schema.Boolean.pipe(Schema.optional),
+      headerData: Schema.Boolean.pipe(Schema.optional),
+    })
   return Schema.Struct({ path: Path })
 }
 
@@ -326,6 +340,13 @@ function optionsFrom(name: string, input: Record<string, unknown>) {
       offset: input.offset,
       maxResults: input.maxResults,
       maxOutputBytes: input.maxOutputBytes,
+    }
+  if (name === "monodis")
+    return {
+      table: input.table,
+      mscorlib: input.mscorlib,
+      forward_decls: input.forwardDecls,
+      header_data: input.headerData,
     }
   return {}
 }

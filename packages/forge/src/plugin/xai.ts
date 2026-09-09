@@ -107,7 +107,7 @@ function authHeaders() {
   return {
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
-    "User-Agent": `forge/${InstallationVersion}`,
+    "User-Agent": `TurenOS/${InstallationVersion}`,
   }
 }
 
@@ -515,7 +515,7 @@ export async function XaiAuthPlugin(input: PluginInput, options: XaiAuthPluginOp
             if (currentAuth.type === "api") {
               const headers = xaiRequestHeaders(requestInput, init)
               headers.set("authorization", `Bearer ${currentAuth.key}`)
-              headers.set("User-Agent", `forge/${InstallationVersion}`)
+              headers.set("User-Agent", `TurenOS/${InstallationVersion}`)
               return fetch(requestInput, { ...init, headers })
             }
             if (currentAuth.type !== "oauth") return fetch(requestInput, init)
@@ -577,7 +577,7 @@ export async function XaiAuthPlugin(input: PluginInput, options: XaiAuthPluginOp
             const dispatch = async (oauth: XaiOAuth) => {
               const headers = xaiRequestHeaders(requestInput, init)
               headers.set("authorization", `Bearer ${oauth.access}`)
-              headers.set("User-Agent", `forge/${InstallationVersion}`)
+              headers.set("User-Agent", `TurenOS/${InstallationVersion}`)
 
               const requestUrl = xaiRequestUrl(requestInput)
               // Subscription OAuth requests use the Grok CLI proxy, while API-key

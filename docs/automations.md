@@ -1,8 +1,8 @@
 # Automations
 
-Automations are durable local workflows that run Agent and Skill steps on a schedule and deliver their results inside TurenOS. They use the canonical local TurenOS server and are independent of the conversation that created them.
+Automations are durable workflows that run Agent and Skill steps on a schedule and deliver their results inside TurenOS. They run on the currently selected configured TurenOS server and are independent of the conversation that created them.
 
-For the scheduler, lease model, storage, and local HTTP surface behind them, see
+For the scheduler, lease model, storage, and HTTP surface behind them, see
 [Automations internals](./automations-internals.md).
 
 ## Create An Automation
@@ -13,16 +13,16 @@ The builder is a node canvas: the schedule trigger, each workflow step, and Ture
 
 An Automation contains:
 
-- **Trigger**: an interval schedule, a cron schedule, or a local event trigger (file-change or session-end). Intervals use `s`, `m`, `h`, or `d`, with a minimum of 60 seconds.
+- **Trigger**: an interval schedule, a cron schedule, or a server event trigger (file-change or session-end). Intervals use `s`, `m`, `h`, or `d`, with a minimum of 60 seconds.
 - **Workflow steps**: one to twelve ordered Agent or Skill steps. Steps can be added, removed, and reordered in the builder.
-- **Project**: the local project and permission boundary used by every step.
+- **Project**: the selected server's project and permission boundary used by every step.
 - **Agent, model, and effort**: workflow-level execution choices. A model that advertises reasoning
   tiers also offers an **Effort** selector.
 - **Per-step execution**: any step may override the agent, model, or effort in its inspector under
   **Execution**. A step that selects nothing inherits the Automation's own choices.
 - **TurenOS delivery**: every run is a Session whose transcript contains each step and its final result.
 
-Project is optional. When it is left blank, the Automation runs from TurenOS's default global data directory and that resolved directory is stored with the Automation and each run. This is useful for prompts that do not need a repository; Agent and Model choices remain available without selecting a project.
+Project is optional. When it is left blank, the Automation runs from the selected server's default global data directory and that resolved directory is stored with the Automation and each run. This is useful for prompts that do not need a repository; Agent and Model choices remain available without selecting a project.
 
 The composer also supports a one-step quick create command:
 
@@ -37,7 +37,7 @@ Mention `@automations` in the composer to point an agent at this surface. The me
 Agents work through three tools:
 
 - `automation_list` reads every Automation with its status, schedule, and steps.
-- `automation_create` creates one from a name, exactly one trigger (an interval, a cron expression, or a local file-change / session-end event trigger), and ordered steps. Each step is an agent turn, or a skill turn when it names a skill. Step binding IDs are derived from step names using the same rule the builder uses. A step may also carry a `when` condition and an `on_failure` policy (see below).
+- `automation_create` creates one from a name, exactly one trigger (an interval, a cron expression, or a server file-change / session-end event trigger), and ordered steps. Each step is an agent turn, or a skill turn when it names a skill. Step binding IDs are derived from step names using the same rule the builder uses. A step may also carry a `when` condition and an `on_failure` policy (see below).
 - `automation_update` renames, reschedules (interval, cron, or event trigger), or replaces the steps of an existing Automation, and pauses, resumes, or deletes it.
 
 Creating or changing an Automation goes through the permission system under the `automation_create` and `automation_update` actions, so agent-created schedules are approvable like any other durable side effect. An Automation created without an explicit directory runs in the TurenOS default global data directory.
@@ -55,17 +55,17 @@ The built-in catalog currently includes:
 
 ## Schedule And Event Triggers
 
-An Automation fires on exactly one trigger: an interval, a cron schedule, or a local event. Switching trigger kinds later replaces the schedule; an Automation never combines them.
+An Automation fires on exactly one trigger: an interval, a cron schedule, or a server event. Switching trigger kinds later replaces the schedule; an Automation never combines them.
 
 **Cron schedules** use five fields — `minute hour day month weekday`, at most 120 characters — for example `0 9 * * MON-FRI` for 9am on weekdays. Fields accept `*`, lists (`1,15`), ranges (`9-17`, `MON-FRI`), and steps (`*/5`, `9-17/2`; steps run from 1 to 59). Month names (`JAN`–`DEC`) and weekday names (`SUN`–`SAT`) are case-insensitive, and `7` means Sunday just like `0`. When both day-of-month and day-of-week are restricted, a day matching either one fires.
 
 Cron fire times follow the Automation's IANA timezone (for example `America/New_York`); the default is `UTC`. Editing an Automation accepts at most one of a new interval, a new cron expression, or a new event trigger, and clears the previous schedule.
 
-**File-change triggers** watch the Automation's own directory: each of 1 to 20 relative glob patterns (at most 256 characters each, never absolute and never escaping the directory, e.g. `src/**/*.ts`) is matched against files changed under that directory, and files outside it are ignored. Rapid changes coalesce: after the last matching change, the Automation waits out its debounce (`debounceMs`, default 1000 ms, 0 to 60000 ms) before firing once.
+**File-change triggers** watch the Automation's own directory on its selected server: each of 1 to 20 relative glob patterns (at most 256 characters each, never absolute and never escaping the directory, e.g. `src/**/*.ts`) is matched against files changed under that directory, and files outside it are ignored. Rapid changes coalesce: after the last matching change, the Automation waits out its debounce (`debounceMs`, default 1000 ms, 0 to 60000 ms) before firing once.
 
-**Session-end triggers** fire when a local session in the Automation's directory ends. Optional filters narrow which endings count: `outcomes` (`success` and/or `failure`), a `sessionID`, and/or an `agent`. Omitted filters match anything, and the scheduler's own Automation runs never fire it.
+**Session-end triggers** fire when a session on the selected server in the Automation's directory ends. Optional filters narrow which endings count: `outcomes` (`success` and/or `failure`), a `sessionID`, and/or an `agent`. Omitted filters match anything, and the scheduler's own Automation runs never fire it.
 
-Event Automations have no ticking schedule: they stay active with no next run time until a matching event fires. If an event arrives while an earlier occurrence is still running, it is recorded as `skipped`, exactly like an overlapping interval tick. Events are delivered by the local scheduler only — there is no network trigger source.
+Event Automations have no ticking schedule: they stay active with no next run time until a matching event fires. If an event arrives while an earlier occurrence is still running, it is recorded as `skipped`, exactly like an overlapping interval tick. Events are delivered by the scheduler on the selected server — there is no network trigger source.
 
 ## Step Data Bindings
 
@@ -131,8 +131,8 @@ Automation definitions and runs are stored in SQLite. Existing installations ret
 - Maximum lifetime: seven days from creation.
 - Overlap policy: skip.
 
-## Local Server Boundary
+## Server Selection
 
-Automation management always targets the canonical local server. Listing Automations reads the process-global SQLite index without opening project directories. Project filesystem and catalog access occur only while configuring or executing a workflow.
+Automation management targets the server selected in the **Run on** control. Each configured server owns its own Automation definitions and scheduler. Listing Automations reads that server's process-global SQLite index without opening project directories. Project filesystem and catalog access occur only while configuring or executing a workflow on the selected server.
 
 The HTTP and generated SDK surfaces currently retain `/api/loop` naming for storage and client compatibility. `/automations` is the canonical in-app product route; legacy `/loops` links redirect there.

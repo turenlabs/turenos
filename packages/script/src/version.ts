@@ -32,6 +32,7 @@ export const INDEPENDENTLY_VERSIONED_PACKAGE_FILES = [
   "packages/ghidra-decompiler-wasm/package.json",
   "packages/goblin-wasm/package.json",
   "packages/libpcap-wasm/package.json",
+  "packages/monodis-wasm/package.json",
   "packages/rebuild-timeline-wasm/package.json",
   "packages/static-analysis-wasm/package.json",
   "packages/static-unpack-wasm/package.json",

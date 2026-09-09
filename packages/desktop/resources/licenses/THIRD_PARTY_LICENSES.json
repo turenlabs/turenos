@@ -3168,6 +3168,15 @@
       ]
     },
     {
+      "name": "@turenlabs/monodis-wasm",
+      "version": "0.1.0",
+      "license": "MIT",
+      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "licenseFiles": [
+        "NOTICE"
+      ]
+    },
+    {
       "name": "@turenlabs/protocol-inspect-wasm",
       "version": "0.1.0-turen.1",
       "license": "MIT",

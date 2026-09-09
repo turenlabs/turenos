@@ -42,7 +42,7 @@ const oauth = {
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
             Accept: "application/json",
-            "User-Agent": `forge/${InstallationVersion}`,
+            "User-Agent": `TurenOS/${InstallationVersion}`,
           },
           body: new URLSearchParams({
             grant_type: "refresh_token",

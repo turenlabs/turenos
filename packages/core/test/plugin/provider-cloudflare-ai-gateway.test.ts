@@ -207,7 +207,7 @@ describe("CloudflareAIGatewayPlugin", () => {
             skipCache: true,
             collectLog: false,
             headers: {
-              "User-Agent": expect.stringContaining("forge/"),
+              "User-Agent": expect.stringContaining("TurenOS/"),
             },
           },
         })
