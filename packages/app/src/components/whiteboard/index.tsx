@@ -7,6 +7,7 @@ import type { AppState, ExcalidrawImperativeAPI, ExcalidrawProps } from "@excali
 import { createWhiteboardSync, orderElements, validElement, validFile } from "./sync"
 import type { SyncStatus, WhiteboardTransport } from "./sync"
 import { createIndexedDBOutbox } from "./outbox"
+import { whiteboardClientID } from "./identity"
 import "./whiteboard.css"
 
 export type { WhiteboardTransport } from "./sync"
@@ -40,7 +41,7 @@ export function WhiteboardCanvas(props: WhiteboardCanvasProps) {
   createEffect(() => {
     const sessionID = props.sessionID
     const transport = props.transport
-    const clientID = crypto.randomUUID()
+    const clientID = whiteboardClientID(props.storageKey)
     const username = (props.username?.trim() || `Guest ${clientID.slice(0, 4)}`).slice(0, 128)
     let disposed = false
     let applying = false

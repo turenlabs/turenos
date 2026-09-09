@@ -525,7 +525,7 @@ export default function Page() {
   const command = useCommand()
   const terminal = useTerminal()
   const tabContext = useTabs()
-  const [searchParams, setSearchParams] = useSearchParams<{ prompt?: string }>()
+  const [searchParams, setSearchParams] = useSearchParams<{ file?: string; prompt?: string }>()
   const location = useLocation()
   const navigate = useNavigate()
   const { params, sessionKey, workspaceKey, tabs, view } = useSessionLayout()
@@ -573,6 +573,21 @@ export default function Page() {
       if (!text) return
       prompt.set([{ type: "text", content: text, start: 0, end: text.length }], text.length)
       setSearchParams({ ...searchParams, prompt: undefined })
+    })
+  })
+
+  createEffect(() => {
+    const target = searchParams.file
+    const sessionID = params.id
+    if (!target || !sessionID || !file.ready()) return
+    const path = file.normalize(target)
+    if (!path) return
+    const tab = file.tab(path)
+    void file.load(path).then(() => {
+      if (params.id !== sessionID || searchParams.file !== target) return
+      tabs().open(tab)
+      tabs().setActive(tab)
+      setSearchParams({ ...searchParams, file: undefined })
     })
   })
 

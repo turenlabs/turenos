@@ -58,9 +58,10 @@ const render = (state: State) => {
           `  At most ${state.limit} subagents run at once for this session. Plan fan-out in waves of ${state.limit} or fewer; a further ${spawnName} fails until one settles.`,
         ]),
     "  2. Split implementation into disjoint workers with non-overlapping write roots. Do not assign duplicate work.",
+    "  When spawning, omit model unless a specific override is required; omitted model uses the child configuration or the runtime's available default rather than copying a possibly unavailable parent model.",
     ...(state.tools.includes(TeamBoardTool.postName) && state.tools.includes(TeamBoardTool.readName)
       ? [
-          `  3. Keep working on non-overlapping work after spawning. Children should publish evidence, status, and leads with ${TeamBoardTool.postName}; read incoming work with ${TeamBoardTool.readName} before duplicating it. Board updates wake the parent at the next safe provider-turn boundary.`,
+          `  3. Keep working on non-overlapping work after spawning. Children should publish evidence, status, and leads with ${TeamBoardTool.postName}; read incoming work with ${TeamBoardTool.readName} before duplicating it. Board updates stay in the background and do not wake the parent or require extra turns.`,
         ]
       : ["  3. Keep working on non-overlapping work after spawning; do not block the parent just to monitor a child."]),
     ...(state.tools.includes(waitName)

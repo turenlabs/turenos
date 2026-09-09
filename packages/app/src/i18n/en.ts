@@ -949,7 +949,6 @@ export const dict = {
 
   "nav.rail.label": "Primary navigation",
   "nav.rail.agents": "Agents",
-  "nav.rail.analysis": "Workbench",
   "nav.rail.agents.running": "{{count}} running",
   "nav.rail.agents.showPanel": "Agents — show panel",
   "nav.rail.agents.hidePanel": "Agents — hide panel",
@@ -957,9 +956,6 @@ export const dict = {
   "nav.rail.help": "Help",
   "nav.rail.server": "Server: {{server}}",
   "command.nav.agents": "Go to Agents",
-  "command.nav.analysis": "Go to Workbench",
-  "command.nav.analysis.appSec": "Go to Workbench: AppSec",
-  "command.nav.analysis.penTesting": "Go to Workbench: Pentest",
   "command.nav.panel.toggle": "Toggle navigation panel",
 
   "analysis.title": "Workbench",
@@ -1156,6 +1152,9 @@ export const dict = {
   "settings.general.row.harnessSelfModification.description":
     "Allow the background reviewer to propose and apply bounded Harness changes automatically",
   "settings.general.row.harnessSelfModification.enabled": "Enabled",
+  "settings.general.row.automations.title": "Automations",
+  "settings.general.row.automations.description":
+    "Enable scheduled workflows and the Automations workspace",
   "memory.title": "Memory",
   "memory.form.title": "Memory entry",
   "memory.add": "Add memory",

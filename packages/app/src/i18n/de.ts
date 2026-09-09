@@ -752,6 +752,9 @@ export const dict = {
   "settings.general.row.harnessSelfModification.description":
     "Allow the background reviewer to propose and apply bounded Harness changes automatically",
   "settings.general.row.harnessSelfModification.enabled": "Enabled",
+  "settings.general.row.automations.title": "Automations",
+  "settings.general.row.automations.description":
+    "Enable scheduled workflows and the Automations workspace",
   "settings.general.section.notifications": "Systembenachrichtigungen",
   "settings.general.section.updates": "Updates",
   "settings.general.section.sounds": "Soundeffekte",

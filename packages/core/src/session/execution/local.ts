@@ -16,7 +16,6 @@ import { SessionEvent } from "../event"
 import { SessionInputTable, SessionTable } from "../sql"
 import { SessionOperation } from "../operation"
 import { SessionShell } from "../shell"
-import { TeamBoard } from "../../team/board"
 import { Config } from "../../config"
 import { Reflection } from "../../reflection"
 import { SessionMessage } from "../message"
@@ -29,13 +28,25 @@ const layer = Layer.effect(
     const locations = yield* LocationServiceMap.Service
     const adoption = yield* SessionTranscriptAdoption.Service
     const tasks = yield* SessionTaskV2.Service
-    const board = yield* TeamBoard.Service
     const operations = yield* SessionOperation.Service
     const shellRegistry = yield* SessionShell.Registry
     const database = yield* Database.Service
     const events = yield* EventV2.Service
     const reflection = yield* Reflection.Service
     const primary = Database.primary(database.db)
+    // Legacy board notifications must not become future provider turns.
+    yield* primary
+      .update(SessionInputTable)
+      .set({ time_cancelled: Date.now() })
+      .where(
+        and(
+          eq(SessionInputTable.source, "subagent_board"),
+          isNull(SessionInputTable.promoted_seq),
+          isNull(SessionInputTable.time_cancelled),
+        ),
+      )
+      .run()
+      .pipe(Effect.orDie)
     const scope = yield* Effect.scope
     const reflectionSettings = Effect.fn("SessionExecutionLocal.reflectionSettings")(function* (
       session: SessionSchema.Info,
@@ -51,13 +62,6 @@ const layer = Layer.effect(
     const advisoryWakeRetries = new Map<SessionSchema.ID, boolean>()
     let scheduleAdvisoryWake: (sessionID: SessionSchema.ID) => Effect.Effect<void> = () => Effect.void
     let attemptAdvisoryWake: (sessionID: SessionSchema.ID) => Effect.Effect<void> = () => Effect.void
-    let retryBoardNotifications: (parentSessionID: SessionSchema.ID) => Effect.Effect<void> = () => Effect.void
-    let reconcileBoardNotifications: (
-      parentSessionID?: SessionSchema.ID,
-    ) => Effect.Effect<
-      { readonly notes: ReadonlyArray<TeamBoard.Note>; readonly delivered: number },
-      TeamBoard.Failure
-    > = () => Effect.succeed({ notes: [], delivered: 0 })
     const advisoryBusy = Effect.fn("SessionExecutionLocal.advisoryBusy")(function* (sessionID: SessionSchema.ID) {
       const compacting = yield* primary
         .select({ timeCompacting: SessionTable.time_compacting })
@@ -69,7 +73,6 @@ const layer = Layer.effect(
     })
     const coordinator = yield* SessionRunCoordinator.make<SessionSchema.ID, SessionRunner.RunError>({
       wakeAdvisory: (sessionID) => wakeAdvisory(sessionID),
-      retry: (parentSessionID) => retryBoardNotifications(parentSessionID),
       drain: Effect.fnUntraced(function* (sessionID: SessionSchema.ID, force, control) {
         const startedAt = Date.now()
         const phase = (name: string) =>
@@ -103,8 +106,6 @@ const layer = Layer.effect(
           return
         }
         yield* phase("advisory_ready")
-        yield* reconcileBoardNotifications(sessionID).pipe(Effect.orDie)
-        yield* phase("board_ready")
         return yield* Effect.uninterruptibleMask((restore) =>
           Effect.gen(function* () {
             const exit = yield* restore(
@@ -192,11 +193,7 @@ const layer = Layer.effect(
             yield* scheduleAdvisoryWake(sessionID)
             return
           }
-          if (
-            !(yield* SessionInput.hasPendingSource(primary, sessionID, "subagent_board")) &&
-            !(yield* SessionInput.hasPendingSource(primary, sessionID, "shell_job"))
-          )
-            return
+          if (!(yield* SessionInput.hasPendingSource(primary, sessionID, "shell_job"))) return
           yield* coordinator.wake(sessionID)
         }),
       )
@@ -204,66 +201,13 @@ const layer = Layer.effect(
     wakeAdvisory = Effect.fn("SessionExecutionLocal.wakeAdvisory")(function* (sessionID: SessionSchema.ID) {
       yield* scheduleAdvisoryWake(sessionID)
     })
-    const retryingBoardParents = new Map<SessionSchema.ID, boolean>()
-    reconcileBoardNotifications = Effect.fn("SessionExecutionLocal.reconcileBoardNotifications")(function* (
-      parentSessionID?: SessionSchema.ID,
-    ) {
-      const notes = yield* board.pendingParentNotes(parentSessionID === undefined ? undefined : { parentSessionID })
-      const delivered = yield* Effect.forEach(
-        notes,
-        (note) =>
-          Effect.gen(function* () {
-            const task = yield* tasks.owner(note.authorSessionID)
-            if (!task) return 0
-            if (parentSessionID !== undefined && task.parentSessionID !== parentSessionID) return 0
-            const notification = yield* tasks
-              .notifyParent({
-                taskID: task.id,
-                text: TeamBoard.parentUpdateText(note),
-                messageID: TeamBoard.parentNotificationID(note),
-                source: "subagent_board",
-                allowTerminal: true,
-              })
-              .pipe(
-                Effect.catchTag("SessionTask.NotFoundError", () => Effect.succeed(undefined)),
-                Effect.catchTag("SessionTask.ConflictError", () => Effect.succeed(undefined)),
-              )
-            if (notification?.admitted !== true) return 0
-            yield* coordinator.wakeAdvisory?.(notification.sessionID) ?? Effect.void
-            yield* board.markParentNotified(note.id)
-            return 1
-          }),
-        { concurrency: 1 },
-      )
-      return { notes, delivered: delivered.filter((value) => value === 1).length }
-    })
-    retryBoardNotifications = Effect.fn("SessionExecutionLocal.retryBoardNotifications")(function* (
-      parentSessionID: SessionSchema.ID,
-    ) {
-      if (retryingBoardParents.has(parentSessionID)) {
-        retryingBoardParents.set(parentSessionID, true)
-        return
-      }
-      retryingBoardParents.set(parentSessionID, false)
-      yield* Effect.gen(function* () {
-        yield* Effect.sleep("250 millis")
-        const notes = yield* reconcileBoardNotifications(parentSessionID).pipe(
-          Effect.catchCause(() => Effect.succeed({ notes: [], delivered: 0 })),
-        )
-        const retryAgain =
-          retryingBoardParents.get(parentSessionID) === true ||
-          (notes.notes.length === TeamBoard.MAX_VISIBLE_NOTES && notes.delivered > 0)
-        retryingBoardParents.delete(parentSessionID)
-        if (retryAgain) yield* retryBoardNotifications(parentSessionID)
-      }).pipe(Effect.forkIn(scope, { startImmediately: true }), Effect.asVoid)
-    })
-    const wakePendingBoardInputs = Effect.fn("SessionExecutionLocal.wakePendingBoardInputs")(function* () {
+    const wakePendingShellInputs = Effect.fn("SessionExecutionLocal.wakePendingShellInputs")(function* () {
       const highWater = yield* primary
         .get<{ sessionID: string | null }>(
           sql`
           SELECT max(${SessionInputTable.session_id}) AS sessionID
           FROM ${SessionInputTable}
-          WHERE ${SessionInputTable.source} IN ('subagent_board', 'shell_job')
+          WHERE ${SessionInputTable.source} = 'shell_job'
             AND ${SessionInputTable.promoted_seq} IS NULL
             AND ${SessionInputTable.time_cancelled} IS NULL
         `,
@@ -273,7 +217,7 @@ const layer = Layer.effect(
       if (!highWaterSessionID) return
       const wakePage = (afterSessionID?: SessionSchema.ID): Effect.Effect<void> => {
         const conditions = [
-          sql`${SessionInputTable.source} IN ('subagent_board', 'shell_job')`,
+          eq(SessionInputTable.source, "shell_job"),
           isNull(SessionInputTable.promoted_seq),
           isNull(SessionInputTable.time_cancelled),
           lte(SessionInputTable.session_id, SessionSchema.ID.make(highWaterSessionID)),
@@ -301,28 +245,9 @@ const layer = Layer.effect(
     })
     yield* events.subscribe(SessionEvent.PromptAdmitted).pipe(
       Stream.runForEach((event) =>
-        event.data.source === "subagent_board" || event.data.source === "shell_job"
+        event.data.source === "shell_job"
           ? (coordinator.wakeAdvisory?.(event.data.sessionID) ?? Effect.void)
-          : event.data.revert
-            ? retryBoardNotifications(event.data.sessionID)
-            : Effect.void,
-      ),
-      Effect.forkIn(scope, { startImmediately: true }),
-      Effect.asVoid,
-    )
-    yield* events.subscribe(SessionEvent.Prompted).pipe(
-      Stream.runForEach((event) =>
-        primary
-          .select({ source: SessionInputTable.source })
-          .from(SessionInputTable)
-          .where(eq(SessionInputTable.id, event.data.messageID))
-          .get()
-          .pipe(
-            Effect.orDie,
-            Effect.flatMap((input) =>
-              input?.source === "subagent_board" ? retryBoardNotifications(event.data.sessionID) : Effect.void,
-            ),
-          ),
+          : Effect.void,
       ),
       Effect.forkIn(scope, { startImmediately: true }),
       Effect.asVoid,
@@ -339,23 +264,7 @@ const layer = Layer.effect(
       Effect.forkIn(scope, { startImmediately: true }),
       Effect.asVoid,
     )
-    yield* wakePendingBoardInputs()
-    yield* reconcileBoardNotifications().pipe(Effect.orDie)
-    const remainingNotes = yield* board.pendingParentNotes()
-    yield* Effect.forEach(
-      remainingNotes,
-      (note) =>
-        Effect.gen(function* () {
-          const task = yield* tasks.owner(note.authorSessionID)
-          if (task) yield* retryBoardNotifications(task.parentSessionID)
-        }),
-      { concurrency: 1, discard: true },
-    )
-    const pendingParents = yield* board.pendingParentSessions()
-    yield* Effect.forEach(pendingParents, retryBoardNotifications, {
-      concurrency: 1,
-      discard: true,
-    })
+    yield* wakePendingShellInputs()
 
     return SessionExecution.Service.of({
       active: coordinator.active,
@@ -365,7 +274,6 @@ const layer = Layer.effect(
       resume: coordinator.run,
       wake: coordinator.wake,
       wakeForced: coordinator.wakeForced,
-      retry: retryBoardNotifications,
     })
   }),
 )
@@ -382,7 +290,6 @@ export const node = makeGlobalNode({
     SessionTaskV2.node,
     SessionOperation.node,
     SessionShell.registryNode,
-    TeamBoard.node,
     Reflection.node,
   ],
 })

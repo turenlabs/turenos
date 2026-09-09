@@ -91,6 +91,17 @@ const LobbyBetaRoute = () => {
   )
 }
 
+const AutomationsGate = (props: ParentProps) => {
+  const settings = useSettings()
+  return (
+    <Show when={settings.ready()} fallback={<div class="size-full min-h-0 bg-v2-background-bg-deep" aria-busy="true" />}>
+      <Show when={settings.general.automationsEnabled()} fallback={<Navigate href="/" />}>
+        {props.children}
+      </Show>
+    </Show>
+  )
+}
+
 const AnalysisPentestRunPage = () => (
   <AnalysisShell>
     <PentestRunPage />
@@ -98,9 +109,11 @@ const AnalysisPentestRunPage = () => (
 )
 
 const AutomationsRoute = () => (
-  <Suspense fallback={<div class="size-full min-h-0 bg-v2-background-bg-deep" aria-busy="true" />}>
-    <AutomationsPage />
-  </Suspense>
+  <AutomationsGate>
+    <Suspense fallback={<div class="size-full min-h-0 bg-v2-background-bg-deep" aria-busy="true" />}>
+      <AutomationsPage />
+    </Suspense>
+  </AutomationsGate>
 )
 
 const AnalysisAppSecPage = () => (
@@ -109,8 +122,7 @@ const AnalysisAppSecPage = () => (
   </AnalysisShell>
 )
 
-// The Workbench entry point ("/analysis" — what the nav rail and mod+5 both
-// resolve to via surfaceHref in nav-rail-state.ts). Restores whichever tab
+// The Workbench entry point ("/analysis") restores whichever tab
 // was last active (AnalysisShell records it on every visit); a visitor who
 // has never picked one lands on AppSec, the first tab in the strip, not on
 // whichever destination used to be hardcoded here.
@@ -724,7 +736,11 @@ function PlannedSurface(props: { name: string }) {
 
 function LoopsLegacyRedirect() {
   const params = useParams<{ id?: string }>()
-  return <Navigate href={params.id ? `/automations/${params.id}` : "/automations"} />
+  return (
+    <AutomationsGate>
+      <Navigate href={params.id ? `/automations/${params.id}` : "/automations"} />
+    </AutomationsGate>
+  )
 }
 
 function NewLayoutLegacySessionRedirect() {

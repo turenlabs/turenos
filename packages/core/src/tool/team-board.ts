@@ -70,7 +70,7 @@ export function makeTools(deps: {
   return {
     [postName]: Tool.make({
       description:
-        "Share work with your sibling analysts by posting a durable note to the team's board. Parent agents receive the update at the next safe provider-turn boundary and can keep working without waiting. Use supersedes to CORRECT a teammate's note when you have better evidence, rather than posting an unconnected contradiction. Every claim should carry evidence so siblings can verify it.",
+        "Share work with your sibling analysts by posting a durable note to the team's board. Posts stay in the background: they do not enqueue parent prompts or start new turns. Use board_read to retrieve updates. Use supersedes to CORRECT a teammate's note when you have better evidence, rather than posting an unconnected contradiction. Every claim should carry evidence so siblings can verify it.",
       input: Schema.Struct({
         kind: Contract.Kind,
         title: TitleText,
@@ -90,12 +90,10 @@ export function makeTools(deps: {
           yield* assertPermission(deps.permission, postName, [input.kind], context)
           return yield* Effect.uninterruptible(
             Effect.gen(function* () {
-              const owner = yield* deps.tasks.owner(context.sessionID)
               const note = yield* deps.board
                 .post({
                   rootSessionID: yield* root(context),
                   authorSessionID: context.sessionID,
-                  ...(owner ? { parentSessionID: owner.parentSessionID } : {}),
                   authorAgent: context.agent,
                   kind: input.kind,
                   title: input.title,
@@ -104,32 +102,12 @@ export function makeTools(deps: {
                   supersedes: input.supersedes,
                 })
                 .pipe(Effect.mapError(failure))
-              const notification = owner
-                ? yield* deps.tasks
-                    .notifyParent({
-                      taskID: owner.id,
-                      text: TeamBoard.parentUpdateText(note),
-                      messageID: TeamBoard.parentNotificationID(note),
-                      source: "subagent_board",
-                      allowTerminal: true,
-                    })
-                    .pipe(
-                      Effect.catchTag("SessionTask.NotFoundError", () => Effect.succeed(undefined)),
-                      Effect.catchTag("SessionTask.ConflictError", () => Effect.succeed(undefined)),
-                    )
-                : undefined
-              if (notification?.admitted === true) {
-                yield* deps.control.wakeAdvisory?.(notification.sessionID) ?? Effect.void
-                yield* deps.board.markParentNotified(note.id).pipe(Effect.mapError(failure))
-              } else if (owner !== undefined) {
-                yield* deps.control.retry?.(owner.parentSessionID) ?? Effect.void
-              }
               return {
                 note_id: note.id,
                 kind: note.kind,
                 title: note.title,
                 superseded: note.supersedes,
-                parent_notified: notification?.admitted === true,
+                parent_notified: false,
               }
             }),
           )

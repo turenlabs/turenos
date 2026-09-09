@@ -1048,6 +1048,9 @@ export const dict = {
   "settings.general.row.harnessSelfModification.description":
     "Allow the background reviewer to propose and apply bounded Harness changes automatically",
   "settings.general.row.harnessSelfModification.enabled": "Enabled",
+  "settings.general.row.automations.title": "Automations",
+  "settings.general.row.automations.description":
+    "Enable scheduled workflows and the Automations workspace",
   "settings.general.row.shell.title": "터미널 셸",
   "settings.general.row.shell.description":
     "터미널에서 사용할 셸을 선택하세요. 호환되는 셸은 에이전트 도구 호출에도 사용됩니다.",

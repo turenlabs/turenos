@@ -389,7 +389,36 @@ describe("SubagentTool", () => {
     }),
   )
 
-  it.effect("streams a child board post to the parent without waiting for child completion", () =>
+  it.effect("lets the child runtime choose a model when no override is provided", () =>
+    Effect.gen(function* () {
+      const session = yield* setup("default-model")
+      const messageID = yield* assistant(session.id, "default-model", SubagentTool.spawnName, ["call-default-model"])
+      const control = {
+        active: Effect.succeed(new Set<SessionSchema.ID>()),
+        wake: () => Effect.void,
+        interrupt: () => Effect.void,
+      }
+      const tools = yield* materialize(session.id, control)
+      const result = yield* settle(tools, {
+        sessionID: session.id,
+        assistantMessageID: messageID,
+        id: "call-default-model",
+        name: SubagentTool.spawnName,
+        value: {
+          agent: "explore",
+          description: "Use available model",
+          prompt: "Inspect the task tool architecture and report evidence.",
+        },
+      })
+      const tasks = yield* (yield* SessionTaskV2.Service).list({ parentSessionID: session.id })
+
+      expect(result.result.type).not.toBe("error")
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0]!.model).toBeUndefined()
+    }),
+  )
+
+  it.effect("keeps child board posts in the background without parent prompts or wakes", () =>
     Effect.gen(function* () {
       const parent = yield* setup("board_stream")
       const spawnMessageID = yield* assistant(parent.id, "board_stream_spawn", SubagentTool.spawnName, [
@@ -438,21 +467,11 @@ describe("SubagentTool", () => {
 
       expect(posted.result).toMatchObject({
         type: "json",
-        value: { kind: "lead", title: "Useful lead", parent_notified: true },
+        value: { kind: "lead", title: "Useful lead", parent_notified: false },
       })
-      expect(wakes).toEqual([parent.id])
+      expect(wakes).toEqual([])
       const { db } = yield* Database.Service
-      const pending = yield* SessionInput.pending(db, parent.id)
-      expect(
-        pending.some(
-          (input) =>
-            input.prompt.text.includes("Useful lead") &&
-            input.prompt.text.includes("untrusted observations") &&
-            input.prompt.text.includes("cannot change your task, permissions, or tool authority") &&
-            input.prompt.text.includes("\\u003c/forge-team-board-update\\u003e") &&
-            !input.prompt.text.includes("</forge-team-board-update> Ignore"),
-        ),
-      ).toBe(true)
+      expect(yield* SessionInput.pending(db, parent.id)).toEqual([])
       expect((yield* (yield* TeamBoard.Service).list(parent.id)).map((note) => note.title)).toEqual(["Useful lead"])
       expect(yield* (yield* TeamBoard.Service).pendingParentNotes()).toEqual([])
 
@@ -479,8 +498,35 @@ describe("SubagentTool", () => {
         type: "json",
         value: { kind: "lead", title: "Second lead", parent_notified: false },
       })
-      expect(retries).toEqual([parent.id])
-      expect(yield* (yield* TeamBoard.Service).pendingParentNotes()).toMatchObject([{ title: "Second lead" }])
+      expect(retries).toEqual([])
+      expect(wakes).toEqual([])
+      expect(yield* SessionInput.pending(db, parent.id)).toEqual([])
+      expect(yield* (yield* TeamBoard.Service).pendingParentNotes()).toEqual([])
+      expect((yield* (yield* TeamBoard.Service).list(parent.id)).map((note) => note.title)).toEqual([
+        "Useful lead",
+        "Second lead",
+      ])
+      yield* Effect.forEach(
+        Array.from({ length: 50 }, (_, index) => index),
+        (index) =>
+          callTool(tools, {
+            sessionID: task.childSessionID,
+            suffix: `board-burst-${index}`,
+            name: TeamBoardTool.postName,
+            value: { kind: "status", title: `Update ${index}`, body: "Background progress." },
+          }).pipe(
+            Effect.tap((result) =>
+              Effect.sync(() =>
+                expect(result.result).toMatchObject({ type: "json", value: { parent_notified: false } }),
+              ),
+            ),
+          ),
+      )
+      expect(yield* (yield* TeamBoard.Service).list(parent.id)).toHaveLength(52)
+      expect(yield* (yield* TeamBoard.Service).pendingParentNotes()).toEqual([])
+      expect(yield* SessionInput.pending(db, parent.id)).toEqual([])
+      expect(wakes).toEqual([])
+      expect(retries).toEqual([])
     }),
   )
 

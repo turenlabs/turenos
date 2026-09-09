@@ -38,6 +38,7 @@ export interface Settings {
     showCustomAgents: boolean
     catalogEndpoint?: string
     lobbyBetaEnabled?: boolean
+    automationsEnabled?: boolean
     lobbyAPIURL?: string
     lobbyGuestID?: string
     lobbyGuestName?: string
@@ -62,6 +63,7 @@ export const sansDefault = "System Sans"
 export const terminalDefault = "JetBrainsMono Nerd Font Mono"
 export const performanceDiagnosticsDefault = false
 export const lobbyBetaEnabledDefault = false
+export const automationsEnabledDefault = false
 export const newLayoutDesignsDefault = true
 // Existing users can switch layouts until local midnight on this date. Set new Date(YYYY, M-1, D) to show.
 export const oldInterfaceSunset = new Date(2026, 8, 14)
@@ -184,6 +186,7 @@ const defaultSettings: Settings = {
     showCustomAgents: false,
     catalogEndpoint: OFFICIAL_CATALOG_ENDPOINT,
     lobbyBetaEnabled: lobbyBetaEnabledDefault,
+    automationsEnabled: automationsEnabledDefault,
     lobbyAPIURL: "",
     lobbyGuestID: "",
     lobbyGuestName: "TurenOS guest",
@@ -398,6 +401,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         lobbyBetaEnabled: withFallback(() => store.general?.lobbyBetaEnabled, lobbyBetaEnabledDefault),
         setLobbyBetaEnabled(value: boolean) {
           setStore("general", "lobbyBetaEnabled", value)
+        },
+        automationsEnabled: withFallback(() => store.general?.automationsEnabled, automationsEnabledDefault),
+        setAutomationsEnabled(value: boolean) {
+          setStore("general", "automationsEnabled", value)
         },
         lobbyAPIURL: withFallback(() => store.general?.lobbyAPIURL, ""),
         setLobbyAPIURL(value: string) {

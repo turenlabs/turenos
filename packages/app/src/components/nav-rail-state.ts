@@ -7,8 +7,23 @@
 
 export type Surface = "home" | "agents" | "lobby" | "replay" | "automations" | "extend" | "analysis"
 
-export function surfaceEnabled(surface: Surface, lobbyBetaEnabled: boolean) {
-  return surface !== "lobby" || lobbyBetaEnabled
+export function surfaceEnabled(surface: Surface, lobbyBetaEnabled: boolean, automationsEnabled = false) {
+  if (surface === "lobby") return lobbyBetaEnabled
+  if (surface === "automations") return automationsEnabled
+  return true
+}
+
+export function navRailSurfaces(automationsEnabled: boolean, lobbyBetaEnabled: boolean): Surface[] {
+  const surfaces: Surface[] = ["home", "agents"]
+  if (automationsEnabled) surfaces.push("automations")
+  surfaces.push("extend", "replay")
+  if (lobbyBetaEnabled) surfaces.push("lobby")
+  return surfaces
+}
+
+export function navRailKeybind(surface: Surface, automationsEnabled: boolean, lobbyBetaEnabled: boolean) {
+  const index = navRailSurfaces(automationsEnabled, lobbyBetaEnabled).indexOf(surface)
+  return index < 0 ? undefined : `mod+${index + 1}`
 }
 export type PanelSurface = Extract<Surface, "agents" | "automations">
 

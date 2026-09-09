@@ -118,7 +118,7 @@ export const DialogSettings: Component<{
             "experimental",
             "code",
             language.t("settings.experimental.title"),
-            "experimental yolk harness intelligence autonomy reviewer",
+            "experimental automations workflows scheduled yolk harness intelligence autonomy reviewer",
           ),
           ...(DEVELOPER_SETTINGS_ENABLED
             ? [

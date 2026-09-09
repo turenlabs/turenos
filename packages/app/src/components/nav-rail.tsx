@@ -1,5 +1,5 @@
 // Persistent 52px navigation rail — the thin shell between product surfaces
-// (Agents and Analysis) decided in .interface-design/system.md. The rail never
+// (Agents and the other product surfaces) decided in .interface-design/system.md. The rail never
 // collapses; per-surface panels do. It reads feature status only through the
 // narrow Agents accessor on `status` and owns no feature internals.
 
@@ -33,6 +33,7 @@ import {
   railClick,
   releasePanelPin,
   migrateNavRailState,
+  navRailKeybind,
   surfaceFromLocation,
   surfaceEnabled,
   surfaceHref,
@@ -42,7 +43,6 @@ import {
   type Surface,
 } from "@/components/nav-rail-state"
 import { ProductLinks } from "@/product-links"
-
 
 const RAIL_ITEM =
   "relative flex size-9 shrink-0 cursor-default items-center justify-center rounded-[8px] border-0 bg-transparent text-v2-icon-icon-muted outline-none transition-[background-color,color,box-shadow] duration-[120ms] ease-in-out hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:[box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-focus)]"
@@ -183,92 +183,87 @@ export const { use: useNavRail, provider: NavRailProvider } = createSimpleContex
       open(target)
     }
 
-    command.register("nav.rail", () => [
-      {
-        id: "nav.surface.home",
-        title: "Go to Home",
-        category: language.t("command.category.view"),
-        keybind: "mod+1",
-        when: () => true,
-        onSelect: () => open("home"),
-      },
-      {
-        id: "nav.surface.agents",
-        title: language.t("command.nav.agents"),
-        category: language.t("command.category.view"),
-        keybind: "mod+2",
-        // The rail owns mod+1 through mod+7 in its visible top-to-bottom order;
-        // `when` wins keybind resolution over the numbered tab-switch bindings.
-        when: () => true,
-        onSelect: () => open("agents"),
-      },
-      {
-        id: "nav.surface.automations",
-        title: "Go to Automations",
-        category: language.t("command.category.view"),
-        keybind: "mod+3",
-        when: () => true,
-        onSelect: () => open("automations"),
-      },
-      {
-        id: "nav.surface.extend",
-        title: "Go to Extend",
-        category: language.t("command.category.view"),
-        keybind: "mod+4",
-        when: () => true,
-        onSelect: () => open("extend"),
-      },
-      {
-        id: "nav.surface.analysis",
-        title: language.t("command.nav.analysis"),
-        category: language.t("command.category.view"),
-        keybind: "mod+5",
-        when: () => true,
-        onSelect: () => open("analysis"),
-      },
-      {
-        id: "nav.surface.replay",
-        title: "Go to Traces",
-        category: language.t("command.category.view"),
-        keybind: "mod+6",
-        when: () => true,
-        onSelect: () => open("replay"),
-      },
-      {
-        id: "nav.surface.lobby",
-        title: "Go to Lobby",
-        category: language.t("command.category.view"),
-        keybind: "mod+7",
-        when: () => surfaceEnabled("lobby", settings.general.lobbyBetaEnabled()),
-        onSelect: () => open("lobby"),
-      },
-      {
-        id: "nav.analysis.appSec",
-        title: language.t("command.nav.analysis.appSec"),
-        category: language.t("command.category.view"),
-        onSelect: () => navigate("/analysis/appsec"),
-      },
-      {
-        id: "nav.analysis.penTesting",
-        title: language.t("command.nav.analysis.penTesting"),
-        category: language.t("command.category.view"),
-        onSelect: () => navigate("/analysis/pen-testing"),
-      },
-      {
-        id: "nav.panel.toggle",
-        title: language.t("command.nav.panel.toggle"),
-        category: language.t("command.category.view"),
-        keybind: "mod+\\",
-        // The Agents panel exists on every Agents-surface route now, but
-        // session routes keep their file-tree mod+\ binding — the shell only
-        // claims the shortcut where no route-owned binding competes.
-        disabled: !panelShortcutAvailable(surface(), loc()),
-        onSelect: () => {
-          const current = surface()
-          if (current === "agents" || current === "automations") toggle(current)
+    command.register("nav.rail", () => {
+      const automationsEnabled = settings.general.automationsEnabled()
+      const lobbyBetaEnabled = settings.general.lobbyBetaEnabled()
+      const keybind = (target: Surface) => navRailKeybind(target, automationsEnabled, lobbyBetaEnabled)
+      const category = language.t("command.category.view")
+
+      return [
+        {
+          id: "nav.surface.home",
+          title: "Go to Home",
+          category,
+          keybind: keybind("home"),
+          when: () => true,
+          onSelect: () => open("home"),
         },
-      },
-    ])
+        {
+          id: "nav.surface.agents",
+          title: language.t("command.nav.agents"),
+          category,
+          keybind: keybind("agents"),
+          // The rail owns the numbered mod shortcuts in its visible top-to-bottom order;
+          // `when` wins keybind resolution over the numbered tab-switch bindings.
+          when: () => true,
+          onSelect: () => open("agents"),
+        },
+        ...(automationsEnabled
+          ? [
+              {
+                id: "nav.surface.automations",
+                title: "Go to Automations",
+                category,
+                keybind: keybind("automations"),
+                when: () => true,
+                onSelect: () => open("automations"),
+              },
+            ]
+          : []),
+        {
+          id: "nav.surface.extend",
+          title: "Go to Extend",
+          category,
+          keybind: keybind("extend"),
+          when: () => true,
+          onSelect: () => open("extend"),
+        },
+        {
+          id: "nav.surface.replay",
+          title: "Go to Traces",
+          category,
+          keybind: keybind("replay"),
+          when: () => true,
+          onSelect: () => open("replay"),
+        },
+        ...(lobbyBetaEnabled
+          ? [
+              {
+                id: "nav.surface.lobby",
+                title: "Go to Lobby",
+                category,
+                keybind: keybind("lobby"),
+                when: () => true,
+                onSelect: () => open("lobby"),
+              },
+            ]
+          : []),
+        {
+          id: "nav.panel.toggle",
+          title: language.t("command.nav.panel.toggle"),
+          category,
+          keybind: "mod+\\",
+          // The Agents panel exists on every Agents-surface route now, but
+          // session routes keep their file-tree mod+\ binding — the shell only
+          // claims the shortcut where no route-owned binding competes.
+          disabled: !panelShortcutAvailable(surface(), loc()),
+          onSelect: () => {
+            const current = surface()
+            if (current === "agents" || current === "automations") toggle(current)
+          },
+        },
+      ]
+    })
 
     return {
       surface,
@@ -362,24 +357,26 @@ export function NavRail() {
             </Show>
           </button>
         </TooltipV2>
-        <TooltipV2 placement="right" value={tooltip("Automations", "nav.surface.automations")}>
-          <button
-            type="button"
-            data-action="nav-rail-automations"
-            class={RAIL_ITEM}
-            classList={{ [RAIL_ITEM_ACTIVE]: nav.surface() === "automations" }}
-            aria-current={nav.surface() === "automations" ? "page" : undefined}
-            aria-label={
-              nav.surface() === "automations"
-                ? `Automations — ${nav.collapsed("automations") ? "show panel" : "hide panel"}`
-                : "Automations"
-            }
-            aria-expanded={nav.surface() === "automations" ? !nav.collapsed("automations") : undefined}
-            onClick={() => nav.click("automations")}
-          >
-            <IconV2 name="branch" />
-          </button>
-        </TooltipV2>
+        <Show when={settings.general.automationsEnabled()}>
+          <TooltipV2 placement="right" value={tooltip("Automations", "nav.surface.automations")}>
+            <button
+              type="button"
+              data-action="nav-rail-automations"
+              class={RAIL_ITEM}
+              classList={{ [RAIL_ITEM_ACTIVE]: nav.surface() === "automations" }}
+              aria-current={nav.surface() === "automations" ? "page" : undefined}
+              aria-label={
+                nav.surface() === "automations"
+                  ? `Automations — ${nav.collapsed("automations") ? "show panel" : "hide panel"}`
+                  : "Automations"
+              }
+              aria-expanded={nav.surface() === "automations" ? !nav.collapsed("automations") : undefined}
+              onClick={() => nav.click("automations")}
+            >
+              <IconV2 name="branch" />
+            </button>
+          </TooltipV2>
+        </Show>
         <TooltipV2 placement="right" value={tooltip("Extend", "nav.surface.extend")}>
           <button
             type="button"

@@ -6,6 +6,7 @@ import { Headers, HttpClientResponse } from "effect/unstable/http"
 import { AISDK } from "@turenlabs/core/aisdk"
 import { Credential } from "@turenlabs/core/credential"
 import { Integration } from "@turenlabs/core/integration"
+import { InstallationVersion } from "@turenlabs/core/installation/version"
 import { ModelV2 } from "@turenlabs/core/model"
 import { ProviderV2 } from "@turenlabs/core/provider"
 import { ProjectV2 } from "@turenlabs/core/project"
@@ -58,6 +59,68 @@ describe("SessionRunnerModel", () => {
           limits: { context: 100, output: 20 },
           http: { body: { custom_extension: { enabled: true } } },
         },
+      })
+    }),
+  )
+
+  it.effect("adds TurenOS identity and OpenCode session affinity to resolved routes", () =>
+    Effect.gen(function* () {
+      const catalog = ModelV2.Info.make({
+        ...model({ type: "aisdk", package: "@ai-sdk/openai-compatible", url: "https://opencode.ai/zen/go/v1" }),
+        id: ModelV2.ID.make("opencode-go/deepseek-v4-flash"),
+        providerID: ProviderV2.ID.make("opencode-go"),
+      })
+      const session = SessionV2.Info.make({
+        id: SessionV2.ID.make("ses_opencode_route"),
+        projectID: ProjectV2.ID.global,
+        title: "test",
+        model: { id: catalog.id, providerID: catalog.providerID },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+        location: { directory: AbsolutePath.make("/project") },
+      })
+
+      const resolved = yield* SessionRunnerModel.resolve(session, catalog)
+
+      expect(resolved.route.defaults.headers).toMatchObject({
+        "User-Agent": `TurenOS/${InstallationVersion}`,
+        "x-opencode-session": session.id,
+      })
+
+      const requests: Array<{ readonly headers: Record<string, string> }> = []
+      const executor = Layer.succeed(
+        RequestExecutor.Service,
+        RequestExecutor.Service.of({
+          execute: (request) => {
+            requests.push({ headers: request.headers })
+            return Effect.succeed(
+              HttpClientResponse.fromWeb(
+                request,
+                new Response(
+                  [
+                    'data: {"id":"chatcmpl_test","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}',
+                    "",
+                    'data: {"id":"chatcmpl_test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+                    "",
+                    "data: [DONE]",
+                    "",
+                  ].join("\n"),
+                  { headers: { "content-type": "text/event-stream" } },
+                ),
+              ),
+            )
+          },
+        }),
+      )
+      yield* LLMClient.stream(LLM.request({ model: resolved, prompt: "Hello" })).pipe(
+        Stream.runCollect,
+        Effect.provide(LLMClient.layer.pipe(Layer.provide(executor))),
+      )
+
+      expect(requests[0]?.headers).toMatchObject({
+        "user-agent": `TurenOS/${InstallationVersion}`,
+        "x-opencode-session": session.id,
       })
     }),
   )

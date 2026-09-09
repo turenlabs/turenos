@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   isAppUpgrade,
   layoutTransitionState,
+  automationsEnabledDefault,
   lobbyBetaEnabledDefault,
   maximumSunsetTimeout,
   newLayoutDesignsDefault,
@@ -11,6 +12,10 @@ import {
 } from "./settings"
 
 describe("layout transition", () => {
+  test("keeps Automations disabled until the user opts in", () => {
+    expect(automationsEnabledDefault).toBe(false)
+  })
+
   test("keeps Turen Lobby disabled until the user opts into beta", () => {
     expect(lobbyBetaEnabledDefault).toBe(false)
   })

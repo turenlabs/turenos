@@ -598,6 +598,22 @@ const SettingsGeneralContent: Component<{
           </SettingsRowV2>
         </Show>
 
+        <Show when={props.page === "experimental"}>
+          <SettingsRowV2
+            title={language.t("settings.general.row.automations.title")}
+            description={language.t("settings.general.row.automations.description")}
+          >
+            <div data-action="settings-automations">
+              <Switch
+                checked={settings.general.automationsEnabled()}
+                onChange={settings.general.setAutomationsEnabled}
+              >
+                {language.t(toggleLabelKey(settings.general.automationsEnabled()))}
+              </Switch>
+            </div>
+          </SettingsRowV2>
+        </Show>
+
         <Show when={props.page === "server"}>
           <SettingsRowV2
             title={language.t("settings.permissions.enforce.title")}

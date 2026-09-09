@@ -14,6 +14,7 @@ import { AISDK, markXaiOAuthModel } from "../../aisdk"
 import { Catalog } from "../../catalog"
 import { Credential } from "../../credential"
 import { Integration } from "../../integration"
+import { InstallationVersion } from "../../installation/version"
 import { ModelV2 } from "../../model"
 import { AmazonBedrockModel } from "../../plugin/provider/amazon-bedrock-model"
 import { OpenAICodex } from "../../plugin/provider/openai-codex"
@@ -449,11 +450,16 @@ const requestDefaults = (model: ModelV2.Info) => {
   }
 }
 
+const runtimeHeaders = (model: ModelV2.Info) => ({
+  ...model.request.headers,
+  "User-Agent": `TurenOS/${InstallationVersion}`,
+})
+
 const defaults = (model: ModelV2.Info) => {
   const request = requestDefaults(model)
   return {
     provider: model.providerID,
-    headers: model.request.headers,
+    headers: runtimeHeaders(model),
     ...request,
     ...(model.providerID === ProviderV2.ID.make("ollama")
       ? { http: { ...request.http, redirect: "error" as const } }
@@ -1130,7 +1136,11 @@ const resolveWith = <R>(
   return resolver(selected.model, credential).pipe(
     Effect.map(
       (resolved): Resolved => ({
-        model: resolved,
+        model: selected.model.providerID.startsWith("opencode")
+          ? Model.update(resolved, {
+              route: resolved.route.with({ headers: { "x-opencode-session": String(session.id) } }),
+            })
+          : resolved,
         ref: ModelV2.Ref.make({
           id: model.id,
           providerID: model.providerID,

@@ -14,6 +14,8 @@ import {
   releasePanelPin,
   SHELL_CHROME_SELECTOR,
   migrateNavRailState,
+  navRailKeybind,
+  navRailSurfaces,
   surfaceFromLocation,
   surfaceEnabled,
   surfaceHref,
@@ -28,6 +30,22 @@ describe("surfaceFromLocation", () => {
     expect(surfaceEnabled("lobby", false)).toBe(false)
     expect(surfaceEnabled("lobby", true)).toBe(true)
     expect(surfaceEnabled("agents", false)).toBe(true)
+  })
+
+  test("gates Automations behind its opt-in setting", () => {
+    expect(surfaceEnabled("automations", false)).toBe(false)
+    expect(surfaceEnabled("automations", false, false)).toBe(false)
+    expect(surfaceEnabled("automations", false, true)).toBe(true)
+  })
+
+  test("keeps visible rail shortcuts contiguous as optional surfaces change", () => {
+    expect(navRailSurfaces(false, false)).toEqual(["home", "agents", "extend", "replay"])
+    expect(navRailSurfaces(true, false)).toEqual(["home", "agents", "automations", "extend", "replay"])
+    expect(navRailKeybind("extend", false, false)).toBe("mod+3")
+    expect(navRailKeybind("replay", false, false)).toBe("mod+4")
+    expect(navRailKeybind("replay", true, false)).toBe("mod+5")
+    expect(navRailKeybind("analysis", true, true)).toBeUndefined()
+    expect(navRailKeybind("lobby", false, false)).toBeUndefined()
   })
 
   test("Home and Extend routes own their surfaces", () => {

@@ -81,7 +81,7 @@ describe("AgentGuidance", () => {
       expect(generation.baseline).toContain("returns after admission, not after child completion")
       expect(generation.baseline).toContain("non-overlapping write roots")
       expect(generation.baseline).toContain("explicit final-report barrier")
-      expect(generation.baseline).toContain("Board updates wake the parent")
+      expect(generation.baseline).toContain("Board updates stay in the background and do not wake the parent")
       expect(generation.baseline).toContain("at most once per task")
       expect(generation.baseline).toContain("concrete high-risk boundary")
       expect(generation.baseline).toContain("Skip it for routine local changes")

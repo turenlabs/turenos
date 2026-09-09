@@ -1,5 +1,6 @@
 export { Agent } from "./agent"
 export { AgentImprovement } from "./agent-improvement"
+export { Artifact } from "./artifact"
 export { TeamBoard } from "./team-board"
 export { Command } from "./command"
 export { Connection } from "./connection"

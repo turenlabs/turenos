@@ -85,12 +85,16 @@ describe("SessionContextRequest", () => {
       const loaded = yield* SessionContextRequest.prepare(db, sessionID, { ...configuration, history })
       expect(loaded).toMatchObject({ generation: 1, reason: undefined })
       expect(loaded.frame).toEqual(frame)
-      expect(JSON.stringify(Schema.encodeSync(SessionContextRequest.Frame)(loaded.frame!))).toBe(
-        JSON.stringify(Schema.encodeSync(SessionContextRequest.Frame)(frame)),
+      const encodeUnknown = Schema.encodeUnknownSync as unknown as (
+        schema: unknown,
+      ) => (value: unknown) => unknown
+      const encodeFrame = encodeUnknown(SessionContextRequest.Frame)
+      expect(JSON.stringify(encodeFrame(loaded.frame!))).toBe(
+        JSON.stringify(encodeFrame(frame)),
       )
       expect(DateTime.toEpochMillis(loaded.frame!.entries[0]!.message.time.created)).toBe(123456789)
       const stored = yield* db.select().from(SessionContextRequestTable).get()
-      expect(stored?.data).toEqual(Schema.encodeSync(SessionContextRequest.Frame)(frame))
+      expect(stored?.data).toEqual(encodeFrame(frame))
     }),
   )
 

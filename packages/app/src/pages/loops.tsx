@@ -16,6 +16,7 @@ import { useGlobal } from "@/context/global"
 import { ServerConnection, serverName, useServer } from "@/context/server"
 import { sessionHref } from "@/utils/session-route"
 import { isRemovedProvider } from "@/hooks/provider-visibility"
+import { ArtifactChip } from "./loops/artifact-chip"
 import { loopApi, loopCatalog, responseData, type LoopInfo, type LoopModel, type LoopRun } from "./loops/api"
 import {
   buildTriggerInput,
@@ -142,6 +143,7 @@ function RunStepCard(props: {
   total: number
   state: StepState
   output: LoopRun["outputs"][string]
+  onOpenArtifact?: (target: string) => void
 }) {
   const [expanded, setExpanded] = createSignal(false)
   const [copied, setCopied] = createSignal(false)
@@ -236,15 +238,7 @@ function RunStepCard(props: {
           <For each={props.output.artifacts}>
             {(artifact) => (
               <li class="truncate font-mono text-[10px] text-v2-text-text-muted">
-                {artifact.type === "file" ? (
-                  <span>
-                    file · {artifact.name ?? artifact.uri} · {artifact.mime}
-                  </span>
-                ) : (
-                  <span>
-                    {artifact.type} · {artifact.path}
-                  </span>
-                )}
+                <ArtifactChip artifact={artifact} onOpen={props.onOpenArtifact} />
               </li>
             )}
           </For>
@@ -1823,6 +1817,10 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                                     total={display.total}
                                     state={stepState(run, stepID, display.index)}
                                     output={output}
+                                    onOpenArtifact={(target) => {
+                                      if (!run.sessionID) return
+                                      navigate(`${sessionHref(serverKey, run.sessionID)}?file=${encodeURIComponent(target)}`)
+                                    }}
                                   />
                                 )
                               }}

@@ -1471,8 +1471,46 @@ describe("SessionTaskV2", () => {
     }),
   )
 
+  it.effect("retires only pending legacy board inputs when execution starts", () =>
+    Effect.gen(function* () {
+      const parentSessionID = yield* setup("board_startup_cleanup")
+      const database = yield* Database.Service
+      const events = yield* EventV2.Service
+      const admitted = yield* Effect.forEach(
+        ["subagent_board", "subagent_board", "user", "shell_job"] as const,
+        (source, index) =>
+          SessionInput.admit(database.db, events, {
+            id: SessionMessage.ID.make(`msg_board_startup_${index}`),
+            sessionID: parentSessionID,
+            prompt: Prompt.make({ text: `Persisted ${source} input ${index}` }),
+            delivery: "queue",
+            source,
+            kind: "prompt",
+          }),
+      )
+      yield* SessionInput.promoteNextQueued(database.db, events, parentSessionID)
+      yield* Effect.gen(function* () {
+        yield* SessionExecution.Service
+        const statuses = yield* Effect.forEach(admitted, (input) =>
+          SessionInput.inputStatus(database.db, { sessionID: parentSessionID, messageID: input.id }),
+        )
+        expect(statuses.map((input) => input?.status)).toEqual(["promoted", "cancelled", "admitted", "admitted"])
+        expect(statuses[1]?.timeCancelled).toBeDefined()
+      }).pipe(
+        Effect.provide(
+          AppNodeBuilder.build(SessionExecutionLocal.node, [
+            [Database.node, Layer.succeed(Database.Service, database)],
+            [EventV2.node, Layer.succeed(EventV2.Service, events)],
+            [ProjectV2.node, projects],
+            [LocationServiceMap.node, executionLocations],
+          ]),
+        ),
+      )
+    }),
+  )
+
   realExecutionIt.live(
-    "wakes a parent from durable board admission without a caller-owned wake",
+    "ignores board admissions while still waking for shell job completion",
     () => {
       const previous = executionRunner.run
       return Effect.gen(function* () {
@@ -1492,11 +1530,23 @@ describe("SessionTaskV2", () => {
             source: "subagent_board",
           }),
         ).toEqual({ sessionID: parentSessionID, admitted: true })
+        yield* Effect.sleep("400 millis")
+        expect(yield* Deferred.isDone(started)).toBe(false)
+        const database = yield* Database.Service
+        const events = yield* EventV2.Service
+        yield* SessionInput.admit(database.db, events, {
+          id: SessionMessage.ID.make("msg_shell_admission_wake"),
+          sessionID: parentSessionID,
+          prompt: Prompt.make({ text: "Shell job completed." }),
+          delivery: "queue",
+          source: "shell_job",
+          kind: "prompt",
+        })
         expect(
           yield* Deferred.await(started).pipe(
             Effect.timeoutOrElse({
               duration: "2 seconds",
-              orElse: () => Effect.fail(new Error("durable board admission did not wake the parent")),
+              orElse: () => Effect.fail(new Error("durable shell job admission did not wake the parent")),
             }),
           ),
         ).toBe(parentSessionID)
