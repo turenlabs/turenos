@@ -3,6 +3,7 @@ import { createRoot, createSignal, batch } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { mergeSessionV2Presentation, presentSessionV2Messages } from "../goal/session-v2-presentation"
 import { createTimelineProjection } from "../timeline/projection"
+import { leanSessionMessage } from "./session-load-fixture"
 
 /**
  * The tab-switch pipeline, cut into the stages a fix could plausibly target, each timed on its own.
@@ -51,7 +52,12 @@ export type PagedLoader = (cursor?: string) => Promise<{
  * matching the server, where a `desc` walk starts at the newest message and `cursor.next` moves
  * backwards through history.
  */
-export function createPageServer(messages: readonly SessionMessage[], limit: number, order: "asc" | "desc") {
+export function createPageServer(
+  messages: readonly SessionMessage[],
+  limit: number,
+  order: "asc" | "desc",
+  options?: { lean?: boolean },
+) {
   const source = order === "asc" ? messages : [...messages].reverse()
   let bytes = 0
   let requests = 0
@@ -88,7 +94,9 @@ export function createPageServer(messages: readonly SessionMessage[], limit: num
       const start = offset(cursor)
       const slice = source.slice(start, start + limit)
       const serializeStart = now()
-      const text = JSON.stringify(slice)
+      // `lean` serves the `session.messages?lean=true` payload: oversized tool bodies are stubbed
+      // before serialisation, matching the server handler.
+      const text = JSON.stringify(options?.lean ? slice.map(leanSessionMessage) : slice)
       serializeMs += now() - serializeStart
       bytes += text.length
       const parseStart = now()

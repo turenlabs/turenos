@@ -14,7 +14,7 @@ import contextMenu from "electron-context-menu"
 import type { ServerReadyData } from "../preload/types"
 import { checkAppExists, resolveAppPath } from "./apps"
 import { CHANNEL } from "./constants"
-import { registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
+import { closeSecurityProxy, disconnectSecurityProxy, invokeSecurityProxy, registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
 import { forwardInitializationFailure } from "./initialization"
 import { exportDebugLogs, initCrashReporter, initLogging, startNetLog, write as writeLog } from "./logging"
 import { parseMarkdown } from "./markdown"
@@ -40,6 +40,10 @@ import {
 import { createWslServersController, type WslServersController } from "./wsl/servers"
 import { registerWslIpcHandlers } from "./wsl/ipc"
 import { spawnWslSidecar } from "./wsl/sidecar"
+import { createSshServersController, type SshServersController } from "./ssh/servers"
+import { sshControlDir } from "./ssh/runtime"
+import { registerSshIpcHandlers } from "./ssh/ipc"
+import { rendererCorsOrigins } from "./window-security"
 import { currentTauriLegacyDir, readTauriLegacyStores } from "./migrate"
 import { getStore } from "./store"
 import { createDesktopStorage } from "./storage/bridge"
@@ -73,7 +77,9 @@ const jsCallStackFeature = "DocumentPolicyIncludeJSCallStacksInCrashReports"
 
 let logger: ReturnType<typeof initLogging>
 let server: SidecarListener | null = null
+let securityProxyOrigin: string | undefined
 let wslServers: WslServersController | undefined
+let sshServers: SshServersController | undefined
 let profiler: ProfilerController | undefined
 
 const pendingDeepLinks: string[] = []
@@ -95,6 +101,7 @@ function emitDeepLinks(urls: string[]) {
 }
 
 async function killSidecar() {
+  await boundTeardownStep("securityProxy", closeSecurityProxy)()
   // Every sidecar teardown path funnels through here - quit, relaunch, the
   // updater and the kill-sidecar IPC - so it is the one place an in-flight
   // profile has to be released. Discarding is synchronous and adds nothing
@@ -175,6 +182,7 @@ const main = Effect.gen(function* () {
     drainPersistence: boundTeardownStep("drainPersistence", () => drainPersistence()),
     stopSidecars: killSidecar,
     stopWslServers: () => wslServers?.stopAll(),
+    stopSshServers: () => sshServers?.stopAll(),
     setAppQuitting,
     quit: () => app.quit(),
     failed: shutdownFailed,
@@ -320,6 +328,28 @@ const main = Effect.gen(function* () {
       writeServers: (servers) => productStorage.setWslServers("main/wsl", servers),
     },
   )
+  sshServers = createSshServersController(
+    {
+      // Control sockets need a short path (sockaddr_un is ~104 bytes), so they
+      // live in a per-user /tmp dir rather than the deep app-data path.
+      controlDir: sshControlDir(),
+      credentialVault,
+      // Only packaged builds carry a real forge binary; in dev FORGE_CLI_COMMAND
+      // resolves to bun, which is useless on the remote.
+      localForgeBinary: app.isPackaged ? join(process.resourcesPath, "forge-cli") : null,
+      appVersion: app.getVersion(),
+      corsOrigins: rendererCorsOrigins,
+      onPrompt: async () => null,
+    },
+    {
+      logger: {
+        log: (message, meta) => logger.log(message, meta),
+        error: (message, meta) => logger.error(message, meta),
+      },
+      readServers: () => productStorage.getSshServers("main/ssh"),
+      writeServers: (servers) => productStorage.setSshServers("main/ssh", servers),
+    },
+  )
   profiler = createProfilerController({
     getSidecar: () => server,
     userDataPath: app.getPath("userData"),
@@ -338,6 +368,12 @@ const main = Effect.gen(function* () {
   })
 
   registerIpcHandlers({
+    securityProxyStore: (command) => {
+      if (!server) return Promise.reject(new Error("Local sidecar is not ready"))
+      return server.securityProxy(command)
+    },
+    securityProxyOrigin: () => securityProxyOrigin,
+    securityProxyCommand: invokeSecurityProxy,
     killSidecar: () => killSidecar(),
     profiler,
     relaunch,
@@ -371,6 +407,7 @@ const main = Effect.gen(function* () {
     recordFatalRendererError: (error) => writeLog("renderer", "fatal renderer error", { ...error }, "error"),
   })
   registerWslIpcHandlers(wslServers)
+  registerSshIpcHandlers(sshServers)
   void startNetLog().catch((error) => logger.warn("failed to start net log", error))
 
   const port = yield* Effect.gen(function* () {
@@ -398,6 +435,7 @@ const main = Effect.gen(function* () {
   })
   const hostname = "127.0.0.1"
   const url = `http://${hostname}:${port}`
+  securityProxyOrigin = url
   // The repository beta workflow supplies an ephemeral probe password; production keeps a random secret.
   const password =
     process.env.FORGE_CHANNEL === "beta" && process.env.FORGE_BETA_SERVER_PASSWORD
@@ -426,11 +464,13 @@ const main = Effect.gen(function* () {
       onStdout: (message) => writeLog("server", "stdout", { message }),
       onStderr: (message) => writeLog("server", "stderr", { message }, "warn"),
       onExit: (code) => handleSidecarExit(code),
+      securityProxyCommand: invokeSecurityProxy,
     })
     const handleSidecarExit = (code: number) => {
       writeLog("utility", "sidecar exited", { code }, "warn")
       if (!server) return
       server = null
+      void boundTeardownStep("securityProxy", disconnectSecurityProxy)().catch(() => undefined)
       if (sidecarRespawns >= SIDECAR_RESPAWN_LIMIT) {
         writeLog("utility", "sidecar exited unexpectedly; respawn limit reached", { code }, "error")
         return
@@ -485,6 +525,7 @@ const main = Effect.gen(function* () {
   if (process.platform === "win32") {
     void wslServers.initialize().catch((error) => logger.error("wsl server initialization failed", error))
   }
+  void sshServers.initialize().catch((error) => logger.error("ssh server initialization failed", error))
   void updater.start()
   const updateTimer = setInterval(() => void updater.check(), 10 * 60 * 1000)
   updateTimer.unref()

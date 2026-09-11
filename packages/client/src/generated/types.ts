@@ -1491,7 +1491,7 @@ export type SessionsPromptOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
-    readonly source?: "user" | "subagent_board" | "shell_job"
+    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -1690,7 +1690,7 @@ export type SessionsCommandOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
-    readonly source?: "user" | "subagent_board" | "shell_job"
+    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2115,7 +2115,7 @@ export type SessionsContextOutput = {
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }
-        readonly source?: "user" | "subagent_board" | "shell_job"
+        readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
         readonly text: string
         readonly parts?: ReadonlyArray<{
           readonly id: string
@@ -2212,6 +2212,7 @@ export type SessionsContextOutput = {
               readonly type: "tool"
               readonly id: string
               readonly name: string
+              readonly truncated?: { readonly bytes: number }
               readonly provider?: {
                 readonly executed: boolean
                 readonly metadata?: { readonly [x: string]: { readonly [x: string]: JsonValue } }
@@ -2345,7 +2346,7 @@ export type SessionsPendingInputsOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
-    readonly source?: "user" | "subagent_board" | "shell_job"
+    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2411,7 +2412,7 @@ export type SessionsInputStatusOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
-    readonly source?: "user" | "subagent_board" | "shell_job"
+    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2493,7 +2494,7 @@ export type SessionsOutboxOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
-    readonly source?: "user" | "subagent_board" | "shell_job"
+    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2617,7 +2618,7 @@ export type SessionsHistoryOutput = {
             }>
           }
           readonly delivery: "steer" | "queue"
-          readonly source?: "user" | "subagent_board" | "shell_job"
+          readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
         }
       }
     | {
@@ -2678,7 +2679,7 @@ export type SessionsHistoryOutput = {
             }>
           }
           readonly delivery: "steer" | "queue"
-          readonly source?: "user" | "subagent_board" | "shell_job"
+          readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
           readonly agent?: string
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
           readonly command?: {
@@ -3703,7 +3704,7 @@ export type SessionsEventsOutput =
           }>
         }
         readonly delivery: "steer" | "queue"
-        readonly source?: "user" | "subagent_board" | "shell_job"
+        readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
       }
     }
   | {
@@ -3764,7 +3765,7 @@ export type SessionsEventsOutput =
           }>
         }
         readonly delivery: "steer" | "queue"
-        readonly source?: "user" | "subagent_board" | "shell_job"
+        readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
         readonly agent?: string
         readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
         readonly command?: {
@@ -4665,7 +4666,7 @@ export type SessionsMessageOutput = {
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }
-        readonly source?: "user" | "subagent_board" | "shell_job"
+        readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
         readonly text: string
         readonly parts?: ReadonlyArray<{
           readonly id: string
@@ -4762,6 +4763,7 @@ export type SessionsMessageOutput = {
               readonly type: "tool"
               readonly id: string
               readonly name: string
+              readonly truncated?: { readonly bytes: number }
               readonly provider?: {
                 readonly executed: boolean
                 readonly metadata?: { readonly [x: string]: { readonly [x: string]: JsonValue } }
@@ -4845,17 +4847,26 @@ export type MessagesListInput = {
     readonly limit?: number | undefined
     readonly order?: "asc" | "desc" | undefined
     readonly cursor?: string | undefined
+    readonly lean?: boolean | undefined
   }["limit"]
   readonly order?: {
     readonly limit?: number | undefined
     readonly order?: "asc" | "desc" | undefined
     readonly cursor?: string | undefined
+    readonly lean?: boolean | undefined
   }["order"]
   readonly cursor?: {
     readonly limit?: number | undefined
     readonly order?: "asc" | "desc" | undefined
     readonly cursor?: string | undefined
+    readonly lean?: boolean | undefined
   }["cursor"]
+  readonly lean?: {
+    readonly limit?: number | undefined
+    readonly order?: "asc" | "desc" | undefined
+    readonly cursor?: string | undefined
+    readonly lean?: boolean | undefined
+  }["lean"]
 }
 
 export type MessagesListOutput = {
@@ -4878,7 +4889,7 @@ export type MessagesListOutput = {
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }
-        readonly source?: "user" | "subagent_board" | "shell_job"
+        readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
         readonly text: string
         readonly parts?: ReadonlyArray<{
           readonly id: string
@@ -4975,6 +4986,7 @@ export type MessagesListOutput = {
               readonly type: "tool"
               readonly id: string
               readonly name: string
+              readonly truncated?: { readonly bytes: number }
               readonly provider?: {
                 readonly executed: boolean
                 readonly metadata?: { readonly [x: string]: { readonly [x: string]: JsonValue } }

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'"
+    />
+    <title>TurenOS Security Browser</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          13px system-ui,
+          sans-serif;
+        color: #242424;
+        background: #f7f7f5;
+      }
+      form {
+        display: flex;
+        gap: 6px;
+        padding: 10px 12px 6px;
+        height: 48px;
+      }
+      button,
+      input {
+        font: inherit;
+        border: 1px solid #d4d4d0;
+        border-radius: 6px;
+        background: white;
+        color: inherit;
+        padding: 5px 10px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      input:focus {
+        outline: 2px solid #4b73be;
+      }
+      input {
+        min-width: 120px;
+        flex: 1;
+      }
+      footer {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 40px;
+        padding: 0 12px;
+        border-bottom: 1px solid #d4d4d0;
+      }
+      #status {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        flex: 1;
+      }
+      #error {
+        color: #a42d2d;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="navigation">
+      <button type="button" data-action="back" aria-label="Back">Back</button>
+      <button type="button" data-action="forward" aria-label="Forward">Next</button>
+      <button type="button" data-action="reload">Reload</button>
+      <input id="url" aria-label="Target URL" spellcheck="false" />
+      <button type="submit">Go</button>
+      <button type="button" data-action="proxy">Proxy</button>
+    </form>
+    <footer>
+      <strong>Security Browser</strong><span id="status" role="status">Connecting...</span
+      ><span id="error" role="alert"></span>
+    </footer>
+    <script type="module" src="./security-browser.ts"></script>
+  </body>
+</html>

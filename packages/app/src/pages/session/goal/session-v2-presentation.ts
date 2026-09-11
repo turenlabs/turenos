@@ -317,6 +317,36 @@ export function presentSessionV2Messages(input: {
   return { messages, parts }
 }
 
+/**
+ * True when `part` is a lean-page stub: the server elided the tool body (`content`/`structured`
+ * past the wire threshold) and the full row is fetched on expand via `session.message`.
+ */
+export function isSessionV2ToolStub(part: Part): boolean {
+  if (part.type !== "tool") return false
+  const truncated = part.metadata?.truncated
+  return typeof truncated === "object" && truncated !== null
+}
+
+/**
+ * Merges one message's incoming presented parts over the stored ones without letting a lean-page
+ * tool stub overwrite a part that already holds the real body — the settled output a
+ * `session.message` expand fetch or a live tool event already wrote. The stub only yields when the
+ * stored part is itself a stub or still `pending` (no settled body to lose); a running or settled
+ * part keeps its body when it carries the same or a settled status.
+ */
+export function mergeSessionV2Parts(current: readonly Part[] | undefined, incoming: Part[]): Part[] {
+  return incoming.map((part) => {
+    if (part.type !== "tool" || !isSessionV2ToolStub(part)) return part
+    const existing = current?.find(
+      (item) => item.id === part.id || (item.type === "tool" && item.callID === part.callID),
+    )
+    if (existing?.type !== "tool") return part
+    if (isSessionV2ToolStub(existing) || existing.state.status === "pending") return part
+    if (existing.state.status === part.state.status) return existing
+    return existing.state.status === "completed" || existing.state.status === "error" ? existing : part
+  })
+}
+
 export function mergeSessionV2Presentation(input: {
   messages: Message[]
   parts: Record<string, Part[] | undefined>
@@ -351,7 +381,10 @@ export function mergeSessionV2Presentation(input: {
               return []
             return [{ id: messageID, parts: value }]
           }),
-          ...input.presentation.parts,
+          ...input.presentation.parts.map((entry) => ({
+            id: entry.id,
+            parts: mergeSessionV2Parts(input.parts[entry.id], entry.parts),
+          })),
         ]
 
   return {
@@ -366,16 +399,27 @@ export function mergeSessionV2Presentation(input: {
   }
 }
 
-function mergeIncrementalMessages(current: Message[], incoming: Message[]) {
+/**
+ * Splice `incoming` into `current` by `time.created`, deduplicating on `id` (the incoming copy
+ * wins). Both arrays arrive in ascending `time.created` order — the store array is written in
+ * presentation order, which is the fetch order the merge searches on — so this is one
+ * two-pointer pass rather than a `findIndex`+`splice` per preserved message. On equal
+ * timestamps a preserved row stays ahead of the incoming row, matching the old splice order.
+ */
+export function mergeIncrementalMessages(current: Message[], incoming: Message[]) {
   const incomingIDs = new Set(incoming.map((message) => message.id))
-  const preserved = current.filter((message) => !incomingIDs.has(message.id))
-  const messages = incoming.slice()
-  preserved.toReversed().forEach((message) => {
-    const index = messages.findIndex((item) => item.time.created >= message.time.created)
-    if (index === -1) messages.push(message)
-    else messages.splice(index, 0, message)
-  })
-  return messages
+  const merged: Message[] = []
+  let index = 0
+  for (const message of current) {
+    if (incomingIDs.has(message.id)) continue
+    while (index < incoming.length && incoming[index]!.time.created < message.time.created) {
+      merged.push(incoming[index]!)
+      index += 1
+    }
+    merged.push(message)
+  }
+  merged.push(...incoming.slice(index))
+  return merged
 }
 
 function mergeIncrementalParts(
@@ -385,7 +429,7 @@ function mergeIncrementalParts(
   const parts = new Map(
     Object.entries(current).flatMap(([messageID, value]) => (value ? [[messageID, value] as const] : [])),
   )
-  incoming.forEach((entry) => parts.set(entry.id, entry.parts))
+  incoming.forEach((entry) => parts.set(entry.id, mergeSessionV2Parts(parts.get(entry.id), entry.parts)))
   return [...parts].map(([id, value]) => ({ id, parts: value }))
 }
 
@@ -440,8 +484,11 @@ function presentShell(sessionID: string, messageID: string, shell: ShellMessage)
   }
 }
 
-function presentTool(sessionID: string, messageID: string, tool: SessionMessageAssistantTool): ToolPart {
+export function presentTool(sessionID: string, messageID: string, tool: SessionMessageAssistantTool): ToolPart {
   const metadata = {
+    // `truncated` marks a lean-page stub: the server elided this tool's body and the full row is
+    // fetched on expand. It rides part metadata so merge guards can tell stubs from full parts.
+    ...(tool.truncated === undefined ? {} : { truncated: tool.truncated }),
     ...(tool.provider?.executed ? { providerExecuted: true } : {}),
     ...(tool.provider?.metadata ?? {}),
     ...(tool.time.pruned ? { prunedAt: tool.time.pruned } : {}),

@@ -631,6 +631,59 @@ mcpTest.instance("authenticate() stores a connected client when auth completes w
   }),
 )
 
+mcpTest.instance("a fenced background provider drops credential writes instead of failing", () =>
+  Effect.gen(function* () {
+    const auth = yield* McpAuth.Service
+    const name = "test-fenced-writes"
+    const url = "https://example.com/mcp"
+    yield* auth.set(name, { tokens: { accessToken: "stored-token" } }, url)
+
+    const stale = yield* auth.generationForUrl(name, url)
+    const provider = new McpOAuthAutoProvider(name, url, {}, { onRedirect: async () => {} }, auth, stale)
+
+    // An interactive authorization rotates the generation, fencing this provider.
+    yield* auth.prepareForUrl(name, url)
+
+    yield* Effect.promise(() => provider.saveTokens({ access_token: "stale-token", token_type: "Bearer" }))
+    yield* Effect.promise(() =>
+      provider.saveClientInformation({
+        client_id: "stale-client",
+        client_secret: "stale-secret",
+        redirect_uris: ["http://127.0.0.1/mcp/oauth/callback"],
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        token_endpoint_auth_method: "client_secret_post",
+        client_name: "test",
+      }),
+    )
+    yield* Effect.promise(() => provider.invalidateCredentials("all"))
+
+    const entry = yield* auth.get(name)
+    expect(entry?.tokens?.accessToken).toBe("stored-token")
+    expect(entry?.clientInfo).toBeUndefined()
+  }),
+)
+
+mcpTest.instance("re-adding a server that now needs auth reports needs_auth, not the previous status", () =>
+  Effect.gen(function* () {
+    const first = yield* serveOAuthMcp()
+    const second = yield* serveOAuthMcp()
+    const mcp = yield* MCP.Service
+    const auth = yield* McpAuth.Service
+    const name = "test-needs-auth-visibility"
+
+    yield* auth.updateTokens(name, { accessToken: "replacement-token" }, first.url)
+    yield* mcp.add(name, remote(first.url))
+    expect((yield* mcp.status())[name]?.status).toBe("connected")
+
+    yield* mcp.add(name, remote(second.url))
+
+    expect((yield* mcp.status())[name]?.status).toBe("needs_auth")
+    const configuration = yield* mcp.configuration(name)
+    expect(configuration?.type === "remote" ? configuration.url : undefined).toBe(second.url)
+  }),
+)
+
 mcpTest.instance("authenticate() connects a resource-only server without listing tools", () =>
   Effect.gen(function* () {
     yield* stopOAuthCallback

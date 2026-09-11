@@ -1,4 +1,4 @@
-import { marked, type Tokens } from "marked"
+import { marked, type Tokens, type TokensList } from "marked"
 import remend from "remend"
 
 export type Block = {
@@ -53,7 +53,10 @@ function heal(text: string) {
 export function stream(text: string, live: boolean): Block[] {
   if (!live) return [{ raw: text, src: text, mode: "full" }] satisfies Block[]
   if (refs(text)) return [{ raw: text, src: heal(text), mode: "live" }] satisfies Block[]
-  const tokens = marked.lexer(text)
+  return blocksFromTokens(marked.lexer(text), text)
+}
+
+function blocksFromTokens(tokens: TokensList, text: string): Block[] {
   const tail = tokens.findLastIndex((token) => token.type !== "space")
   if (tail < 0) return [{ raw: text, src: heal(text), mode: "live" }] satisfies Block[]
   const last = tokens[tail]
@@ -106,17 +109,31 @@ export function project(previous: Projection | undefined, text: string, live: bo
   if (!live || !previous || !text.startsWith(previous.text)) return { text, blocks: stream(text, live) }
   const tail = previous.blocks.at(-1)
   const suffix = text.slice(previous.text.length)
-  if (!suffix || tail?.mode !== "code" || tail.complete || closesFence(tail.raw, suffix))
+  if (!suffix) return { text, blocks: stream(text, live) }
+  if (tail?.mode === "code" && !tail.complete && !closesFence(tail.raw, suffix))
+    return {
+      text,
+      blocks: [
+        ...previous.blocks.slice(0, -1),
+        {
+          ...tail,
+          raw: tail.raw + suffix,
+          src: tail.src + suffix,
+        },
+      ],
+    }
+  if (refs(text)) return { text, blocks: stream(text, live) }
+  // Re-lex the last two blocks, not just the new suffix: a paragraph or list
+  // tail can still merge with or reshape the block before it (GFM tables,
+  // setext headings, lazy continuations). `start` slices the text instead of
+  // joining raws because leading space tokens are dropped from block raws.
+  const keep = Math.max(previous.blocks.length - 2, 0)
+  const kept = previous.blocks.slice(0, keep)
+  const start = kept.reduce((sum, block) => sum + block.raw.length, 0)
+  const region = text.slice(start)
+  const regionBlocks = blocksFromTokens(marked.lexer(region), region)
+  const boundary = previous.blocks[keep]
+  if (!regionBlocks.length || (keep > 0 && regionBlocks[0]?.raw !== boundary?.raw))
     return { text, blocks: stream(text, live) }
-  return {
-    text,
-    blocks: [
-      ...previous.blocks.slice(0, -1),
-      {
-        ...tail,
-        raw: tail.raw + suffix,
-        src: tail.src + suffix,
-      },
-    ],
-  }
+  return { text, blocks: [...kept, ...regionBlocks] }
 }

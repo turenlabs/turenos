@@ -12,6 +12,7 @@ import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, tmpdir } from "../fixture/fixture"
 
 const original = {
+  FORGE_DB: Flag.FORGE_DB,
   FORGE_SERVER_PASSWORD: Flag.FORGE_SERVER_PASSWORD,
   FORGE_SERVER_USERNAME: Flag.FORGE_SERVER_USERNAME,
   envPassword: process.env.FORGE_SERVER_PASSWORD,
@@ -21,6 +22,7 @@ const auth = { username: "opencode", password: "listen-secret" }
 const testPty = process.platform === "win32" ? test.skip : test
 
 afterEach(async () => {
+  Flag.FORGE_DB = original.FORGE_DB
   Flag.FORGE_SERVER_PASSWORD = original.FORGE_SERVER_PASSWORD
   Flag.FORGE_SERVER_USERNAME = original.FORGE_SERVER_USERNAME
   if (original.envPassword === undefined) delete process.env.FORGE_SERVER_PASSWORD
@@ -169,6 +171,41 @@ async function openPtySocket(listener: Awaited<ReturnType<typeof startListener>>
 }
 
 describe("HttpApi Server.listen", () => {
+  test("owns private proxy storage without exposing an HTTP proxy API", async () => {
+    await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
+    // Separate listener scopes intentionally do not share an in-memory database.
+    Flag.FORGE_DB = path.join(tmp.path, "proxy.db")
+    const owner = { directory: tmp.path }
+    const listener = await startListener()
+    try {
+      const result = await listener.securityProxy({
+        type: "create",
+        owner,
+        input: { id: "listener_case", name: "Private browser fixture" },
+      })
+      expect(result.case?.id).toBe("listener_case")
+      expect((await listener.securityProxy({ type: "list", owner })).cases).toHaveLength(1)
+      await expect(
+        listener.securityProxy({ type: "get", owner: { ...owner, workspaceID: "other" }, caseID: "listener_case" }),
+      ).rejects.toThrow()
+      const response = await fetch(new URL("/proxy/flows/ingest", listener.url), {
+        method: "POST",
+        headers: { authorization: authorization(), "x-forge-directory": tmp.path },
+      })
+      expect(response.status).toBe(404)
+    } finally {
+      await stop(listener, "private proxy listener stop")
+    }
+    const reopened = await startListener()
+    try {
+      expect((await reopened.securityProxy({ type: "get", owner, caseID: "listener_case" })).case?.name).toBe(
+        "Private browser fixture",
+      )
+    } finally {
+      await stop(reopened, "reopened private proxy listener stop")
+    }
+  }, 30_000)
+
   test("preserves listener shutdown failures at the Promise boundary", async () => {
     const failure = new Error("managed shutdown failed")
     await expect(Server.runListenerStop(Effect.fail(failure))).rejects.toBe(failure)

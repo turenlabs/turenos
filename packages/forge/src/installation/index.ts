@@ -107,15 +107,13 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
     const upgradeCurl = Effect.fnUntraced(
       function* (target: string) {
         const body = yield* text([
-          "gh",
-          "api",
-          "-H",
-          "Accept: application/vnd.github.raw+json",
-          "repos/turenlabs/forge/contents/install",
+          "curl",
+          "-fsSL",
+          "https://raw.githubusercontent.com/turenlabs/turenos/main/install",
         ])
         if (!body) {
           return yield* new UpgradeFailedError({
-            stderr: "TurenOS updates require an authenticated GitHub CLI. Run `gh auth login` and try again.",
+            stderr: "TurenOS updates require curl to download the install script.",
           })
         }
         const bodyBytes = new TextEncoder().encode(body)

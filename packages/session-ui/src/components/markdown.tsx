@@ -506,6 +506,8 @@ export function Markdown(
       copied: i18n.t("ui.message.copied"),
     }
     const nextCodeKeys = new Set(content.filter((block) => block.mode === "code").map((block) => block.key))
+    const sameCodeKeys =
+      nextCodeKeys.size === activeCodeKeys.size && [...nextCodeKeys].every((key) => activeCodeKeys.has(key))
     activeCodeKeys.forEach((key) => {
       if (!nextCodeKeys.has(key)) disposeCode(key)
     })
@@ -518,9 +520,10 @@ export function Markdown(
       disposeCopyButtons(child)
       child.remove()
     }
-    container
-      .querySelectorAll<HTMLElement>('[data-slot="markdown-copy-button"]')
-      .forEach((button) => setCopyState(button, labels, button.dataset.copied === "true"))
+    if (!sameCodeKeys)
+      container
+        .querySelectorAll<HTMLElement>('[data-slot="markdown-copy-button"]')
+        .forEach((button) => setCopyState(button, labels, button.dataset.copied === "true"))
     if (!copyCleanup)
       copyCleanup = setupCodeCopy(container, () => ({
         copy: i18n.t("ui.message.copy"),

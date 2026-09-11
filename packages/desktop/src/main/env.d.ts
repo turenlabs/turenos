@@ -8,8 +8,14 @@ interface ImportMeta {
 
 declare module "virtual:forge-server" {
   export namespace Server {
-    export const listen: typeof import("../../../forge/dist/types/src/node").Server.listen
-    export type Listener = import("../../../forge/dist/types/src/node").Server.Listener
+    export const listen: (
+      options: Parameters<typeof import("../../../forge/dist/types/src/node").Server.listen>[0],
+    ) => Promise<Listener>
+    export type Listener = import("../../../forge/dist/types/src/node").Server.Listener & {
+      securityProxy(
+        command: import("@turenlabs/schema/security-proxy").SecurityProxy.StoreCommand,
+      ): Promise<import("@turenlabs/schema/security-proxy").SecurityProxy.Result>
+    }
   }
   export namespace Config {
     export const get: typeof import("../../../forge/dist/types/src/node").Config.get

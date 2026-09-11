@@ -6716,6 +6716,7 @@ export class Session3 extends HeyApiClient {
       limit?: number
       order?: "asc" | "desc"
       cursor?: string
+      lean?: "true" | "false"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6728,6 +6729,7 @@ export class Session3 extends HeyApiClient {
             { in: "query", key: "limit" },
             { in: "query", key: "order" },
             { in: "query", key: "cursor" },
+            { in: "query", key: "lean" },
           ],
         },
       ],

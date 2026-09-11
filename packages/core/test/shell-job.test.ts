@@ -1,6 +1,6 @@
 import { describe, expect } from "bun:test"
 import { randomUUID } from "node:crypto"
-import { Deferred, Duration, Effect, Exit, Schema } from "effect"
+import { Cause, Deferred, Duration, Effect, Exit, Option, Schema } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { AppProcess } from "@turenlabs/core/process"
@@ -219,9 +219,15 @@ describe("durable ShellJob runner", () => {
       const launched = yield* Effect.forEach(Array.from({ length: ShellJob.MAX_OWNER_ACTIVE }), () =>
         jobs.start(input(app, sessionID, "setInterval(() => {}, 1000)")),
       )
-      expect(
-        Exit.isFailure(yield* jobs.start(input(app, sessionID, "console.log('not launched')")).pipe(Effect.exit)),
-      ).toBe(true)
+      const rejected = yield* jobs.start(input(app, sessionID, "console.log('not launched')")).pipe(Effect.exit)
+      expect(Exit.isFailure(rejected)).toBe(true)
+      // The rejection names the occupants and the remedy so the next action is a
+      // shell_job wait/cancel, not a blind retry.
+      const squashed = rejected._tag === "Failure" ? Cause.squash(rejected.cause) : undefined
+      const message = squashed && typeof squashed === "object" && "message" in squashed ? String(squashed.message) : ""
+      expect(message).toContain(`${ShellJob.MAX_OWNER_ACTIVE}/${ShellJob.MAX_OWNER_ACTIVE}`)
+      expect(message).toContain("shell_job")
+      for (const job of launched) expect(message).toContain(job.id)
       for (const job of launched) {
         yield* jobs.cancel(sessionID, job.id)
         yield* jobs.wait(sessionID, job.id, 5_000)

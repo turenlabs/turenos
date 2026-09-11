@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, on, onCleanup, onMount } from "solid-js"
+import { For, Show, batch, createEffect, createMemo, on, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { Tabs } from "@turenlabs/ui/tabs"
@@ -18,7 +18,7 @@ import { useSettings } from "@/context/settings"
 import { useTerminal } from "@/context/terminal"
 import { useSDK } from "@/context/sdk"
 import { terminalTabLabel } from "@/pages/session/terminal-label"
-import { createSizing, focusTerminalById } from "@/pages/session/helpers"
+import { createSizing, focusTerminalById, terminalRecoveryKey } from "@/pages/session/helpers"
 import { getTerminalHandoff, setTerminalHandoff } from "@/pages/session/handoff"
 import { useSessionLayout } from "@/pages/session/session-layout"
 import { useParams } from "@solidjs/router"
@@ -44,6 +44,7 @@ export function TerminalPanel() {
 
   const [store, setStore] = createStore({
     autoCreated: false,
+    pending: false,
     activeDraggable: undefined as string | undefined,
     recovered: {} as Record<string, boolean>,
     view: typeof window === "undefined" ? 1000 : (window.visualViewport?.height ?? window.innerHeight),
@@ -69,12 +70,16 @@ export function TerminalPanel() {
       return
     }
 
-    if (!terminal.ready() || store.autoCreated) return
+    if (!terminal.ready() || store.autoCreated || store.pending) return
     if (params.id && terminal.all().some((pty) => pty.shared && pty.sessionID === params.id)) return
     if (!params.id && terminal.all().length !== 0) return
+    setStore("pending", true)
     const request = params.id ? terminal.shared(params.id) : terminal.new()
     void request.then((next) => {
-      if (next) setStore("autoCreated", true)
+      batch(() => {
+        setStore("pending", false)
+        if (next) setStore("autoCreated", true)
+      })
     })
   })
 
@@ -168,10 +173,6 @@ export function TerminalPanel() {
       return
     }
     void clone(id)
-  }
-
-  const terminalRecoveryKey = (pty: { id: string; title: string; titleNumber: number }) => {
-    return String(pty.titleNumber || pty.title || pty.id)
   }
 
   const markTerminalConnected = (key: string, id: string, trim: (id: string) => void) => {

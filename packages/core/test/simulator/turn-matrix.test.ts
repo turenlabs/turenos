@@ -396,6 +396,12 @@ describe("subagent flow", () => {
         },
         reply("All child work is done.", { match: parentMatch, label: "parent-final" }),
         reply("Child result: probe complete.", { match: childMatch, label: "child-turn" }),
+        // The settle drain queues a terminal-state advisory on the parent; it may
+        // promote into its own turn after the final reply, so script that turn too.
+        reply("Settle advisory noted.", {
+          match: (request) => requestUserTexts(request).some((text) => text.includes("reached a terminal state")),
+          label: "parent-settle-advisory",
+        }),
       )
       yield* ctx.user.prompt("Coordinate the child agents.")
       yield* ctx.invariants.settled(ctx.sessionID, { expect: "idle", minRequests: 4 })

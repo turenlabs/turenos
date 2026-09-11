@@ -42,6 +42,24 @@ export function replaceTerminalEntry(all: readonly LocalPTY[], id: string, next:
   return withoutNext.map((pty, current) => (current === index ? next : pty))
 }
 
+// A session owns at most one shared terminal server-side. When the binding
+// moves to a fresh PTY (shell exit, server restart, session move) the stale
+// entries left for that session collapse into the new one in place instead of
+// stacking dead tabs.
+export function upsertSharedTerminal(all: readonly LocalPTY[], next: LocalPTY) {
+  const matches = (pty: LocalPTY) =>
+    pty.id === next.id || (pty.shared === true && next.sessionID !== undefined && pty.sessionID === next.sessionID)
+  let placed = false
+  const result = all.flatMap((pty) => {
+    if (!matches(pty)) return [pty]
+    if (placed) return []
+    placed = true
+    return [next]
+  })
+  if (!placed) result.push(next)
+  return result
+}
+
 export function coalesceTerminalRequest<T>(requests: Map<string, Promise<T>>, key: string, create: () => Promise<T>) {
   const existing = requests.get(key)
   if (existing) return existing
@@ -172,11 +190,26 @@ export function migrateTerminalState(value: unknown) {
     return [next]
   })
 
+  // A session owns at most one shared terminal server-side, but persisted state
+  // can hold several stale entries for it. Keep the most recently appended.
+  const latestShared = new Map(
+    all.flatMap((item, index) => (item.shared && item.sessionID ? ([[item.sessionID, index]] as const) : [])),
+  )
+  const deduped = all.filter(
+    (item, index) => !item.shared || !item.sessionID || latestShared.get(item.sessionID) === index,
+  )
+  const kept = new Set(deduped.map((item) => item.id))
+
   const active = text(value.active)
+  // A dropped duplicate keeps the session's surviving shared tab active.
+  const dropped = active && !kept.has(active) ? all.find((item) => item.id === active) : undefined
+  const carried = deduped.find(
+    (item) => item.shared && item.sessionID !== undefined && item.sessionID === dropped?.sessionID,
+  )?.id
 
   return {
-    active: active && seen.has(active) ? active : all[0]?.id,
-    all,
+    active: (active && kept.has(active) ? active : carried) ?? deduped[0]?.id,
+    all: deduped,
   }
 }
 
@@ -382,10 +415,21 @@ function createWorkspaceTerminalSession(
     })
   }
 
-  const unsub = sdk.event.on("pty.exited", (event: { properties: { id: string } }) => {
-    removeExited(event.properties.id)
+  // PTYs reported gone server-side (exit or delete) can never come back, so a
+  // late shared()/adopt() resolution must not resurrect them as dead tabs.
+  const gone = new Set<string>()
+  const dropGone = (id: string) => {
+    gone.add(id)
+    removeExited(id)
+  }
+  const unsubExited = sdk.event.on("pty.exited", (event: { properties: { id: string } }) => {
+    dropGone(event.properties.id)
   })
-  onCleanup(unsub)
+  const unsubDeleted = sdk.event.on("pty.deleted", (event: { properties: { id: string } }) => {
+    dropGone(event.properties.id)
+  })
+  onCleanup(unsubExited)
+  onCleanup(unsubDeleted)
 
   createEffect(() => {
     if (!ready() || reconciled) return
@@ -499,6 +543,7 @@ function createWorkspaceTerminalSession(
     // surface that PTY in ITS workspace store (the creating instance's store
     // was disposed with its provider). Idempotent per id.
     adopt(pty: LocalPTY) {
+      if (gone.has(pty.id)) return
       const index = store.all.findIndex((x) => x.id === pty.id)
       batch(() => {
         if (index === -1) setStore("all", store.all.length, { ...pty })
@@ -510,30 +555,24 @@ function createWorkspaceTerminalSession(
         const response = await sdk.client.v2.session.terminal.create({ sessionID })
         const state = response.data?.data
         if (!state) return
+        // The binding may have exited between the server response and its
+        // delivery here — adopting it would surface a dead tab.
+        if (gone.has(state.ptyID)) return
         const existing = store.all.find((pty) => pty.id === state.ptyID)
-        const next = existing ?? {
-          id: state.ptyID,
-          title: state.info.title,
-          titleNumber: 0,
-          command: state.info.command,
-          args: state.info.args,
-          shared: true,
-          sessionID,
-          workspaceID: state.workspaceID,
-        }
+        const next = existing
+          ? { ...existing, shared: true, sessionID, workspaceID: state.workspaceID }
+          : {
+              id: state.ptyID,
+              title: state.info.title,
+              titleNumber: 0,
+              command: state.info.command,
+              args: state.info.args,
+              shared: true,
+              sessionID,
+              workspaceID: state.workspaceID,
+            }
         batch(() => {
-          if (!existing) setStore("all", store.all.length, next)
-          else
-            setStore(
-              "all",
-              store.all.findIndex((pty) => pty.id === state.ptyID),
-              (pty) => ({
-                ...pty,
-                shared: true,
-                sessionID,
-                workspaceID: state.workspaceID,
-              }),
-            )
+          setStore("all", (all) => upsertSharedTerminal(all, next))
           setStore("active", state.ptyID)
         })
         return next
@@ -720,6 +759,9 @@ function createWorkspaceTerminalSession(
       if (removed || !closed) return
       batch(() => {
         setStore("all", (all) => {
+          // A shared()/adopt() call may have re-added this id while the remove
+          // request was in flight — re-inserting would duplicate the tab.
+          if (all.some((pty) => pty.id === closed.id)) return all
           const next = [...all]
           next.splice(Math.min(index, next.length), 0, closed)
           return next

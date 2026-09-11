@@ -1,6 +1,6 @@
 import { createSimpleContext } from "@turenlabs/ui/context"
 import { type Accessor, batch, createMemo } from "solid-js"
-import { createStore, type SetStoreFunction, type Store } from "solid-js/store"
+import { createStore, produce, type SetStoreFunction, type Store } from "solid-js/store"
 import { Persist, persisted } from "@/utils/persist"
 import { pathKey } from "@/utils/path-key"
 import { ServerScope } from "@/utils/server-scope"
@@ -30,6 +30,9 @@ export function normalizeServerUrl(input: string) {
 export function serverName(conn?: ServerConnection.Any, ignoreDisplayName = false) {
   if (!conn) return ""
   if (conn.displayName && !ignoreDisplayName) return conn.displayName
+  // An ssh connection's http.url is the local tunnel endpoint - the remote
+  // host identity is what the user recognizes.
+  if (conn.type === "ssh") return conn.host
   return conn.http.url.replace(/^https?:\/\//, "").replace(/\/+$/, "")
 }
 
@@ -361,6 +364,16 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       const list = store.list.filter((x) => url(x) !== key)
       batch(() => {
         setStore("list", list)
+        // Drop per-server caches so re-adding the same key later cannot
+        // resurrect stale project/last-project state from a prior lifetime.
+        setStore(
+          produce((draft) => {
+            delete draft.projects[key]
+            delete draft.lastProject[key]
+            delete draft.recentlyClosed[key]
+          }),
+        )
+        projectStores.delete(key)
         if (state.active === key) setState("active", next)
       })
     }

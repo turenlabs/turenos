@@ -127,7 +127,7 @@ export async function loadSessionV2Window(input: {
   sessionID: string
   signal: AbortSignal
   request: (
-    payload: { sessionID: string; limit: number; order?: "desc"; cursor?: string },
+    payload: { sessionID: string; limit: number; order?: "desc"; cursor?: string; lean?: "true" | "false" },
     options: { signal: AbortSignal },
   ) => Promise<{ data?: { data: ReadonlyArray<SessionMessage>; cursor: { next?: string } } }>
   minimum?: number
@@ -140,6 +140,9 @@ export async function loadSessionV2Window(input: {
         {
           sessionID: input.sessionID,
           limit: SESSION_V2_MESSAGE_PAGE_LIMIT,
+          // Pages arrive with oversized tool bodies elided; the timeline back-fills one message
+          // via `session.message` when the user expands a truncated card.
+          lean: "true" as const,
           ...(cursor ? { cursor } : { order: "desc" as const }),
         },
         { signal: input.signal },

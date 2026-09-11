@@ -16,6 +16,8 @@ import { McpPackageRuntime } from "./package-runtime"
 import { classifyAddress } from "@/util/ip-address"
 
 type CatalogMcp = { readonly manifest: Extension.Manifest; readonly item: Extension.Mcp }
+type ManagedRemoteDeployment = Extract<Extension.McpDeployment, { type: "hosted" | "customer-url" }>
+type CustomerNetworkZone = "lan" | "public"
 const catalogMcp = new Map<string, CatalogMcp>()
 
 export const IDs: string[] = []
@@ -111,6 +113,7 @@ function runtimeController(id: ID) {
 }
 type PolicyFetch = ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) & {
   readonly close?: () => void
+  readonly networkZone?: () => CustomerNetworkZone | undefined
 }
 type Managed = McpConfig.Info & {
   readonly [managed]: ID
@@ -319,25 +322,30 @@ function remoteConfiguration(
   }
 }
 
-export function redactRemoteError(entry: McpConfig.Remote, error: unknown) {
-  return redactMcpValue(entry, error instanceof Error ? error.message : String(error)) as string
+export function redactRemoteError(entry: McpConfig.Remote, error: unknown, secrets: readonly string[] = []) {
+  return redactMcpValue(entry, error instanceof Error ? error.message : String(error), secrets) as string
 }
 
-export function redactMcpResult(id: ID | string, entry: McpConfig.Info | undefined, result: CallToolResult) {
+export function redactMcpResult(
+  id: ID | string,
+  entry: McpConfig.Info | undefined,
+  result: CallToolResult,
+  secrets: readonly string[] = [],
+) {
   if (id === "onepassword") return redactOnePasswordResult(result)
-  return redactMcpValue(entry, result) as CallToolResult
+  return redactMcpValue(entry, result, secrets) as CallToolResult
 }
 
-export function redactMcpValue(entry: McpConfig.Info | undefined, value: unknown): unknown {
+export function redactMcpValue(entry: McpConfig.Info | undefined, value: unknown, secrets: readonly string[] = []) {
   if (entry?.type !== "remote") return value
-  const sensitive = remoteSensitiveValues(entry)
+  const sensitive = remoteSensitiveValues(entry, secrets)
   if (sensitive.length === 0) return value
   return redactValueWith(value, (text) =>
     sensitive.reduce((result, item) => result.replaceAll(item, "[REDACTED]"), text),
   )
 }
 
-function remoteSensitiveValues(entry: McpConfig.Remote) {
+function remoteSensitiveValues(entry: McpConfig.Remote, secrets: readonly string[] = []) {
   const id = managedID(entry)
   const bindings = id ? (contribution(id).item.connection?.headers ?? []) : []
   return [
@@ -347,6 +355,7 @@ function remoteSensitiveValues(entry: McpConfig.Remote) {
       return value ? [value.slice(binding.prefix?.length ?? 0)] : []
     }),
     ...(typeof entry.oauth === "object" && entry.oauth.clientSecret ? [entry.oauth.clientSecret] : []),
+    ...secrets,
   ].filter((value) => value.length > 0)
 }
 
@@ -379,7 +388,7 @@ export const runtimeEntry = Effect.fn("McpIntegration.runtimeEntry")(function* (
     }).pipe(
       Effect.match({
         onFailure: () => ({ error: "Hosted MCP endpoint failed network qualification" }),
-        onSuccess: (fetch) => ({ fetch }),
+        onSuccess: (fetch) => ({ fetch: oauthOriginFetch(id, entry.url, deployment, fetch, dependencies) }),
       }),
     )
     return mark(id, entry, policy)
@@ -393,7 +402,9 @@ export const runtimeEntry = Effect.fn("McpIntegration.runtimeEntry")(function* (
     }).pipe(
       Effect.match({
         onFailure: () => ({ error: "Customer MCP endpoint failed network qualification" }),
-        onSuccess: (fetch) => ({ fetch }),
+        onSuccess: (fetch) => ({
+          fetch: oauthOriginFetch(id, endpoint, deployment, fetch, dependencies, fetch.networkZone),
+        }),
       }),
     )
     return mark(id, { ...entry, url: endpoint }, policy)
@@ -518,6 +529,169 @@ async function renewableEndpointFetch(
   }
   return Object.assign(request, { close })
 }
+
+function oauthOriginFetch(
+  id: ID,
+  resourceEndpoint: string,
+  deployment: ManagedRemoteDeployment,
+  resourceFetch: PolicyFetch,
+  dependencies?: ProviderConnectionPolicy.ConnectionPolicyDependencies,
+  resourceNetworkZone?: () => CustomerNetworkZone | undefined,
+): PolicyFetch {
+  // OAuth metadata may legitimately split discovery, authorization, and token endpoints across origins.
+  const resourceOrigin = new URL(resourceEndpoint).origin
+  const allowedOrigins = new Set([resourceOrigin])
+  const metadataUrls = new Set<string>()
+  const transports = new Map<string, Promise<PolicyFetch>>()
+  let closed = false
+
+  const qualify = (origin: string) => {
+    const current = transports.get(origin)
+    if (current) return current
+
+    const request = renewableEndpointFetch(
+      {
+        id: `extension-mcp:${id}:oauth`,
+        endpoint: `${origin}/`,
+        noAddressesMessage: "MCP OAuth endpoint DNS returned no addresses",
+        validateAddresses: (addresses) => validateOAuthAddresses(deployment, addresses, resourceNetworkZone),
+      },
+      dependencies,
+    ).catch((error) => {
+      if (transports.get(origin) === request) transports.delete(origin)
+      throw error
+    })
+    transports.set(origin, request)
+    return request
+  }
+
+  return Object.assign(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (closed) throw new ProviderConnectionPolicy.ConnectionPolicyError("Connection policy transport retired")
+      const url = requestURL(input)
+      if (url.username || url.password || url.hash || url.protocol !== "https:") {
+        throw new ProviderConnectionPolicy.ConnectionPolicyError("MCP OAuth request URL is invalid")
+      }
+      if (!allowedOrigins.has(url.origin)) {
+        throw new ProviderConnectionPolicy.ConnectionPolicyError("MCP OAuth request escaped its advertised origins")
+      }
+
+      const transport = url.origin === resourceOrigin ? resourceFetch : await qualify(url.origin)
+      const response = await transport(input, url.origin === resourceOrigin ? init : oauthRequestInit(init))
+      await observeOAuthResponse(url, response, allowedOrigins, metadataUrls)
+      return response
+    },
+    {
+      close: () => {
+        if (closed) return
+        closed = true
+        resourceFetch.close?.()
+        for (const transport of transports.values()) {
+          void transport.then(
+            (request) => request.close?.(),
+            () => undefined,
+          )
+        }
+      },
+    },
+  )
+}
+
+function requestURL(input: RequestInfo | URL) {
+  if (input instanceof URL) return new URL(input)
+  if (typeof input === "string") return new URL(input)
+  return new URL(input.url)
+}
+
+function oauthRequestInit(init?: RequestInit) {
+  if (!init?.headers) return init
+  // The SDK merges MCP request headers into OAuth calls; do not forward resource credentials cross-origin.
+  const headers = new Headers()
+  for (const [name, value] of new Headers(init.headers)) {
+    if (SAFE_OAUTH_HEADERS.has(name) || (name === "authorization" && value.toLowerCase().startsWith("basic "))) {
+      headers.set(name, value)
+    }
+  }
+  return { ...init, headers }
+}
+
+async function observeOAuthResponse(
+  url: URL,
+  response: Response,
+  allowedOrigins: Set<string>,
+  metadataUrls: Set<string>,
+) {
+  const authenticate = response.headers.get("www-authenticate")
+  const resourceMetadata = authenticate?.match(/resource_metadata=(?:"([^"]+)"|([^\s,]+))/i)
+  addOAuthMetadataURL(metadataUrls, allowedOrigins, resourceMetadata?.[1] ?? resourceMetadata?.[2])
+
+  if (!metadataUrls.has(url.href) && !url.pathname.includes("/.well-known/")) return
+
+  const metadata: unknown = await Promise.resolve()
+    .then(() => response.clone().json() as Promise<unknown>)
+    .catch(() => undefined)
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return
+
+  const record = metadata as Record<string, unknown>
+  if (Array.isArray(record.authorization_servers)) {
+    for (const authorizationServer of record.authorization_servers) {
+      addOAuthOrigin(allowedOrigins, authorizationServer)
+    }
+  }
+  for (const key of [
+    "authorization_endpoint",
+    "token_endpoint",
+    "registration_endpoint",
+    "revocation_endpoint",
+    "introspection_endpoint",
+    "device_authorization_endpoint",
+    "pushed_authorization_request_endpoint",
+  ]) {
+    addOAuthOrigin(allowedOrigins, record[key])
+  }
+}
+
+function addOAuthMetadataURL(metadataUrls: Set<string>, allowedOrigins: Set<string>, value: unknown) {
+  const url = parseOAuthURL(value)
+  if (!url) return
+  allowedOrigins.add(url.origin)
+  metadataUrls.add(url.href)
+}
+
+function addOAuthOrigin(allowedOrigins: Set<string>, value: unknown) {
+  const url = parseOAuthURL(value)
+  if (!url) return
+  allowedOrigins.add(url.origin)
+}
+
+function parseOAuthURL(value: unknown) {
+  if (typeof value !== "string") return undefined
+  try {
+    const url = new URL(value)
+    if (url.protocol !== "https:" || url.username || url.password || url.hash) return
+    return url
+  } catch {
+    // Metadata values are untrusted and may not be valid URLs.
+  }
+}
+
+function validateOAuthAddresses(
+  deployment: ManagedRemoteDeployment,
+  addresses: readonly string[],
+  resourceNetworkZone?: () => CustomerNetworkZone | undefined,
+) {
+  if (deployment.type === "hosted") {
+    assertPublicAddresses(addresses, "MCP OAuth endpoint")
+    return
+  }
+  const networkZone = assertCustomerAddresses(addresses, deployment.privateNetwork, "MCP OAuth endpoint")
+  const resourceZone = resourceNetworkZone?.()
+  if (resourceZone && networkZone !== resourceZone) {
+    throw new Error("MCP OAuth endpoint resolves outside the customer MCP network zone")
+  }
+}
+
+const SAFE_OAUTH_HEADERS = new Set(["accept", "content-type", "mcp-protocol-version"])
 
 const SAFE_ENVIRONMENT = new Set([
   "HOME",
@@ -670,24 +844,39 @@ export async function customerEndpointFetch(
   deployment: Extract<Extension.McpDeployment, { type: "customer-url" }>,
   dependencies?: ProviderConnectionPolicy.ConnectionPolicyDependencies,
 ) {
-  return ProviderConnectionPolicy.createConnectionPolicyFetchForEndpoint(
+  let networkZone: CustomerNetworkZone | undefined
+  const request = await renewableEndpointFetch(
     {
       id: `extension-mcp:${id}`,
       endpoint,
       pathPrefix: "/",
       noAddressesMessage: "Customer MCP endpoint DNS returned no addresses",
       validateAddresses: (addresses) => {
-        const classes = new Set(addresses.map((address) => classifyAddress(address.toLowerCase())))
-        if (classes.has("blocked") || classes.has("loopback") || classes.size !== 1) {
-          throw new Error("Customer MCP endpoint resolves outside one allowed network zone")
-        }
-        if (!deployment.privateNetwork && !classes.has("public")) {
-          throw new Error("Customer MCP endpoint resolves to a private network")
-        }
+        networkZone = assertCustomerAddresses(addresses, deployment.privateNetwork)
       },
     },
     dependencies,
   )
+  return Object.assign(request, { networkZone: () => networkZone })
+}
+
+function assertCustomerAddresses(
+  addresses: readonly string[],
+  privateNetwork: boolean,
+  label = "Customer MCP endpoint",
+): CustomerNetworkZone {
+  const classes = new Set(addresses.map((address) => classifyAddress(address.toLowerCase())))
+  if (classes.has("blocked") || classes.has("loopback") || classes.size !== 1) {
+    throw new Error(`${label} resolves outside one allowed network zone`)
+  }
+  const networkZone = [...classes][0]
+  if (networkZone !== "lan" && networkZone !== "public") {
+    throw new Error(`${label} resolves outside one allowed network zone`)
+  }
+  if (!privateNetwork && networkZone !== "public") {
+    throw new Error(`${label} resolves to a private network`)
+  }
+  return networkZone
 }
 
 function assertPublicAddresses(addresses: readonly string[], label: string) {

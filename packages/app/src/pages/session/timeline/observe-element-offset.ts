@@ -12,6 +12,7 @@ export function observeElementOffsetReconnectAware<TScrollElement extends Elemen
   const cleanupOffset = observeElementOffset(instance, deliver)
   const element = instance.scrollElement
   const targetWindow = instance.targetWindow
+  // Session routes are replaced below persistent main; body is the fallback for isolated hosts.
   const root = element?.closest("main") ?? element?.ownerDocument.body
   if (!element || !targetWindow || !root)
     return () => {
@@ -44,10 +45,17 @@ export function observeElementOffsetReconnectAware<TScrollElement extends Elemen
     }
     frame = targetWindow.requestAnimationFrame(check)
   }
+  // Only a mutation on the element's own ancestor chain can remove or re-add it,
+  // so observe each ancestor's childList instead of the whole root subtree —
+  // every streamed markdown token write otherwise runs the record loop.
+  const ancestors: Node[] = []
+  for (let node = element.parentNode; node && node !== root.parentNode; node = node.parentNode) {
+    ancestors.push(node)
+    if (node === root) break
+  }
   const observer = new targetWindow.MutationObserver((records) => {
     if (!active) return
     records.forEach((record) => {
-      if (record.target === element || element.contains(record.target)) return
       if (mutationNodesContainElement(record.removedNodes, element)) {
         removed = true
         clearCheck()
@@ -57,8 +65,7 @@ export function observeElementOffsetReconnectAware<TScrollElement extends Elemen
       startCheck()
     })
   })
-  // Session routes are replaced below persistent main; body is the fallback for isolated hosts.
-  observer.observe(root, { childList: true, subtree: true })
+  ancestors.forEach((node) => observer.observe(node, { childList: true }))
 
   return () => {
     active = false

@@ -79,7 +79,7 @@ export function setAppQuitting(quitting = true) {
 
 export function setBackgroundColor(color: string) {
   backgroundColor = color
-  BrowserWindow.getAllWindows().forEach((win) => {
+  getMainWindows().forEach((win) => {
     win.setBackgroundColor(color)
     if (process.platform === "darwin") win.invalidateShadow()
   })
@@ -136,7 +136,7 @@ export async function setPinchZoomEnabled(owner: number, enabled: boolean) {
   if (!storage) throw new Error("Desktop product Storage is not initialized")
   await storage.setPinchZoomEnabled(owner, enabled)
   storedPinchZoomEnabled = enabled
-  for (const win of BrowserWindow.getAllWindows()) {
+  for (const win of getMainWindows()) {
     pinchZoomEnabled.set(win, enabled)
     win.webContents.send("pinch-zoom-enabled-changed", enabled)
     if (!enabled && win.webContents.getZoomFactor() !== 1) win.webContents.setZoomFactor(1)
@@ -154,9 +154,13 @@ export function getWindowID(win: BrowserWindow) {
   return windowIDs.get(win)
 }
 
+export function getMainWindows() {
+  return BrowserWindow.getAllWindows().filter((win) => windowIDs.has(win))
+}
+
 export function getLastFocusedWindow() {
   const focused = BrowserWindow.getFocusedWindow()
-  if (focused) return focused
+  if (focused && windowIDs.has(focused)) return focused
   const win = registry?.lastFocused()
   if (!win || win.isDestroyed()) return null
   return win

@@ -40,6 +40,13 @@ function stopIfIdle() {
 }
 
 function handleRequest(req: import("http").IncomingMessage, res: import("http").ServerResponse) {
+  // OAuth redirects are GET navigations; anything else is not a provider callback.
+  if (req.method !== "GET") {
+    res.writeHead(405)
+    res.end("Method not allowed")
+    return
+  }
+
   const url = new URL(req.url || "/", `http://localhost:${currentPort}`)
 
   if (url.pathname !== currentPath) {
@@ -102,32 +109,68 @@ function handleRequest(req: import("http").IncomingMessage, res: import("http").
   stopIfIdle()
 }
 
-export async function ensureRunning(redirectUri?: string): Promise<void> {
-  // Parse the redirect URI to get port and path (uses defaults if not provided)
-  const { port, path } = parseRedirectUri(redirectUri)
+const PORT_SCAN_COUNT = 10
 
-  // If server is running on a different port/path, stop it first
-  if (server && (currentPort !== port || currentPath !== path)) {
+function listen(port: number): Promise<ReturnType<typeof createServer>> {
+  return new Promise((resolve, reject) => {
+    const created = createServer(handleRequest)
+    created.once("error", reject)
+    created.listen(port, OAUTH_CALLBACK_HOST, () => {
+      created.removeListener("error", reject)
+      // A bound server can still emit errors; without a listener they throw.
+      created.on("error", () => {})
+      resolve(created)
+    })
+  })
+}
+
+export async function ensureRunning(redirectUri?: string): Promise<{ port: number; path: string }> {
+  const requested = redirectUri ? parseRedirectUri(redirectUri) : undefined
+
+  if (server) {
+    // An unconfigured flow reuses whichever port/path is already bound. A flow
+    // with an explicit redirectUri on a different address restarts the server.
+    if (!requested || (requested.port === currentPort && requested.path === currentPath)) {
+      return { port: currentPort, path: currentPath }
+    }
     await stop()
   }
 
-  if (server) return
+  // An explicit redirectUri must bind exactly: the authorization server was told
+  // that address. Without one, walk a small range — the default port may already
+  // be held by another Forge process (Desktop + CLI) or a foreign app, and a
+  // foreign listener can never resolve this process's pending states.
+  const candidates = requested
+    ? [requested]
+    : Array.from({ length: PORT_SCAN_COUNT }, (_, index) => ({
+        port: OAUTH_CALLBACK_PORT + index,
+        path: OAUTH_CALLBACK_PATH,
+      }))
 
-  const running = await isPortInUse(port)
-  if (running) {
-    return
+  for (const candidate of candidates) {
+    if (await isPortInUse(candidate.port)) {
+      if (requested) {
+        throw new Error(
+          `MCP OAuth callback port ${candidate.port} is already in use by another process. ` +
+            "Choose a different callbackPort/redirectUri or free the port.",
+        )
+      }
+      continue
+    }
+    try {
+      server = await listen(candidate.port)
+    } catch (error) {
+      if (requested) throw error
+      continue
+    }
+    currentPort = candidate.port
+    currentPath = candidate.path
+    return { port: currentPort, path: currentPath }
   }
 
-  currentPort = port
-  currentPath = path
-
-  server = createServer(handleRequest)
-  await new Promise<void>((resolve, reject) => {
-    server!.listen(currentPort, OAUTH_CALLBACK_HOST, () => {
-      resolve()
-    })
-    server!.on("error", reject)
-  })
+  throw new Error(
+    `No loopback port available for the MCP OAuth callback (tried ${OAUTH_CALLBACK_PORT}-${OAUTH_CALLBACK_PORT + PORT_SCAN_COUNT - 1})`,
+  )
 }
 
 export function waitForCallback(oauthState: string, mcpName?: string): Promise<string> {

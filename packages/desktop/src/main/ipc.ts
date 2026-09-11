@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process"
-import { stat } from "node:fs/promises"
-import { basename } from "node:path"
+import { realpath, stat } from "node:fs/promises"
+import { basename, isAbsolute, join } from "node:path"
+import { Schema } from "effect"
+import { SecurityProxy } from "@turenlabs/schema/security-proxy"
 import { app, BrowserWindow, Notification, clipboard, dialog, shell } from "electron"
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron"
 import type { DesktopMenuAction } from "@turenlabs/app/desktop-menu"
@@ -8,16 +10,12 @@ import type { DesktopMenuAction } from "@turenlabs/app/desktop-menu"
 import type { FatalRendererError, ServerReadyData, TitlebarTheme } from "../preload/types"
 import { runDesktopMenuAction } from "./desktop-menu-actions"
 import { assertAttachmentBudget, createPickedFileAuthorizations } from "./attachment-picker"
-import { getWindowID, setTitlebar, updateTitlebar } from "./windows"
+import { getMainWindows, getWindowID, setTitlebar, updateTitlebar } from "./windows"
 import type { UpdaterController } from "./updater-controller"
 import { createUpdaterSubscriptions } from "./updater-subscriptions"
 import { externalHttpUrl } from "./external-link"
-import {
-  closeAllSecurityBrowsers,
-  closeSecurityBrowser,
-  navigateSecurityBrowser,
-  openSecurityBrowser,
-} from "./security-browser"
+import { createSecurityProxyController } from "./security-proxy"
+import { rendererOrigin } from "./window-security"
 import { IS_DEV } from "./constants"
 import type { ProfilerController } from "./profiler"
 import type { DesktopStorage } from "./storage/bridge"
@@ -33,8 +31,25 @@ const pickerFilters = (ext?: string[]) => {
 }
 
 const pickedFiles = createPickedFileAuthorizations()
+let securityProxy: ReturnType<typeof createSecurityProxyController> | undefined
+
+export async function closeSecurityProxy() {
+  await securityProxy?.closeAll()
+}
+
+export async function disconnectSecurityProxy() {
+  await securityProxy?.disconnect()
+}
+
+export function invokeSecurityProxy(command: SecurityProxy.Command) {
+  if (!securityProxy) return Promise.reject(new Error("Security Browser controller is unavailable"))
+  return securityProxy.invoke(0, command)
+}
 
 type Deps = {
+  securityProxyStore: (command: SecurityProxy.StoreCommand) => Promise<SecurityProxy.Result>
+  securityProxyOrigin: () => string | undefined
+  securityProxyCommand: (command: SecurityProxy.Command) => Promise<SecurityProxy.Result>
   killSidecar: () => Promise<void> | void
   profiler: ProfilerController
   relaunch: () => void
@@ -68,6 +83,28 @@ type Deps = {
 }
 
 export function registerIpcHandlers(deps: Deps) {
+  const proxy = createSecurityProxyController({
+    store: deps.securityProxyStore,
+    shellURL: () =>
+      process.env.ELECTRON_RENDERER_URL
+        ? new URL("security-browser.html", process.env.ELECTRON_RENDERER_URL).href
+        : `${rendererOrigin}/security-browser.html`,
+    shellPreload: join(import.meta.dirname, "../preload/security-browser.js"),
+    protectedOrigins: () =>
+      [rendererOrigin, process.env.ELECTRON_RENDERER_URL, deps.securityProxyOrigin()]
+        .filter((value): value is string => Boolean(value))
+        .map((value) => new URL(value).origin),
+    focusProxy: (ownerID, caseID) => {
+      const window =
+        getMainWindows().find((item) => item.webContents.id === ownerID) ??
+        getMainWindows().find((item) => item.isFocused()) ??
+        getMainWindows()[0]
+      window?.show()
+      window?.focus()
+      window?.webContents.send("security-proxy-focus", caseID)
+    },
+  })
+  securityProxy = proxy
   const updaterSubscriptions = createUpdaterSubscriptions()
   const storageOwners = new Set<number>()
   const storageOwner = (event: IpcMainInvokeEvent) => {
@@ -82,7 +119,6 @@ export function registerIpcHandlers(deps: Deps) {
     return id
   }
   app.once("will-quit", updaterSubscriptions.clear)
-  app.once("will-quit", closeAllSecurityBrowsers)
 
   ipcMain.handle("kill-sidecar", () => deps.killSidecar())
   ipcMain.handle("await-initialization", () => deps.awaitInitialization())
@@ -121,14 +157,17 @@ export function registerIpcHandlers(deps: Deps) {
   ipcMain.handle("updater-install", () => deps.updater.install())
   ipcMain.handle("set-background-color", (_event: IpcMainInvokeEvent, color: string) => deps.setBackgroundColor(color))
   ipcMain.handle("export-debug-logs", () => deps.exportDebugLogs())
-  ipcMain.handle("security-browser-open", (_event: IpcMainInvokeEvent, input: { sessionID: string; url: string }) =>
-    openSecurityBrowser(input),
-  )
-  ipcMain.handle("security-browser-navigate", (_event: IpcMainInvokeEvent, input: { sessionID: string; url: string }) =>
-    navigateSecurityBrowser(input),
-  )
-  ipcMain.handle("security-browser-close", (_event: IpcMainInvokeEvent, sessionID: string) =>
-    closeSecurityBrowser(sessionID),
+  ipcMain.handle("security-proxy", async (event, value: unknown) => {
+    const command = Schema.decodeUnknownSync(Schema.toType(SecurityProxy.Command))(value)
+    if (!isAbsolute(command.owner.directory)) throw new Error("An absolute local project directory is required")
+    const directory = await realpath(command.owner.directory)
+    if (!(await stat(directory)).isDirectory()) throw new Error("Project directory not found")
+    return proxy.invoke(storageOwner(event), { ...command, owner: { ...command.owner, directory } })
+  })
+  ipcMain.handleWithGuard(
+    "security-proxy-toolbar",
+    (event) => !event.sender.isDestroyed() && event.senderFrame === event.sender.mainFrame,
+    (event, input: unknown) => proxy.toolbar(event, input),
   )
 
   // Dev-only CPU profiler. `IS_DEV` folds to a literal, so these channels are
@@ -279,7 +318,7 @@ export function registerIpcHandlers(deps: Deps) {
     new Notification({ title, body }).show()
   })
 
-  ipcMain.handle("get-window-count", () => BrowserWindow.getAllWindows().length)
+  ipcMain.handle("get-window-count", () => getMainWindows().length)
 
   ipcMain.handle("get-window-id", (event: IpcMainInvokeEvent) => {
     const win = BrowserWindow.fromWebContents(event.sender)

@@ -8,7 +8,7 @@ import { PermissionV2 } from "../permission"
 import { SessionSchema } from "../session/schema"
 import { SessionTaskV2 } from "../session/task"
 import { SystemContext } from "../system-context/index"
-import { interruptName, listName, sendName, spawnName, waitName } from "../tool/subagent"
+import { interruptName, listName, notifyParentName, peekName, sendName, spawnName, waitName } from "../tool/subagent"
 import { TeamBoardTool } from "../tool/team-board"
 
 const Summary = Schema.Struct({
@@ -20,16 +20,20 @@ const State = Schema.Struct({
   tools: Schema.Array(Schema.String),
   agents: Schema.Array(Summary),
   limit: Schema.Int.pipe(Schema.optional),
+  notify: Schema.Boolean.pipe(Schema.optional),
   unavailable: Schema.Literal("max_depth").pipe(Schema.optional),
 })
 type State = typeof State.Type
 
+// `notify_parent` is deliberately absent: it exists only in a task-owned child
+// catalog, so listing it here would teach a tool the parent cannot call.
 const toolNames = [
   spawnName,
   sendName,
   waitName,
   interruptName,
   listName,
+  peekName,
   TeamBoardTool.postName,
   TeamBoardTool.readName,
 ]
@@ -40,8 +44,14 @@ const render = (state: State) => {
       "Nested delegation is unavailable because this session is already at the maximum subagent depth. Complete the assigned work directly and do not call spawn_agent.",
       ...(state.tools.includes(TeamBoardTool.postName) && state.tools.includes(TeamBoardTool.readName)
         ? [
-            `Team coordination remains available: read sibling findings with ${TeamBoardTool.readName} before overlapping work and publish evidence, status, and leads with ${TeamBoardTool.postName}.`,
+            `Team coordination remains available: read sibling findings with ${TeamBoardTool.readName} before overlapping work and publish evidence, status, and leads with ${TeamBoardTool.postName}; each post queues an advisory the parent session sees at its next provider-turn boundary.`,
           ]
+        : []),
+      ...(state.tools.includes(listName) && state.tools.includes(sendName)
+        ? [`Siblings stay reachable through ${listName} and ${sendName}.`]
+        : []),
+      ...(state.notify === true
+        ? [`Escalate blockers or needed decisions to the parent session with ${notifyParentName}.`]
         : []),
       "<available_subagent_tools>",
       ...state.tools.map((tool) => `  <tool>${escapeXml(tool)}</tool>`),
@@ -58,19 +68,28 @@ const render = (state: State) => {
           `  At most ${state.limit} subagents run at once for this session. Plan fan-out in waves of ${state.limit} or fewer; a further ${spawnName} fails until one settles.`,
         ]),
     "  2. Split implementation into disjoint workers with non-overlapping write roots. Do not assign duplicate work.",
-    "  When spawning, omit model unless a specific override is required; omitted model uses the child configuration or the runtime's available default rather than copying a possibly unavailable parent model.",
+    "  When spawning, omit model unless a specific override is required; an omitted model uses the child agent's configured default, then inherits the parent session's model.",
     ...(state.tools.includes(TeamBoardTool.postName) && state.tools.includes(TeamBoardTool.readName)
       ? [
-          `  3. Keep working on non-overlapping work after spawning. Children should publish evidence, status, and leads with ${TeamBoardTool.postName}; read incoming work with ${TeamBoardTool.readName} before duplicating it. Board updates stay in the background and do not wake the parent or require extra turns.`,
+          `  3. Keep working on non-overlapping work after spawning. Children should publish evidence, status, and leads with ${TeamBoardTool.postName}; read incoming work with ${TeamBoardTool.readName} before duplicating it. Each board post, ${notifyParentName} advisory, and child settle notice arrives as a queued advisory message at your next provider-turn boundary — continue working; they do not interrupt in-flight work.`,
         ]
-      : ["  3. Keep working on non-overlapping work after spawning; do not block the parent just to monitor a child."]),
+      : [
+          "  3. Keep working on non-overlapping work after spawning; do not block the parent just to monitor a child. A child's settle notice arrives as a queued advisory message at your next provider-turn boundary without interrupting in-flight work.",
+        ]),
     ...(state.tools.includes(waitName)
       ? [
           `  4. Use ${waitName} only as an explicit final-report barrier when you need complete terminal results; it is not the normal step after spawning.`,
         ]
       : []),
     ...(state.tools.includes(sendName)
-      ? [`  Use ${sendName} only to clarify or extend an existing child's bounded assignment.`]
+      ? [
+          `  Use ${sendName} to steer a running child mid-flight — clarify or extend its bounded assignment; the instruction promotes at the child's next provider-turn boundary.`,
+        ]
+      : []),
+    ...(state.tools.includes(peekName)
+      ? [
+          `  Use ${peekName} to tail a running child's transcript — prompts, replies, and tool-call inputs without output bodies — before steering or interrupting it.`,
+        ]
       : []),
     ...(available.has(AgentV2.ID.make("adversarial-review"))
       ? [
@@ -89,7 +108,11 @@ const render = (state: State) => {
     ...(state.tools.includes(interruptName)
       ? [`  7. Use ${interruptName} when a child is obsolete or off track.`]
       : []),
-    ...(state.tools.includes(listName) ? [`  Use ${listName} to recover durable child IDs and status.`] : []),
+    ...(state.tools.includes(listName)
+      ? [
+          `  Use ${listName} to recover durable child IDs and status; result and error previews appear only after a task settles.`,
+        ]
+      : []),
     "  Avoid nested delegation. Keep each assignment bounded, self-contained, and explicit about expected evidence.",
     "</subagent_workflow>",
     "<available_subagent_tools>",
@@ -148,6 +171,7 @@ const layer = Layer.effect(
         return {
           tools: tools.filter((name) => name !== spawnName),
           agents: [],
+          notify: allowed(notifyParentName, "*"),
           unavailable: "max_depth" as const,
         }
       if (!tools.includes(spawnName)) return

@@ -14,7 +14,7 @@ import { Prompt } from "@turenlabs/core/session/prompt"
 import { SessionSchema } from "@turenlabs/core/session/schema"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
 import { SystemContext } from "@turenlabs/core/system-context"
-import { interruptName, listName, sendName, spawnName, waitName } from "@turenlabs/core/tool/subagent"
+import { interruptName, listName, peekName, sendName, spawnName, waitName } from "@turenlabs/core/tool/subagent"
 import { TeamBoardTool } from "@turenlabs/core/tool/team-board"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
@@ -81,7 +81,10 @@ describe("AgentGuidance", () => {
       expect(generation.baseline).toContain("returns after admission, not after child completion")
       expect(generation.baseline).toContain("non-overlapping write roots")
       expect(generation.baseline).toContain("explicit final-report barrier")
-      expect(generation.baseline).toContain("Board updates stay in the background and do not wake the parent")
+      expect(generation.baseline).toContain("queued advisory message at your next provider-turn boundary")
+      expect(generation.baseline).toContain("do not interrupt in-flight work")
+      expect(generation.baseline).toContain("steer a running child mid-flight")
+      expect(generation.baseline).toContain("tail a running child's transcript")
       expect(generation.baseline).toContain("at most once per task")
       expect(generation.baseline).toContain("concrete high-risk boundary")
       expect(generation.baseline).toContain("Skip it for routine local changes")
@@ -95,9 +98,16 @@ describe("AgentGuidance", () => {
       expect(generation.baseline).not.toContain("After implementation, delegate an adversarial-review pass")
       expect(generation.baseline).toContain("Avoid nested delegation")
       expect(
-        [spawnName, sendName, waitName, interruptName, listName, TeamBoardTool.postName, TeamBoardTool.readName].every(
-          (name) => generation.baseline.includes(`<tool>${name}</tool>`),
-        ),
+        [
+          spawnName,
+          sendName,
+          waitName,
+          interruptName,
+          listName,
+          peekName,
+          TeamBoardTool.postName,
+          TeamBoardTool.readName,
+        ].every((name) => generation.baseline.includes(`<tool>${name}</tool>`)),
       ).toBe(true)
       expect(
         ["adversarial-review", "explore", "general", "qualification", "research", "worker"].every((id) =>

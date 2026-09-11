@@ -176,6 +176,44 @@ function assistantMessage(id: string, bytes: number, created: number, next: () =
  * compactions through it. Ordering matters: the big messages are spread across the timeline
  * rather than clustered, so a window taken from either end sees a representative slice.
  */
+/**
+ * Mirrors the lean-page transform in `packages/server/src/handlers/message.ts` — the
+ * `session.messages?lean=true` payload a real page server emits. Duplicated here rather than
+ * imported because the app package must not depend on the server; the constants must match.
+ */
+const LEAN_TOOL_BODY_BYTES = 64 * 1024
+const LEAN_STRUCTURED_KEEP_BYTES = 256
+
+const leanByteSize = (value: unknown) => (value === undefined ? 0 : JSON.stringify(value).length)
+
+export function leanSessionMessage(message: SessionMessage): SessionMessage {
+  if (message.type !== "assistant") return message
+  let trimmed = false
+  const content = message.content.map((item) => {
+    if (item.type !== "tool" || (item.state.status !== "completed" && item.state.status !== "error")) return item
+    const state = item.state
+    const bytes =
+      leanByteSize(state.content) +
+      leanByteSize(state.structured) +
+      leanByteSize("result" in state ? state.result : undefined) +
+      leanByteSize("attachments" in state ? state.attachments : undefined)
+    if (bytes <= LEAN_TOOL_BODY_BYTES) return item
+    trimmed = true
+    return {
+      ...item,
+      truncated: { bytes },
+      state: {
+        ...state,
+        content: [],
+        structured: leanByteSize(state.structured) <= LEAN_STRUCTURED_KEEP_BYTES ? state.structured : {},
+        ...(state.status === "completed" ? { result: undefined, attachments: undefined } : {}),
+        ...(state.status === "error" ? { result: undefined } : {}),
+      },
+    }
+  })
+  return trimmed ? { ...message, content } : message
+}
+
 export function generateSessionMessages(profile: SessionLoadProfile = revampV2Profile, seed = 0x5e551071) {
   const next = random(seed)
   const sizes: number[] = []

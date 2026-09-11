@@ -141,6 +141,8 @@ import { fenceLayer } from "./middleware/fence"
 import { schemaErrorLayer } from "./middleware/schema-error"
 import { Auth } from "@/auth"
 import { ProviderAuth } from "@/provider/auth"
+import { SecurityProxyRuntime } from "@turenlabs/core/security-proxy-runtime"
+import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
 
 export const context = Context.makeUnsafe<unknown>(new Map())
 
@@ -305,8 +307,12 @@ export function createRoutes(
   corsOptions?: CorsOptions,
   sessionExecution: SessionExecutionReplacement = SessionExecutionLocal.node,
   secretVault = SecretVault.ephemeral,
+  securityProxy?: SecurityProxyRuntime.Interface,
 ): Layer.Layer<never, EffectConfig.ConfigError, RouteRequirements> {
   const secretVaultReplacement = [[SecretVault.node, secretVault]] as const
+  const securityProxyReplacement = [
+    [SecurityProxyRuntime.node, SecurityProxyRuntime.layer(securityProxy?.execute ?? (() => Effect.fail(new SecurityProxyRuntime.Error("The desktop Security Browser is unavailable"))))],
+  ] as const
   // Reaching `MCP.Service` costs a full V1 `InstanceBootstrap.run` for the Location's
   // directory, so this may only be wired because registration is demand-driven: the
   // source is asked during the first tool materialization of a turn, never at Location
@@ -314,6 +320,7 @@ export function createRoutes(
   // starts no instance and spawns no MCP child. See specs/v2/session.md.
   const locationServiceMapV2 = buildLocationServiceMap([
     ...secretVaultReplacement,
+    ...securityProxyReplacement,
     [BatouScanner.node, BatouScannerLive.node],
     [McpTool.sourceNode, McpToolSource.node],
     [workbenchPentestLauncherNode, PentestWorkbenchLauncher.node],
@@ -336,7 +343,7 @@ export function createRoutes(
       corsVaryFix,
       fenceLayer,
       cors(corsOptions),
-      traceStartupLayer(
+        traceStartupLayer(
         "move-session-graph",
         AppNodeBuilderV1.build(MoveSession.node, [[LocationServiceMap.node, locationServiceMapV2]]),
       ),
@@ -372,6 +379,7 @@ export function createRoutes(
         "global-graph",
         AppNodeBuilderV1.build(app, [
           ...secretVaultReplacement,
+          ...securityProxyReplacement,
           [LocationServiceMap.node, locationServiceMapV2],
           [SessionExecution.node, SessionExecutionLocal.node],
         ]),

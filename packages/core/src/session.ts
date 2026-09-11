@@ -1017,7 +1017,7 @@ const layer = Layer.effect(
               sessionID: input.sessionID,
               id: input.messageID,
             })
-            if (cancelled && source?.source === "subagent_board")
+            if (cancelled && (source?.source ?? "user") !== "user")
               yield* execution.retry?.(input.sessionID) ?? Effect.void
             return cancelled
           }),

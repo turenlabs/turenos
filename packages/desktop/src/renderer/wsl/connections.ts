@@ -1,4 +1,5 @@
 import type { WslServersState } from "@turenlabs/app/wsl/types"
+import type { SshServersState } from "@turenlabs/app/ssh/types"
 
 export function readyWslConnections(state?: WslServersState) {
   return (state?.servers ?? []).flatMap((item) => {
@@ -20,9 +21,19 @@ export function readyWslConnections(state?: WslServersState) {
   })
 }
 
-export function availableStartupServer(defaultServer: string | null | undefined, state?: WslServersState) {
+export function availableStartupServer(
+  defaultServer: string | null | undefined,
+  state?: WslServersState,
+  sshState?: SshServersState,
+) {
   const key = defaultServer ?? "sidecar"
-  if (!key.startsWith("wsl:")) return key
-  if (state?.servers.some((item) => item.config.id === key && item.runtime.kind === "ready")) return key
-  return "sidecar"
+  if (key.startsWith("wsl:")) {
+    if (state?.servers.some((item) => item.config.id === key && item.runtime.kind === "ready")) return key
+    return "sidecar"
+  }
+  if (key.startsWith("ssh:")) {
+    if (sshState?.servers.some((item) => item.config.id === key && item.runtime.kind === "ready")) return key
+    return "sidecar"
+  }
+  return key
 }

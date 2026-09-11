@@ -63,6 +63,21 @@ export function groupSessionActivity(calls: SessionLiveToolCall[]) {
     const kind = sessionActivityKind(call.part)
     const previous = groups.at(-1)
     const groupable = kind === "context" || kind === "write"
+    // A retry storm of identical rejections is one fact: same tool, same error,
+    // same turn. Distinct failures still get their own rows.
+    if (
+      previous !== undefined &&
+      previous.status === "error" &&
+      activityStatus(call.part) === "error" &&
+      previous.calls.at(-1)!.part.tool === call.part.tool &&
+      activityOutput(previous.calls.at(-1)!.part) === activityOutput(call.part) &&
+      activityTurn(previous.calls.at(-1)!) === activityTurn(call)
+    ) {
+      previous.calls.push(call)
+      previous.duration = activityDuration(previous.calls)
+      previous.detail = activityOutput(call.part)
+      return groups
+    }
     if (
       groupable &&
       previous?.kind === kind &&

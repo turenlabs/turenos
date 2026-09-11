@@ -60,7 +60,7 @@ const require = __cjs_mod__.createRequire(import.meta.url);
 `,
         },
       },
-      externalizeDeps: { include: [nodePtyPkg] },
+      externalizeDeps: { include: [nodePtyPkg], exclude: ["@turenlabs/schema", "@turenlabs/protocol"] },
     },
     plugins: [
       {
@@ -174,7 +174,7 @@ const require = __cjs_mod__.createRequire(import.meta.url);
     },
     build: {
       rollupOptions: {
-        input: { index: "src/preload/index.ts" },
+        input: { index: "src/preload/index.ts", "security-browser": "src/preload/security-browser.ts" },
         output: {
           format: "cjs",
           entryFileNames: "[name].js",
@@ -191,6 +191,7 @@ const require = __cjs_mod__.createRequire(import.meta.url);
       rollupOptions: {
         input: {
           main: "src/renderer/index.html",
+          securityBrowser: "src/renderer/security-browser.html",
         },
       },
     },

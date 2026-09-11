@@ -6,6 +6,7 @@ import { MCP } from "@/mcp"
 import { McpCatalog } from "@/mcp/catalog"
 import { McpBroker } from "@/mcp/broker"
 import { McpTool } from "@turenlabs/core/tool/mcp"
+import { McpAuth } from "@/mcp/auth"
 import { McpIntegration } from "@/mcp/integration"
 import { Permission } from "@/permission"
 import { Tool } from "@/tool/tool"
@@ -539,8 +540,14 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       entry.server === "onepassword" || !McpIntegration.definition(entry.server)
         ? undefined
         : yield* mcp.configuration(entry.server)
+    const stored = yield* Effect.serviceOption(McpAuth.Service).pipe(
+      Effect.andThen((service) =>
+        Option.isSome(service) ? service.value.get(entry.server) : Effect.succeed(undefined),
+      ),
+    )
+    const secrets = McpAuth.secrets(stored)
     const item = McpCatalog.convertTool(entry.def, entry.client, entry.timeout, (result) =>
-      McpIntegration.redactMcpResult(entry.server, configuration, result),
+      McpIntegration.redactMcpResult(entry.server, configuration, result, secrets),
     )
     const execute = item.execute
     if (!execute) continue

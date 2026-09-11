@@ -12,7 +12,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { force: true, recursive: true })))
 })
 
-describe("private GitHub installer integrity", () => {
+describe("public release installer integrity", () => {
   unixTest("installs an archive only after checksum and version verification", async () => {
     const result = await runInstaller("0.1.0")
     expect(result.code).toBe(0)
@@ -85,30 +85,36 @@ async function runInstaller(
     .digest("hex")
   await Bun.write(path.join(assets, "SHA256SUMS"), `${checksum ?? hash}  ${filename}\n`)
   await Bun.write(
-    path.join(commands, "gh"),
+    path.join(commands, "curl"),
     `#!/usr/bin/env bash
 set -euo pipefail
-if [ "$1 $2" = "release view" ]; then
-  echo v0.1.0
-  exit 0
-fi
-if [ "$1 $2" = "release download" ]; then
-  pattern=""
-  output=""
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --pattern) pattern="$2"; shift 2 ;;
-      --output) output="$2"; shift 2 ;;
-      *) shift ;;
-    esac
-  done
-  cp "$ASSET_DIR/$pattern" "$output"
-  exit 0
-fi
-exit 1
+url=""
+output=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) output="$2"; shift 2 ;;
+    -w) shift 2 ;;
+    http*) url="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+case "$url" in
+  */releases/latest)
+    # resolving the latest tag reads the redirect target
+    printf '%s' "https://github.com/turenlabs/turenos/releases/tag/v0.1.0"
+    exit 0
+    ;;
+  */releases/download/*)
+    asset="\${url##*/}"
+    if [ ! -f "$ASSET_DIR/$asset" ]; then exit 22; fi
+    if [ -n "$output" ] && [ "$output" != "/dev/null" ]; then cp "$ASSET_DIR/$asset" "$output"; fi
+    exit 0
+    ;;
+esac
+exit 22
 `,
   )
-  await chmod(path.join(commands, "gh"), 0o755)
+  await chmod(path.join(commands, "curl"), 0o755)
   if (options?.target === "windows-arm64") {
     await Bun.write(
       path.join(commands, "uname"),

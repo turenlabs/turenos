@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm"
+import { and, asc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm"
 import { Cause, Effect, Layer, Option, Stream } from "effect"
 import { Database } from "../../database/database"
 import { EventV2 } from "../../event"
@@ -10,7 +10,6 @@ import { SessionSchema } from "../schema"
 import { SessionStore } from "../store"
 import { SessionExecution } from "../execution"
 import { SessionTranscriptAdoption } from "../transcript-adoption"
-import { SessionInput } from "../input"
 import { SessionTaskV2 } from "../task"
 import { SessionEvent } from "../event"
 import { SessionInputTable, SessionTable } from "../sql"
@@ -34,13 +33,14 @@ const layer = Layer.effect(
     const events = yield* EventV2.Service
     const reflection = yield* Reflection.Service
     const primary = Database.primary(database.db)
-    // Legacy board notifications must not become future provider turns.
+    // Stale subagent advisories must not become future provider turns: the task that produced
+    // them died with the process, and their durable state is still readable via list_agents.
     yield* primary
       .update(SessionInputTable)
       .set({ time_cancelled: Date.now() })
       .where(
         and(
-          eq(SessionInputTable.source, "subagent_board"),
+          inArray(SessionInputTable.source, ["subagent_board", "subagent_settle", "subagent_advisory"]),
           isNull(SessionInputTable.promoted_seq),
           isNull(SessionInputTable.time_cancelled),
         ),
@@ -60,16 +60,23 @@ const layer = Layer.effect(
     })
     let wakeAdvisory: (sessionID: SessionSchema.ID) => Effect.Effect<void> = () => Effect.void
     const advisoryWakeRetries = new Map<SessionSchema.ID, boolean>()
+    const advisoryBusyEpochs = new Map<SessionSchema.ID, { since: number; warnedAt: number }>()
     let scheduleAdvisoryWake: (sessionID: SessionSchema.ID) => Effect.Effect<void> = () => Effect.void
     let attemptAdvisoryWake: (sessionID: SessionSchema.ID) => Effect.Effect<void> = () => Effect.void
-    const advisoryBusy = Effect.fn("SessionExecutionLocal.advisoryBusy")(function* (sessionID: SessionSchema.ID) {
+    const advisoryBusyReasons = Effect.fn("SessionExecutionLocal.advisoryBusyReasons")(function* (
+      sessionID: SessionSchema.ID,
+    ) {
       const compacting = yield* primary
         .select({ timeCompacting: SessionTable.time_compacting })
         .from(SessionTable)
         .where(eq(SessionTable.id, sessionID))
         .get()
         .pipe(Effect.orDie)
-      return (yield* shellRegistry.active(sessionID)) || compacting?.timeCompacting !== null
+      return { shell: yield* shellRegistry.active(sessionID), compacting: compacting?.timeCompacting != null }
+    })
+    const advisoryBusy = Effect.fn("SessionExecutionLocal.advisoryBusy")(function* (sessionID: SessionSchema.ID) {
+      const reasons = yield* advisoryBusyReasons(sessionID)
+      return reasons.shell || reasons.compacting
     })
     const coordinator = yield* SessionRunCoordinator.make<SessionSchema.ID, SessionRunner.RunError>({
       wakeAdvisory: (sessionID) => wakeAdvisory(sessionID),
@@ -121,7 +128,7 @@ const layer = Layer.effect(
             // their placement explicitly (SessionTask.locate) rather than reading
             // it from ambient context, so publishing from this unlocated fiber
             // still reaches the right subscribers.
-            yield* tasks
+            const settled = yield* tasks
               .settleRun({
                 sessionID,
                 status:
@@ -131,6 +138,23 @@ const layer = Layer.effect(
                   : { error: failure instanceof Error ? failure.message : String(failure) }),
               })
               .pipe(Effect.orDie)
+            // Only the drain that moved the task to a terminal state advises the
+            // parent; an already-terminal or still-running task must not re-notify.
+            if (settled?.transitioned === true) {
+              const notified = yield* tasks
+                .notifyParent({
+                  taskID: settled.task.id,
+                  text: settleText(settled.task),
+                  source: "subagent_settle",
+                  allowTerminal: true,
+                  // A deterministic id keeps a crash-replayed settle from admitting twice.
+                  messageID: SessionMessage.ID.make(`msg_task_settle_${settled.task.id}_${settled.task.revision}`),
+                })
+                .pipe(Effect.orDie)
+              // Queue delivery plus a coalesced wake mirrors the board-post advisory
+              // path; the advisory wake path only schedules shell-job inputs.
+              if (notified !== undefined) yield* control.wake(notified.sessionID)
+            }
             const latestAssistant =
               exit._tag === "Success"
                 ? (yield* store.context(sessionID)).findLast(
@@ -188,12 +212,33 @@ const layer = Layer.effect(
       yield* operations.withLock(sessionID)(
         Effect.gen(function* () {
           const session = yield* store.get(sessionID)
-          if (!session) return
-          if (yield* advisoryBusy(sessionID)) {
+          if (!session) {
+            advisoryBusyEpochs.delete(sessionID)
+            return
+          }
+          const busy = yield* advisoryBusyReasons(sessionID)
+          if (busy.shell || busy.compacting) {
+            // The retry loop is the only thing re-arming a diverted drain. A busy window that
+            // outlasts any reasonable shell job or compaction means the mark wedged -- surface
+            // it instead of retrying quietly forever.
+            const epoch = advisoryBusyEpochs.get(sessionID) ?? { since: Date.now(), warnedAt: 0 }
+            advisoryBusyEpochs.set(sessionID, epoch)
+            const now = Date.now()
+            if (now - epoch.since > 60_000 && now - epoch.warnedAt > 300_000) {
+              epoch.warnedAt = now
+              yield* Effect.logWarning("Session drain still diverted by advisory busy", {
+                sessionID,
+                elapsedMs: now - epoch.since,
+                ...busy,
+              })
+            }
             yield* scheduleAdvisoryWake(sessionID)
             return
           }
-          if (!(yield* SessionInput.hasPendingSource(primary, sessionID, "shell_job"))) return
+          advisoryBusyEpochs.delete(sessionID)
+          // A diverted drain re-wakes once the busy window clears no matter what admitted it:
+          // the runner decides whether durable work remains, so gating the re-wake on one input
+          // source stranded every other kind (user prompts, queue advisories, continuations).
           yield* coordinator.wake(sessionID)
         }),
       )
@@ -277,6 +322,18 @@ const layer = Layer.effect(
     })
   }),
 )
+
+/** Compact settle advisory admitted to the parent as one queued prompt. */
+function settleText(task: SessionTaskV2.Info) {
+  const detail = task.status === "completed" ? task.result : task.error
+  const label = task.status === "completed" ? "Result" : "Error"
+  return [
+    "A subagent task reached a terminal state.",
+    `${task.status}: ${task.description} (task ${task.id}, agent ${task.agent})`,
+    ...(detail === undefined ? [] : [`${label}: ${detail.slice(0, 500)}`]),
+    "Collect the full durable report with wait_agents when you need it; otherwise continue your current work.",
+  ].join("\n")
+}
 
 export const node = makeGlobalNode({
   service: SessionExecution.Service,

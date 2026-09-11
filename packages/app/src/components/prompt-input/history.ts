@@ -76,6 +76,29 @@ export function stripPromptHistoryImages(prompt: Prompt): Prompt {
   return prompt.filter((part) => part.type !== "image")
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function stripPromptHistoryImagesValue(value: unknown) {
+  if (!Array.isArray(value)) return value
+  return value.filter((part) => !isRecord(part) || part.type !== "image")
+}
+
+/** Remove attachment payloads from history values that predate the current write path. */
+export function sanitizePromptHistory(value: unknown) {
+  if (!isRecord(value) || !Array.isArray(value.entries)) return value
+
+  return {
+    ...value,
+    entries: value.entries.map((entry) => {
+      if (Array.isArray(entry)) return stripPromptHistoryImagesValue(entry)
+      if (!isRecord(entry) || !Array.isArray(entry.prompt)) return entry
+      return { ...entry, prompt: stripPromptHistoryImagesValue(entry.prompt) }
+    }),
+  }
+}
+
 /**
  * Shed payloads a previous build already wrote.
  *

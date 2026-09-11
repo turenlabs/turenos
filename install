@@ -20,8 +20,8 @@ Options:
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
-    gh api -H "Accept: application/vnd.github.raw+json" repos/turenlabs/forge/contents/install | bash
-    gh api -H "Accept: application/vnd.github.raw+json" repos/turenlabs/forge/contents/install | bash -s -- --version 0.1.0
+    curl -fsSL https://raw.githubusercontent.com/turenlabs/turenos/main/install | bash
+    curl -fsSL https://raw.githubusercontent.com/turenlabs/turenos/main/install | bash -s -- --version 0.1.0
     ./install --binary /path/to/forge
 EOF
 }
@@ -195,19 +195,25 @@ else
         fi
     fi
 
-    if ! command -v gh >/dev/null 2>&1; then
-        echo -e "${RED}Forge releases are private and require GitHub CLI authentication.${NC}"
-        echo -e "${MUTED}Install GitHub CLI, run: gh auth login, then retry.${NC}"
+    if ! command -v curl >/dev/null 2>&1; then
+        echo -e "${RED}Error: 'curl' is required but not installed.${NC}"
         exit 1
     fi
 
+    release_base="https://github.com/turenlabs/turenos/releases"
+
     if [ -z "$requested_version" ]; then
-        release_tag=$(gh release view --repo turenlabs/forge --json tagName --jq .tagName 2>/dev/null || true)
-        specific_version="${release_tag#v}"
+        # releases/latest redirects to the newest tag; the redirect target
+        # carries the tag name without needing the GitHub API.
+        latest_url=$(curl -fsSI -o /dev/null -w '%{url_effective}' "$release_base/latest" 2>/dev/null || true)
+        release_tag="${latest_url##*/}"
+        case "$release_tag" in
+            v*) specific_version="${release_tag#v}" ;;
+            *) specific_version="" ;;
+        esac
 
         if [ -z "$specific_version" ]; then
-            echo -e "${RED}Failed to fetch the private Forge release.${NC}"
-            echo -e "${MUTED}Run: gh auth login${NC}"
+            echo -e "${RED}Failed to resolve the latest Forge release.${NC}"
             exit 1
         fi
     else
@@ -216,8 +222,8 @@ else
         specific_version=$requested_version
         release_tag="v${requested_version}"
 
-        if ! gh release view "$release_tag" --repo turenlabs/forge >/dev/null 2>&1; then
-            echo -e "${RED}Error: Release v${requested_version} not found or GitHub CLI is not authenticated${NC}"
+        if ! curl -fsSI -o /dev/null "$release_base/download/${release_tag}/${filename}" 2>/dev/null; then
+            echo -e "${RED}Error: release ${release_tag} does not provide ${filename}${NC}"
             exit 1
         fi
     fi
@@ -255,8 +261,8 @@ download_and_install() {
     print_message info "\n${MUTED}Installing ${NC}forge ${MUTED}version: ${NC}$specific_version"
     INSTALL_TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/forge_install.XXXXXX")
 
-    gh release download "$release_tag" --repo turenlabs/forge --pattern "$filename" --output "$INSTALL_TMP_DIR/$filename"
-    gh release download "$release_tag" --repo turenlabs/forge --pattern "SHA256SUMS" --output "$INSTALL_TMP_DIR/SHA256SUMS"
+    curl -fsSL "$release_base/download/${release_tag}/${filename}" -o "$INSTALL_TMP_DIR/$filename"
+    curl -fsSL "$release_base/download/${release_tag}/SHA256SUMS" -o "$INSTALL_TMP_DIR/SHA256SUMS"
 
     local expected_hash
     expected_hash=$(awk -v name="$filename" '$2 == name || $2 == "*" name { print $1 }' "$INSTALL_TMP_DIR/SHA256SUMS")
@@ -419,6 +425,6 @@ echo -e ""
 echo -e "cd <project>  ${MUTED}# Open directory${NC}"
 echo -e "forge      ${MUTED}# Run command${NC}"
 echo -e ""
-echo -e "${MUTED}For more information visit ${NC}https://github.com/turenlabs/forge"
+echo -e "${MUTED}For more information visit ${NC}https://github.com/turenlabs/turenos"
 echo -e ""
 echo -e ""

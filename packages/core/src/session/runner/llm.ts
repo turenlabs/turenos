@@ -159,6 +159,11 @@ import { MuseCodeCLI } from "../../provider/muse-code"
  */
 export const TOOL_CONCURRENCY_LIMIT = 8
 
+/** First durable stall notice after a tool call has been waiting this long. */
+const TOOL_STALL_NOTICE_DELAY = "30 seconds"
+/** Repeats while any call stays pending; the running transcript shows the wait growing. */
+const TOOL_STALL_NOTICE_INTERVAL = "60 seconds"
+
 /**
  * What the Claude CLI is told when it calls `update_goal`, whose real settlement is deferred to
  * this turn's accounting checkpoint. The result is deliberately explicit about the two things the
@@ -545,9 +550,6 @@ const layer = Layer.effect(
       }
     })
 
-    const awaitToolFibers = (fibers: FiberSet.FiberSet<void, ToolOutputStore.Error>) =>
-      Effect.raceFirst(FiberSet.join(fibers), FiberSet.awaitEmpty(fibers))
-
     // Match V1: declining a user prompt halts the loop instead of becoming model-facing tool output.
     const isUserDeclined = (cause: Cause.Cause<unknown>) =>
       cause.reasons.some(
@@ -657,6 +659,53 @@ const layer = Layer.effect(
       const initialized = yield* SessionContextEpoch.initialize(db, loadSystemContext(agent, session.id), session.id)
       const toolFibers = yield* FiberSet.make<void, ToolOutputStore.Error>()
       const goalUpdateFibers = yield* FiberSet.make<void, ToolOutputStore.Error>()
+      // A turn cannot finish until its tool fibers do, and a fiber can wait on something that may
+      // never arrive -- an unseen permission prompt, an unanswered question, a hung process. With
+      // no durable mark the session just looks dead, so report each pending call as tool progress
+      // until it settles: "stuck" reads as "waiting on X" to anyone watching the transcript.
+      const pendingToolCalls = new Map<
+        string,
+        { readonly name: string; readonly assistantMessageID: SessionMessage.ID; readonly startedAt: number }
+      >()
+      const stallNotices = Effect.gen(function* () {
+        yield* Effect.sleep(TOOL_STALL_NOTICE_DELAY)
+        while (pendingToolCalls.size > 0) {
+          const requests = yield* permission
+            .forSession(session.id)
+            .pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<PermissionV2.Request>)))
+          for (const [callID, call] of pendingToolCalls) {
+            const waitedMs = Date.now() - call.startedAt
+            const waitingOn =
+              call.name === "question"
+                ? "question"
+                : requests.some((request) => request.source?.type === "tool" && request.source.callID === callID)
+                  ? "permission"
+                  : "execution"
+            const minutes = Math.floor(waitedMs / 60_000)
+            const elapsed =
+              minutes > 0 ? `${minutes}m ${Math.round((waitedMs % 60_000) / 1000)}s` : `${Math.round(waitedMs / 1000)}s`
+            const text =
+              waitingOn === "permission"
+                ? `Waiting for permission approval (${elapsed})`
+                : waitingOn === "question"
+                  ? `Waiting for an answer (${elapsed})`
+                  : `Still running (${elapsed})`
+            yield* events
+              .publish(SessionEvent.Tool.Progress, {
+                sessionID: session.id,
+                timestamp: yield* DateTime.now,
+                assistantMessageID: call.assistantMessageID,
+                callID,
+                structured: { stalled: true, waiting_on: waitingOn, waited_ms: waitedMs },
+                content: [{ type: "text", text }],
+              })
+              .pipe(Effect.catchCause(() => Effect.void))
+          }
+          yield* Effect.sleep(TOOL_STALL_NOTICE_INTERVAL)
+        }
+      }).pipe(Effect.catchCause(() => Effect.void))
+      const awaitToolFibers = (fibers: FiberSet.FiberSet<void, ToolOutputStore.Error>) =>
+        Effect.raceFirst(Effect.raceFirst(FiberSet.join(fibers), FiberSet.awaitEmpty(fibers)), stallNotices)
       // See `TOOL_CONCURRENCY_LIMIT`. Per turn, so nested Sessions cannot starve each other.
       const withToolPermit = Semaphore.makeUnsafe(TOOL_CONCURRENCY_LIMIT).withPermit
       const withTodoPermit = Semaphore.makeUnsafe(1).withPermit
@@ -722,11 +771,11 @@ const layer = Layer.effect(
       )
       const lastMessage = history.at(-1)?.message
       const inspectInputSource = followsBoardRead === true || lastMessage?.type === "user"
-      const [latestHumanInput, latestBoardInput] = inspectInputSource
+      const [latestHumanInput, latestInternalInput] = inspectInputSource
         ? yield* Effect.all(
             [
               SessionInput.latestPromoted(db, session.id, "user"),
-              SessionInput.latestPromoted(db, session.id, "subagent_board"),
+              SessionInput.latestPromotedInternal(db, session.id),
             ] as const,
             { concurrency: "unbounded" },
           )
@@ -735,8 +784,8 @@ const layer = Layer.effect(
         latestHumanInput &&
         (followsBoardRead === true ||
           (lastMessage?.type === "user" && lastMessage.source === "shell_job") ||
-          (latestBoardInput !== undefined &&
-            (latestBoardInput.promotedSeq ?? -1) > (latestHumanInput.promotedSeq ?? -1)))
+          (latestInternalInput !== undefined &&
+            (latestInternalInput.promotedSeq ?? -1) > (latestHumanInput.promotedSeq ?? -1)))
           ? latestHumanInput
           : undefined
       yield* startupPhase("history_ready", { entries: history.length })
@@ -1081,6 +1130,7 @@ const layer = Layer.effect(
               )
               const assistantMessageID = yield* publisher.assistantMessageID(call.id)
               toolTurnIDs.add(assistantMessageID)
+              pendingToolCalls.set(call.id, { name: call.name, assistantMessageID, startedAt: Date.now() })
               const settle = toolMaterialization.settle({
                 sessionID: session.id,
                 agent: agent.id,
@@ -1108,6 +1158,7 @@ const layer = Layer.effect(
                       ),
                     ),
                   ),
+                  Effect.ensuring(Effect.sync(() => pendingToolCalls.delete(call.id))),
                   FiberSet.run(goalUpdateFibers),
                 )
                 return { type: "text" as const, value: GOAL_UPDATE_ACCEPTED }
@@ -1228,6 +1279,7 @@ const layer = Layer.effect(
               needsContinuation = true
               const assistantMessageID = yield* publisher.assistantMessageID(event.id)
               toolTurnIDs.add(assistantMessageID)
+              pendingToolCalls.set(event.id, { name: event.name, assistantMessageID, startedAt: Date.now() })
               // Goal updates settle on their own fiber set and are awaited after the real work, so
               // they stay outside the fan-out budget: a bookkeeping call must not queue behind eight
               // `bash` invocations it has nothing to do with, and there is at most one in flight.
@@ -1270,6 +1322,7 @@ const layer = Layer.effect(
                       settlement.outputPaths ?? [],
                     )
                   }),
+                  Effect.ensuring(Effect.sync(() => pendingToolCalls.delete(event.id))),
                 ),
               ).pipe(FiberSet.run(isGoalUpdate ? goalUpdateFibers : toolFibers))
             }),

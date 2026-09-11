@@ -1,6 +1,6 @@
 export * as SessionInput from "./input"
 
-import { and, asc, desc, eq, gt, isNotNull, isNull, lte } from "drizzle-orm"
+import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne } from "drizzle-orm"
 import { Cause, DateTime, Effect, Schema } from "effect"
 import { Admitted, CommandIntent, Delivery, OutboxItem, Source, Status } from "@turenlabs/schema/session-input"
 import type { Database } from "../database/database"
@@ -501,6 +501,28 @@ export const pending = Effect.fn("SessionInput.pending")(function* (db: Database
   return rows.map(fromRow)
 })
 
+/** Latest promoted input from any machine source (board posts, settle notices, shell jobs). */
+export const latestPromotedInternal = Effect.fn("SessionInput.latestPromotedInternal")(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+) {
+  const row = yield* db
+    .select()
+    .from(SessionInputTable)
+    .where(
+      and(
+        eq(SessionInputTable.session_id, sessionID),
+        ne(SessionInputTable.source, "user"),
+        isNotNull(SessionInputTable.promoted_seq),
+      ),
+    )
+    .orderBy(desc(SessionInputTable.promoted_seq))
+    .limit(1)
+    .get()
+    .pipe(Effect.orDie)
+  return row === undefined ? undefined : fromRow(row)
+})
+
 export const latestPromoted = Effect.fn("SessionInput.latestPromoted")(function* (
   db: DatabaseService,
   sessionID: SessionSchema.ID,
@@ -698,13 +720,17 @@ export const promoteSteers = Effect.fn("SessionInput.promoteSteers")(function* (
   return yield* publish(db, events, sessionID, rows, onPromoted)
 })
 
+const MAX_QUEUE_PROMOTE_BATCH = 32
+
+const machineInput = (row: typeof SessionInputTable.$inferSelect) => (row.source ?? "user") !== "user"
+
 export const promoteNextQueued = Effect.fn("SessionInput.promoteNextQueued")(function* (
   db: DatabaseService,
   events: EventV2.Interface,
   sessionID: SessionSchema.ID,
   onPromoted?: () => void,
 ) {
-  const row = yield* db
+  const rows = yield* db
     .select()
     .from(SessionInputTable)
     .where(
@@ -716,8 +742,19 @@ export const promoteNextQueued = Effect.fn("SessionInput.promoteNextQueued")(fun
       ),
     )
     .orderBy(asc(SessionInputTable.admitted_seq))
-    .limit(1)
-    .get()
+    .limit(MAX_QUEUE_PROMOTE_BATCH)
+    .all()
     .pipe(Effect.orDie)
-  return row === undefined ? false : yield* publish(db, events, sessionID, [row], onPromoted).pipe(Effect.as(true))
+  const head = rows[0]
+  if (head === undefined) return false
+  // Human queue inputs keep one-at-a-time promotion — each instruction earns its own turn.
+  // Machine advisories (board posts, settle notices) are background traffic: the whole
+  // consecutive run promotes at one boundary so a settling swarm costs one provider turn,
+  // not one turn per notice. A human input stops the run so nothing jumps ahead of it.
+  let batch = [head]
+  if (machineInput(head)) {
+    const userIndex = rows.findIndex((row) => !machineInput(row))
+    batch = rows.slice(0, userIndex === -1 ? rows.length : userIndex)
+  }
+  return yield* publish(db, events, sessionID, batch, onPromoted).pipe(Effect.as(true))
 })

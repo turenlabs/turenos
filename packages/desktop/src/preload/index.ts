@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron"
-import type { ElectronAPI, ProfilerAPI, WslServersEvent } from "./types"
+import type { ElectronAPI, ProfilerAPI, SshServersEvent, WslServersEvent } from "./types"
 import type { UpdaterState } from "@turenlabs/app/updater"
 import type { ProfilerStatus } from "@turenlabs/app/profiler"
 
@@ -60,6 +60,26 @@ const api: ElectronAPI = {
     addServer: (distro) => ipcRenderer.invoke("wsl-servers-add", distro),
     removeServer: (id) => ipcRenderer.invoke("wsl-servers-remove", id),
     startServer: (id) => ipcRenderer.invoke("wsl-servers-start", id),
+  },
+  sshServers: {
+    getState: () => ipcRenderer.invoke("ssh-servers-get-state"),
+    subscribe: (cb) => {
+      const handler = (_: unknown, event: SshServersEvent) => cb(event)
+      ipcRenderer.on("ssh-servers-event", handler)
+      void ipcRenderer.invoke("ssh-servers-subscribe")
+      return () => {
+        ipcRenderer.removeListener("ssh-servers-event", handler)
+        void ipcRenderer.invoke("ssh-servers-unsubscribe")
+      }
+    },
+    probeRuntime: () => ipcRenderer.invoke("ssh-servers-probe-runtime"),
+    probeHost: (input) => ipcRenderer.invoke("ssh-servers-probe-host", input),
+    installForge: (id) => ipcRenderer.invoke("ssh-servers-install-forge", id),
+    addServer: (input) => ipcRenderer.invoke("ssh-servers-add", input),
+    removeServer: (id) => ipcRenderer.invoke("ssh-servers-remove", id),
+    startServer: (id) => ipcRenderer.invoke("ssh-servers-start", id),
+    stopRemote: (id) => ipcRenderer.invoke("ssh-servers-stop-remote", id),
+    respondPrompt: (requestId, response) => ipcRenderer.invoke("ssh-servers-respond-prompt", requestId, response),
   },
   updater: {
     subscribe: async (cb) => {
@@ -147,10 +167,13 @@ const api: ElectronAPI = {
   runDesktopMenuAction: (action) => ipcRenderer.invoke("run-desktop-menu-action", action),
   setBackgroundColor: (color: string) => ipcRenderer.invoke("set-background-color", color),
   exportDebugLogs: () => ipcRenderer.invoke("export-debug-logs"),
-  securityBrowser: {
-    open: (input) => ipcRenderer.invoke("security-browser-open", input),
-    navigate: (input) => ipcRenderer.invoke("security-browser-navigate", input),
-    close: (sessionID) => ipcRenderer.invoke("security-browser-close", sessionID),
+  securityProxy: {
+    invoke: (command) => ipcRenderer.invoke("security-proxy", command),
+    onFocus: (callback) => {
+      const listener = (_event: unknown, caseID: string) => callback(caseID)
+      ipcRenderer.on("security-proxy-focus", listener)
+      return () => ipcRenderer.removeListener("security-proxy-focus", listener)
+    },
   },
   recordFatalRendererError: (error) => ipcRenderer.invoke("record-fatal-renderer-error", error),
   ...(profiler ? { profiler } : null),

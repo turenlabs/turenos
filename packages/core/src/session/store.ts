@@ -1,6 +1,6 @@
 export * as SessionStore from "./store"
 
-import { eq } from "drizzle-orm"
+import { asc, desc, eq } from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
@@ -19,6 +19,11 @@ export interface Interface {
     sessionID: SessionSchema.ID,
     baselineSeq: number,
   ) => Effect.Effect<SessionMessage.Message[], MessageDecodeError>
+  readonly messages: (input: {
+    sessionID: SessionSchema.ID
+    limit: number
+    order?: "asc" | "desc"
+  }) => Effect.Effect<SessionMessage.Message[], MessageDecodeError>
   readonly message: (
     messageID: SessionMessage.ID,
   ) => Effect.Effect<{ readonly sessionID: SessionSchema.ID; readonly message: SessionMessage.Message } | undefined>
@@ -43,6 +48,33 @@ const layer = Layer.effect(
       }),
       runnerContext: Effect.fn("SessionStore.runnerContext")(function* (sessionID, baselineSeq) {
         return yield* SessionHistory.loadForRunner(db, sessionID, baselineSeq)
+      }),
+      messages: Effect.fn("SessionStore.messages")(function* (input) {
+        const rows = yield* db
+          .select({ message: SessionMessageTable, source: SessionInputTable.source })
+          .from(SessionMessageTable)
+          .leftJoin(SessionInputTable, eq(SessionInputTable.id, SessionMessageTable.id))
+          .where(eq(SessionMessageTable.session_id, input.sessionID))
+          .orderBy(input.order === "asc" ? asc(SessionMessageTable.seq) : desc(SessionMessageTable.seq))
+          .limit(input.limit)
+          .all()
+          .pipe(Effect.orDie)
+        return yield* Effect.forEach(rows, (row) =>
+          decodeMessage({
+            ...row.message.data,
+            ...(row.message.type === "user" && row.source ? { source: row.source } : {}),
+            id: row.message.id,
+            type: row.message.type,
+          }).pipe(
+            Effect.mapError(
+              () =>
+                new MessageDecodeError({
+                  sessionID: SessionSchema.ID.make(row.message.session_id),
+                  messageID: SessionMessage.ID.make(row.message.id),
+                }),
+            ),
+          ),
+        )
       }),
       message: Effect.fn("SessionStore.message")(function* (messageID) {
         const row = yield* db

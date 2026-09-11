@@ -53,7 +53,7 @@ const assertPermission = (
     })
     .pipe(Effect.mapError(() => new ToolFailure({ message: `Permission denied: ${action}` })))
 
-const failure = (error: TeamBoard.Failure) => new ToolFailure({ message: error.message })
+const failure = (error: { readonly message: string }) => new ToolFailure({ message: error.message })
 
 export function makeTools(deps: {
   readonly board: TeamBoard.Interface
@@ -70,7 +70,7 @@ export function makeTools(deps: {
   return {
     [postName]: Tool.make({
       description:
-        "Share work with your sibling analysts by posting a durable note to the team's board. Posts stay in the background: they do not enqueue parent prompts or start new turns. Use board_read to retrieve updates. Use supersedes to CORRECT a teammate's note when you have better evidence, rather than posting an unconnected contradiction. Every claim should carry evidence so siblings can verify it.",
+        "Share work with your sibling analysts by posting a durable note to the team's board. Each post also queues an advisory update for the parent session, which it sees at its next turn boundary — a post never interrupts the parent's current work. Use board_read to retrieve updates. Use supersedes to CORRECT a teammate's note when you have better evidence, rather than posting an unconnected contradiction. Every claim should carry evidence so siblings can verify it.",
       input: Schema.Struct({
         kind: Contract.Kind,
         title: TitleText,
@@ -90,10 +90,12 @@ export function makeTools(deps: {
           yield* assertPermission(deps.permission, postName, [input.kind], context)
           return yield* Effect.uninterruptible(
             Effect.gen(function* () {
+              const mine = yield* deps.tasks.owner(context.sessionID)
               const note = yield* deps.board
                 .post({
-                  rootSessionID: yield* root(context),
+                  rootSessionID: mine?.rootSessionID ?? context.sessionID,
                   authorSessionID: context.sessionID,
+                  parentSessionID: mine?.parentSessionID,
                   authorAgent: context.agent,
                   kind: input.kind,
                   title: input.title,
@@ -102,12 +104,34 @@ export function makeTools(deps: {
                   supersedes: input.supersedes,
                 })
                 .pipe(Effect.mapError(failure))
+              if (mine === undefined)
+                return {
+                  note_id: note.id,
+                  kind: note.kind,
+                  title: note.title,
+                  superseded: note.supersedes,
+                  parent_notified: false,
+                }
+              const notified = yield* deps.tasks
+                .notifyParent({
+                  taskID: mine.id,
+                  text: TeamBoard.parentUpdateText(note),
+                  messageID: TeamBoard.parentNotificationID(note),
+                  source: "subagent_board",
+                  coalesce: true,
+                })
+                .pipe(Effect.mapError(failure))
+              // The note is covered whether the advisory was freshly admitted or coalesced
+              // into an already-pending same-source one; when the task is gone or terminal
+              // the parent learns the outcome from the final report instead.
+              yield* deps.board.markParentNotified(note.id).pipe(Effect.mapError(failure))
+              if (notified !== undefined) yield* deps.control.wake(notified.sessionID)
               return {
                 note_id: note.id,
                 kind: note.kind,
                 title: note.title,
                 superseded: note.supersedes,
-                parent_notified: false,
+                parent_notified: notified !== undefined,
               }
             }),
           )

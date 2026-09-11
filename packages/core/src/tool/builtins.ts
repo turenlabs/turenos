@@ -36,6 +36,7 @@ import { DebugSymbolsTools } from "./debug-symbols-tools"
 import { LobbyRoomContextTool } from "./lobby-room-context"
 import { FollowStream } from "./follow-stream"
 import { WhiteboardTool } from "./whiteboard"
+import { SecurityProxyTool } from "./security-proxy"
 
 /**
  * Composes only the shipped Location-scoped built-in tool transforms.
@@ -81,6 +82,7 @@ export const node = makeLocationNode({
     ProtocolInspectTools.node,
   FollowStream.node,
   WhiteboardTool.node,
+  SecurityProxyTool.node,
     ForensicTools.node,
     RosettaExecTool.node,
     WasmInspectTools.node,

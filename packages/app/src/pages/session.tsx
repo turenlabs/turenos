@@ -138,6 +138,7 @@ import {
   type SessionTimelineItem,
 } from "./session/session-live-prototype"
 import { sessionTranscriptVisible } from "./session/session-live-status"
+import SecurityProxyPage from "./security-proxy"
 
 type ChangeMode = "git" | "branch" | "turn"
 type VcsMode = "git" | "branch"
@@ -2582,6 +2583,7 @@ export default function Page() {
               onViewChange={setLiveDockView}
               sessionKey={sessionKey}
               whiteboard={() => <SessionWhiteboard sessionID={params.id!} active={liveView() === "whiteboard"} />}
+              browser={() => <SecurityProxyPage sessionID={params.id!} embedded />}
               deferRender={() => store.deferRender}
               objective={() => goal.goal()?.objective}
               todos={composer.todos}

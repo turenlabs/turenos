@@ -40,6 +40,7 @@ import { SystemContextBuiltIns } from "./system-context/builtins"
 import { YolkSystemContext } from "./system-context/yolk"
 import { SystemContextRegistry } from "./system-context/registry"
 import { BuiltInTools } from "./tool/builtins"
+import { SecurityProxyRuntime } from "./security-proxy-runtime"
 import { BatouTool } from "./tool/batou"
 import { HandoffTool } from "./tool/handoff"
 import { ToolInterceptor } from "./tool/interceptor"
@@ -117,6 +118,7 @@ export const locationServices = LayerNode.group(
     QuestionV2.node,
     ReadToolFileSystem.node,
     BuiltInTools.node,
+    SecurityProxyRuntime.node,
     McpTool.node,
     SessionToolSnapshot.node,
     SubagentTool.node,

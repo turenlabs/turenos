@@ -48,7 +48,7 @@ export const ServerRowMenu: Component<{
               </MenuV2.Item>
             </Show>
             <MenuV2.Separator />
-            <MenuV2.Item disabled={builtin} onSelect={() => props.controller.handleRemove(key)}>
+            <MenuV2.Item disabled={builtin} onSelect={() => props.controller.confirmRemove(key)}>
               {language.t("dialog.server.menu.delete")}
             </MenuV2.Item>
           </MenuV2.Group>

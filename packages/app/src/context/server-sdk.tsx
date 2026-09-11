@@ -105,6 +105,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   const FLUSH_FRAME_MS = 16
   const STREAM_YIELD_MS = 8
   const RECONNECT_DELAY_MS = 250
+  const RECONNECT_MAX_DELAY_MS = 10_000
 
   let queue: Queued[] = []
   let buffer: Queued[] = []
@@ -143,6 +144,9 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   let run: Promise<void> | undefined
   let started = false
   let generation = 0
+  // Exponential reconnect backoff: a down server shouldn't get an SSE attempt
+  // every 250ms forever. Reset when a stream actually delivers an event.
+  let failures = 0
   const HEARTBEAT_TIMEOUT_MS = 15_000
   let lastEventAt = Date.now()
   let heartbeat: ReturnType<typeof setTimeout> | undefined
@@ -192,6 +196,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
           resetHeartbeat()
           for await (const event of events.stream) {
             resetHeartbeat()
+            failures = 0
             streamErrorLogged = false
             if (event.payload.type !== "sync") {
               const directory = event.directory ?? "global"
@@ -219,7 +224,9 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
         }
 
         if (abort.signal.aborted || !started || generation !== active) return
-        await wait(RECONNECT_DELAY_MS)
+        const delay = Math.min(RECONNECT_DELAY_MS * 2 ** failures, RECONNECT_MAX_DELAY_MS)
+        failures += 1
+        await wait(delay)
       }
     })().finally(() => {
       if (run !== current) return

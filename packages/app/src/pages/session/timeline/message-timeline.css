@@ -25,6 +25,24 @@
  * message-timeline.tsx drops them on one. See the note there.
  */
 
+/* ── Containment ──
+ *
+ * The virtualiser keeps ~50 overscan rows mounted on each side of the
+ * viewport. Strict containment on the turn frame keeps style/layout
+ * invalidation inside the row that caused it. No size containment — the
+ * row still sizes to its content for measureElement.
+ *
+ * content-visibility: auto was tried on the measured [data-index] div and
+ * reverted: a row first mounted inside overscan (never painted) reports the
+ * contain-intrinsic-size fallback to the ResizeObserver, and remounts lose
+ * the remembered size — the size cache oscillates between the fallback and
+ * the real height on every scroll sweep. The measured element cannot skip
+ * its own layout.
+ */
+[data-component="session-turn"] {
+  contain: layout style paint;
+}
+
 /* ── Density ──
  *
  * Padding, never margin: the virtualiser measures the border box of the

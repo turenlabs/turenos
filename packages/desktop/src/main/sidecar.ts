@@ -9,6 +9,11 @@ import { createSidecarProfiler, parseProfileCommand } from "./profiler/sidecar-p
 import type { SidecarProfileCommand, SidecarProfileMessage } from "./profiler/sidecar-profiler"
 import type { CredentialVault } from "./secret-key"
 import { rendererCorsOrigins } from "./window-security"
+import { parseProxyRequest } from "./security-proxy-bridge"
+import { parseProxyReply } from "./security-proxy-bridge"
+import type { ProxyCommand, ProxyReply } from "./security-proxy-bridge"
+import { randomUUID } from "node:crypto"
+import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
 
 type NodeHttpWithEnvProxy = typeof http & {
   setGlobalProxyFromEnv: () => void
@@ -36,6 +41,8 @@ type SidecarMessage =
   | { type: "stopped" }
   | { type: "error"; error: { message: string; stack?: string } }
   | SidecarProfileMessage
+  | ProxyReply
+  | ProxyCommand
 
 type ParentPort = {
   postMessage(message: SidecarMessage): void
@@ -44,6 +51,7 @@ type ParentPort = {
 
 type Listener = {
   stop(close?: boolean): void | Promise<void>
+  securityProxy(command: SecurityProxy.StoreCommand): Promise<SecurityProxy.Result>
 }
 
 /** How long a shutdown triggered by parent death gets before we exit anyway. */
@@ -58,8 +66,28 @@ let startupDiagnostics: ReturnType<typeof armStartupDiagnostics> | undefined
  * shipped build has no profiler here at all - not merely a disabled one.
  */
 const profiler = IS_DEV ? createSidecarProfiler() : undefined
+const proxyPending = new Map<string, { resolve: (result: SecurityProxy.Result) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
 
 parentPort.on("message", (event) => {
+  const reply = parseProxyReply(event.data)
+  if (reply) {
+    const pending = proxyPending.get(reply.id)
+    if (!pending) return
+    proxyPending.delete(reply.id)
+    clearTimeout(pending.timer)
+    if (reply.error || !reply.result) pending.reject(new Error(reply.error ?? "Invalid proxy reply"))
+    else pending.resolve(reply.result)
+    return
+  }
+  const store = parseProxyRequest(event.data)
+  if (store) {
+    const pending = listener?.securityProxy(store.command) ?? Promise.reject(new Error("Sidecar is not ready"))
+    void pending.then(
+      (result) => notifyParent({ type: "security-proxy-result", id: store.id, result }),
+      (error) => notifyParent({ type: "security-proxy-result", id: store.id, error: String(error).slice(0, 1024) }),
+    )
+    return
+  }
   const command = parseCommand(event.data)
   if (!command) return
   if (command.type === "stop") {
@@ -126,6 +154,7 @@ async function start(command: StartCommand) {
       password: command.password,
       cors: rendererCorsOrigins(),
       credentialVault: command.credentialVault,
+      securityProxy: requestSecurityProxy,
     })
     startupDiagnostics.trace("server-listen.completed")
     notifyParent({ type: "ready" })
@@ -140,6 +169,11 @@ async function stop() {
   // take hundreds of milliseconds and quitting must not get slower, so a run
   // that is still going when the app quits is discarded rather than saved.
   profiler?.abort()
+  for (const pending of proxyPending.values()) {
+    clearTimeout(pending.timer)
+    pending.reject(new Error("Sidecar stopped"))
+  }
+  proxyPending.clear()
   startupDiagnostics?.stop()
   startupDiagnostics = undefined
   try {
@@ -149,6 +183,18 @@ async function stop() {
     notifyParent({ type: "stopped" })
     setImmediate(() => process.exit(0))
   }
+}
+
+function requestSecurityProxy(command: SecurityProxy.Command) {
+  const id = randomUUID()
+  return new Promise<SecurityProxy.Result>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      proxyPending.delete(id)
+      reject(new Error("Security Browser agent operation timed out"))
+    }, 15_000)
+    proxyPending.set(id, { resolve, reject, timer })
+    notifyParent({ type: "security-proxy-command", id, command })
+  })
 }
 
 function armStartupDiagnostics() {

@@ -7,10 +7,18 @@ import { useQuery } from "@tanstack/solid-query"
 import { For, Show, createMemo, createSignal } from "solid-js"
 import { useAgentsPanel } from "@/components/agents-panel-state"
 import { useCommandPalette } from "@/context/command"
-import { providerUsageQuery, tokenTotal, usageTotals } from "./provider-usage-model"
+import { useSettings } from "@/context/settings"
+import {
+  effectiveWorkspaceTab,
+  providerUsageQuery,
+  tokenTotal,
+  type WorkspaceHomeTab,
+  usageTotals,
+} from "./provider-usage-model"
 import { serverName } from "@/context/server"
 import { LatestAutomationRuns } from "@/pages/loops/latest-runs"
 import { IntelTab } from "@/pages/home/intel-tab"
+import { KillSwitchButton } from "@/pages/home/kill-switch-button"
 import "./home/terminal-home.css"
 
 const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 })
@@ -37,9 +45,13 @@ type ProviderSnapshot = {
 export function ProviderUsagePage() {
   const dialog = useDialog()
   const panel = useAgentsPanel()
+  const settings = useSettings()
   const usage = useQuery(() => providerUsageQuery(panel))
   const [tab, setTab] = createSignal<HomeTab>("intel")
-  const [workspaceTab, setWorkspaceTab] = createSignal<"automations" | "limits">("automations")
+  const [workspaceTab, setWorkspaceTab] = createSignal<WorkspaceHomeTab>("automations")
+  const activeWorkspaceTab = createMemo(() =>
+    effectiveWorkspaceTab(settings.general.automationsEnabled(), workspaceTab()),
+  )
 
   const data = () => usage.data
   const providers = createMemo(() => {
@@ -79,6 +91,7 @@ export function ProviderUsagePage() {
           <PageTab selected={tab() === "workspace"} onSelect={() => setTab("workspace")}>
             Workspace
           </PageTab>
+          <KillSwitchButton class="ml-auto" />
         </nav>
 
         <Show when={tab() === "intel"}>
@@ -107,10 +120,15 @@ export function ProviderUsagePage() {
           </header>
           <div class="terminal-home-subnav">
             <nav aria-label="Workspace sections" class="flex flex-wrap">
-              <PageTab selected={workspaceTab() === "automations"} onSelect={() => setWorkspaceTab("automations")}>
-                Automations
-              </PageTab>
-              <PageTab selected={workspaceTab() === "limits"} onSelect={() => setWorkspaceTab("limits")}>
+              <Show when={settings.general.automationsEnabled()}>
+                <PageTab
+                  selected={activeWorkspaceTab() === "automations"}
+                  onSelect={() => setWorkspaceTab("automations")}
+                >
+                  Automations
+                </PageTab>
+              </Show>
+              <PageTab selected={activeWorkspaceTab() === "limits"} onSelect={() => setWorkspaceTab("limits")}>
                 Provider limits
               </PageTab>
             </nav>
@@ -130,10 +148,10 @@ export function ProviderUsagePage() {
             </div>
           </div>
           <div class="terminal-home-workspace">
-            <Show when={workspaceTab() === "automations"}>
+            <Show when={activeWorkspaceTab() === "automations"}>
               <LatestAutomationRuns layout="overview" />
             </Show>
-            <Show when={workspaceTab() === "limits"}>
+            <Show when={activeWorkspaceTab() === "limits"}>
               <LimitsView
                 providers={providers}
                 data={data}

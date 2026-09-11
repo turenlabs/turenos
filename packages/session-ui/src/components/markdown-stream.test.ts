@@ -177,6 +177,86 @@ describe("markdown stream", () => {
     expect(canReusePendingBlock({ mode: "code", raw: "```ts\none" }, { mode: "live", raw: "one", src: "" })).toBe(false)
   })
 
+  test("grows a live paragraph in place during appends", () => {
+    const previous = project(undefined, "The answer is", true)
+    const next = project(previous, `${previous.text} 42 and counting`, true)
+
+    expect(next.blocks).toHaveLength(1)
+    expect(next.blocks[0]?.mode).toBe("live")
+    expect(next.blocks).toEqual(stream(next.text, true))
+    expect(next.blocks.map((block) => block.raw).join("")).toBe(next.text)
+  })
+
+  test("splits a new block boundary that appears in the suffix", () => {
+    const previous = project(undefined, "First paragraph", true)
+    const next = project(previous, `${previous.text}\n\nSecond paragraph`, true)
+
+    expect(next.blocks).toEqual([
+      { raw: "First paragraph\n\n", src: "First paragraph\n\n", mode: "full" },
+      { raw: "Second paragraph", src: "Second paragraph", mode: "live" },
+    ])
+    expect(next.blocks.map((block) => block.raw).join("")).toBe(next.text)
+  })
+
+  test("promotes a paragraph tail to a table when a delimiter row arrives", () => {
+    const previous = project(undefined, "intro\n\nmore\n\na | b", true)
+    const next = project(previous, `${previous.text}\n--- | ---`, true)
+
+    expect(next.blocks[0]).toBe(previous.blocks[0])
+    expect(next.blocks).toEqual([
+      { raw: "intro\n\n", src: "intro\n\n", mode: "full" },
+      { raw: "more\n\n", src: "more\n\n", mode: "full" },
+      { raw: "a | b\n--- | ---", src: "a | b\n--- | ---", mode: "live" },
+    ])
+    expect(next.blocks.map((block) => block.raw).join("")).toBe(next.text)
+  })
+
+  test("keeps frozen blocks stable while a trailing code fence opens and closes", () => {
+    const previous = project(undefined, "intro\n\nmore\n\n```ts\nconst x = 1\n", true)
+    const grown = project(previous, `${previous.text}const y = 2\n`, true)
+    const closed = project(grown, `${grown.text}\`\`\``, true)
+    const after = project(closed, `${closed.text}\n\ndone`, true)
+
+    expect(grown.blocks[0]).toBe(previous.blocks[0])
+    expect(closed.blocks[0]).toBe(previous.blocks[0])
+    expect(closed.blocks.at(-1)).toEqual({
+      raw: "```ts\nconst x = 1\nconst y = 2\n```",
+      src: "const x = 1\nconst y = 2",
+      mode: "code",
+      language: "ts",
+      complete: true,
+    })
+    expect(after.blocks[0]).toBe(previous.blocks[0])
+    expect(after.blocks).toEqual(stream(after.text, true))
+  })
+
+  test("reprojects text that does not extend the previous projection", () => {
+    const previous = project(undefined, "old content\n\n- item", true)
+    const text = "totally different content"
+
+    expect(project(previous, text, true)).toEqual({ text, blocks: stream(text, true) })
+  })
+
+  test("keeps raw coverage of the text across mixed append sequences", () => {
+    const chunks = [
+      "# Title\n\n",
+      "first para",
+      "graph\n\n",
+      "- one\n- two\n\n",
+      "```ts\n",
+      "code\n",
+      "```\n\n",
+      "tail | a\n",
+      "--- | ---\n",
+    ]
+    let previous = project(undefined, chunks[0]!, true)
+    for (const chunk of chunks.slice(1)) {
+      previous = project(previous, previous.text + chunk, true)
+      expect(previous.blocks.map((block) => block.raw).join("")).toBe(previous.text)
+      expect(previous.blocks).toEqual(stream(previous.text, true))
+    }
+  })
+
   test("appends plain code deltas without reprojecting frozen blocks", () => {
     const previous = project(undefined, "# Plan\n\n```ts\nconst one = 1\n", true)
     const next = project(previous, `${previous.text}const two = 2\n`, true)

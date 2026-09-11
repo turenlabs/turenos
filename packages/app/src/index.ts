@@ -11,6 +11,7 @@ export { ACCEPTED_FILE_EXTENSIONS, ACCEPTED_FILE_TYPES, filePickerFilters } from
 export { useCommand } from "./context/command"
 export { loadLocaleDict, normalizeLocale, type Locale } from "./context/language"
 export { useWslServers } from "./wsl/context"
+export { useSshServers } from "./ssh/context"
 export { type DisplayBackend, type FatalRendererErrorLog, type Platform, PlatformProvider } from "./context/platform"
 export { type UpdaterPlatform, type UpdaterState } from "./updater"
 export {
@@ -27,5 +28,19 @@ export {
   type WslServersPlatform,
   type WslServersState,
 } from "./wsl/types"
+export {
+  type SshForgeCheck,
+  type SshHostProbe,
+  type SshPrompt,
+  type SshPromptKind,
+  type SshRuntimeCheck,
+  type SshServerConfig,
+  type SshServerItem,
+  type SshServerRuntime,
+  type SshServersEvent,
+  type SshServersPlatform,
+  type SshServersState,
+  type SshTargetInput,
+} from "./ssh/types"
 export { ServerConnection } from "./context/server"
 export { handleNotificationClick } from "./utils/notification-click"

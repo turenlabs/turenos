@@ -28,8 +28,33 @@ macOS Keychain / Windows DPAPI / Linux Secret Service or KWallet
 The wrapped key record contains only a format version, a non-secret key ID, and `safeStorage` ciphertext. The raw key is
 never written to the database, app config, renderer storage, command-line arguments, or native sidecar environment.
 
-The WSL sidecar receives the key through its startup input. Its temporary bootstrap environment variables are deleted when
-the Secret Vault layer initializes and before normal child tools are started.
+The desktop sidecar receives the raw key in the utility-process `start` message and installs it with
+`SecretVault.configure` before the server layer graph builds. The WSL sidecar receives the key through its startup input.
+Its temporary bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`, `FORGE_SECRET_VAULT_KEY`) are deleted when the
+Secret Vault layer initializes and before normal child tools are started. Headless server startup reads the same two
+variables; without them, non-test startup fails instead of falling back to an ephemeral or plaintext mode.
+
+## On-Disk Locations
+
+| Artifact                | Location                                                                  | Contents                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Wrapped application key | `forge.settings` (electron-store) in Electron `userData`                  | `credential-secret-key` record: `{version, keyID, wrappedKey}`; `wrappedKey` is safeStorage ciphertext |
+| Sealed secret values    | `storage_state` table in the channel SQLite database                      | `forge-secret:v1:...` envelopes addressed by scope and logical key                                   |
+| Legacy MCP auth file    | `mcp-auth.json` in `Global.Path.data` (staged as `mcp-auth.json.migrating`) | Plaintext predecessor of the sealed MCP auth row; migrated and removed                             |
+
+Concrete roots:
+
+- macOS `userData`: `~/Library/Application Support/com.turenlabs.forge` (`com.turenlabs.forge.dev`,
+  `com.turenlabs.forge.beta` for the other channels).
+- Windows `userData`: `%APPDATA%\com.turenlabs.forge`.
+- Linux `userData`: `~/.config/com.turenlabs.forge`.
+- Database: `$XDG_DATA_HOME/forge/forge.db`, defaulting to `~/.local/share/forge/forge.db`. Non-release channels use
+  `forge-<channel>.db` unless `FORGE_DISABLE_CHANNEL_DB` is set; `FORGE_DB` overrides the path entirely. The database,
+  WAL, and SHM files are chmod `0600` where the platform supports it.
+
+Electron derives the OS keychain item from `app.getName()` as `"<name> Safe Storage"` — "Forge Safe Storage" in the
+macOS Keychain. The internal app name deliberately stays `Forge` after the TurenOS rename so the existing Keychain item
+keeps decrypting the wrapped key; changing it requires a credential migration.
 
 ## Platform Behavior
 
@@ -134,6 +159,28 @@ Rules:
 - Do not inspect or construct the envelope outside `SecretVault`.
 - Do not use `SecretVault.ephemeral` outside tests.
 
+## MCP Credentials
+
+Two durable shapes carry MCP secrets:
+
+- Extension-declared secrets — API keys, hosted header bindings, and managed-package credentials such as
+  `AUTOMOX_API_KEY` or `FALCON_CLIENT_SECRET` — live at scope `internal/extensions/<extension-id>`, key
+  `secret/<declared-name>`. `ExtensionRuntime.update` seals them and writes them alongside the desired-state record in
+  one guarded batch; `ExtensionRuntime.secret` returns a value only when the stored text is a valid `forge-secret:v1`
+  envelope, so a plaintext or corrupted row reads as unset.
+- Remote-server OAuth results live at scope `internal/mcp-auth/servers`, key `entries`: one sealed JSON map of server
+  name to `{tokens, clientInfo, serverUrl, generation}`. PKCE verifiers and OAuth CSRF state for in-flight authorization
+  are process-memory only and never persisted. The generation field fences stale writers during credential handoff.
+
+At connect time `packages/forge/src/mcp` resolves declared secrets through `ExtensionRuntime.secret`, maps them into
+transport headers or the child-process/container environment via `McpRuntime`, and attaches the resolved values to the
+in-memory config entry under a private symbol. Resolved secret values are never written back to configuration or
+storage, and connection diagnostics pass through `McpRuntime.redactDiagnostic` before surfacing.
+
+A plaintext `mcp-auth.json` in `Global.Path.data` is atomically renamed to `mcp-auth.json.migrating`, imported under a
+fingerprinted migration receipt, and deleted only when every imported name verifies in sealed storage. Unreadable or
+conflicting staging files are restored, not dropped.
+
 ## Existing Plaintext Migration
 
 Repository startup migrations follow this sequence:
@@ -194,12 +241,12 @@ The vault currently protects:
 
 - Provider API keys and OAuth access and refresh tokens.
 - V2 integration credentials.
-- MCP OAuth tokens and dynamic client secrets.
+- Extension-declared MCP secrets and security-integration secrets (`internal/extensions/<extension-id>` scope).
+- MCP OAuth tokens and dynamic client secrets (`internal/mcp-auth/servers` scope).
 - TurenOS account access and refresh tokens.
 - Legacy control-account tokens.
-- Security-integration secrets.
 - Legacy share revocation secrets.
 
-Literal secrets in user-authored `forge.json` or `forge.jsonc`, shell profiles, and external environment files remain outside
-the managed vault. New UI flows should persist such values in a credential repository and leave only an opaque reference in
-configuration.
+Literal secrets in user-authored `forge.json` or `forge.jsonc` (`environment`, `headers`, `oauth.clientSecret` fields in
+`mcp` entries), shell profiles, and external environment files remain outside the managed vault. New UI flows should
+persist such values in a credential repository and leave only an opaque reference in configuration.

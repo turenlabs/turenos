@@ -19,4 +19,15 @@ function on<Args extends unknown[]>(channel: string, listener: (event: IpcMainEv
   })
 }
 
-export const TrustedIpc = { handle, on }
+function handleWithGuard<Args extends unknown[], Result>(
+  channel: string,
+  guard: (event: IpcMainInvokeEvent) => boolean,
+  listener: (event: IpcMainInvokeEvent, ...args: Args) => Result,
+) {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!guard(event)) throw new Error("Untrusted renderer IPC sender")
+    return listener(event, ...(args as Args))
+  })
+}
+
+export const TrustedIpc = { handle, on, handleWithGuard }

@@ -1,6 +1,6 @@
 import { Session } from "@turenlabs/schema/session"
 import { SessionMessage } from "@turenlabs/schema/session-message"
-import { Schema } from "effect"
+import { Schema, SchemaGetter } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { InvalidCursorError, InvalidRequestError, SessionNotFoundError, UnknownError } from "../errors"
 
@@ -19,6 +19,18 @@ export const SessionMessagesQuery = Schema.Struct({
         "Opaque pagination cursor returned as cursor.previous or cursor.next in the previous response. Do not combine with order.",
     }),
   ),
+  lean: Schema.Literals(["true", "false"] as const)
+    .pipe(
+      Schema.decodeTo(Schema.Boolean, {
+        decode: SchemaGetter.transform((value) => value === "true"),
+        encode: SchemaGetter.transform((value) => (value ? "true" : "false")),
+      }),
+      Schema.optional,
+    )
+    .annotate({
+      description:
+        "When true, oversized tool result bodies are replaced with a `truncated` marker; fetch the full row via the single-message endpoint. When omitted, rows are returned in full.",
+    }),
 }).annotate({ identifier: "SessionMessagesQuery" })
 
 export const MessageGroup = HttpApiGroup.make("server.message")

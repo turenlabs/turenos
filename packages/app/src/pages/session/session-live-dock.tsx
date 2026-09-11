@@ -7,6 +7,7 @@ export const SESSION_LIVE_VIEWS = [
   { value: "history", label: "Transcript", icon: "speech-bubble", primary: true },
   { value: "changes", label: "Changes", icon: "review", primary: true },
   { value: "whiteboard", label: "Whiteboard", icon: "edit", primary: true },
+  { value: "browser", label: "Browser", icon: "link", primary: true },
   { value: "terminal", label: "Terminal", icon: "terminal", primary: false },
   { value: "todos", label: "ToDos", icon: "checklist", primary: false },
   { value: "subagents", label: "Subagents", icon: "subagent", primary: false },

@@ -1,7 +1,9 @@
 import type { DesktopMenuAction } from "@turenlabs/app/desktop-menu"
 import type { WslServersPlatform } from "@turenlabs/app/wsl/types"
+import type { SshServersPlatform } from "@turenlabs/app/ssh/types"
 import type { UpdaterState } from "@turenlabs/app/updater"
 import type { ProfilerPlatform } from "@turenlabs/app/profiler"
+import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
 export type {
   WslDistroProbe,
   WslInstalledDistro,
@@ -15,6 +17,20 @@ export type {
   WslServersEvent,
   WslServersState,
 } from "@turenlabs/app/wsl/types"
+export type {
+  SshForgeCheck,
+  SshHostProbe,
+  SshJob,
+  SshPrompt,
+  SshPromptKind,
+  SshRuntimeCheck,
+  SshServerConfig,
+  SshServerItem,
+  SshServerRuntime,
+  SshServersEvent,
+  SshServersState,
+  SshTargetInput,
+} from "@turenlabs/app/ssh/types"
 
 export type ServerReadyData = {
   url: string
@@ -23,6 +39,7 @@ export type ServerReadyData = {
 }
 
 export type WslServersAPI = WslServersPlatform
+export type SshServersAPI = SshServersPlatform
 /** Dev builds only; absent from the bridge in beta and prod builds. */
 export type ProfilerAPI = ProfilerPlatform
 export type UpdaterAPI = {
@@ -49,6 +66,7 @@ export type ElectronAPI = {
   installCli: () => Promise<string>
   awaitInitialization: () => Promise<ServerReadyData>
   wslServers: WslServersAPI
+  sshServers: SshServersAPI
   /** Present only in dev builds - the bridge omits it entirely otherwise. */
   profiler?: ProfilerAPI
   updater: UpdaterAPI
@@ -111,13 +129,6 @@ export type ElectronAPI = {
   runDesktopMenuAction: (action: DesktopMenuAction) => Promise<void>
   setBackgroundColor: (color: string) => Promise<void>
   exportDebugLogs: () => Promise<string>
-  securityBrowser: {
-    open: (input: { sessionID: string; url: string }) => Promise<{ sessionID: string; windowID: number; url: string }>
-    navigate: (input: {
-      sessionID: string
-      url: string
-    }) => Promise<{ sessionID: string; windowID: number; url: string }>
-    close: (sessionID: string) => Promise<void>
-  }
+  securityProxy: SecurityProxy.Platform & { onFocus(callback: (caseID: string) => void): () => void }
   recordFatalRendererError: (error: FatalRendererError) => Promise<void>
 }

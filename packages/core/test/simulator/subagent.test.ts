@@ -152,6 +152,12 @@ describe("subagent slow and failed children", () => {
           }),
         },
         reply("Child interrupted and cancelled.", { match: parentMatch, label: "parent-final" }),
+        // The interrupted child's settle drain queues an advisory on the parent; if it
+        // promotes after the final reply it takes its own turn.
+        reply("Settle advisory noted.", {
+          match: matchText("reached a terminal state"),
+          label: "parent-settle-advisory",
+        }),
       )
       yield* ctx.user.prompt("Now interrupt the stalled child.")
       yield* ctx.invariants.settled(ctx.sessionID, { expect: "idle", minRequests: 6 })
@@ -193,6 +199,12 @@ describe("subagent slow and failed children", () => {
         }),
         { label: "parent-wait", match: parentMatch, events: lazyWait(ctx, 15_000) },
         reply("Observed the child failure.", { match: parentMatch, label: "parent-final" }),
+        // The settle drain queues a terminal-state advisory on the parent; it may
+        // promote into its own turn after the final reply, so script that turn too.
+        reply("Settle advisory noted.", {
+          match: matchText("reached a terminal state"),
+          label: "parent-settle-advisory",
+        }),
       )
       yield* ctx.user.prompt("Coordinate the failing child.")
       yield* ctx.invariants.settled(ctx.sessionID, { expect: "idle", minRequests: 4 })
@@ -300,6 +312,16 @@ describe("subagent slow and failed children", () => {
         }),
         { label: "parent-wait", match: parentMatch, events: lazyWait(ctx, 15_000) },
         reply("Both children reported.", { match: parentMatch, label: "parent-final" }),
+        // Each child settle queues a terminal-state advisory on the parent, and queued
+        // inputs promote one per boundary — up to two advisory turns can follow.
+        reply("Settle advisory noted.", {
+          match: matchText("reached a terminal state"),
+          label: "parent-settle-advisory-1",
+        }),
+        reply("Second settle advisory noted.", {
+          match: matchText("reached a terminal state"),
+          label: "parent-settle-advisory-2",
+        }),
       )
       yield* ctx.user.prompt("Coordinate two children at different speeds.")
       yield* ctx.invariants.settled(ctx.sessionID, { expect: "idle", minRequests: 5 })
@@ -346,6 +368,12 @@ describe("subagent slow and failed children", () => {
         replyWithTool("question", questionInput, { match: childMatch, label: "child-question" }),
         { label: "parent-wait", match: parentMatch, events: lazyWait(ctx, 15_000) },
         reply("Handled the child's dismissal.", { match: parentMatch, label: "parent-final" }),
+        // The dismissed child's settle drain queues an advisory on the parent; if it
+        // promotes after the final reply it takes its own turn.
+        reply("Settle advisory noted.", {
+          match: matchText("reached a terminal state"),
+          label: "parent-settle-advisory",
+        }),
       )
       yield* ctx.user.prompt("Coordinate the asking child.")
       // The parent's wait is parked on the child, and the child is parked on its question. The

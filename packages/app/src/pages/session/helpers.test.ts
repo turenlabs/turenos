@@ -9,6 +9,7 @@ import {
   focusTerminalById,
   getTabReorderIndex,
   shouldShowFileTree,
+  terminalRecoveryKey,
 } from "./helpers"
 
 describe("shouldShowFileTree", () => {
@@ -102,6 +103,60 @@ describe("getTabReorderIndex", () => {
 
   test("returns undefined for unknown droppable id", () => {
     expect(getTabReorderIndex(["a", "b", "c"], "a", "missing")).toBeUndefined()
+  })
+})
+
+describe("terminalRecoveryKey", () => {
+  // Contract: the key must survive the id swap that recovery performs so a
+  // failed terminal can't recover forever — shared terminals rebind to a fresh
+  // PTY id, private terminals clone to one.
+  test("keys shared terminals by session so a fresh binding keeps the flag", () => {
+    const before = terminalRecoveryKey({
+      id: "pty_old",
+      title: "Shared terminal",
+      titleNumber: 0,
+      shared: true,
+      sessionID: "ses_a",
+    })
+    const after = terminalRecoveryKey({
+      id: "pty_new",
+      title: "Shared terminal",
+      titleNumber: 0,
+      shared: true,
+      sessionID: "ses_a",
+    })
+    expect(before).toBe(after)
+  })
+
+  // Regression: every shared tab used to collapse onto the title
+  // "Shared terminal", so one session's recovery suppressed another's.
+  test("gives shared terminals of different sessions distinct keys", () => {
+    const a = terminalRecoveryKey({
+      id: "pty_a",
+      title: "Shared terminal",
+      titleNumber: 0,
+      shared: true,
+      sessionID: "ses_a",
+    })
+    const b = terminalRecoveryKey({
+      id: "pty_b",
+      title: "Shared terminal",
+      titleNumber: 0,
+      shared: true,
+      sessionID: "ses_b",
+    })
+    expect(a).not.toBe(b)
+  })
+
+  test("keys private terminals by their numbered title slot", () => {
+    const key = terminalRecoveryKey({ id: "pty_1", title: "Terminal 2", titleNumber: 2 })
+    expect(key).toBe("2")
+    expect(key).toBe(terminalRecoveryKey({ id: "pty_cloned", title: "Terminal 2", titleNumber: 2 }))
+  })
+
+  test("falls back to title then id for unnumbered private terminals", () => {
+    expect(terminalRecoveryKey({ id: "pty_1", title: "server", titleNumber: 0 })).toBe("server")
+    expect(terminalRecoveryKey({ id: "pty_1", title: "", titleNumber: 0 })).toBe("pty_1")
   })
 })
 

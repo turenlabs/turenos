@@ -5,6 +5,13 @@ import type { useAgentsPanel } from "@/components/agents-panel-state"
 type Usage = ProviderUsageResponse["providers"][number]
 const PROVIDER_USAGE_REFRESH_MS = 15_000
 
+export type WorkspaceHomeTab = "automations" | "limits"
+
+export function effectiveWorkspaceTab(automationsEnabled: boolean, selected: WorkspaceHomeTab): WorkspaceHomeTab {
+  if (!automationsEnabled && selected === "automations") return "limits"
+  return selected
+}
+
 /**
  * Shared so the full page and the home card ask the same question the same
  * way. They also share a query key, so the second consumer reads the first

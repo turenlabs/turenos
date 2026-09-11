@@ -105,7 +105,7 @@ describe("installation", () => {
       testLayer(
         () => new Response("unused", { status: 200 }),
         (cmd, args) => {
-          if (cmd === "gh") return "install script with token=secret"
+          if (cmd === "curl") return "install script with token=secret"
           if (cmd === "bash" && args[0] === "--version") return "GNU bash"
           if (cmd === "bash" || cmd === "sh") return { code: 1, stderr: "script output with token=secret" }
           return ""
@@ -126,7 +126,7 @@ describe("installation", () => {
       testLayer(
         () => new Response("unused", { status: 200 }),
         (cmd, args) => {
-          if (cmd === "gh") return "install script"
+          if (cmd === "curl") return "install script"
           if (cmd === "bash" && args[0] === "--version") return { code: 1, stderr: "missing" }
           if (cmd === "bash") return { code: 1, stderr: "should not execute installer with bash" }
           if (cmd === "sh") return "ok"

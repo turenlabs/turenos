@@ -270,6 +270,7 @@ describe("SessionTaskV2", () => {
         taskID: created.task.id,
         text: "The child found a useful lead; continue the parent workstream.",
         source: "subagent_board",
+        coalesce: true,
       })
 
       expect(notified).toEqual({ sessionID: parentSessionID, admitted: true })
@@ -278,6 +279,7 @@ describe("SessionTaskV2", () => {
           taskID: created.task.id,
           text: "A second lead is now available on the board.",
           source: "subagent_board",
+          coalesce: true,
         }),
       ).toEqual({ sessionID: parentSessionID, admitted: false })
       const { db } = yield* Database.Service
@@ -288,6 +290,42 @@ describe("SessionTaskV2", () => {
         delivery: "queue",
         prompt: { text: "The child found a useful lead; continue the parent workstream." },
       })
+    }),
+  )
+
+  it.effect("admits each settle and direct advisory without coalescing them away", () =>
+    Effect.gen(function* () {
+      const parentSessionID = yield* setup("settle_no_coalesce")
+      const tasks = yield* SessionTaskV2.Service
+      const created = yield* tasks.spawn(
+        spawnInput(yield* actor(parentSessionID, "settle_no_coalesce"), "settle_no_coalesce"),
+      )
+
+      expect(
+        yield* tasks.notifyParent({
+          taskID: created.task.id,
+          text: "First task reached a terminal state.",
+          source: "subagent_settle",
+        }),
+      ).toEqual({ sessionID: parentSessionID, admitted: true })
+      expect(
+        yield* tasks.notifyParent({
+          taskID: created.task.id,
+          text: "Second task reached a terminal state.",
+          source: "subagent_settle",
+        }),
+      ).toEqual({ sessionID: parentSessionID, admitted: true })
+      expect(
+        yield* tasks.notifyParent({
+          taskID: created.task.id,
+          text: "I need a decision on the approach.",
+          source: "subagent_advisory",
+        }),
+      ).toEqual({ sessionID: parentSessionID, admitted: true })
+
+      const { db } = yield* Database.Service
+      const pending = yield* SessionInput.pending(db, parentSessionID)
+      expect(pending.filter((input) => input.source !== "user")).toHaveLength(3)
     }),
   )
 
@@ -319,6 +357,7 @@ describe("SessionTaskV2", () => {
           taskID: created.task.id,
           text: "The terminal child finding is pending.",
           source: "subagent_board",
+          coalesce: true,
         }),
       ).toBeUndefined()
       expect(yield* board.pendingParentNotes()).toEqual([note])
@@ -328,6 +367,7 @@ describe("SessionTaskV2", () => {
         text: "The terminal child finding is now admitted.",
         messageID: TeamBoard.parentNotificationID(note),
         source: "subagent_board",
+        coalesce: true,
         allowTerminal: true,
       })
       expect(notification).toEqual({ sessionID: parentSessionID, admitted: true })
@@ -339,6 +379,7 @@ describe("SessionTaskV2", () => {
           text: "The terminal child finding is now admitted.",
           messageID: TeamBoard.parentNotificationID(note),
           source: "subagent_board",
+          coalesce: true,
           allowTerminal: true,
         }),
       ).toEqual({ sessionID: parentSessionID, admitted: true })
@@ -384,10 +425,67 @@ describe("SessionTaskV2", () => {
             text: TeamBoard.parentUpdateText(note),
             messageID,
             source: "subagent_board",
+            coalesce: true,
           })
           .pipe(Effect.flip),
       ).toMatchObject({ _tag: "SessionTask.ConflictError", resource: messageID })
       expect(yield* board.pendingParentNotes()).toEqual([note])
+    }),
+  )
+
+  it.effect("delivers board notes left pending across a process restart", () =>
+    Effect.gen(function* () {
+      const parentSessionID = yield* setup("board_sweep")
+      const tasks = yield* SessionTaskV2.Service
+      const board = yield* TeamBoard.Service
+      const created = yield* tasks.spawn(spawnInput(yield* actor(parentSessionID, "board_sweep"), "board_sweep"))
+
+      // A pending note with no admitted input models a post that succeeded while
+      // the notify fiber died, exactly what the construction-time sweep recovers.
+      const note = yield* board.post({
+        rootSessionID: parentSessionID,
+        authorSessionID: created.task.childSessionID,
+        parentSessionID,
+        authorAgent: AgentV2.ID.make("explore"),
+        kind: "finding",
+        title: "Recovered lead",
+        body: "The process stopped before the parent was told.",
+      })
+      expect(yield* board.pendingParentNotes()).toEqual([note])
+
+      yield* tasks.deliverPendingParentNotifications()
+
+      const { db } = yield* Database.Service
+      const pending = yield* SessionInput.pending(db, parentSessionID)
+      expect(pending).toHaveLength(1)
+      expect(pending[0]).toMatchObject({
+        id: TeamBoard.parentNotificationID(note),
+        sessionID: parentSessionID,
+        delivery: "queue",
+        source: "subagent_board",
+      })
+      expect(yield* board.pendingParentNotes()).toEqual([])
+
+      // A note from a task that is already terminal is still resolved delivered:
+      // the parent learns the outcome from the final report instead.
+      const events = yield* EventV2.Service
+      yield* SessionInput.promoteSteers(db, events, created.task.childSessionID, Number.MAX_SAFE_INTEGER)
+      yield* tasks.settleRun({ sessionID: created.task.childSessionID, status: "completed" })
+      const late = yield* board.post({
+        rootSessionID: parentSessionID,
+        authorSessionID: created.task.childSessionID,
+        parentSessionID,
+        authorAgent: AgentV2.ID.make("explore"),
+        kind: "finding",
+        title: "Terminal lead",
+        body: "The child finished before this note could be delivered.",
+      })
+      expect(yield* board.pendingParentNotes()).toEqual([late])
+
+      yield* tasks.deliverPendingParentNotifications()
+
+      expect(yield* board.pendingParentNotes()).toEqual([])
+      expect(yield* SessionInput.pending(db, parentSessionID)).toHaveLength(1)
     }),
   )
 
@@ -1394,8 +1492,8 @@ describe("SessionTaskV2", () => {
         resource: parentSessionID,
       })
       expect(yield* tasks.settleRun({ sessionID: existing.task.childSessionID, status: "interrupted" })).toMatchObject({
-        status: "interrupted",
-        revision: 2,
+        task: { status: "interrupted", revision: 2 },
+        transitioned: true,
       })
 
       yield* Deferred.succeed(release, undefined)
@@ -1471,13 +1569,13 @@ describe("SessionTaskV2", () => {
     }),
   )
 
-  it.effect("retires only pending legacy board inputs when execution starts", () =>
+  it.effect("retires stale subagent advisories when execution starts", () =>
     Effect.gen(function* () {
       const parentSessionID = yield* setup("board_startup_cleanup")
       const database = yield* Database.Service
       const events = yield* EventV2.Service
       const admitted = yield* Effect.forEach(
-        ["subagent_board", "subagent_board", "user", "shell_job"] as const,
+        ["subagent_board", "user", "subagent_board", "subagent_settle", "subagent_advisory", "shell_job"] as const,
         (source, index) =>
           SessionInput.admit(database.db, events, {
             id: SessionMessage.ID.make(`msg_board_startup_${index}`),
@@ -1488,14 +1586,23 @@ describe("SessionTaskV2", () => {
             kind: "prompt",
           }),
       )
+      // The leading board advisory promotes; the queued user input stops the batch, so the
+      // advisories behind it stay pending for the boot-time cleanup to retire.
       yield* SessionInput.promoteNextQueued(database.db, events, parentSessionID)
       yield* Effect.gen(function* () {
         yield* SessionExecution.Service
         const statuses = yield* Effect.forEach(admitted, (input) =>
           SessionInput.inputStatus(database.db, { sessionID: parentSessionID, messageID: input.id }),
         )
-        expect(statuses.map((input) => input?.status)).toEqual(["promoted", "cancelled", "admitted", "admitted"])
-        expect(statuses[1]?.timeCancelled).toBeDefined()
+        expect(statuses.map((input) => input?.status)).toEqual([
+          "promoted",
+          "admitted",
+          "cancelled",
+          "cancelled",
+          "cancelled",
+          "admitted",
+        ])
+        expect(statuses[2]?.timeCancelled).toBeDefined()
       }).pipe(
         Effect.provide(
           AppNodeBuilder.build(SessionExecutionLocal.node, [
@@ -1528,6 +1635,7 @@ describe("SessionTaskV2", () => {
             text: "A board update was durably admitted.",
             messageID: SessionMessage.ID.make("msg_board_admission_wake"),
             source: "subagent_board",
+            coalesce: true,
           }),
         ).toEqual({ sessionID: parentSessionID, admitted: true })
         yield* Effect.sleep("400 millis")
@@ -1562,6 +1670,61 @@ describe("SessionTaskV2", () => {
   )
 
   realExecutionIt.live(
+    "re-wakes a drain diverted by advisory busy once the busy window clears",
+    () => {
+      const previous = executionRunner.run
+      return Effect.gen(function* () {
+        const parentSessionID = yield* setup("advisory_busy_rewake")
+        const { db } = yield* Database.Service
+        const events = yield* EventV2.Service
+        // A user steer pending while the session is compacting is exactly the input a
+        // shell_job-only advisory gate would strand after the window cleared.
+        yield* SessionInput.admit(db, events, {
+          id: SessionMessage.ID.make("msg_advisory_busy_rewake"),
+          sessionID: parentSessionID,
+          prompt: Prompt.make({ text: "Are you still there?" }),
+          delivery: "steer",
+          source: "user",
+          kind: "prompt",
+        })
+        yield* db
+          .update(SessionTable)
+          .set({ time_compacting: Date.now() })
+          .where(eq(SessionTable.id, parentSessionID))
+          .run()
+          .pipe(Effect.orDie)
+        const started = yield* Deferred.make<SessionSchema.ID>()
+        executionRunner.run = ({ sessionID }) => Deferred.succeed(started, sessionID)
+        const execution = yield* SessionExecution.Service
+        yield* execution.wake(parentSessionID)
+        yield* Effect.sleep("400 millis")
+        expect(yield* Deferred.isDone(started)).toBe(false)
+        yield* db
+          .update(SessionTable)
+          .set({ time_compacting: null })
+          .where(eq(SessionTable.id, parentSessionID))
+          .run()
+          .pipe(Effect.orDie)
+        expect(
+          yield* Deferred.await(started).pipe(
+            Effect.timeoutOrElse({
+              duration: "2 seconds",
+              orElse: () => Effect.fail(new Error("diverted drain never re-woke after the busy window cleared")),
+            }),
+          ),
+        ).toBe(parentSessionID)
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            executionRunner.run = previous
+          }),
+        ),
+      )
+    },
+    5_000,
+  )
+
+  realExecutionIt.live(
     "lets the real execution coordinator finalizer settle under root cancellation without deadlock",
     () => {
       const previous = executionRunner.run
@@ -1580,11 +1743,13 @@ describe("SessionTaskV2", () => {
         )
         const runnerStarted = yield* Deferred.make<void>()
         const runnerInterrupted = yield* Deferred.make<void>()
-        executionRunner.run = () =>
-          Deferred.succeed(runnerStarted, undefined).pipe(
-            Effect.andThen(Effect.never),
-            Effect.onInterrupt(() => Deferred.succeed(runnerInterrupted, undefined)),
-          )
+        executionRunner.run = ({ sessionID }) =>
+          sessionID === created.task.childSessionID
+            ? Deferred.succeed(runnerStarted, undefined).pipe(
+                Effect.andThen(Effect.never),
+                Effect.onInterrupt(() => Deferred.succeed(runnerInterrupted, undefined)),
+              )
+            : Effect.void
         const execution = yield* SessionExecution.Service
         yield* execution.wake(created.task.childSessionID)
         yield* Deferred.await(runnerStarted)
@@ -1607,6 +1772,9 @@ describe("SessionTaskV2", () => {
 
         yield* Deferred.await(runnerInterrupted)
         expect(cancelled.sessions).toEqual([created.task.childSessionID])
+        // The child's settle advisory queues a parent input and wakes its drain;
+        // join that drain before asserting the coordinator is idle.
+        yield* Effect.flatten(execution.claimResume(parentSessionID))
         expect(yield* tasks.get(created.task.id)).toMatchObject({ status: "cancelled", revision: 3 })
         expect(Array.from(yield* execution.active)).toEqual([])
       }).pipe(
@@ -1662,6 +1830,198 @@ describe("SessionTaskV2", () => {
         // running forever. See the filter in
         // packages/forge/src/server/routes/instance/httpapi/handlers/event.ts.
         expect(event.location?.directory).toBe(directory)
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            executionRunner.run = previous
+          }),
+        ),
+      )
+    },
+    5_000,
+  )
+
+  realExecutionIt.live(
+    "queues one settle advisory for the parent when a child drain completes",
+    () => {
+      const previous = executionRunner.run
+      return Effect.gen(function* () {
+        const parentSessionID = yield* setup("settle_notify_completed")
+        const tasks = yield* SessionTaskV2.Service
+        const events = yield* EventV2.Service
+        const created = yield* tasks.spawn(
+          spawnInput(yield* actor(parentSessionID, "settle_notify_completed"), "settle_notify_completed"),
+        )
+        const { db } = yield* Database.Service
+        yield* SessionInput.promoteSteers(db, events, created.task.childSessionID, Number.MAX_SAFE_INTEGER)
+
+        const admitted = yield* Deferred.make<SessionMessage.ID>()
+        const unsubscribe = yield* events.listen((event) => {
+          if (event.type !== SessionEvent.PromptAdmitted.type) return Effect.void
+          const data = event.data as EventV2.Data<typeof SessionEvent.PromptAdmitted>
+          if (data.sessionID !== parentSessionID || !data.messageID.startsWith("msg_task_settle_")) return Effect.void
+          return Deferred.succeed(admitted, data.messageID).pipe(Effect.asVoid)
+        })
+
+        executionRunner.run = () => Effect.void
+        const execution = yield* SessionExecution.Service
+        yield* execution.wake(created.task.childSessionID)
+        yield* Deferred.await(admitted).pipe(
+          Effect.timeoutOrElse({
+            duration: "2 seconds",
+            orElse: () => Effect.fail(new Error("settle advisory was never admitted to the parent")),
+          }),
+          Effect.ensuring(unsubscribe),
+        )
+
+        const noticed = (yield* SessionInput.pending(db, parentSessionID)).filter((input) =>
+          input.id.startsWith("msg_task_settle_"),
+        )
+        expect(noticed).toHaveLength(1)
+        expect(noticed[0]!.delivery).toBe("queue")
+        expect(noticed[0]!.source).toBe("subagent_settle")
+        expect(noticed[0]!.prompt.text).toContain("reached a terminal state")
+        expect(noticed[0]!.prompt.text).toContain(
+          `completed: Task settle_notify_completed (task ${created.task.id}, agent explore)`,
+        )
+        expect(noticed[0]!.prompt.text).toContain("wait_agents")
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            executionRunner.run = previous
+          }),
+        ),
+      )
+    },
+    5_000,
+  )
+
+  realExecutionIt.live(
+    "carries the error excerpt when a child drain fails",
+    () => {
+      const previous = executionRunner.run
+      return Effect.gen(function* () {
+        const parentSessionID = yield* setup("settle_notify_failed")
+        const tasks = yield* SessionTaskV2.Service
+        const events = yield* EventV2.Service
+        const created = yield* tasks.spawn(
+          spawnInput(yield* actor(parentSessionID, "settle_notify_failed"), "settle_notify_failed"),
+        )
+        const { db } = yield* Database.Service
+        yield* SessionInput.promoteSteers(db, events, created.task.childSessionID, Number.MAX_SAFE_INTEGER)
+
+        const admitted = yield* Deferred.make<SessionMessage.ID>()
+        const unsubscribe = yield* events.listen((event) => {
+          if (event.type !== SessionEvent.PromptAdmitted.type) return Effect.void
+          const data = event.data as EventV2.Data<typeof SessionEvent.PromptAdmitted>
+          if (data.sessionID !== parentSessionID || !data.messageID.startsWith("msg_task_settle_")) return Effect.void
+          return Deferred.succeed(admitted, data.messageID).pipe(Effect.asVoid)
+        })
+
+        executionRunner.run = ({ sessionID }) =>
+          sessionID === created.task.childSessionID ? Effect.die(new Error("child exploded")) : Effect.void
+        const execution = yield* SessionExecution.Service
+        yield* execution.wake(created.task.childSessionID)
+        yield* Deferred.await(admitted).pipe(
+          Effect.timeoutOrElse({
+            duration: "2 seconds",
+            orElse: () => Effect.fail(new Error("settle advisory was never admitted to the parent")),
+          }),
+          Effect.ensuring(unsubscribe),
+        )
+
+        const noticed = (yield* SessionInput.pending(db, parentSessionID)).filter((input) =>
+          input.id.startsWith("msg_task_settle_"),
+        )
+        expect(noticed).toHaveLength(1)
+        expect(noticed[0]!.prompt.text).toContain(`failed: Task settle_notify_failed (task ${created.task.id}`)
+        expect(noticed[0]!.prompt.text).toContain("Error: child exploded")
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            executionRunner.run = previous
+          }),
+        ),
+      )
+    },
+    5_000,
+  )
+
+  realExecutionIt.live(
+    "does not re-notify when the task terminalized before the drain settled",
+    () => {
+      const previous = executionRunner.run
+      return Effect.gen(function* () {
+        const parentSessionID = yield* setup("settle_no_second_notify")
+        const tasks = yield* SessionTaskV2.Service
+        const events = yield* EventV2.Service
+        const created = yield* tasks.spawn(
+          spawnInput(yield* actor(parentSessionID, "settle_no_second_notify"), "settle_no_second_notify"),
+        )
+        const { db } = yield* Database.Service
+        yield* SessionInput.promoteSteers(db, events, created.task.childSessionID, Number.MAX_SAFE_INTEGER)
+
+        const started = yield* Deferred.make<void>()
+        const release = yield* Deferred.make<void>()
+        executionRunner.run = ({ sessionID }) =>
+          sessionID === created.task.childSessionID
+            ? Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(release)))
+            : Effect.void
+
+        const execution = yield* SessionExecution.Service
+        yield* execution.wake(created.task.childSessionID)
+        yield* Deferred.await(started).pipe(
+          Effect.timeoutOrElse({
+            duration: "2 seconds",
+            orElse: () => Effect.fail(new Error("child drain did not start")),
+          }),
+        )
+
+        // The task terminalizes mid-drain (an interrupt landed); the drain must not
+        // emit a second settle advisory for a transition it did not perform.
+        expect(yield* tasks.settleRun({ sessionID: created.task.childSessionID, status: "interrupted" })).toMatchObject(
+          { transitioned: true },
+        )
+        yield* Deferred.succeed(release, undefined)
+        yield* Effect.flatten(execution.claimResume(created.task.childSessionID))
+
+        expect(yield* tasks.get(created.task.id)).toMatchObject({ status: "interrupted" })
+        const noticed = (yield* SessionInput.pending(db, parentSessionID)).filter((input) =>
+          input.id.startsWith("msg_task_settle_"),
+        )
+        expect(noticed).toEqual([])
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            executionRunner.run = previous
+          }),
+        ),
+      )
+    },
+    5_000,
+  )
+
+  realExecutionIt.live(
+    "settles quietly when the drained session owns no task",
+    () => {
+      const previous = executionRunner.run
+      return Effect.gen(function* () {
+        const parentSessionID = yield* setup("settle_no_task")
+        const { db } = yield* Database.Service
+        const ran = yield* Deferred.make<SessionSchema.ID>()
+        executionRunner.run = ({ sessionID }) => Deferred.succeed(ran, sessionID)
+        const execution = yield* SessionExecution.Service
+        yield* execution.wake(parentSessionID)
+        expect(
+          yield* Deferred.await(ran).pipe(
+            Effect.timeoutOrElse({
+              duration: "2 seconds",
+              orElse: () => Effect.fail(new Error("session drain did not reach the runner")),
+            }),
+          ),
+        ).toBe(parentSessionID)
+        yield* Effect.flatten(execution.claimResume(parentSessionID))
+        expect(yield* SessionInput.pending(db, parentSessionID)).toEqual([])
       }).pipe(
         Effect.ensuring(
           Effect.sync(() => {
@@ -1781,8 +2141,8 @@ describe("SessionTaskV2", () => {
       const events = yield* EventV2.Service
       yield* SessionInput.promoteSteers(db, events, created.task.childSessionID, Number.MAX_SAFE_INTEGER)
       expect(yield* tasks.settleRun({ sessionID: created.task.childSessionID, status: "interrupted" })).toMatchObject({
-        status: "interrupted",
-        revision: 2,
+        task: { status: "interrupted", revision: 2 },
+        transitioned: true,
       })
       const retried = yield* tasks.cancelWithInterrupt({
         sessionID: parentSessionID,

@@ -66,6 +66,7 @@ import {
   canNavigateHistoryAtCursor,
   navigatePromptHistory,
   prependHistoryEntry,
+  sanitizePromptHistory,
   type PromptHistoryComment,
   type PromptHistoryEntry,
   type PromptHistoryStoredEntry,
@@ -152,11 +153,11 @@ function createPromptInputHistoryStore(
 
 function createPersistedPromptInputHistory() {
   const [normal, setNormal] = persisted(
-    Persist.global("prompt-history", ["prompt-history.v1"]),
+    { ...Persist.global("prompt-history", ["prompt-history.v1"]), sanitize: sanitizePromptHistory },
     createStore<PromptHistoryState>({ entries: [] }),
   )
   const [shell, setShell] = persisted(
-    Persist.global("prompt-history-shell", ["prompt-history-shell.v1"]),
+    { ...Persist.global("prompt-history-shell", ["prompt-history-shell.v1"]), sanitize: sanitizePromptHistory },
     createStore<PromptHistoryState>({ entries: [] }),
   )
   return createPromptInputHistoryStore(normal, setNormal, shell, setShell)

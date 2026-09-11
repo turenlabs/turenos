@@ -23,6 +23,15 @@ export interface McpOAuthCallbacks {
   onRedirect: (url: URL) => void | Promise<void>
 }
 
+/**
+ * A fenced write (stale generation, unprepared URL change) means the durable
+ * row no longer belongs to this provider — the write is advisory and silently
+ * dropped. Anything else still propagates as a real failure.
+ */
+function isFenced(error: unknown) {
+  return error instanceof McpAuth.FencedError || (error as { _tag?: string })?._tag === "McpAuth.FencedError"
+}
+
 export class McpOAuthProvider implements OAuthClientProvider {
   constructor(
     protected mcpName: string,
@@ -92,7 +101,9 @@ export class McpOAuthProvider implements OAuthClientProvider {
         this.serverUrl,
         this.generation,
       ),
-    )
+    ).catch((error: unknown) => {
+      if (!isFenced(error)) throw error
+    })
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
@@ -125,7 +136,9 @@ export class McpOAuthProvider implements OAuthClientProvider {
         this.serverUrl,
         this.generation,
       ),
-    )
+    ).catch((error: unknown) => {
+      if (!isFenced(error)) throw error
+    })
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
@@ -168,17 +181,21 @@ export class McpOAuthProvider implements OAuthClientProvider {
   async invalidateCredentials(type: "all" | "client" | "tokens"): Promise<void> {
     const entry = await Effect.runPromise(this.auth.get(this.mcpName))
     if (!entry) return
+    const persist = (effect: Effect.Effect<void>) =>
+      Effect.runPromise(effect).catch((error: unknown) => {
+        if (!isFenced(error)) throw error
+      })
     switch (type) {
       case "all":
-        await Effect.runPromise(this.auth.remove(this.mcpName, this.generation))
+        await persist(this.auth.remove(this.mcpName, this.generation))
         break
       case "client":
         delete entry.clientInfo
-        await Effect.runPromise(this.auth.set(this.mcpName, entry, this.serverUrl, this.generation))
+        await persist(this.auth.set(this.mcpName, entry, this.serverUrl, this.generation))
         break
       case "tokens":
         delete entry.tokens
-        await Effect.runPromise(this.auth.set(this.mcpName, entry, this.serverUrl, this.generation))
+        await persist(this.auth.set(this.mcpName, entry, this.serverUrl, this.generation))
         break
     }
   }

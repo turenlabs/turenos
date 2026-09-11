@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
-import type { WslServerConfig } from "../../preload/types"
+import type { SshServerConfig, WslServerConfig } from "../../preload/types"
 import type { UpdaterReadyRecord } from "../updater-controller"
 import {
   DEFAULT_SERVER_URL_KEY,
@@ -23,6 +23,7 @@ const KEY = {
   firstLaunchOnboardingComplete: "first-launch-onboarding-complete",
   oldLayoutEligible: "old-layout-eligible",
   wslServers: "wsl-servers",
+  sshServers: "ssh-servers",
   pinchZoomEnabled: "pinch-zoom-enabled",
   windowIds: "window-ids",
   updaterReady: "updater-ready",
@@ -258,6 +259,8 @@ export function createDesktopProductStorage(options: Options) {
     isOldLayoutEligible: async (owner: Owner) => (await read(owner, KEY.oldLayoutEligible, isBoolean)) === true,
     getWslServers: async (owner: Owner) => (await read(owner, KEY.wslServers, isWslServers)) ?? [],
     setWslServers: (owner: Owner, value: WslServerConfig[]) => write(owner, KEY.wslServers, value),
+    getSshServers: async (owner: Owner) => (await read(owner, KEY.sshServers, isSshServers)) ?? [],
+    setSshServers: (owner: Owner, value: SshServerConfig[]) => write(owner, KEY.sshServers, value),
     getPinchZoomEnabled: async (owner: Owner) => (await read(owner, KEY.pinchZoomEnabled, isBoolean)) === true,
     setPinchZoomEnabled: (owner: Owner, value: boolean) => write(owner, KEY.pinchZoomEnabled, value),
     getWindowIds: async (owner: Owner) => (await read(owner, KEY.windowIds, isStringArray)) ?? [],
@@ -368,6 +371,23 @@ function normalizeWslServers(value: unknown) {
     return [{ id, distro }]
   })
   return servers
+}
+
+function isSshServers(value: unknown): value is SshServerConfig[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "id" in item &&
+        typeof item.id === "string" &&
+        item.id.startsWith("ssh:") &&
+        "host" in item &&
+        typeof item.host === "string" &&
+        item.host.length > 0,
+    )
+  )
 }
 
 function isUpdaterReady(value: unknown): value is UpdaterReadyRecord {

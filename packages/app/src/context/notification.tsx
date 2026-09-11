@@ -137,7 +137,9 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
 
     const ensure = (key: ServerConnection.Key) => {
       const conn = global.servers.list().find((item) => ServerConnection.key(item) === key)
-      if (!conn) throw new Error(`Notification server not found: ${key}`)
+      // A removed server can linger in consumers for a frame (focused server,
+      // sidebar rows) while the list shrinks - return nothing rather than crash.
+      if (!conn) return undefined
       const ctx = global.ensureServerCtx(conn)
       const existing = states.get(ctx.sdk.scope)
       if (existing) return existing.state
@@ -187,21 +189,21 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
     const selected = () => ensure(activeServer())
 
     return {
-      ready: () => selected().ready(),
+      ready: () => selected()?.ready() ?? true,
       ensureServerState: ensure,
       session: {
-        all: (session: string) => selected().session.all(session),
-        unseen: (session: string) => selected().session.unseen(session),
-        unseenCount: (session: string) => selected().session.unseenCount(session),
-        unseenHasError: (session: string) => selected().session.unseenHasError(session),
-        markViewed: (session: string) => selected().session.markViewed(session),
+        all: (session: string) => selected()?.session.all(session) ?? [],
+        unseen: (session: string) => selected()?.session.unseen(session) ?? [],
+        unseenCount: (session: string) => selected()?.session.unseenCount(session) ?? 0,
+        unseenHasError: (session: string) => selected()?.session.unseenHasError(session) ?? false,
+        markViewed: (session: string) => selected()?.session.markViewed(session),
       },
       project: {
-        all: (directory: string) => selected().project.all(directory),
-        unseen: (directory: string) => selected().project.unseen(directory),
-        unseenCount: (directory: string) => selected().project.unseenCount(directory),
-        unseenHasError: (directory: string) => selected().project.unseenHasError(directory),
-        markViewed: (directory: string) => selected().project.markViewed(directory),
+        all: (directory: string) => selected()?.project.all(directory) ?? [],
+        unseen: (directory: string) => selected()?.project.unseen(directory) ?? [],
+        unseenCount: (directory: string) => selected()?.project.unseenCount(directory) ?? 0,
+        unseenHasError: (directory: string) => selected()?.project.unseenHasError(directory) ?? false,
+        markViewed: (directory: string) => selected()?.project.markViewed(directory),
       },
     }
   },

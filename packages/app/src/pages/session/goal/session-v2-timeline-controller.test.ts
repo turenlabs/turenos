@@ -1,5 +1,19 @@
 import { describe, expect, test } from "bun:test"
+import { createStore, reconcile } from "solid-js/store"
+import type {
+  Part,
+  SessionMessage,
+  SessionNextToolCalled,
+  SessionNextToolFailed,
+  SessionNextToolInputEnded,
+  SessionNextToolProgress,
+  SessionNextToolSuccess,
+  ToolPart,
+} from "@turenlabs/sdk/v2/client"
+import { presentTool } from "./session-v2-presentation"
 import {
+  applySessionV2ToolEvent,
+  expandSessionV2ToolBody,
   collectSessionV2Messages,
   commitSessionIdleAfterRefresh,
   createSessionPromptOutboxStore,
@@ -30,6 +44,7 @@ import {
   SESSION_V2_MESSAGE_PAGE_LIMIT,
   SESSION_V2_SNAPSHOT_RESTAKE_LIMIT,
   SESSION_V2_WINDOW_PAGE_LIMIT,
+  type SessionV2ToolEvent,
 } from "./session-v2-timeline-controller"
 
 describe("nextSessionV2WindowMinimum", () => {
@@ -372,8 +387,8 @@ describe("V2 timeline pagination", () => {
     })
 
     expect(requests).toEqual([
-      { sessionID: "ses_pages", limit: SESSION_V2_MESSAGE_PAGE_LIMIT, order: "desc" },
-      { sessionID: "ses_pages", limit: SESSION_V2_MESSAGE_PAGE_LIMIT, cursor: "page-2" },
+      { sessionID: "ses_pages", limit: SESSION_V2_MESSAGE_PAGE_LIMIT, order: "desc", lean: "true" },
+      { sessionID: "ses_pages", limit: SESSION_V2_MESSAGE_PAGE_LIMIT, cursor: "page-2", lean: "true" },
     ])
     // Restored to ascending order, which is the order the timeline projects.
     expect(window.messages.map((message) => message.id)).toEqual(["msg_a", "msg_b", "msg_c"])
@@ -993,5 +1008,444 @@ describe("turn status", () => {
     // Settlement bumps again, so the panel sees the task reach its terminal state too.
     store.reduce("ses_1", durable("session.next.tool.success", { callID: "c1" }))
     expect(store.get("ses_1").agentToolEvents).toBe(2)
+  })
+})
+
+// Tool events settle a call straight from their payload — the same fields the server folds into
+// its message model — so a tool-heavy turn no longer pays a full-window transcript refetch per
+// call. `fallback` stands in for the controller's snapshot/hydrate request; a settlement that
+// resolves locally must leave it uncalled.
+describe("applySessionV2ToolEvent", () => {
+  const toolPart = (state: ToolPart["state"], metadata?: Record<string, unknown>): ToolPart => ({
+    id: "call_1",
+    sessionID: "ses_1",
+    messageID: "msg_a",
+    type: "tool",
+    callID: "call_1",
+    tool: "bash",
+    state,
+    ...(metadata ? { metadata } : {}),
+  })
+
+  const running = (metadata?: { structured?: Record<string, unknown>; output?: string }) =>
+    toolPart(
+      {
+        status: "running",
+        input: { command: "ls" },
+        metadata: { structured: {}, output: "", ...metadata },
+        time: { start: 100 },
+      },
+      { providerExecuted: true },
+    )
+
+  const pending = () => toolPart({ status: "pending", input: {}, raw: "" })
+
+  const harness = (parts: Part[] | undefined) => {
+    const [data, set] = createStore<{ part: Record<string, Part[] | undefined> }>({ part: { msg_a: parts } })
+    const counts = { writes: 0, fallbacks: 0 }
+    const apply = (event: SessionV2ToolEvent) =>
+      applySessionV2ToolEvent({
+        sessionID: "ses_1",
+        parts: data.part.msg_a,
+        event,
+        write: (index, part) => {
+          counts.writes += 1
+          set("part", "msg_a", index, reconcile(part))
+        },
+        fallback: () => {
+          counts.fallbacks += 1
+        },
+      })
+    return { data, apply, counts }
+  }
+
+  const success = (over: Partial<SessionNextToolSuccess["data"]> = {}): SessionNextToolSuccess => ({
+    id: "evt_success",
+    type: "session.next.tool.success",
+    data: {
+      timestamp: 200,
+      sessionID: "ses_1",
+      assistantMessageID: "msg_a",
+      callID: "call_1",
+      structured: { exit: 0 },
+      content: [{ type: "text", text: "total 4" }],
+      outputPaths: ["/tmp/out"],
+      result: { ok: true },
+      provider: { executed: true, metadata: { anthropic: { duration: 5 } } },
+      ...over,
+    },
+  })
+
+  const failed = (over: Partial<SessionNextToolFailed["data"]> = {}): SessionNextToolFailed => ({
+    id: "evt_failed",
+    type: "session.next.tool.failed",
+    data: {
+      timestamp: 200,
+      sessionID: "ses_1",
+      assistantMessageID: "msg_a",
+      callID: "call_1",
+      error: { type: "unknown", message: "boom" },
+      provider: { executed: false },
+      ...over,
+    },
+  })
+
+  test("a success settles the running part in place without a snapshot request", () => {
+    const h = harness([running()])
+
+    h.apply(success())
+
+    const part = h.data.part.msg_a?.[0]
+    expect(part).toMatchObject({
+      type: "tool",
+      callID: "call_1",
+      tool: "bash",
+      metadata: { providerExecuted: true },
+      state: {
+        status: "completed",
+        input: { command: "ls" },
+        output: "total 4",
+        title: "bash",
+        metadata: { structured: { exit: 0 }, outputPaths: ["/tmp/out"], result: { ok: true } },
+        time: { start: 100, end: 200 },
+      },
+    })
+    expect(h.counts).toEqual({ writes: 1, fallbacks: 0 })
+  })
+
+  test("a failure preserves input and carries structured/output only from a running state", () => {
+    const h = harness([running({ structured: { phase: "halfway" }, output: "partial" })])
+
+    h.apply(failed())
+
+    expect(h.data.part.msg_a?.[0]).toMatchObject({
+      state: {
+        status: "error",
+        input: { command: "ls" },
+        error: "boom",
+        metadata: { structured: { phase: "halfway" }, output: "partial" },
+        time: { start: 100, end: 200 },
+      },
+    })
+    expect(h.counts).toEqual({ writes: 1, fallbacks: 0 })
+  })
+
+  test("a failure on a pending part presents an empty input, matching the server updater", () => {
+    const h = harness([pending()])
+
+    h.apply(failed())
+
+    expect(h.data.part.msg_a?.[0]).toMatchObject({
+      state: { status: "error", input: {}, error: "boom", metadata: { structured: {}, output: "" } },
+    })
+    expect(h.counts).toEqual({ writes: 1, fallbacks: 0 })
+  })
+
+  test("a success on a pending part falls back: only a snapshot still holds the parsed input", () => {
+    const h = harness([pending()])
+
+    h.apply(success())
+
+    expect(h.counts).toEqual({ writes: 0, fallbacks: 1 })
+  })
+
+  test("settlement for a callID the store does not hold falls back to a snapshot", () => {
+    const missing = harness([running()])
+    missing.apply(success({ callID: "call_other" }))
+    expect(missing.counts).toEqual({ writes: 0, fallbacks: 1 })
+
+    const unloaded = harness(undefined)
+    unloaded.apply(success())
+    expect(unloaded.counts).toEqual({ writes: 0, fallbacks: 1 })
+  })
+
+  test("a settlement replayed onto an already settled part is a no-op", () => {
+    const h = harness([
+      toolPart({
+        status: "completed",
+        input: { command: "ls" },
+        output: "done",
+        title: "bash",
+        metadata: {},
+        time: { start: 100, end: 150 },
+      }),
+    ])
+
+    h.apply(success())
+    h.apply(failed())
+
+    expect(h.counts).toEqual({ writes: 0, fallbacks: 0 })
+    expect(h.data.part.msg_a?.[0]).toMatchObject({ state: { status: "completed", output: "done" } })
+  })
+
+  test("called promotes a pending part to running with the executed input", () => {
+    const h = harness([pending()])
+    const called: SessionNextToolCalled = {
+      id: "evt_called",
+      type: "session.next.tool.called",
+      data: {
+        timestamp: 150,
+        sessionID: "ses_1",
+        assistantMessageID: "msg_a",
+        callID: "call_1",
+        tool: "bash",
+        input: { command: "ls" },
+        provider: { executed: false },
+      },
+    }
+
+    h.apply(called)
+
+    expect(h.data.part.msg_a?.[0]).toMatchObject({
+      state: {
+        status: "running",
+        input: { command: "ls" },
+        metadata: { structured: {}, output: "" },
+        time: { start: 150 },
+      },
+    })
+    expect(h.counts).toEqual({ writes: 1, fallbacks: 0 })
+  })
+
+  test("input.ended lands on the pending part's raw text, and progress updates a running part", () => {
+    const h = harness([pending()])
+    const inputEnded: SessionNextToolInputEnded = {
+      id: "evt_input",
+      type: "session.next.tool.input.ended",
+      data: {
+        timestamp: 120,
+        sessionID: "ses_1",
+        assistantMessageID: "msg_a",
+        callID: "call_1",
+        text: '{"command":"ls"}',
+      },
+    }
+
+    h.apply(inputEnded)
+    expect(h.data.part.msg_a?.[0]).toMatchObject({ state: { status: "pending", raw: '{"command":"ls"}' } })
+
+    const runningHarness = harness([running()])
+    const progress: SessionNextToolProgress = {
+      id: "evt_progress",
+      type: "session.next.tool.progress",
+      data: {
+        timestamp: 160,
+        sessionID: "ses_1",
+        assistantMessageID: "msg_a",
+        callID: "call_1",
+        structured: { percent: 50 },
+        content: [{ type: "text", text: "half done" }],
+      },
+    }
+
+    runningHarness.apply(progress)
+    expect(runningHarness.data.part.msg_a?.[0]).toMatchObject({
+      state: {
+        status: "running",
+        metadata: { structured: { percent: 50 }, output: "half done" },
+        time: { start: 100 },
+      },
+    })
+    expect(runningHarness.counts).toEqual({ writes: 1, fallbacks: 0 })
+  })
+
+  test("stale live events on a settled part neither write nor fall back", () => {
+    const h = harness([
+      toolPart({
+        status: "completed",
+        input: { command: "ls" },
+        output: "done",
+        title: "bash",
+        metadata: {},
+        time: { start: 100, end: 150 },
+      }),
+    ])
+
+    h.apply({
+      id: "evt_progress",
+      type: "session.next.tool.progress",
+      data: {
+        timestamp: 160,
+        sessionID: "ses_1",
+        assistantMessageID: "msg_a",
+        callID: "call_1",
+        structured: {},
+        content: [],
+      },
+    })
+
+    expect(h.counts).toEqual({ writes: 0, fallbacks: 0 })
+  })
+})
+
+describe("expandSessionV2ToolBody", () => {
+  const stub = () =>
+    presentTool("ses_1", "msg_a", {
+      type: "tool",
+      id: "call_1",
+      name: "bash",
+      truncated: { bytes: 90_000 },
+      state: {
+        status: "completed",
+        input: { command: "ls" },
+        structured: {},
+        content: [],
+      },
+      time: { created: 1, ran: 1, completed: 2 },
+    })
+
+  const fullMessage = (text = "total 4"): SessionMessage => ({
+    id: "msg_a",
+    type: "assistant",
+    agent: "build",
+    model: { providerID: "provider", id: "model" },
+    time: { created: 1, completed: 2 },
+    content: [
+      {
+        type: "tool",
+        id: "call_1",
+        name: "bash",
+        state: {
+          status: "completed",
+          input: { command: "ls" },
+          structured: { exit: 0 },
+          content: [{ type: "text", text }],
+        },
+        time: { created: 1, ran: 1, completed: 2 },
+      },
+    ],
+  })
+
+  const harness = (parts: Part[] | undefined) => {
+    const [data, set] = createStore<{ part: Record<string, Part[] | undefined> }>({ part: { msg_a: parts } })
+    return {
+      data,
+      write: (index: number, part: ToolPart) => set("part", "msg_a", index, reconcile(part)),
+    }
+  }
+
+  test("expanding a stub fetches the message once and rewrites the part in place", async () => {
+    const h = harness([stub()])
+    let fetches = 0
+
+    const applied = await expandSessionV2ToolBody({
+      sessionID: "ses_1",
+      part: h.data.part.msg_a![0] as ToolPart,
+      load: async () => {
+        fetches += 1
+        return fullMessage()
+      },
+      parts: () => h.data.part.msg_a,
+      write: h.write,
+    })
+
+    expect(applied).toBe(true)
+    expect(fetches).toBe(1)
+    expect(h.data.part.msg_a).toHaveLength(1)
+    expect(h.data.part.msg_a?.[0]).toMatchObject({
+      type: "tool",
+      id: "call_1",
+      state: {
+        status: "completed",
+        input: { command: "ls" },
+        output: "total 4",
+        metadata: { structured: { exit: 0 } },
+      },
+    })
+    expect(h.data.part.msg_a?.[0]?.type === "tool" ? h.data.part.msg_a[0].metadata?.truncated : "missing").toBeUndefined()
+  })
+
+  test("re-opening while the fetch is in flight issues no second request", async () => {
+    const h = harness([stub()])
+    let fetches = 0
+    let release!: (message: SessionMessage) => void
+    const load = () => {
+      fetches += 1
+      return new Promise<SessionMessage>((resolve) => (release = resolve))
+    }
+
+    const first = expandSessionV2ToolBody({
+      sessionID: "ses_1",
+      part: stub(),
+      load,
+      parts: () => h.data.part.msg_a,
+      write: h.write,
+    })
+    const second = expandSessionV2ToolBody({
+      sessionID: "ses_1",
+      part: stub(),
+      load,
+      parts: () => h.data.part.msg_a,
+      write: h.write,
+    })
+
+    await expect(second).resolves.toBe(false)
+    release(fullMessage())
+    await expect(first).resolves.toBe(true)
+    expect(fetches).toBe(1)
+  })
+
+  // The race the post-fetch stub re-check exists for: while the back-fill is in flight, a
+  // non-lean write (a context hydrate, an event settle, an expanded sibling's own fetch) can
+  // already have put the real body in the store. The fetched copy must not clobber it.
+  test("a full write that landed during the fetch is not overwritten by the back-fill", async () => {
+    const h = harness([stub()])
+    let release!: (message: SessionMessage) => void
+    const pending = expandSessionV2ToolBody({
+      sessionID: "ses_1",
+      part: h.data.part.msg_a![0] as ToolPart,
+      load: () => new Promise<SessionMessage>((resolve) => (release = resolve)),
+      parts: () => h.data.part.msg_a,
+      write: h.write,
+    })
+
+    h.write(
+      0,
+      presentTool("ses_1", "msg_a", {
+        type: "tool",
+        id: "call_1",
+        name: "bash",
+        state: {
+          status: "completed",
+          input: { command: "ls" },
+          structured: { exit: 0 },
+          content: [{ type: "text", text: "settled live" }],
+        },
+        time: { created: 1, ran: 1, completed: 2 },
+      }),
+    )
+
+    release(fullMessage())
+    await expect(pending).resolves.toBe(false)
+    expect(h.data.part.msg_a?.[0]).toMatchObject({ state: { status: "completed", output: "settled live" } })
+    expect(h.data.part.msg_a?.[0]?.type === "tool" ? h.data.part.msg_a[0].metadata?.truncated : "missing").toBeUndefined()
+  })
+
+  test("a part that already carries its body is never fetched", async () => {
+    const h = harness([stub()])
+    await expect(
+      expandSessionV2ToolBody({
+        sessionID: "ses_1",
+        part: h.data.part.msg_a![0] as ToolPart,
+        load: async () => fullMessage(),
+        parts: () => h.data.part.msg_a,
+        write: h.write,
+      }),
+    ).resolves.toBe(true)
+
+    let fetches = 0
+    await expect(
+      expandSessionV2ToolBody({
+        sessionID: "ses_1",
+        part: h.data.part.msg_a![0] as ToolPart,
+        load: async () => {
+          fetches += 1
+          return fullMessage()
+        },
+        parts: () => h.data.part.msg_a,
+        write: h.write,
+      }),
+    ).resolves.toBe(false)
+    expect(fetches).toBe(0)
   })
 })

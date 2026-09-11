@@ -7,6 +7,7 @@ import {
   navigatePromptHistory,
   prependHistoryEntry,
   promptLength,
+  sanitizePromptHistory,
   type PromptHistoryComment,
 } from "./history"
 
@@ -74,6 +75,26 @@ describe("prompt-input history", () => {
     const dedupedShed = prependHistoryEntry(poisoned, image("older"))
     expect(dedupedShed).not.toBe(poisoned)
     expect(JSON.stringify(dedupedShed)).not.toContain("base64")
+  })
+
+  test("sanitizes image payloads in history values loaded from storage", () => {
+    const value: Prompt = [
+      { type: "text", content: "legacy", start: 0, end: 6 },
+      { type: "image", id: "legacy", filename: "img.png", mime: "image/png", dataUrl: "data:image/png;base64,abc" },
+    ]
+    expect(
+      sanitizePromptHistory({
+        entries: [
+          { prompt: value, comments: [] },
+          value,
+        ],
+      }),
+    ).toEqual({
+      entries: [
+        { prompt: text("legacy"), comments: [] },
+        text("legacy"),
+      ],
+    })
   })
 
   test("navigatePromptHistory restores saved prompt when moving down from newest", () => {

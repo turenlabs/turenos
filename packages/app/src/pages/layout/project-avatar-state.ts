@@ -24,7 +24,7 @@ export function useSessionTabAvatarState(
     if (!serverSync) return false
     const [store] = serverSync.child(directory(), { bootstrap: false })
     return !!sessionPermissionRequest(store.session, serverSync.session.data.permission, sessionId(), (item) => {
-      return !permissionState().autoResponds(item, directory())
+      return !permissionState()?.autoResponds(item, directory())
     })
   })
   const hasQuestions = createMemo(() => {
@@ -35,7 +35,7 @@ export function useSessionTabAvatarState(
   })
   const needsAttention = createMemo(() => hasPermissions() || hasQuestions())
   const unread = createMemo(
-    () => needsAttention() || notification.ensureServerState(server()).session.unseenCount(sessionId()) > 0,
+    () => needsAttention() || (notification.ensureServerState(server())?.session.unseenCount(sessionId()) ?? 0) > 0,
   )
   const loading = createMemo(() => {
     const serverSync = sync()

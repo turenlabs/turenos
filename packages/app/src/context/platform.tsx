@@ -4,8 +4,10 @@ import type { Accessor } from "solid-js"
 import type { DesktopMenuAction } from "../desktop-menu"
 import { ServerConnection } from "./server"
 import type { WslServersPlatform } from "../wsl/types"
+import type { SshServersPlatform } from "../ssh/types"
 import type { UpdaterPlatform } from "../updater"
 import type { ProfilerPlatform } from "../profiler"
+import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
 
 type PickerPaths = string | string[] | null
 type OpenDirectoryPickerOptions = { title?: string; multiple?: boolean }
@@ -71,6 +73,9 @@ type PlatformBase = {
   /** Stable platform window identity for window-scoped persistence */
   windowID?: string
 
+  /** Isolated desktop browser/proxy workspace; absent on web and remote servers. */
+  securityProxy?: SecurityProxy.Platform
+
   /** Application-global desktop updater */
   updater?: UpdaterPlatform
 
@@ -85,6 +90,9 @@ type PlatformBase = {
 
   /** Manage WSL sidecar servers (Electron on Windows only) */
   wslServers?: WslServersPlatform
+
+  /** Manage SSH remote servers (desktop only, any OS with an ssh client) */
+  sshServers?: SshServersPlatform
 
   /** Get the preferred display backend (desktop only) */
   getDisplayBackend?(): Promise<DisplayBackend | null> | DisplayBackend | null

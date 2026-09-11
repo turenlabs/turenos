@@ -17,7 +17,6 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { ProjectV2 } from "@turenlabs/core/project"
 import { CrossSpawnSpawner } from "@turenlabs/core/cross-spawn-spawner"
 import { testEffect } from "../lib/effect"
-import { RuntimeFlags } from "@/effect/runtime-flags"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 
@@ -98,21 +97,6 @@ function projectV2FailureLayer() {
 
 const failureIt = (failArg: string) =>
   testEffect(AppNodeBuilder.build(projectTestNode, [[Project.node, projectLayerWithFailure(failArg)]]))
-
-const iconDiscoveryIt = testEffect(
-  AppNodeBuilder.build(projectTestNode, [[RuntimeFlags.node, RuntimeFlags.layer({ experimentalIconDiscovery: true })]]),
-)
-
-function waitForProjectIcon(id: ProjectV2.ID, attempts = 50): Effect.Effect<Project.Info, never, Project.Service> {
-  return Effect.gen(function* () {
-    const project = yield* Project.Service
-    const info = yield* project.get(id)
-    if (info?.icon?.url) return info
-    if (attempts <= 0) throw new Error(`Project icon was not discovered: ${id}`)
-    yield* Effect.sleep("10 millis")
-    return yield* waitForProjectIcon(id, attempts - 1)
-  })
-}
 
 describe("Project.fromDirectory", () => {
   it.live("should handle git repository with no commits", () =>
@@ -479,102 +463,6 @@ describe("Project.fromDirectory with worktrees", () => {
       expect(result.project.worktree).toBe(worktree1)
       expect(result.project.sandboxes).toContain(worktree2)
       expect(result.project.sandboxes).not.toContain(tmp)
-    }),
-  )
-})
-
-describe("Project.discover", () => {
-  iconDiscoveryIt.live("discovers favicon from fromDirectory when enabled", () =>
-    Effect.gen(function* () {
-      const project = yield* Project.Service
-      const tmp = yield* tmpdirScoped({ git: true })
-      const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-      yield* Effect.promise(() => Bun.write(path.join(tmp, "favicon.png"), pngData))
-
-      const result = yield* project.fromDirectory(tmp)
-      const updated = yield* waitForProjectIcon(result.project.id)
-
-      expect(updated.icon?.url).toStartWith("data:")
-      expect(updated.icon?.url).toContain("base64")
-    }),
-  )
-
-  it.live("should discover favicon.png in root", () =>
-    Effect.gen(function* () {
-      const project = yield* Project.Service
-      const tmp = yield* tmpdirScoped({ git: true })
-      const result = yield* project.fromDirectory(tmp)
-
-      const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-      yield* Effect.promise(() => Bun.write(path.join(tmp, "favicon.png"), pngData))
-
-      yield* project.discover(result.project)
-
-      const updated = yield* project.get(result.project.id)
-      expect(updated).toBeDefined()
-      expect(updated!.icon).toBeDefined()
-      expect(updated!.icon?.url).toStartWith("data:")
-      expect(updated!.icon?.url).toContain("base64")
-      expect(updated!.icon?.color).toBeUndefined()
-    }),
-  )
-
-  it.live("should discover the favicon with the shortest path", () =>
-    Effect.gen(function* () {
-      const project = yield* Project.Service
-      const tmp = yield* tmpdirScoped({ git: true })
-      const result = yield* project.fromDirectory(tmp)
-
-      const shortest = Buffer.from("shortest")
-      yield* Effect.promise(() => Bun.write(path.join(tmp, "favicon.ico"), shortest))
-      yield* Effect.promise(() => Bun.write(path.join(tmp, "favicon.jpeg"), "longer"))
-
-      yield* project.discover(result.project)
-
-      const updated = yield* project.get(result.project.id)
-      expect(updated?.icon?.url).toEndWith(shortest.toString("base64"))
-    }),
-  )
-
-  it.live("should not discover non-image files", () =>
-    Effect.gen(function* () {
-      const project = yield* Project.Service
-      const tmp = yield* tmpdirScoped({ git: true })
-      const result = yield* project.fromDirectory(tmp)
-
-      yield* Effect.promise(() => Bun.write(path.join(tmp, "favicon.txt"), "not an image"))
-
-      yield* project.discover(result.project)
-
-      const updated = yield* project.get(result.project.id)
-      expect(updated).toBeDefined()
-      expect(updated!.icon).toBeUndefined()
-    }),
-  )
-
-  it.live("should not discover favicon when override is set", () =>
-    Effect.gen(function* () {
-      const project = yield* Project.Service
-      const tmp = yield* tmpdirScoped({ git: true })
-      const result = yield* project.fromDirectory(tmp)
-
-      yield* project.update({
-        projectID: result.project.id,
-        icon: { override: "data:image/png;base64,override" },
-      })
-
-      const updatedProject = yield* project.get(result.project.id)
-      if (!updatedProject) throw new Error("Project not found")
-
-      const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-      yield* Effect.promise(() => Bun.write(path.join(tmp, "favicon.png"), pngData))
-
-      yield* project.discover(updatedProject)
-
-      const updated = yield* project.get(result.project.id)
-      expect(updated).toBeDefined()
-      expect(updated!.icon?.override).toBe("data:image/png;base64,override")
-      expect(updated!.icon?.url).toBeUndefined()
     }),
   )
 })

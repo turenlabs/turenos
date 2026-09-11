@@ -148,6 +148,79 @@ test("cleanup cancels reconnect checks and delegated offset observation", async 
   route.remove()
 })
 
+test("detects reconnect when an intermediate ancestor is removed and re-added", async () => {
+  const route = document.createElement("section")
+  const inner = document.createElement("div")
+  const viewport = document.createElement("div")
+  route.append(inner)
+  inner.append(viewport)
+  document.body.append(route)
+  const instance = {
+    scrollElement: viewport,
+    targetWindow: window,
+    scrollOffset: 12_000,
+    options: {
+      horizontal: false,
+      isRtl: false,
+      isScrollingResetDelay: 0,
+      useScrollendEvent: false,
+    },
+  } as unknown as Virtualizer<HTMLDivElement, HTMLDivElement>
+  const calls: [number, boolean][] = []
+  const cleanup = observeElementOffsetReconnectAware(instance, (offset, isScrolling) => {
+    calls.push([offset, isScrolling])
+    instance.scrollOffset = offset
+  })
+
+  route.remove()
+  document.body.append(route)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await frames(3)
+
+  expect(calls).toEqual([[0, false]])
+  cleanup?.()
+  route.remove()
+})
+
+test("does not run contains checks for mutations in sibling subtrees", async () => {
+  const route = document.createElement("section")
+  const viewport = document.createElement("div")
+  const decoy = document.createElement("div")
+  const decoyChild = document.createElement("span")
+  route.append(viewport)
+  document.body.append(route, decoy)
+  const instance = {
+    scrollElement: viewport,
+    targetWindow: window,
+    scrollOffset: 0,
+    options: {
+      horizontal: false,
+      isRtl: false,
+      isScrollingResetDelay: 0,
+      useScrollendEvent: false,
+    },
+  } as unknown as Virtualizer<HTMLDivElement, HTMLDivElement>
+  const calls: number[] = []
+  const cleanup = observeElementOffsetReconnectAware(instance, (offset) => calls.push(offset))
+
+  let containsChecks = 0
+  const realContains = decoyChild.contains.bind(decoyChild)
+  decoyChild.contains = (node: Node | null) => {
+    containsChecks += 1
+    return realContains(node)
+  }
+  decoy.append(decoyChild)
+  decoyChild.remove()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await frames(2)
+
+  expect(containsChecks).toBe(0)
+  expect(calls).toEqual([])
+  cleanup?.()
+  route.remove()
+  decoy.remove()
+})
+
 async function frames(count: number) {
   for (let index = 0; index < count; index++) {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))

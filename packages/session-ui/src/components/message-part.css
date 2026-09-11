@@ -654,6 +654,107 @@
   }
 }
 
+[data-component="failure-tool-group-trigger"] {
+  width: 100%;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0px;
+  cursor: default;
+
+  [data-slot="failure-tool-group-title"] {
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  [data-slot="collapsible-arrow"] {
+    color: var(--icon-weaker);
+    cursor: pointer;
+  }
+}
+
+[data-component="failure-tool-group-list"] {
+  padding-top: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  [data-slot="failure-tool-group-item"] {
+    min-width: 0;
+    padding: 0;
+  }
+}
+
+[data-component="board-note-list"] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 12px;
+
+  [data-slot="board-note"] {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  [data-slot="board-note-header"] {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  [data-slot="board-note-kind"] {
+    flex-shrink: 0;
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--v2-text-text-faint);
+  }
+
+  [data-slot="board-note-title"] {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--v2-text-text-strong);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  [data-slot="board-note-author"],
+  [data-slot="board-note-superseded"] {
+    flex-shrink: 0;
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    color: var(--v2-text-text-faint);
+  }
+
+  [data-slot="board-note-superseded"] {
+    text-decoration: line-through;
+  }
+
+  [data-slot="board-note-body"],
+  [data-slot="board-note-evidence"] {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--v2-text-text-base);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  [data-slot="board-note-evidence"] {
+    color: var(--v2-text-text-muted);
+  }
+}
+
 [data-component="diagnostics"] {
   display: flex;
   flex-direction: column;

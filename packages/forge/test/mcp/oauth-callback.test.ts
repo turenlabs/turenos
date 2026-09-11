@@ -111,4 +111,46 @@ describe("McpOAuthCallback.ensureRunning", () => {
     expect(await canConnect("127.0.0.1", port)).toBe(true)
     expect(await canConnect("::1", port)).toBe(false)
   })
+
+  test("falls back to a free port when the default is occupied", async () => {
+    // A squatter on the default port (another Forge process, a foreign app) can
+    // never resolve this process's pending states, so the server must move.
+    const squatter = createNetServer()
+    await new Promise<void>((resolve, reject) => {
+      squatter.once("error", reject)
+      squatter.listen(19876, "127.0.0.1", () => resolve())
+    })
+    try {
+      const bound = await McpOAuthCallback.ensureRunning()
+      expect(bound.port).toBeGreaterThan(19876)
+      expect(bound.path).toBe("/mcp/oauth/callback")
+      expect(McpOAuthCallback.isRunning()).toBe(true)
+
+      const callback = McpOAuthCallback.waitForCallback("fallback-state")
+      const response = await fetch(`http://127.0.0.1:${bound.port}${bound.path}?code=code&state=fallback-state`)
+      expect(response.status).toBe(200)
+      expect(await callback).toBe("code")
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()))
+    }
+  })
+
+  test("fails descriptively when a configured port is occupied", async () => {
+    const squatter = createNetServer()
+    await new Promise<void>((resolve, reject) => {
+      squatter.once("error", reject)
+      squatter.listen(18010, "127.0.0.1", () => resolve())
+    })
+    try {
+      await expect(McpOAuthCallback.ensureRunning("http://127.0.0.1:18010/cb")).rejects.toThrow("already in use")
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()))
+    }
+  })
+
+  test("rejects non-GET requests", async () => {
+    const bound = await McpOAuthCallback.ensureRunning("http://127.0.0.1:18011/custom/callback")
+    const response = await fetch(`http://127.0.0.1:${bound.port}${bound.path}?code=x&state=y`, { method: "POST" })
+    expect(response.status).toBe(405)
+  })
 })

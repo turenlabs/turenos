@@ -8,6 +8,9 @@ import { getUserShell, loadShellEnv } from "./shell-env"
 import { IS_DEV } from "./constants"
 import type { SidecarProfileMessage } from "./profiler/sidecar-profiler"
 import type { CredentialVault } from "./secret-key"
+import { randomUUID } from "node:crypto"
+import { parseProxyCommand, parseProxyReply } from "./security-proxy-bridge"
+import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
 
 export type HealthCheck = { wait: Promise<void> }
 
@@ -15,6 +18,7 @@ type SidecarMessage =
   | { type: "ready" }
   | { type: "stopped" }
   | { type: "error"; error: { message: string; stack?: string } }
+  | { type: "security-proxy-result"; id: string; result?: SecurityProxy.Result; error?: string }
   | SidecarProfileMessage
 
 export type SidecarProfileCapture = {
@@ -35,7 +39,11 @@ export type SidecarProfiler = {
   abort: () => void
 }
 
-export type SidecarListener = { stop: () => Promise<void>; profile: SidecarProfiler }
+export type SidecarListener = {
+  stop: () => Promise<void>
+  profile: SidecarProfiler
+  securityProxy: (command: SecurityProxy.StoreCommand) => Promise<SecurityProxy.Result>
+}
 
 const SIDECAR_SERVICE_NAME = "forge server"
 const SIDECAR_START_STALL_TIMEOUT = 60_000
@@ -53,6 +61,7 @@ type SpawnLocalServerOptions = {
   onStdout?: (message: string) => void
   onStderr?: (message: string) => void
   onExit?: (code: number) => void
+  securityProxyCommand?: (command: SecurityProxy.Command) => Promise<SecurityProxy.Result>
 }
 
 export function preferAppEnv(userDataPath: string) {
@@ -118,6 +127,14 @@ export async function spawnLocalServer(
     }
 
     const onMessage = (message: SidecarMessage) => {
+      const proxy = parseProxyCommand(message)
+      if (proxy) {
+        void options.securityProxyCommand?.(proxy.command).then(
+          (result) => child.postMessage({ type: "security-proxy-result", id: proxy.id, result }),
+          (error) => child.postMessage({ type: "security-proxy-result", id: proxy.id, error: String(error).slice(0, 1024) }),
+        )
+        return
+      }
       if (message.type === "ready") {
         if (done) return
         done = true
@@ -153,6 +170,17 @@ export async function spawnLocalServer(
     if (!exited) child.kill()
     throw error
   })
+
+  const onSecurityProxyCommand = (value: unknown) => {
+    const proxy = parseProxyCommand(value)
+    if (!proxy) return
+    void options.securityProxyCommand?.(proxy.command).then(
+      (result) => child.postMessage({ type: "security-proxy-result", id: proxy.id, result }),
+      (error) => child.postMessage({ type: "security-proxy-result", id: proxy.id, error: String(error).slice(0, 1024) }),
+    )
+  }
+  child.on("message", onSecurityProxyCommand)
+  child.once("exit", () => child.off("message", onSecurityProxyCommand))
 
   const wait = (async () => {
     const url = `http://${hostname}:${port}`
@@ -242,13 +270,53 @@ export async function spawnLocalServer(
     : { start: profilerUnavailable, stop: profilerUnavailable, abort: () => {} }
 
   let stopping: Promise<void> | undefined
+  const proxyPending = new Map<
+    string,
+    {
+      resolve: (result: SecurityProxy.Result) => void
+      reject: (error: Error) => void
+      timer: ReturnType<typeof setTimeout>
+    }
+  >()
+  const rejectProxy = () => {
+    for (const item of proxyPending.values()) {
+      clearTimeout(item.timer)
+      item.reject(new Error("Sidecar disconnected; operation outcome may be unknown"))
+    }
+    proxyPending.clear()
+  }
+  child.once("exit", rejectProxy)
+  child.on("message", (value: unknown) => {
+    const reply = parseProxyReply(value)
+    if (!reply) return
+    const pending = proxyPending.get(reply.id)
+    if (!pending) return
+    proxyPending.delete(reply.id)
+    clearTimeout(pending.timer)
+    if (reply.error || !reply.result) return pending.reject(new Error(reply.error ?? "Invalid proxy reply"))
+    pending.resolve(reply.result)
+  })
 
   return {
     listener: {
       profile,
+      securityProxy: (command: SecurityProxy.StoreCommand) =>
+        new Promise<SecurityProxy.Result>((resolve, reject) => {
+          if (exited || stopping) return reject(new Error("Sidecar is not running"))
+          if (proxyPending.size >= 32 || JSON.stringify(command).length > 8 * 1024 * 1024)
+            return reject(new Error("Proxy bridge capacity exceeded"))
+          const id = randomUUID()
+          const timer = setTimeout(() => {
+            proxyPending.delete(id)
+            reject(new Error("Proxy operation timed out; do not automatically repeat a send"))
+          }, 15_000)
+          proxyPending.set(id, { resolve, reject, timer })
+          child.postMessage({ type: "security-proxy", id, command })
+        }),
       stop: () => {
         if (stopping) return stopping
         if (exited) return Promise.resolve()
+        rejectProxy()
         child.postMessage({ type: "stop" })
         stopping = Promise.race([
           exit.promise.then(() => undefined),

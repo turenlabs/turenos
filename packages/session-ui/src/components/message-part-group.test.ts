@@ -2,7 +2,12 @@ import { expect, test } from "bun:test"
 import type { Part, ToolPart } from "@turenlabs/sdk/v2"
 import { contextToolSummary, groupParts, sameGroups } from "./message-part-group"
 
-function tool(id: string, name: string, status: "completed" | "running" | "error" = "completed") {
+function tool(
+  id: string,
+  name: string,
+  status: "completed" | "running" | "error" = "completed",
+  error = "Permission denied",
+) {
   return {
     messageID: "assistant-1",
     part: {
@@ -14,7 +19,7 @@ function tool(id: string, name: string, status: "completed" | "running" | "error
       tool: name,
       state:
         status === "error"
-          ? { status, input: {}, error: "Permission denied", time: { start: 1, end: 2 } }
+          ? { status, input: {}, error, time: { start: 1, end: 2 } }
           : status === "running"
             ? { status, input: {}, time: { start: 1 } }
             : { status, input: {}, output: "raw result", metadata: {}, title: name, time: { start: 1, end: 2 } },
@@ -56,6 +61,32 @@ test("failed reads and coordination are individual error rows between routine gr
       ref: { messageID: "assistant-1", partID: "failure" },
     })
   }
+})
+
+test("a run of identical tool rejections collapses into one failure group", () => {
+  const parts = [
+    tool("before", "read"),
+    ...Array.from({ length: 5 }, (_, index) => tool(`fail-${index}`, "bash", "error", "Session active shell job limit reached")),
+    tool("after", "read"),
+  ]
+  const groups = groupParts(parts)
+  expect(groups.map((group) => group.type)).toEqual(["context", "failure", "context"])
+  expect(groups[1]).toEqual({
+    key: "failure:fail-0",
+    type: "failure",
+    refs: parts.slice(1, 6).map((item) => ({ messageID: item.messageID, partID: item.part.id })),
+  })
+})
+
+test("failures only group when tool and error both match", () => {
+  const groups = groupParts([
+    tool("a", "bash", "error", "limit reached"),
+    tool("b", "read", "error", "limit reached"),
+    tool("c", "bash", "error", "different error"),
+    tool("d", "bash", "error", "different error"),
+  ])
+  expect(groups.map((group) => group.type)).toEqual(["part", "part", "failure"])
+  expect(groups[2]?.type === "failure" ? groups[2].refs.map((ref) => ref.partID) : []).toEqual(["c", "d"])
 })
 
 test("a failing running tool leaves its quiet group instead of hiding the error", () => {

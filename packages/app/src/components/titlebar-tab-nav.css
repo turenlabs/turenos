@@ -188,7 +188,8 @@
     padding-inline: 0;
   }
 
-  [data-titlebar-tab-title] {
+  [data-titlebar-tab-title],
+  [data-slot="tab-project"] {
     display: none;
   }
 

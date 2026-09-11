@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "name": "@turenlabs/core",
   "type": "module",
   "license": "MIT",
@@ -68,6 +68,7 @@
     "drizzle-kit": "catalog:"
   },
   "dependencies": {
+    "@turenlabs/protocol": "workspace:*",
     "@ai-sdk/alibaba": "1.0.17",
     "@ai-sdk/amazon-bedrock": "4.0.112",
     "@ai-sdk/anthropic": "3.0.82",

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { join } from "node:path"
 import * as pty from "@lydell/node-pty"
 import type { WslDistroProbe, WslInstalledDistro, WslOnlineDistro, WslRuntimeCheck } from "../../preload/types"
+import { FORGE_REMOTE_SHIM } from "../ssh/shim"
 import { detectOutputEncoding } from "./output-encoding"
 import { wslTerminalArgs } from "./policy"
 
@@ -252,13 +253,17 @@ export async function installWslDistro(name: string, opts?: RunWslOptions) {
 }
 
 export async function installWslForge(version: string, distro: string, opts?: RunWslOptions) {
+  // Pipe the lifecycle shim's `install` over stdin: it self-detects the
+  // distro's platform and downloads + verifies the matching public release
+  // asset, so installation never depends on the published install script.
+  const encoded = Buffer.from(FORGE_REMOTE_SHIM).toString("base64")
   return runInteractiveCommand(
     resolveSystem32Command("wsl.exe"),
     wslArgs(
       [
         "bash",
         "-lc",
-        `command -v gh >/dev/null || { echo 'TurenOS installation requires GitHub CLI in WSL' >&2; exit 1; }; gh api -H 'Accept: application/vnd.github.raw+json' repos/turenlabs/forge/contents/install | bash -s -- --version ${shellEscape(version)}`,
+        `command -v curl >/dev/null || { echo 'TurenOS installation requires curl in WSL' >&2; exit 1; }; echo ${shellEscape(encoded)} | base64 -d | sh -s install ${shellEscape(version)}`,
       ],
       distro,
     ),

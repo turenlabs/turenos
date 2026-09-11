@@ -219,9 +219,28 @@ export const make = Effect.gen(function* () {
               return yield* new ToolFailure({ message: "Shell job identity conflicts with an earlier command" })
             return yield* observe(input.sessionID, id)
           }
-          if (active.size >= MAX_ACTIVE) return yield* new ToolFailure({ message: "Active shell job limit reached" })
-          if ([...active.values()].filter((job) => job.sessionID === input.sessionID).length >= MAX_OWNER_ACTIVE)
-            return yield* new ToolFailure({ message: "Session active shell job limit reached" })
+          if (active.size >= MAX_ACTIVE)
+            return yield* new ToolFailure({
+              message: `Shell job limit reached (${active.size}/${MAX_ACTIVE} active across all sessions). Retry after running jobs complete.`,
+            })
+          const ownerJobs = [...active.entries()].flatMap(([id, job]) => (job.sessionID === input.sessionID ? [id] : []))
+          if (ownerJobs.length >= MAX_OWNER_ACTIVE) {
+            // The bare rejection invited blind retries: name the occupants and the remedy so the
+            // next action is shell_job wait/status/cancel on a listed job, not another bash call.
+            const occupants = yield* Effect.forEach(
+              ownerJobs,
+              (id) =>
+                read(input.sessionID, id).pipe(
+                  Effect.map(
+                    (record) => `${record.id} ${record.status} ${Math.round((Date.now() - record.createdAt) / 1000)}s`,
+                  ),
+                ),
+              { concurrency: "unbounded" },
+            )
+            return yield* new ToolFailure({
+              message: `Session active shell job limit reached (${ownerJobs.length}/${MAX_OWNER_ACTIVE} in use: ${occupants.join(", ")}). Use shell_job list/status/output/wait/cancel on a listed job to free a slot, or retry once one completes.`,
+            })
+          }
           const record: Record = {
             id,
             sessionID: input.sessionID,

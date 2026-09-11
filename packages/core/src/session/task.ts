@@ -23,6 +23,7 @@ import { AgentV2 } from "../agent"
 import { ModelV2 } from "../model"
 import { ProviderV2 } from "../provider"
 import { SessionTaskActorClaimTable, SessionTaskOperationTable, SessionTaskTable } from "./task.sql"
+import { TeamBoard } from "../team/board"
 
 export const ID = SessionTask.ID
 export type ID = SessionTask.ID
@@ -288,6 +289,7 @@ export interface Interface {
     readonly text: string
     readonly messageID?: SessionMessage.ID
     readonly source?: SessionInput.Source
+    readonly coalesce?: boolean
     readonly allowTerminal?: boolean
   }) => Effect.Effect<
     { readonly sessionID: SessionSchema.ID; readonly admitted: boolean } | undefined,
@@ -306,8 +308,20 @@ export interface Interface {
     readonly sessionID: SessionSchema.ID
     readonly status: "completed" | "failed" | "interrupted"
     readonly error?: string
-  }) => Effect.Effect<Info | undefined, ConflictError | InvalidStateError | ActiveLimitError>
+  }) => Effect.Effect<
+    { readonly task: Info; readonly transitioned: boolean } | undefined,
+    ConflictError | InvalidStateError | ActiveLimitError
+  >
   readonly reconcile: () => Effect.Effect<void, NotFoundError | ConflictError | ActiveLimitError>
+  /**
+   * Re-admit a queued advisory for every board note still marked pending after a
+   * crash and mark it delivered. Runs during layer construction; admit-only, so
+   * the durable inputs promote on each parent's next drain.
+   */
+  readonly deliverPendingParentNotifications: () => Effect.Effect<
+    void,
+    NotFoundError | ConflictError | TeamBoard.Failure
+  >
 }
 
 export class Service extends Context.Service<Service, Interface>()("@forge/v2/SessionTask") {}
@@ -323,6 +337,7 @@ const layer = Layer.effect(
     const events = yield* EventV2.Service
     const creation = yield* SessionCreation.Service
     const sessions = yield* SessionStore.Service
+    const board = yield* TeamBoard.Service
     const actorOperations = KeyedMutex.makeUnsafe<string>()
     const roots = KeyedMutex.makeUnsafe<SessionSchema.ID>()
     const removalLeases = new Map<SessionSchema.ID, symbol>()
@@ -1562,7 +1577,7 @@ const layer = Layer.effect(
               message: "Parent notification message ID conflicts with an existing input",
             })
           if (existingRow.time_cancelled === null) return { id: candidate, existing: true } as const
-          if (input.source !== "subagent_board" || existing === undefined)
+          if (input.source === undefined || input.source === "user" || existing === undefined)
             return yield* new ConflictError({
               resource: candidate,
               message: "Parent notification message ID refers to a cancelled input",
@@ -1583,7 +1598,13 @@ const layer = Layer.effect(
           source: input.source,
         })
         if (identity.state === "active" && equivalent) return { id: candidate, existing: false } as const
-        if (identity.state === "reverted" && input.source === "subagent_board" && equivalent && identity.admitted)
+        if (
+          identity.state === "reverted" &&
+          input.source !== undefined &&
+          input.source !== "user" &&
+          equivalent &&
+          identity.admitted
+        )
           return yield* resolveNotificationID(
             input,
             SessionMessage.ID.make(`${candidate}_reopen_${identity.admitted.admittedSeq}`),
@@ -1600,6 +1621,9 @@ const layer = Layer.effect(
         readonly text: string
         readonly messageID?: SessionMessage.ID
         readonly source?: SessionInput.Source
+        /** Fold into an already-pending advisory of the same source. Only board digests opt in —
+         *  a settle or direct advisory carries unique content that must not be dropped. */
+        readonly coalesce?: boolean
         readonly allowTerminal?: boolean
       }) =>
         Effect.uninterruptible(
@@ -1623,7 +1647,11 @@ const layer = Layer.effect(
                   )
                 : undefined
               if (resolved?.existing) return { sessionID: parent.id, admitted: true } as const
-              if (input.source && (yield* SessionInput.hasPendingSource(primary, parent.id, input.source)))
+              if (
+                input.source &&
+                input.coalesce === true &&
+                (yield* SessionInput.hasPendingSource(primary, parent.id, input.source))
+              )
                 return { sessionID: parent.id, admitted: false } as const
               if (encodedBytes(prompt) > MAX_PROMPT_BYTES)
                 return yield* new ConflictError({
@@ -1704,14 +1732,14 @@ const layer = Layer.effect(
       return yield* Effect.gen(function* () {
         const current = yield* owner(input.sessionID)
         if (!current) return
-        if (terminal.has(current.status)) return current
+        if (terminal.has(current.status)) return { task: current, transitioned: false }
         if (current.status !== "running")
           return yield* new InvalidStateError({
             taskID: current.id,
             status: current.status,
             message: "Only a running subagent may settle its Session drain",
           })
-        if (yield* hasPendingInput(input.sessionID)) return current
+        if (yield* hasPendingInput(input.sessionID)) return { task: current, transitioned: false }
         const row = yield* primary
           .select()
           .from(SessionMessageTable)
@@ -1738,10 +1766,13 @@ const layer = Layer.effect(
           text && text.length > MAX_RESULT_LENGTH
             ? `${text.slice(0, MAX_RESULT_LENGTH - RESULT_TRUNCATED_SUFFIX.length)}${RESULT_TRUNCATED_SUFFIX}`
             : text
-        return yield* update(current, input.status, {
-          result: result || undefined,
-          error: input.error?.slice(0, MAX_ERROR_LENGTH),
-        })
+        return {
+          task: yield* update(current, input.status, {
+            result: result || undefined,
+            error: input.error?.slice(0, MAX_ERROR_LENGTH),
+          }),
+          transitioned: true,
+        }
       }).pipe(roots.withLock(task.rootSessionID))
     })
 
@@ -1827,6 +1858,26 @@ const layer = Layer.effect(
       }
     })
 
+    const deliverPendingParentNotifications = Effect.fn("SessionTask.deliverPendingParentNotifications")(function* () {
+      for (const parentSessionID of yield* board.pendingParentSessions()) {
+        for (const note of yield* board.pendingParentNotes({ parentSessionID })) {
+          const task = yield* owner(note.authorSessionID)
+          if (task !== undefined)
+            yield* notifyParent({
+              taskID: task.id,
+              text: TeamBoard.parentUpdateText(note),
+              messageID: TeamBoard.parentNotificationID(note),
+              source: "subagent_board",
+              coalesce: true,
+            })
+          // A fresh admit, a coalesced same-source admit, and a missing or terminal
+          // task all resolve the note: the parent either holds the advisory or
+          // learns the outcome from the child's final report.
+          yield* board.markParentNotified(note.id)
+        }
+      }
+    })
+
     const result = Service.of({
       spawn,
       send,
@@ -1868,10 +1919,12 @@ const layer = Layer.effect(
       authorizeRelocation,
       settleRun,
       reconcile,
+      deliverPendingParentNotifications,
     })
 
     yield* registerProjectors(primary, events, signalTaskChanged)
     yield* reconcile()
+    yield* deliverPendingParentNotifications()
     return result
   }),
 )
@@ -2601,5 +2654,5 @@ function mapProjection(resource: string) {
 export const node = makeGlobalNode({
   service: Service,
   layer: layer.pipe(Layer.orDie),
-  deps: [Database.node, EventV2.node, SessionCreation.node, SessionStore.node],
+  deps: [Database.node, EventV2.node, SessionCreation.node, SessionStore.node, TeamBoard.node],
 })

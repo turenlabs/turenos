@@ -12,6 +12,8 @@ import {
   PlatformProvider,
   ServerConnection,
   useCommand,
+  useSshServers,
+  useTabs,
   useWslServers,
 } from "@turenlabs/app"
 import type { UpdaterState } from "@turenlabs/app/updater"
@@ -27,6 +29,7 @@ import { initializationData } from "./initialization"
 import { DesktopFirstLaunchOnboarding } from "./onboarding"
 import { resetZoom, setPinchZoomEnabled, webviewZoom, zoomIn, zoomOut } from "./webview-zoom"
 import { availableStartupServer, readyWslConnections } from "./wsl/connections"
+import { readySshConnections } from "./ssh/connections"
 import "./styles.css"
 import { Splash } from "@turenlabs/ui/logo"
 import { useTheme } from "@turenlabs/ui/theme/context"
@@ -144,6 +147,7 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
   })()
 
   const wslServersApi = os === "windows" ? window.api.wslServers : undefined
+  const sshServersApi = window.api.sshServers
 
   return {
     platform: "desktop",
@@ -219,6 +223,7 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
     },
 
     exportDebugLogs: () => window.api.exportDebugLogs(),
+    securityProxy: window.api.securityProxy,
 
     // Absent unless this is a dev build; the preload bridge omits it otherwise.
     profiler: window.api.profiler,
@@ -262,6 +267,7 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
     },
 
     wslServers: wslServersApi,
+    sshServers: sshServersApi,
 
     getDisplayBackend: async () => {
       return window.api.getDisplayBackend().catch(() => null)
@@ -341,8 +347,28 @@ function DesktopRoot(props: { windowState: DesktopWindowState }) {
   }
 
   function Inner() {
+    const tabs = useTabs()
+    onCleanup(
+      window.api.securityProxy.onFocus((caseID) => {
+        const sessionID = caseID.startsWith("browser_") ? caseID.slice("browser_".length) : undefined
+        if (!sessionID) return
+        const tab = tabs.store.find((item) => item.type === "session" && item.sessionId === sessionID)
+        if (!tab || tab.type !== "session") return
+        tabs.select(tab)
+        tabs.setLiveView("browser")
+      }),
+    )
     const cmd = useCommand()
     menuTrigger = (id) => cmd.trigger(id)
+    cmd.register("desktop-security-proxy", () => [
+      {
+        id: "security.proxy",
+        title: "Open Security Browser and Proxy",
+        description: "Open the shared Security Browser for the active session",
+        category: "Security",
+        onSelect: () => tabs.setLiveView("browser"),
+      },
+    ])
 
     const theme = useTheme()
 
@@ -360,9 +386,15 @@ function DesktopRoot(props: { windowState: DesktopWindowState }) {
 
   function App() {
     const wslServers = useWslServers()
+    const sshServers = useSshServers()
     const ready = createMemo(
       () =>
-        !defaultServer.loading && !sidecar.loading && !windowCount.loading && !locale.loading && !wslServers.isLoading,
+        !defaultServer.loading &&
+        !sidecar.loading &&
+        !windowCount.loading &&
+        !locale.loading &&
+        !wslServers.isLoading &&
+        !sshServers.isLoading,
     )
     const servers = createMemo(() => {
       const data = initializationData(sidecar)
@@ -380,10 +412,11 @@ function DesktopRoot(props: { windowState: DesktopWindowState }) {
         })
       }
       list.push(...readyWslConnections(wslServers.data))
+      list.push(...readySshConnections(sshServers.data))
       return list
     })
     const effectiveDefaultServer = createMemo(() =>
-      ServerConnection.Key.make(availableStartupServer(defaultServer.latest, wslServers.data)),
+      ServerConnection.Key.make(availableStartupServer(defaultServer.latest, wslServers.data, sshServers.data)),
     )
     return (
       <Show when={ready()} fallback={<LoadingSplash />}>

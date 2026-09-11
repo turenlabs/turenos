@@ -212,6 +212,35 @@ describe("persist localStorage resilience", () => {
     expect(removed).toEqual([])
   })
 
+  test("sanitizes asynchronous migration values before the desktop write", async () => {
+    let written: string | undefined
+    const current = {
+      getItem: async () => written ?? null,
+      setItem: async (_key: string, value: string) => {
+        written = value
+      },
+      removeItem: async () => undefined,
+    }
+    const legacy = {
+      getItem: async () => '{"value":"legacy"}',
+      setItem: async () => undefined,
+      removeItem: async () => undefined,
+    }
+
+    expect(
+      await persistTesting.migrateLegacyAsync({
+        current,
+        legacyStore: legacy,
+        stores: [],
+        keys: ["old-value"],
+        key: "value",
+        defaults: { value: "default" },
+        sanitize: () => ({ value: "sanitized" }),
+      }),
+    ).toBe('{"value":"sanitized"}')
+    expect(written).toBe('{"value":"sanitized"}')
+  })
+
   test("disables only the failing scope when storage throws", () => {
     const bad = persistTesting.localStorageWithPrefix("opencode.throw.scope")
     bad.setItem("value", '{"value":1}')
@@ -239,6 +268,16 @@ describe("persist localStorage resilience", () => {
   test("normalizer rejects malformed JSON payloads", () => {
     const result = persistTesting.normalize({ value: "ok" }, '{"value":"\\x"}')
     expect(result).toBeUndefined()
+  })
+
+  test("normalizer sanitizes values before migration writes them back", () => {
+    const result = persistTesting.normalize(
+      { value: "default" },
+      '{"value":"legacy"}',
+      undefined,
+      () => ({ value: "sanitized" }),
+    )
+    expect(result).toBe('{"value":"sanitized"}')
   })
 
   test("workspace storage sanitizes Windows filename characters", () => {

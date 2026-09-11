@@ -40,7 +40,9 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
 
     const ensure = (key: ServerConnection.Key) => {
       const conn = global.servers.list().find((item) => ServerConnection.key(item) === key)
-      if (!conn) throw new Error(`Permission server not found: ${key}`)
+      // A removed server can linger in consumers for a frame - return nothing
+      // rather than crash a reactive computation.
+      if (!conn) return undefined
       const ctx = global.ensureServerCtx(conn)
       const existing = states.get(ctx.sdk.scope)
       if (existing && global.servers.list().some((item) => ServerConnection.key(item) === existing.key)) {
@@ -92,7 +94,7 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       ready: () => true,
       ensureServerState: (key: ServerConnection.Key) => ensure(key),
       respond(input: Parameters<PermissionRespondFn>[0]) {
-        selected().respond(input)
+        selected()?.respond(input)
       },
       autoResponds(_permission: PermissionRequest, _directory?: string) {
         return false

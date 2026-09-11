@@ -37,7 +37,6 @@ export class Service extends ConfigService.Service<Service>()("@forge/RuntimeFla
   experimentalCodeMode: enabledByExperimental("FORGE_EXPERIMENTAL_CODE_MODE"),
   experimentalEventSystem: enabledByExperimental("FORGE_EXPERIMENTAL_EVENT_SYSTEM"),
   experimentalWorkspaces: enabledByExperimental("FORGE_EXPERIMENTAL_WORKSPACES"),
-  experimentalIconDiscovery: enabledByExperimental("FORGE_EXPERIMENTAL_ICON_DISCOVERY"),
   outputTokenMax: positiveInteger("FORGE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"),
   bashDefaultTimeoutMs: positiveInteger("FORGE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS"),
   experimentalNativeLlm: bool("FORGE_EXPERIMENTAL_NATIVE_LLM"),

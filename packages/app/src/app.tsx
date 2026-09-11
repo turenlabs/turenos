@@ -51,6 +51,8 @@ import { TabsProvider, useTabs, type DraftTab } from "@/context/tabs"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { TerminalProvider } from "@/context/terminal"
 import { WslServersProvider } from "@/wsl/context"
+import { SshServersProvider } from "@/ssh/context"
+import { SshPromptHost } from "@/ssh/prompt-host"
 import DirectoryLayout, { DirectoryDataProvider } from "@/pages/directory-layout"
 import LegacyLayout from "@/pages/layout"
 import NewLayout from "@/pages/layout-new"
@@ -370,6 +372,7 @@ function SharedProviders(props: ParentProps) {
       <BodyDesignClass />
       <CommandProvider>
         <DesktopCommands />
+        <SshPromptHost />
         <HighlightsProvider>{props.children}</HighlightsProvider>
       </CommandProvider>
     </>
@@ -465,11 +468,13 @@ export function AppBaseProviders(props: ParentProps<{ locale?: Locale; localeSou
             >
               <QueryProvider>
                 <WslServersProvider>
-                  <DialogProvider>
-                    <MarkedProvider>
-                      <FileComponentProvider component={File}>{props.children}</FileComponentProvider>
-                    </MarkedProvider>
-                  </DialogProvider>
+                  <SshServersProvider>
+                    <DialogProvider>
+                      <MarkedProvider>
+                        <FileComponentProvider component={File}>{props.children}</FileComponentProvider>
+                      </MarkedProvider>
+                    </DialogProvider>
+                  </SshServersProvider>
                 </WslServersProvider>
               </QueryProvider>
             </ErrorBoundary>

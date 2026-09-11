@@ -104,6 +104,10 @@ const expectedShapes = {
     properties: [],
     required: [],
   },
+  peek_agent: {
+    properties: ["limit", "task_id"],
+    required: ["task_id"],
+  },
   agent_doc: {
     properties: ["agent"],
     required: [],

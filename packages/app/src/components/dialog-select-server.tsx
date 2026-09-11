@@ -12,11 +12,12 @@ import { useNavigate } from "@solidjs/router"
 import { createEffect, createMemo, createResource, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { removeServerConnection } from "@/components/server/server-remove"
+import { DialogRemoveServer } from "@/components/server/dialog-remove-server"
 import { ServerHealthIndicator, ServerRow } from "@/components/server/server-row"
 import { useGlobal } from "@/context/global"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
-import { normalizeServerUrl, ServerConnection, useServer } from "@/context/server"
+import { normalizeServerUrl, ServerConnection, serverName, useServer } from "@/context/server"
 import { type ServerHealth, useCheckServerHealth } from "@/utils/server-health"
 import { useSettings } from "@/context/settings"
 import { useTabs } from "@/context/tabs"
@@ -90,21 +91,33 @@ function useServerPreview() {
     return host.includes(".") || host.includes(":")
   }
 
-  const previewStatus = async (
+  // Debounce: every keystroke that still parses as a URL used to fire a
+  // 30s-timeout health check against a half-typed host.
+  const PREVIEW_DEBOUNCE_MS = 400
+  let previewTimer: ReturnType<typeof setTimeout> | undefined
+  let previewGeneration = 0
+
+  const previewStatus = (
     value: string,
     username: string,
     password: string,
     setStatus: (value: boolean | undefined) => void,
   ) => {
     setStatus(undefined)
+    const generation = ++previewGeneration
+    if (previewTimer) clearTimeout(previewTimer)
     if (!looksComplete(value)) return
-    const normalized = normalizeServerUrl(value)
-    if (!normalized) return
-    const http: ServerConnection.HttpBase = { url: normalized }
-    if (username) http.username = username
-    if (password) http.password = password
-    const result = await checkServerHealth(http)
-    setStatus(result.healthy)
+    previewTimer = setTimeout(() => {
+      const normalized = normalizeServerUrl(value)
+      if (!normalized) return
+      const http: ServerConnection.HttpBase = { url: normalized }
+      if (username) http.username = username
+      if (password) http.password = password
+      void checkServerHealth(http).then((result) => {
+        // A slower probe resolving after a newer edit must not clobber it.
+        if (generation === previewGeneration) setStatus(result.healthy)
+      })
+    }, PREVIEW_DEBOUNCE_MS)
   }
 
   return { previewStatus }
@@ -200,6 +213,7 @@ export function useServerManagementController(options: { onSelect?: () => void; 
   const { defaultKey, canDefault, setDefault } = useDefaultServer()
   const { previewStatus } = useServerPreview()
   const checkServerHealth = useCheckServerHealth()
+  const dialog = useDialog()
   const [store, setStore] = createStore({
     addServer: {
       url: "",
@@ -367,7 +381,14 @@ export function useServerManagementController(options: { onSelect?: () => void; 
   })
 
   async function select(conn: ServerConnection.Any, persist?: boolean) {
-    if (!persist && global.servers.health[ServerConnection.key(conn)]?.healthy === false) return
+    if (!persist && global.servers.health[ServerConnection.key(conn)]?.healthy === false) {
+      showToast({
+        variant: "error",
+        title: language.t("dialog.server.unhealthy.title"),
+        description: language.t("dialog.server.unhealthy.description", { name: serverName(conn) }),
+      })
+      return
+    }
     options.onSelect?.()
     if (persist && conn.type === "http") {
       server.add(conn)
@@ -512,16 +533,35 @@ export function useServerManagementController(options: { onSelect?: () => void; 
     resetEdit()
   })
 
+  function confirmRemove(key: ServerConnection.Key) {
+    const conn = items().find((item) => ServerConnection.key(item) === key)
+    const name = conn ? serverName(conn) : key.replace(/^(wsl|ssh):/, "")
+    const managed = key.startsWith("wsl:") || key.startsWith("ssh:")
+    dialog.push(() => (
+      <DialogRemoveServer name={name} managed={managed} submit={() => handleRemove(key)} />
+    ))
+  }
+
   async function handleRemove(key: ServerConnection.Key) {
     try {
-      // Teardown must run while the server is still up; the WSL stop waits
+      // Teardown must run while the server is still up; the managed stop waits
       // for the batch (bounded) inside removeServerConnection.
       const wsl = platform.wslServers
+      const ssh = platform.sshServers
+      const stopManaged = key.startsWith("wsl:")
+        ? wsl
+          ? (target: ServerConnection.Key) => wsl.removeServer(target)
+          : undefined
+        : key.startsWith("ssh:")
+          ? ssh
+            ? (target: ServerConnection.Key) => ssh.removeServer(target)
+            : undefined
+          : undefined
       await removeServerConnection({
         key,
         removeTabs: (target) => tabs.removeServer(target),
         removeConnection: (target) => server.remove(target),
-        stopWslServer: wsl ? (target) => wsl.removeServer(target) : undefined,
+        stopManagedServer: stopManaged,
       })
       if ((await platform.getDefaultServer?.()) === key) {
         await setDefault(null)
@@ -553,6 +593,7 @@ export function useServerManagementController(options: { onSelect?: () => void; 
     startEdit,
     resetForm,
     submitForm,
+    confirmRemove,
     handleRemove,
     handleFormChange: () => (isAddMode() ? handleAddChange : handleEditChange),
     handleFormNameChange: () => (isAddMode() ? handleAddNameChange : handleEditNameChange),
@@ -642,7 +683,7 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
                         </Show>
                         <DropdownMenu.Separator />
                         <DropdownMenu.Item
-                          onSelect={() => props.controller.handleRemove(ServerConnection.key(i))}
+                          onSelect={() => props.controller.confirmRemove(ServerConnection.key(i))}
                           class="text-text-on-critical-base hover:bg-surface-critical-weak"
                         >
                           <DropdownMenu.ItemLabel>{language.t("dialog.server.menu.delete")}</DropdownMenu.ItemLabel>

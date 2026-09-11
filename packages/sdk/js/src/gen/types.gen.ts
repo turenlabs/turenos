@@ -883,7 +883,7 @@ export type GlobalEvent = {
           messageID: string
           prompt: Prompt
           delivery: "steer" | "queue"
-          source?: "user" | "subagent_board" | "shell_job"
+          source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
         }
       }
     | {
@@ -895,7 +895,7 @@ export type GlobalEvent = {
           messageID: string
           prompt: Prompt
           delivery: "steer" | "queue"
-          source?: "user" | "subagent_board" | "shell_job"
+          source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
           agent?: string
           model?: ModelRef
           command?: SessionInputCommandIntent
@@ -4100,7 +4100,7 @@ export type SyncEventSessionNextPrompted = {
       messageID: string
       prompt: Prompt
       delivery: "steer" | "queue"
-      source?: "user" | "subagent_board" | "shell_job"
+      source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
     }
   }
 }
@@ -4119,7 +4119,7 @@ export type SyncEventSessionNextPromptAdmitted = {
       messageID: string
       prompt: Prompt
       delivery: "steer" | "queue"
-      source?: "user" | "subagent_board" | "shell_job"
+      source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
       agent?: string
       model?: ModelRef
       command?: SessionInputCommandIntent
@@ -5438,7 +5438,7 @@ export type SessionInputAdmitted = {
   sessionID: string
   prompt: Prompt
   delivery: "steer" | "queue"
-  source?: "user" | "subagent_board" | "shell_job"
+  source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
   agent?: string
   model?: ModelRef
   timeCreated: number
@@ -5550,7 +5550,7 @@ export type SessionMessageUser = {
   time: {
     created: number
   }
-  source?: "user" | "subagent_board" | "shell_job"
+  source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
   text: string
   parts?: PromptTextParts
   files?: Array<PromptFileAttachment>
@@ -5647,6 +5647,9 @@ export type SessionMessageAssistantTool = {
   type: "tool"
   id: string
   name: string
+  truncated?: {
+    bytes: number
+  }
   provider?: {
     executed: boolean
     metadata?: LlmProviderMetadata
@@ -5729,7 +5732,7 @@ export type SessionInputOutboxItem = {
   sessionID: string
   prompt: Prompt
   delivery: "steer" | "queue"
-  source?: "user" | "subagent_board" | "shell_job"
+  source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
   agent?: string
   model?: ModelRef
   timeCreated: number
@@ -5835,7 +5838,7 @@ export type SessionNextPrompted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board" | "shell_job"
+    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
   }
 }
 
@@ -5857,7 +5860,7 @@ export type SessionNextPromptAdmitted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board" | "shell_job"
+    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
     agent?: string
     model?: ModelRef
     command?: SessionInputCommandIntent
@@ -8428,7 +8431,7 @@ export type EventSessionNextPrompted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board" | "shell_job"
+    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
   }
 }
 
@@ -8441,7 +8444,7 @@ export type EventSessionNextPromptAdmitted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board" | "shell_job"
+    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
     agent?: string
     model?: ModelRef
     command?: SessionInputCommandIntent
@@ -15660,6 +15663,7 @@ export type V2SessionMessagesData = {
      * Opaque pagination cursor returned as cursor.previous or cursor.next in the previous response. Do not combine with order.
      */
     cursor?: string
+    lean?: "true" | "false"
   }
   url: "/api/session/{sessionID}/message"
 }

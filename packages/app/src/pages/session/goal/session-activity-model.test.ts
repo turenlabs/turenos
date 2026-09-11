@@ -3,7 +3,13 @@ import type { Message, ToolPart } from "@turenlabs/sdk/v2"
 import { groupSessionActivity, sessionActivityKind } from "./session-activity-model"
 
 const message = { id: "assistant", parentID: "user", time: { created: 1 } } as Message
-const call = (id: string, tool: string, status: ToolPart["state"]["status"] = "completed", input = {}) => ({
+const call = (
+  id: string,
+  tool: string,
+  status: ToolPart["state"]["status"] = "completed",
+  input = {},
+  error = "failed",
+) => ({
   id,
   message,
   part: {
@@ -14,7 +20,7 @@ const call = (id: string, tool: string, status: ToolPart["state"]["status"] = "c
     state:
       status === "completed"
         ? { status, input, output: "ok", title: "", metadata: {}, time: { start: 1, end: 3 } }
-        : { status: "error" as const, input, error: "failed", time: { start: 1, end: 2 } },
+        : { status: "error" as const, input, error, time: { start: 1, end: 2 } },
   } as ToolPart,
 })
 
@@ -41,6 +47,20 @@ describe("session activity model", () => {
     expect(sessionActivityKind(call("fetch", "bash", "completed", { command: "curl https://example.com" }).part)).toBe(
       "network",
     )
+  })
+
+  test("collapses a run of identical rejections into one failure group", () => {
+    const groups = groupSessionActivity([
+      call("c1", "read"),
+      ...Array.from({ length: 4 }, (_, index) =>
+        call(`f${index}`, "bash", "error", {}, "Session active shell job limit reached"),
+      ),
+      call("c2", "bash", "error", {}, "disk full"),
+    ])
+    expect(groups).toHaveLength(3)
+    expect(groups[1]?.calls.map((item) => item.part.callID)).toEqual(["f0", "f1", "f2", "f3"])
+    expect(groups[1]?.detail).toBe("Session active shell job limit reached")
+    expect(groups[2]?.calls).toHaveLength(1)
   })
 
   test("collects changed paths from writes and patches", () => {

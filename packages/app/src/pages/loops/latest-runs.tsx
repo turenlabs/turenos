@@ -2,6 +2,7 @@ import { useNavigate } from "@solidjs/router"
 import { For, Show, createMemo, createSignal, onMount } from "solid-js"
 import { useGlobal } from "@/context/global"
 import { useServer } from "@/context/server"
+import { useSettings } from "@/context/settings"
 import { loopApi, responseData, type LoopInfo, type LoopRun } from "./api"
 import { isActiveRun } from "./run-view"
 
@@ -171,6 +172,15 @@ function StaticRun(props: { item: LatestRun }) {
  * Hidden entirely until at least one run exists.
  */
 export function LatestAutomationRuns(props: { layout: "home" | "overview"; limit?: number }) {
+  const settings = useSettings()
+  return (
+    <Show when={settings.general.automationsEnabled()}>
+      <LatestAutomationRunsSection layout={props.layout} limit={props.limit} />
+    </Show>
+  )
+}
+
+function LatestAutomationRunsSection(props: { layout: "home" | "overview"; limit?: number }) {
   const navigate = useNavigate()
   const limit = () => props.limit ?? 3
   const { loaded, runs } = useLatestRuns(limit())

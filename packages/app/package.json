@@ -1,6 +1,6 @@
 {
   "name": "@turenlabs/app",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "private": true,
   "description": "TurenOS Desktop and web renderer",
   "type": "module",
@@ -10,6 +10,7 @@
     "./profiler": "./src/profiler.ts",
     "./updater": "./src/updater.ts",
     "./wsl/types": "./src/wsl/types.ts",
+    "./ssh/types": "./src/ssh/types.ts",
     "./vite": "./vite.js",
     "./index.css": "./src/index.css"
   },
@@ -47,6 +48,7 @@
     "vite-plugin-solid": "catalog:"
   },
   "dependencies": {
+    "@turenlabs/protocol": "workspace:*",
     "@corvu/drawer": "catalog:",
     "@dnd-kit/abstract": "0.5.0",
     "@dnd-kit/dom": "0.5.0",

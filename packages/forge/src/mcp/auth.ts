@@ -96,6 +96,24 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@forge/McpAuth") {}
 
+/**
+ * Thrown when a credential write or removal loses to a generation fence: the
+ * provider that issued it held a stale generation, or the server URL changed
+ * without a {@link Interface.prepareForUrl} handoff. Background connects treat
+ * it as advisory (their write is meaningless once fenced) and swallow it;
+ * interactive flows let it surface as a persistence failure.
+ */
+export class FencedError extends Error {
+  readonly _tag = "McpAuth.FencedError"
+}
+
+/** Credential material belonging to a stored entry, for log/error redaction. */
+export function secrets(entry: Entry | undefined): string[] {
+  return [entry?.tokens?.accessToken, entry?.tokens?.refreshToken, entry?.clientInfo?.clientSecret].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  )
+}
+
 export const use = serviceUse(Service)
 
 const layer = Layer.effect(
@@ -200,10 +218,10 @@ const layer = Layer.effect(
       yield* mutate((data) => {
         const current = data[mcpName]
         if (generation && current?.generation !== generation) {
-          throw new Error(`Discarded stale OAuth credential update for ${mcpName}`)
+          throw new FencedError(`Discarded stale OAuth credential update for ${mcpName}`)
         }
         if (target && current?.serverUrl && !sameServer(current.serverUrl, target)) {
-          throw new Error(`OAuth server change for ${mcpName} was not prepared`)
+          throw new FencedError(`OAuth server change for ${mcpName} was not prepared`)
         }
         return {
           ...data,
@@ -219,7 +237,7 @@ const layer = Layer.effect(
     const remove = Effect.fn("McpAuth.remove")(function* (mcpName: string, generation?: string) {
       yield* mutate((data) => {
         if (generation && data[mcpName]?.generation !== generation) {
-          throw new Error(`Discarded stale OAuth credential removal for ${mcpName}`)
+          throw new FencedError(`Discarded stale OAuth credential removal for ${mcpName}`)
         }
         const next = { ...data }
         delete next[mcpName]
@@ -238,10 +256,10 @@ const layer = Layer.effect(
         yield* mutate((data) => {
           const current = data[mcpName]
           if (generation && current?.generation !== generation) {
-            throw new Error(`Discarded stale OAuth credential update for ${mcpName}`)
+            throw new FencedError(`Discarded stale OAuth credential update for ${mcpName}`)
           }
           if (serverUrl && current && (!current.serverUrl || !sameServer(current.serverUrl, serverUrl))) {
-            throw new Error(`Discarded stale OAuth credential update for ${mcpName}`)
+            throw new FencedError(`Discarded stale OAuth credential update for ${mcpName}`)
           }
           const entry = { ...current, [field]: value }
           return {

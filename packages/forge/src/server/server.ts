@@ -18,6 +18,9 @@ import type { CorsOptions } from "@turenlabs/server/cors"
 import { startScheduler } from "@turenlabs/server/intel/scheduler"
 import { lazy } from "@/util/lazy"
 import { SecretVault } from "@turenlabs/core/secret-vault"
+import { SecurityProxyStore } from "@turenlabs/core/security-proxy"
+import { SecurityProxyRuntime } from "@turenlabs/core/security-proxy-runtime"
+import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -27,6 +30,7 @@ export type Listener = {
   port: number
   url: URL
   stop: (close?: boolean) => Promise<void>
+  securityProxy: (command: SecurityProxy.StoreCommand) => Promise<SecurityProxy.Result>
 }
 
 type ServerApp = {
@@ -43,6 +47,7 @@ type ListenOptions = CorsOptions & {
     keyID: string
     key: Uint8Array
   }
+  securityProxy?: (command: SecurityProxy.Command) => Promise<SecurityProxy.Result>
 }
 type ListenerState = {
   scope: Scope.Scope
@@ -50,6 +55,7 @@ type ListenerState = {
   server: Context.Service.Shape<typeof HttpServer.HttpServer>
   http: ListenerServer
   websockets: WebSocketTracker.Interface
+  securityProxy: SecurityProxyStore.Interface
 }
 type EffectListener = Omit<Listener, "stop"> & {
   stop: (close?: boolean) => Effect.Effect<void>
@@ -86,6 +92,7 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
     port: listener.port,
     url: listener.url,
     stop: (close?: boolean) => runListenerStop(listener.stop(close)),
+    securityProxy: listener.securityProxy,
   }
 }
 
@@ -103,7 +110,10 @@ const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unkno
     // server tests stay hermetic: no real feed traffic, no shared-state writes.
     const intelScheduler = process.env.NODE_ENV === "test" ? undefined : startScheduler()
     if (intelScheduler) {
-      yield* Scope.addFinalizer(state.scope, Effect.sync(() => intelScheduler.stop()))
+      yield* Scope.addFinalizer(
+        state.scope,
+        Effect.sync(() => intelScheduler.stop()),
+      )
     }
     const address = yield* tcpAddress(state)
     const listenerUrl = makeURL(opts.hostname, address.port)
@@ -115,18 +125,20 @@ const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unkno
       port: address.port,
       url: listenerUrl,
       stop: yield* makeStop(state, unpublishMdns, listenerUrl),
+      securityProxy: (command: SecurityProxy.StoreCommand) => Effect.runPromise(state.securityProxy.execute(command)),
     }
   },
 )
 
 function listenerLayer(opts: ListenOptions, port: number) {
   const secretVault = opts.credentialVault ? SecretVault.layer(opts.credentialVault) : SecretVault.runtime
-  return HttpRouter.serve(HttpApiApp.createRoutes(opts, undefined, secretVault), {
+    return HttpRouter.serve(HttpApiApp.createRoutes(opts, undefined, secretVault, opts.securityProxy ? { execute: (command) => Effect.tryPromise({ try: () => opts.securityProxy!(command), catch: (error) => new SecurityProxyRuntime.Error(error instanceof Error ? error.message : String(error)) }) } : undefined), {
     middleware: disposeMiddleware,
     disableLogger: true,
     disableListenLog: true,
   }).pipe(
     Layer.provideMerge(AppNodeBuilder.build(WebSocketTracker.node)),
+    Layer.provideMerge(AppNodeBuilder.build(SecurityProxyStore.node, [[SecretVault.node, secretVault]])),
     Layer.provideMerge(serverLayer({ port, hostname: opts.hostname })),
     // Install a fresh `ConfigProvider` per listener so `Config.string(...)`
     // reads reflect the current `process.env`. Effect's default
@@ -187,6 +199,7 @@ function startListener(opts: ListenOptions, port: number) {
         server: Context.get(ctx, HttpServer.HttpServer),
         http: Context.get(ctx, ListenerServerService),
         websockets: Context.get(ctx, WebSocketTracker.Service),
+        securityProxy: Context.get(ctx, SecurityProxyStore.Service),
       }),
     ),
   )

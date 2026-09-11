@@ -2,8 +2,12 @@ import { describe, expect, test } from "bun:test"
 import type { Message, Part, SessionInputAdmitted, SessionMessage } from "@turenlabs/sdk/v2/client"
 import { MessageComment } from "../timeline/message-comment"
 import {
+  isSessionV2ToolStub,
+  mergeIncrementalMessages,
+  mergeSessionV2Parts,
   mergeSessionV2Presentation,
   presentSessionV2Messages,
+  presentTool,
   type SessionV2Presentation,
 } from "./session-v2-presentation"
 
@@ -164,7 +168,7 @@ describe("presentSessionV2Messages", () => {
     expect(result.parts.map((entry) => entry.id)).toEqual([user.id])
   })
 
-  test.each(["subagent_board", "shell_job"] as const)(
+  test.each(["subagent_board", "subagent_settle", "subagent_advisory", "shell_job"] as const)(
     "keeps %s notifications out of the transcript while preserving assistant ownership",
     (source) => {
       const result = present([
@@ -197,7 +201,7 @@ describe("presentSessionV2Messages", () => {
     },
   )
 
-  test.each(["subagent_board", "shell_job"] as const)("does not project a pending %s notification", (source) => {
+  test.each(["subagent_board", "subagent_settle", "subagent_advisory", "shell_job"] as const)("does not project a pending %s notification", (source) => {
     const result = present(
       [user],
       [
@@ -890,5 +894,260 @@ describe("presentSessionV2Messages", () => {
 
     expect(result.messages.map((message) => message.id)).toEqual(["msg_z_later_lexically", "msg_a_earlier_lexically"])
     expect(result.parts.map((entry) => entry.id)).toEqual(["msg_z_later_lexically", "msg_a_earlier_lexically"])
+  })
+})
+
+describe("mergeIncrementalMessages", () => {
+  const row = (id: string, created: number, text = id): Message => ({
+    id,
+    sessionID: "ses_goal",
+    role: "user",
+    time: { created },
+    agent: "build",
+    model: { providerID: "provider", modelID: text },
+  })
+
+  test("keeps the incoming copy when an id appears in both arrays", () => {
+    const merged = mergeIncrementalMessages(
+      [row("msg_a", 1, "stale"), row("msg_b", 2)],
+      [row("msg_b", 2, "fresh"), row("msg_c", 3)],
+    )
+
+    expect(merged.map((message) => message.id)).toEqual(["msg_a", "msg_b", "msg_c"])
+    expect(merged[1]).toMatchObject({ id: "msg_b", model: { modelID: "fresh" } })
+  })
+
+  test("interleaves both inputs into ascending time.created order", () => {
+    const merged = mergeIncrementalMessages(
+      [row("msg_a", 1), row("msg_d", 7)],
+      [row("msg_b", 2), row("msg_c", 5), row("msg_e", 9)],
+    )
+
+    expect(merged.map((message) => message.id)).toEqual(["msg_a", "msg_b", "msg_c", "msg_d", "msg_e"])
+    expect(merged.map((message) => message.time.created)).toEqual([1, 2, 5, 7, 9])
+  })
+
+  test("keeps preserved rows ahead of incoming rows sharing a timestamp", () => {
+    const merged = mergeIncrementalMessages([row("msg_a", 5), row("msg_b", 5)], [row("msg_c", 5)])
+
+    expect(merged.map((message) => message.id)).toEqual(["msg_a", "msg_b", "msg_c"])
+  })
+
+  test("handles empty inputs on either side", () => {
+    const rows = [row("msg_a", 1), row("msg_b", 2)]
+    expect(mergeIncrementalMessages([], rows)).toEqual(rows)
+    expect(mergeIncrementalMessages(rows, [])).toEqual(rows)
+    expect(mergeIncrementalMessages([], [])).toEqual([])
+  })
+})
+
+// `presentTool` is exported for the timeline controller's live settlement path: a
+// `session.next.tool.success`/`failed` event rebuilds just the one settled part through this
+// same mapping, so the event path and a snapshot cannot drift apart.
+describe("presentTool", () => {
+  test("presents a single completed tool content item", () => {
+    const part = presentTool("ses_goal", "msg_assistant", {
+      type: "tool",
+      id: "call_1",
+      name: "bash",
+      provider: { executed: true },
+      state: {
+        status: "completed",
+        input: { command: "ls" },
+        structured: { files: 2 },
+        content: [{ type: "text", text: "a\nb" }],
+        outputPaths: ["/tmp/out"],
+        result: { ok: true },
+      },
+      time: { created: 2, ran: 3, completed: 4 },
+    })
+
+    expect(part).toMatchObject({
+      id: "call_1",
+      callID: "call_1",
+      tool: "bash",
+      metadata: { providerExecuted: true },
+      state: {
+        status: "completed",
+        input: { command: "ls" },
+        output: "a\nb",
+        metadata: { structured: { files: 2 }, outputPaths: ["/tmp/out"], result: { ok: true } },
+        time: { start: 3, end: 4 },
+      },
+    })
+  })
+
+  test("presents a single failed tool content item", () => {
+    const part = presentTool("ses_goal", "msg_assistant", {
+      type: "tool",
+      id: "call_2",
+      name: "read",
+      state: {
+        status: "error",
+        input: { path: "README.md" },
+        error: { type: "unknown", message: "denied" },
+        structured: {},
+        content: [],
+      },
+      time: { created: 2, ran: 3, completed: 4 },
+    })
+
+    expect(part).toMatchObject({
+      id: "call_2",
+      state: {
+        status: "error",
+        input: { path: "README.md" },
+        error: "denied",
+        time: { start: 3, end: 4 },
+      },
+    })
+  })
+})
+
+describe("lean tool stubs", () => {
+  const leanMessage = (text: string): Extract<SessionMessage, { type: "assistant" }> => ({
+    id: "msg_lean",
+    type: "assistant",
+    agent: "build",
+    model: { providerID: "provider", id: "model" },
+    time: { created: 2, completed: 3 },
+    content: [
+      {
+        type: "tool",
+        id: "call_lean",
+        name: "read",
+        // The server-side marker `session.messages?lean=true` leaves behind: the elided
+        // `content`/`structured` bytes, with `status`, `input` and `time` kept so the collapsed
+        // card still renders itself.
+        truncated: { bytes: 90_000 },
+        state: {
+          status: "completed",
+          input: { path: "big.txt" },
+          structured: { exit: 0 },
+          content: text ? [{ type: "text", text }] : [],
+        },
+        time: { created: 2, ran: 3, completed: 3 },
+      },
+    ],
+  })
+
+  // The same message as a full row — what the `session.message` expand fetch produces.
+  const fullMessage = (): SessionMessage => ({
+    ...leanMessage(""),
+    content: [
+      {
+        type: "tool",
+        id: "call_lean",
+        name: "read",
+        state: {
+          status: "completed",
+          input: { path: "big.txt" },
+          structured: { exit: 0 },
+          content: [{ type: "text", text: "the real body" }],
+        },
+        time: { created: 2, ran: 3, completed: 3 },
+      },
+    ],
+  })
+
+  test("presents a truncated tool as an empty-output stub that still identifies the fetch", () => {
+    const result = present([user, leanMessage("")])
+    const part = result.parts.find((entry) => entry.id === "msg_lean")?.parts[0]
+
+    expect(part).toMatchObject({
+      type: "tool",
+      id: "call_lean",
+      messageID: "msg_lean",
+      metadata: { truncated: { bytes: 90_000 } },
+      state: { status: "completed", input: { path: "big.txt" }, output: "" },
+    })
+    expect(part ? isSessionV2ToolStub(part) : false).toBe(true)
+  })
+
+  test("a lean page never overwrites a part that already holds the fetched body", () => {
+    const full = present([user, fullMessage()])
+    const lean = present([user, leanMessage("")])
+
+    const merged = mergeSessionV2Presentation({
+      messages: full.messages,
+      parts: Object.fromEntries(full.parts.map((entry) => [entry.id, entry.parts])),
+      previousOwnedMessageIDs: new Set(full.messages.map((message) => message.id)),
+      presentation: lean,
+      removeMissing: false,
+    })
+
+    const part = merged.parts.find((entry) => entry.id === "msg_lean")?.parts[0]
+    expect(part).toMatchObject({ state: { output: "the real body" } })
+    expect(part === undefined || isSessionV2ToolStub(part)).toBe(false)
+  })
+
+  test("an authoritative snapshot keeps the stored body over an incoming stub", () => {
+    const full = present([user, fullMessage()])
+    const lean = present([user, leanMessage("")])
+
+    const merged = mergeSessionV2Presentation({
+      messages: full.messages,
+      parts: Object.fromEntries(full.parts.map((entry) => [entry.id, entry.parts])),
+      previousOwnedMessageIDs: new Set(full.messages.map((message) => message.id)),
+      presentation: lean,
+    })
+
+    const part = merged.parts.find((entry) => entry.id === "msg_lean")?.parts[0]
+    expect(part).toMatchObject({ state: { output: "the real body" } })
+  })
+
+  test("a full incoming part replaces a stored stub", () => {
+    const lean = present([user, leanMessage("")])
+    const stored = lean.parts.find((entry) => entry.id === "msg_lean")?.parts ?? []
+    expect(stored[0]?.type === "tool" ? stored[0].metadata?.truncated : undefined).toEqual({ bytes: 90_000 })
+
+    const merged = mergeSessionV2Parts(stored, [
+      presentTool("ses_goal", "msg_lean", {
+        type: "tool",
+        id: "call_lean",
+        name: "read",
+        state: {
+          status: "completed",
+          input: { path: "big.txt" },
+          structured: { exit: 0 },
+          content: [{ type: "text", text: "the real body" }],
+        },
+        time: { created: 2, ran: 3, completed: 3 },
+      }),
+    ])
+
+    expect(merged[0]).toMatchObject({ state: { output: "the real body" } })
+    expect(merged[0] === undefined || isSessionV2ToolStub(merged[0])).toBe(false)
+  })
+
+  test("a stub still upgrades a pending part and a stub-refreshes a stub", () => {
+    const stubPart = presentTool("ses_goal", "msg_lean", {
+      type: "tool",
+      id: "call_lean",
+      name: "read",
+      truncated: { bytes: 90_000 },
+      state: { status: "completed", input: { path: "big.txt" }, structured: {}, content: [] },
+      time: { created: 2, ran: 3, completed: 3 },
+    })
+
+    const pending = mergeSessionV2Parts(
+      [
+        {
+          id: "call_lean",
+          callID: "call_lean",
+          sessionID: "ses_goal",
+          messageID: "msg_lean",
+          type: "tool",
+          tool: "read",
+          state: { status: "pending", input: {}, raw: "" },
+        },
+      ],
+      [stubPart],
+    )
+    expect(pending[0]).toBe(stubPart)
+
+    const olderStub = { ...stubPart, metadata: { truncated: { bytes: 50_000 } } }
+    const refreshed = mergeSessionV2Parts([olderStub], [stubPart])
+    expect(refreshed[0]).toBe(stubPart)
   })
 })

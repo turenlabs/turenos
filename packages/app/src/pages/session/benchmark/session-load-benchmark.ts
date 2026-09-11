@@ -13,10 +13,12 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator"
  *   bun --conditions=browser --preload ./bun-vite-imports.ts --preload ./happydom.ts \
  *     src/pages/session/benchmark/session-load-benchmark.ts
  *
- * Two loading strategies over one identical fixture:
+ * Three loading strategies over one identical fixture:
  *
- *   drain   every page of history, ascending — full-history reference
- *   window  the newest page, descending, extended back to a turn boundary — current loader
+ *   drain        every page of history, ascending — full-history reference
+ *   window       the newest page, descending, extended back to a turn boundary — full bodies
+ *   window+lean  the same window with `session.messages?lean=true` — oversized tool bodies
+ *                arrive as `truncated` stubs and are back-filled per message on expand
  *
  * Everything after the load is the same code in both runs, so a difference in `present`, `store`
  * or `rows` is attributable to how much history was materialised and to nothing else.
@@ -77,12 +79,30 @@ async function run(label: string, profile: SessionLoadProfile) {
     }) + "\n\n",
   )
 
+  // Same windowed walk over the lean payload: oversized tool bodies arrive as stubs and the real
+  // body is back-filled per message only when a card is expanded.
+  const leanServer = createPageServer(messages, limit, "desc", { lean: true })
+  const lean = await measureSessionLoad({
+    sessionID: "ses_bench",
+    load: async () => (await loadSessionV2MessageWindow({ load: leanServer.load })).messages,
+    parseMs: () => leanServer.parseMs,
+    bytes: () => leanServer.bytesServed,
+    overheadMs: () => leanServer.serializeMs,
+  })
   process.stdout.write(
-    `total ${drain.timings.total.toFixed(0)} ms -> ${windowed.timings.total.toFixed(0)} ms ` +
-      `(${(drain.timings.total / Math.max(windowed.timings.total, 0.001)).toFixed(1)}x), ` +
+    formatStages("WINDOW+LEAN (newest page, tool bodies stubbed)", lean, {
+      requests: leanServer.requests,
+      MiB: (leanServer.bytesServed / 1024 / 1024).toFixed(1),
+    }) + "\n\n",
+  )
+
+  process.stdout.write(
+    `total ${drain.timings.total.toFixed(0)} ms -> ${windowed.timings.total.toFixed(0)} ms -> ${lean.timings.total.toFixed(0)} ms ` +
+      `(${(drain.timings.total / Math.max(lean.timings.total, 0.001)).toFixed(1)}x), ` +
       `bytes ${(drainServer.bytesServed / 1024 / 1024).toFixed(1)} MiB -> ` +
-      `${(windowServer.bytesServed / 1024 / 1024).toFixed(1)} MiB, ` +
-      `requests ${drainServer.requests} -> ${windowServer.requests}\n`,
+      `${(windowServer.bytesServed / 1024 / 1024).toFixed(1)} MiB -> ` +
+      `${(leanServer.bytesServed / 1024 / 1024).toFixed(1)} MiB, ` +
+      `requests ${drainServer.requests} -> ${windowServer.requests} -> ${leanServer.requests}\n`,
   )
 }
 

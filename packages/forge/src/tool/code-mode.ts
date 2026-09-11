@@ -1,11 +1,12 @@
 import * as Tool from "./tool"
 import { CallToolResultSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js"
-import { Cause, Effect, Schema } from "effect"
+import { Cause, Effect, Option, Schema } from "effect"
 import { CodeMode, Tool as SandboxTool, toolError } from "@turenlabs/codemode"
 import { MCP } from "@/mcp"
 import { McpCatalog } from "@/mcp/catalog"
 import { McpBroker } from "@/mcp/broker"
 import { McpConfig } from "@/mcp/config"
+import { McpAuth } from "@/mcp/auth"
 import { McpIntegration } from "@/mcp/integration"
 import { Agent } from "@/agent/agent"
 import { Session } from "@/session/session"
@@ -228,7 +229,19 @@ const invokeChildTool = Effect.fn("CodeMode.invokeChildTool")(function* (input: 
         },
       )
     })
-    const result = McpIntegration.redactMcpResult(input.entry.server, input.entry.configuration, called)
+    // Stored OAuth tokens never appear in the entry's headers, but a hostile or
+    // buggy server can reflect the bearer it received back into a tool result.
+    const stored = yield* Effect.serviceOption(McpAuth.Service).pipe(
+      Effect.andThen((service) =>
+        Option.isSome(service) ? service.value.get(input.entry.server) : Effect.succeed(undefined),
+      ),
+    )
+    const result = McpIntegration.redactMcpResult(
+      input.entry.server,
+      input.entry.configuration,
+      called,
+      McpAuth.secrets(stored),
+    )
     if (result.isError) {
       const message =
         result.content

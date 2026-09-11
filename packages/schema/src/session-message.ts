@@ -42,7 +42,7 @@ export const ModelSwitched = Schema.Struct({
 }).annotate({ identifier: "Session.Message.ModelSwitched" })
 
 /** Durable input provenance; absent on older messages whose source is unknown. */
-export const Source = Schema.Literals(["user", "subagent_board", "shell_job"])
+export const Source = Schema.Literals(["user", "subagent_board", "subagent_settle", "subagent_advisory", "shell_job"])
 export type Source = typeof Source.Type
 
 export interface User extends Schema.Schema.Type<typeof User> {}
@@ -134,6 +134,12 @@ export const AssistantTool = Schema.Struct({
   type: Schema.Literal("tool"),
   id: Schema.String,
   name: Schema.String,
+  /**
+   * Set only by `session.messages?lean=true`: `state.content`/`state.structured` (and the
+   * `result`/`attachments` byte carriers) were elided from the page row, with `bytes` recording
+   * their serialized size. `session.message` always returns the row in full.
+   */
+  truncated: Schema.Struct({ bytes: NonNegativeInt }).pipe(optional),
   provider: Schema.Struct({
     executed: Schema.Boolean,
     metadata: ProviderMetadata.pipe(optional),

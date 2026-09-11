@@ -128,7 +128,14 @@ export type Status = Schema.Schema.Type<typeof Status>
 
 // Store transports for OAuth servers to allow finishing auth
 type TransportWithAuth = StreamableHTTPClientTransport | SSEClientTransport
-const pendingOAuthTransports = new Map<string, { transport: TransportWithAuth; provider?: McpOAuthPendingProvider }>()
+interface PendingOAuth {
+  transport: TransportWithAuth
+  provider?: McpOAuthPendingProvider
+  /** Safety-net expiry for entries abandoned by the split startAuth/finishAuth flow. */
+  stale?: ReturnType<typeof setTimeout>
+}
+const pendingOAuthTransports = new Map<string, PendingOAuth>()
+const PENDING_OAUTH_TTL_MS = 10 * 60 * 1000
 const authenticationLocks = new Map<string, Semaphore.Semaphore>()
 const authenticationLock = (name: string) => {
   const current = authenticationLocks.get(name)
@@ -324,6 +331,30 @@ const layer = (allowUnmanaged: boolean) =>
       const events = yield* EventV2Bridge.Service
       const browser = yield* McpBrowser.Service
       const extensions = yield* ExtensionRuntime.Service
+      /**
+       * `startAuth` without `finishAuth` (the split flow) has no callback wait
+       * and therefore no timeout — without this backstop an abandoned attempt
+       * wedges every subsequent `startAuth` on "already in progress" forever.
+       * `authenticate` cleans up through `waitForCallback`'s shorter timeout, so
+       * this only ever fires for flows nobody is awaiting.
+       */
+      const armStaleExpiry = (name: string, entry: PendingOAuth) => {
+        entry.stale = setTimeout(() => {
+          if (pendingOAuthTransports.get(name) !== entry) return
+          pendingOAuthTransports.delete(name)
+          void entry.transport.close().catch(() => undefined)
+          void Effect.runPromise(
+            Effect.all([auth.clearOAuthState(name), auth.clearCodeVerifier(name)], { discard: true }),
+          ).catch(() => undefined)
+        }, PENDING_OAUTH_TTL_MS)
+        entry.stale.unref?.()
+      }
+      const dropPending = (name: string) => {
+        const pending = pendingOAuthTransports.get(name)
+        if (pending?.stale) clearTimeout(pending.stale)
+        pendingOAuthTransports.delete(name)
+        return pending
+      }
       const syncManaged = Effect.fnUntraced(function* () {
         McpIntegration.sync(yield* extensions.manifests())
       })
@@ -443,34 +474,42 @@ const layer = (allowUnmanaged: boolean) =>
         for (const { name, transport } of transports) {
           const result = yield* connectTransport(transport, connectTimeout).pipe(
             Effect.map((client) => ({ client, transportName: name })),
-            Effect.catch((error) => {
-              const lastError = new Error(McpIntegration.redactRemoteError(mcp, error))
-              const isAuthError =
-                error instanceof UnauthorizedError || (authProvider && lastError.message.includes("OAuth"))
+            Effect.catch((error) =>
+              Effect.gen(function* () {
+                const stored = yield* auth.get(key)
+                const lastError = new Error(
+                  McpIntegration.redactRemoteError(mcp, error, McpAuth.secrets(stored)),
+                )
+                const isAuthError =
+                  error instanceof UnauthorizedError || (authProvider && lastError.message.includes("OAuth"))
 
-              if (isAuthError) {
-                if (lastError.message.includes("registration") || lastError.message.includes("client_id")) {
-                  lastStatus = {
-                    status: "needs_client_registration" as const,
-                    error: "Server does not support dynamic client registration. Please provide clientId in config.",
+                if (isAuthError) {
+                  if (lastError.message.includes("registration") || lastError.message.includes("client_id")) {
+                    lastStatus = {
+                      status: "needs_client_registration" as const,
+                      error:
+                        "Server does not support dynamic client registration. Please provide clientId in config.",
+                    }
+                    return
                   }
-                  return Effect.void
-                } else {
                   // A pending entry carrying a provider belongs to an interactive
                   // authorization whose browser round-trip is still outstanding, and
                   // `finishAuth` needs both that transport and that provider to commit.
                   // A background connect -- one per open directory -- must not take the
                   // slot, or the callback completes against a transport that can only
                   // discard what the user just authorized.
-                  if (!pendingOAuthTransports.get(key)?.provider) pendingOAuthTransports.set(key, { transport })
+                  if (!pendingOAuthTransports.get(key)?.provider) {
+                    const pending: PendingOAuth = { transport }
+                    pendingOAuthTransports.set(key, pending)
+                    armStaleExpiry(key, pending)
+                  }
                   lastStatus = { status: "needs_auth" as const }
-                  return Effect.void
+                  return
                 }
-              }
 
-              lastStatus = { status: "failed" as const, error: lastError.message }
-              return Effect.void
-            }),
+                lastStatus = { status: "failed" as const, error: lastError.message }
+              }),
+            ),
           )
           if (result) return { client: result.client, status: { status: "connected" } as Status }
           // If this was an auth error, stop trying other transports
@@ -607,7 +646,9 @@ const layer = (allowUnmanaged: boolean) =>
               const failure = isManagedSecurityMcp(mcp)
                 ? security(SecurityRegistry.redactValue(message))
                 : mcp.type === "remote"
-                  ? Effect.succeed(McpIntegration.redactRemoteError(mcp, message))
+                  ? Effect.map(auth.get(key), (entry) =>
+                      McpIntegration.redactRemoteError(mcp, message, McpAuth.secrets(entry)),
+                    )
                   : McpRuntime.serverFor(mcp)
                     ? Effect.succeed(McpRuntime.redactDiagnostic(message, Object.values(McpRuntime.secretsFor(mcp))))
                     : Effect.succeed(message)
@@ -725,6 +766,7 @@ const layer = (allowUnmanaged: boolean) =>
         name: string,
         params: LoggingMessageNotification["params"],
       ) {
+        const remoteEntry = state.config[name]?.type === "remote" ? yield* auth.get(name) : undefined
         const fields = {
           server: name,
           logger: params.logger,
@@ -734,7 +776,7 @@ const layer = (allowUnmanaged: boolean) =>
               ? yield* security(SecurityRegistry.redactValue(params.data))
               : McpRuntime.serverFor(state.config[name] ?? {})
                 ? McpRuntime.redactValue(params.data, Object.values(McpRuntime.secretsFor(state.config[name]!)))
-                : McpIntegration.redactMcpValue(state.config[name], params.data),
+                : McpIntegration.redactMcpValue(state.config[name], params.data, McpAuth.secrets(remoteEntry)),
         }
         switch (params.level) {
           case "debug":
@@ -1111,6 +1153,14 @@ const layer = (allowUnmanaged: boolean) =>
           McpIntegration.closeNetwork(previous.config)
         }
         if (candidate.status !== "connected" && previous.config !== undefined) {
+          // A pending authorization is the new configuration's honest state.
+          // Rolling status back to e.g. "connected" would hide it from
+          // `mcp.status()` while Extensions already observed the candidate.
+          if (candidate.status === "needs_auth" || candidate.status === "needs_client_registration") {
+            s.status[name] = candidate
+            yield* events.publish(ToolsChanged, { server: name }).pipe(Effect.ignore)
+            return { status: s.status, candidate }
+          }
           if (candidate.status === "failed" || candidate.status === "disabled") McpIntegration.closeNetwork(effective)
           s.config[name] = previous.config
           if (previous.status) s.status[name] = previous.status
@@ -1328,7 +1378,7 @@ const layer = (allowUnmanaged: boolean) =>
           throw new Error(`OAuth authorization already in progress for MCP server: ${mcpName}`)
         }
         if (previous) {
-          pendingOAuthTransports.delete(mcpName)
+          dropPending(mcpName)
           yield* Effect.tryPromise({
             try: () => previous.transport.close(),
             catch: () => undefined,
@@ -1354,13 +1404,17 @@ const layer = (allowUnmanaged: boolean) =>
         // OAuth config is optional - if not provided, we'll use auto-discovery
         const oauthConfig = typeof mcpConfig.oauth === "object" ? mcpConfig.oauth : undefined
 
-        // Resolve effective redirect URI: explicit redirectUri > callbackPort shorthand > default
-        const effectiveRedirectUri =
+        // Resolve the requested redirect URI: explicit redirectUri > callbackPort
+        // shorthand. With neither, the callback server picks a free port and the
+        // redirect URI must be rebuilt from whichever port it actually bound —
+        // telling the provider the default port while listening on a fallback
+        // would send the browser's callback to a listener that cannot resolve it.
+        const requestedRedirectUri =
           oauthConfig?.redirectUri ??
           (oauthConfig?.callbackPort ? `http://127.0.0.1:${oauthConfig.callbackPort}${OAUTH_CALLBACK_PATH}` : undefined)
-
-        // Start the callback server with custom redirectUri if configured
-        yield* Effect.promise(() => McpOAuthCallback.ensureRunning(effectiveRedirectUri))
+        const bound = yield* Effect.promise(() => McpOAuthCallback.ensureRunning(requestedRedirectUri))
+        const effectiveRedirectUri =
+          requestedRedirectUri ?? `http://127.0.0.1:${bound.port}${bound.path}`
 
         const oauthState = Array.from(crypto.getRandomValues(new Uint8Array(32)))
           .map((b) => b.toString(16).padStart(2, "0"))
@@ -1404,10 +1458,19 @@ const layer = (allowUnmanaged: boolean) =>
         }).pipe(
           Effect.catch((error) => {
             if (error instanceof UnauthorizedError && capturedUrl) {
-              pendingOAuthTransports.set(mcpName, { transport, provider: authProvider })
+              const pending: PendingOAuth = { transport, provider: authProvider }
+              pendingOAuthTransports.set(mcpName, pending)
+              armStaleExpiry(mcpName, pending)
               return Effect.succeed({ authorizationUrl: capturedUrl.toString(), oauthState } satisfies AuthResult)
             }
-            return Effect.die(error)
+            return Effect.all(
+              [
+                Effect.tryPromise({ try: () => transport.close(), catch: () => undefined }).pipe(Effect.ignore),
+                auth.clearOAuthState(mcpName),
+                auth.clearCodeVerifier(mcpName),
+              ],
+              { discard: true },
+            ).pipe(Effect.andThen(Effect.die(error)))
           }),
         )
       })
@@ -1441,10 +1504,8 @@ const layer = (allowUnmanaged: boolean) =>
         const callbackPromise = McpOAuthCallback.waitForCallback(result.oauthState, mcpName)
         void callbackPromise.catch(() => undefined)
         const cleanup = Effect.sync(() => {
-          const pending = pendingOAuthTransports.get(mcpName)
           McpOAuthCallback.cancelPending(mcpName)
-          pendingOAuthTransports.delete(mcpName)
-          return pending
+          return dropPending(mcpName)
         }).pipe(
           Effect.andThen((pending) =>
             Effect.tryPromise({
@@ -1510,7 +1571,8 @@ const layer = (allowUnmanaged: boolean) =>
         if (!pending) throw new Error(`No pending OAuth flow for MCP server: ${mcpName}`)
         const discard = Effect.gen(function* () {
           const ownsPending = pendingOAuthTransports.get(mcpName) === pending
-          if (ownsPending) pendingOAuthTransports.delete(mcpName)
+          if (ownsPending) dropPending(mcpName)
+          else if (pending.stale) clearTimeout(pending.stale)
           yield* Effect.tryPromise({
             try: () => pending.transport.close(),
             catch: () => undefined,
@@ -1550,7 +1612,7 @@ const layer = (allowUnmanaged: boolean) =>
             return { status: "failed", error: `OAuth credential persistence failed: ${commitError}` } satisfies Status
           }
           yield* auth.clearCodeVerifier(mcpName)
-          pendingOAuthTransports.delete(mcpName)
+          dropPending(mcpName)
           yield* Effect.tryPromise({
             try: () => pending.transport.close(),
             catch: () => undefined,
@@ -1569,9 +1631,8 @@ const layer = (allowUnmanaged: boolean) =>
       )
 
       const removeAuthUnlocked = Effect.fn("MCP.removeAuthUnlocked")(function* (mcpName: string) {
-        const pending = pendingOAuthTransports.get(mcpName)
+        const pending = dropPending(mcpName)
         McpOAuthCallback.cancelPending(mcpName)
-        pendingOAuthTransports.delete(mcpName)
         yield* Effect.tryPromise({
           try: () => pending?.transport.close() ?? Promise.resolve(),
           catch: () => undefined,
@@ -1604,7 +1665,8 @@ const layer = (allowUnmanaged: boolean) =>
         if (!mcpConfig || !isMcpConfigured(mcpConfig) || mcpConfig.type !== "remote") return "not_authenticated"
         const entry = yield* auth.getForUrl(mcpName, mcpConfig.url)
         if (!entry?.tokens) return "not_authenticated"
-        if (entry.tokens.expiresAt && entry.tokens.expiresAt < Date.now() / 1000) return "expired"
+        if (entry.tokens.expiresAt && entry.tokens.expiresAt < Date.now() / 1000 && !entry.tokens.refreshToken)
+          return "expired"
         return "authenticated"
       })
       const reset = Effect.fn("MCP.reset")(() => InstanceState.invalidate(state))

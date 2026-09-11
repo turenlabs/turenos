@@ -6,7 +6,9 @@ import type {
   SessionDurableEvent,
   SessionInputAdmitted,
   SessionMessage,
+  SessionMessageAssistantTool,
   SessionStatus,
+  ToolPart,
 } from "@turenlabs/sdk/v2/client"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
@@ -33,7 +35,15 @@ export {
 } from "./session-prompt-state"
 import { createSessionOwnership } from "@/pages/session/session-ownership"
 import { sessionInteractionTrace } from "@/utils/session-interaction-trace"
-import { mergeSessionV2Presentation, presentSessionV2Messages } from "./session-v2-presentation"
+import {
+  isSessionV2ToolStub,
+  mergeIncrementalMessages,
+  mergeSessionV2Parts,
+  mergeSessionV2Presentation,
+  presentSessionV2Messages,
+  presentTool,
+  type SessionV2Presentation,
+} from "./session-v2-presentation"
 import { sessionV2DeltaGate } from "./session-v2-delta-gate"
 
 export { createSessionV2DeltaGate } from "./session-v2-delta-gate"
@@ -190,6 +200,205 @@ export function sessionEventNeedsTranscriptSnapshot(type: string) {
   }
 }
 
+export type SessionV2ToolEvent = Extract<
+  SessionDurableEvent,
+  {
+    type:
+      | "session.next.tool.input.ended"
+      | "session.next.tool.called"
+      | "session.next.tool.progress"
+      | "session.next.tool.success"
+      | "session.next.tool.failed"
+  }
+>
+
+/**
+ * Apply one tool lifecycle event to the part already in the store.
+ *
+ * Every one of these events carries its complete state — the same fields the server folds into
+ * its message model in `core/session/message-updater.ts` — so a `tool.success` on a tool-heavy
+ * turn does not need a full-window refetch per call. The replacement part is rebuilt through
+ * `presentTool`, the same mapping a snapshot applies, so the two paths cannot drift apart.
+ *
+ * `fallback` runs when the store cannot settle faithfully: the part is outside the loaded
+ * window, or it is still pending and the parsed input only ever existed in a `tool.called`
+ * event the store never saw. The caller picks the fallback — settlement events still get the
+ * full snapshot they used to trigger, live progress gets the cheaper context hydrate.
+ */
+export function applySessionV2ToolEvent(input: {
+  sessionID: string
+  parts: readonly Part[] | undefined
+  event: SessionV2ToolEvent
+  write: (index: number, part: ToolPart) => void
+  fallback: () => void
+}) {
+  const index = input.parts?.findIndex(
+    (part) => part.type === "tool" && (part.callID === input.event.data.callID || part.id === input.event.data.callID),
+  )
+  if (index === undefined || index < 0) return input.fallback()
+  const part = input.parts?.[index]
+  if (part?.type !== "tool") return input.fallback()
+  const next = sessionV2ToolEventPart(input.sessionID, part, input.event)
+  if (next === "fallback") return input.fallback()
+  if (next === "ignore") return
+  input.write(index, next)
+}
+
+/**
+ * The presented `ToolPart` one tool event implies, or a directive:
+ * - `"ignore"` — the store is already past this event (a duplicate `called`, a settlement
+ *   replayed onto a settled part, input text landing on a call that already ran).
+ * - `"fallback"` — the part exists but the event alone cannot produce a faithful presentation.
+ */
+function sessionV2ToolEventPart(
+  sessionID: string,
+  part: ToolPart,
+  event: SessionV2ToolEvent,
+): ToolPart | "ignore" | "fallback" {
+  if (event.type === "session.next.tool.input.ended") {
+    if (part.state.status !== "pending") return "ignore"
+    return { ...part, state: { ...part.state, raw: event.data.text } }
+  }
+  // A presented part keeps `time.start` only once it has run; before that the event timestamp is
+  // the closest truthful boundary.
+  const start = part.state.status === "pending" ? event.data.timestamp : part.state.time.start
+  const present = (
+    state: SessionMessageAssistantTool["state"],
+    time: { ran?: number; completed?: number },
+    provider?: SessionMessageAssistantTool["provider"],
+  ) => {
+    const presented = presentTool(sessionID, part.messageID, {
+      type: "tool",
+      id: event.data.callID,
+      name: part.tool,
+      provider,
+      state,
+      time: { created: start, ...time },
+    })
+    // The settled provider record merges over the presented part's (`executed` wins, result
+    // metadata is carried on `resultMetadata` exactly as the server keeps it); call-time keys
+    // such as a prior provider metadata or a prune mark survive the transition.
+    const metadata = { ...part.metadata, ...presented.metadata }
+    // ...but a lean-page stub marker does not: the event just restored the real body.
+    delete metadata.truncated
+    return { ...presented, metadata }
+  }
+  switch (event.type) {
+    case "session.next.tool.called":
+      if (part.state.status === "completed" || part.state.status === "error") return "ignore"
+      return present(
+        { status: "running", input: event.data.input, structured: {}, content: [] },
+        { ran: event.data.timestamp },
+        {
+          executed: event.data.provider.executed || part.metadata?.providerExecuted === true,
+          metadata: event.data.provider.metadata,
+        },
+      )
+    case "session.next.tool.progress":
+      if (part.state.status !== "running") return "ignore"
+      return present(
+        {
+          status: "running",
+          input: part.state.input,
+          structured: event.data.structured,
+          content: event.data.content,
+        },
+        {},
+      )
+    case "session.next.tool.success":
+      if (part.state.status === "completed" || part.state.status === "error") return "ignore"
+      // A pending part only retains the raw input string; the parsed arguments live in the
+      // `tool.called` event this store missed. Refetch rather than present an empty input.
+      if (part.state.status !== "running") return "fallback"
+      return present(
+        {
+          status: "completed",
+          input: part.state.input,
+          structured: event.data.structured,
+          content: event.data.content,
+          ...(event.data.outputPaths !== undefined ? { outputPaths: event.data.outputPaths } : {}),
+          ...(event.data.result !== undefined ? { result: event.data.result } : {}),
+        },
+        { completed: event.data.timestamp },
+        {
+          executed: event.data.provider.executed || part.metadata?.providerExecuted === true,
+          resultMetadata: event.data.provider.metadata,
+        },
+      )
+    case "session.next.tool.failed": {
+      if (part.state.status === "completed" || part.state.status === "error") return "ignore"
+      const state = part.state
+      // The running part retains only the stringified output; re-wrapping it as one text item
+      // makes `presentTool` produce the same `metadata.output` a snapshot would. Structured and
+      // content carry over from a running state only — parity with the server updater.
+      const output = state.status === "running" ? state.metadata?.output : undefined
+      return present(
+        {
+          status: "error",
+          error: event.data.error,
+          input: state.status === "running" ? state.input : {},
+          structured: state.status === "running" ? ((state.metadata?.structured ?? {}) as Record<string, unknown>) : {},
+          content: typeof output === "string" && output.length > 0 ? [{ type: "text", text: output }] : [],
+          ...(event.data.result !== undefined ? { result: event.data.result } : {}),
+        },
+        { completed: event.data.timestamp },
+        {
+          executed: event.data.provider.executed || part.metadata?.providerExecuted === true,
+          resultMetadata: event.data.provider.metadata,
+        },
+      )
+    }
+  }
+  return "ignore"
+}
+
+/**
+ * In-flight `session.message` back-fills, keyed by `sessionID+messageID`. One request covers every
+ * stub in that message, so expanding two cards of the same message issues exactly one fetch. A
+ * failed request clears the mark, so the next expand retries.
+ */
+const toolBodyRequests = new Set<string>()
+
+/**
+ * Back-fill the tool bodies a lean `session.messages` page elided.
+ *
+ * The fetched row is re-presented with `presentTool` — the same mapping a snapshot applies — and
+ * written back in place: no message-list rebuild, no reorder. `parts` is read *after* the request
+ * resolves, because a settlement event that landed during the fetch already holds the real body
+ * and must not be overwritten by a second copy of it.
+ */
+export async function expandSessionV2ToolBody(input: {
+  sessionID: string
+  part: ToolPart
+  load: (messageID: string) => Promise<SessionMessage | undefined>
+  parts: () => readonly Part[] | undefined
+  write: (index: number, part: ToolPart) => void
+}): Promise<boolean> {
+  if (!isSessionV2ToolStub(input.part)) return false
+  const key = `${input.sessionID}\0${input.part.messageID}`
+  if (toolBodyRequests.has(key)) return false
+  toolBodyRequests.add(key)
+  try {
+    const message = await input.load(input.part.messageID)
+    if (message?.type !== "assistant") return false
+    const stored = input.parts() ?? []
+    let applied = false
+    message.content.forEach((content) => {
+      if (content.type !== "tool") return
+      const index = stored.findIndex(
+        (part) => part.type === "tool" && (part.id === content.id || part.callID === content.id),
+      )
+      const current = index < 0 ? undefined : stored[index]
+      if (!current || !isSessionV2ToolStub(current)) return
+      input.write(index, presentTool(input.sessionID, message.id, content))
+      applied = true
+    })
+    return applied
+  } finally {
+    toolBodyRequests.delete(key)
+  }
+}
+
 export function createSessionV2TimelineController(input: {
   sessionID: Accessor<string | undefined>
   sessionKey: Accessor<string>
@@ -239,12 +448,20 @@ export function createSessionV2TimelineController(input: {
     if (index === undefined || index < 0) return false
     const part = parts[index]
     if (part.type !== "text" && part.type !== "reasoning") return false
-    sync().set(
-      "part",
-      delta.messageID,
-      reconcile(parts.with(index, { ...part, text: part.text + delta.delta }), { key: "id" }),
-    )
+    // An element-level reconcile diffs one small object; the array rebuild and keyed reconcile
+    // this replaced allocated and re-keyed the whole parts array per streamed token.
+    sync().set("part", delta.messageID, index, reconcile({ ...part, text: part.text + delta.delta }))
     return true
+  }
+
+  const applyToolEvent = (sessionID: string, event: SessionV2ToolEvent, fallback: () => void) => {
+    applySessionV2ToolEvent({
+      sessionID,
+      parts: sync().data.part[event.data.assistantMessageID],
+      event,
+      write: (index, part) => sync().set("part", event.data.assistantMessageID, index, reconcile(part)),
+      fallback,
+    })
   }
 
   const project = (
@@ -266,6 +483,10 @@ export function createSessionV2TimelineController(input: {
       messages,
       pendingInputs,
     })
+    // The fetched span always includes the loaded window's top edge (`until: oldest`), so this
+    // recomputation is the whole orphan lifecycle: a fetch that finally covers a dropped
+    // assistant's parent presents it, and it leaves the list here.
+    rememberOrphans(sessionID, messages, presentation)
     const outbox = sessionPromptOutbox.presentation(sessionID, sdk().scope)
     const presentedIDs = new Set(presentation.messages.map((message) => message.id))
     outbox.messages.forEach((message) => {
@@ -331,7 +552,12 @@ export function createSessionV2TimelineController(input: {
         )
       sync().set("message", sessionID, reconcile(projection.messages, { key: "id" }))
       presentation.parts.forEach((entry) => {
-        sync().set("part", entry.id, reconcile(entry.parts, { key: "id" }))
+        // A lean-page stub never overwrites a part whose real body was already fetched or settled.
+        sync().set(
+          "part",
+          entry.id,
+          reconcile(mergeSessionV2Parts(sync().data.part[entry.id], entry.parts), { key: "id" }),
+        )
       })
       projection.removedMessageIDs.forEach((messageID) => {
         sync().set("part", messageID, reconcile([], { key: "id" }))
@@ -356,7 +582,7 @@ export function createSessionV2TimelineController(input: {
             values.map((value) => value.delta).join(""),
           )
           if (text === part.text) return
-          sync().set("part", delta.messageID, reconcile(parts.with(index, { ...part, text }), { key: "id" }))
+          sync().set("part", delta.messageID, index, reconcile({ ...part, text }))
         })
     })
     projectedInputIDs.forEach((messageID) => {
@@ -405,7 +631,29 @@ export function createSessionV2TimelineController(input: {
     string,
     { readonly oldest?: string; readonly older?: string; readonly complete: boolean; readonly count: number }
   >()
-  const requestedMinimums = new Map<string, number>()
+
+  /**
+   * Fetched assistant messages the presenter dropped because their parent user message sits in a
+   * page that is not loaded yet.
+   *
+   * A window that opens mid-turn carries leading assistant messages `presentSessionV2Messages`
+   * cannot parent, and the server cursor has already moved past them — once dropped they can never
+   * be re-requested. They are carried here instead: the next `loadOlder` page is older than all of
+   * them, so presenting them after that page's messages lands them under the right turn. Every
+   * presentation of a session recomputes the set, so a snapshot that covers the orphans' parent
+   * clears them without any extra bookkeeping.
+   */
+  const orphans = new Map<string, SessionMessage[]>()
+
+  const rememberOrphans = (sessionID: string, messages: SessionMessage[], presentation: SessionV2Presentation) => {
+    const presented = new Set(presentation.messages.map((message) => message.id))
+    const dropped = messages.filter((message) => message.type === "assistant" && !presented.has(message.id))
+    if (dropped.length > 0) {
+      orphans.set(sessionID, dropped)
+      return
+    }
+    orphans.delete(sessionID)
+  }
 
   /**
    * Fetch the visible window of a session's transcript.
@@ -429,12 +677,11 @@ export function createSessionV2TimelineController(input: {
     currentOwner: () => boolean,
   ) => {
     const current = windows.get(sessionID)
-    const requestedMinimum = requestedMinimums.get(sessionID)
     const result = await loadSessionV2Window({
       sessionID,
       signal,
       request: (payload, options) => client.v2.session.messages(payload, options),
-      minimum: Math.max(current?.count ?? 0, requestedMinimum ?? 0) || undefined,
+      minimum: current?.count || undefined,
       until: authoritative ? undefined : current?.oldest,
     })
     if (!currentOwner()) return { messages: result.messages, stable: false as const }
@@ -447,9 +694,6 @@ export function createSessionV2TimelineController(input: {
       complete: result.complete,
       count: result.messages.length,
     })
-    if (result.complete || (requestedMinimum !== undefined && result.messages.length >= requestedMinimum)) {
-      requestedMinimums.delete(sessionID)
-    }
     return { messages: result.messages, stable: true as const }
   }
 
@@ -462,19 +706,84 @@ export function createSessionV2TimelineController(input: {
   /**
    * Extend the window one page further back, then re-project.
    *
-   * Raising `count` before re-requesting is what makes this a *widening* rather than a slide: the
-   * next window load must satisfy both the larger minimum and the existing `until` anchor, so it
-   * returns everything already on screen plus a page above it. Re-requesting the span rather than
-   * splicing a page into the store keeps `mergeSessionV2Presentation`'s replace semantics intact —
-   * a partial prepend would have to reach into that merge, and the projection path is the one
-   * place where a mistake shows up as a silently blank transcript.
+   * The older page is spliced into the store rather than re-requested: the `older` cursor already
+   * points at exactly the next span backwards, so one request replaces what used to be a
+   * full-window refetch (fetch + parse + present + reconcile of every message on screen). `minimum`
+   * is the intent's growth expressed as new messages — a page for manual scrolling, the doubling
+   * `nextSessionV2WindowMinimum` prescribes for a hash seek.
+   *
+   * The presenter drops leading assistant messages whose parent sits in an older page, and the
+   * server cursor has already moved past them, so they could never be fetched again. `orphans`
+   * carries them across the gap: they are younger than everything in the new page, so presenting
+   * them after `page.messages` parents them to the turn the page bottoms out in.
    */
   const loadOlder = async (sessionID: string, intent: SessionV2HistoryLoadIntent = "page") => {
     const current = windows.get(sessionID)
     if (!current || current.complete || current.older === undefined) return
-    const next = Math.max(requestedMinimums.get(sessionID) ?? 0, nextSessionV2WindowMinimum(current.count, intent))
-    requestedMinimums.set(sessionID, next)
-    await requestSnapshot(sessionID, "full")
+    const captured = owner.capture()
+    const client = sdk().client
+    const abort = new AbortController()
+    snapshotAborts.add(abort)
+    try {
+      const page = await loadSessionV2Window({
+        sessionID,
+        signal: abort.signal,
+        request: (payload, options) => client.v2.session.messages(payload, options),
+        minimum: nextSessionV2WindowMinimum(current.count, intent) - current.count,
+        cursor: current.older,
+      })
+      if (!captured.current() || !isRequestedSession(sessionID)) return
+      // A snapshot that reset the window while the page was in flight owns the bookkeeping;
+      // splicing the page in anyway could resurrect rows an authoritative read just removed.
+      const latest = windows.get(sessionID)
+      if (!latest) return
+      const fetched = [...page.messages, ...(orphans.get(sessionID) ?? [])]
+      const presentation = presentSessionV2Messages({
+        sessionID,
+        directory: sdk().directory,
+        agent: input.agent(),
+        model: input.model(),
+        messages: fetched,
+      })
+      rememberOrphans(sessionID, fetched, presentation)
+      const merged = mergeIncrementalMessages(sync().data.message[sessionID] ?? [], presentation.messages)
+      batch(() => {
+        presentation.messages
+          .filter((message) => message.role === "user")
+          .forEach((message) =>
+            sync().session.optimistic.remove({
+              directory: sdk().directory,
+              sessionID,
+              messageID: message.id,
+            }),
+          )
+        sync().set("message", sessionID, reconcile(merged, { key: "id" }))
+        presentation.parts.forEach((entry) => {
+          sync().set(
+            "part",
+            entry.id,
+            reconcile(mergeSessionV2Parts(sync().data.part[entry.id], entry.parts), { key: "id" }),
+          )
+        })
+      })
+      fetched
+        .filter((message) => message.type === "user")
+        .forEach((message) => {
+          if (sessionPromptPending.has(message.id)) sessionPromptPending.clear(message.id)
+        })
+      sessionPromptOutbox.reconcile(sessionID, fetched, sdk().scope)
+      sessionPromptStartup.clearResponded(presentation.messages)
+      const presented = presentation.messages.map((message) => message.id)
+      owned.set(sessionID, new Set([...(owned.get(sessionID) ?? []), ...presented]))
+      windows.set(sessionID, {
+        oldest: page.messages[0]?.id ?? latest.oldest,
+        older: page.older,
+        complete: page.complete,
+        count: Math.max(latest.count, current.count + page.messages.length),
+      })
+    } finally {
+      snapshotAborts.delete(abort)
+    }
   }
 
   const restaked = new Map<string, number>()
@@ -936,7 +1245,19 @@ export function createSessionV2TimelineController(input: {
             continue
           }
           if (event.type === "session.next.tool.success" || event.type === "session.next.tool.failed") {
-            void requestSnapshot(activeSessionID, "full").catch(() => undefined)
+            applyToolEvent(
+              activeSessionID,
+              event,
+              () => void requestSnapshot(activeSessionID, "full").catch(() => undefined),
+            )
+            continue
+          }
+          if (
+            event.type === "session.next.tool.called" ||
+            event.type === "session.next.tool.input.ended" ||
+            event.type === "session.next.tool.progress"
+          ) {
+            applyToolEvent(activeSessionID, event, () => scheduleHydrate(activeSessionID))
             continue
           }
           if (sessionEventNeedsTranscriptSnapshot(event.type)) scheduleHydrate(activeSessionID)
@@ -1022,7 +1343,7 @@ export function createSessionV2TimelineController(input: {
     pendingProjectionIDs.clear()
     deltaBases.clear()
     windows.clear()
-    requestedMinimums.clear()
+    orphans.clear()
   })
 
   return { hydrate, loadOlder, hasOlder }

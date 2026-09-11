@@ -7,6 +7,7 @@ let getWorkspaceTerminalCacheKey: typeof import("./terminal").getWorkspaceTermin
 let getLegacyTerminalStorageKeys: (dir: string, legacySessionID?: string) => string[]
 let migrateTerminalState: (value: unknown) => unknown
 let replaceTerminalEntry: typeof import("./terminal").replaceTerminalEntry
+let upsertSharedTerminal: typeof import("./terminal").upsertSharedTerminal
 let coalesceTerminalRequest: typeof import("./terminal").coalesceTerminalRequest
 let reconcileTerminalState: typeof import("./terminal").reconcileTerminalState
 let pruneTerminalStateEntries: typeof import("./terminal").pruneTerminalStateEntries
@@ -31,6 +32,7 @@ beforeAll(async () => {
   getLegacyTerminalStorageKeys = mod.getLegacyTerminalStorageKeys
   migrateTerminalState = mod.migrateTerminalState
   replaceTerminalEntry = mod.replaceTerminalEntry
+  upsertSharedTerminal = mod.upsertSharedTerminal
   coalesceTerminalRequest = mod.coalesceTerminalRequest
   reconcileTerminalState = mod.reconcileTerminalState
   pruneTerminalStateEntries = mod.pruneTerminalStateEntries
@@ -168,6 +170,42 @@ describe("migrateTerminalState", () => {
     expect(state.all[0]?.cursor).toBeUndefined()
     expect(state.all[0]?.scrollY).toBeUndefined()
   })
+
+  // Contract: a session owns at most one shared terminal server-side, so
+  // persisted duplicates for one session collapse to the most recently
+  // appended entry (fresh bindings are appended by shared()).
+  test("collapses persisted duplicate shared terminals for one session", () => {
+    expect(
+      migrateTerminalState({
+        active: "pty_old",
+        all: [
+          { id: "pty_old", title: "Shared terminal", shared: true, sessionID: "ses_a" },
+          { id: "shell", title: "Terminal 1", titleNumber: 1 },
+          { id: "pty_new", title: "Shared terminal", shared: true, sessionID: "ses_a" },
+        ],
+      }),
+    ).toEqual({
+      // The dropped duplicate's active marker carries to the surviving tab.
+      active: "pty_new",
+      all: [
+        { id: "shell", title: "Terminal 1", titleNumber: 1 },
+        { id: "pty_new", title: "Shared terminal", titleNumber: 0, shared: true, sessionID: "ses_a" },
+      ],
+    })
+  })
+
+  test("keeps shared terminals that belong to different sessions", () => {
+    const state = migrateTerminalState({
+      active: "pty_a",
+      all: [
+        { id: "pty_a", title: "Shared terminal", shared: true, sessionID: "ses_a" },
+        { id: "pty_b", title: "Shared terminal", shared: true, sessionID: "ses_b" },
+      ],
+    }) as { active: string; all: LocalPTY[] }
+
+    expect(state.active).toBe("pty_a")
+    expect(state.all.map((pty) => pty.id)).toEqual(["pty_a", "pty_b"])
+  })
 })
 
 describe("replaceTerminalEntry", () => {
@@ -183,6 +221,64 @@ describe("replaceTerminalEntry", () => {
     const replacement = { id: "replacement", title: "Shell", titleNumber: 1, command: "zsh" }
 
     expect(replaceTerminalEntry([replacement], "failed", replacement)).toEqual([replacement])
+  })
+})
+
+describe("upsertSharedTerminal", () => {
+  const shell = { id: "shell", title: "Terminal 1", titleNumber: 1 }
+  const shared = (id: string, sessionID: string): LocalPTY => ({
+    id,
+    title: "Shared terminal",
+    titleNumber: 0,
+    shared: true,
+    sessionID,
+  })
+
+  // Contract: shared() appends a tab when the session has no entry yet.
+  test("appends the session terminal when the workspace has none", () => {
+    const next = shared("pty_a", "ses_a")
+    expect(upsertSharedTerminal([shell], next)).toEqual([shell, next])
+  })
+
+  // Contract: re-requesting the same session's terminal while the binding is
+  // unchanged must not stack a second tab (switching views re-calls shared()).
+  test("re-shares in place when the server returns the same PTY", () => {
+    const existing = shared("pty_a", "ses_a")
+    const next = { ...existing, workspaceID: "wrk_1" }
+    expect(upsertSharedTerminal([existing, shell], next)).toEqual([next, shell])
+  })
+
+  // Contract: when the server binding moved to a fresh PTY while a stale entry
+  // for the session survived, the fresh tab takes the stale one's slot rather
+  // than appending a duplicate.
+  test("replaces a stale same-session entry in its slot when the binding moved", () => {
+    const other = { id: "other", title: "Terminal 2", titleNumber: 2 }
+    const fresh = shared("pty_new", "ses_a")
+    expect(upsertSharedTerminal([shell, shared("pty_old", "ses_a"), other], fresh)).toEqual([shell, fresh, other])
+  })
+
+  // Contract: several accumulated stale entries for one session all collapse.
+  test("collapses accumulated stale duplicates for the same session", () => {
+    const fresh = shared("pty_new", "ses_a")
+    expect(upsertSharedTerminal([shared("pty_1", "ses_a"), shell, shared("pty_2", "ses_a")], fresh)).toEqual([
+      fresh,
+      shell,
+    ])
+  })
+
+  // Contract: entries for other sessions and private tabs are never touched.
+  test("leaves other sessions' shared terminals and private tabs alone", () => {
+    const theirs = shared("pty_b", "ses_b")
+    const fresh = shared("pty_new", "ses_a")
+    expect(upsertSharedTerminal([theirs, shell], fresh)).toEqual([theirs, shell, fresh])
+  })
+
+  // Contract: a private tab is not considered stale for the session even if it
+  // somehow carries a sessionID — only shared entries collapse.
+  test("does not treat a non-shared entry with the same sessionID as stale", () => {
+    const unattributed = { id: "pty_c", title: "Shell", titleNumber: 0, sessionID: "ses_a" }
+    const fresh = shared("pty_new", "ses_a")
+    expect(upsertSharedTerminal([unattributed], fresh)).toEqual([unattributed, fresh])
   })
 })
 

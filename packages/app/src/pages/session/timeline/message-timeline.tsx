@@ -11,7 +11,7 @@ import {
   type Accessor,
   type JSX,
 } from "solid-js"
-import { createStore, produce } from "solid-js/store"
+import { createStore, produce, reconcile } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
 import { useNavigate } from "@solidjs/router"
 import { useMutation } from "@tanstack/solid-query"
@@ -22,6 +22,7 @@ import { Card } from "@turenlabs/ui/card"
 import { CompactionSummary } from "./compaction-summary"
 import {
   ContextToolGroup,
+  FailureToolGroup,
   Message,
   MessageDivider,
   Part as MessagePart,
@@ -75,11 +76,13 @@ import { PromptAdmissionStatus } from "@/components/prompt-input/prompt-admissio
 import { useSync } from "@/context/sync"
 import { notifySessionTabsRemoved } from "@/components/titlebar-session-events"
 import {
+  expandSessionV2ToolBody,
   sessionPromptPending,
   sessionPromptStartup,
   sessionTurnActivity,
   type TurnStatus,
 } from "@/pages/session/goal/session-v2-timeline-controller"
+import { isSessionV2ToolStub } from "@/pages/session/goal/session-v2-presentation"
 import { sessionTitle } from "@/utils/session-title"
 import { scheduleConnectedMeasure } from "./measure"
 import { observeElementOffsetReconnectAware } from "./observe-element-offset"
@@ -576,6 +579,34 @@ export function MessageTimeline(props: {
   }
 
   const [toolOpen, setToolOpen] = createStore<Record<string, boolean | undefined>>(cached?.toolOpen ?? {})
+  // Parts whose lean-page tool body is being fetched; the card shows its loading affordance while set.
+  const [toolBodyLoading, setToolBodyLoading] = createStore<Record<string, boolean | undefined>>({})
+
+  // A truncated tool card back-fills its message's elided bodies through the single-message
+  // endpoint when the user expands it; `expandSessionV2ToolBody` writes the full parts in place.
+  const expandToolBody = (part: PartType) => {
+    const id = sessionID()
+    if (!id || part.type !== "tool" || !isSessionV2ToolStub(part)) return
+    setToolBodyLoading(part.id, true)
+    const messageID = part.messageID
+    void expandSessionV2ToolBody({
+      sessionID: id,
+      part,
+      load: (messageID) =>
+        sdk()
+          .client.v2.session.message({ sessionID: id, messageID })
+          .then((response) => response.data?.data),
+      parts: () => sync().data.part[messageID],
+      // A fetch that resolves after the user switched sessions must not write: `data.part` is a
+      // shared map and the new session is already drawing from it.
+      write: (index, next) => {
+        if (sessionID() !== id) return
+        sync().set("part", messageID, index, reconcile(next))
+      },
+    })
+      .catch((error) => showToast({ title: language.t("common.requestFailed"), description: errorMessage(error) }))
+      .finally(() => setToolBodyLoading(part.id, undefined))
+  }
   const [renderOverscan, setRenderOverscan] = createSignal(initialMeasurements?.length || coldBottomMount ? 6 : 20)
   let resizePinnedIndexes: number[] = []
   let resizePinFrame: number | undefined
@@ -642,14 +673,10 @@ export function MessageTimeline(props: {
     const item = virtualizer.measurementsCache[index]
     const previous = item ? (virtualizer.itemSizeCache.get(item.key) ?? item.size) : undefined
     const root = listRoot()
-    if (root && previous !== undefined && Math.abs(size - previous) > root.clientHeight) {
-      const view = root.getBoundingClientRect()
-      resizePinnedIndexes = [...root.querySelectorAll<HTMLElement>("[data-index]")]
-        .filter((element) => {
-          const rect = element.getBoundingClientRect()
-          return rect.bottom > view.top && rect.top < view.bottom
-        })
-        .map((element) => Number(element.dataset.index))
+    const range = virtualizer.range
+    if (root && previous !== undefined && Math.abs(size - previous) > root.clientHeight && range) {
+      resizePinnedIndexes = []
+      for (let i = range.startIndex; i <= range.endIndex; i++) resizePinnedIndexes.push(i)
       if (resizePinFrame !== undefined) cancelAnimationFrame(resizePinFrame)
       resizePinFrame = requestAnimationFrame(() => {
         resizePinFrame = requestAnimationFrame(() => {
@@ -1147,10 +1174,37 @@ export function MessageTimeline(props: {
         <ContextToolGroup
           parts={parts()}
           open={open()}
-          onOpenChange={(value) => setToolOpen(contextOpenKey(), value)}
+          onOpenChange={(value) => {
+            setToolOpen(contextOpenKey(), value)
+            if (value) parts().forEach(expandToolBody)
+          }}
           busy={
             workingTurn(row().userMessageID) && lastAssistantGroupKey().get(row().userMessageID) === row().group.key
           }
+          onSizeChange={onSizeChange}
+        />
+      )
+    }
+
+    if (row().group.type === "failure") {
+      const parts = createMemo(() => {
+        const group = row().group
+        if (group.type !== "failure") return emptyTools
+        return group.refs
+          .map((ref) => getMsgPart(ref.messageID, ref.partID))
+          .filter((part): part is ToolPart => part?.type === "tool")
+      })
+      const failureOpenKey = () => `failure:${row().group.key}`
+      const open = createMemo(() => toolOpen[failureOpenKey()] === true)
+
+      return (
+        <FailureToolGroup
+          parts={parts()}
+          open={open()}
+          onOpenChange={(value) => {
+            setToolOpen(failureOpenKey(), value)
+            if (value) parts().forEach(expandToolBody)
+          }}
           onSizeChange={onSizeChange}
         />
       )
@@ -1172,6 +1226,15 @@ export function MessageTimeline(props: {
       return partDefaultOpen(item, settings.general.shellToolPartsExpanded(), settings.general.editToolPartsExpanded())
     })
 
+    // A stubbed body under an expanded card is a fetch, not a layout: tools that render open by
+    // default (errors, settings-driven expansion) never fire `onToolOpenChange`, so the effect —
+    // not the toggle handler — is what triggers the back-fill. The stub check inside
+    // `expandToolBody` makes this a no-op once the real body has landed.
+    createEffect(() => {
+      const item = part()
+      if (item && (toolOpen[item.id] ?? defaultOpen()) === true) expandToolBody(item)
+    })
+
     return (
       <Show when={message()}>
         {(message) => (
@@ -1187,6 +1250,7 @@ export function MessageTimeline(props: {
                 defaultOpen={defaultOpen()}
                 toolOpen={toolOpen[part().id] ?? defaultOpen()}
                 onToolOpenChange={(open) => setToolOpen(part().id, open)}
+                toolBodyLoading={toolBodyLoading[part().id] === true}
                 deferToolContent
                 virtualizeDiff={false}
                 onContentRendered={onSizeChange}

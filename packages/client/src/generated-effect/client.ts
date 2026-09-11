@@ -663,11 +663,12 @@ type Endpoint4_0Input = {
   readonly limit?: Endpoint4_0Request["query"]["limit"]
   readonly order?: Endpoint4_0Request["query"]["order"]
   readonly cursor?: Endpoint4_0Request["query"]["cursor"]
+  readonly lean?: Endpoint4_0Request["query"]["lean"]
 }
 const Endpoint4_0 = (raw: RawClient["server.message"]) => (input: Endpoint4_0Input) =>
   raw["session.messages"]({
     params: { sessionID: input["sessionID"] },
-    query: { limit: input["limit"], order: input["order"], cursor: input["cursor"] },
+    query: { limit: input["limit"], order: input["order"], cursor: input["cursor"], lean: input["lean"] },
   }).pipe(Effect.mapError(mapClientError))
 
 const adaptGroup4 = (raw: RawClient["server.message"]) => ({ list: Endpoint4_0(raw) })

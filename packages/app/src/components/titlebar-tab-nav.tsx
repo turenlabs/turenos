@@ -303,6 +303,16 @@ export function TabNavItem(props: {
               event.preventDefault()
             }}
           />
+          <Show when={!editing() && projectName()}>
+            {(name) => (
+              <span
+                data-slot="tab-project"
+                class="min-w-0 shrink overflow-hidden text-clip whitespace-nowrap text-v2-text-text-faint"
+              >
+                | {name()}
+              </span>
+            )}
+          </Show>
         </a>
       </Show>
 

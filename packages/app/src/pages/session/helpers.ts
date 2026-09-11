@@ -96,6 +96,18 @@ export const createSessionTabs = (input: TabsInput) => {
   }
 }
 
+// Recovery flags must survive the id swap recovery performs (clone() for
+// private PTYs, a fresh server binding for shared ones), so they key on stable
+// identity: the session for shared terminals, the numbered title slot
+// otherwise.
+export const terminalRecoveryKey = (pty: {
+  id: string
+  title: string
+  titleNumber: number
+  shared?: boolean
+  sessionID?: string
+}) => (pty.shared && pty.sessionID ? `shared:${pty.sessionID}` : String(pty.titleNumber || pty.title || pty.id))
+
 export const focusTerminalById = (id: string) => {
   const wrapper = document.getElementById(`terminal-wrapper-${id}`)
   const terminal = wrapper?.querySelector('[data-component="terminal"]')

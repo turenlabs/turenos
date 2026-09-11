@@ -5,8 +5,9 @@ import { makeGlobalNode } from "@turenlabs/core/effect/app-node"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { ToolFailure } from "@turenlabs/llm"
 import { McpTool } from "@turenlabs/core/tool/mcp"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Option } from "effect"
 import { MCP } from "."
+import { McpAuth } from "./auth"
 import { AppNodeBuilderV1 } from "@/effect/app-node-builder-v1"
 import { InstanceStore } from "@/project/instance-store"
 import { McpIntegration } from "./integration"
@@ -137,10 +138,15 @@ const layer = Layer.effect(
             inputSchema: entry.def.inputSchema as McpTool.Definition["inputSchema"],
             call: (args) =>
               Effect.gen(function* () {
-                const configuration =
-                  entry.server !== "onepassword" && McpIntegration.definition(entry.server) !== undefined
-                    ? yield* instances.provide({ directory: input.directory }, mcp.configuration(entry.server))
-                    : undefined
+                const managed = entry.server !== "onepassword" && McpIntegration.definition(entry.server) !== undefined
+                const configuration = managed
+                  ? yield* instances.provide({ directory: input.directory }, mcp.configuration(entry.server))
+                  : undefined
+                const stored = yield* Effect.serviceOption(McpAuth.Service).pipe(
+                  Effect.andThen((service) =>
+                    Option.isSome(service) ? service.value.get(entry.server) : Effect.succeed(undefined),
+                  ),
+                )
                 return yield* Effect.tryPromise({
                   // The signal is Effect's own interruption signal, so cancelling a run
                   // cancels the in-flight MCP request rather than leaking it.
@@ -158,7 +164,9 @@ const layer = Layer.effect(
                         // without one a long call cannot reset its timeout at all.
                         onprogress: () => {},
                       })
-                      .then((result) => McpIntegration.redactMcpResult(entry.server, configuration, result)),
+                      .then((result) =>
+                        McpIntegration.redactMcpResult(entry.server, configuration, result, McpAuth.secrets(stored)),
+                      ),
                   catch: (error) =>
                     new ToolFailure({ message: error instanceof Error ? error.message : String(error) }),
                 })

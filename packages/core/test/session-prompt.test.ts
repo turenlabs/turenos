@@ -238,6 +238,37 @@ describe("SessionV2.prompt", () => {
     }),
   )
 
+  it.effect("promotes a consecutive run of machine advisories in one boundary without jumping a queued user input", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const events = yield* EventV2.Service
+      const { db } = yield* Database.Service
+      const admit = (id: string, text: string, source?: SessionInput.Source) =>
+        SessionInput.admit(db, events, {
+          id: SessionMessage.ID.make(id),
+          sessionID,
+          prompt: Prompt.make({ text }),
+          delivery: "queue",
+          source,
+          kind: "prompt",
+        })
+      yield* admit("msg_advisory_first", "Settle notice one", "subagent_settle")
+      yield* admit("msg_advisory_second", "Board update", "subagent_board")
+      yield* admit("msg_queued_user", "Queued user instruction")
+      yield* admit("msg_advisory_last", "Settle notice two", "subagent_settle")
+
+      const pendingIDs = () => session.pendingInputs(sessionID).pipe(Effect.map((items) => items.map((item) => String(item.id))))
+
+      yield* SessionInput.promoteNextQueued(db, events, sessionID)
+      expect(yield* pendingIDs()).toEqual(["msg_queued_user", "msg_advisory_last"])
+      yield* SessionInput.promoteNextQueued(db, events, sessionID)
+      expect(yield* pendingIDs()).toEqual(["msg_advisory_last"])
+      yield* SessionInput.promoteNextQueued(db, events, sessionID)
+      expect(yield* pendingIDs()).toEqual([])
+    }),
+  )
+
   it.effect("projects admitted, promoted, and cancelled input lifecycle by stable ID", () =>
     Effect.gen(function* () {
       yield* setup

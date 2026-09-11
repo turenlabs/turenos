@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, shell } from "electron"
+import { Menu, shell } from "electron"
 import type { MenuItemConstructorOptions } from "electron"
 import {
   DESKTOP_MENU,
@@ -9,6 +9,7 @@ import {
 
 import { UPDATER_ENABLED } from "./constants"
 import { runDesktopMenuAction } from "./desktop-menu-actions"
+import { getLastFocusedWindow } from "./windows"
 
 type Deps = {
   trigger: (id: string) => void
@@ -49,7 +50,7 @@ function nativeItem(entry: DesktopMenuEntry, deps: Deps): MenuItemConstructorOpt
   if (entry.action) {
     const action = entry.action
     item.click = () =>
-      runDesktopMenuAction(BrowserWindow.getFocusedWindow(), action, {
+      runDesktopMenuAction(getLastFocusedWindow(), action, {
         checkForUpdates: deps.checkForUpdates,
         relaunch: deps.relaunch,
       })

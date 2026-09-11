@@ -7,6 +7,59 @@ import { InvalidCursorError, InvalidRequestError, SessionNotFoundError, UnknownE
 
 const DefaultMessagesLimit = 50
 
+/**
+ * `session.messages` pages ship every tool body by default; on a tool-heavy transcript that is
+ * tens of MiB of `content`/`structured` the renderer parses before the first row paints — and most
+ * of it is only ever read when the user expands the card (228.7 MiB across 1952 messages in the
+ * measured "Revamp V2" session, 81% of it in 3% of messages). `?lean=true` replaces oversized tool
+ * bodies with a `truncated` marker; the full row stays available through `session.message`, which
+ * the timeline fetches on expand.
+ */
+const LeanToolBodyBytes = 64 * 1024
+// `structured` is kept whole when it is itself small: collapsed cards still read scalars out of it
+// (a shell's `exit`/`timeout`), and those are never the payload being trimmed.
+const LeanStructuredKeepBytes = 256
+
+const byteSize = (value: unknown) => (value === undefined ? 0 : Buffer.byteLength(JSON.stringify(value), "utf8"))
+
+function leanToolContent(item: SessionMessage.AssistantContent): SessionMessage.AssistantContent {
+  // Only settled states truncate: a pending call has no body yet and a running one's streamed
+  // output is what the timeline is live-rendering — eliding it would blank the open card.
+  if (item.type !== "tool" || (item.state.status !== "completed" && item.state.status !== "error")) return item
+  const state = item.state
+  const bytes =
+    byteSize(state.content) +
+    byteSize(state.structured) +
+    byteSize("result" in state ? state.result : undefined) +
+    byteSize("attachments" in state ? state.attachments : undefined)
+  if (bytes <= LeanToolBodyBytes) return item
+  const structured = byteSize(state.structured) <= LeanStructuredKeepBytes ? state.structured : {}
+  return {
+    ...item,
+    truncated: { bytes },
+    state: {
+      ...state,
+      content: [],
+      structured,
+      // `result` and `attachments` re-carry the same bytes (`ToolOutput.toResultValue` rebuilds
+      // content into `result`); they go with the body they duplicate.
+      ...(state.status === "completed" ? { result: undefined, attachments: undefined } : {}),
+      ...(state.status === "error" ? { result: undefined } : {}),
+    },
+  }
+}
+
+export function leanSessionMessage(message: SessionMessage.Message): SessionMessage.Message {
+  if (message.type !== "assistant") return message
+  let trimmed = false
+  const content = message.content.map((item) => {
+    const next = leanToolContent(item)
+    trimmed ||= next !== item
+    return next
+  })
+  return trimmed ? { ...message, content } : message
+}
+
 const Cursor = Schema.Struct({
   id: SessionMessage.ID,
   order: Schema.Union([Schema.Literal("asc"), Schema.Literal("desc")]),
@@ -81,7 +134,7 @@ export const MessageHandler = HttpApiBuilder.group(Api, "server.message", (handl
         const first = messages[0]
         const last = messages.at(-1)
         return {
-          data: messages,
+          data: ctx.query.lean ? messages.map(leanSessionMessage) : messages,
           cursor: {
             previous: first ? cursor.encode(first, order, "previous") : undefined,
             next: last ? cursor.encode(last, order, "next") : undefined,

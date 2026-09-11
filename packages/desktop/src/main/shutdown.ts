@@ -7,6 +7,7 @@ type Options = {
   drainPersistence: () => Promise<void>
   stopSidecars: () => Promise<void>
   stopWslServers: () => void
+  stopSshServers?: () => void
   setAppQuitting: () => void
   quit: () => void
   failed: (error: unknown) => void
@@ -42,6 +43,7 @@ export function createShutdownCoordinator(options: Options) {
       await step("drainPersistence", options.drainPersistence)
       await step("stopSidecars", options.stopSidecars)
       await step("stopWslServers", options.stopWslServers)
+      if (options.stopSshServers) await step("stopSshServers", options.stopSshServers)
       complete = true
     })()
     return stopping

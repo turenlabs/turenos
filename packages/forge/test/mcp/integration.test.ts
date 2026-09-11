@@ -376,6 +376,93 @@ describe("managed MCP integrations", () => {
     await expect(redirecting("https://mcp.corp.example/mcp")).rejects.toThrow("redirects are prohibited")
   })
 
+  test("qualifies advertised OAuth origins without widening the customer MCP policy", async () => {
+    const requests: Array<{ url: string; addresses: readonly string[]; redirect?: RequestRedirect }> = []
+    let tokenHeaders: Headers | undefined
+    const dependencies = {
+      now: () => 1_000,
+      resolve: async (hostname: string) => {
+        if (hostname === "private.example") return ["10.0.0.4"]
+        return ["93.184.216.34"]
+      },
+      request: async (url: URL, init: RequestInit, addresses: readonly string[]) => {
+        requests.push({ url: url.toString(), addresses, redirect: init.redirect })
+        if (url.origin === "https://tokens.example") tokenHeaders = new Headers(init.headers)
+        if (url.origin === "https://mcp.example") {
+          return new Response(null, {
+            status: 401,
+            headers: {
+              "WWW-Authenticate":
+                'Bearer resource_metadata="https://login.example/.well-known/oauth-protected-resource"',
+            },
+          })
+        }
+        if (url.pathname === "/.well-known/oauth-protected-resource") {
+          return Response.json({ authorization_servers: ["https://login.example"] })
+        }
+        if (url.pathname === "/.well-known/oauth-authorization-server") {
+          return Response.json({
+            issuer: "https://login.example",
+            token_endpoint: "https://tokens.example/token",
+            revocation_endpoint: "https://private.example/revoke",
+          })
+        }
+        return new Response("ok")
+      },
+    }
+    const entry = await Effect.runPromise(
+      McpIntegration.runtimeEntry(
+        "datadog-security",
+        { type: "remote", url: "https://mcp.example/tenant", enabled: true },
+        dependencies,
+      ),
+    )
+    const fetch = McpIntegration.networkFetch(entry)
+    expect(fetch).toBeDefined()
+    if (!fetch) throw new Error("Customer MCP policy fetch is missing")
+
+    await fetch("https://mcp.example/v1/mcp")
+    await fetch("https://login.example/.well-known/oauth-protected-resource")
+    await fetch("https://login.example/.well-known/oauth-authorization-server")
+    expect(
+      await (
+        await fetch("https://tokens.example/token", {
+          method: "POST",
+          headers: { accept: "application/json", authorization: "Bearer mcp-secret", "X-MCP-Secret": "secret" },
+        })
+      ).text(),
+    ).toBe("ok")
+    expect(tokenHeaders?.get("accept")).toBe("application/json")
+    expect(tokenHeaders?.get("authorization")).toBeNull()
+    expect(tokenHeaders?.get("x-mcp-secret")).toBeNull()
+    await expect(fetch("https://private.example/revoke", { method: "POST" })).rejects.toThrow("private network")
+    await expect(fetch("https://attacker.example/token")).rejects.toThrow("advertised origins")
+
+    expect(requests).toEqual([
+      {
+        url: "https://mcp.example/v1/mcp",
+        addresses: ["93.184.216.34"],
+        redirect: "manual",
+      },
+      {
+        url: "https://login.example/.well-known/oauth-protected-resource",
+        addresses: ["93.184.216.34"],
+        redirect: "manual",
+      },
+      {
+        url: "https://login.example/.well-known/oauth-authorization-server",
+        addresses: ["93.184.216.34"],
+        redirect: "manual",
+      },
+      {
+        url: "https://tokens.example/token",
+        addresses: ["93.184.216.34"],
+        redirect: "manual",
+      },
+    ])
+    fetch.close?.()
+  })
+
   test("attaches the same pinned policy boundary to hosted MCP entries", async () => {
     const requests: Array<{ url: string; addresses: readonly string[]; redirect?: RequestRedirect }> = []
     const dependencies = {
@@ -432,6 +519,74 @@ describe("managed MCP integrations", () => {
     // Qualification and each request resolve DNS, then compare it with the pinned address set.
     expect(resolutions).toBe(4)
     expect(requests).toBe(2)
+  })
+
+  test("requalifies an expired customer MCP policy before retrying the request", async () => {
+    let now = 1_000
+    let resolutions = 0
+    let requests = 0
+    const dependencies = {
+      now: () => now,
+      resolve: async () => {
+        resolutions++
+        return ["93.184.216.34"]
+      },
+      request: async () => {
+        requests++
+        return new Response(null, { status: 200 })
+      },
+    }
+    const fetch = await McpIntegration.customerEndpointFetch(
+      "datadog-security",
+      "https://mcp.datadog.example/v1/mcp",
+      { type: "customer-url", path: "/v1/mcp", privateNetwork: false },
+      dependencies,
+    )
+
+    await fetch("https://mcp.datadog.example/v1/mcp")
+    now += 60 * 60_000 + 1
+    await fetch("https://mcp.datadog.example/v1/mcp")
+
+    expect(resolutions).toBe(4)
+    expect(requests).toBe(2)
+  })
+
+  test("keeps customer OAuth origins in the configured endpoint network zone", async () => {
+    const dependencies = {
+      now: () => 1_000,
+      resolve: async (hostname: string) => (hostname === "private.example" ? ["10.0.0.4"] : ["93.184.216.34"]),
+      request: async (url: URL) => {
+        if (url.origin === "https://mcp.example") {
+          return new Response(null, {
+            status: 401,
+            headers: {
+              "WWW-Authenticate":
+                'Bearer resource_metadata="https://login.example/.well-known/oauth-protected-resource"',
+            },
+          })
+        }
+        if (url.pathname === "/.well-known/oauth-protected-resource") {
+          return Response.json({ authorization_servers: ["https://login.example"] })
+        }
+        return Response.json({ token_endpoint: "https://private.example/token" })
+      },
+    }
+    const entry = await Effect.runPromise(
+      McpIntegration.runtimeEntry(
+        "elastic-security",
+        { type: "remote", url: "https://mcp.example/tenant", enabled: true, oauth: { clientId: "client" } },
+        dependencies,
+      ),
+    )
+    const fetch = McpIntegration.networkFetch(entry)
+    expect(fetch).toBeDefined()
+    if (!fetch) throw new Error("Customer MCP policy fetch is missing")
+
+    await fetch("https://mcp.example/api/agent_builder/mcp")
+    await fetch("https://login.example/.well-known/oauth-protected-resource")
+    await fetch("https://login.example/.well-known/oauth-authorization-server")
+    await expect(fetch("https://private.example/token", { method: "POST" })).rejects.toThrow("network zone")
+    fetch.close?.()
   })
 
   test("revokes managed MCP network access synchronously when disabled", async () => {

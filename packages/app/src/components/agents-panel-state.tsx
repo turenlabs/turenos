@@ -353,10 +353,10 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
         const root = rootID(record.session.id)
         const origin = sessionOrigin(record.session)
         const selectedProject = !!selectedDirectory && pathKey(record.project.worktree) === pathKey(selectedDirectory)
-        if (attentionRoots.has(root) || notifications.session.unseenHasError(record.session.id))
+        if (attentionRoots.has(root) || (notifications?.session.unseenHasError(record.session.id) ?? false))
           return [{ record, priority: 0 }]
         if (origin === "manual" && workingRoots.has(root)) return [{ record, priority: 1 }]
-        if (origin === "manual" && !selectedProject && notifications.session.unseenCount(record.session.id) > 0)
+        if (origin === "manual" && !selectedProject && (notifications?.session.unseenCount(record.session.id) ?? 0) > 0)
           return [{ record, priority: 2 }]
         return []
       })
@@ -553,11 +553,13 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
 
     function unseenCount(conn: ServerConnection.Any, project: LocalProject) {
       const state = notification.ensureServerState(ServerConnection.key(conn))
+      if (!state) return 0
       return directories(project).reduce((total, directory) => total + state.project.unseenCount(directory), 0)
     }
 
     function clearNotifications(conn: ServerConnection.Any, project: LocalProject) {
       const state = notification.ensureServerState(ServerConnection.key(conn))
+      if (!state) return
       directories(project)
         .filter((directory) => state.project.unseenCount(directory) > 0)
         .forEach((directory) => state.project.markViewed(directory))

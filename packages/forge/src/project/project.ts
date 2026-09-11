@@ -10,7 +10,7 @@ import { GlobalBus } from "@/bus/global"
 import { which } from "@turenlabs/core/util/which"
 import { Command } from "@/command"
 import { InstanceState } from "@/effect/instance-state"
-import { Effect, Layer, Scope, Context, Stream, Types, Schema } from "effect"
+import { Effect, Layer, Context, Stream, Types, Schema } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { FSUtil } from "@turenlabs/core/fs-util"
 import { AppProcess } from "@turenlabs/core/process"
@@ -18,7 +18,6 @@ import { ProjectV2 } from "@turenlabs/core/project"
 import { CrossSpawnSpawner } from "@turenlabs/core/cross-spawn-spawner"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { serviceUse } from "@turenlabs/core/effect/service-use"
-import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { EventV2 } from "@turenlabs/core/event"
 import { Project } from "@turenlabs/schema/project"
@@ -88,7 +87,6 @@ export interface Interface {
    */
   readonly init: () => Effect.Effect<void>
   readonly fromDirectory: (directory: string) => Effect.Effect<{ project: Info; sandbox: string }>
-  readonly discover: (input: Info) => Effect.Effect<void>
   readonly list: () => Effect.Effect<Info[]>
   readonly get: (id: ProjectV2.ID) => Effect.Effect<Info | undefined>
   readonly update: (input: UpdateInput) => Effect.Effect<Info, NotFoundError>
@@ -111,7 +109,6 @@ const layer = Layer.effect(
     const projectV2 = yield* ProjectV2.Service
     const projectDirectories = yield* ProjectDirectories.Service
     const events = yield* EventV2Bridge.Service
-    const flags = yield* RuntimeFlags.Service
     const { db } = yield* Database.Service
 
     const git = Effect.fnUntraced(
@@ -140,8 +137,6 @@ const layer = Layer.effect(
       )
 
     const fakeVcs = Schema.decodeUnknownSync(Schema.optional(Project.Vcs))(Flag.FORGE_FAKE_VCS)
-
-    const scope = yield* Scope.Scope
 
     const migrateProjectId = Effect.fn("Project.migrateProjectId")(function* (
       oldID: ProjectV2.ID | undefined,
@@ -242,8 +237,6 @@ const layer = Layer.effect(
             time: { created: Date.now(), updated: Date.now() },
           }
 
-      if (flags.experimentalIconDiscovery) yield* discover(existing).pipe(Effect.ignore, Effect.forkIn(scope))
-
       const result: Info = {
         ...existing,
         worktree: projectID === ProjectV2.ID.global ? worktree : existing.worktree,
@@ -319,33 +312,6 @@ const layer = Layer.effect(
       }
       yield* emitUpdated(result)
       return { project: result, sandbox: data.vcs ? data.directory : worktree }
-    })
-
-    const discover = Effect.fn("Project.discover")(function* (input: Info) {
-      if (input.vcs !== "git") return
-      if (input.icon?.override) return
-      if (input.icon?.url) return
-
-      const matches = yield* fs
-        .glob("**/favicon.{ico,png,svg,jpg,jpeg,webp}", {
-          cwd: input.worktree,
-          absolute: true,
-          include: "file",
-        })
-        .pipe(Effect.orDie)
-      const shortest = matches.reduce<string | undefined>(
-        (shortest, match) => (!shortest || match.length < shortest.length ? match : shortest),
-        undefined,
-      )
-      if (!shortest) return
-
-      const buffer = yield* fs.readFile(shortest).pipe(Effect.orDie)
-      const base64 = Buffer.from(buffer).toString("base64")
-      const mime = FSUtil.mimeType(shortest)
-      const url = `data:${mime};base64,${base64}`
-      yield* update({ projectID: input.id, icon: { url } }).pipe(
-        Effect.catchTag("Project.NotFoundError", () => Effect.void),
-      )
     })
 
     const list = Effect.fn("Project.list")(function* () {
@@ -465,7 +431,6 @@ const layer = Layer.effect(
     return Service.of({
       init,
       fromDirectory,
-      discover,
       list,
       get,
       update,
@@ -490,7 +455,6 @@ export const node = LayerNode.make({
     ProjectV2.node,
     ProjectDirectories.node,
     EventV2Bridge.node,
-    RuntimeFlags.node,
     Database.node,
   ],
 })

@@ -197,6 +197,8 @@ export interface MessagePartProps {
   toolOpen?: boolean
   onToolOpenChange?: (open: boolean) => void
   deferToolContent?: boolean
+  /** True while this part's elided tool body is being fetched (`session.messages?lean` stubs). */
+  toolBodyLoading?: boolean
   virtualizeDiff?: boolean
   onContentRendered?: () => void
   showAssistantCopyPartID?: string | null
@@ -1023,6 +1025,96 @@ export function ContextToolGroup(props: {
   )
 }
 
+/**
+ * A run of identical tool rejections -- a retry storm like repeated "shell job
+ * limit reached" -- is one fact, so it renders as one collapsed row instead of a
+ * stack of duplicate error cards. The shared reason stays visible on the trigger
+ * line; expanding shows each attempt.
+ */
+export function FailureToolGroup(props: {
+  parts: ToolPart[]
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  onSizeChange?: () => void
+}) {
+  const i18n = useI18n()
+  const [localOpen, setLocalOpen] = createSignal(false)
+  const open = () => props.open ?? localOpen()
+  const info = createMemo(() => getToolInfo(props.parts[0]?.tool ?? "tool"))
+  const reason = createMemo(() => {
+    const state = props.parts[0]?.state
+    return state?.status === "error" ? state.error : ""
+  })
+  const handleOpenChange = (value: boolean) => {
+    if (props.open === undefined) setLocalOpen(value)
+    props.onOpenChange?.(value)
+    props.onSizeChange?.()
+  }
+
+  return (
+    <Collapsible
+      open={open()}
+      onOpenChange={handleOpenChange}
+      variant="ghost"
+      class="tool-collapsible"
+      data-timeline-part-ids={props.parts.map((part) => part.id).join(",")}
+    >
+      <Collapsible.Trigger>
+        <div data-component="failure-tool-group-trigger">
+          <span
+            data-slot="failure-tool-group-title"
+            class="min-w-0 flex items-center gap-2 text-14-medium text-text-strong"
+          >
+            <span data-slot="failure-tool-group-label" class="shrink-0">
+              {i18n.t("ui.messagePart.failure.title", { tool: info().title })}
+            </span>
+            <span
+              data-slot="failure-tool-group-count"
+              class="shrink-0 rounded-full bg-v2-state-bg-danger/20 px-1.5 py-0.5 font-mono text-[10px] text-v2-state-fg-danger"
+            >
+              ×{props.parts.length}
+            </span>
+            <span
+              data-slot="failure-tool-group-reason"
+              class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-normal text-text-base"
+            >
+              {reason()}
+            </span>
+          </span>
+          <Collapsible.Arrow />
+        </div>
+      </Collapsible.Trigger>
+      <Collapsible.Content>
+        <div data-component="failure-tool-group-list">
+          <Index each={props.parts}>
+            {(partAccessor) => {
+              const trigger = createMemo(() => contextToolTrigger(partAccessor(), i18n))
+              const output = () => {
+                const state = partAccessor().state
+                if (state.status === "error") return state.error
+                return state.status === "completed" ? state.output : undefined
+              }
+              return (
+                <div data-slot="failure-tool-group-item" data-timeline-part-id={partAccessor().id}>
+                  <BasicTool
+                    icon={info().icon}
+                    trigger={trigger()}
+                    status={partAccessor().state.status}
+                    defer
+                    onOpenChange={props.onSizeChange}
+                  >
+                    <ToolDetails input={partAccessor().state.input} output={output()} />
+                  </BasicTool>
+                </div>
+              )
+            }}
+          </Index>
+        </div>
+      </Collapsible.Content>
+    </Collapsible>
+  )
+}
+
 function UserMessageComments(props: { comments: UserMessageComment[]; bounded: boolean }) {
   const i18n = useI18n()
   const [state, setState] = createStore({ expanded: false })
@@ -1322,6 +1414,7 @@ export function Part(props: MessagePartProps) {
         toolOpen={props.toolOpen}
         onToolOpenChange={props.onToolOpenChange}
         deferToolContent={props.deferToolContent}
+        toolBodyLoading={props.toolBodyLoading}
         virtualizeDiff={props.virtualizeDiff}
         onContentRendered={props.onContentRendered}
         showAssistantCopyPartID={props.showAssistantCopyPartID}
@@ -1537,6 +1630,11 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
         <Show when={cleared()}>
           <div data-component="tool-cleared-note">
             <span class="text-12-regular text-text-weak">{i18n.t("ui.messagePart.toolCleared")}</span>
+          </div>
+        </Show>
+        <Show when={props.toolBodyLoading === true}>
+          <div data-component="tool-cleared-note">
+            <span class="text-12-regular text-text-weak">{i18n.t("ui.list.loading")}</span>
           </div>
         </Show>
       </div>
@@ -2607,5 +2705,123 @@ ToolRegistry.register({
     )
 
     return <BasicTool icon="brain" status={props.status} trigger={trigger()} hideDetails />
+  },
+})
+
+type BoardNoteView = {
+  note_id: string
+  kind: string
+  title: string
+  body: string
+  evidence?: string
+  author_agent: string
+  superseded_by?: string
+}
+
+function boardNoteViews(output: string | undefined) {
+  if (!output) return
+  try {
+    const parsed: unknown = JSON.parse(output)
+    if (!parsed || typeof parsed !== "object" || !("notes" in parsed) || !Array.isArray(parsed.notes))
+      return
+    return parsed.notes.filter(
+      (note): note is BoardNoteView =>
+        !!note && typeof note === "object" && "title" in note && "body" in note && "kind" in note,
+    )
+  } catch {
+    return
+  }
+}
+
+function BoardNoteCard(props: { note: BoardNoteView }) {
+  const i18n = useI18n()
+  return (
+    <div data-slot="board-note" data-kind={props.note.kind}>
+      <div data-slot="board-note-header">
+        <span data-slot="board-note-kind">{props.note.kind}</span>
+        <span data-slot="board-note-title">{props.note.title}</span>
+        <Show when={props.note.author_agent}>
+          <span data-slot="board-note-author">{props.note.author_agent}</span>
+        </Show>
+        <Show when={props.note.superseded_by}>
+          <span data-slot="board-note-superseded">{i18n.t("ui.messagePart.board.superseded")}</span>
+        </Show>
+      </div>
+      <p data-slot="board-note-body">{props.note.body}</p>
+      <Show when={props.note.evidence}>
+        {(evidence) => (
+          <p data-slot="board-note-evidence">
+            {i18n.t("ui.messagePart.board.evidence")}: {evidence()}
+          </p>
+        )}
+      </Show>
+    </div>
+  )
+}
+
+ToolRegistry.register({
+  name: "board_read",
+  render(props) {
+    const i18n = useI18n()
+    const notes = createMemo(() => boardNoteViews(props.output))
+    const subtitle = createMemo(() => {
+      const list = notes()
+      if (!list) return
+      return i18n.t(list.length === 1 ? "ui.messagePart.board.notes.one" : "ui.messagePart.board.notes.other", {
+        count: list.length,
+      })
+    })
+    return (
+      <BasicTool
+        {...props}
+        icon="subagent"
+        trigger={{ title: i18n.t("ui.tool.boardRead"), subtitle: subtitle() }}
+      >
+        <Show when={notes()} fallback={<ToolDetails input={props.input} output={props.output} />}>
+          {(list) => (
+            <div data-component="board-note-list">
+              <For each={list()}>{(note) => <BoardNoteCard note={note} />}</For>
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "board_post",
+  render(props) {
+    const i18n = useI18n()
+    const note = createMemo<BoardNoteView | undefined>(() => {
+      const input = props.input
+      if (typeof input.title !== "string" || typeof input.body !== "string") return
+      return {
+        note_id: "",
+        kind: typeof input.kind === "string" ? input.kind : "status",
+        title: input.title,
+        body: input.body,
+        evidence: typeof input.evidence === "string" ? input.evidence : undefined,
+        author_agent: "",
+      }
+    })
+    return (
+      <BasicTool
+        {...props}
+        icon="subagent"
+        trigger={{
+          title: i18n.t("ui.tool.boardPost"),
+          subtitle: typeof props.input.title === "string" ? props.input.title : undefined,
+        }}
+      >
+        <Show when={note()} fallback={<ToolDetails input={props.input} output={props.output} />}>
+          {(item) => (
+            <div data-component="board-note-list">
+              <BoardNoteCard note={item()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
   },
 })

@@ -35,7 +35,6 @@ describe("RuntimeFlags", () => {
       expect(flags.experimentalPlanMode).toBe(true)
       expect(flags.experimentalEventSystem).toBe(true)
       expect(flags.experimentalWorkspaces).toBe(true)
-      expect(flags.experimentalIconDiscovery).toBe(true)
       expect(flags.experimentalNativeLlm).toBe(false)
       expect(flags.experimentalWebSockets).toBe(false)
       expect(flags.client).toBe("desktop")
@@ -82,7 +81,6 @@ describe("RuntimeFlags", () => {
 
       expect(flags.disableLspDownload).toBe(false)
       expect(flags.disableClaudeCodePrompt).toBe(false)
-      expect(flags.experimentalIconDiscovery).toBe(true)
       expect(flags.experimentalOxfmt).toBe(true)
       expect(flags.outputTokenMax).toBeUndefined()
       expect(flags.bashDefaultTimeoutMs).toBe(1_000)
@@ -104,7 +102,6 @@ describe("RuntimeFlags", () => {
         codeMode: flags.experimentalCodeMode,
         eventSystem: flags.experimentalEventSystem,
         workspaces: flags.experimentalWorkspaces,
-        iconDiscovery: flags.experimentalIconDiscovery,
       }).toEqual({
         references: true,
         backgroundSubagents: true,
@@ -114,7 +111,6 @@ describe("RuntimeFlags", () => {
         codeMode: true,
         eventSystem: true,
         workspaces: true,
-        iconDiscovery: true,
       })
     }),
   )
@@ -131,7 +127,6 @@ describe("RuntimeFlags", () => {
       expect(flags.experimentalCodeMode).toBe(false)
       expect(flags.experimentalEventSystem).toBe(false)
       expect(flags.experimentalWorkspaces).toBe(false)
-      expect(flags.experimentalIconDiscovery).toBe(false)
     }),
   )
 
@@ -172,37 +167,6 @@ describe("RuntimeFlags", () => {
       const flags = yield* readFlags.pipe(Effect.provide(fromConfig({ FORGE_DISABLE_CLAUDE_CODE: "true" })))
 
       expect(flags.disableClaudeCodePrompt).toBe(true)
-    }),
-  )
-
-  it.effect("experimentalIconDiscovery reads FORGE_EXPERIMENTAL_ICON_DISCOVERY", () =>
-    Effect.gen(function* () {
-      const flags = yield* readFlags.pipe(Effect.provide(fromConfig({ FORGE_EXPERIMENTAL_ICON_DISCOVERY: "true" })))
-
-      expect(flags.experimentalIconDiscovery).toBe(true)
-    }),
-  )
-
-  it.effect("experimentalIconDiscovery inherits FORGE_EXPERIMENTAL", () =>
-    Effect.gen(function* () {
-      const flags = yield* readFlags.pipe(Effect.provide(fromConfig({ FORGE_EXPERIMENTAL: "true" })))
-
-      expect(flags.experimentalIconDiscovery).toBe(true)
-    }),
-  )
-
-  it.effect("specific experimental flags override FORGE_EXPERIMENTAL", () =>
-    Effect.gen(function* () {
-      const flags = yield* readFlags.pipe(
-        Effect.provide(
-          fromConfig({
-            FORGE_EXPERIMENTAL: "true",
-            FORGE_EXPERIMENTAL_ICON_DISCOVERY: "false",
-          }),
-        ),
-      )
-
-      expect(flags.experimentalIconDiscovery).toBe(false)
     }),
   )
 
@@ -318,7 +282,6 @@ describe("RuntimeFlags", () => {
 
       expect(flags.disableLspDownload).toBe(false)
       expect(flags.disableClaudeCodePrompt).toBe(false)
-      expect(flags.experimentalIconDiscovery).toBe(true)
       expect(flags.experimentalOxfmt).toBe(true)
       expect(flags.outputTokenMax).toBeUndefined()
       expect(flags.bashDefaultTimeoutMs).toBeUndefined()

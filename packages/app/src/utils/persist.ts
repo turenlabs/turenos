@@ -261,12 +261,17 @@ function parse(value: string) {
   }
 }
 
-function normalize(defaults: unknown, raw: string, migrate?: (value: unknown) => unknown) {
+function normalize(
+  defaults: unknown,
+  raw: string,
+  migrate?: (value: unknown) => unknown,
+  sanitize?: (value: unknown) => unknown,
+) {
   const parsed = parse(raw)
   if (parsed === undefined) return
   const migrated = migrate ? migrate(parsed) : parsed
   const merged = merge(defaults, migrated)
-  return JSON.stringify(merged)
+  return sanitizePersistedValue(sanitize, JSON.stringify(merged))
 }
 
 function readCurrent(input: {
@@ -275,10 +280,11 @@ function readCurrent(input: {
   pending?: string
   defaults: unknown
   migrate?: (value: unknown) => unknown
+  sanitize?: (value: unknown) => unknown
 }) {
   const raw = input.pending ?? input.storage.getItem(input.key)
   if (raw === null) return
-  const next = normalize(input.defaults, raw, input.migrate)
+  const next = normalize(input.defaults, raw, input.migrate, input.sanitize)
   if (next === undefined) {
     input.storage.removeItem(input.key)
     return null
@@ -295,12 +301,13 @@ function migrateLegacy(input: {
   key: string
   defaults: unknown
   migrate?: (value: unknown) => unknown
+  sanitize?: (value: unknown) => unknown
 }) {
   for (const store of input.stores) {
     const raw = store.getItem(input.key)
     if (raw === null) continue
 
-    const next = normalize(input.defaults, raw, input.migrate)
+    const next = normalize(input.defaults, raw, input.migrate, input.sanitize)
     if (next === undefined) {
       store.removeItem(input.key)
       continue
@@ -316,7 +323,7 @@ function migrateLegacy(input: {
     const raw = input.legacyStore.getItem(key)
     if (raw === null) continue
 
-    const next = normalize(input.defaults, raw, input.migrate)
+    const next = normalize(input.defaults, raw, input.migrate, input.sanitize)
     if (next === undefined) {
       input.legacyStore.removeItem(key)
       continue
@@ -334,10 +341,11 @@ async function readCurrentAsync(input: {
   key: string
   defaults: unknown
   migrate?: (value: unknown) => unknown
+  sanitize?: (value: unknown) => unknown
 }) {
   const raw = await input.storage.getItem(input.key)
   if (raw === null) return
-  const next = normalize(input.defaults, raw, input.migrate)
+  const next = normalize(input.defaults, raw, input.migrate, input.sanitize)
   if (next === undefined) {
     await input.storage.removeItem(input.key).catch(() => undefined)
     return null
@@ -360,12 +368,13 @@ async function migrateLegacyAsync(input: {
   key: string
   defaults: unknown
   migrate?: (value: unknown) => unknown
+  sanitize?: (value: unknown) => unknown
 }) {
   for (const store of input.stores) {
     const raw = await store.getItem(input.key)
     if (raw === null) continue
 
-    const next = normalize(input.defaults, raw, input.migrate)
+    const next = normalize(input.defaults, raw, input.migrate, input.sanitize)
     if (next === undefined) {
       await removeAsync(store, input.key)
       continue
@@ -381,7 +390,7 @@ async function migrateLegacyAsync(input: {
     const raw = await input.legacyStore.getItem(key)
     if (raw === null) continue
 
-    const next = normalize(input.defaults, raw, input.migrate)
+    const next = normalize(input.defaults, raw, input.migrate, input.sanitize)
     if (next === undefined) {
       await removeAsync(input.legacyStore, key)
       continue
@@ -715,6 +724,7 @@ export function persisted<T>(
             pending: failedWrites.get(config.storage ? `${config.storage}:${key}` : key)?.value,
             defaults,
             migrate: config.migrate,
+            sanitize: config.sanitize,
           })
           if (value !== undefined) return value
           return migrateLegacy({
@@ -725,6 +735,7 @@ export function persisted<T>(
             key,
             defaults,
             migrate: config.migrate,
+            sanitize: config.sanitize,
           })
         },
         setItem: (key, value) => {
@@ -746,7 +757,13 @@ export function persisted<T>(
 
     const api: AsyncStorage = {
       getItem: async (key) => {
-        const value = await readCurrentAsync({ storage: current, key, defaults, migrate: config.migrate })
+        const value = await readCurrentAsync({
+          storage: current,
+          key,
+          defaults,
+          migrate: config.migrate,
+          sanitize: config.sanitize,
+        })
         if (value !== undefined) return value
         return migrateLegacyAsync({
           current,
@@ -756,6 +773,7 @@ export function persisted<T>(
           key,
           defaults,
           migrate: config.migrate,
+          sanitize: config.sanitize,
         })
       },
       setItem: async (key, value) => {

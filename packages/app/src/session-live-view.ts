@@ -8,3 +8,4 @@ export type SessionLiveView =
   | "context"
   | "terminal"
   | "whiteboard"
+  | "browser"

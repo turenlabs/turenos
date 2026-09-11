@@ -34,7 +34,6 @@ import { usePlatform } from "@/context/platform"
 import { useNotification } from "@/context/notification"
 import { DateTime } from "luxon"
 import { useDialog } from "@turenlabs/ui/context/dialog"
-import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitleGroup } from "@turenlabs/ui/v2/dialog-v2"
 import { useDirectoryPicker } from "@/components/directory-picker"
 import { useSettingsCommand } from "@/components/settings-dialog"
 import { PageHeader } from "@/components/page-header"
@@ -74,7 +73,6 @@ import { showToast } from "@/utils/toast"
 import { fileManagerApp } from "@/utils/file-manager"
 import { sessionPermissionRequest, sessionQuestionRequest } from "@/pages/session/composer/session-request-tree"
 import { sessionNavStatus, type SessionNavStatus } from "@/pages/layout/session-nav-state"
-import { killRunningAgents } from "./home-kill-switch"
 import { LatestAutomationRuns } from "./loops/latest-runs"
 
 const HOME_SESSION_HEADER_STICKY_TOP = 12
@@ -275,7 +273,6 @@ export function NewHome() {
   const [state, setState] = createStore({
     search: "",
     searchFocused: false,
-    killing: false,
   })
   const selection = panel.selection
   const focusedServer = panel.focusedServer
@@ -450,21 +447,6 @@ export function NewHome() {
     })
   }
 
-  async function activateKillSwitch() {
-    if (state.killing) return
-    setState("killing", true)
-    try {
-      await killRunningAgents(global.servers.list().map((conn) => global.ensureServerCtx(conn).sdk.client.v2.session))
-      showToast({
-        title: language.t("home.killSwitch.success"),
-        description: language.t("home.killSwitch.success.description"),
-        variant: "success",
-      })
-    } finally {
-      setState("killing", false)
-    }
-  }
-
   return (
     <main
       data-component="home-page"
@@ -528,22 +510,6 @@ export function NewHome() {
                     onClose={closeSearch}
                     onSelect={selectSearchSession}
                   />
-                  <ButtonV2
-                    data-action="home-kill-switch"
-                    variant="danger"
-                    size="normal"
-                    class="h-9 shrink-0"
-                    disabled={state.killing}
-                    onClick={() =>
-                      dialog.show(
-                        () => <DialogKillSwitch submit={activateKillSwitch} />,
-                        undefined,
-                        () => !state.killing,
-                      )
-                    }
-                  >
-                    {language.t("home.killSwitch")}
-                  </ButtonV2>
                 </div>
                 <Show when={groups().length > 0 && newSessionProject()}>
                   <div class="pointer-events-none absolute right-0 top-[84px] z-20 flex lg:hidden">
@@ -619,60 +585,6 @@ export function NewHome() {
         </ScrollView>
       </div>
     </main>
-  )
-}
-
-function DialogKillSwitch(props: { submit: () => Promise<void> }) {
-  const dialog = useDialog()
-  const language = useLanguage()
-  const [state, setState] = createStore({ pending: false, error: "" })
-  const mounted = { value: true }
-  onCleanup(() => (mounted.value = false))
-
-  async function submit() {
-    if (state.pending) return
-    setState({ pending: true, error: "" })
-    try {
-      await props.submit()
-      if (mounted.value) dialog.close()
-    } catch (error) {
-      if (!mounted.value) return
-      setState({
-        pending: false,
-        error: errorMessage(error, language.t("home.killSwitch.failed")),
-      })
-    }
-  }
-
-  return (
-    <Dialog fit>
-      <DialogHeader hideClose>
-        <DialogTitleGroup
-          title={language.t("home.killSwitch.confirm.title")}
-          description={language.t("home.killSwitch.confirm.description")}
-        />
-      </DialogHeader>
-      <DialogBody class="flex w-full flex-col gap-3 px-4 pb-1 pt-1">
-        <Show when={state.error}>
-          <p data-slot="home-kill-switch-error" role="alert" class="text-[12px] font-[440] text-v2-text-text-danger">
-            {state.error}
-          </p>
-        </Show>
-      </DialogBody>
-      <DialogFooter>
-        <ButtonV2 variant="ghost" disabled={state.pending} onClick={() => dialog.close()}>
-          {language.t("common.cancel")}
-        </ButtonV2>
-        <ButtonV2
-          data-action="home-kill-switch-confirm"
-          variant="danger"
-          disabled={state.pending}
-          onClick={() => void submit()}
-        >
-          {state.pending ? language.t("home.killSwitch.pending") : language.t("home.killSwitch.confirm.action")}
-        </ButtonV2>
-      </DialogFooter>
-    </Dialog>
   )
 }
 
@@ -802,7 +714,7 @@ function HomeProjectColumn(props: {
       directoryStore.session,
       serverSync.session.data.permission,
       session.id,
-      (item) => !permissionState.autoResponds(item, session.directory),
+      (item) => !permissionState?.autoResponds(item, session.directory),
     )
     const hasQuestion = !!sessionQuestionRequest(directoryStore.session, serverSync.session.data.question, session.id)
     const serverNotifications = notification.ensureServerState(serverKey)
@@ -810,10 +722,10 @@ function HomeProjectColumn(props: {
     return sessionNavStatus({
       hasPermission,
       hasQuestion,
-      hasError: serverNotifications.session.unseenHasError(session.id),
+      hasError: serverNotifications?.session.unseenHasError(session.id) ?? false,
       working: serverSync.session.data.session_working(session.id),
       loading: directoryStore.status !== "complete",
-      unreadCount: serverNotifications.session.unseenCount(session.id),
+      unreadCount: serverNotifications?.session.unseenCount(session.id) ?? 0,
     })
   }
 
