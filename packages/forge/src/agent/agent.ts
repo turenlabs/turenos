@@ -198,6 +198,7 @@ const layer = Layer.effect(
               defaults,
               Permission.fromConfig({
                 "*": "deny",
+                code_search: "allow",
                 grep: "allow",
                 glob: "allow",
                 list: "allow",

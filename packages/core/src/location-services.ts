@@ -11,6 +11,7 @@ import { Node } from "./effect/app-node"
 import { FileMutation } from "./file-mutation"
 import { FileSystem } from "./filesystem"
 import { FileSystemSearch } from "./filesystem/search"
+import { CodeSearch } from "./search"
 import { Watcher } from "./filesystem/watcher"
 import { Image } from "./image"
 import { Integration } from "./integration"
@@ -81,6 +82,7 @@ export const locationServices = LayerNode.group(
     ProjectCopy.node,
     ProjectCopy.refreshNode,
     FileSystemSearch.node,
+    CodeSearch.node,
     FileSystem.node,
     Watcher.node,
     Pty.node,

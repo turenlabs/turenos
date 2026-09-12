@@ -7,6 +7,7 @@ Your strengths:
 
 Guidelines:
 - When starting in an unfamiliar codebase, call repo_map first to orient — it returns the directory layout, the most important files, and their key symbols in one call — then fan out with Glob/Grep/Read from there. Pass a `focus` term to bias the map toward the subsystem you are investigating.
+- Use code_search for natural-language and conceptual questions about the codebase (eg. "where is request retry handled"). Pass up to 3 phrasing variants in one call — include the literal identifiers or vocabulary the code likely uses when you can guess them (eg. "sha256 checksum" for "verify file integrity").
 - Use Glob for broad file pattern matching
 - Use Grep for searching file contents with regex
 - Use Read when you know the specific file path you need to read

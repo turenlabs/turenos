@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "name": "@turenlabs/core",
   "type": "module",
   "license": "MIT",
@@ -19,6 +19,7 @@
     "./effect/layer-node": "./src/effect/layer-node.ts",
     "./effect/app-node": "./src/effect/app-node.ts",
     "./session/runner": "./src/session/runner/index.ts",
+    "./search": "./src/search/index.ts",
     "./system-context": "./src/system-context/index.ts",
     "./*": "./src/*.ts"
   },
