@@ -2,7 +2,7 @@ import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
 import { addFeed, readEffectiveFeeds, resetFeeds, updateFeed } from "../intel/feeds"
-import { nextPollAt, paginate, readCache, trendPoints } from "../intel/ingest"
+import { nextPollAt, paginate, readCache, sortAdvisories, sortKev, sortNews, trendPoints } from "../intel/ingest"
 import { pollNow } from "../intel/scheduler"
 
 const readStatus = Effect.gen(function* () {
@@ -26,19 +26,31 @@ export const IntelHandler = HttpApiBuilder.group(Api, "server.intel", (handlers)
           if (search && !`${item.id} ${item.title} ${item.summary ?? ""}`.toLowerCase().includes(search)) return false
           return true
         })
-        return paginate(filtered, ctx.query.page, ctx.query.pageSize)
+        return paginate(
+          sortAdvisories(filtered, ctx.query.sort, ctx.query.order),
+          ctx.query.page,
+          ctx.query.pageSize,
+        )
       }),
     )
     .handle("intel.kev", (ctx) =>
       Effect.gen(function* () {
         const cache = yield* readCache()
-        return paginate(cache.kev, ctx.query.page, ctx.query.pageSize)
+        return paginate(
+          sortKev(cache.kev, ctx.query.sort, ctx.query.order),
+          ctx.query.page,
+          ctx.query.pageSize,
+        )
       }),
     )
     .handle("intel.news", (ctx) =>
       Effect.gen(function* () {
         const cache = yield* readCache()
-        return paginate(cache.news, ctx.query.page, ctx.query.pageSize)
+        return paginate(
+          sortNews(cache.news, ctx.query.sort, ctx.query.order),
+          ctx.query.page,
+          ctx.query.pageSize,
+        )
       }),
     )
     .handle("intel.trends", (ctx) =>

@@ -10,10 +10,46 @@ import {
   isIntelStale,
   severityDot,
   type Advisory,
+  type AdvisorySort,
   type IntelSeverity,
+  type IntelSortOrder,
   type KevItem,
+  type KevSort,
   type NewsItem,
+  type NewsSort,
 } from "./intel-api"
+
+export type IntelSort<S extends string> = { sort: S; order: IntelSortOrder } | undefined
+
+/** Clickable column header driving server-side sort; third click clears. */
+function SortableTh<S extends string>(props: {
+  label: string
+  class?: string
+  column: S
+  sort: IntelSort<S>
+  onSort: (column: S) => void
+}) {
+  const active = () => props.sort?.sort === props.column
+  return (
+    <th
+      scope="col"
+      class={props.class}
+      aria-sort={active() ? (props.sort?.order === "asc" ? "ascending" : "descending") : undefined}
+    >
+      <button
+        type="button"
+        class="intel-table-sort"
+        data-active={active() || undefined}
+        onClick={() => props.onSort(props.column)}
+      >
+        {props.label}
+        <span class="intel-table-sort-arrow" aria-hidden="true">
+          {active() ? (props.sort?.order === "asc" ? "↑" : "↓") : "↕"}
+        </span>
+      </button>
+    </th>
+  )
+}
 
 export const INTEL_SEVERITIES: ReadonlyArray<"all" | IntelSeverity> = [
   "all",
@@ -107,23 +143,39 @@ export function IntelError(props: { message: string; onRetry: () => void }) {
 }
 
 /** Native title buttons retain keyboard activation; clicks anywhere in a row open details. */
-export function AdvisoryList(props: { items: readonly Advisory[] }) {
+export function AdvisoryList(props: {
+  items: readonly Advisory[]
+  sort: IntelSort<AdvisorySort>
+  onSort: (column: AdvisorySort) => void
+}) {
   const dialog = useDialog()
   return (
     <div data-component="intel-advisory-list" class="intel-table-wrap">
       <table class="intel-table intel-table-advisories" aria-label="Advisories">
         <thead>
           <tr>
-            <th scope="col" class="intel-table-source">
-              Source / Age
-            </th>
-            <th scope="col">Advisory</th>
-            <th scope="col" class="intel-table-severity">
-              Severity
-            </th>
-            <th scope="col" class="intel-table-score">
-              CVSS
-            </th>
+            <SortableTh
+              label="Source / Age"
+              class="intel-table-source"
+              column="publishedAt"
+              sort={props.sort}
+              onSort={props.onSort}
+            />
+            <SortableTh label="Advisory" column="title" sort={props.sort} onSort={props.onSort} />
+            <SortableTh
+              label="Severity"
+              class="intel-table-severity"
+              column="severity"
+              sort={props.sort}
+              onSort={props.onSort}
+            />
+            <SortableTh
+              label="CVSS"
+              class="intel-table-score"
+              column="cvss"
+              sort={props.sort}
+              onSort={props.onSort}
+            />
           </tr>
         </thead>
         <tbody>
@@ -223,25 +275,39 @@ function AdvisoryDetails(props: { item: Advisory }) {
 }
 
 /** KEV catalog uses only fields supplied by the feed. */
-export function KevList(props: { items: readonly KevItem[] }) {
+export function KevList(props: {
+  items: readonly KevItem[]
+  sort: IntelSort<KevSort>
+  onSort: (column: KevSort) => void
+}) {
   return (
     <div data-component="intel-kev-list" class="intel-table-wrap">
       <table class="intel-table intel-table-kev" aria-label="Known exploited vulnerabilities">
         <thead>
           <tr>
-            <th scope="col" class="intel-table-cve">
-              CVE
-            </th>
-            <th scope="col">Vulnerability</th>
-            <th scope="col" class="intel-table-vendor">
-              Vendor / Product
-            </th>
-            <th scope="col" class="intel-table-date intel-table-added">
-              Added
-            </th>
-            <th scope="col" class="intel-table-date">
-              Due
-            </th>
+            <SortableTh label="CVE" class="intel-table-cve" column="cveID" sort={props.sort} onSort={props.onSort} />
+            <SortableTh label="Vulnerability" column="name" sort={props.sort} onSort={props.onSort} />
+            <SortableTh
+              label="Vendor / Product"
+              class="intel-table-vendor"
+              column="vendor"
+              sort={props.sort}
+              onSort={props.onSort}
+            />
+            <SortableTh
+              label="Added"
+              class="intel-table-date intel-table-added"
+              column="dateAdded"
+              sort={props.sort}
+              onSort={props.onSort}
+            />
+            <SortableTh
+              label="Due"
+              class="intel-table-date"
+              column="dueDate"
+              sort={props.sort}
+              onSort={props.onSort}
+            />
           </tr>
         </thead>
         <tbody>
@@ -281,16 +347,24 @@ export function KevList(props: { items: readonly KevItem[] }) {
 }
 
 /** Security news rows: linked title, source, age. */
-export function NewsList(props: { items: readonly NewsItem[] }) {
+export function NewsList(props: {
+  items: readonly NewsItem[]
+  sort: IntelSort<NewsSort>
+  onSort: (column: NewsSort) => void
+}) {
   return (
     <div data-component="intel-news-list" class="intel-table-wrap">
       <table class="intel-table intel-table-news" aria-label="Security news">
         <thead>
           <tr>
-            <th scope="col" class="intel-table-source">
-              Source
-            </th>
-            <th scope="col">Story</th>
+            <SortableTh
+              label="Source"
+              class="intel-table-source"
+              column="source"
+              sort={props.sort}
+              onSort={props.onSort}
+            />
+            <SortableTh label="Story" column="title" sort={props.sort} onSort={props.onSort} />
           </tr>
         </thead>
         <tbody>

@@ -27,26 +27,7 @@ const MAX_FINDINGS = 100
 
 const SEVERITY_RANK: Record<Severity, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1, unknown: 0 }
 
-interface Target {
-  abs: string
-  rel: string
-  isDirectory: boolean
-}
-
-/** Resolve the `path` arg against the workspace; reject escapes and missing paths. */
-async function resolveTarget(raw: unknown, ctx: IntegrationContext): Promise<Target> {
-  if (raw !== undefined && typeof raw !== "string") throw new ToolError(`"path" must be a string`)
-  const workspace = path.resolve(ctx.workspace)
-  const abs = path.resolve(workspace, raw ?? ".")
-  if (abs !== workspace && !abs.startsWith(workspace + path.sep))
-    throw new ToolError(`"path" must resolve inside the workspace (${ctx.workspace})`)
-  try {
-    const stat = await fs.stat(abs)
-    return { abs, rel: path.relative(workspace, abs) || ".", isDirectory: stat.isDirectory() }
-  } catch {
-    throw new ToolError(`path does not exist: ${String(raw ?? ".")} (resolved to ${abs})`)
-  }
-}
+type Target = Scanner.ScanTarget
 
 function notInstalled(tool: string, installHint: string) {
   return {
@@ -102,7 +83,7 @@ async function checkovScan(args: Record<string, unknown>, ctx: IntegrationContex
   const framework = args.framework
   if (framework !== undefined && (typeof framework !== "string" || !/^[A-Za-z0-9_,-]+$/.test(framework)))
     throw new ToolError(`"framework" must be a framework name like "terraform" (letters, digits, "_", "-", ",")`)
-  const target = await resolveTarget(args.path, ctx)
+  const target = await Scanner.resolveScanTarget(args.path, ctx)
 
   const bin = await Scanner.which("checkov")
   if (!bin) return notInstalled("checkov", CHECKOV_HINT)

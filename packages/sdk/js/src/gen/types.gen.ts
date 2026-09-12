@@ -79,13 +79,8 @@ export type Event =
   | EventQuestionV2Asked
   | EventQuestionV2Replied
   | EventQuestionV2Rejected
-  | EventPentestRunCreated
-  | EventPentestRunUpdated
-  | EventPentestExecutionQueued
-  | EventPentestExecutionStateChanged
-  | EventPentestEvidenceRecorded
-  | EventPentestFindingChanged
-  | EventPentestReportGenerated
+  | EventSwarmRoomPosted
+  | EventSwarmRoomConnected
   | EventSessionWhiteboardUpdated
   | EventSessionWhiteboardPresence
   | EventSessionWhiteboardConnected
@@ -883,7 +878,7 @@ export type GlobalEvent = {
           messageID: string
           prompt: Prompt
           delivery: "steer" | "queue"
-          source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+          source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
         }
       }
     | {
@@ -895,7 +890,7 @@ export type GlobalEvent = {
           messageID: string
           prompt: Prompt
           delivery: "steer" | "queue"
-          source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+          source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
           agent?: string
           model?: ModelRef
           command?: SessionInputCommandIntent
@@ -1537,81 +1532,20 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "pentest.run.created"
+        type: "swarm.room.posted"
         properties: {
-          runID: string
-          revision: number
+          roomID: string
+          rootSessionID: string
+          entry: SwarmRoomEntry
         }
       }
     | {
         id: string
-        type: "pentest.run.updated"
+        type: "swarm.room.connected"
         properties: {
-          runID: string
-          status:
-            | "draft"
-            | "queued"
-            | "running"
-            | "waiting"
-            | "completed"
-            | "cancelling"
-            | "cancelled"
-            | "failed"
-            | "interrupted"
-          stage: "recon" | "analysis" | "validation" | "report"
-          revision: number
-        }
-      }
-    | {
-        id: string
-        type: "pentest.execution.queued"
-        properties: {
-          runID: string
-          executionID: string
-          attempt: number
-        }
-      }
-    | {
-        id: string
-        type: "pentest.execution.state.changed"
-        properties: {
-          runID: string
-          executionID: string
-          state: "queued" | "running" | "waiting" | "completed" | "cancelling" | "cancelled" | "failed" | "interrupted"
-          stage: "recon" | "analysis" | "validation" | "report"
-          fence: number
-          executionRevision: number
-          runRevision: number
-        }
-      }
-    | {
-        id: string
-        type: "pentest.evidence.recorded"
-        properties: {
-          runID: string
-          author: "user" | "agent"
-          evidenceID: string
-          findingID: string
-        }
-      }
-    | {
-        id: string
-        type: "pentest.finding.changed"
-        properties: {
-          runID: string
-          author: "user" | "agent"
-          findingID: string
-          severity: "info" | "low" | "medium" | "high" | "critical"
-          status: "draft" | "verified" | "rejected"
-          revision: number
-        }
-      }
-    | {
-        id: string
-        type: "pentest.report.generated"
-        properties: {
-          runID: string
-          generatedAt: number
+          roomID: string
+          rootSessionID: string
+          head: number
         }
       }
     | {
@@ -1877,13 +1811,6 @@ export type GlobalEvent = {
     | SyncEventSessionNextGoalCleared
     | SyncEventSessionNextTaskUpdated
     | SyncEventSessionNextTaskOperationUpdated
-    | SyncEventPentestRunCreated
-    | SyncEventPentestRunUpdated
-    | SyncEventPentestExecutionQueued
-    | SyncEventPentestExecutionStateChanged
-    | SyncEventPentestEvidenceRecorded
-    | SyncEventPentestFindingChanged
-    | SyncEventPentestReportGenerated
     | SyncEventSessionWhiteboardUpdated
 }
 
@@ -2282,12 +2209,6 @@ export type StorageImportInput = {
 export type StorageMigrationConflictError = {
   _tag: "StorageMigrationConflictError"
   name: string
-}
-
-export type ConflictError = {
-  _tag: "ConflictError"
-  message: string
-  resource?: string
 }
 
 export type Model = {
@@ -2824,6 +2745,12 @@ export type NotFoundError = {
   }
 }
 
+export type ConflictError = {
+  _tag: "ConflictError"
+  message: string
+  resource?: string
+}
+
 export type ServiceUnavailableError = {
   _tag: "ServiceUnavailableError"
   message: string
@@ -3140,6 +3067,39 @@ export type SessionTeamBoardResponse = {
   data: TeamBoardBoardState
 }
 
+export type SessionSwarmRoomResponse = {
+  data: SwarmRoomState
+}
+
+export type SwarmRoomNotFoundError = {
+  _tag: "SwarmRoomNotFoundError"
+  resource: string
+}
+
+export type SessionSwarmRoomEntriesResponse = {
+  data: SwarmRoomEntryPage
+}
+
+export type SessionSwarmRoomPostResponse = {
+  data: SwarmRoomEntry
+}
+
+export type SwarmRoomConflictError = {
+  _tag: "SwarmRoomConflictError"
+  message: string
+  head: number
+}
+
+export type SwarmRoomInvalidStateError = {
+  _tag: "SwarmRoomInvalidStateError"
+  message: string
+}
+
+export type SwarmRoomForbiddenError = {
+  _tag: "SwarmRoomForbiddenError"
+  message: string
+}
+
 export type SessionRevertStagePayload = {
   messageID: string
   files?: boolean
@@ -3393,13 +3353,8 @@ export type V2Event =
   | QuestionV2Asked
   | QuestionV2Replied
   | QuestionV2Rejected
-  | PentestRunCreated
-  | PentestRunUpdated
-  | PentestExecutionQueued
-  | PentestExecutionStateChanged
-  | PentestEvidenceRecorded
-  | PentestFindingChanged
-  | PentestReportGenerated
+  | SwarmRoomPosted
+  | SwarmRoomConnected
   | SessionWhiteboardUpdated
   | SessionWhiteboardPresence
   | SessionWhiteboardConnected
@@ -3866,6 +3821,38 @@ export type QuestionV2Tool = {
 
 export type QuestionV2Answer = Array<string>
 
+export type SwarmRoomActor = {
+  type: "leader" | "worker" | "human" | "system"
+  memberID: string
+  sessionID?: string
+  agent?: string
+  name: string
+}
+
+export type SwarmRoomEntry = {
+  id: string
+  roomID: string
+  seq: number
+  actor: SwarmRoomActor
+  kind:
+    | "message"
+    | "plan"
+    | "claim"
+    | "release"
+    | "decision"
+    | "finding"
+    | "correction"
+    | "lead"
+    | "status"
+    | "question"
+  text: string
+  payload?: unknown
+  replyTo?: string
+  evidenceRefs?: Array<string>
+  baseRevision: number
+  timeCreated: number
+}
+
 export type WhiteboardActor = {
   id: string
   name: string
@@ -4100,7 +4087,7 @@ export type SyncEventSessionNextPrompted = {
       messageID: string
       prompt: Prompt
       delivery: "steer" | "queue"
-      source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+      source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
     }
   }
 }
@@ -4119,7 +4106,7 @@ export type SyncEventSessionNextPromptAdmitted = {
       messageID: string
       prompt: Prompt
       delivery: "steer" | "queue"
-      source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+      source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
       agent?: string
       model?: ModelRef
       command?: SessionInputCommandIntent
@@ -4772,134 +4759,6 @@ export type SyncEventSessionNextTaskOperationUpdated = {
   }
 }
 
-export type SyncEventPentestRunCreated = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "pentest.run.created.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      runID: string
-      revision: number
-    }
-  }
-}
-
-export type SyncEventPentestRunUpdated = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "pentest.run.updated.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      runID: string
-      status:
-        | "draft"
-        | "queued"
-        | "running"
-        | "waiting"
-        | "completed"
-        | "cancelling"
-        | "cancelled"
-        | "failed"
-        | "interrupted"
-      stage: "recon" | "analysis" | "validation" | "report"
-      revision: number
-    }
-  }
-}
-
-export type SyncEventPentestExecutionQueued = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "pentest.execution.queued.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      runID: string
-      executionID: string
-      attempt: number
-    }
-  }
-}
-
-export type SyncEventPentestExecutionStateChanged = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "pentest.execution.state.changed.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      runID: string
-      executionID: string
-      state: "queued" | "running" | "waiting" | "completed" | "cancelling" | "cancelled" | "failed" | "interrupted"
-      stage: "recon" | "analysis" | "validation" | "report"
-      fence: number
-      executionRevision: number
-      runRevision: number
-    }
-  }
-}
-
-export type SyncEventPentestEvidenceRecorded = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "pentest.evidence.recorded.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      runID: string
-      author: "user" | "agent"
-      evidenceID: string
-      findingID: string
-    }
-  }
-}
-
-export type SyncEventPentestFindingChanged = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "pentest.finding.changed.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      runID: string
-      author: "user" | "agent"
-      findingID: string
-      severity: "info" | "low" | "medium" | "high" | "critical"
-      status: "draft" | "verified" | "rejected"
-      revision: number
-    }
-  }
-}
-
-export type SyncEventPentestReportGenerated = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "pentest.report.generated.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      runID: string
-      generatedAt: number
-    }
-  }
-}
-
 export type SyncEventSessionWhiteboardUpdated = {
   type: "sync"
   id: string
@@ -4950,155 +4809,6 @@ export type StorageMigrationReceipt = {
 export type StorageImportResult = {
   applied: boolean
   receipt: StorageMigrationReceipt
-}
-
-export type PentestTargetAuthProfile = {
-  id: string
-  label: string
-  credentialID: string
-  type: "bearer" | "basic" | "api-key"
-  headerName?: string
-}
-
-export type PentestTargetContract = {
-  label: string
-  baseURL: string
-  mode: "blackbox" | "whitebox"
-  sourceDir?: string
-  authProfiles?: Array<PentestTargetAuthProfile>
-  inScope: Array<string>
-  outOfScope: Array<string>
-  networkPolicy: "none" | "capture-only" | "allowlist"
-  budgets: {
-    wallSecondsMax: number
-    modelTokensMax: number
-    modelCostUsdMax: number
-    requestLimit: number
-  }
-  authorization: {
-    note: string
-    recordedAt: number
-  }
-}
-
-export type PentestCreateRunInput = {
-  id: string
-  location?: LocationRef
-  labels: Array<string>
-  goal: PentestTargetContract
-}
-
-export type PentestExecution = {
-  id: string
-  runID: string
-  attempt: number
-  model: ModelRef
-  state: "queued" | "running" | "waiting" | "completed" | "cancelling" | "cancelled" | "failed" | "interrupted"
-  stage: "recon" | "analysis" | "validation" | "report"
-  cancelRequested: boolean
-  fence: number
-  leaseOwner?: string
-  leaseUntil?: number
-  lastHeartbeat?: number
-  absoluteTTL?: number
-  checkpoint?: unknown
-  revision: number
-  timeCreated: number
-  timeUpdated: number
-  error?: string
-}
-
-export type PentestRun = {
-  id: string
-  location?: LocationRef
-  sessionID?: string
-  status:
-    | "draft"
-    | "queued"
-    | "running"
-    | "waiting"
-    | "completed"
-    | "cancelling"
-    | "cancelled"
-    | "failed"
-    | "interrupted"
-  stage: "recon" | "analysis" | "validation" | "report"
-  labels: Array<string>
-  revision: number
-  timeCreated: number
-  timeUpdated: number
-  goal: PentestTargetContract
-  latestExecution?: PentestExecution
-}
-
-export type PentestRunList = {
-  items: Array<PentestRun>
-  nextCursor?: string
-}
-
-export type PentestStartRunInput = {
-  idempotencyKey: string
-  expectedRunRevision: number
-  model: ModelRef
-}
-
-export type PentestCancelRunInput = {
-  idempotencyKey: string
-  expectedRunRevision: number
-}
-
-export type PentestFinding = {
-  id: string
-  runID: string
-  severity: "info" | "low" | "medium" | "high" | "critical"
-  confidence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-  title: string
-  type: string
-  endpoint: string
-  cvssVector: string
-  cvssScore: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-  owasp:
-    | "A01-broken-access-control"
-    | "A02-crypto-failures"
-    | "A03-injection"
-    | "A04-insecure-design"
-    | "A05-security-misconfiguration"
-    | "A06-vulnerable-components"
-    | "A07-ident-auth-failures"
-    | "A08-software-data-integrity"
-    | "A09-logging-monitoring-failures"
-    | "A10-ssrf"
-    | "unassigned"
-  summary: string
-  remediation: string
-  reproduction: string
-  status: "draft" | "verified" | "rejected"
-  author: "user" | "agent"
-  revision: number
-  timeCreated: number
-  timeUpdated: number
-}
-
-export type PentestEvidence = {
-  id: string
-  runID: string
-  executionID?: string
-  findingID: string
-  locatorKind: "http-request" | "http-response" | "http-transaction" | "observation" | "source-locator" | "header"
-  reference?: string
-  excerpt: string
-  author: "user" | "agent"
-  timeCreated: number
-}
-
-export type PentestBoardState = {
-  findings: Array<PentestFinding>
-  evidence: Array<PentestEvidence>
-}
-
-export type PentestRunReport = {
-  markdown: string
-  generatedAt: number
 }
 
 export type ExtensionSecret = {
@@ -5438,7 +5148,7 @@ export type SessionInputAdmitted = {
   sessionID: string
   prompt: Prompt
   delivery: "steer" | "queue"
-  source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+  source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
   agent?: string
   model?: ModelRef
   timeCreated: number
@@ -5518,6 +5228,58 @@ export type TeamBoardBoardState = {
   notes: Array<TeamBoardNote>
 }
 
+export type SwarmRoomInfo = {
+  id: string
+  rootSessionID: string
+  objective: string
+  budget: number
+  explicitBudget: boolean
+  head: number
+  status: "open" | "closed"
+  timeCreated: number
+  timeUpdated: number
+}
+
+export type SwarmRoomMember = {
+  id: string
+  roomID: string
+  type: "leader" | "worker" | "human" | "system"
+  sessionID?: string
+  taskID?: string
+  agent?: string
+  name: string
+  state: "active" | "parked" | "settled" | "blocked" | "left"
+  joinedAt: number
+}
+
+export type SwarmRoomLaneState = {
+  key: string
+  title: string
+  detail?: string
+  status: "open" | "claimed" | "done" | "blocked"
+  claimedBy?: string
+  claimedByName?: string
+  updatedSeq: number
+}
+
+export type SwarmRoomState = {
+  room: SwarmRoomInfo
+  members: Array<SwarmRoomMember>
+  lanes: Array<SwarmRoomLaneState>
+}
+
+export type SwarmRoomEntryPage = {
+  entries: Array<SwarmRoomEntry>
+  head: number
+  hasMore: boolean
+}
+
+export type SwarmRoomHumanPostInput = {
+  text: string
+  name?: string
+  replyTo?: string
+}
+
 export type SessionMessageAgentSwitched = {
   id: string
   metadata?: {
@@ -5550,7 +5312,7 @@ export type SessionMessageUser = {
   time: {
     created: number
   }
-  source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+  source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
   text: string
   parts?: PromptTextParts
   files?: Array<PromptFileAttachment>
@@ -5732,7 +5494,7 @@ export type SessionInputOutboxItem = {
   sessionID: string
   prompt: Prompt
   delivery: "steer" | "queue"
-  source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+  source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
   agent?: string
   model?: ModelRef
   timeCreated: number
@@ -5838,7 +5600,7 @@ export type SessionNextPrompted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
   }
 }
 
@@ -5860,7 +5622,7 @@ export type SessionNextPromptAdmitted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
     agent?: string
     model?: ModelRef
     command?: SessionInputCommandIntent
@@ -7325,12 +7087,12 @@ export type QuestionV2Rejected = {
   }
 }
 
-export type PentestRunCreated = {
+export type SwarmRoomPosted = {
   id: string
   metadata?: {
     [key: string]: unknown
   }
-  type: "pentest.run.created"
+  type: "swarm.room.posted"
   durable?: {
     aggregateID: string
     seq: number
@@ -7338,17 +7100,18 @@ export type PentestRunCreated = {
   }
   location?: LocationRef
   data: {
-    runID: string
-    revision: number
+    roomID: string
+    rootSessionID: string
+    entry: SwarmRoomEntry
   }
 }
 
-export type PentestRunUpdated = {
+export type SwarmRoomConnected = {
   id: string
   metadata?: {
     [key: string]: unknown
   }
-  type: "pentest.run.updated"
+  type: "swarm.room.connected"
   durable?: {
     aggregateID: string
     seq: number
@@ -7356,121 +7119,9 @@ export type PentestRunUpdated = {
   }
   location?: LocationRef
   data: {
-    runID: string
-    status:
-      | "draft"
-      | "queued"
-      | "running"
-      | "waiting"
-      | "completed"
-      | "cancelling"
-      | "cancelled"
-      | "failed"
-      | "interrupted"
-    stage: "recon" | "analysis" | "validation" | "report"
-    revision: number
-  }
-}
-
-export type PentestExecutionQueued = {
-  id: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  type: "pentest.execution.queued"
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
-  location?: LocationRef
-  data: {
-    runID: string
-    executionID: string
-    attempt: number
-  }
-}
-
-export type PentestExecutionStateChanged = {
-  id: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  type: "pentest.execution.state.changed"
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
-  location?: LocationRef
-  data: {
-    runID: string
-    executionID: string
-    state: "queued" | "running" | "waiting" | "completed" | "cancelling" | "cancelled" | "failed" | "interrupted"
-    stage: "recon" | "analysis" | "validation" | "report"
-    fence: number
-    executionRevision: number
-    runRevision: number
-  }
-}
-
-export type PentestEvidenceRecorded = {
-  id: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  type: "pentest.evidence.recorded"
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
-  location?: LocationRef
-  data: {
-    runID: string
-    author: "user" | "agent"
-    evidenceID: string
-    findingID: string
-  }
-}
-
-export type PentestFindingChanged = {
-  id: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  type: "pentest.finding.changed"
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
-  location?: LocationRef
-  data: {
-    runID: string
-    author: "user" | "agent"
-    findingID: string
-    severity: "info" | "low" | "medium" | "high" | "critical"
-    status: "draft" | "verified" | "rejected"
-    revision: number
-  }
-}
-
-export type PentestReportGenerated = {
-  id: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  type: "pentest.report.generated"
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
-  location?: LocationRef
-  data: {
-    runID: string
-    generatedAt: number
+    roomID: string
+    rootSessionID: string
+    head: number
   }
 }
 
@@ -8431,7 +8082,7 @@ export type EventSessionNextPrompted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
   }
 }
 
@@ -8444,7 +8095,7 @@ export type EventSessionNextPromptAdmitted = {
     messageID: string
     prompt: Prompt
     delivery: "steer" | "queue"
-    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+    source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
     agent?: string
     model?: ModelRef
     command?: SessionInputCommandIntent
@@ -9142,89 +8793,23 @@ export type EventQuestionV2Rejected = {
   }
 }
 
-export type EventPentestRunCreated = {
+export type EventSwarmRoomPosted = {
   id: string
-  type: "pentest.run.created"
+  type: "swarm.room.posted"
   properties: {
-    runID: string
-    revision: number
+    roomID: string
+    rootSessionID: string
+    entry: SwarmRoomEntry
   }
 }
 
-export type EventPentestRunUpdated = {
+export type EventSwarmRoomConnected = {
   id: string
-  type: "pentest.run.updated"
+  type: "swarm.room.connected"
   properties: {
-    runID: string
-    status:
-      | "draft"
-      | "queued"
-      | "running"
-      | "waiting"
-      | "completed"
-      | "cancelling"
-      | "cancelled"
-      | "failed"
-      | "interrupted"
-    stage: "recon" | "analysis" | "validation" | "report"
-    revision: number
-  }
-}
-
-export type EventPentestExecutionQueued = {
-  id: string
-  type: "pentest.execution.queued"
-  properties: {
-    runID: string
-    executionID: string
-    attempt: number
-  }
-}
-
-export type EventPentestExecutionStateChanged = {
-  id: string
-  type: "pentest.execution.state.changed"
-  properties: {
-    runID: string
-    executionID: string
-    state: "queued" | "running" | "waiting" | "completed" | "cancelling" | "cancelled" | "failed" | "interrupted"
-    stage: "recon" | "analysis" | "validation" | "report"
-    fence: number
-    executionRevision: number
-    runRevision: number
-  }
-}
-
-export type EventPentestEvidenceRecorded = {
-  id: string
-  type: "pentest.evidence.recorded"
-  properties: {
-    runID: string
-    author: "user" | "agent"
-    evidenceID: string
-    findingID: string
-  }
-}
-
-export type EventPentestFindingChanged = {
-  id: string
-  type: "pentest.finding.changed"
-  properties: {
-    runID: string
-    author: "user" | "agent"
-    findingID: string
-    severity: "info" | "low" | "medium" | "high" | "critical"
-    status: "draft" | "verified" | "rejected"
-    revision: number
-  }
-}
-
-export type EventPentestReportGenerated = {
-  id: string
-  type: "pentest.report.generated"
-  properties: {
-    runID: string
-    generatedAt: number
+    roomID: string
+    rootSessionID: string
+    head: number
   }
 }
 
@@ -10235,263 +9820,6 @@ export type StorageImportResponses = {
 }
 
 export type StorageImportResponse = StorageImportResponses[keyof StorageImportResponses]
-
-export type PentestListRunsData = {
-  body?: never
-  path?: never
-  query?: {
-    cursor?: string
-    limit?: string
-    status?:
-      | "draft"
-      | "queued"
-      | "running"
-      | "waiting"
-      | "completed"
-      | "cancelling"
-      | "cancelled"
-      | "failed"
-      | "interrupted"
-  }
-  url: "/pentest/runs"
-}
-
-export type PentestListRunsErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * ConflictError
-   */
-  409: ConflictError
-}
-
-export type PentestListRunsError = PentestListRunsErrors[keyof PentestListRunsErrors]
-
-export type PentestListRunsResponses = {
-  /**
-   * Paginated pentest runs
-   */
-  200: PentestRunList
-}
-
-export type PentestListRunsResponse = PentestListRunsResponses[keyof PentestListRunsResponses]
-
-export type PentestCreateRunData = {
-  body?: PentestCreateRunInput
-  path?: never
-  query?: never
-  url: "/pentest/runs"
-}
-
-export type PentestCreateRunErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * ConflictError
-   */
-  409: ConflictError
-}
-
-export type PentestCreateRunError = PentestCreateRunErrors[keyof PentestCreateRunErrors]
-
-export type PentestCreateRunResponses = {
-  /**
-   * Created pentest run with an immutable goal contract
-   */
-  200: PentestRun
-}
-
-export type PentestCreateRunResponse = PentestCreateRunResponses[keyof PentestCreateRunResponses]
-
-export type PentestGetRunData = {
-  body?: never
-  path: {
-    runID: string
-  }
-  query?: never
-  url: "/pentest/runs/{runID}"
-}
-
-export type PentestGetRunErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * ConflictError
-   */
-  409: ConflictError
-}
-
-export type PentestGetRunError = PentestGetRunErrors[keyof PentestGetRunErrors]
-
-export type PentestGetRunResponses = {
-  /**
-   * Pentest run detail
-   */
-  200: PentestRun
-}
-
-export type PentestGetRunResponse = PentestGetRunResponses[keyof PentestGetRunResponses]
-
-export type PentestStartRunData = {
-  body?: PentestStartRunInput
-  path: {
-    runID: string
-  }
-  query?: never
-  url: "/pentest/runs/{runID}/start"
-}
-
-export type PentestStartRunErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * ConflictError
-   */
-  409: ConflictError
-}
-
-export type PentestStartRunError = PentestStartRunErrors[keyof PentestStartRunErrors]
-
-export type PentestStartRunResponses = {
-  /**
-   * Pentest run durably queued for execution
-   */
-  200: PentestRun
-}
-
-export type PentestStartRunResponse = PentestStartRunResponses[keyof PentestStartRunResponses]
-
-export type PentestCancelRunData = {
-  body?: PentestCancelRunInput
-  path: {
-    runID: string
-  }
-  query?: never
-  url: "/pentest/runs/{runID}/cancel"
-}
-
-export type PentestCancelRunErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * ConflictError
-   */
-  409: ConflictError
-}
-
-export type PentestCancelRunError = PentestCancelRunErrors[keyof PentestCancelRunErrors]
-
-export type PentestCancelRunResponses = {
-  /**
-   * Execution after durable cancellation intent
-   */
-  200: PentestExecution
-}
-
-export type PentestCancelRunResponse = PentestCancelRunResponses[keyof PentestCancelRunResponses]
-
-export type PentestGetExecutionData = {
-  body?: never
-  path: {
-    executionID: string
-  }
-  query?: never
-  url: "/pentest/executions/{executionID}"
-}
-
-export type PentestGetExecutionErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * ConflictError
-   */
-  409: ConflictError
-}
-
-export type PentestGetExecutionError = PentestGetExecutionErrors[keyof PentestGetExecutionErrors]
-
-export type PentestGetExecutionResponses = {
-  /**
-   * Durable pentest execution
-   */
-  200: PentestExecution
-}
-
-export type PentestGetExecutionResponse = PentestGetExecutionResponses[keyof PentestGetExecutionResponses]
-
-export type PentestGetBoardData = {
-  body?: never
-  path: {
-    runID: string
-  }
-  query?: never
-  url: "/pentest/runs/{runID}/board"
-}
-
-export type PentestGetBoardErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * ConflictError
-   */
-  409: ConflictError
-}
-
-export type PentestGetBoardError = PentestGetBoardErrors[keyof PentestGetBoardErrors]
-
-export type PentestGetBoardResponses = {
-  /**
-   * Read-only pentest board projection
-   */
-  200: PentestBoardState
-}
-
-export type PentestGetBoardResponse = PentestGetBoardResponses[keyof PentestGetBoardResponses]
-
-export type PentestGetReportData = {
-  body?: never
-  path: {
-    runID: string
-  }
-  query?: never
-  url: "/pentest/runs/{runID}/report"
-}
-
-export type PentestGetReportErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * ConflictError
-   */
-  409: ConflictError
-}
-
-export type PentestGetReportError = PentestGetReportErrors[keyof PentestGetReportErrors]
-
-export type PentestGetReportResponses = {
-  /**
-   * Composed markdown pentest report
-   */
-  200: PentestRunReport
-}
-
-export type PentestGetReportResponse = PentestGetReportResponses[keyof PentestGetReportResponses]
 
 export type EventSubscribeData = {
   body?: never
@@ -15096,6 +14424,123 @@ export type V2SessionTeamBoardResponses = {
 
 export type V2SessionTeamBoardResponse = V2SessionTeamBoardResponses[keyof V2SessionTeamBoardResponses]
 
+export type V2SessionSwarmRoomData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/room"
+}
+
+export type V2SessionSwarmRoomErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError | SwarmRoomNotFoundError
+   */
+  404: SwarmRoomNotFoundError | SessionNotFoundError
+}
+
+export type V2SessionSwarmRoomError = V2SessionSwarmRoomErrors[keyof V2SessionSwarmRoomErrors]
+
+export type V2SessionSwarmRoomResponses = {
+  /**
+   * SessionSwarmRoomResponse
+   */
+  200: SessionSwarmRoomResponse
+}
+
+export type V2SessionSwarmRoomResponse = V2SessionSwarmRoomResponses[keyof V2SessionSwarmRoomResponses]
+
+export type V2SessionSwarmRoomEntriesData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    after?: string
+    limit?: string
+  }
+  url: "/api/session/{sessionID}/room/entries"
+}
+
+export type V2SessionSwarmRoomEntriesErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError | SwarmRoomNotFoundError
+   */
+  404: SwarmRoomNotFoundError | SessionNotFoundError
+}
+
+export type V2SessionSwarmRoomEntriesError = V2SessionSwarmRoomEntriesErrors[keyof V2SessionSwarmRoomEntriesErrors]
+
+export type V2SessionSwarmRoomEntriesResponses = {
+  /**
+   * SessionSwarmRoomEntriesResponse
+   */
+  200: SessionSwarmRoomEntriesResponse
+}
+
+export type V2SessionSwarmRoomEntriesResponse =
+  V2SessionSwarmRoomEntriesResponses[keyof V2SessionSwarmRoomEntriesResponses]
+
+export type V2SessionSwarmRoomPostData = {
+  body: SwarmRoomHumanPostInput
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/room/entries"
+}
+
+export type V2SessionSwarmRoomPostErrors = {
+  /**
+   * SwarmRoomInvalidStateError | InvalidRequestError
+   */
+  400: SwarmRoomInvalidStateError | InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SwarmRoomForbiddenError
+   */
+  403: SwarmRoomForbiddenError
+  /**
+   * SessionNotFoundError | SwarmRoomNotFoundError
+   */
+  404: SwarmRoomNotFoundError | SessionNotFoundError
+  /**
+   * SwarmRoomConflictError
+   */
+  409: SwarmRoomConflictError
+}
+
+export type V2SessionSwarmRoomPostError = V2SessionSwarmRoomPostErrors[keyof V2SessionSwarmRoomPostErrors]
+
+export type V2SessionSwarmRoomPostResponses = {
+  /**
+   * SessionSwarmRoomPostResponse
+   */
+  200: SessionSwarmRoomPostResponse
+}
+
+export type V2SessionSwarmRoomPostResponse = V2SessionSwarmRoomPostResponses[keyof V2SessionSwarmRoomPostResponses]
+
 export type V2SessionCompactData = {
   body?: never
   path: {
@@ -17406,6 +16851,8 @@ export type V2IntelAdvisoriesData = {
     pageSize?: string
     severity?: IntelSeverity
     search?: string
+    sort?: "publishedAt" | "severity" | "cvss" | "source" | "title"
+    order?: "asc" | "desc"
   }
   url: "/api/intel/advisories"
 }
@@ -17438,6 +16885,8 @@ export type V2IntelKevData = {
   query?: {
     page?: string
     pageSize?: string
+    sort?: "cveID" | "name" | "vendor" | "dateAdded" | "dueDate"
+    order?: "asc" | "desc"
   }
   url: "/api/intel/kev"
 }
@@ -17470,6 +16919,8 @@ export type V2IntelNewsData = {
   query?: {
     page?: string
     pageSize?: string
+    sort?: "source" | "title" | "publishedAt"
+    order?: "asc" | "desc"
   }
   url: "/api/intel/news"
 }

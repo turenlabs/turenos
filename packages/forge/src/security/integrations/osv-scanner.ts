@@ -25,22 +25,6 @@ const TIMEOUT_MS = 180_000
 
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4, unknown: 5 }
 
-/** Resolve the `path` arg against the workspace; reject escapes and missing paths. */
-async function resolveScanPath(raw: unknown, ctx: IntegrationContext): Promise<string> {
-  if (raw !== undefined && typeof raw !== "string") throw new ToolError(`"path" must be a string`)
-  const resolved = path.resolve(ctx.workspace, raw ?? ".")
-  const rel = path.relative(ctx.workspace, resolved)
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    throw new ToolError(`"path" must resolve inside the workspace (${ctx.workspace}); got "${raw}"`)
-  }
-  try {
-    await fs.stat(resolved)
-  } catch {
-    throw new ToolError(`scan path does not exist: ${resolved}`)
-  }
-  return resolved
-}
-
 async function tempReportPath(ctx: IntegrationContext): Promise<string> {
   await fs.mkdir(ctx.cacheDir, { recursive: true })
   return path.join(ctx.cacheDir, `osv-scanner-${randomUUID()}.sarif`)
@@ -86,7 +70,7 @@ async function scan(args: Record<string, unknown>, ctx: IntegrationContext) {
   const bin = await Scanner.which(TOOL)
   if (!bin) return { installed: false, tool: TOOL, installHint: INSTALL_HINT }
 
-  const target = await resolveScanPath(args["path"], ctx)
+  const target = (await Scanner.resolveScanTarget(args["path"], ctx)).abs
   const report = await tempReportPath(ctx)
   try {
     const result = await Scanner.run([bin, "scan", "source", "-r", "--format", "sarif", "--output", report, target], {

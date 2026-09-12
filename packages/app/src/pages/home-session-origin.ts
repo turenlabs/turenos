@@ -12,16 +12,12 @@ import type { SessionNavStatus } from "./layout/session-nav-state"
  * remains whatever the scheduler assigned.
  */
 export const AUTOMATION_SESSION_PREFIX = "ses_loop_"
-export const PENTEST_SESSION_PREFIX = "ses_pentest_"
-export const PENTEST_TEAM_SESSION_PREFIX = "ses-pentest-team-"
 
-export type HomeSessionOrigin = "manual" | "automation" | "pentest"
+export type HomeSessionOrigin = "manual" | "automation"
 export type HomeSessionFocusStatus = "attention" | "working" | "unread"
 
 export function sessionOrigin(session: Pick<Session, "id">): HomeSessionOrigin {
   if (session.id.startsWith(AUTOMATION_SESSION_PREFIX)) return "automation"
-  if (session.id.startsWith(PENTEST_SESSION_PREFIX) || session.id.startsWith(PENTEST_TEAM_SESSION_PREFIX))
-    return "pentest"
   return "manual"
 }
 
@@ -29,8 +25,6 @@ export function sessionOriginLabel(origin: HomeSessionOrigin) {
   switch (origin) {
     case "automation":
       return "Workflow"
-    case "pentest":
-      return "Pentest"
     case "manual":
       return "Manual"
   }
@@ -88,16 +82,14 @@ export function recentlyFinishedHomeSessions<T extends { session: Pick<Session, 
   })
 }
 
-/** Splits a project's sessions into personal work, workflows, and background runs. */
+/** Splits a project's sessions into personal work and workflows. */
 export function partitionBySessionOrigin<T extends { session: Pick<Session, "id"> }>(records: readonly T[]) {
   const manual: T[] = []
   const automation: T[] = []
-  const background: T[] = []
   for (const record of records) {
     const origin = sessionOrigin(record.session)
     if (origin === "manual") manual.push(record)
-    else if (origin === "automation") automation.push(record)
-    else background.push(record)
+    else automation.push(record)
   }
-  return { manual, automation, background }
+  return { manual, automation }
 }

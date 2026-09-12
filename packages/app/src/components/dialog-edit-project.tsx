@@ -60,6 +60,7 @@ export function DialogEditProject(props: { project: LocalProject; server: Server
                         <Avatar
                           fallback={model.store.name || model.defaultName()}
                           {...getAvatarColors(model.store.color)}
+                          pixelSeed={props.project.id ?? props.project.worktree}
                           class="size-full text-[32px]"
                         />
                       </div>
@@ -135,6 +136,7 @@ export function DialogEditProject(props: { project: LocalProject; server: Server
                       <Avatar
                         fallback={model.store.name || model.defaultName()}
                         {...getAvatarColors(color)}
+                        pixelSeed={props.project.id ?? props.project.worktree}
                         class="size-full rounded"
                       />
                     </button>

@@ -221,7 +221,7 @@ export const Plugin = define({
       return PermissionV2.merge(
         [{ action: "*", resource: "*", effect: "deny" }],
         permissions,
-        AgentV2.teamBoardActions.map(
+        AgentV2.swarmRoomActions.map(
           (action): PermissionV2.Rule => ({ action, resource: "*", effect: "allow" }),
         ),
         readonlyExternalDirectory,

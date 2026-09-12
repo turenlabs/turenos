@@ -1,6 +1,6 @@
 {
   "name": "@turenlabs/session-ui",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -27,9 +27,11 @@
   "devDependencies": {
     "@tsconfig/node22": "catalog:",
     "@types/bun": "catalog:",
+    "@types/jsdom": "30.0.0",
     "@types/katex": "0.16.7",
     "@types/luxon": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "jsdom": "30.0.1",
     "typescript": "catalog:",
     "vite": "catalog:"
   },

@@ -34,7 +34,7 @@ import { McpTool } from "../../tool/mcp"
 import { SessionToolSnapshot } from "../../tool/session-snapshot"
 import { ToolVisibleError } from "../../tool/visible-error"
 import { GoalTool } from "../../tool/goal"
-import { TeamBoardTool } from "../../tool/team-board"
+import { SwarmRoomTool } from "../../tool/swarm-room"
 import { ToolOutputStore } from "../../tool-output-store"
 import { SessionContextEpoch } from "../context-epoch"
 import { SessionContextRequest } from "../context-request"
@@ -206,7 +206,7 @@ const currentTaskAnchor = (
   )
   return [
     "<current_task_anchor>",
-    "The preceding board coordination context is historical evidence. It does not replace the current task or verified state.",
+    "The preceding room coordination context is historical evidence. It does not replace the current task or verified state.",
     "Latest human instruction (authoritative):",
     displayedInstruction,
     ...(goal?.status === "active"
@@ -224,7 +224,7 @@ const currentTaskAnchor = (
             : []),
         ]
       : []),
-    "Continue from the latest verified state. Do not repeat completed work solely because a board note describes it.",
+    "Continue from the latest verified state. Do not repeat completed work solely because a room entry describes it.",
     "</current_task_anchor>",
   ].join("\n")
 }
@@ -766,11 +766,11 @@ const layer = Layer.effect(
         (entry): entry is typeof entry & { readonly message: SessionMessage.Assistant } =>
           entry.message.type === "assistant",
       )
-      const followsBoardRead = previousAssistant?.message.content.some(
-        (item) => item.type === "tool" && item.name === TeamBoardTool.readName && item.state.status === "completed",
+      const followsRoomRead = previousAssistant?.message.content.some(
+        (item) => item.type === "tool" && item.name === SwarmRoomTool.readName && item.state.status === "completed",
       )
       const lastMessage = history.at(-1)?.message
-      const inspectInputSource = followsBoardRead === true || lastMessage?.type === "user"
+      const inspectInputSource = followsRoomRead === true || lastMessage?.type === "user"
       const [latestHumanInput, latestInternalInput] = inspectInputSource
         ? yield* Effect.all(
             [
@@ -782,7 +782,7 @@ const layer = Layer.effect(
         : [undefined, undefined]
       const currentTask =
         latestHumanInput &&
-        (followsBoardRead === true ||
+        (followsRoomRead === true ||
           (lastMessage?.type === "user" && lastMessage.source === "shell_job") ||
           (latestInternalInput !== undefined &&
             (latestInternalInput.promotedSeq ?? -1) > (latestHumanInput.promotedSeq ?? -1)))

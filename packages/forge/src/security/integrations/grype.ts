@@ -1,4 +1,3 @@
-import fs from "node:fs/promises"
 import path from "node:path"
 import type { Integration } from "../registry"
 import { ToolError, type Finding, type IntegrationContext, type Severity } from "../types"
@@ -25,26 +24,7 @@ const MAX_COMPONENTS = 200
 
 const SEVERITY_RANK: Record<Severity, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1, unknown: 0 }
 
-interface Target {
-  abs: string
-  rel: string
-  isDirectory: boolean
-}
-
-/** Resolve the `path` arg against the workspace; reject escapes and missing paths. */
-async function resolveTarget(raw: unknown, ctx: IntegrationContext): Promise<Target> {
-  if (raw !== undefined && typeof raw !== "string") throw new ToolError(`"path" must be a string`)
-  const workspace = path.resolve(ctx.workspace)
-  const abs = path.resolve(workspace, raw ?? ".")
-  if (abs !== workspace && !abs.startsWith(workspace + path.sep))
-    throw new ToolError(`"path" must resolve inside the workspace (${ctx.workspace})`)
-  try {
-    const stat = await fs.stat(abs)
-    return { abs, rel: path.relative(workspace, abs) || ".", isDirectory: stat.isDirectory() }
-  } catch {
-    throw new ToolError(`path does not exist: ${String(raw ?? ".")} (resolved to ${abs})`)
-  }
-}
+type Target = Scanner.ScanTarget
 
 function notInstalled(tool: string, installHint: string) {
   return {
@@ -99,7 +79,7 @@ function report(tool: string, target: Target, findings: Finding[], extra: Record
 async function grypeScan(args: Record<string, unknown>, ctx: IntegrationContext): Promise<unknown> {
   const onlyFixed = args.only_fixed
   if (onlyFixed !== undefined && typeof onlyFixed !== "boolean") throw new ToolError(`"only_fixed" must be a boolean`)
-  const target = await resolveTarget(args.path, ctx)
+  const target = await Scanner.resolveScanTarget(args.path, ctx)
 
   const bin = await Scanner.which("grype")
   if (!bin) return notInstalled("grype", GRYPE_HINT)
@@ -147,7 +127,7 @@ function componentLicense(component: CdxComponent): string | undefined {
 }
 
 async function syftSbom(args: Record<string, unknown>, ctx: IntegrationContext): Promise<unknown> {
-  const target = await resolveTarget(args.path, ctx)
+  const target = await Scanner.resolveScanTarget(args.path, ctx)
 
   const bin = await Scanner.which("syft")
   if (!bin) return notInstalled("syft", SYFT_HINT)

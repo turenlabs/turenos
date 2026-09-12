@@ -13,12 +13,12 @@ import {
   sessionTaskElapsedSeconds,
   sessionTaskStatusLabel,
   sessionTaskThinkingProfiles,
-  type SessionTeamBoardNote,
   type SessionTaskInfo,
 } from "./session-subagent"
 import type { ThinkingState } from "@turenlabs/ui/thinking"
 import type { SessionSubagentController } from "./session-subagent-controller"
 import type { SessionSwarmProgress } from "./session-subagent"
+import { SessionSubagentRoom } from "./session-room"
 import { SessionSwarmProgressView } from "./session-swarm-progress"
 
 type SessionSubagentViewProps = {
@@ -44,7 +44,7 @@ export function SessionSubagentDock(props: SessionSubagentViewProps & { variant?
     () =>
       tasks().length > 0 ||
       !!props.controller.loadFailure() ||
-      (props.variant === "panel" && props.controller.boardVisible()),
+      (props.variant === "panel" && props.controller.room() !== undefined),
   )
   const profiles = createMemo(() => sessionTaskThinkingProfiles(props.controller.taskIDs()))
   const toggle = () => setStore("collapsed", (value) => !value)
@@ -207,13 +207,15 @@ function SessionSubagentPanel(props: {
 
       <div
         class="min-h-0 flex-1 overflow-y-auto px-4"
-        aria-busy={props.controller.loading() || props.controller.boardLoading()}
+        aria-busy={props.controller.loading()}
       >
         <Show when={props.swarm?.()}>
           {(swarm) => <SessionSwarmProgressView progress={swarm()} surface="subagents" embedded />}
         </Show>
         <SessionSubagentLoadError controller={props.controller} panel />
-        <SessionSubagentBoard controller={props.controller} />
+        <Show when={props.controller.room() || props.controller.roomLoading() || props.controller.roomFailure()}>
+          <SessionSubagentRoom controller={props.controller} />
+        </Show>
         <Show
           when={props.tasks().length > 0}
           fallback={
@@ -231,174 +233,6 @@ function SessionSubagentPanel(props: {
       </div>
     </section>
   )
-}
-
-function SessionSubagentBoard(props: { controller: SessionSubagentController }) {
-  const language = useLanguage()
-  const notes = createMemo(() => props.controller.board())
-
-  return (
-    <section data-component="session-subagent-team-board" class="border-b border-border-weak-base py-3">
-      <div class="flex min-w-0 items-center gap-3">
-        <div class="min-w-0 flex-1">
-          <h2 class="text-13-medium text-text-strong">{language.t("session.subagents.board.title")}</h2>
-          <p class="text-11-regular text-text-weak" aria-live="polite">
-            {language.t("session.subagents.board.notes", { count: notes().length })}
-          </p>
-        </div>
-        <Button
-          size="small"
-          variant="ghost"
-          disabled={props.controller.boardLoading()}
-          onClick={() => void props.controller.refreshBoard()}
-        >
-          {language.t("session.subagents.board.refresh")}
-        </Button>
-      </div>
-
-      <Show when={props.controller.boardFailure()}>
-        {(failure) => (
-          <div
-            data-slot="session-subagent-board-error"
-            class="mt-3 flex flex-wrap items-center gap-2 border-t border-critical-base/30 pt-2"
-            role="alert"
-          >
-            <span class="min-w-0 flex-1 text-11-regular text-text-base">
-              {language.t("session.subagents.board.error")}: {failure()}
-            </span>
-            <Button size="small" variant="secondary" onClick={() => void props.controller.refreshBoard()}>
-              {language.t("session.subagents.board.retry")}
-            </Button>
-          </div>
-        )}
-      </Show>
-
-      <Show when={props.controller.boardLoading() && notes().length === 0 && !props.controller.boardFailure()}>
-        <div
-          data-slot="session-subagent-board-loading"
-          class="mt-3 border-t border-border-weak-base pt-3 text-center"
-          role="status"
-        >
-          <strong class="text-12-medium text-text-strong">{language.t("session.subagents.board.waiting")}</strong>
-        </div>
-      </Show>
-
-      <Show when={props.controller.boardLoading() && notes().length > 0}>
-        <p class="mt-3 text-11-regular text-text-weak" role="status" aria-live="polite">
-          {language.t("session.subagents.board.updating")}
-        </p>
-      </Show>
-
-      <Show when={!props.controller.boardLoading() && notes().length === 0 && !props.controller.boardFailure()}>
-        <div data-slot="session-subagent-board-empty" class="mt-3 border-t border-border-weak-base pt-3 text-center">
-          <strong class="text-12-medium text-text-strong">{language.t("session.subagents.board.empty")}</strong>
-        </div>
-      </Show>
-
-      <Show when={notes().length > 0}>
-        <div class="mt-3 min-w-0 border-t border-border-weak-base">
-          <For each={notes()}>{(note) => <SessionSubagentBoardNote note={note} />}</For>
-        </div>
-      </Show>
-    </section>
-  )
-}
-
-function SessionSubagentBoardNote(props: { note: SessionTeamBoardNote }) {
-  const language = useLanguage()
-  const created = formatBoardTimestamp(props.note.timeCreated)
-  const updated = formatBoardTimestamp(props.note.timeUpdated)
-
-  return (
-    <article
-      data-slot="session-subagent-board-note"
-      data-note-id={props.note.id}
-      data-note-kind={props.note.kind}
-      data-superseded={props.note.supersededBy ? "true" : "false"}
-      class="min-w-0 border-b border-border-weak-base py-2.5"
-      classList={{ "opacity-60": !!props.note.supersededBy }}
-    >
-      <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <span
-          class="shrink-0 text-10-medium uppercase tracking-wide"
-          classList={{
-            "text-critical-base": props.note.kind === "finding",
-            "text-warning-base": props.note.kind === "correction",
-            "text-info-base": props.note.kind === "lead",
-            "text-text-weak": props.note.kind === "refuted",
-            "text-success-base": props.note.kind === "capability",
-            "text-text-base": props.note.kind === "status",
-          }}
-        >
-          {props.note.kind}
-        </span>
-        <span data-slot="session-subagent-board-author" class="min-w-0 truncate text-11-regular text-text-weak">
-          {props.note.authorAgent}
-        </span>
-        <span aria-hidden="true" class="text-text-weak">
-          ·
-        </span>
-        <h3
-          data-slot="session-subagent-board-title"
-          class="min-w-48 flex-1 break-words text-12-medium text-text-strong"
-        >
-          {props.note.title}
-        </h3>
-        <Show when={props.note.supersedes}>
-          <span class="text-10-regular text-warning-base">{language.t("session.subagents.board.corrects")}</span>
-        </Show>
-        <Show when={props.note.supersededBy}>
-          <span class="text-10-regular text-text-weak">{language.t("session.subagents.board.superseded")}</span>
-        </Show>
-      </div>
-
-      <p
-        data-slot="session-subagent-board-body"
-        class="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-11-regular leading-5 text-text-base"
-      >
-        {props.note.body}
-      </p>
-
-      <Show when={props.note.evidence}>
-        {(evidence) => (
-          <details class="mt-1.5 text-11-regular text-text-weak">
-            <summary class="cursor-pointer text-11-medium text-text-base">
-              {language.t("session.subagents.board.evidence")}
-            </summary>
-            <p
-              data-slot="session-subagent-board-evidence"
-              class="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap break-words leading-4"
-            >
-              {evidence()}
-            </p>
-          </details>
-        )}
-      </Show>
-
-      <div class="mt-2 flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-10-regular text-text-weak">
-        <span data-slot="session-subagent-board-created">
-          {language.t("session.subagents.board.created", {
-            time: created ?? language.t("session.subagents.board.unknownTime"),
-          })}
-        </span>
-        <Show when={updated}>
-          {(time) => (
-            <>
-              <span aria-hidden="true">·</span>
-              <span data-slot="session-subagent-board-updated">
-                {language.t("session.subagents.board.updated", { time: time() })}
-              </span>
-            </>
-          )}
-        </Show>
-      </div>
-    </article>
-  )
-}
-
-function formatBoardTimestamp(value: number | undefined) {
-  if (value === undefined || !Number.isFinite(value)) return undefined
-  return new Date(value).toLocaleString()
 }
 
 function SessionSubagentLoadError(props: { controller: SessionSubagentController; panel?: boolean }) {

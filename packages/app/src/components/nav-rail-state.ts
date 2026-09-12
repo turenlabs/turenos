@@ -5,7 +5,7 @@
 // what a rail click should do, and the collapse-state shape that gets
 // persisted. It deliberately imports nothing from either feature.
 
-export type Surface = "home" | "agents" | "lobby" | "replay" | "automations" | "extend" | "analysis"
+export type Surface = "home" | "agents" | "lobby" | "replay" | "automations" | "extend"
 
 export function surfaceEnabled(surface: Surface, lobbyBetaEnabled: boolean, automationsEnabled = false) {
   if (surface === "lobby") return lobbyBetaEnabled
@@ -67,11 +67,6 @@ export type PanelState = {
 }
 
 export function surfaceHref(surface: Surface): string {
-  // "/analysis" is the Workbench entry point: it resolves to whichever tab
-  // (AppSec / Pentest) was last active — see AnalysisIndexRedirect
-  // in app.tsx — rather than hardcoding one destination here. This module
-  // intentionally knows nothing about the tabs themselves.
-  if (surface === "analysis") return "/analysis"
   if (surface === "lobby") return "/lobby"
   if (surface === "replay") return "/replay"
   if (surface === "automations") return "/automations"
@@ -92,16 +87,6 @@ export function surfaceFromLocation(location: RailLocation): Surface {
     location.pathname.startsWith("/loops/")
   )
     return "automations"
-  // Pentest keeps a top-level route as well as its /analysis tab path, with run detail pages
-  // beneath it. Every one of those is the Workbench surface; anything missed here falls through
-  // to "agents" below and the run page loses the Workbench rail entirely.
-  if (
-    location.pathname === "/analysis" ||
-    location.pathname.startsWith("/analysis/") ||
-    location.pathname === "/pentest" ||
-    location.pathname.startsWith("/pentest/")
-  )
-    return "analysis"
   return "agents"
 }
 

@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en" data-color-scheme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>swarm.crash-recovery — room</title>
+<style>
+  /* TurenOS v2 dark theme — values mirrored from packages/ui/src/v2/styles/{colors,theme}.css */
+  :root {
+    --v2-grey-50:#fff; --v2-grey-100:#fafafa; --v2-grey-200:#f2f2f2; --v2-grey-300:#eee;
+    --v2-grey-400:#dbdbdb; --v2-grey-500:#aeaeae; --v2-grey-600:#808080; --v2-grey-700:#5c5c5c;
+    --v2-grey-800:#3a3a3a; --v2-grey-900:#2e2e2e; --v2-grey-1000:#242424; --v2-grey-1100:#161616; --v2-grey-1200:#080808;
+
+    --v2-alpha-light-4:#ffffff0a; --v2-alpha-light-6:#ffffff0f; --v2-alpha-light-8:#ffffff14;
+    --v2-alpha-light-10:#ffffff1a; --v2-alpha-light-16:#ffffff29; --v2-alpha-light-20:#ffffff33;
+
+    --v2-blue-300:#c3d4fd; --v2-blue-400:#a2bcff; --v2-blue-500:#7698fd; --v2-blue-600:#3b5cf6; --v2-blue-900:#263fa9; --v2-blue-1200:#1b2852;
+    --v2-green-300:#b8e9c1; --v2-green-500:#6bd586; --v2-green-600:#49c970; --v2-green-900:#1d783c; --v2-green-1200:#14361d;
+    --v2-yellow-300:#f7e5b5; --v2-yellow-500:#f2cf76; --v2-yellow-900:#ac8833; --v2-yellow-1200:#4b4025;
+    --v2-red-500:#f17471; --v2-red-600:#f1484f; --v2-red-900:#97252b; --v2-red-1200:#461516;
+    --v2-cyan-500:#00c5df; --v2-cyan-700:#0096b8; --v2-cyan-1000:#005a6e;
+    --v2-purple-400:#9e99f7; --v2-purple-700:#623be2; --v2-purple-1000:#361f83;
+    --v2-pink-400:#f799c6; --v2-pink-1000:#8c2d61;
+    --v2-orange-600:#ff8648; --v2-orange-1100:#723d22;
+
+    --v2-background-bg-base: var(--v2-grey-1100);
+    --v2-background-bg-deep: var(--v2-grey-1200);
+    --v2-background-bg-layer-01: var(--v2-grey-1000);
+    --v2-background-bg-layer-02: var(--v2-grey-900);
+    --v2-background-bg-layer-03: var(--v2-grey-800);
+    --v2-background-bg-contrast: var(--v2-grey-700);
+    --v2-background-bg-accent: var(--v2-blue-600);
+
+    --v2-text-text-base: var(--v2-grey-100);
+    --v2-text-text-muted: var(--v2-grey-500);
+    --v2-text-text-faint: var(--v2-grey-600);
+    --v2-text-text-accent: var(--v2-blue-400);
+    --v2-text-text-code-accent: var(--v2-blue-400);
+
+    --v2-icon-icon-muted: var(--v2-grey-600);
+
+    --v2-border-border-muted: var(--v2-alpha-light-8);
+    --v2-border-border-base: var(--v2-alpha-light-10);
+    --v2-border-border-strong: var(--v2-alpha-light-20);
+    --v2-border-border-focus: var(--v2-blue-500);
+
+    --v2-state-bg-success: var(--v2-green-1200); --v2-state-fg-success: var(--v2-green-500); --v2-state-border-success: var(--v2-green-900);
+    --v2-state-bg-warning: var(--v2-yellow-1200); --v2-state-fg-warning: var(--v2-yellow-500); --v2-state-border-warning: var(--v2-yellow-900);
+    --v2-state-bg-danger: var(--v2-red-1200);   --v2-state-fg-danger: var(--v2-red-500);   --v2-state-border-danger: var(--v2-red-900);
+    --v2-state-bg-info: var(--v2-blue-1200);    --v2-state-fg-info: var(--v2-blue-500);   --v2-state-border-info: var(--v2-blue-900);
+
+    --v2-agent-build-solid: var(--v2-blue-300);
+    --v2-agent-build-border: rgba(162,188,255,.2);
+    --v2-agent-build-background: rgba(38,63,169,.05);
+    --v2-agent-review-solid: var(--v2-green-300);
+    --v2-agent-explore-solid: var(--v2-yellow-300);
+    --v2-agent-writer-solid: var(--v2-purple-400);
+    --v2-agent-plan-solid: var(--v2-pink-400);
+
+    --v2-avatar-fg: #fff;
+    --v2-avatar-bg-blue: #263fa9;   --v2-avatar-border-blue: #7698fd;
+    --v2-avatar-bg-green: #196130;  --v2-avatar-border-green: #49c970;
+    --v2-avatar-bg-yellow: #68552b; --v2-avatar-border-yellow: #e7af36;
+    --v2-avatar-bg-red: #7a1f23;    --v2-avatar-border-red: #d92e3c;
+    --v2-avatar-bg-cyan: #005a6e;   --v2-avatar-border-cyan: #0096b8;
+    --v2-avatar-bg-purple: #361f83; --v2-avatar-border-purple: #7152f4;
+    --v2-avatar-bg-gray: #5c5c5c;   --v2-avatar-border-gray: #aeaeae;
+    --v2-avatar-bg-pink: #8c2d61;   --v2-avatar-border-pink: #e4429e;
+    --v2-avatar-bg-orange: #723d22; --v2-avatar-border-orange: #ff8648;
+
+    --v2-elevation-raised:
+      0 2px 4px 0 #0000004d, 0 1px 2px -1px #0000004d,
+      0 0 0 .5px #ffffff29, 0 -.5px 0 0 #ffffff0f;
+
+    --v2-font-family-sans: "Inter", -apple-system, sans-serif;
+    --v2-font-family-mono: "JetBrainsMono Nerd Font Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    --v2-radius-none: 0; --v2-radius-surface: 0; --v2-radius-control: 2px; --v2-radius-control-lg: 3px; --v2-radius-pill: 9999px;
+
+    --v2-rule-muted: 1px solid var(--v2-border-border-muted);
+    --v2-rule: 1px solid var(--v2-border-border-base);
+    --v2-rule-strong: 1px solid var(--v2-border-border-strong);
+    --v2-rule-heavy: 2px;
+
+    --v2-cell-x: 8px; --v2-cell-y: 20px; --v2-pane-pad-x: 12px; --v2-pane-pad-y: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--v2-background-bg-base);
+    color: var(--v2-text-text-base);
+    font-family: var(--v2-font-family-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .mono { font-family: var(--v2-font-family-mono); }
+
+  /* ── titlebar strip ──────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 var(--v2-pane-pad-x);
+    height: 40px;
+    border-bottom: var(--v2-rule);
+    background: var(--v2-background-bg-deep);
+    flex-shrink: 0;
+  }
+  .room-tag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--v2-font-family-mono);
+    font-size: 11px;
+    color: var(--v2-text-text-muted);
+  }
+  .room-tag .hash { color: var(--v2-text-text-faint); }
+  .live {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--v2-font-family-mono);
+    font-size: 9px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--v2-state-fg-success);
+  }
+  .live::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: var(--v2-radius-pill);
+    background: var(--v2-state-fg-success);
+    animation: pulse 2.2s infinite;
+  }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .header-objective {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--v2-text-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .header-objective b { color: var(--v2-text-text-base); font-weight: 500; }
+  .budget-pill {
+    font-family: var(--v2-font-family-mono);
+    font-size: 10px;
+    color: var(--v2-text-text-muted);
+    border: var(--v2-rule);
+    border-radius: var(--v2-radius-control);
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+  .budget-pill b { color: var(--v2-text-text-accent); font-weight: 600; }
+
+  .body { display: flex; flex: 1; min-height: 0; }
+
+  /* ── left rail ───────────────────────────── */
+  aside {
+    width: 252px;
+    border-right: var(--v2-rule);
+    background: var(--v2-background-bg-deep);
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .rail-section { padding: var(--v2-pane-pad-y) var(--v2-pane-pad-x); border-bottom: var(--v2-rule-muted); }
+  .rail-label {
+    font-family: var(--v2-font-family-mono);
+    font-size: 9px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--v2-text-text-faint);
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .objective-text { font-size: 12px; color: var(--v2-text-text-base); line-height: 1.55; }
+  .objective-meta { margin-top: 6px; font-family: var(--v2-font-family-mono); font-size: 10px; color: var(--v2-text-text-faint); }
+
+  .lane {
+    display: flex;
+    gap: 8px;
+    padding: 5px 0;
+    align-items: baseline;
+    font-size: 11.5px;
+  }
+  .lane-dot { width: 6px; height: 6px; border-radius: var(--v2-radius-pill); flex-shrink: 0; position: relative; top: -1px; }
+  .lane-name { color: var(--v2-text-text-base); flex: 1; min-width: 0; }
+  .lane-owner { font-family: var(--v2-font-family-mono); font-size: 10px; color: var(--v2-text-text-faint); white-space: nowrap; }
+  .lane.unclaimed .lane-name { color: var(--v2-text-text-faint); font-style: italic; }
+  .lane.done .lane-name { color: var(--v2-text-text-muted); text-decoration: line-through; text-decoration-color: var(--v2-text-text-faint); }
+  .lane.blocked .lane-name { color: var(--v2-state-fg-warning); }
+
+  .member {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+  }
+  .member-dot {
+    width: 10px; height: 10px;
+    border-radius: var(--v2-radius-control);
+    flex-shrink: 0;
+    border: 1px solid;
+  }
+  .member-name { font-family: var(--v2-font-family-mono); font-size: 11px; }
+  .member-role { font-family: var(--v2-font-family-mono); font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--v2-text-text-faint); }
+  .member-state { margin-left: auto; font-family: var(--v2-font-family-mono); font-size: 9px; color: var(--v2-text-text-faint); }
+  .member.human .member-name { color: var(--v2-text-text-contrast, var(--v2-text-text-base)); }
+
+  /* ── stream ──────────────────────────────── */
+  main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .stream { flex: 1; overflow-y: auto; padding: 16px 24px 8px; }
+  .stream-inner { max-width: 760px; margin: 0 auto; }
+
+  .sys {
+    text-align: center;
+    font-family: var(--v2-font-family-mono);
+    font-size: 10px;
+    color: var(--v2-text-text-faint);
+    padding: 8px 0;
+  }
+  .digest {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0;
+    font-family: var(--v2-font-family-mono);
+    font-size: 9px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--v2-text-text-faint);
+  }
+  .digest::before, .digest::after { content: ""; flex: 1; height: 1px; background: var(--v2-border-border-muted); }
+
+  .msg { display: flex; gap: 10px; margin: 16px 0; }
+  .avatar {
+    width: 22px; height: 22px;
+    border-radius: var(--v2-radius-control);
+    border: 1px solid;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--v2-font-family-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--v2-avatar-fg);
+    margin-top: 1px;
+  }
+  .msg-body { flex: 1; min-width: 0; }
+  .msg-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+  .msg-author { font-family: var(--v2-font-family-mono); font-size: 11px; font-weight: 600; }
+  .msg-role { font-family: var(--v2-font-family-mono); font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--v2-text-text-faint); }
+  .msg-time { font-family: var(--v2-font-family-mono); font-size: 9.5px; color: var(--v2-text-text-faint); }
+  .msg-seq { font-family: var(--v2-font-family-mono); font-size: 9.5px; color: var(--v2-grey-700); margin-left: auto; }
+  .msg-text { font-size: 12.5px; color: var(--v2-text-text-base); }
+  .msg-text + .msg-text { margin-top: 6px; }
+  .msg-text.dim { color: var(--v2-text-text-muted); }
+
+  .refs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .ref {
+    font-family: var(--v2-font-family-mono);
+    font-size: 10px;
+    color: var(--v2-text-text-code-accent);
+    background: var(--v2-state-bg-info);
+    border: var(--v2-rule-muted);
+    border-radius: var(--v2-radius-control);
+    padding: 0 6px;
+  }
+  .ref.kind { color: var(--v2-text-text-muted); background: transparent; border: var(--v2-rule); }
+
+  /* ── typed event cards ── */
+  .event {
+    margin: 12px 0 12px 32px;
+    border: var(--v2-rule);
+    border-radius: var(--v2-radius-surface);
+    background: var(--v2-background-bg-layer-01);
+    padding: 8px 12px;
+    max-width: 620px;
+  }
+  .event-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--v2-font-family-mono);
+    font-size: 9px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .event-head .rev { margin-left: auto; color: var(--v2-text-text-faint); letter-spacing: 0; text-transform: none; }
+  .event.claim .event-head { color: var(--v2-state-fg-info); }
+  .event.plan .event-head { color: var(--v2-state-fg-success); }
+  .event.decision .event-head { color: var(--v2-state-fg-warning); }
+  .event.correction .event-head, .event.conflict .event-head { color: var(--v2-state-fg-danger); }
+  .event-body { font-size: 12px; color: var(--v2-text-text-base); }
+  .event-body .dim { color: var(--v2-text-text-muted); }
+  .event ol { margin: 4px 0 0 18px; color: var(--v2-text-text-muted); font-size: 11.5px; }
+  .event ol li { padding: 1.5px 0; }
+  .event ol b { color: var(--v2-text-text-base); font-weight: 500; font-family: var(--v2-font-family-mono); font-size: 11px; }
+
+  /* composer */
+  .composer {
+    border-top: var(--v2-rule);
+    background: var(--v2-background-bg-deep);
+    padding: 12px 24px 14px;
+    flex-shrink: 0;
+  }
+  .composer-inner { max-width: 760px; margin: 0 auto; }
+  .composer-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: var(--v2-rule-strong);
+    border-radius: var(--v2-radius-control-lg);
+    background: var(--v2-background-bg-base);
+    padding: 8px 12px;
+  }
+  .composer-box input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--v2-text-text-base);
+    font-family: var(--v2-font-family-sans);
+    font-size: 12.5px;
+  }
+  .composer-box input::placeholder { color: var(--v2-text-text-faint); }
+  .composer-hint {
+    margin-top: 6px;
+    font-family: var(--v2-font-family-mono);
+    font-size: 9px;
+    color: var(--v2-text-text-faint);
+    display: flex;
+    gap: 14px;
+  }
+  .composer-hint span b { color: var(--v2-text-text-muted); font-weight: 500; }
+
+  .chip {
+    font-family: var(--v2-font-family-mono);
+    font-size: 9.5px;
+    padding: 1px 7px;
+    border-radius: var(--v2-radius-control);
+    border: var(--v2-rule);
+    color: var(--v2-text-text-muted);
+  }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--v2-border-border-strong); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="room-tag"><span class="hash">#</span> swarm.crash-recovery</div>
+  <span class="live">live</span>
+  <div class="header-objective"><b>@swarm 6</b> — trace every path where a crash loses admitted user input</div>
+  <div class="budget-pill">workers <b>6/6</b> claimed · room rev <b>r58</b></div>
+</header>
+
+<div class="body">
+  <aside>
+    <div class="rail-section">
+      <div class="rail-label">Objective</div>
+      <p class="objective-text">Trace every path where a crash loses an admitted user input — from <span class="mono">session_input</span> admission through promotion, drain, and provider retry.</p>
+      <p class="objective-meta">opened by build · ses_9xk4 · 14:02</p>
+    </div>
+
+    <div class="rail-section">
+      <div class="rail-label">Lanes <span>claimed via events</span></div>
+      <div class="lane done"><span class="lane-dot" style="background:var(--v2-state-fg-success)"></span><span class="lane-name">admission → durable row</span><span class="lane-owner">sable ✓</span></div>
+      <div class="lane done"><span class="lane-dot" style="background:var(--v2-state-fg-success)"></span><span class="lane-name">promotion boundaries</span><span class="lane-owner">meridian ✓</span></div>
+      <div class="lane"><span class="lane-dot" style="background:var(--v2-state-fg-info)"></span><span class="lane-name">drain crash → resume gap</span><span class="lane-owner">vesper</span></div>
+      <div class="lane"><span class="lane-dot" style="background:var(--v2-state-fg-info)"></span><span class="lane-name">wake coalescing loss</span><span class="lane-owner">kite</span></div>
+      <div class="lane"><span class="lane-dot" style="background:var(--v2-state-fg-info)"></span><span class="lane-name">provider retry after promoted</span><span class="lane-owner">lumen</span></div>
+      <div class="lane blocked"><span class="lane-dot" style="background:var(--v2-state-fg-warning)"></span><span class="lane-name">adversarial: find the gap</span><span class="lane-owner">rook · blocked</span></div>
+    </div>
+
+    <div class="rail-section">
+      <div class="rail-label">Members <span>8</span></div>
+      <div class="member"><span class="member-dot" style="background:var(--v2-avatar-bg-blue);border-color:var(--v2-avatar-border-blue)"></span><span class="member-name" style="color:var(--v2-agent-build-solid)">build</span><span class="member-role">leader</span><span class="member-state">synthesizing</span></div>
+      <div class="member"><span class="member-dot" style="background:var(--v2-avatar-bg-green);border-color:var(--v2-avatar-border-green)"></span><span class="member-name" style="color:var(--v2-agent-review-solid)">sable</span><span class="member-role">worker</span><span class="member-state">settled</span></div>
+      <div class="member"><span class="member-dot" style="background:var(--v2-avatar-bg-yellow);border-color:var(--v2-avatar-border-yellow)"></span><span class="member-name" style="color:var(--v2-agent-explore-solid)">meridian</span><span class="member-role">worker</span><span class="member-state">settled</span></div>
+      <div class="member"><span class="member-dot" style="background:var(--v2-avatar-bg-red);border-color:var(--v2-avatar-border-red)"></span><span class="member-name" style="color:var(--v2-state-fg-danger)">vesper</span><span class="member-role">worker</span><span class="member-state">working…</span></div>
+      <div class="member"><span class="member-dot" style="background:var(--v2-avatar-bg-cyan);border-color:var(--v2-avatar-border-cyan)"></span><span class="member-name" style="color:var(--v2-cyan-500)">kite</span><span class="member-role">worker</span><span class="member-state">working…</span></div>
+      <div class="member"><span class="member-dot" style="background:var(--v2-avatar-bg-purple);border-color:var(--v2-avatar-border-purple)"></span><span class="member-name" style="color:var(--v2-agent-writer-solid)">lumen</span><span class="member-role">worker</span><span class="member-state">working…</span></div>
+      <div class="member"><span class="member-dot" style="background:var(--v2-avatar-bg-gray);border-color:var(--v2-avatar-border-gray)"></span><span class="member-name" style="color:var(--v2-grey-500)">rook</span><span class="member-role">worker</span><span class="member-state">needs input</span></div>
+      <div class="member human"><span class="member-dot" style="background:var(--v2-grey-100);border-color:var(--v2-grey-400)"></span><span class="member-name">tom</span><span class="member-role">human</span><span class="member-state">watching</span></div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="stream">
+      <div class="stream-inner">
+
+        <div class="sys">room created · budget 6 workers · root ses_9xk4 · #0001</div>
+
+        <div class="msg">
+          <div class="avatar" style="background:var(--v2-avatar-bg-blue);border-color:var(--v2-avatar-border-blue)">B</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-author" style="color:var(--v2-agent-build-solid)">build</span><span class="msg-role">leader</span><span class="msg-time">14:02:11</span><span class="msg-seq">#0002</span></div>
+            <p class="msg-text">Objective from @swarm: trace every path where a crash loses an admitted user input. I'm holding synthesis — claim a lane, post evidence with file:line refs, correct each other in the open. Untrusted until verified.</p>
+          </div>
+        </div>
+
+        <div class="event plan">
+          <div class="event-head">plan · posted by build <span class="rev">r7</span></div>
+          <div class="event-body">
+            <ol>
+              <li><b>admission → durable row</b> — prompt → session_input write boundary</li>
+              <li><b>promotion boundaries</b> — steer/queue promote vs. provider turn</li>
+              <li><b>drain crash → resume gap</b> — promoted inputs, dead drain, who wakes</li>
+              <li><b>wake coalescing loss</b> — advisory coalesce paths</li>
+              <li><b>provider retry after promoted</b> — reload-projected-history coverage</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="event claim">
+          <div class="event-head">claim · sable <span class="rev">r9</span></div>
+          <div class="event-body">lane <b class="mono">admission → durable row</b> claimed</div>
+        </div>
+
+        <div class="event claim">
+          <div class="event-head">claim · meridian <span class="rev">r10</span></div>
+          <div class="event-body">lane <b class="mono">promotion boundaries</b> claimed</div>
+        </div>
+
+        <div class="event claim">
+          <div class="event-head">claim · vesper <span class="rev">r11</span></div>
+          <div class="event-body">lane <b class="mono">drain crash → resume gap</b> claimed</div>
+        </div>
+
+        <div class="msg">
+          <div class="avatar" style="background:var(--v2-avatar-bg-green);border-color:var(--v2-avatar-border-green)">S</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-author" style="color:var(--v2-agent-review-solid)">sable</span><span class="msg-role">worker</span><span class="msg-time">14:04:38</span><span class="msg-seq">#0017</span></div>
+            <p class="msg-text">Admission is durable before scheduling — <span class="mono">prompt()</span> commits the <span class="mono">session_input</span> row, then calls advisory <span class="mono">wake()</span>. Crash between those two leaves the row admitted-but-unpromoted, not lost. Safe.</p>
+            <div class="refs"><span class="ref">session/input.ts:640</span><span class="ref">session.ts:1389</span><span class="ref kind">kind: finding</span></div>
+          </div>
+        </div>
+
+        <div class="msg">
+          <div class="avatar" style="background:var(--v2-avatar-bg-yellow);border-color:var(--v2-avatar-border-yellow)">M</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-author" style="color:var(--v2-agent-explore-solid)">meridian</span><span class="msg-role">worker</span><span class="msg-time">14:05:02</span><span class="msg-seq">#0019</span></div>
+            <p class="msg-text">Partially disagreeing with sable's read: admission is durable, but a <span class="mono">queue</span>-delivery row only promotes at a provider-turn boundary <em>while a drain exists</em>. If the crash kills the drain between admission and first boundary, nothing re-promotes on restart — recovery is explicitly out of scope per AGENTS.md. That IS a loss path.</p>
+            <div class="refs"><span class="ref">session/input.ts:727</span><span class="ref kind">kind: correction</span></div>
+          </div>
+        </div>
+
+        <div class="event correction">
+          <div class="event-head">correction · meridian → sable #0017 <span class="rev">r24</span></div>
+          <div class="event-body"><span class="dim">"admitted ≠ scheduled. queued rows need a live drain to promote; post-crash there's none. Marking lane 1 'safe' is premature for delivery=queue."</span></div>
+        </div>
+
+        <div class="digest">4 room events → one advisory batch · promoted at build's turn boundary</div>
+
+        <div class="event conflict">
+          <div class="event-head">claim conflict <span class="rev">r31 vs r30</span></div>
+          <div class="event-body"><span class="dim">vesper claimed</span> <b class="mono">wake coalescing loss</b> <span class="dim">at r30 — kite's claim at r31 rejected by CAS. kite re-read head and took</span> <b class="mono">provider retry</b><span class="dim">… which lumen already holds.</span></div>
+        </div>
+
+        <div class="msg">
+          <div class="avatar" style="background:var(--v2-avatar-bg-cyan);border-color:var(--v2-avatar-border-cyan)">K</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-author" style="color:var(--v2-cyan-500)">kite</span><span class="msg-role">worker</span><span class="msg-time">14:06:20</span><span class="msg-seq">#0033</span></div>
+            <p class="msg-text dim">My claim raced vesper's — CAS rejected mine on base_revision. I've switched to the retry-coverage lane… which lumen already holds. Claiming nothing for 30s, watching for a split.</p>
+          </div>
+        </div>
+
+        <div class="msg">
+          <div class="avatar" style="background:var(--v2-grey-100);border-color:var(--v2-grey-400);color:var(--v2-grey-1100)">T</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-author" style="color:var(--v2-text-text-base)">tom</span><span class="msg-role">human</span><span class="msg-time">14:06:41</span><span class="msg-seq">#0035</span></div>
+            <p class="msg-text">Focus the effort on the promoted-but-never-drained gap. Pre-admission loss is out of scope — the input isn't ours before it lands.</p>
+          </div>
+        </div>
+
+        <div class="event decision">
+          <div class="event-head">decision · build <span class="rev">r38</span></div>
+          <div class="event-body">Scope narrowed per tom: pre-admission paths excluded. Splitting <b class="mono">drain crash → resume gap</b> — vesper keeps drain-death, kite takes <b class="mono">post-crash promotion recovery</b> (new lane). Rook: hold adversarial pass until lanes settle — your brief is "who is supposed to re-promote on restart".</div>
+        </div>
+
+        <div class="event claim">
+          <div class="event-head">claim · kite <span class="rev">r40</span></div>
+          <div class="event-body">lane <b class="mono">post-crash promotion recovery</b> claimed <span class="dim">(split from vesper's lane)</span></div>
+        </div>
+
+        <div class="msg">
+          <div class="avatar" style="background:var(--v2-avatar-bg-red);border-color:var(--v2-avatar-border-red)">V</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-author" style="color:var(--v2-state-fg-danger)">vesper</span><span class="msg-role">worker</span><span class="msg-time">14:08:15</span><span class="msg-seq">#0044</span></div>
+            <p class="msg-text">Found the hole. <span class="mono">SessionRunCoordinator</span> coalesces wakes process-locally; on restart nothing re-scans for promoted-but-undrained inputs. The durable inbox row exists, <span class="mono">promoted_seq</span> is set, and no owner ever looks at it. Repro: kill -9 during drain → restart → input sits promoted forever. This is the crash-loses-input path meridian predicted.</p>
+            <div class="refs"><span class="ref">session/run-coordinator.ts</span><span class="ref">session/input.ts:752</span><span class="ref kind">kind: finding · confidence high</span></div>
+          </div>
+        </div>
+
+        <div class="msg">
+          <div class="avatar" style="background:var(--v2-avatar-bg-gray);border-color:var(--v2-avatar-border-gray)">R</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-author" style="color:var(--v2-grey-500)">rook</span><span class="msg-role">worker</span><span class="msg-time">14:09:02</span><span class="msg-seq">#0049</span></div>
+            <p class="msg-text">Adversarial check on vesper's claim before it hardens: <span class="mono">promoteNextQueued</span> is only called inside a drain, agreed — but does session open itself start a drain when unprojected inputs exist? Checking the open path before I co-sign.</p>
+            <div class="refs"><span class="ref">session/store.ts</span><span class="ref kind">kind: status</span></div>
+          </div>
+        </div>
+
+        <div class="digest">6 room events → one advisory batch · build promoted at turn boundary</div>
+
+        <div class="msg">
+          <div class="avatar" style="background:var(--v2-avatar-bg-blue);border-color:var(--v2-avatar-border-blue)">B</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-author" style="color:var(--v2-agent-build-solid)">build</span><span class="msg-role">leader</span><span class="msg-time">14:11:30</span><span class="msg-seq">#0057</span></div>
+            <p class="msg-text">State of the room: two lanes settled, one real loss path confirmed by vesper and being independently verified by rook. Drafting synthesis once rook's check lands. Coverage gap: nobody owns <span class="mono">session.open → implicit drain</span> — holding budget slot open for it if rook clears.</p>
+          </div>
+        </div>
+
+        <div class="sys">vesper is typing… · rook is typing…</div>
+
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="composer-inner">
+        <div class="composer-box">
+          <input type="text" placeholder="Message the room — @worker to direct, plain text broadcasts to all members" />
+          <span class="chip">⏎ send</span>
+        </div>
+        <div class="composer-hint">
+          <span><b>@name</b> direct steer</span>
+          <span><b>/claim lane</b> take work</span>
+          <span>delivers at each member's next turn boundary · never interrupts mid-flight</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

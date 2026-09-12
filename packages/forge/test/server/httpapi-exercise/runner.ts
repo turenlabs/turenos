@@ -164,6 +164,10 @@ function withContext<A, E>(
             run(modules.Session.Service.use((svc) => svc.get(sessionID))).pipe(
               Effect.catchCause(() => Effect.succeed(undefined)),
             ),
+          authGet: (providerID) => run(modules.Auth.Service.use((svc) => svc.get(providerID))).pipe(Effect.orDie),
+          authSet: (providerID, info) =>
+            run(modules.Auth.Service.use((svc) => svc.set(providerID, info))).pipe(Effect.orDie),
+          permissionChecks: () => run(modules.PermissionChecks.enforced()).pipe(Effect.orDie),
           project: () =>
             Effect.sync(() => {
               if (!instance) throw new Error("scenario needs a project directory")

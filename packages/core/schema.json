@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "a2d89c97-4b24-4a24-a268-92e41781841e",
+  "id": "b305b717-d371-490d-b802-9d42893237dd",
   "prevIds": [
-    "3c52bc7d-fd55-4e37-87e8-64452360c395"
+    "aa161089-d9a1-494d-846d-acc7d7c275f9"
   ],
   "ddl": [
     {
@@ -36,6 +36,18 @@
     },
     {
       "name": "team_board_note",
+      "entityType": "tables"
+    },
+    {
+      "name": "swarm_room_entry",
+      "entityType": "tables"
+    },
+    {
+      "name": "swarm_room_member",
+      "entityType": "tables"
+    },
+    {
+      "name": "swarm_room",
       "entityType": "tables"
     },
     {
@@ -84,34 +96,6 @@
     },
     {
       "name": "memory_wing",
-      "entityType": "tables"
-    },
-    {
-      "name": "pentest_evidence",
-      "entityType": "tables"
-    },
-    {
-      "name": "pentest_execution",
-      "entityType": "tables"
-    },
-    {
-      "name": "pentest_finding",
-      "entityType": "tables"
-    },
-    {
-      "name": "pentest_http_session",
-      "entityType": "tables"
-    },
-    {
-      "name": "pentest_model_usage",
-      "entityType": "tables"
-    },
-    {
-      "name": "pentest_report",
-      "entityType": "tables"
-    },
-    {
-      "name": "pentest_run",
       "entityType": "tables"
     },
     {
@@ -1183,6 +1167,306 @@
       "name": "time_updated",
       "entityType": "columns",
       "table": "team_board_note"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "room_id",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "seq",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "member_id",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor_type",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor_session_id",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor_agent",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor_name",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "kind",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "text",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "payload",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "reply_to",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "evidence_refs",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "base_revision",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "swarm_room_entry"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "swarm_room_member"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "room_id",
+      "entityType": "columns",
+      "table": "swarm_room_member"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "type",
+      "entityType": "columns",
+      "table": "swarm_room_member"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "swarm_room_member"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state",
+      "entityType": "columns",
+      "table": "swarm_room_member"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "swarm_room_member"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "swarm_room"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "root_session_id",
+      "entityType": "columns",
+      "table": "swarm_room"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "objective",
+      "entityType": "columns",
+      "table": "swarm_room"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "budget",
+      "entityType": "columns",
+      "table": "swarm_room"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "explicit_budget",
+      "entityType": "columns",
+      "table": "swarm_room"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "head",
+      "entityType": "columns",
+      "table": "swarm_room"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "swarm_room"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "swarm_room"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_updated",
+      "entityType": "columns",
+      "table": "swarm_room"
     },
     {
       "type": "text",
@@ -2433,886 +2717,6 @@
       "name": "time_updated",
       "entityType": "columns",
       "table": "memory_wing"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "id",
-      "entityType": "columns",
-      "table": "pentest_evidence"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "run_id",
-      "entityType": "columns",
-      "table": "pentest_evidence"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "execution_id",
-      "entityType": "columns",
-      "table": "pentest_evidence"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "finding_id",
-      "entityType": "columns",
-      "table": "pentest_evidence"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "locator_kind",
-      "entityType": "columns",
-      "table": "pentest_evidence"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "reference",
-      "entityType": "columns",
-      "table": "pentest_evidence"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "excerpt",
-      "entityType": "columns",
-      "table": "pentest_evidence"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "author",
-      "entityType": "columns",
-      "table": "pentest_evidence"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "time_created",
-      "entityType": "columns",
-      "table": "pentest_evidence"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "id",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "run_id",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "idempotency_key",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "request_hash",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "result_run_revision",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "attempt",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "model_json",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "profile_id",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "profile_revision",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "state",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "stage",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "cancel_requested",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "cancel_idempotency_key",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "cancel_request_hash",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "cancel_result_run_revision",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "fence",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "lease_owner",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "lease_until",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "last_heartbeat",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "checkpoint_json",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "location_json",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "absolute_ttl",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "revision",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "error",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "time_created",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "time_updated",
-      "entityType": "columns",
-      "table": "pentest_execution"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "id",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "run_id",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "severity",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "real",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "confidence",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "title",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "type",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "endpoint",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "cvss_vector",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "real",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "cvss_score",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "owasp",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "summary",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "remediation",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "reproduction",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "status",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "author",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "revision",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "time_created",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "time_updated",
-      "entityType": "columns",
-      "table": "pentest_finding"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "run_id",
-      "entityType": "columns",
-      "table": "pentest_http_session"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "profile_id",
-      "entityType": "columns",
-      "table": "pentest_http_session"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "sealed_state",
-      "entityType": "columns",
-      "table": "pentest_http_session"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "revision",
-      "entityType": "columns",
-      "table": "pentest_http_session"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "time_updated",
-      "entityType": "columns",
-      "table": "pentest_http_session"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "run_id",
-      "entityType": "columns",
-      "table": "pentest_model_usage"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "session_id",
-      "entityType": "columns",
-      "table": "pentest_model_usage"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "assistant_message_id",
-      "entityType": "columns",
-      "table": "pentest_model_usage"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": "0",
-      "generated": null,
-      "name": "model_tokens",
-      "entityType": "columns",
-      "table": "pentest_model_usage"
-    },
-    {
-      "type": "real",
-      "notNull": true,
-      "autoincrement": false,
-      "default": "0",
-      "generated": null,
-      "name": "model_cost_usd",
-      "entityType": "columns",
-      "table": "pentest_model_usage"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "time_created",
-      "entityType": "columns",
-      "table": "pentest_model_usage"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "run_id",
-      "entityType": "columns",
-      "table": "pentest_report"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "execution_id",
-      "entityType": "columns",
-      "table": "pentest_report"
-    },
-    {
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "execution_fence",
-      "entityType": "columns",
-      "table": "pentest_report"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "markdown",
-      "entityType": "columns",
-      "table": "pentest_report"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "content_sha256",
-      "entityType": "columns",
-      "table": "pentest_report"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "evidence_sha256",
-      "entityType": "columns",
-      "table": "pentest_report"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "generated_at",
-      "entityType": "columns",
-      "table": "pentest_report"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "time_created",
-      "entityType": "columns",
-      "table": "pentest_report"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "id",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "idempotency_key",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "request_hash",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "project_id",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "location_json",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "session_id",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "status",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "current_stage",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "labels_json",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "goal_json",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": "0",
-      "generated": null,
-      "name": "model_tokens_used",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "real",
-      "notNull": true,
-      "autoincrement": false,
-      "default": "0",
-      "generated": null,
-      "name": "model_cost_usd_used",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": "0",
-      "generated": null,
-      "name": "request_count",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "revision",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "time_created",
-      "entityType": "columns",
-      "table": "pentest_run"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "time_updated",
-      "entityType": "columns",
-      "table": "pentest_run"
     },
     {
       "type": "text",
@@ -5236,6 +4640,51 @@
     },
     {
       "columns": [
+        "room_id"
+      ],
+      "tableTo": "swarm_room",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_swarm_room_entry_room_id_swarm_room_id_fk",
+      "entityType": "fks",
+      "table": "swarm_room_entry"
+    },
+    {
+      "columns": [
+        "room_id"
+      ],
+      "tableTo": "swarm_room",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_swarm_room_member_room_id_swarm_room_id_fk",
+      "entityType": "fks",
+      "table": "swarm_room_member"
+    },
+    {
+      "columns": [
+        "root_session_id"
+      ],
+      "tableTo": "session",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_swarm_room_root_session_id_session_id_fk",
+      "entityType": "fks",
+      "table": "swarm_room"
+    },
+    {
+      "columns": [
         "active_account_id"
       ],
       "tableTo": "account",
@@ -5353,126 +4802,6 @@
       "name": "fk_memory_wing_project_id_project_id_fk",
       "entityType": "fks",
       "table": "memory_wing"
-    },
-    {
-      "columns": [
-        "run_id"
-      ],
-      "tableTo": "pentest_run",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "fk_pentest_evidence_run_id_pentest_run_id_fk",
-      "entityType": "fks",
-      "table": "pentest_evidence"
-    },
-    {
-      "columns": [
-        "finding_id"
-      ],
-      "tableTo": "pentest_finding",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "fk_pentest_evidence_finding_id_pentest_finding_id_fk",
-      "entityType": "fks",
-      "table": "pentest_evidence"
-    },
-    {
-      "columns": [
-        "run_id"
-      ],
-      "tableTo": "pentest_run",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "fk_pentest_execution_run_id_pentest_run_id_fk",
-      "entityType": "fks",
-      "table": "pentest_execution"
-    },
-    {
-      "columns": [
-        "run_id"
-      ],
-      "tableTo": "pentest_run",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "fk_pentest_finding_run_id_pentest_run_id_fk",
-      "entityType": "fks",
-      "table": "pentest_finding"
-    },
-    {
-      "columns": [
-        "run_id"
-      ],
-      "tableTo": "pentest_run",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "fk_pentest_http_session_run_id_pentest_run_id_fk",
-      "entityType": "fks",
-      "table": "pentest_http_session"
-    },
-    {
-      "columns": [
-        "run_id"
-      ],
-      "tableTo": "pentest_run",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "fk_pentest_model_usage_run_id_pentest_run_id_fk",
-      "entityType": "fks",
-      "table": "pentest_model_usage"
-    },
-    {
-      "columns": [
-        "run_id"
-      ],
-      "tableTo": "pentest_run",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "fk_pentest_report_run_id_pentest_run_id_fk",
-      "entityType": "fks",
-      "table": "pentest_report"
-    },
-    {
-      "columns": [
-        "execution_id"
-      ],
-      "tableTo": "pentest_execution",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "NO ACTION",
-      "nameExplicit": false,
-      "name": "fk_pentest_report_execution_id_pentest_execution_id_fk",
-      "entityType": "fks",
-      "table": "pentest_report"
     },
     {
       "columns": [
@@ -5767,27 +5096,6 @@
     },
     {
       "columns": [
-        "run_id",
-        "profile_id"
-      ],
-      "nameExplicit": false,
-      "name": "pentest_http_session_pk",
-      "entityType": "pks",
-      "table": "pentest_http_session"
-    },
-    {
-      "columns": [
-        "run_id",
-        "session_id",
-        "assistant_message_id"
-      ],
-      "nameExplicit": false,
-      "name": "pentest_model_usage_pk",
-      "entityType": "pks",
-      "table": "pentest_model_usage"
-    },
-    {
-      "columns": [
         "project_id",
         "directory"
       ],
@@ -5903,6 +5211,33 @@
         "id"
       ],
       "nameExplicit": false,
+      "name": "swarm_room_entry_pk",
+      "table": "swarm_room_entry",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "swarm_room_member_pk",
+      "table": "swarm_room_member",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "swarm_room_pk",
+      "table": "swarm_room",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
       "name": "account_state_pk",
       "table": "account_state",
       "entityType": "pks"
@@ -5986,51 +5321,6 @@
       "nameExplicit": false,
       "name": "memory_wing_pk",
       "table": "memory_wing",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "pentest_evidence_pk",
-      "table": "pentest_evidence",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "pentest_execution_pk",
-      "table": "pentest_execution",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "pentest_finding_pk",
-      "table": "pentest_finding",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "run_id"
-      ],
-      "nameExplicit": false,
-      "name": "pentest_report_pk",
-      "table": "pentest_report",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "pentest_run_pk",
-      "table": "pentest_run",
       "entityType": "pks"
     },
     {
@@ -6466,6 +5756,92 @@
     {
       "columns": [
         {
+          "value": "room_id",
+          "isExpression": false
+        },
+        {
+          "value": "seq",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "swarm_room_entry_room_seq_idx",
+      "entityType": "indexes",
+      "table": "swarm_room_entry"
+    },
+    {
+      "columns": [
+        {
+          "value": "room_id",
+          "isExpression": false
+        },
+        {
+          "value": "kind",
+          "isExpression": false
+        },
+        {
+          "value": "seq",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "swarm_room_entry_kind_idx",
+      "entityType": "indexes",
+      "table": "swarm_room_entry"
+    },
+    {
+      "columns": [
+        {
+          "value": "room_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "swarm_room_member_room_idx",
+      "entityType": "indexes",
+      "table": "swarm_room_member"
+    },
+    {
+      "columns": [
+        {
+          "value": "room_id",
+          "isExpression": false
+        },
+        {
+          "value": "name",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "swarm_room_member_name_idx",
+      "entityType": "indexes",
+      "table": "swarm_room_member"
+    },
+    {
+      "columns": [
+        {
+          "value": "root_session_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "swarm_room_root_idx",
+      "entityType": "indexes",
+      "table": "swarm_room"
+    },
+    {
+      "columns": [
+        {
           "value": "url",
           "isExpression": false
         },
@@ -6736,284 +6112,6 @@
       "name": "memory_wing_kind_key_idx",
       "entityType": "indexes",
       "table": "memory_wing"
-    },
-    {
-      "columns": [
-        {
-          "value": "run_id",
-          "isExpression": false
-        },
-        {
-          "value": "time_created",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_evidence_run_idx",
-      "entityType": "indexes",
-      "table": "pentest_evidence"
-    },
-    {
-      "columns": [
-        {
-          "value": "finding_id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_evidence_finding_idx",
-      "entityType": "indexes",
-      "table": "pentest_evidence"
-    },
-    {
-      "columns": [
-        {
-          "value": "run_id",
-          "isExpression": false
-        },
-        {
-          "value": "attempt",
-          "isExpression": false
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_execution_run_attempt_idx",
-      "entityType": "indexes",
-      "table": "pentest_execution"
-    },
-    {
-      "columns": [
-        {
-          "value": "run_id",
-          "isExpression": false
-        },
-        {
-          "value": "idempotency_key",
-          "isExpression": false
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_execution_idempotency_idx",
-      "entityType": "indexes",
-      "table": "pentest_execution"
-    },
-    {
-      "columns": [
-        {
-          "value": "run_id",
-          "isExpression": false
-        },
-        {
-          "value": "time_created",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_execution_run_idx",
-      "entityType": "indexes",
-      "table": "pentest_execution"
-    },
-    {
-      "columns": [
-        {
-          "value": "state",
-          "isExpression": false
-        },
-        {
-          "value": "lease_until",
-          "isExpression": false
-        },
-        {
-          "value": "absolute_ttl",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_execution_claim_idx",
-      "entityType": "indexes",
-      "table": "pentest_execution"
-    },
-    {
-      "columns": [
-        {
-          "value": "run_id",
-          "isExpression": false
-        },
-        {
-          "value": "time_created",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_finding_run_idx",
-      "entityType": "indexes",
-      "table": "pentest_finding"
-    },
-    {
-      "columns": [
-        {
-          "value": "run_id",
-          "isExpression": false
-        },
-        {
-          "value": "severity",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_finding_severity_idx",
-      "entityType": "indexes",
-      "table": "pentest_finding"
-    },
-    {
-      "columns": [
-        {
-          "value": "run_id",
-          "isExpression": false
-        },
-        {
-          "value": "time_updated",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_http_session_run_idx",
-      "entityType": "indexes",
-      "table": "pentest_http_session"
-    },
-    {
-      "columns": [
-        {
-          "value": "session_id",
-          "isExpression": false
-        },
-        {
-          "value": "assistant_message_id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_model_usage_session_idx",
-      "entityType": "indexes",
-      "table": "pentest_model_usage"
-    },
-    {
-      "columns": [
-        {
-          "value": "run_id",
-          "isExpression": false
-        },
-        {
-          "value": "time_created",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_report_run_idx",
-      "entityType": "indexes",
-      "table": "pentest_report"
-    },
-    {
-      "columns": [
-        {
-          "value": "idempotency_key",
-          "isExpression": false
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_run_idempotency_idx",
-      "entityType": "indexes",
-      "table": "pentest_run"
-    },
-    {
-      "columns": [
-        {
-          "value": "project_id",
-          "isExpression": false
-        },
-        {
-          "value": "location_json",
-          "isExpression": false
-        },
-        {
-          "value": "time_updated",
-          "isExpression": false
-        },
-        {
-          "value": "id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_run_owner_list_idx",
-      "entityType": "indexes",
-      "table": "pentest_run"
-    },
-    {
-      "columns": [
-        {
-          "value": "location_json",
-          "isExpression": false
-        },
-        {
-          "value": "time_updated",
-          "isExpression": false
-        },
-        {
-          "value": "id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_run_location_list_idx",
-      "entityType": "indexes",
-      "table": "pentest_run"
-    },
-    {
-      "columns": [
-        {
-          "value": "time_updated",
-          "isExpression": false
-        },
-        {
-          "value": "id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "pentest_run_list_idx",
-      "entityType": "indexes",
-      "table": "pentest_run"
     },
     {
       "columns": [
@@ -7444,12 +6542,6 @@
       "name": "session_goal_goal_id_unique",
       "entityType": "uniques",
       "table": "session_goal"
-    },
-    {
-      "value": "\"revision\" > 0",
-      "name": "pentest_http_session_revision_positive",
-      "entityType": "checks",
-      "table": "pentest_http_session"
     }
   ],
   "renames": []

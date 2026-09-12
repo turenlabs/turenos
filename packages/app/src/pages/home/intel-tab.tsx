@@ -5,11 +5,15 @@ import { localLoopServer } from "../loops/local-server"
 import {
   intelApi,
   type AdvisoriesPage,
+  type AdvisorySort,
   type IntelApi,
   type IntelSeverity,
+  type IntelSortOrder,
   type IntelStatus,
   type KevPage,
+  type KevSort,
   type NewsPage,
+  type NewsSort,
 } from "./intel-api"
 import {
   AdvisoryList,
@@ -20,12 +24,45 @@ import {
   KevList,
   NewsList,
   SeverityFilter,
+  type IntelSort,
 } from "./intel-tables"
 
 type IntelPane = "board" | "kev" | "news"
 
 const PAGE_SIZE = 20
 const initialIntelPolls = new Set<string>()
+
+// First click applies the column's primary direction, the next flips it, and
+// a third clears back to the feed's default newest-first order.
+const ADVISORY_SORT_PRIMARY: Record<AdvisorySort, IntelSortOrder> = {
+  publishedAt: "desc",
+  severity: "desc",
+  cvss: "desc",
+  source: "asc",
+  title: "asc",
+}
+const KEV_SORT_PRIMARY: Record<KevSort, IntelSortOrder> = {
+  cveID: "asc",
+  name: "asc",
+  vendor: "asc",
+  dateAdded: "desc",
+  dueDate: "asc",
+}
+const NEWS_SORT_PRIMARY: Record<NewsSort, IntelSortOrder> = {
+  source: "asc",
+  title: "asc",
+  publishedAt: "desc",
+}
+
+function cycleSort<S extends string>(
+  current: IntelSort<S>,
+  column: S,
+  primary: Record<S, IntelSortOrder>,
+): IntelSort<S> {
+  if (current?.sort !== column) return { sort: column, order: primary[column] }
+  if (current.order === primary[column]) return { sort: column, order: primary[column] === "asc" ? "desc" : "asc" }
+  return undefined
+}
 
 /**
  * Intel feed for Home: a zero-config security digest (Board/KEV/News)
@@ -67,6 +104,9 @@ function IntelContent(props: { connection: ServerConnection.Any }) {
   const [advPage, setAdvPage] = createSignal(1)
   const [kevPage, setKevPage] = createSignal(1)
   const [newsPage, setNewsPage] = createSignal(1)
+  const [advSort, setAdvSort] = createSignal<IntelSort<AdvisorySort>>()
+  const [kevSort, setKevSort] = createSignal<IntelSort<KevSort>>()
+  const [newsSort, setNewsSort] = createSignal<IntelSort<NewsSort>>()
   const [loading, setLoading] = createSignal(true)
   const [error, setError] = createSignal<string>()
   const [advisories, setAdvisories] = createSignal<AdvisoriesPage>()
@@ -86,6 +126,7 @@ function IntelContent(props: { connection: ServerConnection.Any }) {
     pageSize: PAGE_SIZE,
     ...(severity() === "all" ? {} : { severity: severity() as IntelSeverity }),
     ...(search().trim() ? { search: search().trim() } : {}),
+    ...advSort(),
   })
 
   async function loadStatus(client: IntelApi, ticket: number) {
@@ -120,10 +161,10 @@ function IntelContent(props: { connection: ServerConnection.Any }) {
     setError(undefined)
     try {
       if (target === "kev") {
-        const next = await client.kev({ page: kevPage(), pageSize: PAGE_SIZE })
+        const next = await client.kev({ page: kevPage(), pageSize: PAGE_SIZE, ...kevSort() })
         if (mounted.value && ticket === version) setKev(next)
       } else if (target === "news") {
-        const next = await client.news({ page: newsPage(), pageSize: PAGE_SIZE })
+        const next = await client.news({ page: newsPage(), pageSize: PAGE_SIZE, ...newsSort() })
         if (mounted.value && ticket === version) setNews(next)
       }
     } catch (loadError) {
@@ -376,7 +417,18 @@ function IntelContent(props: { connection: ServerConnection.Any }) {
                   />
                 }
               >
-                <AdvisoryList items={advisories()?.items ?? []} />
+                <AdvisoryList
+                  items={advisories()?.items ?? []}
+                  sort={advSort()}
+                  onSort={(column) => {
+                    setAdvSort(cycleSort(advSort(), column, ADVISORY_SORT_PRIMARY))
+                    setAdvPage(1)
+                    const client = current()
+                    if (!client) return
+                    version += 1
+                    void loadBoard(client, version)
+                  }}
+                />
                 <IntelPager
                   page={advisories()?.page ?? 1}
                   pageSize={advisories()?.pageSize ?? PAGE_SIZE}
@@ -406,7 +458,18 @@ function IntelContent(props: { connection: ServerConnection.Any }) {
                   />
                 }
               >
-                <KevList items={kev()?.items ?? []} />
+                <KevList
+                  items={kev()?.items ?? []}
+                  sort={kevSort()}
+                  onSort={(column) => {
+                    setKevSort(cycleSort(kevSort(), column, KEV_SORT_PRIMARY))
+                    setKevPage(1)
+                    const client = current()
+                    if (!client) return
+                    version += 1
+                    void loadPane(client, version, "kev")
+                  }}
+                />
                 <IntelPager
                   page={kev()?.page ?? 1}
                   pageSize={kev()?.pageSize ?? PAGE_SIZE}
@@ -436,7 +499,18 @@ function IntelContent(props: { connection: ServerConnection.Any }) {
                   />
                 }
               >
-                <NewsList items={news()?.items ?? []} />
+                <NewsList
+                  items={news()?.items ?? []}
+                  sort={newsSort()}
+                  onSort={(column) => {
+                    setNewsSort(cycleSort(newsSort(), column, NEWS_SORT_PRIMARY))
+                    setNewsPage(1)
+                    const client = current()
+                    if (!client) return
+                    version += 1
+                    void loadPane(client, version, "news")
+                  }}
+                />
                 <IntelPager
                   page={news()?.page ?? 1}
                   pageSize={news()?.pageSize ?? PAGE_SIZE}

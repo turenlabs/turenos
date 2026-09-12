@@ -15,6 +15,7 @@ import { SettingsProvidersV2 } from "./providers"
 import "./settings-v2.css"
 import { SettingsServersV2 } from "./servers"
 import { SettingsIntelV2 } from "./intel"
+import { SettingsZooV2 } from "./zoo"
 import { SettingsServerProvider } from "../settings-server-context"
 
 type SettingsNavigationItem = {
@@ -72,6 +73,7 @@ export const DialogSettings: Component<{
             language.t("settings.tab.shortcuts"),
             "keyboard keybindings commands",
           ),
+          navigationItem("zoo", "cat", "Zoo", "zoo pets critters sprites feed snack play minigame"),
         ],
       },
       {
@@ -234,6 +236,9 @@ export const DialogSettings: Component<{
           </TabsV2.Content>
           <TabsV2.Content value="shortcuts" class="settings-v2-panel">
             <SettingsKeybinds v2 />
+          </TabsV2.Content>
+          <TabsV2.Content value="zoo" class="settings-v2-panel">
+            <SettingsZooV2 />
           </TabsV2.Content>
           <TabsV2.Content value="servers" class="settings-v2-panel">
             <SettingsServersV2 />

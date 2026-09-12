@@ -3,7 +3,7 @@ export * as AgentV2 from "./agent"
 import { makeLocationNode } from "./effect/app-node"
 import { Array, Context, Effect, Layer, Types } from "effect"
 import { Agent } from "@turenlabs/schema/agent"
-import { TeamBoard } from "@turenlabs/schema/team-board"
+import { SwarmRoom } from "@turenlabs/schema/swarm-room"
 import { State } from "./state"
 import { ExtensionRuntime } from "./extension"
 import { Permission } from "@turenlabs/schema/permission"
@@ -11,7 +11,7 @@ import { Permission } from "@turenlabs/schema/permission"
 export const ID = Agent.ID
 export type ID = typeof ID.Type
 export const defaultID = ID.make("build")
-export const teamBoardActions = TeamBoard.toolActions
+export const swarmRoomActions = SwarmRoom.toolActions
 
 export const Color = Agent.Color
 
@@ -144,7 +144,7 @@ const catalogAgents = Effect.fn("AgentV2.catalogAgents")(function* (runtime: Ext
     if (!contribution.agent || contribution.source.type !== "catalog") return []
     const actions = [
       ...readActions,
-      ...teamBoardActions,
+      ...swarmRoomActions,
       ...(contribution.agent.profile === "binary" ? binaryActions : []),
       ...(contribution.agent.profile === "data" ? dataActions : []),
     ]

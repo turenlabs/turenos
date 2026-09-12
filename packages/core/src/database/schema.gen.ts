@@ -146,6 +146,51 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`swarm_room_entry\` (
+          \`id\` text PRIMARY KEY,
+          \`room_id\` text NOT NULL,
+          \`seq\` integer NOT NULL,
+          \`member_id\` text NOT NULL,
+          \`actor_type\` text NOT NULL,
+          \`actor_session_id\` text,
+          \`actor_agent\` text,
+          \`actor_name\` text NOT NULL,
+          \`kind\` text NOT NULL,
+          \`text\` text NOT NULL,
+          \`payload\` text,
+          \`reply_to\` text,
+          \`evidence_refs\` text,
+          \`base_revision\` integer NOT NULL,
+          \`time_created\` integer NOT NULL,
+          CONSTRAINT \`fk_swarm_room_entry_room_id_swarm_room_id_fk\` FOREIGN KEY (\`room_id\`) REFERENCES \`swarm_room\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`swarm_room_member\` (
+          \`id\` text PRIMARY KEY,
+          \`room_id\` text NOT NULL,
+          \`type\` text NOT NULL,
+          \`name\` text NOT NULL,
+          \`state\` text NOT NULL,
+          \`time_created\` integer NOT NULL,
+          CONSTRAINT \`fk_swarm_room_member_room_id_swarm_room_id_fk\` FOREIGN KEY (\`room_id\`) REFERENCES \`swarm_room\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`swarm_room\` (
+          \`id\` text PRIMARY KEY,
+          \`root_session_id\` text NOT NULL,
+          \`objective\` text NOT NULL,
+          \`budget\` integer NOT NULL,
+          \`explicit_budget\` integer NOT NULL,
+          \`head\` integer NOT NULL,
+          \`status\` text NOT NULL,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL,
+          CONSTRAINT \`fk_swarm_room_root_session_id_session_id_fk\` FOREIGN KEY (\`root_session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`tool_execution\` (
           \`session_id\` text NOT NULL,
           \`assistant_message_id\` text NOT NULL,
@@ -326,133 +371,6 @@ export default {
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL,
           CONSTRAINT \`fk_memory_wing_project_id_project_id_fk\` FOREIGN KEY (\`project_id\`) REFERENCES \`project\`(\`id\`) ON DELETE CASCADE
-        );
-      `)
-      yield* tx.run(`
-        CREATE TABLE \`pentest_evidence\` (
-          \`id\` text PRIMARY KEY,
-          \`run_id\` text NOT NULL,
-          \`execution_id\` text,
-          \`finding_id\` text NOT NULL,
-          \`locator_kind\` text NOT NULL,
-          \`reference\` text,
-          \`excerpt\` text NOT NULL,
-          \`author\` text NOT NULL,
-          \`time_created\` integer NOT NULL,
-          CONSTRAINT \`fk_pentest_evidence_run_id_pentest_run_id_fk\` FOREIGN KEY (\`run_id\`) REFERENCES \`pentest_run\`(\`id\`) ON DELETE CASCADE,
-          CONSTRAINT \`fk_pentest_evidence_finding_id_pentest_finding_id_fk\` FOREIGN KEY (\`finding_id\`) REFERENCES \`pentest_finding\`(\`id\`) ON DELETE CASCADE
-        );
-      `)
-      yield* tx.run(`
-        CREATE TABLE \`pentest_execution\` (
-          \`id\` text PRIMARY KEY,
-          \`run_id\` text NOT NULL,
-          \`idempotency_key\` text NOT NULL,
-          \`request_hash\` text NOT NULL,
-          \`result_run_revision\` integer NOT NULL,
-          \`attempt\` integer NOT NULL,
-          \`model_json\` text NOT NULL,
-          \`profile_id\` text NOT NULL,
-          \`profile_revision\` integer NOT NULL,
-          \`state\` text NOT NULL,
-          \`stage\` text NOT NULL,
-          \`cancel_requested\` integer NOT NULL,
-          \`cancel_idempotency_key\` text,
-          \`cancel_request_hash\` text,
-          \`cancel_result_run_revision\` integer,
-          \`fence\` integer NOT NULL,
-          \`lease_owner\` text,
-          \`lease_until\` integer,
-          \`last_heartbeat\` integer,
-          \`checkpoint_json\` text,
-          \`location_json\` text,
-          \`absolute_ttl\` integer NOT NULL,
-          \`revision\` integer NOT NULL,
-          \`error\` text,
-          \`time_created\` integer NOT NULL,
-          \`time_updated\` integer NOT NULL,
-          CONSTRAINT \`fk_pentest_execution_run_id_pentest_run_id_fk\` FOREIGN KEY (\`run_id\`) REFERENCES \`pentest_run\`(\`id\`) ON DELETE CASCADE
-        );
-      `)
-      yield* tx.run(`
-        CREATE TABLE \`pentest_finding\` (
-          \`id\` text PRIMARY KEY,
-          \`run_id\` text NOT NULL,
-          \`severity\` text NOT NULL,
-          \`confidence\` real,
-          \`title\` text NOT NULL,
-          \`type\` text NOT NULL,
-          \`endpoint\` text NOT NULL,
-          \`cvss_vector\` text,
-          \`cvss_score\` real NOT NULL,
-          \`owasp\` text NOT NULL,
-          \`summary\` text NOT NULL,
-          \`remediation\` text NOT NULL,
-          \`reproduction\` text,
-          \`status\` text NOT NULL,
-          \`author\` text NOT NULL,
-          \`revision\` integer NOT NULL,
-          \`time_created\` integer NOT NULL,
-          \`time_updated\` integer NOT NULL,
-          CONSTRAINT \`fk_pentest_finding_run_id_pentest_run_id_fk\` FOREIGN KEY (\`run_id\`) REFERENCES \`pentest_run\`(\`id\`) ON DELETE CASCADE
-        );
-      `)
-      yield* tx.run(`
-        CREATE TABLE \`pentest_http_session\` (
-          \`run_id\` text NOT NULL,
-          \`profile_id\` text NOT NULL,
-          \`sealed_state\` text NOT NULL,
-          \`revision\` integer NOT NULL,
-          \`time_updated\` integer NOT NULL,
-          CONSTRAINT \`pentest_http_session_pk\` PRIMARY KEY(\`run_id\`, \`profile_id\`),
-          CONSTRAINT \`fk_pentest_http_session_run_id_pentest_run_id_fk\` FOREIGN KEY (\`run_id\`) REFERENCES \`pentest_run\`(\`id\`) ON DELETE CASCADE,
-          CONSTRAINT "pentest_http_session_revision_positive" CHECK("revision" > 0)
-        );
-      `)
-      yield* tx.run(`
-        CREATE TABLE \`pentest_model_usage\` (
-          \`run_id\` text NOT NULL,
-          \`session_id\` text NOT NULL,
-          \`assistant_message_id\` text NOT NULL,
-          \`model_tokens\` integer DEFAULT 0 NOT NULL,
-          \`model_cost_usd\` real DEFAULT 0 NOT NULL,
-          \`time_created\` integer NOT NULL,
-          CONSTRAINT \`pentest_model_usage_pk\` PRIMARY KEY(\`run_id\`, \`session_id\`, \`assistant_message_id\`),
-          CONSTRAINT \`fk_pentest_model_usage_run_id_pentest_run_id_fk\` FOREIGN KEY (\`run_id\`) REFERENCES \`pentest_run\`(\`id\`) ON DELETE CASCADE
-        );
-      `)
-      yield* tx.run(`
-        CREATE TABLE \`pentest_report\` (
-          \`run_id\` text PRIMARY KEY,
-          \`execution_id\` text,
-          \`execution_fence\` integer,
-          \`markdown\` text NOT NULL,
-          \`content_sha256\` text,
-          \`evidence_sha256\` text,
-          \`generated_at\` integer NOT NULL,
-          \`time_created\` integer NOT NULL,
-          CONSTRAINT \`fk_pentest_report_run_id_pentest_run_id_fk\` FOREIGN KEY (\`run_id\`) REFERENCES \`pentest_run\`(\`id\`) ON DELETE CASCADE,
-          CONSTRAINT \`fk_pentest_report_execution_id_pentest_execution_id_fk\` FOREIGN KEY (\`execution_id\`) REFERENCES \`pentest_execution\`(\`id\`)
-        );
-      `)
-      yield* tx.run(`
-        CREATE TABLE \`pentest_run\` (
-          \`id\` text PRIMARY KEY,
-          \`idempotency_key\` text NOT NULL,
-          \`request_hash\` text NOT NULL,
-          \`project_id\` text,
-          \`location_json\` text,
-          \`session_id\` text,
-          \`status\` text NOT NULL,
-          \`current_stage\` text NOT NULL,
-          \`labels_json\` text NOT NULL,
-          \`goal_json\` text NOT NULL,
-          \`model_tokens_used\` integer DEFAULT 0 NOT NULL,
-          \`model_cost_usd_used\` real DEFAULT 0 NOT NULL,
-          \`request_count\` integer DEFAULT 0 NOT NULL,
-          \`revision\` integer NOT NULL,
-          \`time_created\` integer NOT NULL,
-          \`time_updated\` integer NOT NULL
         );
       `)
       yield* tx.run(`
@@ -775,6 +693,17 @@ export default {
       yield* tx.run(
         `CREATE INDEX \`team_board_pending_notification_idx\` ON \`team_board_note\` (\`parent_notification_status\`,\`time_created\`,\`id\`);`,
       )
+      yield* tx.run(
+        `CREATE UNIQUE INDEX \`swarm_room_entry_room_seq_idx\` ON \`swarm_room_entry\` (\`room_id\`,\`seq\`);`,
+      )
+      yield* tx.run(
+        `CREATE INDEX \`swarm_room_entry_kind_idx\` ON \`swarm_room_entry\` (\`room_id\`,\`kind\`,\`seq\`);`,
+      )
+      yield* tx.run(`CREATE INDEX \`swarm_room_member_room_idx\` ON \`swarm_room_member\` (\`room_id\`);`)
+      yield* tx.run(
+        `CREATE UNIQUE INDEX \`swarm_room_member_name_idx\` ON \`swarm_room_member\` (\`room_id\`,\`name\`);`,
+      )
+      yield* tx.run(`CREATE UNIQUE INDEX \`swarm_room_root_idx\` ON \`swarm_room\` (\`root_session_id\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`account_url_remote_idx\` ON \`account\` (\`url\`,\`remote_id\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`event_aggregate_seq_idx\` ON \`event\` (\`aggregate_id\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`event_aggregate_type_seq_idx\` ON \`event\` (\`aggregate_id\`,\`type\`,\`seq\`);`)
@@ -794,37 +723,6 @@ export default {
       yield* tx.run(`CREATE INDEX \`memory_drawer_session_idx\` ON \`memory_drawer\` (\`session_id\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`memory_room_wing_slug_idx\` ON \`memory_room\` (\`wing_id\`,\`slug\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`memory_wing_kind_key_idx\` ON \`memory_wing\` (\`kind\`,\`key\`);`)
-      yield* tx.run(`CREATE INDEX \`pentest_evidence_run_idx\` ON \`pentest_evidence\` (\`run_id\`,\`time_created\`);`)
-      yield* tx.run(`CREATE INDEX \`pentest_evidence_finding_idx\` ON \`pentest_evidence\` (\`finding_id\`);`)
-      yield* tx.run(
-        `CREATE UNIQUE INDEX \`pentest_execution_run_attempt_idx\` ON \`pentest_execution\` (\`run_id\`,\`attempt\`);`,
-      )
-      yield* tx.run(
-        `CREATE UNIQUE INDEX \`pentest_execution_idempotency_idx\` ON \`pentest_execution\` (\`run_id\`,\`idempotency_key\`);`,
-      )
-      yield* tx.run(
-        `CREATE INDEX \`pentest_execution_run_idx\` ON \`pentest_execution\` (\`run_id\`,\`time_created\`);`,
-      )
-      yield* tx.run(
-        `CREATE INDEX \`pentest_execution_claim_idx\` ON \`pentest_execution\` (\`state\`,\`lease_until\`,\`absolute_ttl\`);`,
-      )
-      yield* tx.run(`CREATE INDEX \`pentest_finding_run_idx\` ON \`pentest_finding\` (\`run_id\`,\`time_created\`);`)
-      yield* tx.run(`CREATE INDEX \`pentest_finding_severity_idx\` ON \`pentest_finding\` (\`run_id\`,\`severity\`);`)
-      yield* tx.run(
-        `CREATE INDEX \`pentest_http_session_run_idx\` ON \`pentest_http_session\` (\`run_id\`,\`time_updated\`);`,
-      )
-      yield* tx.run(
-        `CREATE INDEX \`pentest_model_usage_session_idx\` ON \`pentest_model_usage\` (\`session_id\`,\`assistant_message_id\`);`,
-      )
-      yield* tx.run(`CREATE INDEX \`pentest_report_run_idx\` ON \`pentest_report\` (\`run_id\`,\`time_created\`);`)
-      yield* tx.run(`CREATE UNIQUE INDEX \`pentest_run_idempotency_idx\` ON \`pentest_run\` (\`idempotency_key\`);`)
-      yield* tx.run(
-        `CREATE INDEX \`pentest_run_owner_list_idx\` ON \`pentest_run\` (\`project_id\`,\`location_json\`,\`time_updated\`,\`id\`);`,
-      )
-      yield* tx.run(
-        `CREATE INDEX \`pentest_run_location_list_idx\` ON \`pentest_run\` (\`location_json\`,\`time_updated\`,\`id\`);`,
-      )
-      yield* tx.run(`CREATE INDEX \`pentest_run_list_idx\` ON \`pentest_run\` (\`time_updated\`,\`id\`);`)
       yield* tx.run(
         `CREATE UNIQUE INDEX \`permission_project_action_resource_idx\` ON \`permission\` (\`project_id\`,\`action\`,\`resource\`);`,
       )

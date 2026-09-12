@@ -86,7 +86,7 @@ const nodes: ReadonlyArray<ArchitectureNode> = [
     color: "#f3b95f",
     summary: "Effect HttpApi routes and workspace routing",
     detail:
-      "The sidecar composes typed root, instance, event, PTY, and workbench routes. Authorization and workspace routing establish the request boundary before session handlers call the core service.",
+      "The sidecar composes typed root, instance, event, and PTY routes. Authorization and workspace routing establish the request boundary before session handlers call the core service.",
     facts: [
       "Typed request and failure contracts",
       "Authorization precedes handlers",

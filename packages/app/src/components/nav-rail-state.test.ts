@@ -44,7 +44,6 @@ describe("surfaceFromLocation", () => {
     expect(navRailKeybind("extend", false, false)).toBe("mod+3")
     expect(navRailKeybind("replay", false, false)).toBe("mod+4")
     expect(navRailKeybind("replay", true, false)).toBe("mod+5")
-    expect(navRailKeybind("analysis", true, true)).toBeUndefined()
     expect(navRailKeybind("lobby", false, false)).toBeUndefined()
   })
 
@@ -69,19 +68,6 @@ describe("surfaceFromLocation", () => {
     expect(surfaceFromLocation({ pathname: `/${["rever", "sing"].join("")}` })).toBe("agents")
   })
 
-  test("analysis routes belong to the Analysis surface", () => {
-    expect(surfaceFromLocation({ pathname: "/analysis" })).toBe("analysis")
-    expect(surfaceFromLocation({ pathname: "/analysis/unknown-workspace" })).toBe("analysis")
-    expect(surfaceFromLocation({ pathname: "/analysis/pen-testing" })).toBe("analysis")
-  })
-
-  test("top-level pentest routes and an active run keep the Workbench surface", () => {
-    // A run page that falls through to "agents" swaps the Workbench rail for the session nav
-    // while the user is watching a live run.
-    expect(surfaceFromLocation({ pathname: "/pentest" })).toBe("analysis")
-    expect(surfaceFromLocation({ pathname: "/pentest/pent_f9ee2854954b" })).toBe("analysis")
-  })
-
   test("automation routes and legacy Loop links belong to Automations", () => {
     expect(surfaceFromLocation({ pathname: "/automations" })).toBe("automations")
     expect(surfaceFromLocation({ pathname: "/automations/auto_1" })).toBe("automations")
@@ -93,10 +79,6 @@ describe("surfaceHref", () => {
   test("reuses the existing destinations for deep links", () => {
     expect(surfaceHref("home")).toBe("/home")
     expect(surfaceHref("agents")).toBe("/")
-    // "/analysis" is the Workbench entry point: it restores whichever tab was
-    // last active (see AnalysisIndexRedirect in app.tsx) instead of hardcoding
-    // one destination here.
-    expect(surfaceHref("analysis")).toBe("/analysis")
     expect(surfaceHref("lobby")).toBe("/lobby")
     expect(surfaceHref("replay")).toBe("/replay")
     expect(surfaceHref("automations")).toBe("/automations")
@@ -115,11 +97,6 @@ describe("panelAvailable", () => {
   test("Automations has a left panel on every automation route", () => {
     expect(panelAvailable("automations", { pathname: "/automations" })).toBe(true)
     expect(panelAvailable("automations", { pathname: "/automations/auto_1" })).toBe(true)
-  })
-
-  test("Analysis is a panel-free product workspace", () => {
-    expect(panelAvailable("analysis", { pathname: "/analysis/appsec" })).toBe(false)
-    expect(panelAvailable("analysis", { pathname: "/analysis/unknown-workspace" })).toBe(false)
   })
 
   test("Replay is a panel-free product workspace", () => {
@@ -144,7 +121,7 @@ describe("panelShortcutAvailable", () => {
   })
 
   test("never claims the shortcut where the panel itself is absent", () => {
-    expect(panelShortcutAvailable("analysis", { pathname: "/analysis/appsec" })).toBe(false)
+    expect(panelShortcutAvailable("replay", { pathname: "/replay" })).toBe(false)
   })
 })
 
@@ -154,7 +131,6 @@ describe("railClick", () => {
   })
 
   test("clicking an inactive surface navigates to it", () => {
-    expect(railClick("analysis", { pathname: "/" })).toEqual({ type: "navigate", href: "/analysis" })
     expect(railClick("lobby", { pathname: "/" })).toEqual({ type: "navigate", href: "/lobby" })
     expect(railClick("automations", { pathname: "/" })).toEqual({ type: "navigate", href: "/automations" })
     expect(railClick("replay", { pathname: "/" })).toEqual({ type: "navigate", href: "/replay" })
@@ -200,7 +176,7 @@ describe("railClick", () => {
       consulted++
       return true
     }
-    expect(railClick("analysis", { pathname: "/" }, spy)).toEqual({ type: "navigate", href: "/analysis" })
+    expect(railClick("replay", { pathname: "/" }, spy)).toEqual({ type: "navigate", href: "/replay" })
     expect(consulted).toBe(0)
   })
 })

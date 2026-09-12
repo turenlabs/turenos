@@ -1,5 +1,6 @@
 import { batch, createEffect, createMemo, onCleanup, type Accessor } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
+import type { SwarmRoomEntry, SwarmRoomState } from "@turenlabs/sdk/v2/client"
 import { useSDK } from "@/context/sdk"
 import { useServerSDK } from "@/context/server-sdk"
 import { sessionTurnActivity } from "@/pages/session/goal/session-v2-timeline-controller"
@@ -8,7 +9,6 @@ import {
   sessionTaskActive,
   sessionTaskIDs,
   sessionTaskRoot,
-  type SessionTeamBoardNote,
   type SessionTaskInfo,
 } from "./session-subagent"
 
@@ -17,12 +17,13 @@ const SUBAGENT_TOOLS = new Set([
   "send_agent",
   "wait_agents",
   "interrupt_agent",
-  "board_post",
-  "board_read",
+  "room_post",
+  "room_read",
+  "room_claim",
 ])
 const RECONCILE_DEBOUNCE_MS = 200
-const BOARD_POLL_INTERVAL_MS = 30_000
-const MAX_BOARD_NOTES = 60
+const ROOM_POLL_INTERVAL_MS = 30_000
+const MAX_ROOM_ENTRIES = 200
 
 export function createSessionSubagentController(input: { sessionID: Accessor<string | undefined> }) {
   const sdk = useSDK()
@@ -34,12 +35,14 @@ export function createSessionSubagentController(input: { sessionID: Accessor<str
     loadFailure: {} as Record<string, string | undefined>,
     cancelPending: {} as Record<string, boolean | undefined>,
     cancelFailure: {} as Record<string, string | undefined>,
-    board: {} as Record<string, SessionTeamBoardNote[] | undefined>,
-    boardLoading: {} as Record<string, boolean | undefined>,
-    boardFailure: {} as Record<string, string | undefined>,
+    room: {} as Record<string, SwarmRoomState | undefined>,
+    roomEntries: {} as Record<string, SwarmRoomEntry[] | undefined>,
+    roomLoading: {} as Record<string, boolean | undefined>,
+    roomFailure: {} as Record<string, string | undefined>,
+    roomSending: {} as Record<string, boolean | undefined>,
   })
   let hydration = 0
-  const boardInFlight = new Set<string>()
+  const roomInFlight = new Set<string>()
 
   const apply = (task: SessionTaskInfo) => {
     const summary: SessionTaskInfo = {
@@ -69,29 +72,88 @@ export function createSessionSubagentController(input: { sessionID: Accessor<str
     })
   }
 
-  const refreshBoard = (selectedSessionID = input.sessionID(), options?: { silent?: boolean }) => {
+  const roomNotFound = (error: unknown) =>
+    (error as { _tag?: string } | undefined)?._tag === "SwarmRoomNotFoundError"
+
+  const refreshRoom = (selectedSessionID = input.sessionID(), options?: { silent?: boolean }) => {
     if (!selectedSessionID) return Promise.resolve()
     const sessionID = selectedSessionID
-    if (boardInFlight.has(sessionID)) return Promise.resolve()
-    boardInFlight.add(sessionID)
+    if (roomInFlight.has(sessionID)) return Promise.resolve()
+    roomInFlight.add(sessionID)
     const client = sdk().client
     if (!options?.silent) {
-      setStore("boardLoading", sessionID, true)
-      setStore("boardFailure", sessionID, undefined)
+      setStore("roomLoading", sessionID, true)
+      setStore("roomFailure", sessionID, undefined)
     }
-    return client.v2.session
-      .teamBoard({ sessionID })
-      .then((response) => {
-        setStore("board", sessionID, reconcile(response.data!.data.notes.slice(-MAX_BOARD_NOTES), { key: "id" }))
-        setStore("boardFailure", sessionID, undefined)
+    const tail = store.roomEntries[sessionID]?.at(-1)?.seq
+    return Promise.all([
+      client.v2.session.swarmRoom({ sessionID }),
+      client.v2.session.swarmRoomEntries({
+        sessionID,
+        ...(tail === undefined ? {} : { after: String(tail) }),
+      }),
+    ])
+      .then(([roomResponse, entriesResponse]) => {
+        if (!roomResponse.data || !entriesResponse.data) {
+          const error = roomResponse.error ?? entriesResponse.error
+          if (roomNotFound(error)) {
+            batch(() => {
+              setStore("room", sessionID, undefined)
+              setStore("roomEntries", sessionID, undefined)
+            })
+            return
+          }
+          throw error ?? new Error("Room request failed")
+        }
+        const page = entriesResponse.data.data
+        batch(() => {
+          setStore("room", sessionID, roomResponse.data!.data)
+          const existing = store.roomEntries[sessionID] ?? []
+          const seen = new Set(existing.map((entry) => entry.id))
+          setStore(
+            "roomEntries",
+            sessionID,
+            [...existing, ...page.entries.filter((entry) => !seen.has(entry.id))]
+              .toSorted((left, right) => left.seq - right.seq)
+              .slice(-MAX_ROOM_ENTRIES),
+          )
+          setStore("roomFailure", sessionID, undefined)
+        })
       })
       .catch((error) => {
-        if (!options?.silent) setStore("boardFailure", sessionID, taskFailureMessage(error))
+        if (roomNotFound(error)) {
+          batch(() => {
+            setStore("room", sessionID, undefined)
+            setStore("roomEntries", sessionID, undefined)
+          })
+          return
+        }
+        if (!options?.silent) setStore("roomFailure", sessionID, taskFailureMessage(error))
       })
       .finally(() => {
-        boardInFlight.delete(sessionID)
-        if (!options?.silent) setStore("boardLoading", sessionID, false)
+        roomInFlight.delete(sessionID)
+        if (!options?.silent) setStore("roomLoading", sessionID, false)
       })
+  }
+
+  const postRoomMessage = (text: string) => {
+    const sessionID = input.sessionID()
+    const trimmed = text.trim()
+    if (!sessionID || !trimmed || store.roomSending[sessionID]) return Promise.resolve(false)
+    const client = sdk().client
+    setStore("roomSending", sessionID, true)
+    return client.v2.session
+      .swarmRoomPost({ sessionID, swarmRoomHumanPostInput: { text: trimmed } })
+      .then(async (response) => {
+        if (!response.data) throw response.error
+        await refreshRoom(sessionID, { silent: true })
+        return true
+      })
+      .catch((error) => {
+        setStore("roomFailure", sessionID, taskFailureMessage(error))
+        return false
+      })
+      .finally(() => setStore("roomSending", sessionID, false))
   }
 
   const refresh = (selectedSessionID = input.sessionID()) => {
@@ -102,7 +164,7 @@ export function createSessionSubagentController(input: { sessionID: Accessor<str
     const pages: SessionTaskInfo[] = []
     setStore("loading", sessionID, true)
     setStore("loadFailure", sessionID, undefined)
-    const boardLoad = refreshBoard(sessionID)
+    const roomLoad = refreshRoom(sessionID)
     function load(params: Parameters<typeof client.v2.session.task.list>[0]): Promise<void> {
       return client.v2.session.task.list(params).then((response) => {
         if (request !== hydration || input.sessionID() !== sessionID) return
@@ -125,7 +187,7 @@ export function createSessionSubagentController(input: { sessionID: Accessor<str
         if (request !== hydration || input.sessionID() !== sessionID) return
         setStore("loading", sessionID, false)
       })
-    return Promise.all([taskLoad, boardLoad]).then(() => undefined)
+    return Promise.all([taskLoad, roomLoad]).then(() => undefined)
   }
 
   // Coalesces the burst a fan-out produces (four spawns in ~45s, each with a call and a
@@ -148,16 +210,16 @@ export function createSessionSubagentController(input: { sessionID: Accessor<str
     void refresh(sessionID)
   })
 
-  // Board posts are durable, but their live event can be missed during a reconnect. Keep the
+  // Room entries are durable, but their live event can be missed during a reconnect. Keep the
   // fallback deliberately slow and single-flight; tool events still make normal updates land
   // immediately through scheduleReconcile().
   createEffect(() => {
     const sessionID = input.sessionID()
     if (!sessionID) return
     const timer = window.setInterval(() => {
-      if (input.sessionID() !== sessionID || store.boardLoading[sessionID]) return
-      void refreshBoard(sessionID, { silent: true })
-    }, BOARD_POLL_INTERVAL_MS)
+      if (input.sessionID() !== sessionID) return
+      if (!roomInFlight.has(sessionID)) void refreshRoom(sessionID, { silent: true })
+    }, ROOM_POLL_INTERVAL_MS)
     onCleanup(() => window.clearInterval(timer))
   })
 
@@ -181,6 +243,20 @@ export function createSessionSubagentController(input: { sessionID: Accessor<str
     const current = sdk()
     const updated = current.event.on("session.next.task.updated", (event) => apply(event.properties.task))
     onCleanup(updated)
+  })
+
+  // Live room posts land as located events; the fallback is the same reconcile the
+  // board uses, so a missed event only delays the stream by one poll.
+  createEffect(() => {
+    const current = sdk()
+    const sessionID = input.sessionID()
+    if (!sessionID) return
+    const dispose = current.event.on("swarm.room.posted", (event) => {
+      const root = event.properties.rootSessionID
+      if (root !== sessionID && root !== rootSessionID()) return
+      void refreshRoom(sessionID, { silent: true })
+    })
+    onCleanup(dispose)
   })
 
   createEffect(() => {
@@ -278,28 +354,32 @@ export function createSessionSubagentController(input: { sessionID: Accessor<str
       const sessionID = input.sessionID()
       return sessionID ? store.loadFailure[sessionID] : undefined
     },
-    board: () => {
+    room: () => {
       const sessionID = input.sessionID()
-      return sessionID ? (store.board[sessionID] ?? []) : []
+      return sessionID ? store.room[sessionID] : undefined
     },
-    boardLoading: () => {
+    roomEntries: () => {
       const sessionID = input.sessionID()
-      return sessionID ? !!store.boardLoading[sessionID] : false
+      return sessionID ? (store.roomEntries[sessionID] ?? []) : []
     },
-    boardFailure: () => {
+    roomLoading: () => {
       const sessionID = input.sessionID()
-      return sessionID ? store.boardFailure[sessionID] : undefined
+      return sessionID ? !!store.roomLoading[sessionID] : false
     },
-    boardVisible: () => {
+    roomFailure: () => {
       const sessionID = input.sessionID()
-      if (!sessionID) return false
-      return !!store.boardLoading[sessionID] || store.board[sessionID] !== undefined || !!store.boardFailure[sessionID]
+      return sessionID ? store.roomFailure[sessionID] : undefined
+    },
+    roomSending: () => {
+      const sessionID = input.sessionID()
+      return sessionID ? !!store.roomSending[sessionID] : false
     },
     cancelPending: (taskID: string) => !!store.cancelPending[taskID],
     cancelFailure: (taskID: string) => store.cancelFailure[taskID],
     dismissCancelFailure: (taskID: string) => setStore("cancelFailure", taskID, undefined),
     refresh,
-    refreshBoard,
+    refreshRoom,
+    postRoomMessage,
     cancel,
   }
 }

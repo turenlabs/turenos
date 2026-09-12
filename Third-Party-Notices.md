@@ -133,7 +133,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@effect/platform-node-shared` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
 | `@effect/sql-sqlite-bun` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
 | `@electron-internal/extract-zip` | `1.0.5` | BSD-2-Clause | [source](https://github.com/electron/extract-zip) |
-| `@electron/get` | `5.0.0` | MIT | [source](https://github.com/electron/get) |
+| `@electron/get` | `5.1.0` | MIT | [source](https://github.com/electron/get) |
 | `@excalidraw/excalidraw` | `0.18.1` | MIT | [source](https://github.com/excalidraw/excalidraw) |
 | `@excalidraw/laser-pointer` | `1.3.1` | MIT | Not declared |
 | `@excalidraw/markdown-to-text` | `0.1.2` | MIT | [source](https://github.com/danestves/markdown-to-text.git) |
@@ -1003,7 +1003,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `uint8array-extras` | `1.5.0` | MIT | [source](sindresorhus/uint8array-extras) |
 | `ulid` | `3.0.1` | MIT | [source](git+https://github.com/ulid/javascript.git) |
 | `undici` | `6.28.0` | MIT | [source](git+https://github.com/nodejs/undici.git) |
-| `undici` | `7.29.0` | MIT | [source](git+https://github.com/nodejs/undici.git) |
+| `undici` | `7.29.1` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `undici` | `8.10.1` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `undici-types` | `7.16.0` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `unist-util-is` | `6.0.1` | MIT | [source](syntax-tree/unist-util-is) |

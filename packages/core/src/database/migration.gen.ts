@@ -98,5 +98,8 @@ export const migrations = (
     import("./migration/20260905203821_session-whiteboard"),
     import("./migration/20260906035111_session-context-request"),
     import("./migration/20260907005826_loop-cron-event-triggers"),
+    import("./migration/20260911132133_remove-pentest"),
+    import("./migration/20260911134454_swarm-room"),
+    import("./migration/20260911161104_swarm-room-indexes"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

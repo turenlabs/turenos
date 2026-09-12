@@ -26,7 +26,12 @@ import { Icon as IconV2 } from "@turenlabs/ui/v2/icon"
 import { IconButtonV2 } from "@turenlabs/ui/v2/icon-button-v2"
 import { MenuV2 } from "@turenlabs/ui/v2/menu-v2"
 import { TooltipV2 } from "@turenlabs/ui/v2/tooltip-v2"
-import { getProjectAvatarVariant, type HomeProjectSelection, type LocalProject } from "@/context/layout"
+import {
+  getProjectAvatarVariant,
+  useLayout,
+  type HomeProjectSelection,
+  type LocalProject,
+} from "@/context/layout"
 import { useNavigate } from "@solidjs/router"
 import { base64Encode } from "@turenlabs/core/util/encode"
 import { Icon } from "@turenlabs/ui/icon"
@@ -1375,7 +1380,19 @@ function HomeNavSessionRow(props: {
   restoreSession?: (session: Session) => void
   deleteSession?: (session: Session) => void
 }) {
+  const layout = useLayout()
   const [state, setState] = createStore({ menuOpen: false })
+  let row: HTMLDivElement | undefined
+  // The session's open tab drives the highlight: AgentsPanelProvider selects
+  // the project when a session tab activates, this row marks itself current.
+  const active = createMemo(() => {
+    const route = layout.route()
+    return route.type === "session" && route.sessionId === props.session.id
+  })
+  createEffect(() => {
+    if (!active()) return
+    row?.scrollIntoView({ block: "nearest" })
+  })
   const title = createMemo(() => sessionTitle(props.session.title) || props.session.id)
   const status = createMemo(() => props.status?.() ?? (props.working?.() ? "working" : "settled"))
   const statusLabel = createMemo(() => {
@@ -1398,12 +1415,19 @@ function HomeNavSessionRow(props: {
     [title(), props.source, props.projectName, statusLabel()].filter(Boolean).join(" - "),
   )
   return (
-    <div class="group/session relative flex h-7 min-w-0 items-center rounded-[6px]">
+    <div
+      ref={(el) => {
+        row = el
+      }}
+      class="group/session relative flex h-7 min-w-0 items-center rounded-[6px]"
+    >
       <button
         type="button"
         data-component="home-nav-session-row"
         data-status={status()}
-        class={`${HOME_PROJECT_NAV_ROW} group h-7 px-1.5 pr-8 text-v2-text-text-faint`}
+        data-active={active() ? "" : undefined}
+        aria-current={active() ? "page" : undefined}
+        class={`${HOME_PROJECT_NAV_ROW} group h-7 px-1.5 pr-8 text-v2-text-text-faint data-[active]:bg-v2-background-bg-layer-03 data-[active]:text-v2-text-text-base data-[active]:[box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-muted)]`}
         title={accessibleLabel()}
         aria-label={accessibleLabel()}
         onMouseDown={(event) => {
@@ -1899,6 +1923,7 @@ function HomeProjectAvatar(props: { project: LocalProject; outline?: boolean }) 
       fallback={name()}
       src={props.outline ? undefined : getProjectAvatarSource(props.project.id, props.project.icon)}
       variant={props.outline ? "outline" : getProjectAvatarVariant(props.project.icon?.color)}
+      pixelSeed={props.project.id ?? props.project.worktree}
     />
   )
 }

@@ -2,6 +2,7 @@ import type { Duration, Effect } from "effect"
 import type { SessionTask } from "@turenlabs/schema/session-task"
 import { ConfigV1 } from "@turenlabs/core/v1/config/config"
 import { SessionV1 } from "@turenlabs/core/v1/session"
+import type { Auth } from "../../../src/auth"
 import type { Project } from "../../../src/project/project"
 import type { Worktree } from "../../../src/worktree"
 import type { SessionID } from "../../../src/session/schema"
@@ -63,6 +64,9 @@ export type ScenarioContext = {
   file: (name: string, content: string) => Effect.Effect<void>
   session: (input?: { title?: string; parentID?: SessionID }) => Effect.Effect<SessionInfo>
   sessionGet: (sessionID: SessionID) => Effect.Effect<SessionInfo | undefined>
+  authGet: (providerID: string) => Effect.Effect<Auth.Info | undefined>
+  authSet: (providerID: string, info: Auth.Info) => Effect.Effect<void>
+  permissionChecks: () => Effect.Effect<boolean>
   project: () => Effect.Effect<Project.Info>
   message: (sessionID: SessionID, input?: { text?: string }) => Effect.Effect<MessageSeed>
   messages: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts[]>

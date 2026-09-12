@@ -1,4 +1,5 @@
 import { type ComponentProps, splitProps, Show } from "solid-js"
+import { PixelCritter } from "../../components/pixel-critter"
 import "./project-avatar-v2.css"
 
 const segmenter =
@@ -34,10 +35,20 @@ export interface ProjectAvatarProps extends ComponentProps<"div"> {
   src?: string
   variant?: ProjectAvatarStyle
   unread?: boolean
+  pixelSeed?: string
 }
 
 export function ProjectAvatar(props: ProjectAvatarProps) {
-  const [split, rest] = splitProps(props, ["fallback", "src", "variant", "unread", "class", "classList", "style"])
+  const [split, rest] = splitProps(props, [
+    "fallback",
+    "src",
+    "variant",
+    "unread",
+    "pixelSeed",
+    "class",
+    "classList",
+    "style",
+  ])
   return (
     <div
       {...rest}
@@ -54,7 +65,14 @@ export function ProjectAvatar(props: ProjectAvatarProps) {
         data-variant={split.variant ?? "gray"}
         data-has-image={split.src ? "" : undefined}
       >
-        <Show when={split.src} fallback={first(split.fallback)}>
+        <Show
+          when={split.src}
+          fallback={
+            <Show when={split.pixelSeed} fallback={first(split.fallback)}>
+              {(seed) => <PixelCritter seed={seed()} />}
+            </Show>
+          }
+        >
           {(value) => <img src={value()} draggable={false} data-slot="project-avatar-image" />}
         </Show>
       </div>

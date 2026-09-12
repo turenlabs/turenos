@@ -9,7 +9,7 @@ import { SessionSchema } from "../session/schema"
 import { SessionTaskV2 } from "../session/task"
 import { SystemContext } from "../system-context/index"
 import { interruptName, listName, notifyParentName, peekName, sendName, spawnName, waitName } from "../tool/subagent"
-import { TeamBoardTool } from "../tool/team-board"
+import { SwarmRoomTool } from "../tool/swarm-room"
 
 const Summary = Schema.Struct({
   id: AgentV2.ID,
@@ -34,17 +34,19 @@ const toolNames = [
   interruptName,
   listName,
   peekName,
-  TeamBoardTool.postName,
-  TeamBoardTool.readName,
+  SwarmRoomTool.postName,
+  SwarmRoomTool.readName,
+  SwarmRoomTool.claimName,
+  SwarmRoomTool.waitName,
 ]
 
 const render = (state: State) => {
   if (state.unavailable === "max_depth")
     return [
       "Nested delegation is unavailable because this session is already at the maximum subagent depth. Complete the assigned work directly and do not call spawn_agent.",
-      ...(state.tools.includes(TeamBoardTool.postName) && state.tools.includes(TeamBoardTool.readName)
+      ...(state.tools.includes(SwarmRoomTool.readName)
         ? [
-            `Team coordination remains available: read sibling findings with ${TeamBoardTool.readName} before overlapping work and publish evidence, status, and leads with ${TeamBoardTool.postName}; each post queues an advisory the parent session sees at its next provider-turn boundary.`,
+            `Team coordination remains available in the swarm room: call ${SwarmRoomTool.readName} for the plan, claimed lanes, and sibling updates; ${SwarmRoomTool.claimName} a lane before starting it; post findings, status, and questions with ${SwarmRoomTool.postName}; park on ${SwarmRoomTool.waitName} once your lane is done so the swarm can still reach you. Each post queues an advisory the other members see at their next provider-turn boundary.`,
           ]
         : []),
       ...(state.tools.includes(listName) && state.tools.includes(sendName)
@@ -69,9 +71,9 @@ const render = (state: State) => {
         ]),
     "  2. Split implementation into disjoint workers with non-overlapping write roots. Do not assign duplicate work.",
     "  When spawning, omit model unless a specific override is required; an omitted model uses the child agent's configured default, then inherits the parent session's model.",
-    ...(state.tools.includes(TeamBoardTool.postName) && state.tools.includes(TeamBoardTool.readName)
+    ...(state.tools.includes(SwarmRoomTool.postName) && state.tools.includes(SwarmRoomTool.readName)
       ? [
-          `  3. Keep working on non-overlapping work after spawning. Children should publish evidence, status, and leads with ${TeamBoardTool.postName}; read incoming work with ${TeamBoardTool.readName} before duplicating it. Each board post, ${notifyParentName} advisory, and child settle notice arrives as a queued advisory message at your next provider-turn boundary — continue working; they do not interrupt in-flight work.`,
+          `  3. Keep working on non-overlapping work after spawning. The swarm room is the shared coordination surface: post a ${SwarmRoomTool.postName} kind "plan" with named lanes so workers can ${SwarmRoomTool.claimName} a lane instead of colliding, and watch the room for claims, findings, and questions. Children publish evidence, status, and leads into the room (cite file:line, URLs, and command output in the entry or evidence_refs). Each room entry, ${notifyParentName} advisory, and child settle notice arrives as a queued advisory message at your next provider-turn boundary — continue working; they do not interrupt in-flight work. Workers stay parked in the room after finishing a lane — run question rounds addressed to lanes (to: the lane key) to deliberate in the open, then post kind "decision" with the swarm's answer to release them to settle; use ${interruptName} on stragglers.`,
         ]
       : [
           "  3. Keep working on non-overlapping work after spawning; do not block the parent just to monitor a child. A child's settle notice arrives as a queued advisory message at your next provider-turn boundary without interrupting in-flight work.",

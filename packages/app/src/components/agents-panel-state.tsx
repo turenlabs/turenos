@@ -22,7 +22,7 @@ import { useDirectoryPicker } from "@/components/directory-picker"
 import { useServerManagementController } from "@/components/dialog-select-server"
 import { useLayout, type HomeProjectSelection, type LocalProject } from "@/context/layout"
 import { serverForAvailableSelection, ServerConnection, useServer } from "@/context/server"
-import { useTabs } from "@/context/tabs"
+import { useTabs, type DraftTab } from "@/context/tabs"
 import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
 import { useGlobal } from "@/context/global"
@@ -56,10 +56,6 @@ export const HOME_SESSION_LIMIT = 8
 
 export const HOME_SECONDARY_SESSION_LIMIT = 1_000
 
-export function isWorkbenchOrchestratorSession(id: string) {
-  return id.startsWith("ses-pentest-team-")
-}
-
 export const homeArchivedSessionsKey = (server: string, directory: string) =>
   ["home", "archived-sessions", server, directory] as const
 export const homeInactiveSessionsKey = (server: string, directory: string) =>
@@ -81,11 +77,7 @@ export function buildHomeSessionRecords(input: {
 }): HomeSessionRecord[] {
   const directories = new Set(input.projectDirectories().map(pathKey))
   const all = input.sessions().filter((session) => directories.has(pathKey(session.directory)))
-  const hidden = new Set(
-    all.filter((session) => isWorkbenchOrchestratorSession(session.id)).map((session) => session.id),
-  )
-  const sessions = all.filter((session) => !hidden.has(session.id) && !hidden.has(session.parentID ?? ""))
-  return [...new Map(sessions.map((session) => [session.id, session] as const)).values()]
+  return [...new Map(all.map((session) => [session.id, session] as const)).values()]
     .sort((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
     .flatMap((session) => {
       const directory = pathKey(session.directory)
@@ -482,6 +474,53 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
     function setSelection(next: HomeProjectSelection) {
       layout.home.setSelection(next)
     }
+
+    // Anchor the left nav to the active tab: a session tab selects its project
+    // so the nav expands its session list, and the matching row highlights
+    // itself off the same route (HomeNavSessionRow in home.tsx). Applied once
+    // per tab activation — reselecting a project by hand while the same tab
+    // stays open is not overridden.
+    let appliedNavTab: string | undefined
+    createEffect(() => {
+      const route = layout.route()
+      const target = ((): { key: ServerConnection.Key; directory?: string; id?: string } | undefined => {
+        if (route.type === "draft") {
+          const draft = tabs.store.find(
+            (tab): tab is DraftTab => tab.type === "draft" && tab.draftID === route.draftID,
+          )
+          if (!draft) return undefined
+          return { key: route.server ?? server.key, directory: draft.directory, id: `draft:${route.draftID}` }
+        }
+        if (route.type !== "session") return undefined
+        const key = route.server ?? server.key
+        const conn = global.servers.list().find((item) => ServerConnection.key(item) === key)
+        if (!conn) return { key }
+        const ctx = global.ensureServerCtx(conn)
+        const session =
+          ctx.sync.session.get(route.sessionId) ??
+          allProjectRecords().find((record) => record.session.id === route.sessionId)?.session
+        if (!session) return { key }
+        return {
+          key,
+          directory: projectForSession(session, ctx.projects.list())?.worktree ?? session.directory,
+          id: `session:${key}:${route.sessionId}`,
+        }
+      })()
+      if (!target) {
+        appliedNavTab = undefined
+        return
+      }
+      if (target.id && appliedNavTab === target.id) return
+      const current = selection()
+      if (!target.directory) {
+        if (current.server !== target.key) setSelection({ server: target.key })
+        return
+      }
+      if (current.server !== target.key || current.directory !== target.directory) {
+        setSelection({ server: target.key, directory: target.directory })
+      }
+      appliedNavTab = target.id
+    })
 
     // The session search box lives on the home page; the panel's search action
     // has to work from every route. Home binds its focus function while

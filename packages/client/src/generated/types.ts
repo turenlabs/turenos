@@ -49,6 +49,26 @@ export type ServiceUnavailableError = {
 export const isServiceUnavailableError = (value: unknown): value is ServiceUnavailableError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ServiceUnavailableError"
 
+export type SwarmRoomNotFoundError = { readonly _tag: "SwarmRoomNotFoundError"; readonly resource: string }
+export const isSwarmRoomNotFoundError = (value: unknown): value is SwarmRoomNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SwarmRoomNotFoundError"
+
+export type SwarmRoomConflictError = {
+  readonly _tag: "SwarmRoomConflictError"
+  readonly message: string
+  readonly head: number
+}
+export const isSwarmRoomConflictError = (value: unknown): value is SwarmRoomConflictError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SwarmRoomConflictError"
+
+export type SwarmRoomInvalidStateError = { readonly _tag: "SwarmRoomInvalidStateError"; readonly message: string }
+export const isSwarmRoomInvalidStateError = (value: unknown): value is SwarmRoomInvalidStateError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SwarmRoomInvalidStateError"
+
+export type SwarmRoomForbiddenError = { readonly _tag: "SwarmRoomForbiddenError"; readonly message: string }
+export const isSwarmRoomForbiddenError = (value: unknown): value is SwarmRoomForbiddenError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SwarmRoomForbiddenError"
+
 export type MessageNotFoundError = {
   readonly _tag: "MessageNotFoundError"
   readonly sessionID: string
@@ -1491,7 +1511,7 @@ export type SessionsPromptOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
-    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -1690,7 +1710,7 @@ export type SessionsCommandOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
-    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2055,6 +2075,125 @@ export type SessionsTeamBoardOutput = {
   }
 }["data"]
 
+export type SessionsSwarmRoomInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionsSwarmRoomOutput = {
+  readonly data: {
+    readonly room: {
+      readonly id: string
+      readonly rootSessionID: string
+      readonly objective: string
+      readonly budget: number
+      readonly explicitBudget: boolean
+      readonly head: number
+      readonly status: "open" | "closed"
+      readonly timeCreated: number
+      readonly timeUpdated: number
+    }
+    readonly members: ReadonlyArray<{
+      readonly id: string
+      readonly roomID: string
+      readonly type: "leader" | "worker" | "human" | "system"
+      readonly sessionID?: string
+      readonly taskID?: string
+      readonly agent?: string
+      readonly name: string
+      readonly state: "active" | "parked" | "settled" | "blocked" | "left"
+      readonly joinedAt: number
+    }>
+    readonly lanes: ReadonlyArray<{
+      readonly key: string
+      readonly title: string
+      readonly detail?: string
+      readonly status: "open" | "claimed" | "done" | "blocked"
+      readonly claimedBy?: string
+      readonly claimedByName?: string
+      readonly updatedSeq: number
+    }>
+  }
+}["data"]
+
+export type SessionsSwarmRoomEntriesInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly after?: { readonly after?: number | undefined; readonly limit?: number | undefined }["after"]
+  readonly limit?: { readonly after?: number | undefined; readonly limit?: number | undefined }["limit"]
+}
+
+export type SessionsSwarmRoomEntriesOutput = {
+  readonly data: {
+    readonly entries: ReadonlyArray<{
+      readonly id: string
+      readonly roomID: string
+      readonly seq: number
+      readonly actor: {
+        readonly type: "leader" | "worker" | "human" | "system"
+        readonly memberID: string
+        readonly sessionID?: string
+        readonly agent?: string
+        readonly name: string
+      }
+      readonly kind:
+        | "message"
+        | "plan"
+        | "claim"
+        | "release"
+        | "decision"
+        | "finding"
+        | "correction"
+        | "lead"
+        | "status"
+        | "question"
+      readonly text: string
+      readonly payload?: JsonValue
+      readonly replyTo?: string
+      readonly evidenceRefs?: ReadonlyArray<string>
+      readonly baseRevision: number
+      readonly timeCreated: number
+    }>
+    readonly head: number
+    readonly hasMore: boolean
+  }
+}["data"]
+
+export type SessionsSwarmRoomPostInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly text: { readonly text: string; readonly name?: string; readonly replyTo?: string }["text"]
+  readonly name?: { readonly text: string; readonly name?: string; readonly replyTo?: string }["name"]
+  readonly replyTo?: { readonly text: string; readonly name?: string; readonly replyTo?: string }["replyTo"]
+}
+
+export type SessionsSwarmRoomPostOutput = {
+  readonly data: {
+    readonly id: string
+    readonly roomID: string
+    readonly seq: number
+    readonly actor: {
+      readonly type: "leader" | "worker" | "human" | "system"
+      readonly memberID: string
+      readonly sessionID?: string
+      readonly agent?: string
+      readonly name: string
+    }
+    readonly kind:
+      | "message"
+      | "plan"
+      | "claim"
+      | "release"
+      | "decision"
+      | "finding"
+      | "correction"
+      | "lead"
+      | "status"
+      | "question"
+    readonly text: string
+    readonly payload?: JsonValue
+    readonly replyTo?: string
+    readonly evidenceRefs?: ReadonlyArray<string>
+    readonly baseRevision: number
+    readonly timeCreated: number
+  }
+}["data"]
+
 export type SessionsCompactInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
 export type SessionsCompactOutput = void
@@ -2115,7 +2254,13 @@ export type SessionsContextOutput = {
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }
-        readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+        readonly source?:
+          | "user"
+          | "subagent_board"
+          | "subagent_settle"
+          | "subagent_advisory"
+          | "shell_job"
+          | "swarm_room"
         readonly text: string
         readonly parts?: ReadonlyArray<{
           readonly id: string
@@ -2346,7 +2491,7 @@ export type SessionsPendingInputsOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
-    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2412,7 +2557,7 @@ export type SessionsInputStatusOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
-    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2494,7 +2639,7 @@ export type SessionsOutboxOutput = {
       }>
     }
     readonly delivery: "steer" | "queue"
-    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+    readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job" | "swarm_room"
     readonly agent?: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly timeCreated: number
@@ -2618,7 +2763,13 @@ export type SessionsHistoryOutput = {
             }>
           }
           readonly delivery: "steer" | "queue"
-          readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+          readonly source?:
+            | "user"
+            | "subagent_board"
+            | "subagent_settle"
+            | "subagent_advisory"
+            | "shell_job"
+            | "swarm_room"
         }
       }
     | {
@@ -2679,7 +2830,13 @@ export type SessionsHistoryOutput = {
             }>
           }
           readonly delivery: "steer" | "queue"
-          readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+          readonly source?:
+            | "user"
+            | "subagent_board"
+            | "subagent_settle"
+            | "subagent_advisory"
+            | "shell_job"
+            | "swarm_room"
           readonly agent?: string
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
           readonly command?: {
@@ -3704,7 +3861,13 @@ export type SessionsEventsOutput =
           }>
         }
         readonly delivery: "steer" | "queue"
-        readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+        readonly source?:
+          | "user"
+          | "subagent_board"
+          | "subagent_settle"
+          | "subagent_advisory"
+          | "shell_job"
+          | "swarm_room"
       }
     }
   | {
@@ -3765,7 +3928,13 @@ export type SessionsEventsOutput =
           }>
         }
         readonly delivery: "steer" | "queue"
-        readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+        readonly source?:
+          | "user"
+          | "subagent_board"
+          | "subagent_settle"
+          | "subagent_advisory"
+          | "shell_job"
+          | "swarm_room"
         readonly agent?: string
         readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
         readonly command?: {
@@ -4666,7 +4835,13 @@ export type SessionsMessageOutput = {
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }
-        readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+        readonly source?:
+          | "user"
+          | "subagent_board"
+          | "subagent_settle"
+          | "subagent_advisory"
+          | "shell_job"
+          | "swarm_room"
         readonly text: string
         readonly parts?: ReadonlyArray<{
           readonly id: string
@@ -4889,7 +5064,13 @@ export type MessagesListOutput = {
         readonly id: string
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly time: { readonly created: number }
-        readonly source?: "user" | "subagent_board" | "subagent_settle" | "subagent_advisory" | "shell_job"
+        readonly source?:
+          | "user"
+          | "subagent_board"
+          | "subagent_settle"
+          | "subagent_advisory"
+          | "shell_job"
+          | "swarm_room"
         readonly text: string
         readonly parts?: ReadonlyArray<{
           readonly id: string
@@ -8012,25 +8193,49 @@ export type ServerIntelAdvisoriesInput = {
     readonly pageSize?: number | undefined
     readonly severity?: ("critical" | "high" | "medium" | "low" | "info") | undefined
     readonly search?: string | undefined
+    readonly sort?: "publishedAt" | "severity" | "cvss" | "source" | "title" | undefined
+    readonly order?: "asc" | "desc" | undefined
   }["page"]
   readonly pageSize?: {
     readonly page?: number | undefined
     readonly pageSize?: number | undefined
     readonly severity?: ("critical" | "high" | "medium" | "low" | "info") | undefined
     readonly search?: string | undefined
+    readonly sort?: "publishedAt" | "severity" | "cvss" | "source" | "title" | undefined
+    readonly order?: "asc" | "desc" | undefined
   }["pageSize"]
   readonly severity?: {
     readonly page?: number | undefined
     readonly pageSize?: number | undefined
     readonly severity?: ("critical" | "high" | "medium" | "low" | "info") | undefined
     readonly search?: string | undefined
+    readonly sort?: "publishedAt" | "severity" | "cvss" | "source" | "title" | undefined
+    readonly order?: "asc" | "desc" | undefined
   }["severity"]
   readonly search?: {
     readonly page?: number | undefined
     readonly pageSize?: number | undefined
     readonly severity?: ("critical" | "high" | "medium" | "low" | "info") | undefined
     readonly search?: string | undefined
+    readonly sort?: "publishedAt" | "severity" | "cvss" | "source" | "title" | undefined
+    readonly order?: "asc" | "desc" | undefined
   }["search"]
+  readonly sort?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly severity?: ("critical" | "high" | "medium" | "low" | "info") | undefined
+    readonly search?: string | undefined
+    readonly sort?: "publishedAt" | "severity" | "cvss" | "source" | "title" | undefined
+    readonly order?: "asc" | "desc" | undefined
+  }["sort"]
+  readonly order?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly severity?: ("critical" | "high" | "medium" | "low" | "info") | undefined
+    readonly search?: string | undefined
+    readonly sort?: "publishedAt" | "severity" | "cvss" | "source" | "title" | undefined
+    readonly order?: "asc" | "desc" | undefined
+  }["order"]
 }
 
 export type ServerIntelAdvisoriesOutput = {
@@ -8051,8 +8256,30 @@ export type ServerIntelAdvisoriesOutput = {
 }
 
 export type ServerIntelKevInput = {
-  readonly page?: { readonly page?: number | undefined; readonly pageSize?: number | undefined }["page"]
-  readonly pageSize?: { readonly page?: number | undefined; readonly pageSize?: number | undefined }["pageSize"]
+  readonly page?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly sort?: "cveID" | "name" | "vendor" | "dateAdded" | "dueDate" | undefined
+    readonly order?: "asc" | "desc" | undefined
+  }["page"]
+  readonly pageSize?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly sort?: "cveID" | "name" | "vendor" | "dateAdded" | "dueDate" | undefined
+    readonly order?: "asc" | "desc" | undefined
+  }["pageSize"]
+  readonly sort?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly sort?: "cveID" | "name" | "vendor" | "dateAdded" | "dueDate" | undefined
+    readonly order?: "asc" | "desc" | undefined
+  }["sort"]
+  readonly order?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly sort?: "cveID" | "name" | "vendor" | "dateAdded" | "dueDate" | undefined
+    readonly order?: "asc" | "desc" | undefined
+  }["order"]
 }
 
 export type ServerIntelKevOutput = {
@@ -8071,8 +8298,30 @@ export type ServerIntelKevOutput = {
 }
 
 export type ServerIntelNewsInput = {
-  readonly page?: { readonly page?: number | undefined; readonly pageSize?: number | undefined }["page"]
-  readonly pageSize?: { readonly page?: number | undefined; readonly pageSize?: number | undefined }["pageSize"]
+  readonly page?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly sort?: "source" | "title" | "publishedAt" | undefined
+    readonly order?: "asc" | "desc" | undefined
+  }["page"]
+  readonly pageSize?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly sort?: "source" | "title" | "publishedAt" | undefined
+    readonly order?: "asc" | "desc" | undefined
+  }["pageSize"]
+  readonly sort?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly sort?: "source" | "title" | "publishedAt" | undefined
+    readonly order?: "asc" | "desc" | undefined
+  }["sort"]
+  readonly order?: {
+    readonly page?: number | undefined
+    readonly pageSize?: number | undefined
+    readonly sort?: "source" | "title" | "publishedAt" | undefined
+    readonly order?: "asc" | "desc" | undefined
+  }["order"]
 }
 
 export type ServerIntelNewsOutput = {

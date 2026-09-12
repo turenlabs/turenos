@@ -3,6 +3,7 @@ import { SessionHarness } from "@turenlabs/core/session/harness"
 import { SessionTerminal } from "@turenlabs/core/session/terminal"
 import { SessionExecution } from "@turenlabs/core/session/execution"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
+import { SwarmRoom } from "@turenlabs/core/team/room"
 import { TeamBoard } from "@turenlabs/core/team/board"
 import { SessionLegacyExecution } from "@turenlabs/core/session/legacy-execution"
 import { SessionTranscriptAdoption } from "@turenlabs/core/session/transcript-adoption"
@@ -38,6 +39,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
     const execution = yield* SessionExecution.Service
     const tasks = yield* SessionTaskV2.Service
     const teamBoard = yield* TeamBoard.Service
+    const rooms = yield* SwarmRoom.Service
 
     return handlers
       .handle(
@@ -771,6 +773,47 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
             .pipe(Effect.catchTag("Session.NotFoundError", (error) => Effect.fail(sessionNotFound(error))))
           const owner = yield* tasks.owner(ctx.params.sessionID)
           return { data: yield* teamBoard.boardState(owner?.rootSessionID ?? ctx.params.sessionID) }
+        }),
+      )
+      .handle(
+        "session.swarmRoom",
+        Effect.fn(function* (ctx) {
+          yield* session
+            .get(ctx.params.sessionID)
+            .pipe(Effect.catchTag("Session.NotFoundError", (error) => Effect.fail(sessionNotFound(error))))
+          const room = yield* rooms.find(yield* rooms.rootFor(ctx.params.sessionID))
+          if (!room)
+            return yield* new SwarmRoom.NotFoundError({ resource: `session:${ctx.params.sessionID}` })
+          return { data: yield* rooms.state(room.id) }
+        }),
+      )
+      .handle(
+        "session.swarmRoomEntries",
+        Effect.fn(function* (ctx) {
+          yield* session
+            .get(ctx.params.sessionID)
+            .pipe(Effect.catchTag("Session.NotFoundError", (error) => Effect.fail(sessionNotFound(error))))
+          const room = yield* rooms.find(yield* rooms.rootFor(ctx.params.sessionID))
+          if (!room)
+            return yield* new SwarmRoom.NotFoundError({ resource: `session:${ctx.params.sessionID}` })
+          return {
+            data: yield* rooms.read(room.id, { after: ctx.query.after, limit: ctx.query.limit }),
+          }
+        }),
+      )
+      .handle(
+        "session.swarmRoomPost",
+        Effect.fn(function* (ctx) {
+          yield* session
+            .get(ctx.params.sessionID)
+            .pipe(Effect.catchTag("Session.NotFoundError", (error) => Effect.fail(sessionNotFound(error))))
+          const posted = yield* rooms.postHuman(ctx.params.sessionID, {
+            text: ctx.payload.text,
+            name: ctx.payload.name,
+            replyTo: ctx.payload.replyTo,
+          })
+          for (const sessionID of posted.notified) yield* execution.wake(sessionID)
+          return { data: posted.entry }
         }),
       )
       .handle(

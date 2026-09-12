@@ -8148,7 +8148,7 @@ Source: https://github.com/electron/extract-zip
 The installed package did not include a top-level license or notice file.
 
 --------------------------------------------------------------------------------
-@electron/get@5.0.0
+@electron/get@5.1.0
 License: MIT
 Source: https://github.com/electron/get
 
@@ -44428,7 +44428,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
-undici@7.29.0
+undici@7.29.1
 License: MIT
 Source: git+https://github.com/nodejs/undici.git
 

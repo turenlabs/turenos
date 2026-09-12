@@ -381,6 +381,7 @@ describe("SessionV2.prompt", () => {
       yield* setup
       const session = yield* SessionV2.Service
       interruptCalls.length = 0
+      activeSessions.add(sessionID)
 
       yield* session.interrupt(sessionID)
       expect(interruptCalls).toEqual([sessionID])
@@ -523,9 +524,11 @@ describe("SessionV2.prompt", () => {
     Effect.gen(function* () {
       const session = yield* SessionV2.Service
       interruptCalls.length = 0
+      const missing = SessionV2.ID.make("ses_missing")
+      activeSessions.add(missing)
 
-      yield* session.interrupt(SessionV2.ID.make("ses_missing"))
-      expect(interruptCalls).toEqual([SessionV2.ID.make("ses_missing")])
+      yield* session.interrupt(missing)
+      expect(interruptCalls).toEqual([missing])
     }),
   )
 

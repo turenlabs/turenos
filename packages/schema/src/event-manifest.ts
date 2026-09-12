@@ -21,7 +21,6 @@ import { Pty } from "./pty"
 import { Question } from "./question"
 import { QuestionV1 } from "./question-v1"
 import { Reference } from "./reference"
-import { PentestEvent } from "./pentest-event"
 import { ServerEvent } from "./server-event"
 import { SessionCompactionEvent } from "./session-compaction-event"
 import { SessionEvent } from "./session-event"
@@ -31,6 +30,7 @@ import { SessionV1 } from "./session-v1"
 import { VcsEvent } from "./vcs-event"
 import { WorkspaceEvent } from "./workspace-event"
 import { WorktreeEvent } from "./worktree-event"
+import { SwarmRoom } from "./swarm-room"
 import { Whiteboard } from "./whiteboard"
 
 const sessionV1DurableDefinitions = SessionV1.Event.Definitions.filter((definition) => definition.durable !== undefined)
@@ -55,7 +55,7 @@ const featureDefinitions = Event.inventory(
   ...FileSystemWatcher.Event.Definitions,
   ...Pty.Event.Definitions,
   ...Question.Event.Definitions,
-  ...PentestEvent.Definitions,
+  ...SwarmRoom.Definitions,
   ...Whiteboard.Definitions,
 )
 

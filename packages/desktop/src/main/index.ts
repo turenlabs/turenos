@@ -271,7 +271,16 @@ const main = Effect.gen(function* () {
   const awaitServerReady = () => Effect.runPromise(Deferred.await(serverReady))
 
   yield* Effect.promise(() => app.whenReady())
-  const credentialVault = loadCredentialSecretKey(getStore(), safeStorage, process.platform)
+  // FORGE_SECRET_VAULT_KEY* bypasses OS keychain access — same contract the
+  // headless sidecar honors. Ad-hoc-signed dev builds get a new cdhash every
+  // rebuild, which makes the safeStorage ACL prompt (or wedge securityd) on
+  // each relaunch; the env vault keeps the dev loop independent of that.
+  const envVaultKey = process.env.FORGE_SECRET_VAULT_KEY
+  const envVaultKeyID = process.env.FORGE_SECRET_VAULT_KEY_ID
+  const credentialVault =
+    envVaultKey && envVaultKeyID && Buffer.from(envVaultKey, "base64").byteLength === 32
+      ? { keyID: envVaultKeyID, key: new Uint8Array(Buffer.from(envVaultKey, "base64")) }
+      : loadCredentialSecretKey(getStore(), safeStorage, process.platform)
 
   const tauri = TEST_ONBOARDING
     ? { merge: (_name: string, store: ReturnType<typeof getStore>) => store }

@@ -36,6 +36,7 @@ jobs:
           - { name: "forge (2/4)", host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=2/4" }
           - { name: "forge (3/4)", host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=3/4" }
           - { name: "forge (4/4)", host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=4/4" }
+          - { name: "desktop", host: ubuntu-latest, directory: packages/desktop, command: "bun run test" }
           - {
               name: "packages (linux)",
               host: ubuntu-latest,
@@ -74,9 +75,10 @@ jobs:
             '--filter ./packages/app --filter ./packages/client --filter ./packages/codemode
             --filter ./packages/effect-drizzle-sqlite --filter ./packages/extensions
             --filter ./packages/http-recorder --filter ./packages/httpapi-codegen
-            --filter ./packages/llm --filter ./packages/plugin --filter ./packages/script
-            --filter ./packages/sdk/js --filter ./packages/sdk-next --filter ./packages/session-ui
-            --filter ./packages/ui' }}
+            --filter ./packages/llm --filter ./packages/plugin --filter ./packages/protocol
+            --filter ./packages/schema --filter ./packages/script
+            --filter ./packages/sdk/js --filter ./packages/sdk-next --filter ./packages/server
+            --filter ./packages/session-ui --filter ./packages/ui' }}
           # Use a cold cache on the checkout volume; validate misses against the same budget.
           # Keep installation and native build scripts; only omit cache transport.
           dependency-cache: ${{ runner.os != 'Windows' }}

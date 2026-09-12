@@ -718,17 +718,20 @@ const layer = Layer.effect(
     })
 
     const interruptSessions = (sessions: ReadonlyArray<SessionSchema.ID>) =>
-      Effect.forEach(
-        sessions,
-        (childSessionID) =>
-          execution.interrupt(childSessionID).pipe(
-            Effect.timeoutOrElse({
-              duration: "5 seconds",
-              orElse: () => Effect.fail(new InterruptionTimeoutError({ sessionID: childSessionID })),
-            }),
-          ),
-        { concurrency: "unbounded", discard: true },
-      )
+      Effect.gen(function* () {
+        const active = yield* execution.active
+        yield* Effect.forEach(
+          sessions.filter((sessionID) => active.has(sessionID)),
+          (childSessionID) =>
+            execution.interrupt(childSessionID).pipe(
+              Effect.timeoutOrElse({
+                duration: "5 seconds",
+                orElse: () => Effect.fail(new InterruptionTimeoutError({ sessionID: childSessionID })),
+              }),
+            ),
+          { concurrency: "unbounded", discard: true },
+        )
+      })
 
     const interrupt = Effect.fn("V2Session.interrupt")((sessionID: SessionSchema.ID) =>
       Effect.gen(function* () {
@@ -751,7 +754,8 @@ const layer = Layer.effect(
               const shell = yield* locationShell(session)
               yield* restore(shell.interrupt(sessionID))
             }
-            yield* restore(execution.interrupt(sessionID))
+            const active = yield* execution.active
+            if (active.has(sessionID)) yield* restore(execution.interrupt(sessionID))
             // A spawn already inside its uninterruptible admission may have been waiting for the
             // first task-cancellation lease. Once the parent fiber has stopped, sweep once more so
             // that child cannot escape the root cascade.

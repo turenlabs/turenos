@@ -22,7 +22,6 @@ import { ProviderApi } from "./groups/provider"
 import { PtyApi, PtyConnectApi } from "./groups/pty"
 import { QuestionApi } from "./groups/question"
 import { SecurityApi } from "./groups/security"
-import { PentestApi } from "./groups/pentest"
 import { StorageApi } from "./groups/storage"
 import { SessionApi } from "./groups/session"
 import { SyncApi } from "./groups/sync"
@@ -81,7 +80,6 @@ export const InstanceHttpApi = HttpApi.make("forge-instance")
 
 export const ForgeHttpApi = HttpApi.make("forge")
   .addHttpApi(RootHttpApi)
-  .addHttpApi(PentestApi)
   .addHttpApi(EventApi)
   .addHttpApi(InstanceHttpApi)
   .addHttpApi(ServerApi)

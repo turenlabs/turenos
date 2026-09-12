@@ -19,8 +19,11 @@ const config = {
   ADD_ATTR: ["d", "viewBox", "preserveAspectRatio", "xmlns", "target"],
 }
 
-if (typeof window !== "undefined" && DOMPurify.isSupported) {
-  DOMPurify.addHook("afterSanitizeAttributes", (node: Element) => {
+export type Sanitizer = Pick<typeof DOMPurify, "isSupported" | "sanitize" | "addHook">
+
+export function configureSanitizer(purify: Sanitizer) {
+  if (!purify.isSupported) return
+  purify.addHook("afterSanitizeAttributes", (node: Element) => {
     if (!(node instanceof HTMLAnchorElement)) return
     if (node.target !== "_blank") return
 
@@ -32,9 +35,13 @@ if (typeof window !== "undefined" && DOMPurify.isSupported) {
   })
 }
 
-export function sanitizeMarkdown(html: string) {
-  if (!DOMPurify.isSupported) return ""
-  return DOMPurify.sanitize(html, config)
+if (typeof window !== "undefined") {
+  configureSanitizer(DOMPurify)
+}
+
+export function sanitizeMarkdown(html: string, purify: Sanitizer = DOMPurify) {
+  if (!purify.isSupported) return ""
+  return purify.sanitize(html, config)
 }
 
 export function getCachedMarkdown(key: string) {

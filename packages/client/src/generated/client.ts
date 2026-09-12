@@ -66,6 +66,12 @@ import type {
   SessionsTaskCancelOutput,
   SessionsTeamBoardInput,
   SessionsTeamBoardOutput,
+  SessionsSwarmRoomInput,
+  SessionsSwarmRoomOutput,
+  SessionsSwarmRoomEntriesInput,
+  SessionsSwarmRoomEntriesOutput,
+  SessionsSwarmRoomPostInput,
+  SessionsSwarmRoomPostOutput,
   SessionsCompactInput,
   SessionsCompactOutput,
   SessionsWaitInput,
@@ -790,6 +796,41 @@ export function make(options: ClientOptions) {
             path: `/api/session/${encodeURIComponent(input.sessionID)}/team-board`,
             successStatus: 200,
             declaredStatuses: [404, 400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      swarmRoom: (input: SessionsSwarmRoomInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionsSwarmRoomOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/room`,
+            successStatus: 200,
+            declaredStatuses: [404, 400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      swarmRoomEntries: (input: SessionsSwarmRoomEntriesInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionsSwarmRoomEntriesOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/room/entries`,
+            query: { after: input["after"], limit: input["limit"] },
+            successStatus: 200,
+            declaredStatuses: [404, 400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      swarmRoomPost: (input: SessionsSwarmRoomPostInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionsSwarmRoomPostOutput }>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/room/entries`,
+            body: { text: input["text"], name: input["name"], replyTo: input["replyTo"] },
+            successStatus: 200,
+            declaredStatuses: [404, 409, 400, 403, 401],
             empty: false,
           },
           requestOptions,
@@ -1537,6 +1578,8 @@ export function make(options: ClientOptions) {
               pageSize: input?.["pageSize"],
               severity: input?.["severity"],
               search: input?.["search"],
+              sort: input?.["sort"],
+              order: input?.["order"],
             },
             successStatus: 200,
             declaredStatuses: [401, 400],
@@ -1549,7 +1592,12 @@ export function make(options: ClientOptions) {
           {
             method: "GET",
             path: `/api/intel/kev`,
-            query: { page: input?.["page"], pageSize: input?.["pageSize"] },
+            query: {
+              page: input?.["page"],
+              pageSize: input?.["pageSize"],
+              sort: input?.["sort"],
+              order: input?.["order"],
+            },
             successStatus: 200,
             declaredStatuses: [401, 400],
             empty: false,
@@ -1561,7 +1609,12 @@ export function make(options: ClientOptions) {
           {
             method: "GET",
             path: `/api/intel/news`,
-            query: { page: input?.["page"], pageSize: input?.["pageSize"] },
+            query: {
+              page: input?.["page"],
+              pageSize: input?.["pageSize"],
+              sort: input?.["sort"],
+              order: input?.["order"],
+            },
             successStatus: 200,
             declaredStatuses: [401, 400],
             empty: false,

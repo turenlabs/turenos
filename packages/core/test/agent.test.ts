@@ -79,8 +79,8 @@ describe("AgentV2", () => {
       expect(PermissionV2.evaluate("read", ".env", agent?.permissions ?? []).effect).toBe("deny")
       expect(PermissionV2.evaluate("bash", "rm -rf .", agent?.permissions ?? []).effect).toBe("deny")
       expect(PermissionV2.evaluate("edit", "src/index.ts", agent?.permissions ?? []).effect).toBe("deny")
-      expect(PermissionV2.evaluate("board_read", "*", agent?.permissions ?? []).effect).toBe("allow")
-      expect(PermissionV2.evaluate("board_post", "finding", agent?.permissions ?? []).effect).toBe("allow")
+      expect(PermissionV2.evaluate("room_read", "*", agent?.permissions ?? []).effect).toBe("allow")
+      expect(PermissionV2.evaluate("room_post", "finding", agent?.permissions ?? []).effect).toBe("allow")
     }),
   )
 
@@ -219,8 +219,8 @@ describe("AgentV2", () => {
       agents
         .filter((item) => item.mode === "subagent")
         .forEach((item) => {
-          expect(PermissionV2.evaluate("board_read", "*", item.permissions).effect).toBe("allow")
-          expect(PermissionV2.evaluate("board_post", "finding", item.permissions).effect).toBe("allow")
+          expect(PermissionV2.evaluate("room_read", "*", item.permissions).effect).toBe("allow")
+          expect(PermissionV2.evaluate("room_post", "finding", item.permissions).effect).toBe("allow")
         })
       expect(permission("qualification", "bash")).toBe("allow")
       expect(permission("qualification", "read")).toBe("deny")

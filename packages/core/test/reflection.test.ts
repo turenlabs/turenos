@@ -110,12 +110,6 @@ describe("Reflection", () => {
       ).toBe(false)
       expect(
         yield* reflection.recordCompletion({
-          session: session("ses_pentest_reflection", Project.ID.make("reflection-exclusions")),
-          interval: 1,
-        }),
-      ).toBe(false)
-      expect(
-        yield* reflection.recordCompletion({
           session: session("ses_handoff_reflection", Project.ID.make("reflection-exclusions")),
           interval: 1,
         }),

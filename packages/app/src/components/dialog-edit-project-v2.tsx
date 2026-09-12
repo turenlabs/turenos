@@ -64,6 +64,7 @@ export function DialogEditProjectV2(props: { project: LocalProject; server: Serv
                     override: model.store.iconOverride,
                   })}
                   variant={getProjectAvatarVariant(model.store.color)}
+                  pixelSeed={props.project.id ?? props.project.worktree}
                   class="!size-16 [&_[data-slot=project-avatar-surface]]:!rounded-[6px] [&_[data-slot=project-avatar-surface]]:!text-[32px]"
                 />
                 <span
@@ -120,6 +121,7 @@ export function DialogEditProjectV2(props: { project: LocalProject; server: Serv
                       <ProjectAvatar
                         fallback={model.store.name || model.defaultName()}
                         variant={getProjectAvatarVariant(color)}
+                        pixelSeed={props.project.id ?? props.project.worktree}
                         class="!size-6 [&_[data-slot=project-avatar-surface]]:!rounded-[6px]"
                       />
                     </button>

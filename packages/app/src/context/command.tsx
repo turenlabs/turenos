@@ -492,8 +492,8 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
  * Registers `command.palette` for the surface that is currently routed.
  *
  * The id is surface-scoped, not global: home opens the session palette, a session opens
- * its file palette, the draft composer opens the file picker and the analysis shell opens
- * the command-only palette. The router mounts exactly one of those surfaces at a time, so
+ * its file palette, and the draft composer opens the file picker. The router mounts
+ * exactly one of those surfaces at a time, so
  * they share a single registration slot and the incoming surface takes ownership from the
  * outgoing one - registering the id from each surface separately would instead leave the
  * registry to drop one of them by mount order.

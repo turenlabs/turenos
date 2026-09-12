@@ -1291,495 +1291,6 @@
         ]
       }
     },
-    "/pentest/runs": {
-      "post": {
-        "tags": ["pentest"],
-        "operationId": "pentest.createRun",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "Created pentest run with an immutable goal contract",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PentestRun"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "ConflictError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PentestCreateRunInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.pentest.createRun({\n  ...\n})"
-          }
-        ]
-      },
-      "get": {
-        "tags": ["pentest"],
-        "operationId": "pentest.listRuns",
-        "parameters": [
-          {
-            "name": "cursor",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "required": false
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "draft",
-                "queued",
-                "running",
-                "waiting",
-                "completed",
-                "cancelling",
-                "cancelled",
-                "failed",
-                "interrupted"
-              ]
-            },
-            "required": false
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Paginated pentest runs",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PentestRunList"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "ConflictError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.pentest.listRuns({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/pentest/runs/{runID}": {
-      "get": {
-        "tags": ["pentest"],
-        "operationId": "pentest.getRun",
-        "parameters": [
-          {
-            "name": "runID",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Pentest run detail",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PentestRun"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "ConflictError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.pentest.getRun({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/pentest/runs/{runID}/start": {
-      "post": {
-        "tags": ["pentest"],
-        "operationId": "pentest.startRun",
-        "parameters": [
-          {
-            "name": "runID",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Pentest run durably queued for execution",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PentestRun"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "ConflictError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PentestStartRunInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.pentest.startRun({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/pentest/runs/{runID}/cancel": {
-      "post": {
-        "tags": ["pentest"],
-        "operationId": "pentest.cancelRun",
-        "parameters": [
-          {
-            "name": "runID",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Execution after durable cancellation intent",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PentestExecution"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "ConflictError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PentestCancelRunInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.pentest.cancelRun({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/pentest/executions/{executionID}": {
-      "get": {
-        "tags": ["pentest"],
-        "operationId": "pentest.getExecution",
-        "parameters": [
-          {
-            "name": "executionID",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Durable pentest execution",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PentestExecution"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "ConflictError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.pentest.getExecution({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/pentest/runs/{runID}/board": {
-      "get": {
-        "tags": ["pentest"],
-        "operationId": "pentest.getBoard",
-        "parameters": [
-          {
-            "name": "runID",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Read-only pentest board projection",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PentestBoardState"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "ConflictError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.pentest.getBoard({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/pentest/runs/{runID}/report": {
-      "get": {
-        "tags": ["pentest"],
-        "operationId": "pentest.getReport",
-        "parameters": [
-          {
-            "name": "runID",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Composed markdown pentest report",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PentestRunReport"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "ConflictError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.pentest.getReport({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/event": {
       "get": {
         "tags": ["event"],
@@ -13089,6 +12600,291 @@
         ]
       }
     },
+    "/api/session/{sessionID}/room": {
+      "get": {
+        "tags": ["sessions"],
+        "operationId": "v2.session.swarm_room",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "SessionSwarmRoomResponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSwarmRoomResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError | SwarmRoomNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SwarmRoomNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Retrieve the swarm room shared by a Session and its subagents: objective, members, lane claims, and head.",
+        "summary": "Get the swarm room",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.session.swarm_room({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/room/entries": {
+      "get": {
+        "tags": ["sessions"],
+        "operationId": "v2.session.swarm_room_entries",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "SessionSwarmRoomEntriesResponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSwarmRoomEntriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError | SwarmRoomNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SwarmRoomNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Retrieve room entries sequenced after `after`. The room's head is the compare-and-swap cursor for coordination writes.",
+        "summary": "List swarm room entries",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.session.swarm_room_entries({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "tags": ["sessions"],
+        "operationId": "v2.session.swarm_room_post",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "SessionSwarmRoomPostResponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSwarmRoomPostResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SwarmRoomInvalidStateError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SwarmRoomInvalidStateError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "SwarmRoomForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwarmRoomForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError | SwarmRoomNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SwarmRoomNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "SwarmRoomConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwarmRoomConflictError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Post a human-authored entry to a Session's swarm room. Agent members are notified through their durable input queue.",
+        "summary": "Post a human message to the swarm room",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwarmRoomHumanPostInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.session.swarm_room_post({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/api/session/{sessionID}/compact": {
       "post": {
         "tags": ["sessions"],
@@ -13712,6 +13508,210 @@
         ]
       }
     },
+    "/api/session/{sessionID}/input/{messageID}": {
+      "get": {
+        "tags": ["sessions"],
+        "operationId": "v2.session.inputStatus",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "messageID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg_"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SessionInputOutboxItem"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Retrieve one admitted, promoted, or cancelled input by its stable message ID.",
+        "summary": "Get durable session input status",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.session.inputStatus({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/outbox": {
+      "get": {
+        "tags": ["sessions"],
+        "operationId": "v2.session.outbox",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["admitted", "promoted", "cancelled"]
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SessionInputOutboxItem"
+                      }
+                    },
+                    "next": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": ["data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "List admitted, promoted, and cancelled inputs in admission order.",
+        "summary": "List durable session input lifecycle",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.session.outbox({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/api/session/{sessionID}/history": {
       "get": {
         "tags": ["sessions"],
@@ -14310,6 +14310,15 @@
             "schema": {
               "type": "string",
               "description": "Opaque pagination cursor returned as cursor.previous or cursor.next in the previous response. Do not combine with order."
+            },
+            "required": false
+          },
+          {
+            "name": "lean",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
             },
             "required": false
           }
@@ -18222,6 +18231,1051 @@
         ]
       }
     },
+    "/api/intel/advisories": {
+      "get": {
+        "tags": ["intel"],
+        "operationId": "v2.intel.advisories",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/IntelSeverity"
+            },
+            "required": false
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intel.AdvisoriesPage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelAdvisoriesPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "description": "List cached normalized security advisories newest first.",
+        "summary": "List security advisories",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.intel.advisories({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intel/kev": {
+      "get": {
+        "tags": ["intel"],
+        "operationId": "v2.intel.kev",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intel.KevPage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelKevPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "description": "List cached CISA KEV items newest first.",
+        "summary": "List KEV items",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.intel.kev({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intel/news": {
+      "get": {
+        "tags": ["intel"],
+        "operationId": "v2.intel.news",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intel.NewsPage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelNewsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "description": "List cached security news newest first.",
+        "summary": "List security news",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.intel.news({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intel/trends": {
+      "get": {
+        "tags": ["intel"],
+        "operationId": "v2.intel.trends",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intel.TrendsResponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelTrendsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Daily advisory counts over a trailing window.",
+        "summary": "Advisory trends",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.intel.trends({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intel/feeds": {
+      "get": {
+        "tags": ["intel"],
+        "operationId": "v2.intel.feeds",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IntelFeed"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "description": "List the effective intel feed list: built-in defaults plus per-user overrides.",
+        "summary": "List intel feeds",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.intel.feeds({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "tags": ["intel"],
+        "operationId": "v2.intel.feedAdd",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intel.Feed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelFeed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Add a custom intel feed. The id is derived from the name when omitted.",
+        "summary": "Add intel feed",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntelFeedCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.intel.feedAdd({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intel/feeds/{feedID}": {
+      "patch": {
+        "tags": ["intel"],
+        "operationId": "v2.intel.feedUpdate",
+        "parameters": [
+          {
+            "name": "feedID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intel.Feed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelFeed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "IntelFeedNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelFeedNotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Enable, disable, or edit an intel feed. Only provided fields change.",
+        "summary": "Update intel feed",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntelFeedUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.intel.feedUpdate({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intel/feeds/reset": {
+      "post": {
+        "tags": ["intel"],
+        "operationId": "v2.intel.feedsReset",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IntelFeed"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Discard per-user feed overrides and restore the built-in defaults.",
+        "summary": "Reset intel feeds",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.intel.feedsReset({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intel/status": {
+      "get": {
+        "tags": ["intel"],
+        "operationId": "v2.intel.status",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intel.StatusResponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Last poll times and per-feed status.",
+        "summary": "Intel poll status",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.intel.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intel/poll": {
+      "post": {
+        "tags": ["intel"],
+        "operationId": "v2.intel.poll",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intel.StatusResponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Force an immediate feed poll (overlap-guarded, staleness ignored) and return the fresh status.",
+        "summary": "Poll intel feeds now",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.intel.poll({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/whiteboard": {
+      "get": {
+        "tags": ["TurenOS HttpApi"],
+        "operationId": "v2.whiteboard.get",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Whiteboard.Snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhiteboardSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "WhiteboardNotFoundError | SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WhiteboardNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Read session whiteboard",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.whiteboard.get({\n  ...\n})"
+          }
+        ]
+      },
+      "patch": {
+        "tags": ["TurenOS HttpApi"],
+        "operationId": "v2.whiteboard.update",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Whiteboard.Snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhiteboardSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "WhiteboardValidationError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WhiteboardValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "WhiteboardNotFoundError | SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WhiteboardNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "WhiteboardConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhiteboardConflictError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Merge session whiteboard elements",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhiteboardUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.whiteboard.update({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/whiteboard/presence": {
+      "post": {
+        "tags": ["TurenOS HttpApi"],
+        "operationId": "v2.whiteboard.presence",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Whiteboard.PresenceSnapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhiteboardPresenceSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "WhiteboardValidationError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WhiteboardValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "WhiteboardNotFoundError | SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WhiteboardNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "WhiteboardConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhiteboardConflictError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Update ephemeral whiteboard presence",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhiteboardPresenceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.whiteboard.presence({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/whiteboard/events": {
+      "get": {
+        "tags": ["TurenOS HttpApi"],
+        "operationId": "v2.whiteboard.events",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "event": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WhiteboardEventsStream"
+                    }
+                  },
+                  "required": ["id", "event", "data"],
+                  "additionalProperties": false
+                },
+                "x-effect-stream": {
+                  "encoding": "sse",
+                  "causeSchema": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "_tag": {
+                              "type": "string",
+                              "enum": ["Fail"]
+                            },
+                            "error": {
+                              "not": {}
+                            }
+                          },
+                          "required": ["_tag", "error"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "_tag": {
+                              "type": "string",
+                              "enum": ["Die"]
+                            },
+                            "defect": {}
+                          },
+                          "required": ["_tag", "defect"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "_tag": {
+                              "type": "string",
+                              "enum": ["Interrupt"]
+                            },
+                            "fiberId": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": ["_tag", "fiberId"],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "errorSchema": {
+                    "not": {}
+                  },
+                  "failureEvent": "effect/httpapi/stream/failure"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "WhiteboardNotFoundError | SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WhiteboardNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Subscribe to session whiteboard notifications",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.whiteboard.events({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/pty/{ptyID}/connect": {
       "get": {
         "tags": ["pty"],
@@ -18536,25 +19590,19 @@
             "$ref": "#/components/schemas/EventQuestionV2Rejected"
           },
           {
-            "$ref": "#/components/schemas/EventPentestRunCreated"
+            "$ref": "#/components/schemas/EventSwarmRoomPosted"
           },
           {
-            "$ref": "#/components/schemas/EventPentestRunUpdated"
+            "$ref": "#/components/schemas/EventSwarmRoomConnected"
           },
           {
-            "$ref": "#/components/schemas/EventPentestExecutionQueued"
+            "$ref": "#/components/schemas/EventSessionWhiteboardUpdated"
           },
           {
-            "$ref": "#/components/schemas/EventPentestExecutionStateChanged"
+            "$ref": "#/components/schemas/EventSessionWhiteboardPresence"
           },
           {
-            "$ref": "#/components/schemas/EventPentestEvidenceRecorded"
-          },
-          {
-            "$ref": "#/components/schemas/EventPentestFindingChanged"
-          },
-          {
-            "$ref": "#/components/schemas/EventPentestReportGenerated"
+            "$ref": "#/components/schemas/EventSessionWhiteboardConnected"
           },
           {
             "$ref": "#/components/schemas/EventTodoUpdated"
@@ -20973,6 +22021,17 @@
                       "delivery": {
                         "type": "string",
                         "enum": ["steer", "queue"]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "user",
+                          "subagent_board",
+                          "subagent_settle",
+                          "subagent_advisory",
+                          "shell_job",
+                          "swarm_room"
+                        ]
                       }
                     },
                     "required": ["timestamp", "sessionID", "messageID", "prompt", "delivery"],
@@ -21016,7 +22075,14 @@
                       },
                       "source": {
                         "type": "string",
-                        "enum": ["user", "subagent_board"]
+                        "enum": [
+                          "user",
+                          "subagent_board",
+                          "subagent_settle",
+                          "subagent_advisory",
+                          "shell_job",
+                          "swarm_room"
+                        ]
                       },
                       "agent": {
                         "type": "string"
@@ -23292,168 +24358,93 @@
                   },
                   "type": {
                     "type": "string",
-                    "enum": ["pentest.run.created"]
+                    "enum": ["swarm.room.posted"]
                   },
                   "properties": {
                     "type": "object",
                     "properties": {
-                      "runID": {
+                      "roomID": {
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 80
+                      },
+                      "rootSessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "entry": {
+                        "$ref": "#/components/schemas/SwarmRoomEntry"
+                      }
+                    },
+                    "required": ["roomID", "rootSessionID", "entry"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["swarm.room.connected"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {
+                      "roomID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "rootSessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "head": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": ["roomID", "rootSessionID", "head"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["session.whiteboard.updated"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
                       },
                       "revision": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0
-                      }
-                    },
-                    "required": ["runID", "revision"],
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["id", "type", "properties"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "pattern": "^evt_"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": ["pentest.run.updated"]
-                  },
-                  "properties": {
-                    "type": "object",
-                    "properties": {
-                      "runID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
-                      },
-                      "status": {
-                        "type": "string",
-                        "enum": [
-                          "draft",
-                          "queued",
-                          "running",
-                          "waiting",
-                          "completed",
-                          "cancelling",
-                          "cancelled",
-                          "failed",
-                          "interrupted"
-                        ]
-                      },
-                      "stage": {
-                        "type": "string",
-                        "enum": ["recon", "analysis", "validation", "report"]
-                      },
-                      "revision": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0
-                      }
-                    },
-                    "required": ["runID", "status", "stage", "revision"],
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["id", "type", "properties"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "pattern": "^evt_"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": ["pentest.execution.queued"]
-                  },
-                  "properties": {
-                    "type": "object",
-                    "properties": {
-                      "runID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
-                      },
-                      "executionID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
-                      },
-                      "attempt": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0
-                      }
-                    },
-                    "required": ["runID", "executionID", "attempt"],
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["id", "type", "properties"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "pattern": "^evt_"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": ["pentest.execution.state.changed"]
-                  },
-                  "properties": {
-                    "type": "object",
-                    "properties": {
-                      "runID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
-                      },
-                      "executionID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
-                      },
-                      "state": {
-                        "type": "string",
-                        "enum": [
-                          "queued",
-                          "running",
-                          "waiting",
-                          "completed",
-                          "cancelling",
-                          "cancelled",
-                          "failed",
-                          "interrupted"
-                        ]
-                      },
-                      "stage": {
-                        "type": "string",
-                        "enum": ["recon", "analysis", "validation", "report"]
-                      },
-                      "fence": {
                         "type": "integer",
                         "minimum": 0
                       },
-                      "executionRevision": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0
-                      },
-                      "runRevision": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0
+                      "actor": {
+                        "$ref": "#/components/schemas/WhiteboardActor"
                       }
                     },
-                    "required": ["runID", "executionID", "state", "stage", "fence", "executionRevision", "runRevision"],
+                    "required": ["sessionID", "revision", "actor"],
                     "additionalProperties": false
                   }
                 },
@@ -23469,32 +24460,23 @@
                   },
                   "type": {
                     "type": "string",
-                    "enum": ["pentest.evidence.recorded"]
+                    "enum": ["session.whiteboard.presence"]
                   },
                   "properties": {
                     "type": "object",
                     "properties": {
-                      "runID": {
+                      "sessionID": {
                         "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
+                        "pattern": "^ses"
                       },
-                      "author": {
-                        "type": "string",
-                        "enum": ["user", "agent"]
-                      },
-                      "evidenceID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
-                      },
-                      "findingID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
+                      "participants": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/WhiteboardParticipant"
+                        }
                       }
                     },
-                    "required": ["runID", "author", "evidenceID", "findingID"],
+                    "required": ["sessionID", "participants"],
                     "additionalProperties": false
                   }
                 },
@@ -23510,70 +24492,21 @@
                   },
                   "type": {
                     "type": "string",
-                    "enum": ["pentest.finding.changed"]
+                    "enum": ["session.whiteboard.connected"]
                   },
                   "properties": {
                     "type": "object",
                     "properties": {
-                      "runID": {
+                      "sessionID": {
                         "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
-                      },
-                      "author": {
-                        "type": "string",
-                        "enum": ["user", "agent"]
-                      },
-                      "findingID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
-                      },
-                      "severity": {
-                        "type": "string",
-                        "enum": ["info", "low", "medium", "high", "critical"]
-                      },
-                      "status": {
-                        "type": "string",
-                        "enum": ["draft", "verified", "rejected"]
+                        "pattern": "^ses"
                       },
                       "revision": {
                         "type": "integer",
-                        "exclusiveMinimum": 0
+                        "minimum": 0
                       }
                     },
-                    "required": ["runID", "author", "findingID", "severity", "status", "revision"],
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["id", "type", "properties"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "pattern": "^evt_"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": ["pentest.report.generated"]
-                  },
-                  "properties": {
-                    "type": "object",
-                    "properties": {
-                      "runID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
-                      },
-                      "generatedAt": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0
-                      }
-                    },
-                    "required": ["runID", "generatedAt"],
+                    "required": ["sessionID", "revision"],
                     "additionalProperties": false
                   }
                 },
@@ -24388,25 +25321,7 @@
                 "$ref": "#/components/schemas/SyncEventSessionNextTaskOperationUpdated"
               },
               {
-                "$ref": "#/components/schemas/SyncEventPentestRunCreated"
-              },
-              {
-                "$ref": "#/components/schemas/SyncEventPentestRunUpdated"
-              },
-              {
-                "$ref": "#/components/schemas/SyncEventPentestExecutionQueued"
-              },
-              {
-                "$ref": "#/components/schemas/SyncEventPentestExecutionStateChanged"
-              },
-              {
-                "$ref": "#/components/schemas/SyncEventPentestEvidenceRecorded"
-              },
-              {
-                "$ref": "#/components/schemas/SyncEventPentestFindingChanged"
-              },
-              {
-                "$ref": "#/components/schemas/SyncEventPentestReportGenerated"
+                "$ref": "#/components/schemas/SyncEventSessionWhiteboardUpdated"
               }
             ]
           }
@@ -25637,23 +26552,6 @@
         "required": ["_tag", "name"],
         "additionalProperties": false
       },
-      "ConflictError": {
-        "type": "object",
-        "properties": {
-          "_tag": {
-            "type": "string",
-            "enum": ["ConflictError"]
-          },
-          "message": {
-            "type": "string"
-          },
-          "resource": {
-            "type": "string"
-          }
-        },
-        "required": ["_tag", "message"],
-        "additionalProperties": false
-      },
       "Model": {
         "type": "object",
         "properties": {
@@ -25927,6 +26825,10 @@
           "source": {
             "type": "string",
             "enum": ["env", "config", "custom", "api"]
+          },
+          "auth": {
+            "type": "string",
+            "enum": ["api", "oauth", "wellknown"]
           },
           "env": {
             "type": "array",
@@ -27282,6 +28184,23 @@
           }
         }
       },
+      "ConflictError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["ConflictError"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "message"],
+        "additionalProperties": false
+      },
       "ServiceUnavailableError": {
         "type": "object",
         "properties": {
@@ -28341,6 +29260,96 @@
         "required": ["data"],
         "additionalProperties": false
       },
+      "SessionSwarmRoomResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SwarmRoomState"
+          }
+        },
+        "required": ["data"],
+        "additionalProperties": false
+      },
+      "SwarmRoomNotFoundError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["SwarmRoomNotFoundError"]
+          },
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "resource"],
+        "additionalProperties": false
+      },
+      "SessionSwarmRoomEntriesResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SwarmRoomEntryPage"
+          }
+        },
+        "required": ["data"],
+        "additionalProperties": false
+      },
+      "SessionSwarmRoomPostResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SwarmRoomEntry"
+          }
+        },
+        "required": ["data"],
+        "additionalProperties": false
+      },
+      "SwarmRoomConflictError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["SwarmRoomConflictError"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "head": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["_tag", "message", "head"],
+        "additionalProperties": false
+      },
+      "SwarmRoomInvalidStateError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["SwarmRoomInvalidStateError"]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "message"],
+        "additionalProperties": false
+      },
+      "SwarmRoomForbiddenError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["SwarmRoomForbiddenError"]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "message"],
+        "additionalProperties": false
+      },
       "SessionRevertStagePayload": {
         "type": "object",
         "properties": {
@@ -29102,25 +30111,19 @@
             "$ref": "#/components/schemas/QuestionV2Rejected"
           },
           {
-            "$ref": "#/components/schemas/PentestRunCreated"
+            "$ref": "#/components/schemas/SwarmRoomPosted"
           },
           {
-            "$ref": "#/components/schemas/PentestRunUpdated"
+            "$ref": "#/components/schemas/SwarmRoomConnected"
           },
           {
-            "$ref": "#/components/schemas/PentestExecutionQueued"
+            "$ref": "#/components/schemas/SessionWhiteboardUpdated"
           },
           {
-            "$ref": "#/components/schemas/PentestExecutionStateChanged"
+            "$ref": "#/components/schemas/SessionWhiteboardPresence"
           },
           {
-            "$ref": "#/components/schemas/PentestEvidenceRecorded"
-          },
-          {
-            "$ref": "#/components/schemas/PentestFindingChanged"
-          },
-          {
-            "$ref": "#/components/schemas/PentestReportGenerated"
+            "$ref": "#/components/schemas/SessionWhiteboardConnected"
           },
           {
             "$ref": "#/components/schemas/TodoUpdated"
@@ -29286,6 +30289,78 @@
         "required": ["_tag", "loopID", "runID", "message"],
         "additionalProperties": false
       },
+      "IntelFeedNotFoundError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["IntelFeedNotFoundError"]
+          },
+          "feedID": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "feedID", "message"],
+        "additionalProperties": false
+      },
+      "WhiteboardNotFoundError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["WhiteboardNotFoundError"]
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          }
+        },
+        "required": ["_tag", "sessionID"],
+        "additionalProperties": false
+      },
+      "WhiteboardValidationError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["WhiteboardValidationError"]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "message"],
+        "additionalProperties": false
+      },
+      "WhiteboardConflictError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["WhiteboardConflictError"]
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "actualRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "sessionID", "expectedRevision", "actualRevision", "message"],
+        "additionalProperties": false
+      },
       "effect_HttpApiError_Forbidden": {
         "type": "object",
         "properties": {
@@ -29438,11 +30513,70 @@
         "required": ["path", "comment"],
         "additionalProperties": false
       },
+      "SwarmReady": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["ready"]
+          },
+          "objective": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 50
+          },
+          "explicitCount": {
+            "type": "boolean"
+          }
+        },
+        "required": ["status", "objective", "count", "explicitCount"],
+        "additionalProperties": false
+      },
+      "SwarmInvalidReason": {
+        "type": "string",
+        "enum": ["missing_objective", "count_out_of_range"]
+      },
+      "SwarmInvalid": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["invalid"]
+          },
+          "objective": {
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/SwarmInvalidReason"
+          },
+          "requestedCount": {
+            "type": "string"
+          }
+        },
+        "required": ["status", "objective", "reason"],
+        "additionalProperties": false
+      },
+      "SwarmInvocation": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SwarmReady"
+          },
+          {
+            "$ref": "#/components/schemas/SwarmInvalid"
+          }
+        ]
+      },
       "PromptTextPartMetadata": {
         "type": "object",
         "properties": {
           "forgeComment": {
             "$ref": "#/components/schemas/PromptTextPartComment"
+          },
+          "forgeSwarm": {
+            "$ref": "#/components/schemas/SwarmInvocation"
           }
         },
         "additionalProperties": false
@@ -30408,6 +31542,223 @@
           "type": "string"
         }
       },
+      "SwarmRoomActor": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["leader", "worker", "human", "system"]
+          },
+          "memberID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        },
+        "required": ["type", "memberID", "name"],
+        "additionalProperties": false
+      },
+      "SwarmRoomEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "roomID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "actor": {
+            "$ref": "#/components/schemas/SwarmRoomActor"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "message",
+              "plan",
+              "claim",
+              "release",
+              "decision",
+              "finding",
+              "correction",
+              "lead",
+              "status",
+              "question"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 131072
+          },
+          "payload": {},
+          "replyTo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "evidenceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "maxItems": 16
+          },
+          "baseRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "timeCreated": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["id", "roomID", "seq", "actor", "kind", "text", "baseRevision", "timeCreated"],
+        "additionalProperties": false
+      },
+      "WhiteboardActor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["human", "agent"]
+          }
+        },
+        "required": ["id", "name", "kind"],
+        "additionalProperties": false
+      },
+      "WhiteboardParticipant": {
+        "type": "object",
+        "properties": {
+          "clientID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "pointer": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ]
+              },
+              "y": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ]
+              }
+            },
+            "required": ["x", "y"],
+            "additionalProperties": false
+          },
+          "selectedElementIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "maxItems": 5000
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["clientID", "username", "updatedAt"],
+        "additionalProperties": false
+      },
       "ProjectVcs": {
         "type": "string",
         "enum": ["git"]
@@ -31110,6 +32461,17 @@
                   "delivery": {
                     "type": "string",
                     "enum": ["steer", "queue"]
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "subagent_board",
+                      "subagent_settle",
+                      "subagent_advisory",
+                      "shell_job",
+                      "swarm_room"
+                    ]
                   }
                 },
                 "required": ["timestamp", "sessionID", "messageID", "prompt", "delivery"],
@@ -31174,7 +32536,14 @@
                   },
                   "source": {
                     "type": "string",
-                    "enum": ["user", "subagent_board"]
+                    "enum": [
+                      "user",
+                      "subagent_board",
+                      "subagent_settle",
+                      "subagent_advisory",
+                      "shell_job",
+                      "swarm_room"
+                    ]
                   },
                   "agent": {
                     "type": "string"
@@ -33354,7 +34723,7 @@
         "required": ["type", "id", "syncEvent"],
         "additionalProperties": false
       },
-      "SyncEventPentestRunCreated": {
+      "SyncEventSessionWhiteboardUpdated": {
         "type": "object",
         "properties": {
           "type": {
@@ -33370,7 +34739,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "enum": ["pentest.run.created.1"]
+                "enum": ["session.whiteboard.updated.1"]
               },
               "id": {
                 "type": "string",
@@ -33385,409 +34754,19 @@
               "data": {
                 "type": "object",
                 "properties": {
-                  "runID": {
+                  "sessionID": {
                     "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
+                    "pattern": "^ses"
                   },
                   "revision": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
-                  }
-                },
-                "required": ["runID", "revision"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["type", "id", "seq", "aggregateID", "data"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["type", "id", "syncEvent"],
-        "additionalProperties": false
-      },
-      "SyncEventPentestRunUpdated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["sync"]
-          },
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "syncEvent": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["pentest.run.updated.1"]
-              },
-              "id": {
-                "type": "string",
-                "pattern": "^evt_"
-              },
-              "seq": {
-                "type": "number"
-              },
-              "aggregateID": {
-                "type": "string"
-              },
-              "data": {
-                "type": "object",
-                "properties": {
-                  "runID": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "draft",
-                      "queued",
-                      "running",
-                      "waiting",
-                      "completed",
-                      "cancelling",
-                      "cancelled",
-                      "failed",
-                      "interrupted"
-                    ]
-                  },
-                  "stage": {
-                    "type": "string",
-                    "enum": ["recon", "analysis", "validation", "report"]
-                  },
-                  "revision": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
-                  }
-                },
-                "required": ["runID", "status", "stage", "revision"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["type", "id", "seq", "aggregateID", "data"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["type", "id", "syncEvent"],
-        "additionalProperties": false
-      },
-      "SyncEventPentestExecutionQueued": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["sync"]
-          },
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "syncEvent": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["pentest.execution.queued.1"]
-              },
-              "id": {
-                "type": "string",
-                "pattern": "^evt_"
-              },
-              "seq": {
-                "type": "number"
-              },
-              "aggregateID": {
-                "type": "string"
-              },
-              "data": {
-                "type": "object",
-                "properties": {
-                  "runID": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "executionID": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "attempt": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
-                  }
-                },
-                "required": ["runID", "executionID", "attempt"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["type", "id", "seq", "aggregateID", "data"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["type", "id", "syncEvent"],
-        "additionalProperties": false
-      },
-      "SyncEventPentestExecutionStateChanged": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["sync"]
-          },
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "syncEvent": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["pentest.execution.state.changed.1"]
-              },
-              "id": {
-                "type": "string",
-                "pattern": "^evt_"
-              },
-              "seq": {
-                "type": "number"
-              },
-              "aggregateID": {
-                "type": "string"
-              },
-              "data": {
-                "type": "object",
-                "properties": {
-                  "runID": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "executionID": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "state": {
-                    "type": "string",
-                    "enum": [
-                      "queued",
-                      "running",
-                      "waiting",
-                      "completed",
-                      "cancelling",
-                      "cancelled",
-                      "failed",
-                      "interrupted"
-                    ]
-                  },
-                  "stage": {
-                    "type": "string",
-                    "enum": ["recon", "analysis", "validation", "report"]
-                  },
-                  "fence": {
                     "type": "integer",
                     "minimum": 0
                   },
-                  "executionRevision": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
-                  },
-                  "runRevision": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
+                  "actor": {
+                    "$ref": "#/components/schemas/WhiteboardActor"
                   }
                 },
-                "required": ["runID", "executionID", "state", "stage", "fence", "executionRevision", "runRevision"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["type", "id", "seq", "aggregateID", "data"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["type", "id", "syncEvent"],
-        "additionalProperties": false
-      },
-      "SyncEventPentestEvidenceRecorded": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["sync"]
-          },
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "syncEvent": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["pentest.evidence.recorded.1"]
-              },
-              "id": {
-                "type": "string",
-                "pattern": "^evt_"
-              },
-              "seq": {
-                "type": "number"
-              },
-              "aggregateID": {
-                "type": "string"
-              },
-              "data": {
-                "type": "object",
-                "properties": {
-                  "runID": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "author": {
-                    "type": "string",
-                    "enum": ["user", "agent"]
-                  },
-                  "evidenceID": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "findingID": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  }
-                },
-                "required": ["runID", "author", "evidenceID", "findingID"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["type", "id", "seq", "aggregateID", "data"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["type", "id", "syncEvent"],
-        "additionalProperties": false
-      },
-      "SyncEventPentestFindingChanged": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["sync"]
-          },
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "syncEvent": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["pentest.finding.changed.1"]
-              },
-              "id": {
-                "type": "string",
-                "pattern": "^evt_"
-              },
-              "seq": {
-                "type": "number"
-              },
-              "aggregateID": {
-                "type": "string"
-              },
-              "data": {
-                "type": "object",
-                "properties": {
-                  "runID": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "author": {
-                    "type": "string",
-                    "enum": ["user", "agent"]
-                  },
-                  "findingID": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "severity": {
-                    "type": "string",
-                    "enum": ["info", "low", "medium", "high", "critical"]
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": ["draft", "verified", "rejected"]
-                  },
-                  "revision": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
-                  }
-                },
-                "required": ["runID", "author", "findingID", "severity", "status", "revision"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["type", "id", "seq", "aggregateID", "data"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["type", "id", "syncEvent"],
-        "additionalProperties": false
-      },
-      "SyncEventPentestReportGenerated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["sync"]
-          },
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "syncEvent": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["pentest.report.generated.1"]
-              },
-              "id": {
-                "type": "string",
-                "pattern": "^evt_"
-              },
-              "seq": {
-                "type": "number"
-              },
-              "aggregateID": {
-                "type": "string"
-              },
-              "data": {
-                "type": "object",
-                "properties": {
-                  "runID": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 80
-                  },
-                  "generatedAt": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
-                  }
-                },
-                "required": ["runID", "generatedAt"],
+                "required": ["sessionID", "revision", "actor"],
                 "additionalProperties": false
               }
             },
@@ -33930,597 +34909,6 @@
           }
         },
         "required": ["applied", "receipt"],
-        "additionalProperties": false
-      },
-      "PentestTargetAuthProfile": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "label": {
-            "type": "string",
-            "maxLength": 256
-          },
-          "credentialID": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["bearer", "basic", "api-key"]
-          },
-          "headerName": {
-            "type": "string",
-            "maxLength": 128
-          }
-        },
-        "required": ["id", "label", "credentialID", "type"],
-        "additionalProperties": false
-      },
-      "PentestTargetContract": {
-        "type": "object",
-        "properties": {
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 512
-          },
-          "baseURL": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 2048
-          },
-          "mode": {
-            "type": "string",
-            "enum": ["blackbox", "whitebox"]
-          },
-          "sourceDir": {
-            "type": "string",
-            "maxLength": 2048
-          },
-          "authProfiles": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PentestTargetAuthProfile"
-            },
-            "maxItems": 20
-          },
-          "inScope": {
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "maxItems": 200
-          },
-          "outOfScope": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "maxItems": 200
-          },
-          "networkPolicy": {
-            "type": "string",
-            "enum": ["none", "capture-only", "allowlist"]
-          },
-          "budgets": {
-            "type": "object",
-            "properties": {
-              "wallSecondsMax": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 86400
-              },
-              "modelTokensMax": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 2000000000
-              },
-              "modelCostUsdMax": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 1000000
-              },
-              "requestLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 10000000
-              }
-            },
-            "required": ["wallSecondsMax", "modelTokensMax", "modelCostUsdMax", "requestLimit"],
-            "additionalProperties": false
-          },
-          "authorization": {
-            "type": "object",
-            "properties": {
-              "note": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 8192
-              },
-              "recordedAt": {
-                "type": "integer",
-                "exclusiveMinimum": 0
-              }
-            },
-            "required": ["note", "recordedAt"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["label", "baseURL", "mode", "inScope", "outOfScope", "networkPolicy", "budgets", "authorization"],
-        "additionalProperties": false
-      },
-      "PentestCreateRunInput": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "location": {
-            "$ref": "#/components/schemas/LocationRef"
-          },
-          "labels": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "maxItems": 50
-          },
-          "goal": {
-            "$ref": "#/components/schemas/PentestTargetContract"
-          }
-        },
-        "required": ["id", "labels", "goal"],
-        "additionalProperties": false
-      },
-      "PentestExecution": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "runID": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "attempt": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "model": {
-            "$ref": "#/components/schemas/ModelRef"
-          },
-          "state": {
-            "type": "string",
-            "enum": ["queued", "running", "waiting", "completed", "cancelling", "cancelled", "failed", "interrupted"]
-          },
-          "stage": {
-            "type": "string",
-            "enum": ["recon", "analysis", "validation", "report"]
-          },
-          "cancelRequested": {
-            "type": "boolean"
-          },
-          "fence": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "leaseOwner": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 160
-          },
-          "leaseUntil": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "lastHeartbeat": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "absoluteTTL": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "checkpoint": {},
-          "revision": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "timeCreated": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "timeUpdated": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "error": {
-            "type": "string",
-            "maxLength": 1000
-          }
-        },
-        "required": [
-          "id",
-          "runID",
-          "attempt",
-          "model",
-          "state",
-          "stage",
-          "cancelRequested",
-          "fence",
-          "revision",
-          "timeCreated",
-          "timeUpdated"
-        ],
-        "additionalProperties": false
-      },
-      "PentestRun": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "location": {
-            "$ref": "#/components/schemas/LocationRef"
-          },
-          "sessionID": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 160
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "draft",
-              "queued",
-              "running",
-              "waiting",
-              "completed",
-              "cancelling",
-              "cancelled",
-              "failed",
-              "interrupted"
-            ]
-          },
-          "stage": {
-            "type": "string",
-            "enum": ["recon", "analysis", "validation", "report"]
-          },
-          "labels": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "maxItems": 50
-          },
-          "revision": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "timeCreated": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "timeUpdated": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "goal": {
-            "$ref": "#/components/schemas/PentestTargetContract"
-          },
-          "latestExecution": {
-            "$ref": "#/components/schemas/PentestExecution"
-          }
-        },
-        "required": ["id", "status", "stage", "labels", "revision", "timeCreated", "timeUpdated", "goal"],
-        "additionalProperties": false
-      },
-      "PentestRunList": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PentestRun"
-            }
-          },
-          "nextCursor": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          }
-        },
-        "required": ["items"],
-        "additionalProperties": false
-      },
-      "PentestStartRunInput": {
-        "type": "object",
-        "properties": {
-          "idempotencyKey": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 160
-          },
-          "expectedRunRevision": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "model": {
-            "$ref": "#/components/schemas/ModelRef"
-          }
-        },
-        "required": ["idempotencyKey", "expectedRunRevision", "model"],
-        "additionalProperties": false
-      },
-      "PentestCancelRunInput": {
-        "type": "object",
-        "properties": {
-          "idempotencyKey": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 160
-          },
-          "expectedRunRevision": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          }
-        },
-        "required": ["idempotencyKey", "expectedRunRevision"],
-        "additionalProperties": false
-      },
-      "PentestFinding": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "runID": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "severity": {
-            "type": "string",
-            "enum": ["info", "low", "medium", "high", "critical"]
-          },
-          "confidence": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "string",
-                "enum": ["NaN"]
-              },
-              {
-                "type": "string",
-                "enum": ["Infinity"]
-              },
-              {
-                "type": "string",
-                "enum": ["-Infinity"]
-              },
-              {
-                "type": "string",
-                "enum": ["Infinity", "-Infinity", "NaN"]
-              }
-            ]
-          },
-          "title": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
-          },
-          "type": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 96
-          },
-          "endpoint": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1024
-          },
-          "cvssVector": {
-            "type": "string",
-            "maxLength": 120
-          },
-          "cvssScore": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "string",
-                "enum": ["NaN"]
-              },
-              {
-                "type": "string",
-                "enum": ["Infinity"]
-              },
-              {
-                "type": "string",
-                "enum": ["-Infinity"]
-              },
-              {
-                "type": "string",
-                "enum": ["Infinity", "-Infinity", "NaN"]
-              }
-            ]
-          },
-          "owasp": {
-            "type": "string",
-            "enum": [
-              "A01-broken-access-control",
-              "A02-crypto-failures",
-              "A03-injection",
-              "A04-insecure-design",
-              "A05-security-misconfiguration",
-              "A06-vulnerable-components",
-              "A07-ident-auth-failures",
-              "A08-software-data-integrity",
-              "A09-logging-monitoring-failures",
-              "A10-ssrf",
-              "unassigned"
-            ]
-          },
-          "summary": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 16384
-          },
-          "remediation": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 16384
-          },
-          "reproduction": {
-            "type": "string",
-            "maxLength": 16384
-          },
-          "status": {
-            "type": "string",
-            "enum": ["draft", "verified", "rejected"]
-          },
-          "author": {
-            "type": "string",
-            "enum": ["user", "agent"]
-          },
-          "revision": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "timeCreated": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          },
-          "timeUpdated": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          }
-        },
-        "required": [
-          "id",
-          "runID",
-          "severity",
-          "title",
-          "type",
-          "endpoint",
-          "cvssVector",
-          "cvssScore",
-          "owasp",
-          "summary",
-          "remediation",
-          "reproduction",
-          "status",
-          "author",
-          "revision",
-          "timeCreated",
-          "timeUpdated"
-        ],
-        "additionalProperties": false
-      },
-      "PentestEvidence": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "runID": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "executionID": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "findingID": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "locatorKind": {
-            "type": "string",
-            "enum": ["http-request", "http-response", "http-transaction", "observation", "source-locator", "header"]
-          },
-          "reference": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "excerpt": {
-            "type": "string",
-            "maxLength": 8192
-          },
-          "author": {
-            "type": "string",
-            "enum": ["user", "agent"]
-          },
-          "timeCreated": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          }
-        },
-        "required": ["id", "runID", "findingID", "locatorKind", "excerpt", "author", "timeCreated"],
-        "additionalProperties": false
-      },
-      "PentestBoardState": {
-        "type": "object",
-        "properties": {
-          "findings": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PentestFinding"
-            }
-          },
-          "evidence": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PentestEvidence"
-            }
-          }
-        },
-        "required": ["findings", "evidence"],
-        "additionalProperties": false
-      },
-      "PentestRunReport": {
-        "type": "object",
-        "properties": {
-          "markdown": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 4194304
-          },
-          "generatedAt": {
-            "type": "integer",
-            "exclusiveMinimum": 0
-          }
-        },
-        "required": ["markdown", "generatedAt"],
         "additionalProperties": false
       },
       "ExtensionSecret": {
@@ -35633,6 +36021,10 @@
             "type": "string",
             "enum": ["steer", "queue"]
           },
+          "source": {
+            "type": "string",
+            "enum": ["user", "subagent_board", "subagent_settle", "subagent_advisory", "shell_job", "swarm_room"]
+          },
           "agent": {
             "type": "string"
           },
@@ -35889,6 +36281,201 @@
         "required": ["notes"],
         "additionalProperties": false
       },
+      "SwarmRoomInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "rootSessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "budget": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "explicitBudget": {
+            "type": "boolean"
+          },
+          "head": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["open", "closed"]
+          },
+          "timeCreated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "timeUpdated": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "rootSessionID",
+          "objective",
+          "budget",
+          "explicitBudget",
+          "head",
+          "status",
+          "timeCreated",
+          "timeUpdated"
+        ],
+        "additionalProperties": false
+      },
+      "SwarmRoomMember": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "roomID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "type": {
+            "type": "string",
+            "enum": ["leader", "worker", "human", "system"]
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "taskID": {
+            "type": "string",
+            "pattern": "^tsk_"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "state": {
+            "type": "string",
+            "enum": ["active", "parked", "settled", "blocked", "left"]
+          },
+          "joinedAt": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["id", "roomID", "type", "name", "state", "joinedAt"],
+        "additionalProperties": false
+      },
+      "SwarmRoomLaneState": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["open", "claimed", "done", "blocked"]
+          },
+          "claimedBy": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "claimedByName": {
+            "type": "string"
+          },
+          "updatedSeq": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["key", "title", "status", "updatedSeq"],
+        "additionalProperties": false
+      },
+      "SwarmRoomState": {
+        "type": "object",
+        "properties": {
+          "room": {
+            "$ref": "#/components/schemas/SwarmRoomInfo"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SwarmRoomMember"
+            }
+          },
+          "lanes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SwarmRoomLaneState"
+            }
+          }
+        },
+        "required": ["room", "members", "lanes"],
+        "additionalProperties": false
+      },
+      "SwarmRoomEntryPage": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SwarmRoomEntry"
+            }
+          },
+          "head": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        },
+        "required": ["entries", "head", "hasMore"],
+        "additionalProperties": false
+      },
+      "SwarmRoomHumanPostInput": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 131072
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "replyTo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": ["text"],
+        "additionalProperties": false
+      },
       "SessionMessageAgentSwitched": {
         "type": "object",
         "properties": {
@@ -35970,6 +36557,10 @@
             },
             "required": ["created"],
             "additionalProperties": false
+          },
+          "source": {
+            "type": "string",
+            "enum": ["user", "subagent_board", "subagent_settle", "subagent_advisory", "shell_job", "swarm_room"]
           },
           "text": {
             "type": "string"
@@ -36226,6 +36817,17 @@
           "name": {
             "type": "string"
           },
+          "truncated": {
+            "type": "object",
+            "properties": {
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": ["bytes"],
+            "additionalProperties": false
+          },
           "provider": {
             "type": "object",
             "properties": {
@@ -36465,6 +37067,56 @@
             "$ref": "#/components/schemas/SessionMessageCompaction"
           }
         ]
+      },
+      "SessionInputOutboxItem": {
+        "type": "object",
+        "properties": {
+          "admittedSeq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^msg_"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "prompt": {
+            "$ref": "#/components/schemas/Prompt"
+          },
+          "delivery": {
+            "type": "string",
+            "enum": ["steer", "queue"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["user", "subagent_board", "subagent_settle", "subagent_advisory", "shell_job", "swarm_room"]
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "timeCreated": {
+            "type": "number"
+          },
+          "promotedSeq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["admitted", "promoted", "cancelled"]
+          },
+          "timeCancelled": {
+            "type": "number"
+          }
+        },
+        "required": ["admittedSeq", "id", "sessionID", "prompt", "delivery", "timeCreated", "status"],
+        "additionalProperties": false
       },
       "SessionNextAgentSwitched": {
         "type": "object",
@@ -36746,6 +37398,10 @@
               "delivery": {
                 "type": "string",
                 "enum": ["steer", "queue"]
+              },
+              "source": {
+                "type": "string",
+                "enum": ["user", "subagent_board", "subagent_settle", "subagent_advisory", "shell_job", "swarm_room"]
               }
             },
             "required": ["timestamp", "sessionID", "messageID", "prompt", "delivery"],
@@ -36811,7 +37467,7 @@
               },
               "source": {
                 "type": "string",
-                "enum": ["user", "subagent_board"]
+                "enum": ["user", "subagent_board", "subagent_settle", "subagent_advisory", "shell_job", "swarm_room"]
               },
               "agent": {
                 "type": "string"
@@ -41051,7 +41707,7 @@
         "required": ["id", "type", "data"],
         "additionalProperties": false
       },
-      "PentestRunCreated": {
+      "SwarmRoomPosted": {
         "type": "object",
         "properties": {
           "id": {
@@ -41063,7 +41719,7 @@
           },
           "type": {
             "type": "string",
-            "enum": ["pentest.run.created"]
+            "enum": ["swarm.room.posted"]
           },
           "durable": {
             "type": "object",
@@ -41087,236 +41743,229 @@
           "data": {
             "type": "object",
             "properties": {
-              "runID": {
+              "roomID": {
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 80
+              },
+              "rootSessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "entry": {
+                "$ref": "#/components/schemas/SwarmRoomEntry"
+              }
+            },
+            "required": ["roomID", "rootSessionID", "entry"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "data"],
+        "additionalProperties": false
+      },
+      "SwarmRoomConnected": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["swarm.room.connected"]
+          },
+          "durable": {
+            "type": "object",
+            "properties": {
+              "aggregateID": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": ["aggregateID", "seq", "version"],
+            "additionalProperties": false
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "roomID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "rootSessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "head": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": ["roomID", "rootSessionID", "head"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "data"],
+        "additionalProperties": false
+      },
+      "SessionWhiteboardUpdated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.whiteboard.updated"]
+          },
+          "durable": {
+            "type": "object",
+            "properties": {
+              "aggregateID": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": ["aggregateID", "seq", "version"],
+            "additionalProperties": false
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
               },
               "revision": {
-                "type": "integer",
-                "exclusiveMinimum": 0
-              }
-            },
-            "required": ["runID", "revision"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["id", "type", "data"],
-        "additionalProperties": false
-      },
-      "PentestRunUpdated": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "metadata": {
-            "type": "object"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["pentest.run.updated"]
-          },
-          "durable": {
-            "type": "object",
-            "properties": {
-              "aggregateID": {
-                "type": "string"
-              },
-              "seq": {
-                "type": "integer"
-              },
-              "version": {
-                "type": "integer"
-              }
-            },
-            "required": ["aggregateID", "seq", "version"],
-            "additionalProperties": false
-          },
-          "location": {
-            "$ref": "#/components/schemas/LocationRef"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "runID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "draft",
-                  "queued",
-                  "running",
-                  "waiting",
-                  "completed",
-                  "cancelling",
-                  "cancelled",
-                  "failed",
-                  "interrupted"
-                ]
-              },
-              "stage": {
-                "type": "string",
-                "enum": ["recon", "analysis", "validation", "report"]
-              },
-              "revision": {
-                "type": "integer",
-                "exclusiveMinimum": 0
-              }
-            },
-            "required": ["runID", "status", "stage", "revision"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["id", "type", "data"],
-        "additionalProperties": false
-      },
-      "PentestExecutionQueued": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "metadata": {
-            "type": "object"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["pentest.execution.queued"]
-          },
-          "durable": {
-            "type": "object",
-            "properties": {
-              "aggregateID": {
-                "type": "string"
-              },
-              "seq": {
-                "type": "integer"
-              },
-              "version": {
-                "type": "integer"
-              }
-            },
-            "required": ["aggregateID", "seq", "version"],
-            "additionalProperties": false
-          },
-          "location": {
-            "$ref": "#/components/schemas/LocationRef"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "runID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "executionID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "attempt": {
-                "type": "integer",
-                "exclusiveMinimum": 0
-              }
-            },
-            "required": ["runID", "executionID", "attempt"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["id", "type", "data"],
-        "additionalProperties": false
-      },
-      "PentestExecutionStateChanged": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "metadata": {
-            "type": "object"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["pentest.execution.state.changed"]
-          },
-          "durable": {
-            "type": "object",
-            "properties": {
-              "aggregateID": {
-                "type": "string"
-              },
-              "seq": {
-                "type": "integer"
-              },
-              "version": {
-                "type": "integer"
-              }
-            },
-            "required": ["aggregateID", "seq", "version"],
-            "additionalProperties": false
-          },
-          "location": {
-            "$ref": "#/components/schemas/LocationRef"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "runID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "executionID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "state": {
-                "type": "string",
-                "enum": [
-                  "queued",
-                  "running",
-                  "waiting",
-                  "completed",
-                  "cancelling",
-                  "cancelled",
-                  "failed",
-                  "interrupted"
-                ]
-              },
-              "stage": {
-                "type": "string",
-                "enum": ["recon", "analysis", "validation", "report"]
-              },
-              "fence": {
                 "type": "integer",
                 "minimum": 0
               },
-              "executionRevision": {
-                "type": "integer",
-                "exclusiveMinimum": 0
-              },
-              "runRevision": {
-                "type": "integer",
-                "exclusiveMinimum": 0
+              "actor": {
+                "$ref": "#/components/schemas/WhiteboardActor"
               }
             },
-            "required": ["runID", "executionID", "state", "stage", "fence", "executionRevision", "runRevision"],
+            "required": ["sessionID", "revision", "actor"],
             "additionalProperties": false
           }
         },
         "required": ["id", "type", "data"],
         "additionalProperties": false
       },
-      "PentestEvidenceRecorded": {
+      "WhiteboardParticipant1": {
+        "type": "object",
+        "properties": {
+          "clientID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "pointer": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              },
+              "y": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              }
+            },
+            "required": ["x", "y"],
+            "additionalProperties": false
+          },
+          "selectedElementIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "maxItems": 5000
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              }
+            ]
+          }
+        },
+        "required": ["clientID", "username", "updatedAt"],
+        "additionalProperties": false
+      },
+      "SessionWhiteboardPresence": {
         "type": "object",
         "properties": {
           "id": {
@@ -41328,7 +41977,7 @@
           },
           "type": {
             "type": "string",
-            "enum": ["pentest.evidence.recorded"]
+            "enum": ["session.whiteboard.presence"]
           },
           "durable": {
             "type": "object",
@@ -41352,34 +42001,25 @@
           "data": {
             "type": "object",
             "properties": {
-              "runID": {
+              "sessionID": {
                 "type": "string",
-                "minLength": 1,
-                "maxLength": 80
+                "pattern": "^ses"
               },
-              "author": {
-                "type": "string",
-                "enum": ["user", "agent"]
-              },
-              "evidenceID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "findingID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
+              "participants": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WhiteboardParticipant1"
+                }
               }
             },
-            "required": ["runID", "author", "evidenceID", "findingID"],
+            "required": ["sessionID", "participants"],
             "additionalProperties": false
           }
         },
         "required": ["id", "type", "data"],
         "additionalProperties": false
       },
-      "PentestFindingChanged": {
+      "SessionWhiteboardConnected": {
         "type": "object",
         "properties": {
           "id": {
@@ -41391,7 +42031,7 @@
           },
           "type": {
             "type": "string",
-            "enum": ["pentest.finding.changed"]
+            "enum": ["session.whiteboard.connected"]
           },
           "durable": {
             "type": "object",
@@ -41415,87 +42055,16 @@
           "data": {
             "type": "object",
             "properties": {
-              "runID": {
+              "sessionID": {
                 "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "author": {
-                "type": "string",
-                "enum": ["user", "agent"]
-              },
-              "findingID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "severity": {
-                "type": "string",
-                "enum": ["info", "low", "medium", "high", "critical"]
-              },
-              "status": {
-                "type": "string",
-                "enum": ["draft", "verified", "rejected"]
+                "pattern": "^ses"
               },
               "revision": {
                 "type": "integer",
-                "exclusiveMinimum": 0
+                "minimum": 0
               }
             },
-            "required": ["runID", "author", "findingID", "severity", "status", "revision"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["id", "type", "data"],
-        "additionalProperties": false
-      },
-      "PentestReportGenerated": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "metadata": {
-            "type": "object"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["pentest.report.generated"]
-          },
-          "durable": {
-            "type": "object",
-            "properties": {
-              "aggregateID": {
-                "type": "string"
-              },
-              "seq": {
-                "type": "integer"
-              },
-              "version": {
-                "type": "integer"
-              }
-            },
-            "required": ["aggregateID", "seq", "version"],
-            "additionalProperties": false
-          },
-          "location": {
-            "$ref": "#/components/schemas/LocationRef"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "runID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "generatedAt": {
-                "type": "integer",
-                "exclusiveMinimum": 0
-              }
-            },
-            "required": ["runID", "generatedAt"],
+            "required": ["sessionID", "revision"],
             "additionalProperties": false
           }
         },
@@ -42890,6 +43459,13 @@
               },
               "model": {
                 "$ref": "#/components/schemas/ModelRef"
+              },
+              "when": {
+                "type": "string"
+              },
+              "onFailure": {
+                "type": "string",
+                "enum": ["stop", "continue"]
               }
             },
             "required": ["id", "name", "type", "prompt"],
@@ -42919,6 +43495,13 @@
               },
               "model": {
                 "$ref": "#/components/schemas/ModelRef"
+              },
+              "when": {
+                "type": "string"
+              },
+              "onFailure": {
+                "type": "string",
+                "enum": ["stop", "continue"]
               }
             },
             "required": ["id", "name", "type", "skill", "instructions"],
@@ -42953,6 +43536,80 @@
         },
         "required": ["version", "steps", "delivery"],
         "additionalProperties": false
+      },
+      "AutomationFileChangeTrigger": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["file-change"]
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "debounceMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["type", "paths"],
+        "additionalProperties": false
+      },
+      "AutomationSessionEndTrigger": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["session-end"]
+          },
+          "outcomes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["success", "failure"]
+            }
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          }
+        },
+        "required": ["type"],
+        "additionalProperties": false
+      },
+      "AutomationEventTrigger": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/AutomationFileChangeTrigger"
+          },
+          {
+            "$ref": "#/components/schemas/AutomationSessionEndTrigger"
+          }
+        ]
       },
       "LoopCreateInput": {
         "type": "object",
@@ -42991,6 +43648,9 @@
           "intervalSeconds": {
             "type": "integer",
             "minimum": 60
+          },
+          "cronExpression": {
+            "type": "string"
           },
           "timezone": {
             "type": "string"
@@ -43043,28 +43703,56 @@
           },
           "paused": {
             "type": "boolean"
+          },
+          "eventTrigger": {
+            "$ref": "#/components/schemas/AutomationEventTrigger"
           }
         },
-        "required": ["name", "prompt", "intervalSeconds"],
+        "required": ["name", "prompt"],
         "additionalProperties": false
       },
       "LoopSchedule": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["interval"]
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["interval"]
+              },
+              "seconds": {
+                "type": "integer",
+                "minimum": 60
+              },
+              "timezone": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "seconds", "timezone"],
+            "additionalProperties": false
           },
-          "seconds": {
-            "type": "integer",
-            "minimum": 60
-          },
-          "timezone": {
-            "type": "string"
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["cron"]
+              },
+              "seconds": {
+                "type": "integer",
+                "minimum": 60
+              },
+              "expression": {
+                "type": "string"
+              },
+              "timezone": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "seconds", "expression", "timezone"],
+            "additionalProperties": false
           }
-        },
-        "required": ["type", "seconds", "timezone"],
-        "additionalProperties": false
+        ]
       },
       "LoopStatus": {
         "type": "string",
@@ -43112,6 +43800,9 @@
           },
           "workflow": {
             "$ref": "#/components/schemas/AutomationWorkflow"
+          },
+          "eventTrigger": {
+            "$ref": "#/components/schemas/AutomationEventTrigger"
           },
           "overlapPolicy": {
             "type": "string",
@@ -43267,6 +43958,9 @@
             "type": "integer",
             "minimum": 60
           },
+          "cronExpression": {
+            "type": "string"
+          },
           "timezone": {
             "type": "string"
           },
@@ -43304,6 +43998,9 @@
           },
           "workflow": {
             "$ref": "#/components/schemas/AutomationWorkflow"
+          },
+          "eventTrigger": {
+            "$ref": "#/components/schemas/AutomationEventTrigger"
           },
           "resetAgent": {
             "type": "boolean"
@@ -43410,7 +44107,33 @@
           },
           "trigger": {
             "type": "string",
-            "enum": ["scheduled", "manual"]
+            "enum": ["scheduled", "manual", "file-change", "session-end"]
+          },
+          "triggerPayload": {
+            "type": "object"
+          },
+          "currentStep": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
           },
           "sessionID": {
             "type": "string"
@@ -43524,8 +44247,813 @@
             "additionalProperties": false
           }
         },
-        "required": ["id", "loopID", "scheduledAt", "status", "trigger", "outputs", "time"],
+        "required": ["id", "loopID", "scheduledAt", "status", "trigger", "currentStep", "outputs", "time"],
         "additionalProperties": false
+      },
+      "IntelSeverity": {
+        "type": "string",
+        "enum": ["critical", "high", "medium", "low", "info"]
+      },
+      "IntelAdvisory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/IntelSeverity"
+          },
+          "cvss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "publishedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "title", "severity", "publishedAt", "updatedAt", "source"],
+        "additionalProperties": false
+      },
+      "IntelAdvisoriesPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntelAdvisory"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          }
+        },
+        "required": ["items", "total", "page", "pageSize"],
+        "additionalProperties": false
+      },
+      "IntelKevItem": {
+        "type": "object",
+        "properties": {
+          "cveID": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          },
+          "product": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "dateAdded": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "dueDate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": ["cveID", "vendor", "product", "name", "dateAdded"],
+        "additionalProperties": false
+      },
+      "IntelKevPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntelKevItem"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          }
+        },
+        "required": ["items", "total", "page", "pageSize"],
+        "additionalProperties": false
+      },
+      "IntelNewsItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "title", "url", "publishedAt", "source"],
+        "additionalProperties": false
+      },
+      "IntelNewsPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntelNewsItem"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          }
+        },
+        "required": ["items", "total", "page", "pageSize"],
+        "additionalProperties": false
+      },
+      "IntelTrendPoint": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["date", "count"],
+        "additionalProperties": false
+      },
+      "IntelTrendsResponse": {
+        "type": "object",
+        "properties": {
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntelTrendPoint"
+            }
+          },
+          "windowDays": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["points", "windowDays"],
+        "additionalProperties": false
+      },
+      "IntelFeedKind": {
+        "type": "string",
+        "enum": ["kev", "nvd", "epss", "github", "rss"]
+      },
+      "IntelFeed": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IntelFeedKind"
+          },
+          "url": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "name", "kind", "url", "enabled"],
+        "additionalProperties": false
+      },
+      "IntelFeedCreate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IntelFeedKind"
+          },
+          "url": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": ["name", "kind", "url"],
+        "additionalProperties": false
+      },
+      "IntelFeedUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IntelFeedKind"
+          },
+          "url": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "IntelFeedStatus": {
+        "type": "object",
+        "properties": {
+          "feedID": {
+            "type": "string"
+          },
+          "lastPollAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "lastOk": {
+            "type": "boolean"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "itemCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["feedID"],
+        "additionalProperties": false
+      },
+      "IntelStatusResponse": {
+        "type": "object",
+        "properties": {
+          "lastPollAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "nextPollAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "feeds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntelFeedStatus"
+            }
+          }
+        },
+        "required": ["feeds"],
+        "additionalProperties": false
+      },
+      "WhiteboardElement": {
+        "type": "object"
+      },
+      "WhiteboardFile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "dataURL": {
+            "type": "string"
+          },
+          "created": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "lastRetrieved": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["id", "mimeType", "dataURL", "created"],
+        "additionalProperties": false
+      },
+      "WhiteboardSnapshot": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "elements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WhiteboardElement"
+            }
+          },
+          "files": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WhiteboardFile"
+            }
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["sessionID", "revision", "elements", "files", "updatedAt"],
+        "additionalProperties": false
+      },
+      "WhiteboardPatch": {
+        "type": "object",
+        "properties": {
+          "elements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WhiteboardElement"
+            }
+          },
+          "files": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WhiteboardFile"
+            }
+          },
+          "baseRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["elements"],
+        "additionalProperties": false
+      },
+      "WhiteboardUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "patch": {
+            "$ref": "#/components/schemas/WhiteboardPatch"
+          },
+          "clientID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": ["patch", "clientID", "username"],
+        "additionalProperties": false
+      },
+      "WhiteboardPresenceInput": {
+        "type": "object",
+        "properties": {
+          "clientID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "pointer": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ]
+              },
+              "y": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ]
+              }
+            },
+            "required": ["x", "y"],
+            "additionalProperties": false
+          },
+          "selectedElementIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "maxItems": 5000
+          }
+        },
+        "required": ["clientID", "username"],
+        "additionalProperties": false
+      },
+      "WhiteboardPresenceSnapshot": {
+        "type": "object",
+        "properties": {
+          "participants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WhiteboardParticipant"
+            }
+          }
+        },
+        "required": ["participants"],
+        "additionalProperties": false
+      },
+      "WhiteboardEvents": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SessionWhiteboardUpdated"
+          },
+          {
+            "$ref": "#/components/schemas/SessionWhiteboardPresence"
+          },
+          {
+            "$ref": "#/components/schemas/SessionWhiteboardConnected"
+          }
+        ]
+      },
+      "WhiteboardEventsStream": {
+        "type": "string",
+        "contentSchema": {
+          "$ref": "#/components/schemas/WhiteboardEvents"
+        },
+        "contentMediaType": "application/json"
       },
       "EventModels-devRefreshed": {
         "type": "object",
@@ -43991,6 +45519,10 @@
               "delivery": {
                 "type": "string",
                 "enum": ["steer", "queue"]
+              },
+              "source": {
+                "type": "string",
+                "enum": ["user", "subagent_board", "subagent_settle", "subagent_advisory", "shell_job", "swarm_room"]
               }
             },
             "required": ["timestamp", "sessionID", "messageID", "prompt", "delivery"],
@@ -44034,7 +45566,7 @@
               },
               "source": {
                 "type": "string",
-                "enum": ["user", "subagent_board"]
+                "enum": ["user", "subagent_board", "subagent_settle", "subagent_advisory", "shell_job", "swarm_room"]
               },
               "agent": {
                 "type": "string"
@@ -46293,7 +47825,7 @@
         "required": ["id", "type", "properties"],
         "additionalProperties": false
       },
-      "EventPentestRunCreated": {
+      "EventSwarmRoomPosted": {
         "type": "object",
         "properties": {
           "id": {
@@ -46302,175 +47834,190 @@
           },
           "type": {
             "type": "string",
-            "enum": ["pentest.run.created"]
+            "enum": ["swarm.room.posted"]
           },
           "properties": {
             "type": "object",
             "properties": {
-              "runID": {
+              "roomID": {
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 80
+              },
+              "rootSessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "entry": {
+                "$ref": "#/components/schemas/SwarmRoomEntry"
+              }
+            },
+            "required": ["roomID", "rootSessionID", "entry"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
+      "EventSwarmRoomConnected": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["swarm.room.connected"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "roomID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "rootSessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "head": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": ["roomID", "rootSessionID", "head"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
+      "EventSessionWhiteboardUpdated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.whiteboard.updated"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
               },
               "revision": {
-                "type": "integer",
-                "exclusiveMinimum": 0
-              }
-            },
-            "required": ["runID", "revision"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["id", "type", "properties"],
-        "additionalProperties": false
-      },
-      "EventPentestRunUpdated": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["pentest.run.updated"]
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "runID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "draft",
-                  "queued",
-                  "running",
-                  "waiting",
-                  "completed",
-                  "cancelling",
-                  "cancelled",
-                  "failed",
-                  "interrupted"
-                ]
-              },
-              "stage": {
-                "type": "string",
-                "enum": ["recon", "analysis", "validation", "report"]
-              },
-              "revision": {
-                "type": "integer",
-                "exclusiveMinimum": 0
-              }
-            },
-            "required": ["runID", "status", "stage", "revision"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["id", "type", "properties"],
-        "additionalProperties": false
-      },
-      "EventPentestExecutionQueued": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["pentest.execution.queued"]
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "runID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "executionID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "attempt": {
-                "type": "integer",
-                "exclusiveMinimum": 0
-              }
-            },
-            "required": ["runID", "executionID", "attempt"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["id", "type", "properties"],
-        "additionalProperties": false
-      },
-      "EventPentestExecutionStateChanged": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["pentest.execution.state.changed"]
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "runID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "executionID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "state": {
-                "type": "string",
-                "enum": [
-                  "queued",
-                  "running",
-                  "waiting",
-                  "completed",
-                  "cancelling",
-                  "cancelled",
-                  "failed",
-                  "interrupted"
-                ]
-              },
-              "stage": {
-                "type": "string",
-                "enum": ["recon", "analysis", "validation", "report"]
-              },
-              "fence": {
                 "type": "integer",
                 "minimum": 0
               },
-              "executionRevision": {
-                "type": "integer",
-                "exclusiveMinimum": 0
-              },
-              "runRevision": {
-                "type": "integer",
-                "exclusiveMinimum": 0
+              "actor": {
+                "$ref": "#/components/schemas/WhiteboardActor"
               }
             },
-            "required": ["runID", "executionID", "state", "stage", "fence", "executionRevision", "runRevision"],
+            "required": ["sessionID", "revision", "actor"],
             "additionalProperties": false
           }
         },
         "required": ["id", "type", "properties"],
         "additionalProperties": false
       },
-      "EventPentestEvidenceRecorded": {
+      "WhiteboardParticipant2": {
+        "type": "object",
+        "properties": {
+          "clientID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "pointer": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              },
+              "y": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              }
+            },
+            "required": ["x", "y"],
+            "additionalProperties": false
+          },
+          "selectedElementIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "maxItems": 5000
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              }
+            ]
+          }
+        },
+        "required": ["clientID", "username", "updatedAt"],
+        "additionalProperties": false
+      },
+      "EventSessionWhiteboardPresence": {
         "type": "object",
         "properties": {
           "id": {
@@ -46479,39 +48026,30 @@
           },
           "type": {
             "type": "string",
-            "enum": ["pentest.evidence.recorded"]
+            "enum": ["session.whiteboard.presence"]
           },
           "properties": {
             "type": "object",
             "properties": {
-              "runID": {
+              "sessionID": {
                 "type": "string",
-                "minLength": 1,
-                "maxLength": 80
+                "pattern": "^ses"
               },
-              "author": {
-                "type": "string",
-                "enum": ["user", "agent"]
-              },
-              "evidenceID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "findingID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
+              "participants": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WhiteboardParticipant2"
+                }
               }
             },
-            "required": ["runID", "author", "evidenceID", "findingID"],
+            "required": ["sessionID", "participants"],
             "additionalProperties": false
           }
         },
         "required": ["id", "type", "properties"],
         "additionalProperties": false
       },
-      "EventPentestFindingChanged": {
+      "EventSessionWhiteboardConnected": {
         "type": "object",
         "properties": {
           "id": {
@@ -46520,70 +48058,21 @@
           },
           "type": {
             "type": "string",
-            "enum": ["pentest.finding.changed"]
+            "enum": ["session.whiteboard.connected"]
           },
           "properties": {
             "type": "object",
             "properties": {
-              "runID": {
+              "sessionID": {
                 "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "author": {
-                "type": "string",
-                "enum": ["user", "agent"]
-              },
-              "findingID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "severity": {
-                "type": "string",
-                "enum": ["info", "low", "medium", "high", "critical"]
-              },
-              "status": {
-                "type": "string",
-                "enum": ["draft", "verified", "rejected"]
+                "pattern": "^ses"
               },
               "revision": {
                 "type": "integer",
-                "exclusiveMinimum": 0
+                "minimum": 0
               }
             },
-            "required": ["runID", "author", "findingID", "severity", "status", "revision"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["id", "type", "properties"],
-        "additionalProperties": false
-      },
-      "EventPentestReportGenerated": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["pentest.report.generated"]
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "runID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "generatedAt": {
-                "type": "integer",
-                "exclusiveMinimum": 0
-              }
-            },
-            "required": ["runID", "generatedAt"],
+            "required": ["sessionID", "revision"],
             "additionalProperties": false
           }
         },
@@ -47519,10 +49008,6 @@
       "description": "Root-scoped public client-state routes."
     },
     {
-      "name": "pentest",
-      "description": "Authorization-bounded security test runs with a durable shared workboard."
-    },
-    {
       "name": "event",
       "description": "Instance event stream route."
     },
@@ -47639,6 +49124,14 @@
     {
       "name": "loops",
       "description": "Location-scoped recurring prompt loops and run history."
+    },
+    {
+      "name": "intel",
+      "description": "Cached security intelligence (zero-config reads, per-user feed settings)."
+    },
+    {
+      "name": "TurenOS HttpApi",
+      "description": "Experimental HttpApi surface for selected instance routes."
     },
     {
       "name": "pty",

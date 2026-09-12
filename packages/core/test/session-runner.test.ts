@@ -1232,6 +1232,7 @@ describe("SessionRunnerLLM", () => {
         "shell_job",
         "harness_review_request",
         "handoff_session",
+        "terminal",
       ])
       const reviewTool = requests[0]?.tools.find((tool) => tool.name === "harness_review_request")
       expect(reviewTool?.inputSchema).toMatchObject({
@@ -2626,6 +2627,7 @@ describe("SessionRunnerLLM", () => {
         "shell_job",
         "harness_review_request",
         "handoff_session",
+        "terminal",
       ])
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Use tools" },

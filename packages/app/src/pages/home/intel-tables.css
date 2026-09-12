@@ -36,6 +36,43 @@
   text-transform: uppercase;
 }
 
+.intel-table-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.intel-table-score .intel-table-sort,
+.intel-table-date .intel-table-sort {
+  justify-content: flex-end;
+}
+.intel-table-sort:hover {
+  color: var(--v2-text-text-base);
+}
+.intel-table-sort[data-active] {
+  color: var(--v2-text-text-base);
+}
+.intel-table-sort-arrow {
+  width: 10px;
+  flex: none;
+  opacity: 0;
+  font-size: 9px;
+}
+.intel-table-sort:hover .intel-table-sort-arrow {
+  opacity: 0.5;
+}
+.intel-table-sort[data-active] .intel-table-sort-arrow {
+  opacity: 1;
+}
+
 .intel-table tbody tr:last-child td {
   border-bottom: 0;
 }

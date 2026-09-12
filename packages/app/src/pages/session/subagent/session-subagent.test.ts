@@ -95,15 +95,14 @@ describe("durable subagent presentation", () => {
       ],
       [
         {
-          id: "note_1",
+          id: "entry_1",
+          seq: 1,
           kind: "finding",
-          title: "Evidence",
-          body: "Found it",
-          authorAgent: "research",
-          timeCreated: 3_000,
-          timeUpdated: 4_000,
+          text: "Found it",
+          actor: { type: "worker", name: "research" },
+          timeCreated: 4_000,
         },
-      ],
+      ] as unknown as Parameters<typeof sessionSwarmProgress>[2],
     )
 
     expect(progress).toMatchObject({

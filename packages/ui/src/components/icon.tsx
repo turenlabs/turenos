@@ -13,6 +13,7 @@ import BotIcon from "@hugeicons/core-free-icons/BotIcon"
 import Brain02Icon from "@hugeicons/core-free-icons/Brain02Icon"
 import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon"
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon"
+import CatIcon from "@hugeicons/core-free-icons/CatIcon"
 import CancelCircleIcon from "@hugeicons/core-free-icons/CancelCircleIcon"
 import CheckListIcon from "@hugeicons/core-free-icons/CheckListIcon"
 import CheckmarkCircle01Icon from "@hugeicons/core-free-icons/CheckmarkCircle01Icon"
@@ -25,6 +26,7 @@ import CodeSquareIcon from "@hugeicons/core-free-icons/CodeSquareIcon"
 import Comment01Icon from "@hugeicons/core-free-icons/Comment01Icon"
 import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon"
 import ConsoleIcon from "@hugeicons/core-free-icons/ConsoleIcon"
+import CookieIcon from "@hugeicons/core-free-icons/CookieIcon"
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon"
 import CornerDownLeftIcon from "@hugeicons/core-free-icons/CornerDownLeftIcon"
 import CpuIcon from "@hugeicons/core-free-icons/CpuIcon"
@@ -96,6 +98,8 @@ const icons = {
   brain: Brain02Icon,
   fork: GitForkIcon,
   "bullet-list": LeftToRightListBulletIcon,
+  cat: CatIcon,
+  cookie: CookieIcon,
   "check-small": Tick02Icon,
   "chevron-down": ChevronDownIcon,
   "chevron-left": ChevronLeftIcon,

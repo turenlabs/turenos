@@ -135,8 +135,10 @@ const layer = Layer.effect(
         withLock(
           input.sessionID,
           Effect.gen(function* () {
-            const state = yield* resolve(input.sessionID)
-            if (!state) return yield* new NotFoundError({ sessionID: input.sessionID })
+            // No binding yet: the agent provisions the session's shared terminal itself, the
+            // same way the browser tools start their browser on demand. A binding that exists
+            // but was marked private still refuses.
+            const state = (yield* resolve(input.sessionID)) ?? (yield* createUnlocked(input.sessionID))
             if (!state.shared) return yield* new NotSharedError({ sessionID: input.sessionID })
 
             const before = yield* pty.snapshot(state.ptyID)
@@ -184,7 +186,7 @@ export const ToolOutput = Schema.Struct({ output: Schema.String, cursor: Schema.
 export function tool(service: Interface, permission: PermissionV2.Interface) {
   return Tool.make({
     description:
-      "Write input to the human's shared interactive terminal and return new output after it becomes idle. This is the same shell process the human sees, so cwd, exported environment variables, and shell state persist between calls. Use only when a shared terminal is active.",
+      "Write input to this session's shared interactive terminal and return new output after it becomes idle. Calling it provisions the terminal on first use; it appears in the app's Terminal panel where the human can watch, type, or take over. Because it is the same shell process, cwd, exported environment variables, and shell state persist between calls. If the human marked the terminal private, this call fails — ask them to enable sharing. For ordinary commands that do not need the shared shell, use bash instead.",
     input: ToolInput,
     output: ToolOutput,
     execute: (input, context) =>
@@ -211,8 +213,8 @@ export function tool(service: Interface, permission: PermissionV2.Interface) {
               new ToolFailure({
                 message:
                   error._tag === "SessionTerminal.NotSharedError"
-                    ? "The shared terminal is private. Ask the user to enable agent sharing."
-                    : "No shared terminal is active. Ask the user to open the Terminal button.",
+                    ? "The shared terminal is private. Ask the user to enable agent sharing in the Terminal panel."
+                    : "The shared terminal exited before the command finished.",
               }),
           ),
         ),

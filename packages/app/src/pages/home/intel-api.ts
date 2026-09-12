@@ -12,6 +12,10 @@ import type {
 } from "@turenlabs/client"
 
 export type IntelSeverity = "critical" | "high" | "medium" | "low" | "info"
+export type IntelSortOrder = "asc" | "desc"
+export type AdvisorySort = "publishedAt" | "severity" | "cvss" | "source" | "title"
+export type KevSort = "cveID" | "name" | "vendor" | "dateAdded" | "dueDate"
+export type NewsSort = "source" | "title" | "publishedAt"
 export type AdvisoriesPage = ServerIntelAdvisoriesOutput
 export type KevPage = ServerIntelKevOutput
 export type NewsPage = ServerIntelNewsOutput
@@ -29,11 +33,22 @@ export type AdvisoriesQuery = {
   readonly pageSize?: number
   readonly severity?: IntelSeverity
   readonly search?: string
+  readonly sort?: AdvisorySort
+  readonly order?: IntelSortOrder
 }
 
-export type PageQuery = {
+export type KevQuery = {
   readonly page?: number
   readonly pageSize?: number
+  readonly sort?: KevSort
+  readonly order?: IntelSortOrder
+}
+
+export type NewsQuery = {
+  readonly page?: number
+  readonly pageSize?: number
+  readonly sort?: NewsSort
+  readonly order?: IntelSortOrder
 }
 
 export type IntelFeedKind = IntelFeed["kind"]
@@ -55,8 +70,8 @@ export type FeedCreate = {
 
 export type IntelApi = {
   advisories: (input?: AdvisoriesQuery) => Promise<AdvisoriesPage>
-  kev: (input?: PageQuery) => Promise<KevPage>
-  news: (input?: PageQuery) => Promise<NewsPage>
+  kev: (input?: KevQuery) => Promise<KevPage>
+  news: (input?: NewsQuery) => Promise<NewsPage>
   feeds: () => Promise<readonly IntelFeed[]>
   status: () => Promise<IntelStatus>
   poll: () => Promise<ServerIntelPollOutput>
@@ -89,8 +104,8 @@ export function intelApi(client: unknown): IntelApi {
   const shaped = client as {
     readonly "server.intel"?: {
       readonly advisories: (input?: AdvisoriesQuery) => Promise<AdvisoriesPage>
-      readonly kev: (input?: PageQuery) => Promise<KevPage>
-      readonly news: (input?: PageQuery) => Promise<NewsPage>
+      readonly kev: (input?: KevQuery) => Promise<KevPage>
+      readonly news: (input?: NewsQuery) => Promise<NewsPage>
       readonly feeds: () => Promise<readonly IntelFeed[]>
       readonly status: () => Promise<IntelStatus>
       readonly poll: () => Promise<ServerIntelPollOutput>
@@ -101,8 +116,8 @@ export function intelApi(client: unknown): IntelApi {
     readonly v2?: {
       readonly intel?: {
         readonly advisories: (input?: AdvisoriesQuery) => Response<AdvisoriesPage>
-        readonly kev: (input?: PageQuery) => Response<KevPage>
-        readonly news: (input?: PageQuery) => Response<NewsPage>
+        readonly kev: (input?: KevQuery) => Response<KevPage>
+        readonly news: (input?: NewsQuery) => Response<NewsPage>
         readonly feeds: () => Response<readonly IntelFeed[]>
         readonly status: () => Response<IntelStatus>
         readonly poll: () => Response<ServerIntelPollOutput>

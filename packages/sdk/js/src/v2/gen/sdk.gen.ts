@@ -115,25 +115,6 @@ import type {
   PartUpdateResponses,
   PathGetErrors,
   PathGetResponses,
-  PentestCancelRunErrors,
-  PentestCancelRunInput,
-  PentestCancelRunResponses,
-  PentestCreateRunErrors,
-  PentestCreateRunInput,
-  PentestCreateRunResponses,
-  PentestGetBoardErrors,
-  PentestGetBoardResponses,
-  PentestGetExecutionErrors,
-  PentestGetExecutionResponses,
-  PentestGetReportErrors,
-  PentestGetReportResponses,
-  PentestGetRunErrors,
-  PentestGetRunResponses,
-  PentestListRunsErrors,
-  PentestListRunsResponses,
-  PentestStartRunErrors,
-  PentestStartRunInput,
-  PentestStartRunResponses,
   PermissionListErrors,
   PermissionListResponses,
   PermissionReplyErrors,
@@ -278,6 +259,7 @@ import type {
   StorageSetInput,
   StorageSetResponses,
   SubtaskPartInput,
+  SwarmRoomHumanPostInput,
   SyncHistoryListErrors,
   SyncHistoryListResponses,
   SyncReplayErrors,
@@ -481,6 +463,12 @@ import type {
   V2SessionRevertStageResponses,
   V2SessionShellErrors,
   V2SessionShellResponses,
+  V2SessionSwarmRoomEntriesErrors,
+  V2SessionSwarmRoomEntriesResponses,
+  V2SessionSwarmRoomErrors,
+  V2SessionSwarmRoomPostErrors,
+  V2SessionSwarmRoomPostResponses,
+  V2SessionSwarmRoomResponses,
   V2SessionSwitchAgentErrors,
   V2SessionSwitchAgentResponses,
   V2SessionSwitchModelErrors,
@@ -1808,179 +1796,6 @@ export class Storage extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
-    })
-  }
-}
-
-export class Pentest extends HeyApiClient {
-  public listRuns<ThrowOnError extends boolean = false>(
-    parameters?: {
-      cursor?: string
-      limit?: string
-      status?:
-        | "draft"
-        | "queued"
-        | "running"
-        | "waiting"
-        | "completed"
-        | "cancelling"
-        | "cancelled"
-        | "failed"
-        | "interrupted"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "cursor" },
-            { in: "query", key: "limit" },
-            { in: "query", key: "status" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<PentestListRunsResponses, PentestListRunsErrors, ThrowOnError>({
-      url: "/pentest/runs",
-      ...options,
-      ...params,
-    })
-  }
-
-  public createRun<ThrowOnError extends boolean = false>(
-    parameters?: {
-      pentestCreateRunInput?: PentestCreateRunInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ key: "pentestCreateRunInput", map: "body" }] }])
-    return (options?.client ?? this.client).post<PentestCreateRunResponses, PentestCreateRunErrors, ThrowOnError>({
-      url: "/pentest/runs",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  public getRun<ThrowOnError extends boolean = false>(
-    parameters: {
-      runID: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "runID" }] }])
-    return (options?.client ?? this.client).get<PentestGetRunResponses, PentestGetRunErrors, ThrowOnError>({
-      url: "/pentest/runs/{runID}",
-      ...options,
-      ...params,
-    })
-  }
-
-  public startRun<ThrowOnError extends boolean = false>(
-    parameters: {
-      runID: string
-      pentestStartRunInput?: PentestStartRunInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "runID" },
-            { key: "pentestStartRunInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<PentestStartRunResponses, PentestStartRunErrors, ThrowOnError>({
-      url: "/pentest/runs/{runID}/start",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  public cancelRun<ThrowOnError extends boolean = false>(
-    parameters: {
-      runID: string
-      pentestCancelRunInput?: PentestCancelRunInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "runID" },
-            { key: "pentestCancelRunInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<PentestCancelRunResponses, PentestCancelRunErrors, ThrowOnError>({
-      url: "/pentest/runs/{runID}/cancel",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  public getExecution<ThrowOnError extends boolean = false>(
-    parameters: {
-      executionID: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "executionID" }] }])
-    return (options?.client ?? this.client).get<PentestGetExecutionResponses, PentestGetExecutionErrors, ThrowOnError>({
-      url: "/pentest/executions/{executionID}",
-      ...options,
-      ...params,
-    })
-  }
-
-  public getBoard<ThrowOnError extends boolean = false>(
-    parameters: {
-      runID: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "runID" }] }])
-    return (options?.client ?? this.client).get<PentestGetBoardResponses, PentestGetBoardErrors, ThrowOnError>({
-      url: "/pentest/runs/{runID}/board",
-      ...options,
-      ...params,
-    })
-  }
-
-  public getReport<ThrowOnError extends boolean = false>(
-    parameters: {
-      runID: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "runID" }] }])
-    return (options?.client ?? this.client).get<PentestGetReportResponses, PentestGetReportErrors, ThrowOnError>({
-      url: "/pentest/runs/{runID}/report",
-      ...options,
-      ...params,
     })
   }
 }
@@ -6407,6 +6222,100 @@ export class Session3 extends HeyApiClient {
   }
 
   /**
+   * Get the swarm room
+   *
+   * Retrieve the swarm room shared by a Session and its subagents: objective, members, lane claims, and head.
+   */
+  public swarmRoom<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<V2SessionSwarmRoomResponses, V2SessionSwarmRoomErrors, ThrowOnError>({
+      url: "/api/session/{sessionID}/room",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List swarm room entries
+   *
+   * Retrieve room entries sequenced after `after`. The room's head is the compare-and-swap cursor for coordination writes.
+   */
+  public swarmRoomEntries<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      after?: string
+      limit?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "after" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      V2SessionSwarmRoomEntriesResponses,
+      V2SessionSwarmRoomEntriesErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/room/entries",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Post a human message to the swarm room
+   *
+   * Post a human-authored entry to a Session's swarm room. Agent members are notified through their durable input queue.
+   */
+  public swarmRoomPost<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      swarmRoomHumanPostInput: SwarmRoomHumanPostInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "swarmRoomHumanPostInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      V2SessionSwarmRoomPostResponses,
+      V2SessionSwarmRoomPostErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/room/entries",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Compact session
    *
    * Compact a session conversation.
@@ -7923,6 +7832,8 @@ export class Intel extends HeyApiClient {
       pageSize?: string
       severity?: IntelSeverity
       search?: string
+      sort?: "publishedAt" | "severity" | "cvss" | "source" | "title"
+      order?: "asc" | "desc"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7935,6 +7846,8 @@ export class Intel extends HeyApiClient {
             { in: "query", key: "pageSize" },
             { in: "query", key: "severity" },
             { in: "query", key: "search" },
+            { in: "query", key: "sort" },
+            { in: "query", key: "order" },
           ],
         },
       ],
@@ -7955,6 +7868,8 @@ export class Intel extends HeyApiClient {
     parameters?: {
       page?: string
       pageSize?: string
+      sort?: "cveID" | "name" | "vendor" | "dateAdded" | "dueDate"
+      order?: "asc" | "desc"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7965,6 +7880,8 @@ export class Intel extends HeyApiClient {
           args: [
             { in: "query", key: "page" },
             { in: "query", key: "pageSize" },
+            { in: "query", key: "sort" },
+            { in: "query", key: "order" },
           ],
         },
       ],
@@ -7985,6 +7902,8 @@ export class Intel extends HeyApiClient {
     parameters?: {
       page?: string
       pageSize?: string
+      sort?: "source" | "title" | "publishedAt"
+      order?: "asc" | "desc"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7995,6 +7914,8 @@ export class Intel extends HeyApiClient {
           args: [
             { in: "query", key: "page" },
             { in: "query", key: "pageSize" },
+            { in: "query", key: "sort" },
+            { in: "query", key: "order" },
           ],
         },
       ],
@@ -8356,11 +8277,6 @@ export class ForgeClient extends HeyApiClient {
   private _storage?: Storage
   get storage(): Storage {
     return (this._storage ??= new Storage({ client: this.client }))
-  }
-
-  private _pentest?: Pentest
-  get pentest(): Pentest {
-    return (this._pentest ??= new Pentest({ client: this.client }))
   }
 
   private _event?: Event

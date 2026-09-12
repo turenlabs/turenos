@@ -107,16 +107,29 @@ export const StatusResponse = Schema.Struct({
 }).annotate({ identifier: "Intel.StatusResponse" })
 export type StatusResponse = typeof StatusResponse.Type
 
-const PageQuery = Schema.Struct({
-  page: Schema.optional(Schema.NumberFromString),
-  pageSize: Schema.optional(Schema.NumberFromString),
-})
+const SortOrder = Schema.Union([Schema.Literal("asc"), Schema.Literal("desc")])
 
 const AdvisoriesQuery = Schema.Struct({
   page: Schema.optional(Schema.NumberFromString),
   pageSize: Schema.optional(Schema.NumberFromString),
   severity: Schema.optional(Severity),
   search: Schema.optional(Schema.String),
+  sort: Schema.optional(Schema.Literals(["publishedAt", "severity", "cvss", "source", "title"])),
+  order: Schema.optional(SortOrder),
+})
+
+const KevQuery = Schema.Struct({
+  page: Schema.optional(Schema.NumberFromString),
+  pageSize: Schema.optional(Schema.NumberFromString),
+  sort: Schema.optional(Schema.Literals(["cveID", "name", "vendor", "dateAdded", "dueDate"])),
+  order: Schema.optional(SortOrder),
+})
+
+const NewsQuery = Schema.Struct({
+  page: Schema.optional(Schema.NumberFromString),
+  pageSize: Schema.optional(Schema.NumberFromString),
+  sort: Schema.optional(Schema.Literals(["source", "title", "publishedAt"])),
+  order: Schema.optional(SortOrder),
 })
 
 const TrendsQuery = Schema.Struct({
@@ -155,7 +168,7 @@ export const IntelGroup = HttpApiGroup.make("server.intel")
   )
   .add(
     HttpApiEndpoint.get("intel.kev", "/api/intel/kev", {
-      query: PageQuery,
+      query: KevQuery,
       success: KevPage,
     }).annotateMerge(
       OpenApi.annotations({
@@ -167,7 +180,7 @@ export const IntelGroup = HttpApiGroup.make("server.intel")
   )
   .add(
     HttpApiEndpoint.get("intel.news", "/api/intel/news", {
-      query: PageQuery,
+      query: NewsQuery,
       success: NewsPage,
     }).annotateMerge(
       OpenApi.annotations({

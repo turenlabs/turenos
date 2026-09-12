@@ -15,7 +15,7 @@ import { SessionSchema } from "@turenlabs/core/session/schema"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
 import { SystemContext } from "@turenlabs/core/system-context"
 import { interruptName, listName, peekName, sendName, spawnName, waitName } from "@turenlabs/core/tool/subagent"
-import { TeamBoardTool } from "@turenlabs/core/tool/team-board"
+import { SwarmRoomTool } from "@turenlabs/core/tool/swarm-room"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 import { agentHost, host } from "./plugin/host"
@@ -105,8 +105,8 @@ describe("AgentGuidance", () => {
           interruptName,
           listName,
           peekName,
-          TeamBoardTool.postName,
-          TeamBoardTool.readName,
+          SwarmRoomTool.postName,
+          SwarmRoomTool.readName,
         ].every((name) => generation.baseline.includes(`<tool>${name}</tool>`)),
       ).toBe(true)
       expect(
@@ -151,14 +151,14 @@ describe("AgentGuidance", () => {
 
       expect(generation.baseline).toContain("maximum subagent depth")
       expect(generation.baseline).toContain("Team coordination remains available")
-      expect(generation.baseline).toContain(`<tool>${TeamBoardTool.postName}</tool>`)
-      expect(generation.baseline).toContain(`<tool>${TeamBoardTool.readName}</tool>`)
+      expect(generation.baseline).toContain(`<tool>${SwarmRoomTool.postName}</tool>`)
+      expect(generation.baseline).toContain(`<tool>${SwarmRoomTool.readName}</tool>`)
       expect(generation.baseline).not.toContain(`<tool>${spawnName}</tool>`)
 
       authority = SessionTaskV2.Authority.make({
         parentPermissions: [
           { action: "*", resource: "*", effect: "allow" },
-          { action: TeamBoardTool.postName, resource: "*", effect: "deny" },
+          { action: SwarmRoomTool.postName, resource: "*", effect: "deny" },
         ],
         ancestorPermissionSets: [],
         childPermissions: [{ action: "*", resource: "*", effect: "allow" }],
@@ -167,8 +167,8 @@ describe("AgentGuidance", () => {
         commands: [],
       })
       const denied = yield* SystemContext.initialize(yield* context.guidance.load({ agent: selected, sessionID }))
-      expect(denied.baseline).toContain(`<tool>${TeamBoardTool.readName}</tool>`)
-      expect(denied.baseline).not.toContain(`<tool>${TeamBoardTool.postName}</tool>`)
+      expect(denied.baseline).toContain(`<tool>${SwarmRoomTool.readName}</tool>`)
+      expect(denied.baseline).not.toContain(`<tool>${SwarmRoomTool.postName}</tool>`)
     }),
   )
 

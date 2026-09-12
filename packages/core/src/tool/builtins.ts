@@ -20,7 +20,6 @@ import { MemoryTool } from "./memory"
 import { ReflectionTool } from "./reflection"
 import { DecompileTool } from "./decompile"
 import { HexviewTool } from "./hexview"
-import { PentestTool } from "./pentest"
 import { YaraTool } from "./yara"
 import { EmailSecurityTools } from "./email-security-tools"
 import { EmailAuthenticateTools } from "./email-authenticate-tools"
@@ -89,7 +88,6 @@ export const node = makeLocationNode({
     BinwalkScanTools.node,
     CarveEmbeddedTool.node,
     DebugSymbolsTools.node,
-    PentestTool.node,
     LobbyRoomContextTool.node,
   ],
 })

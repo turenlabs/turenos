@@ -30,22 +30,6 @@ const TRIVY_SEVERITIES = ["UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
 
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4, unknown: 5 }
 
-/** Resolve the `path` arg against the workspace; reject escapes and missing paths. */
-async function resolveScanPath(raw: unknown, ctx: IntegrationContext): Promise<string> {
-  if (raw !== undefined && typeof raw !== "string") throw new ToolError(`"path" must be a string`)
-  const resolved = path.resolve(ctx.workspace, raw ?? ".")
-  const rel = path.relative(ctx.workspace, resolved)
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    throw new ToolError(`"path" must resolve inside the workspace (${ctx.workspace}); got "${raw}"`)
-  }
-  try {
-    await fs.stat(resolved)
-  } catch {
-    throw new ToolError(`scan path does not exist: ${resolved}`)
-  }
-  return resolved
-}
-
 async function tempReportPath(ctx: IntegrationContext): Promise<string> {
   await fs.mkdir(ctx.cacheDir, { recursive: true })
   return path.join(ctx.cacheDir, `trivy-${randomUUID()}.sarif`)
@@ -139,7 +123,7 @@ async function fsScan(args: Record<string, unknown>, ctx: IntegrationContext) {
   const bin = await Scanner.which(TOOL)
   if (!bin) return { installed: false, tool: TOOL, installHint: INSTALL_HINT }
 
-  const target = await resolveScanPath(args["path"], ctx)
+  const target = (await Scanner.resolveScanTarget(args["path"], ctx)).abs
   const scanners = parseScannersArg(args["scanners"])
   const severity = parseSeverityArg(args["severity"])
   const report = await tempReportPath(ctx)
@@ -162,7 +146,7 @@ async function configScan(args: Record<string, unknown>, ctx: IntegrationContext
   const bin = await Scanner.which(TOOL)
   if (!bin) return { installed: false, tool: TOOL, installHint: INSTALL_HINT }
 
-  const target = await resolveScanPath(args["path"], ctx)
+  const target = (await Scanner.resolveScanTarget(args["path"], ctx)).abs
   const report = await tempReportPath(ctx)
   const argv = [bin, "config", "--format", "sarif", "--output", report, target]
   return runTrivy("trivy config", argv, report, target, ctx)

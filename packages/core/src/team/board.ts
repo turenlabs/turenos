@@ -353,5 +353,5 @@ const layer = Layer.effect(
 
 // Global rather than Location-scoped: a board row is keyed by its team's root Session and the
 // service touches no filesystem, so it resolves in the server's global graph where HTTP handlers
-// can read it. A Location-scoped node here would be unreachable from the pentest routes.
+// can read it.
 export const node = makeGlobalNode({ service: Service, layer, deps: [Database.node] })

@@ -52,6 +52,23 @@ describe("SessionTerminal", () => {
     }),
   )
 
+  terminalTest("provisions the shared terminal on first agent use", () =>
+    Effect.gen(function* () {
+      const terminal = yield* SessionTerminal.Service
+      const sessionID = SessionSchema.ID.make("ses_agent_provisioned_terminal")
+
+      const result = yield* terminal.execute({
+        sessionID,
+        input: "printf 'provisioned:%s\\n' yes\n",
+        idleMs: 500,
+        timeoutMs: 10_000,
+      })
+
+      expect(result.output).toContain("provisioned:yes")
+      expect((yield* terminal.get(sessionID))?.shared).toBe(true)
+    }),
+  )
+
   terminalTest("blocks agent access while sharing is disabled", () =>
     Effect.gen(function* () {
       const terminal = yield* SessionTerminal.Service

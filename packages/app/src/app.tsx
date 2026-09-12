@@ -60,8 +60,6 @@ import { ErrorPage } from "./pages/error"
 import { useCheckServerHealth } from "./utils/server-health"
 import { legacySessionHref, legacySessionServer, requireServerKey, sessionHref } from "./utils/session-route"
 import { createSessionLineage } from "@/pages/session/session-lineage"
-import { AnalysisShell, AppSecPage, useAnalysisLastTab } from "@/pages/analysis"
-import { analysisDestinationHref, ANALYSIS_DEFAULT_DESTINATION } from "@/pages/analysis-state"
 
 import { SessionPage, SessionRouteErrorBoundary, TargetSessionRouteContent } from "@/pages/session"
 import { NewHome, LegacyHome } from "@/pages/home"
@@ -73,14 +71,6 @@ const ExtendPage = lazy(() => import("@/pages/extend"))
 const SystemMapPage = lazy(() => import("@/pages/system-map"))
 const SessionReplayPage = lazy(() => import("@/pages/session-replay"))
 const LobbyPage = lazy(() => import("@/pages/lobby"))
-const PentestPage = lazy(() => import("@/pages/pentest"))
-const PentestRunPage = lazy(() => import("@/pages/pentest").then((module) => ({ default: module.PentestRunPage })))
-
-const AnalysisPenTestingPage = () => (
-  <AnalysisShell>
-    <PentestPage />
-  </AnalysisShell>
-)
 
 const LobbyBetaRoute = () => {
   const settings = useSettings()
@@ -104,12 +94,6 @@ const AutomationsGate = (props: ParentProps) => {
   )
 }
 
-const AnalysisPentestRunPage = () => (
-  <AnalysisShell>
-    <PentestRunPage />
-  </AnalysisShell>
-)
-
 const AutomationsRoute = () => (
   <AutomationsGate>
     <Suspense fallback={<div class="size-full min-h-0 bg-v2-background-bg-deep" aria-busy="true" />}>
@@ -118,25 +102,6 @@ const AutomationsRoute = () => (
   </AutomationsGate>
 )
 
-const AnalysisAppSecPage = () => (
-  <AnalysisShell>
-    <AppSecPage />
-  </AnalysisShell>
-)
-
-// The Workbench entry point ("/analysis") restores whichever tab
-// was last active (AnalysisShell records it on every visit); a visitor who
-// has never picked one lands on AppSec, the first tab in the strip, not on
-// whichever destination used to be hardcoded here.
-const AnalysisIndexRedirect = () => {
-  const lastTab = useAnalysisLastTab()
-  const navigate = useNavigate()
-  createEffect(() => {
-    if (!lastTab.ready()) return
-    navigate(analysisDestinationHref(lastTab.get() ?? ANALYSIS_DEFAULT_DESTINATION), { replace: true })
-  })
-  return null
-}
 
 const SessionRoute = () => {
   const settings = useSettings()
@@ -709,12 +674,6 @@ function Routes(props: { serverScoped?: JSX.Element }) {
             route stays server-agnostic while its page owns the SDK connection. */}
         <Route path="/automations/:id?" component={AutomationsRoute} />
         <Route path="/loops/:id?" component={LoopsLegacyRedirect} />
-        <Route path="/analysis" component={AnalysisIndexRedirect} />
-        <Route path="/analysis/appsec" component={AnalysisAppSecPage} />
-        <Route path="/analysis/pen-testing" component={AnalysisPenTestingPage} />
-        <Route path="/analysis/*" component={() => <Navigate href="/analysis/appsec" />} />
-        <Route path="/pentest" component={AnalysisPenTestingPage} />
-        <Route path="/pentest/:runID" component={AnalysisPentestRunPage} />
       </Show>
       <Route path="/new-session" component={DraftRoute} />
     </>

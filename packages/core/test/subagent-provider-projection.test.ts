@@ -124,12 +124,20 @@ const expectedShapes = {
     properties: ["proposal_id"],
     required: ["proposal_id"],
   },
-  board_post: {
-    properties: ["body", "evidence", "kind", "supersedes", "title"],
-    required: ["body", "kind", "title"],
+  room_post: {
+    properties: ["baseRevision", "evidenceRefs", "kind", "lane", "lanes", "replyTo", "state", "text", "to"],
+    required: ["text"],
   },
-  board_read: {
-    properties: ["cursor", "include_superseded", "kind"],
+  room_read: {
+    properties: ["after", "limit"],
+    required: [],
+  },
+  room_claim: {
+    properties: ["baseRevision", "lane"],
+    required: ["baseRevision", "lane"],
+  },
+  room_wait: {
+    properties: ["after", "kinds", "timeoutMs"],
     required: [],
   },
 }

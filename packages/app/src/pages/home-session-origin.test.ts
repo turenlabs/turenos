@@ -17,14 +17,12 @@ describe("session origin", () => {
   })
 
   test("classifies generated run sessions separately from manual sessions", () => {
-    expect(sessionOrigin({ id: "ses_pentest_run123" })).toBe("pentest")
-    expect(sessionOrigin({ id: "ses-pentest-team-run123" })).toBe("pentest")
+    expect(sessionOrigin({ id: "ses_loop_run123" })).toBe("automation")
     const removedOrigin = ["rever", "sing"].join("")
     expect(sessionOrigin({ id: `ses_${removedOrigin}_abc123` })).toBe("manual")
     expect(sessionOrigin({ id: `ses-${removedOrigin}-team-run123` })).toBe("manual")
     expect(sessionOrigin({ id: "ses_manual" })).toBe("manual")
     expect(sessionOriginLabel("automation")).toBe("Workflow")
-    expect(sessionOriginLabel("pentest")).toBe("Pentest")
   })
 
   test("keeps both groups in their original order", () => {
@@ -33,12 +31,10 @@ describe("session origin", () => {
       { session: { id: "ses_loop_1" } },
       { session: { id: "ses_b" } },
       { session: { id: "ses_loop_2" } },
-      { session: { id: "ses_pentest_1" } },
     ]
-    const { manual, automation, background } = partitionBySessionOrigin(records)
+    const { manual, automation } = partitionBySessionOrigin(records)
     expect(manual.map((r) => r.session.id)).toEqual(["ses_a", "ses_b"])
     expect(automation.map((r) => r.session.id)).toEqual(["ses_loop_1", "ses_loop_2"])
-    expect(background.map((r) => r.session.id)).toEqual(["ses_pentest_1"])
   })
 
   test("keeps personal focus to manual work but promotes any blocked run", () => {
@@ -46,10 +42,7 @@ describe("session origin", () => {
       homeSessionFocusGroup({ origin: "automation", status: "working", selectedProject: false, pinned: false }),
     ).toBeUndefined()
     expect(
-      homeSessionFocusGroup({ origin: "pentest", status: "working", selectedProject: false, pinned: false }),
-    ).toBeUndefined()
-    expect(
-      homeSessionFocusGroup({ origin: "pentest", status: "attention", selectedProject: false, pinned: false }),
+      homeSessionFocusGroup({ origin: "automation", status: "attention", selectedProject: false, pinned: false }),
     ).toBe("attention")
     expect(homeSessionFocusGroup({ origin: "manual", status: "working", selectedProject: true, pinned: false })).toBe(
       "working",

@@ -148,7 +148,7 @@ sidecar is therefore a supervisor and transport host, not a second session engin
 The server has two API families:
 
 - `@turenlabs/server` defines the standard `server.*` groups used by the generated Client API.
-- `packages/forge` adds the product's root, instance, event, PTY, sync, security, pentest, and
+- `packages/forge` adds the product's root, instance, event, PTY, sync, security, and
   compatibility routes and supplies concrete handlers.
 
 [`packages/forge/src/server/routes/instance/httpapi/server.ts`](../packages/forge/src/server/routes/instance/httpapi/server.ts)

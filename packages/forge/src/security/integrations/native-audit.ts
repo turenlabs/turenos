@@ -102,23 +102,6 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-async function resolveTargetDir(raw: unknown, ctx: IntegrationContext): Promise<string> {
-  if (raw !== undefined && typeof raw !== "string") throw new ToolError(`"path" must be a string`)
-  const target = path.resolve(ctx.workspace, typeof raw === "string" && raw.trim() !== "" ? raw : ".")
-  const rel = path.relative(ctx.workspace, target)
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    throw new ToolError(`"path" must resolve inside the workspace (${ctx.workspace})`)
-  }
-  const stat = await fs.stat(target).catch(() => undefined)
-  if (!stat?.isDirectory()) throw new ToolError(`"path" is not a directory in the workspace: ${rel === "" ? "." : rel}`)
-  return target
-}
-
-function display(ctx: IntegrationContext, target: string): string {
-  const rel = path.relative(ctx.workspace, target)
-  return rel === "" ? "." : rel
-}
-
 function ecosystemArg(raw: unknown): EcosystemName | undefined {
   if (raw === undefined) return undefined
   if (typeof raw === "string" && (ECOSYSTEMS as readonly string[]).includes(raw)) return raw as EcosystemName
@@ -460,18 +443,19 @@ const RUNNERS: readonly [EcosystemName, (target: string) => Promise<EcosystemRes
 ]
 
 async function nativeDependencyAudit(args: Record<string, unknown>, ctx: IntegrationContext): Promise<unknown> {
-  const target = await resolveTargetDir(args["path"], ctx)
+  const target = await Scanner.resolveScanTarget(args["path"], ctx)
+  if (!target.isDirectory) throw new ToolError(`"path" is not a directory in the workspace: ${target.rel}`)
   const filter = ecosystemArg(args["ecosystem"])
 
   const ecosystems: EcosystemResult[] = []
   for (const [name, runner] of RUNNERS) {
     if (filter && filter !== name) continue
-    const result = await runner(target)
+    const result = await runner(target.abs)
     if (result) ecosystems.push(result)
   }
   if (ecosystems.length === 0) {
     throw new ToolError(
-      `no ${filter ?? "supported"} ecosystem detected in ${display(ctx, target)}; ` +
+      `no ${filter ?? "supported"} ecosystem detected in ${target.rel}; ` +
         "looked for package.json + lockfile, requirements.txt/pyproject.toml, Cargo.lock, go.mod",
     )
   }
@@ -492,7 +476,7 @@ async function nativeDependencyAudit(args: Record<string, unknown>, ctx: Integra
 
   return {
     tool: "native-audit",
-    target: display(ctx, target),
+    target: target.rel,
     ecosystems,
     total: all.length,
     summary: { bySeverity: countBySeverity(all) },

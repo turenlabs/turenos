@@ -1,4 +1,5 @@
 import { type ComponentProps, splitProps, Show } from "solid-js"
+import { PixelCritter } from "./pixel-critter"
 
 const segmenter =
   typeof Intl !== "undefined" && "Segmenter" in Intl
@@ -17,6 +18,7 @@ export interface AvatarProps extends ComponentProps<"div"> {
   background?: string
   foreground?: string
   size?: "small" | "normal" | "large"
+  pixelSeed?: string
 }
 
 export function Avatar(props: AvatarProps) {
@@ -26,6 +28,7 @@ export function Avatar(props: AvatarProps) {
     "background",
     "foreground",
     "size",
+    "pixelSeed",
     "class",
     "classList",
     "style",
@@ -47,7 +50,14 @@ export function Avatar(props: AvatarProps) {
         ...(!src && split.foreground ? { "--avatar-fg": split.foreground } : {}),
       }}
     >
-      <Show when={src} fallback={first(split.fallback)}>
+      <Show
+        when={src}
+        fallback={
+          <Show when={split.pixelSeed} fallback={first(split.fallback)}>
+            {(seed) => <PixelCritter seed={seed()} />}
+          </Show>
+        }
+      >
         {(src) => <img src={src()} draggable={false} data-slot="avatar-image" />}
       </Show>
     </div>

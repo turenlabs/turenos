@@ -902,7 +902,7 @@ describe("session HttpApi", () => {
           expect(yield* responseJson(response)).toEqual({
             _tag: "InvalidRequestError",
             kind: "session_transcript_adoption",
-            message: `Legacy session execution could not be stopped safely: ${session.id}`,
+            message: "Legacy message ID is incompatible with Session V2: msgincompatible",
           })
         }
 
@@ -945,7 +945,7 @@ describe("session HttpApi", () => {
           expect(yield* responseJson(response)).toEqual({
             _tag: "InvalidRequestError",
             kind: "session_transcript_adoption",
-            message: `Legacy session execution could not be stopped safely: ${session.id}`,
+            message: "Legacy message ID is incompatible with Session V2: msgincompatible",
           })
         }
       }),

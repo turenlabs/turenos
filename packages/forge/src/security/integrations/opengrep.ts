@@ -40,18 +40,6 @@ function tail(text: string, max = 400): string {
   return text.trim().slice(-max)
 }
 
-async function resolveTarget(raw: unknown, ctx: IntegrationContext): Promise<string> {
-  if (raw !== undefined && typeof raw !== "string") throw new ToolError(`"path" must be a string`)
-  const target = path.resolve(ctx.workspace, typeof raw === "string" && raw.trim() !== "" ? raw : ".")
-  const rel = path.relative(ctx.workspace, target)
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    throw new ToolError(`"path" must resolve inside the workspace (${ctx.workspace})`)
-  }
-  const stat = await fs.stat(target).catch(() => undefined)
-  if (!stat) throw new ToolError(`"path" does not exist in the workspace: ${rel === "" ? "." : rel}`)
-  return target
-}
-
 function configArg(raw: unknown): string {
   if (raw === undefined) return "auto"
   if (typeof raw !== "string" || raw.trim() === "") {
@@ -64,7 +52,7 @@ function configArg(raw: unknown): string {
 }
 
 async function opengrepScan(args: Record<string, unknown>, ctx: IntegrationContext): Promise<unknown> {
-  const target = await resolveTarget(args["path"], ctx)
+  const target = await Scanner.resolveScanTarget(args["path"], ctx)
   const config = configArg(args["config"])
 
   const bin = await Scanner.which("opengrep")
@@ -74,7 +62,7 @@ async function opengrepScan(args: Record<string, unknown>, ctx: IntegrationConte
   const sarifPath = path.join(ctx.cacheDir, `scan-${randomUUID()}.sarif`)
   try {
     const result = await Scanner.run(
-      [bin, "scan", "--config", config, "--sarif", "--output", sarifPath, "--quiet", target],
+      [bin, "scan", "--config", config, "--sarif", "--output", sarifPath, "--quiet", target.abs],
       { cwd: ctx.workspace, timeoutMs: TIMEOUT_MS },
     )
     if (result.timedOut) {
@@ -97,11 +85,10 @@ async function opengrepScan(args: Record<string, unknown>, ctx: IntegrationConte
     const all = Scanner.parseSarif(sarif)
     const sorted = [...all].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
     const findings = sorted.slice(0, MAX_FINDINGS)
-    const rel = path.relative(ctx.workspace, target)
     return {
       installed: true,
       tool: "opengrep",
-      target: rel === "" ? "." : rel,
+      target: target.rel,
       config,
       findings,
       total: all.length,

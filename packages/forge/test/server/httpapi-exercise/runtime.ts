@@ -11,6 +11,8 @@ export type Runtime = {
   InstanceRef: (typeof import("../../../src/effect/instance-ref"))["InstanceRef"]
   InstanceStore: (typeof import("../../../src/project/instance-store"))["InstanceStore"]
   Session: (typeof import("../../../src/session/session"))["Session"]
+  Auth: (typeof import("../../../src/auth"))["Auth"]
+  PermissionChecks: (typeof import("@turenlabs/core/permission-checks"))["PermissionChecks"]
   Todo: (typeof import("../../../src/session/todo"))["Todo"]
   Worktree: (typeof import("../../../src/worktree"))["Worktree"]
   Project: (typeof import("../../../src/project/project"))["Project"]
@@ -35,6 +37,8 @@ export function runtime() {
     const instanceRef = await import("../../../src/effect/instance-ref")
     const instanceStore = await import("../../../src/project/instance-store")
     const session = await import("../../../src/session/session")
+    const auth = await import("../../../src/auth")
+    const permissionChecks = await import("@turenlabs/core/permission-checks")
     const todo = await import("../../../src/session/todo")
     const worktree = await import("../../../src/worktree")
     const project = await import("../../../src/project/project")
@@ -53,6 +57,8 @@ export function runtime() {
       InstanceRef: instanceRef.InstanceRef,
       InstanceStore: instanceStore.InstanceStore,
       Session: session.Session,
+      Auth: auth.Auth,
+      PermissionChecks: permissionChecks.PermissionChecks,
       Todo: todo.Todo,
       Worktree: worktree.Worktree,
       Project: project.Project,

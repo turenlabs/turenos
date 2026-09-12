@@ -17,6 +17,7 @@ import { Loop } from "@turenlabs/core/loop"
 import { SessionExecutionLocal } from "@turenlabs/core/session/execution/local"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
 import { TeamBoard } from "@turenlabs/core/team/board"
+import { SwarmRoom } from "@turenlabs/core/team/room"
 import { Whiteboard } from "@turenlabs/core/session/whiteboard"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
@@ -43,6 +44,7 @@ const applicationServices = LayerNode.group([
   SessionExecution.node,
   SessionTaskV2.node,
   TeamBoard.node,
+  SwarmRoom.node,
   Whiteboard.node,
   PermissionSaved.node,
   PtyTicket.node,

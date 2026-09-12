@@ -6,7 +6,6 @@ import * as Socket from "effect/unstable/socket/Socket"
 import { FSUtil } from "@turenlabs/core/fs-util"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 import { McpTool } from "@turenlabs/core/tool/mcp"
-import { pentestLauncherNode as workbenchPentestLauncherNode } from "@turenlabs/core/tool/pentest-launcher"
 import { BatouScanner } from "@turenlabs/core/tool/batou-scanner"
 import * as Observability from "@turenlabs/core/observability"
 import { Account } from "@/account/account"
@@ -24,7 +23,6 @@ import { LSP } from "@/lsp/lsp"
 import { MCP } from "@/mcp"
 import { McpAuth } from "@/mcp/auth"
 import { McpToolSource } from "@/mcp/tool-source"
-import { PentestWorkbenchLauncher } from "@/pentest/workbench-launcher"
 import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
 import { PluginPtyEnvironment } from "@/plugin/pty-environment"
@@ -58,10 +56,9 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { MoveSession } from "@turenlabs/core/control-plane/move-session"
 import { Database } from "@turenlabs/core/database/database"
 import { Storage } from "@turenlabs/core/storage"
-import { Pentest } from "@turenlabs/core/pentest"
 import { TeamBoard } from "@turenlabs/core/team/board"
+import { SwarmRoom } from "@turenlabs/core/team/room"
 import { Whiteboard } from "@turenlabs/core/session/whiteboard"
-import { PentestExecutionWorker } from "@/pentest/execution-worker"
 import { AppNodeBuilderV1 } from "@/effect/app-node-builder-v1"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { httpClient } from "@turenlabs/core/effect/app-node-platform"
@@ -90,7 +87,6 @@ import { lazy } from "@/util/lazy"
 import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@turenlabs/server/cors"
 import { ServerAuth } from "@/server/auth"
 import { InstanceHttpApi, RootHttpApi } from "./api"
-import { PentestApi } from "./groups/pentest"
 import { Api } from "@turenlabs/server/api"
 import { PublicApi } from "./public"
 import {
@@ -118,7 +114,6 @@ import { ptyConnectHandlers, ptyHandlers } from "./handlers/pty"
 import { questionHandlers } from "./handlers/question"
 import { securityHandlers } from "./handlers/security"
 import { storageHandlers } from "./handlers/storage"
-import { pentestHandlers } from "./handlers/pentest"
 import { sessionHandlers } from "./handlers/session"
 import { syncHandlers } from "./handlers/sync"
 import { handlers } from "@turenlabs/server/handlers"
@@ -173,10 +168,6 @@ const rootApiRoutes = HttpApiBuilder.layer(RootHttpApi).pipe(
 const eventApiRoutes = HttpApiBuilder.layer(EventApi).pipe(
   Layer.provide(eventHandlers),
   Layer.provide([httpApiAuthLayer, workspaceRoutingLive, instanceContextLayer]),
-)
-const pentestApiRoutes = HttpApiBuilder.layer(PentestApi).pipe(
-  Layer.provide(pentestHandlers),
-  Layer.provide([httpApiAuthLayer, workspaceRoutingLive, instanceContextLayer, schemaErrorLayer]),
 )
 const ptyConnectApiRoutes = HttpApiBuilder.layer(PtyConnectApi).pipe(
   Layer.provide(ptyConnectHandlers),
@@ -240,10 +231,9 @@ const app = LayerNode.group([
   Memory.node,
   Storage.node,
   ExtensionRuntime.node,
-  Pentest.node,
   TeamBoard.node,
+  SwarmRoom.node,
   Whiteboard.node,
-  PentestExecutionWorker.node,
   PermissionChecks.node,
   Auth.node,
   Account.node,
@@ -323,13 +313,11 @@ export function createRoutes(
     ...securityProxyReplacement,
     [BatouScanner.node, BatouScannerLive.node],
     [McpTool.sourceNode, McpToolSource.node],
-    [workbenchPentestLauncherNode, PentestWorkbenchLauncher.node],
     [InstanceStore.bootstrapNode, InstanceBootstrap.node],
   ])
 
   return Layer.mergeAll(
     rootApiRoutes,
-    pentestApiRoutes,
     eventApiRoutes,
     ptyConnectApiRoutes,
     instanceRoutes,

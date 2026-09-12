@@ -151,7 +151,7 @@ const layer = Layer.effect(
               ),
             }
           : {}
-      const [subagentTools, handoffTools, terminalBinding, mcpDefinitions] = yield* Effect.all(
+      const [subagentTools, handoffTools, mcpDefinitions] = yield* Effect.all(
         [
           subagents.forExecution({
             sessionID: input.sessionID,
@@ -159,14 +159,15 @@ const layer = Layer.effect(
             model: input.model,
           }),
           handoff.forExecution({ control, model: input.model, taskOwned }),
-          terminal.get(input.sessionID),
           source.list({ directory: input.directory }),
         ] as const,
         { concurrency: "unbounded" },
       )
-      const terminalTools: Readonly<Record<string, Tool.AnyTool>> = terminalBinding?.shared
-        ? { terminal: SessionTerminal.tool(terminal, permissions) }
-        : {}
+      // The shared terminal is always in the catalog — it self-provisions on first call,
+      // like the browser tools, so the model knows the capability exists even while off.
+      const terminalTools: Readonly<Record<string, Tool.AnyTool>> = {
+        terminal: SessionTerminal.tool(terminal, permissions),
+      }
       const mcpExclusions: Exclusion[] = []
       const usableMcpDefinitions: McpTool.Definition[] = []
       const mcpNames = new Set([

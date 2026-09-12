@@ -1,0 +1,20 @@
+{
+  "missing": [
+    "bedrock-converse-cache/writes-then-reads-cachepoint-on-identical-second-call",
+    "gemini/gemini-2-5-flash-image-tool-result",
+    "openai-chat/openai-chat-gpt-4o-mini-image-tool-result",
+    "openai-responses-websocket/openai-responses-websocket-gpt-4-1-mini-tool-loop",
+    "xai/xai-grok-3-mini-text",
+    "xai/xai-grok-3-mini-tool-call",
+    "xai/xai-grok-4-3-tool-loop"
+  ],
+  "stale": [
+    "anthropic-messages/anthropic-opus-4-7-tool-loop",
+    "openai-chat/openai-chat-gpt-4o-mini-tool-loop",
+    "openai-compatible-chat/groq-llama-3-3-70b-tool-loop",
+    "openai-compatible-chat/openrouter-claude-opus-4-7-tool-loop",
+    "openai-compatible-chat/openrouter-gpt-4o-mini-tool-loop",
+    "openai-compatible-chat/openrouter-gpt-5-5-tool-loop",
+    "openai-responses/openai-responses-gpt-5-5-tool-loop"
+  ]
+}

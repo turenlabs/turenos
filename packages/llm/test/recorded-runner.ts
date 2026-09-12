@@ -1,7 +1,25 @@
 import { test, type TestOptions } from "bun:test"
 import { Effect, type Layer } from "effect"
+import { readFileSync } from "node:fs"
+import * as path from "node:path"
+import { fileURLToPath } from "node:url"
 import { testEffect } from "./lib/effect"
 import { cassetteName, classifiedTags, matchesSelected, missingEnv, unique } from "./recorded-utils"
+
+const RECORDINGS_DEBT = (() => {
+  const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "recordings-debt.json")
+  const parsed = JSON.parse(readFileSync(file, "utf8")) as { missing?: string[]; stale?: string[] }
+  return { missing: new Set(parsed.missing ?? []), stale: new Set(parsed.stale ?? []) }
+})()
+
+const debtError = (name: string, message: string, testOptions?: number | TestOptions) =>
+  test(
+    name,
+    () => {
+      throw new Error(message)
+    },
+    testOptions,
+  )
 
 export type RecordedBody<A, E, R> = Effect.Effect<A, E, R> | (() => Effect.Effect<A, E, R>)
 
@@ -70,8 +88,28 @@ export const recordedEffectGroup = <
       if (missingEnv([...(input.options.requires ?? []), ...(caseOptions.requires ?? [])]).length > 0) {
         return test.skip(name, () => {}, testOptions)
       }
-    } else if (!input.cassetteExists(cassette)) {
-      return test.skip(name, () => {}, testOptions)
+    } else {
+      const exists = input.cassetteExists(cassette)
+      if (!exists && RECORDINGS_DEBT.missing.has(cassette)) return test.skip(name, () => {}, testOptions)
+      if (!exists && RECORDINGS_DEBT.stale.has(cassette))
+        return debtError(
+          name,
+          `cassette "${cassette}" is listed as stale in test/fixtures/recordings-debt.json but no file exists — move it to "missing"`,
+          testOptions,
+        )
+      if (!exists)
+        return debtError(
+          name,
+          `recorded cassette "${cassette}" is missing — record it with RECORD=true (requires provider credentials) or acknowledge the debt in test/fixtures/recordings-debt.json`,
+          testOptions,
+        )
+      if (RECORDINGS_DEBT.missing.has(cassette))
+        return debtError(
+          name,
+          `cassette "${cassette}" exists but is listed as missing in test/fixtures/recordings-debt.json — remove the entry`,
+          testOptions,
+        )
+      if (RECORDINGS_DEBT.stale.has(cassette)) return test.skip(name, () => {}, testOptions)
     }
 
     return testEffect(

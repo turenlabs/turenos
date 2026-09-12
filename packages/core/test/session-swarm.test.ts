@@ -31,7 +31,7 @@ describe("SessionSwarm.normalize", () => {
         },
       },
     })
-    expect(first.parts?.[1]?.text).toContain("call board_read")
+    expect(first.parts?.[1]?.text).toContain("call room_read")
     expect(first.parts?.[1]?.text).toContain("same provider turn")
     expect(first.parts?.[1]?.text).toContain("omit write_roots and commands")
     expect(first.parts?.[1]?.text).toContain("final wait_agents barrier")

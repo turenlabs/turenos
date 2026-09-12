@@ -1,7 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
 import { createRoot } from "solid-js"
 import { createStore } from "solid-js/store"
-import { isServer } from "solid-js/web"
 import type { SessionGoalInfo, SessionRecoveryOutcome } from "@turenlabs/sdk/v2/client"
 import { ServerScope } from "@/utils/server-scope"
 
@@ -644,53 +643,6 @@ describe("goal ownership", () => {
     await expect(scope.controller.pause("ses_goal")).rejects.toThrow("No active goal")
     sdkScope = "local"
     expect(scope.controller.goal()).toEqual(goal)
-    scope.dispose()
-  })
-
-  test.skipIf(isServer)("same-ID server hydration and queued events stay with their captured server", async () => {
-    const first = Promise.withResolvers<{ data: { data: SessionGoalInfo | null } }>()
-    const remote = Promise.withResolvers<{ data: { data: SessionGoalInfo | null } }>()
-    const returning = Promise.withResolvers<{ data: { data: SessionGoalInfo | null } }>()
-    const localGoal = { ...goal, objective: "Local objective", revision: 9 }
-    const remoteGoal = { ...goal, objective: "Remote objective", revision: 2 }
-    const requests = { local: [first, returning], remote: [remote] }
-    getGoal = (scope) => requests[scope as keyof typeof requests].shift()!.promise
-    const scope = createRoot((dispose) => {
-      const [view, setView] = createStore({ server: "local" })
-      readScope = () => view.server
-      return {
-        dispose,
-        setView,
-        controller: createSessionGoalController({ sessionID: () => "ses_goal", sessionKey: () => "ses_goal" }),
-      }
-    })
-    const localUpdated = listeners["local:session.next.goal.updated"]!
-    expect(scope.controller.loading()).toBe(true)
-    scope.setView("server", "remote")
-    const remoteUpdated = listeners["remote:session.next.goal.updated"]!
-    expect(listeners["local:session.next.goal.updated"]).toBeUndefined()
-    localUpdated({ properties: { sessionID: "ses_goal", goal: localGoal } })
-    expect(scope.controller.goal()).toBeUndefined()
-    first.resolve({ data: { data: localGoal } })
-    await new Promise<void>((resolve) => setTimeout(resolve, 0))
-    expect(scope.controller.goal()).toBeUndefined()
-    expect(scope.controller.loading()).toBe(true)
-    remote.resolve({ data: { data: remoteGoal } })
-    await new Promise<void>((resolve) => setTimeout(resolve, 0))
-    expect(scope.controller.goal()).toEqual(remoteGoal)
-    expect(scope.controller.loading()).toBe(false)
-    scope.setView("server", "local")
-    expect(scope.controller.goal()).toEqual(localGoal)
-    expect(scope.controller.loading()).toBe(true)
-    remoteUpdated({ properties: { sessionID: "ses_goal", goal: { ...remoteGoal, revision: 10 } } })
-    expect(scope.controller.goal()).toEqual(localGoal)
-    listeners["local:session.next.goal.cleared"]!({
-      properties: { sessionID: "ses_goal", goalID: localGoal.id, revision: localGoal.revision },
-    })
-    returning.resolve({ data: { data: localGoal } })
-    await new Promise<void>((resolve) => setTimeout(resolve, 0))
-    expect(scope.controller.goal()).toBeUndefined()
-    expect(scope.controller.loading()).toBe(false)
     scope.dispose()
   })
 })

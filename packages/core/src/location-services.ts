@@ -49,7 +49,6 @@ import { ReadToolFileSystem } from "./tool/read-filesystem"
 import { ToolRegistry } from "./tool/registry"
 import { SessionToolSnapshot } from "./tool/session-snapshot"
 import { SubagentTool } from "./tool/subagent"
-import { pentestLauncherNode } from "./tool/pentest-launcher"
 import { YolkTool } from "./tool/yolk"
 import { DecompilerRuntime } from "./tool/decompiler-runtime"
 import { YaraRuntime } from "./tool/yara-runtime"
@@ -122,7 +121,6 @@ export const locationServices = LayerNode.group(
     McpTool.node,
     SessionToolSnapshot.node,
     SubagentTool.node,
-    pentestLauncherNode,
     HandoffTool.node,
     SessionRunnerModel.node,
     SessionHarness.node,

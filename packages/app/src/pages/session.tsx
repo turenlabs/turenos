@@ -2207,11 +2207,11 @@ export default function Page() {
     const request = liveSwarmRequest()
     if (!request) return
     const tasks = request.time === undefined ? [] : liveTasks().filter((task) => task.time.created >= request.time!)
-    const notes =
+    const entries =
       request.time === undefined
         ? []
-        : subagents.board().filter((note) => (note.timeUpdated ?? note.timeCreated ?? request.time!) >= request.time!)
-    return sessionSwarmProgress(request.invocation, tasks, notes)
+        : subagents.roomEntries().filter((entry) => entry.timeCreated >= request.time!)
+    return sessionSwarmProgress(request.invocation, tasks, entries)
   })
   const liveTimeline = createMemo<SessionTimelineItem[]>(() =>
     liveMessages()
@@ -2725,7 +2725,9 @@ export default function Page() {
               )}
               subagents={() => (
                 <Show
-                  when={subagents.taskIDs().length > 0 || subagents.loadFailure() || subagents.boardVisible()}
+                  when={
+                    subagents.taskIDs().length > 0 || subagents.loadFailure() || !!subagents.room()
+                  }
                   fallback={
                     <div class="flex min-h-full items-center justify-center rounded-control border border-border-weak-base bg-background-base px-6 py-12 text-center">
                       <p class="text-13-regular text-text-weak">

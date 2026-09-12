@@ -301,6 +301,70 @@ export const pollOnce = (fetchFn: FetchFn = defaultFetch, now: number = Date.now
     return { cache }
   })
 
+export type IntelOrder = "asc" | "desc"
+
+const SEVERITY_RANK: Record<Severity, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 }
+
+const dir = (order?: IntelOrder) => (order === "asc" ? 1 : -1)
+
+// Missing values trail sorted rows in both directions.
+const trailing = <T>(a: T | undefined, b: T | undefined, compare: (a: T, b: T) => number) =>
+  a === undefined ? (b === undefined ? 0 : 1) : b === undefined ? -1 : compare(a, b)
+
+export const sortAdvisories = (items: ReadonlyArray<Advisory>, sort?: string, order?: IntelOrder) => {
+  const sign = dir(order)
+  switch (sort) {
+    case "severity":
+      return [...items].sort((a, b) => sign * (SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]))
+    case "cvss":
+      return [...items].sort((a, b) => trailing(a.cvss, b.cvss, (x, y) => sign * (x - y)))
+    case "source":
+      return [...items].sort((a, b) => sign * a.source.localeCompare(b.source) || b.publishedAt - a.publishedAt)
+    case "title":
+      return [...items].sort((a, b) => sign * a.title.localeCompare(b.title))
+    case "publishedAt":
+      return [...items].sort((a, b) => sign * (a.publishedAt - b.publishedAt))
+    default:
+      return items
+  }
+}
+
+export const sortKev = (items: ReadonlyArray<KevItem>, sort?: string, order?: IntelOrder) => {
+  const sign = dir(order)
+  switch (sort) {
+    case "cveID":
+      return [...items].sort((a, b) => sign * a.cveID.localeCompare(b.cveID))
+    case "name":
+      return [...items].sort((a, b) => sign * a.name.localeCompare(b.name))
+    case "vendor":
+      return [...items].sort(
+        (a, b) =>
+          sign * `${a.vendor} / ${a.product}`.localeCompare(`${b.vendor} / ${b.product}`) ||
+          b.dateAdded - a.dateAdded,
+      )
+    case "dateAdded":
+      return [...items].sort((a, b) => sign * (a.dateAdded - b.dateAdded))
+    case "dueDate":
+      return [...items].sort((a, b) => trailing(a.dueDate, b.dueDate, (x, y) => sign * (x - y)))
+    default:
+      return items
+  }
+}
+
+export const sortNews = (items: ReadonlyArray<NewsItem>, sort?: string, order?: IntelOrder) => {
+  const sign = dir(order)
+  switch (sort) {
+    case "source":
+      return [...items].sort((a, b) => sign * a.source.localeCompare(b.source) || b.publishedAt - a.publishedAt)
+    case "title":
+      return [...items].sort((a, b) => sign * a.title.localeCompare(b.title))
+    case "publishedAt":
+      return [...items].sort((a, b) => sign * (a.publishedAt - b.publishedAt))
+    default:
+      return items
+  }
+}
+
 export const paginate = <T>(items: ReadonlyArray<T>, page?: number, pageSize?: number) => {
   const safePage = page !== undefined && Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1
   const safeSize =

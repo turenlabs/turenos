@@ -27,6 +27,7 @@ import { SessionTerminal } from "@turenlabs/schema/session-terminal"
 import { SessionRecovery } from "@turenlabs/schema/session-recovery"
 import { SessionTask } from "@turenlabs/schema/session-task"
 import { Permission } from "@turenlabs/schema/permission"
+import { SwarmRoom } from "@turenlabs/schema/swarm-room"
 import { TeamBoard } from "@turenlabs/schema/team-board"
 import { Event } from "@turenlabs/schema/event"
 
@@ -971,6 +972,71 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S>(sessionLo
             identifier: "v2.session.team_board",
             summary: "Get the subagent team board",
             description: "Retrieve the durable communication board shared by a Session and its subagents.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.swarmRoom", "/api/session/:sessionID/room", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: SwarmRoom.State }).annotate({
+          identifier: "SessionSwarmRoomResponse",
+        }),
+        error: [SessionNotFoundError, SwarmRoom.NotFoundError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "v2.session.swarm_room",
+            summary: "Get the swarm room",
+            description:
+              "Retrieve the swarm room shared by a Session and its subagents: objective, members, lane claims, and head.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.swarmRoomEntries", "/api/session/:sessionID/room/entries", {
+        params: { sessionID: Session.ID },
+        query: Schema.Struct({
+          after: Schema.NumberFromString.pipe(Schema.decodeTo(NonNegativeInt), Schema.optional),
+          limit: Schema.NumberFromString.pipe(Schema.decodeTo(PositiveInt), Schema.optional),
+        }),
+        success: Schema.Struct({ data: SwarmRoom.EntryPage }).annotate({
+          identifier: "SessionSwarmRoomEntriesResponse",
+        }),
+        error: [SessionNotFoundError, SwarmRoom.NotFoundError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "v2.session.swarm_room_entries",
+            summary: "List swarm room entries",
+            description:
+              "Retrieve room entries sequenced after `after`. The room's head is the compare-and-swap cursor for coordination writes.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.swarmRoomPost", "/api/session/:sessionID/room/entries", {
+        params: { sessionID: Session.ID },
+        payload: SwarmRoom.HumanPostInput,
+        success: Schema.Struct({ data: SwarmRoom.Entry }).annotate({
+          identifier: "SessionSwarmRoomPostResponse",
+        }),
+        error: [
+          SessionNotFoundError,
+          SwarmRoom.NotFoundError,
+          SwarmRoom.ConflictError,
+          SwarmRoom.InvalidStateError,
+          SwarmRoom.ForbiddenError,
+        ],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "v2.session.swarm_room_post",
+            summary: "Post a human message to the swarm room",
+            description:
+              "Post a human-authored entry to a Session's swarm room. Agent members are notified through their durable input queue.",
           }),
         ),
     )

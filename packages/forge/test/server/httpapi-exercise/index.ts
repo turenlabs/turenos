@@ -211,6 +211,23 @@ const scenarios: Scenario[] = [
       },
       "status",
     ),
+  http.protected
+    .get("/global/permission-checks", "global.permissionChecks.get")
+    .global()
+    .json(200, (body) => {
+      object(body)
+      boolean(body.enforced)
+    }),
+  http.protected
+    .put("/global/permission-checks", "global.permissionChecks.update")
+    .global()
+    .mutating()
+    .seeded((ctx) => ctx.permissionChecks())
+    .at((ctx) => ({ path: "/global/permission-checks", body: { enforced: ctx.state } }))
+    .json(200, (body, ctx) => {
+      object(body)
+      check(body.enforced === ctx.state, "permission checks update should echo the written policy")
+    }),
   http.protected.get("/path", "path.get").json(200, (body, ctx) => {
     object(body)
     check(body.directory === ctx.directory, "directory should resolve from x-forge-directory")
@@ -395,6 +412,48 @@ const scenarios: Scenario[] = [
     }))
     .status(204, undefined, "status"),
   http.protected.get("/provider", "provider.list").json(),
+  http.protected.get("/provider/auth", "provider.auth").json(200, (body) => {
+    isRecord(body)
+  }),
+  http.protected.get("/provider/usage", "provider.usage").json(200, (body) => {
+    object(body)
+    check(typeof body.start === "number" && typeof body.end === "number", "usage should report a window")
+    array(body.providers)
+    array(body.quotas)
+  }),
+  http.protected
+    .put("/auth/{providerID}", "auth.set")
+    .mutating()
+    .at((ctx) => ({
+      path: route("/auth/{providerID}", { providerID: "exerciser" }),
+      headers: ctx.headers(),
+      body: { type: "api", key: "exerciser-api-key" },
+    }))
+    .jsonEffect(
+      200,
+      (body, ctx) =>
+        Effect.gen(function* () {
+          check(body === true, "auth.set should return true")
+          const stored = yield* ctx.authGet("exerciser")
+          check(stored?.type === "api" && stored.key === "exerciser-api-key", "auth.set should persist the credential")
+        }),
+      "status",
+    ),
+  http.protected
+    .delete("/auth/{providerID}", "auth.remove")
+    .mutating()
+    .seeded((ctx) => ctx.authSet("exerciser-remove", { type: "api", key: "exerciser-remove-key" }))
+    .at((ctx) => ({ path: route("/auth/{providerID}", { providerID: "exerciser-remove" }), headers: ctx.headers() }))
+    .jsonEffect(
+      200,
+      (body, ctx) =>
+        Effect.gen(function* () {
+          check(body === true, "auth.remove should return true")
+          const stored = yield* ctx.authGet("exerciser-remove")
+          check(stored === undefined, "auth.remove should delete the credential")
+        }),
+      "status",
+    ),
   http.protected.get("/permission", "permission.list").json(200, array),
   http.protected
     .post("/permission/{requestID}/reply", "permission.reply.invalid")
@@ -1157,6 +1216,96 @@ const scenarios: Scenario[] = [
       headers: ctx.headers(),
     }))
     .json(404, object, "status"),
+  http.protected
+    .post("/api/session/interrupt-all", "v2.session.interruptAll")
+    .mutating()
+    .json(200, (body) => {
+      object(body)
+      object(body.data)
+      check(body.data.interrupted === 0, "no active sessions should report zero interruptions")
+      check(body.data.failed === 0, "no active sessions should report zero failures")
+    }),
+  http.protected
+    .get("/api/session/{sessionID}/terminal", "v2.session.terminal.get")
+    .seeded((ctx) => ctx.session({ title: "Terminal get owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/terminal", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body) => {
+      object(body)
+      check(body.data === null, "session without a terminal should return null data")
+    }),
+  http.protected
+    .post("/api/session/{sessionID}/terminal", "v2.session.terminal.create")
+    .mutating()
+    .seeded((ctx) => ctx.session({ title: "Terminal create owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/terminal", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body) => {
+      object(body)
+      object(body.data)
+      check(typeof body.data.ptyID === "string", "terminal create should return a ptyID")
+      check(body.data.shared === true, "created terminals start shared")
+    }),
+  http.protected
+    .put("/api/session/{sessionID}/terminal/share", "v2.session.terminal.share")
+    .mutating()
+    .seeded((ctx) => ctx.session({ title: "Terminal share owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/terminal/share", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+      body: { shared: false },
+    }))
+    .json(200, (body) => {
+      object(body)
+      object(body.data)
+      check(body.data.shared === false, "unsharing should flip the shared flag")
+    }),
+  http.protected
+    .delete("/api/session/{sessionID}/terminal", "v2.session.terminal.remove")
+    .mutating()
+    .seeded((ctx) => ctx.session({ title: "Terminal remove owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/terminal", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .status(204, undefined, "status"),
+  http.protected
+    .get("/api/session/{sessionID}/room", "v2.session.swarmRoom")
+    .seeded((ctx) => ctx.session({ title: "Roomless session" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/room", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(404, object, "status"),
+  http.protected
+    .get("/api/session/{sessionID}/room/entries", "v2.session.swarmRoomEntries")
+    .seeded((ctx) => ctx.session({ title: "Roomless session" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/room/entries", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(404, object, "status"),
+  http.protected
+    .post("/api/session/{sessionID}/room/entries", "v2.session.swarmRoomPost")
+    .mutating()
+    .seeded((ctx) => ctx.session({ title: "Roomless session" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/room/entries", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+      body: { text: "hello room" },
+    }))
+    .json(200, (body) => {
+      object(body)
+      object(body.data)
+      check(body.data.kind === "message", "room post should create a message entry")
+      check(body.data.text === "hello room", "room post should echo the posted text")
+      object(body.data.actor)
+      check(body.data.actor.type === "human", "room post should record the human actor")
+    }),
   http.protected.get("/api/permission/saved", "v2.permission.saved.list").json(200, (body) => {
     object(body)
     array(body.data)

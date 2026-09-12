@@ -1,22 +1,9 @@
-import type { SessionTaskStatus, SessionTaskSummary } from "@turenlabs/sdk/v2/client"
+import type { SessionTaskStatus, SessionTaskSummary, SwarmRoomEntry } from "@turenlabs/sdk/v2/client"
 import { Swarm } from "@turenlabs/schema/swarm"
 import type { ThinkingState } from "@turenlabs/ui/thinking"
 
 export type SessionTaskInfo = SessionTaskSummary
 export type { SessionTaskStatus }
-
-export type SessionTeamBoardNote = {
-  id: string
-  kind: string
-  title: string
-  body: string
-  evidence?: string
-  authorAgent: string
-  supersedes?: string
-  supersededBy?: string
-  timeCreated?: number
-  timeUpdated?: number
-}
 
 export type SessionSwarmProgress = {
   status: Swarm.Invocation["status"]
@@ -49,12 +36,12 @@ export function sessionSwarmRequest(
 export function sessionSwarmProgress(
   invocation: Swarm.Invocation,
   tasks: readonly SessionTaskInfo[],
-  notes: readonly SessionTeamBoardNote[],
+  entries: readonly SwarmRoomEntry[],
 ): SessionSwarmProgress {
-  const evidenceTimes = notes.flatMap((note) => {
-    const value = note.timeUpdated ?? note.timeCreated
-    return typeof value === "number" && Number.isFinite(value) ? [value] : []
-  })
+  const evidence = entries.filter((entry) => EVIDENCE_KINDS.has(entry.kind))
+  const evidenceTimes = evidence.flatMap((entry) =>
+    Number.isFinite(entry.timeCreated) ? [entry.timeCreated] : [],
+  )
   return {
     status: invocation.status,
     objective: invocation.objective,
@@ -74,10 +61,14 @@ export function sessionSwarmProgress(
           .filter(Boolean),
       ),
     ],
-    evidenceCount: notes.length,
+    evidenceCount: evidence.length,
     evidenceUpdatedAt: evidenceTimes.length > 0 ? Math.max(...evidenceTimes) : undefined,
   }
 }
+
+// Entries that carry an observation worth counting as evidence; claims, releases,
+// plans, and chatter are coordination, not evidence.
+const EVIDENCE_KINDS = new Set(["finding", "lead", "correction", "status"])
 
 // The thinking engine selects its orb profile from `state` (see thinking-engine/presets
 // STATE_TO_MODE), so these six names *are* the six animations. In the dock they carry

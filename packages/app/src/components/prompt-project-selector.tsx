@@ -491,6 +491,7 @@ function ProjectTrigger(props: ComponentProps<"button"> & { controller: PromptPr
             fallback={displayName(item())}
             src={getProjectAvatarSource(item().id, item().icon)}
             variant={getProjectAvatarVariant(item().icon?.color)}
+            pixelSeed={item().id ?? item().worktree}
           />
         )}
       </Show>
@@ -535,6 +536,7 @@ function ProjectItem(props: {
         fallback={displayName(props.project)}
         src={getProjectAvatarSource(props.project.id, props.project.icon)}
         variant={getProjectAvatarVariant(props.project.icon?.color)}
+        pixelSeed={props.project.id ?? props.project.worktree}
       />
       <DropdownMenu.ItemLabel class="min-w-0 truncate leading-5">{displayName(props.project)}</DropdownMenu.ItemLabel>
       <DropdownMenu.ItemIndicator style={{ width: "14px", height: "14px", right: "12px" }}>

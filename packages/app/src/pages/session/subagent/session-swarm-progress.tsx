@@ -78,7 +78,7 @@ export function SessionSwarmProgressView(props: {
             </Show>
           </div>
           <p data-slot="session-swarm-evidence" class="mt-2 font-mono text-[10px] text-v2-text-faint">
-            {evidence()} · {props.progress.evidenceCount} board note{props.progress.evidenceCount === 1 ? "" : "s"}
+            {evidence()} · {props.progress.evidenceCount} room entr{props.progress.evidenceCount === 1 ? "y" : "ies"}
           </p>
         </Show>
         <Show when={invalid()}>

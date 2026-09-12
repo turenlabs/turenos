@@ -25,12 +25,12 @@ const toolKinds: Record<string, SessionActivityKind> = Object.fromEntries([
     "memory_read",
     "reflection_read",
     "reflection_state",
-    "board_read",
+    "room_read",
     "list_agents",
     "get_goal",
   ].map((tool) => [tool, "context"] as const),
   ...["edit", "write", "apply_patch"].map((tool) => [tool, "write"] as const),
-  ...["webfetch", "websearch", "pentest_request", "pentest_replay", "mcp_search", "mcp_load"].map(
+  ...["webfetch", "websearch", "mcp_search", "mcp_load"].map(
     (tool) => [tool, "network"] as const,
   ),
   ...["interrupt_agent", "memory_forget"].map((tool) => [tool, "destructive"] as const),

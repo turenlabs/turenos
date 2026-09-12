@@ -1,7 +1,7 @@
 import path from "node:path"
 import fs from "node:fs/promises"
 import { Process } from "@/util/process"
-import { ToolError, type Finding, type Severity } from "../types"
+import { ToolError, type Finding, type IntegrationContext, type Severity } from "../types"
 
 /**
  * Helpers for "tools" category integrations that wrap local scanner CLIs:
@@ -51,6 +51,33 @@ export async function requireBinary(bin: string, installHint?: string): Promise<
   throw new ToolError(
     `"${bin}" is not installed or not on PATH${installHint ? `. Install it with: ${installHint}` : ""}`,
   )
+}
+
+export interface ScanTarget {
+  /** Absolute path inside the workspace. */
+  abs: string
+  /** Path relative to the workspace; "." for the workspace root itself. */
+  rel: string
+  isDirectory: boolean
+}
+
+/**
+ * Resolve a tool `path` argument against the integration workspace. Rejects
+ * non-string input, escapes (`..` segments or absolute paths outside the
+ * workspace), and missing targets. Containment is lexical — a symlink inside
+ * the workspace may still point outside it.
+ */
+export async function resolveScanTarget(raw: unknown, ctx: IntegrationContext): Promise<ScanTarget> {
+  if (raw !== undefined && typeof raw !== "string") throw new ToolError(`"path" must be a string`)
+  const workspace = path.resolve(ctx.workspace)
+  const abs = path.resolve(workspace, raw === undefined || raw.trim() === "" ? "." : raw)
+  const rel = path.relative(workspace, abs)
+  if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+    throw new ToolError(`"path" must resolve inside the workspace (${ctx.workspace}); got "${raw}"`)
+  }
+  const stat = await fs.stat(abs).catch(() => undefined)
+  if (!stat) throw new ToolError(`"path" does not exist in the workspace: ${rel === "" ? "." : rel}`)
+  return { abs, rel: rel === "" ? "." : rel, isDirectory: stat.isDirectory() }
 }
 
 export interface RunOptions {
