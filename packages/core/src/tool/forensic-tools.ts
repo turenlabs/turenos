@@ -51,6 +51,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         wifi_offline: Tool.make({
+          deferred: true,
           description:
             "Summarize one offline 802.11 PCAP or radiotap capture with pcap-file, ieee80211, and radiotap compiled to WebAssembly. Returns SSIDs, BSSIDs, clients, deauth counts, and whether EAPOL frames are present. Live capture and handshake cracking are not available.",
           input: Schema.Struct({ path: Path, maxPackets: MaxPackets }),
@@ -60,6 +61,7 @@ const layer = Layer.effectDiscard(
             analyze("wifi_offline", "wifi-offline", input.path, { maxPackets: input.maxPackets ?? 1024 }, context),
         }),
         windows_artifacts: Tool.make({
+          deferred: true,
           description:
             "Parse one Windows forensic artifact with prefetch-core, evtx, mft, amcache-core, lnk-core, jumplist_parser, or winreg-core compiled to WebAssembly. Auto-detects Prefetch, EVTX, MFT, Amcache/hive, LNK, and jump lists. The file is never executed.",
           input: Schema.Struct({
@@ -88,6 +90,7 @@ const layer = Layer.effectDiscard(
             ),
         }),
         rebuild_timeline: Tool.make({
+          deferred: true,
           description:
             "Rebuild a bounded timeline from a Sleuth Kit bodyfile and optional parsed Windows artifact JSON with the bodyfile crate compiled to WebAssembly. Returns one sorted event list. It does not run mactime or write host files.",
           input: Schema.Struct({

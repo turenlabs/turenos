@@ -176,20 +176,32 @@ export default function ExtendPage() {
             itemCount: current.length,
             durationMs: Math.round(performance.now() - startedAt),
           })
-          return { sdk, items: current }
+          return { sdk, items: current, catalogIssue: undefined }
         }
-        const external = await loadExternalCatalog(endpoint, request.signal, globalThis.fetch, (phase, fields) =>
-          traceCatalog(phase, { operationID, ...fields }),
-        )
-        const items = mergeExternalCatalog(current, external)
-        traceCatalog("catalog.external-merge.completed", {
-          operationID,
-          serverItemCount: current.length,
-          externalItemCount: external.length,
-          itemCount: items.length,
-          durationMs: Math.round(performance.now() - startedAt),
-        })
-        return { sdk, items }
+        try {
+          const external = await loadExternalCatalog(endpoint, request.signal, globalThis.fetch, (phase, fields) =>
+            traceCatalog(phase, { operationID, ...fields }),
+          )
+          const items = mergeExternalCatalog(current, external)
+          traceCatalog("catalog.external-merge.completed", {
+            operationID,
+            serverItemCount: current.length,
+            externalItemCount: external.length,
+            itemCount: items.length,
+            durationMs: Math.round(performance.now() - startedAt),
+          })
+          return { sdk, items, catalogIssue: undefined }
+        } catch (cause) {
+          if (request.signal.aborted || generation !== listGeneration) throw cause
+          const message =
+            cause instanceof Error && cause.message ? cause.message : "Could not load the extension catalog."
+          traceCatalog("catalog.external.failed", {
+            operationID,
+            error: cause instanceof Error ? `${cause.name}: ${cause.message}` : "Unknown catalog load error",
+            durationMs: Math.round(performance.now() - startedAt),
+          })
+          return { sdk, items: current, catalogIssue: `${message} Showing extensions known to this server.` }
+        }
       } catch (cause) {
         traceCatalog("catalog.load.failed", {
           operationID,
@@ -303,7 +315,7 @@ export default function ExtendPage() {
       )
       if (sdk !== serverSdk()) return false
       if (settings.general.catalogEndpoint().trim()) void refetch()
-      else mutate({ sdk, items: result.data ?? [] })
+      else mutate({ sdk, items: result.data ?? [], catalogIssue: undefined })
       traceCatalog("extension.update.completed", {
         operationID,
         extensionID: item.manifest.id,
@@ -476,6 +488,13 @@ export default function ExtendPage() {
         <Show when={catalogError()}>
           {(message) => (
             <div role="alert" class="mb-4 text-[12px] text-v2-state-fg-danger">
+              {message()}
+            </div>
+          )}
+        </Show>
+        <Show when={loaded()?.catalogIssue}>
+          {(message) => (
+            <div role="status" class="mb-4 text-[12px] text-v2-state-fg-warning">
               {message()}
             </div>
           )}

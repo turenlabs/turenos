@@ -119,6 +119,7 @@ import { createSessionOwnership } from "./session/session-ownership"
 import { applySessionV2Revert, clearSessionV2Revert, stageSessionV2Revert } from "./session/session-v2-revert"
 import { createSessionLineage, nextSessionActivation, SESSION_ACTIVATION_MAX_AGE_MS } from "./session/session-lineage"
 import { createSessionGoalController } from "./session/goal/session-goal-controller"
+import { SessionGoalDock } from "./session/goal/session-goal-dock"
 import { createSessionHarnessController } from "./session/harness/session-harness-controller"
 import { SessionHarnessPanel } from "./session/harness/session-harness-panel"
 import {
@@ -2208,9 +2209,7 @@ export default function Page() {
     if (!request) return
     const tasks = request.time === undefined ? [] : liveTasks().filter((task) => task.time.created >= request.time!)
     const entries =
-      request.time === undefined
-        ? []
-        : subagents.roomEntries().filter((entry) => entry.timeCreated >= request.time!)
+      request.time === undefined ? [] : subagents.roomEntries().filter((entry) => entry.timeCreated >= request.time!)
     return sessionSwarmProgress(request.invocation, tasks, entries)
   })
   const liveTimeline = createMemo<SessionTimelineItem[]>(() =>
@@ -2504,56 +2503,76 @@ export default function Page() {
   const timelineContent = () => (
     <>
       {sessionSync() ?? ""}
-      <Show
-        when={messagesReady() ? params.id : undefined}
-        keyed
-        fallback={
-          <div data-session-timeline-loading class="flex min-h-0 flex-1 items-center justify-center">
-            <DestinationLoading detail="phase" label="Loading session" phase="Loading transcript" />
-          </div>
-        }
-      >
-        {(_id) => (
-          <MessageTimeline
-            actions={actions}
-            scroll={ui.scroll}
-            onResumeScroll={resumeScroll}
-            setScrollRef={setScrollRef}
-            onScheduleScrollState={scheduleScrollState}
-            onAutoScrollHandleScroll={autoScroll.handleScroll}
-            onAutoScrollPause={autoScroll.pause}
-            onMarkScrollGesture={markScrollGesture}
-            hasScrollGesture={hasScrollGesture}
-            onUserScroll={markUserScroll}
-            onHistoryScroll={onHistoryScroll}
-            onAutoScrollInteraction={autoScroll.handleInteraction}
-            shouldAnchorBottom={() =>
-              !location.hash && !store.messageId && !ui.pendingMessage && !autoScroll.userScrolled()
-            }
-            centered={centered()}
-            hideTaskThinking={settings.general.newLayoutDesigns()}
-            hideContextUsage={settings.general.newLayoutDesigns()}
-            turnStatus={turnStatus}
-            setContentRef={(el) => {
-              content = el
-              autoScroll.contentRef(el)
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+        <Show
+          when={messagesReady() ? params.id : undefined}
+          keyed
+          fallback={
+            <div data-session-timeline-loading class="flex min-h-0 flex-1 items-center justify-center">
+              <DestinationLoading detail="phase" label="Loading session" phase="Loading transcript" />
+            </div>
+          }
+        >
+          {(_id) => (
+            <MessageTimeline
+              actions={actions}
+              scroll={ui.scroll}
+              onResumeScroll={resumeScroll}
+              setScrollRef={setScrollRef}
+              onScheduleScrollState={scheduleScrollState}
+              onAutoScrollHandleScroll={autoScroll.handleScroll}
+              onAutoScrollPause={autoScroll.pause}
+              onMarkScrollGesture={markScrollGesture}
+              hasScrollGesture={hasScrollGesture}
+              onUserScroll={markUserScroll}
+              onHistoryScroll={onHistoryScroll}
+              onAutoScrollInteraction={autoScroll.handleInteraction}
+              shouldAnchorBottom={() =>
+                !location.hash && !store.messageId && !ui.pendingMessage && !autoScroll.userScrolled()
+              }
+              centered={centered()}
+              hideTaskThinking={settings.general.newLayoutDesigns()}
+              hideContextUsage={settings.general.newLayoutDesigns()}
+              turnStatus={turnStatus}
+              setContentRef={(el) => {
+                content = el
+                autoScroll.contentRef(el)
 
-              const root = scroller
-              if (root) scheduleScrollState(root)
-            }}
-            userMessages={visibleUserMessages()}
-            setHistoryAnchor={(handlers) => {
-              captureHistoryAnchor = handlers.capture
-              restoreHistoryAnchor = handlers.restore
-            }}
-            anchor={anchor}
-            setRevealMessage={(fn) => {
-              revealMessage = fn
-            }}
-            setScrollToEnd={(fn) => {
-              scrollToEnd = fn
-            }}
-          />
+                const root = scroller
+                if (root) scheduleScrollState(root)
+              }}
+              userMessages={visibleUserMessages()}
+              setHistoryAnchor={(handlers) => {
+                captureHistoryAnchor = handlers.capture
+                restoreHistoryAnchor = handlers.restore
+              }}
+              anchor={anchor}
+              setRevealMessage={(fn) => {
+                revealMessage = fn
+              }}
+              setScrollToEnd={(fn) => {
+                scrollToEnd = fn
+              }}
+            />
+          )}
+        </Show>
+      </div>
+      <Show when={settings.general.newLayoutDesigns() && sessionGoalControls()}>
+        {(controls) => (
+          <div data-component="session-goal-transcript" class="shrink-0 px-4 pb-4 md:px-5">
+            <div classList={{ "md:mx-auto md:max-w-200 2xl:max-w-[1000px]": centered() }}>
+              <SessionGoalDock
+                goal={controls().goal}
+                attach="none"
+                disabled={controls().pending}
+                editRequest={controls().editRequest}
+                onEdit={controls().onEdit}
+                onPause={controls().onPause}
+                onResume={controls().onResume}
+                onClear={controls().onClear}
+              />
+            </div>
+          </div>
         )}
       </Show>
     </>
@@ -2725,9 +2744,7 @@ export default function Page() {
               )}
               subagents={() => (
                 <Show
-                  when={
-                    subagents.taskIDs().length > 0 || subagents.loadFailure() || !!subagents.room()
-                  }
+                  when={subagents.taskIDs().length > 0 || subagents.loadFailure() || !!subagents.room()}
                   fallback={
                     <div class="flex min-h-full items-center justify-center rounded-control border border-border-weak-base bg-background-base px-6 py-12 text-center">
                       <p class="text-13-regular text-text-weak">

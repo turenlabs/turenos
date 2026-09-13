@@ -335,7 +335,14 @@ try {
   const tools = record(await body(await request(`/experimental/tool?${query}`)))
   assert.equal(tools.sessionID, sessionID)
   assert(Array.isArray(tools.visible), "missing V2 tool snapshot")
-  const names = tools.visible.map((tool: unknown) => record(tool).id)
+  // Whiteboard tools are deferred: they sit in the deferred catalog and
+  // auto-load on first use rather than occupying the visible snapshot.
+  const names = [
+    ...tools.visible.map((tool: unknown) => record(tool).id),
+    ...(((tools.deferred as { available?: unknown[] } | undefined)?.available ?? []).map(
+      (item: unknown) => record(item).name,
+    ) as string[]),
+  ]
   assert(names.includes("whiteboard_read") && names.includes("whiteboard_update"), "V2 whiteboard tools not registered")
   pass(step)
 

@@ -2,10 +2,12 @@ import { $ } from "bun"
 import { describe, expect } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
-import { Effect, Layer } from "effect"
+import { Deferred, Effect, Fiber, Layer } from "effect"
+import { TestClock } from "effect/testing"
 import { Database } from "@turenlabs/core/database/database"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
+import { Git } from "@turenlabs/core/git"
 import { Global } from "@turenlabs/core/global"
 import { Location } from "@turenlabs/core/location"
 import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
@@ -228,6 +230,96 @@ describe("Snapshot", () => {
             expect(yield* read(path.join(project, "tracked.txt"))).toBe("one\n")
             expect(yield* read(path.join(project, "unrelated.txt"))).toBe("keep\n")
           }).pipe(Effect.provide(snapshotLayer(tmp.path, project)))
+        }),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  testEffect(Layer.empty).live("fails capture closed when the ignore check errors", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        Effect.gen(function* () {
+          const project = path.join(tmp.path, "project")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(project)
+            await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
+            await $`git init`.cwd(project).quiet()
+            await $`git config core.fsmonitor false`.cwd(project).quiet()
+            await $`git config commit.gpgsign false`.cwd(project).quiet()
+            await $`git config user.email test@forge.test`.cwd(project).quiet()
+            await $`git config user.name Test`.cwd(project).quiet()
+            await $`git add .`.cwd(project).quiet()
+            await $`git commit -m initial`.cwd(project).quiet()
+          })
+
+          yield* Effect.gen(function* () {
+            const snapshot = yield* Snapshot.Service
+            expect(yield* snapshot.capture()).toBeDefined()
+            // Breaking the source repository makes its check-ignore exit
+            // fatally; the failure must propagate instead of staging every
+            // untracked candidate into the shadow index.
+            yield* Effect.promise(async () => {
+              await fs.writeFile(path.join(project, "untracked.txt"), "new\n")
+              await fs.rename(path.join(project, ".git"), path.join(project, ".git-disabled"))
+            })
+            expect(yield* snapshot.capture()).toBeUndefined()
+          }).pipe(Effect.provide(snapshotLayer(tmp.path, project)))
+
+          const [projectID] = yield* Effect.promise(() => fs.readdir(path.join(tmp.path, "snapshot")))
+          const [binding] = yield* Effect.promise(() => fs.readdir(path.join(tmp.path, "snapshot", projectID)))
+          const files = yield* Effect.promise(() =>
+            $`git --git-dir ${path.join(tmp.path, "snapshot", projectID, binding)} ls-files`.cwd(project).text(),
+          )
+          expect(files.split("\n").filter(Boolean)).toEqual(["tracked.txt"])
+        }),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  testEffect(Layer.empty).effect("returns undefined when capture exceeds the capture timeout", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        Effect.gen(function* () {
+          const project = path.join(tmp.path, "project")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(project)
+            await $`git init`.cwd(project).quiet()
+            await $`git config commit.gpgsign false`.cwd(project).quiet()
+            await $`git config user.email test@forge.test`.cwd(project).quiet()
+            await $`git config user.name Test`.cwd(project).quiet()
+            await $`git commit --allow-empty -m root`.cwd(project).quiet()
+          })
+          const started = yield* Deferred.make<void>()
+          const hangingGit = Layer.effect(
+            Git.Service,
+            Effect.map(Git.Service, (service) =>
+              Git.Service.of({
+                ...service,
+                tree: {
+                  ...service.tree,
+                  capture: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+                },
+              }),
+            ),
+          ).pipe(Layer.provide(LayerNode.compile(Git.node)))
+          const layer = AppNodeBuilder.build(Snapshot.node, [
+            [Location.node, Location.boundNode(Location.Ref.make({ directory: AbsolutePath.make(project) }))],
+            [Global.node, Global.layerWith({ data: tmp.path, config: path.join(tmp.path, "config") })],
+            [Git.node, hangingGit],
+          ])
+
+          const fiber = yield* Effect.forkChild(
+            Effect.gen(function* () {
+              const snapshot = yield* Snapshot.Service
+              return yield* snapshot.capture()
+            }).pipe(Effect.provide(layer)),
+          )
+          yield* Deferred.await(started)
+          yield* TestClock.adjust("31 seconds")
+
+          expect(yield* Fiber.join(fiber)).toBeUndefined()
         }),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),

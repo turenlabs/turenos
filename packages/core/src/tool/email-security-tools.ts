@@ -85,6 +85,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         email_inspect: Tool.make({
+          deferred: true,
           description:
             "Inspect one RFC 5322/MIME email with the bundled WebAssembly parser. Returns decoded headers, addresses, attachment metadata, bounded IOCs, and advertised authentication failures as unverified evidence. The message is never sent, executed, or dereferenced over the network.",
           input: Input,
@@ -113,6 +114,7 @@ const layer = Layer.effectDiscard(
             ),
         }),
         email_attachment_inspect: Tool.make({
+          deferred: true,
           description:
             "Inspect one explicitly selected MIME attachment's bounded metadata, or explicitly list all bounded attachment metadata. Attachment bytes are never returned here; use email_extract_attachment to save one attachment for separate binary or YARA analysis.",
           input: AttachmentInput,
@@ -160,6 +162,7 @@ const layer = Layer.effectDiscard(
             ),
         }),
         email_extract_attachment: Tool.make({
+          deferred: true,
           description:
             "Decode one explicitly indexed MIME attachment offline with the bundled WebAssembly parser and save it to an approved new outputPath. Attachment filenames are never used as paths; existing files are never overwritten. Maximum output is 8 MiB. No network access or execution occurs.",
           input: Schema.Struct({
@@ -247,6 +250,7 @@ const layer = Layer.effectDiscard(
             ),
         }),
         email_link_analyze: Tool.make({
+          deferred: true,
           description:
             "Analyze bounded links from decoded email bodies and IOCs for URL scheme, host, IP literal, userinfo, suspicious path extensions, and display-vs-target indicators. This is deterministic evidence only and does not fetch URLs or verify DKIM, SPF, or DMARC cryptographically.",
           input: LinkInput,
@@ -289,6 +293,7 @@ const layer = Layer.effectDiscard(
             ),
         }),
         email_sanitize_html: Tool.make({
+          deferred: true,
           description:
             "Sanitize the first HTML body in one RFC 5322/MIME email with the bundled WebAssembly allowlist sanitizer. Scripts, forms, event handlers, and unsafe URL schemes are removed; the message is never sent or fetched.",
           input: Schema.Struct({

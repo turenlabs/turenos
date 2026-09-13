@@ -894,6 +894,9 @@ export const dict = {
   "settings.general.row.editToolPartsExpanded.title": "Разворачивать элементы инструмента edit",
   "settings.general.row.editToolPartsExpanded.description":
     "Показывать элементы инструментов edit, write и patch в ленте развернутыми по умолчанию",
+  "settings.general.row.patchToolPartsExpanded.title": "Expand patch tool parts",
+  "settings.general.row.patchToolPartsExpanded.description":
+    "Show apply_patch tool parts expanded by default in the timeline",
   "settings.general.row.newInterface.title": "Новая компоновка",
   "settings.general.row.newInterface.badge": "Новое",
   "settings.general.row.newInterface.description":

@@ -109,6 +109,22 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
           mime: filePart.mime,
           dataUrl: filePart.url,
         })
+        continue
+      }
+
+      // Path-backed attachments keep only a file:// pointer; undo restores the
+      // reference, not the bytes.
+      const parsed = URL.canParse(filePart.url) ? new URL(filePart.url) : undefined
+      if (parsed?.protocol === "file:") {
+        const pathname = decodeURIComponent(parsed.pathname)
+        images.push({
+          type: "image",
+          id: filePart.id,
+          filename: filePart.filename ?? attachmentName,
+          mime: filePart.mime,
+          dataUrl: "",
+          sourcePath: /^\/[A-Za-z]:/.test(pathname) ? pathname.slice(1) : pathname,
+        })
       }
     }
 

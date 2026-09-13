@@ -650,6 +650,9 @@ export const dict = {
   "settings.general.row.editToolPartsExpanded.title": "edit 도구 파트 펼치기",
   "settings.general.row.editToolPartsExpanded.description":
     "타임라인에서 기본적으로 edit, write, patch 도구 파트를 펼친 상태로 표시합니다",
+  "settings.general.row.patchToolPartsExpanded.title": "Expand patch tool parts",
+  "settings.general.row.patchToolPartsExpanded.description":
+    "Show apply_patch tool parts expanded by default in the timeline",
   "settings.general.row.wayland.title": "네이티브 Wayland 사용",
   "settings.general.row.wayland.description": "Wayland에서 X11 폴백을 비활성화합니다. 다시 시작해야 합니다.",
   "settings.general.row.wayland.tooltip":

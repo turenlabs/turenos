@@ -1,4 +1,4 @@
-import { createRenderEffect, type ParentProps } from "solid-js"
+import { createRenderEffect, untrack, type ParentProps } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useGlobal } from "@/context/global"
 import { ModelsProvider } from "@/context/models"
@@ -12,10 +12,13 @@ export function SettingsServerProvider(props: ParentProps) {
   if (!params.serverKey) return props.children
 
   const global = useGlobal()
-  const serverKey = requireServerKey(params.serverKey)
-  createRenderEffect(() => global.settings.server.set(serverKey))
+  // Untracked: `set` reads store.settings.serverKey, which would otherwise
+  // subscribe this effect to the store and instantly stomp manual picks from
+  // the settings server picker back to the route's server.
+  const serverKey = () => requireServerKey(params.serverKey!)
+  createRenderEffect(() => untrack(() => global.settings.server.set(serverKey())))
   const server = () => {
-    return global.servers.list().find((item) => ServerConnection.key(item) === serverKey)
+    return global.servers.list().find((item) => ServerConnection.key(item) === serverKey())
   }
 
   return (

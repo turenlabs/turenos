@@ -868,6 +868,9 @@ export const dict = {
   "settings.general.row.shellToolPartsExpanded.description": "默认在时间线中展开 shell 工具部分",
   "settings.general.row.editToolPartsExpanded.title": "展开编辑工具部分",
   "settings.general.row.editToolPartsExpanded.description": "默认在时间线中展开 edit、write 和 patch 工具部分",
+  "settings.general.row.patchToolPartsExpanded.title": "Expand patch tool parts",
+  "settings.general.row.patchToolPartsExpanded.description":
+    "Show apply_patch tool parts expanded by default in the timeline",
   "settings.general.row.newInterface.title": "新布局",
   "settings.general.row.newInterface.badge": "新",
   "settings.general.row.newInterface.description": "使用新的标签页和主页布局。在有限时间内可在不同布局之间切换。",

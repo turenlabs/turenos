@@ -46,6 +46,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         [name]: Tool.make({
+          deferred: true,
           description:
             "Run one permission-checked x86-64 Linux ELF through TurenOS's first-party Apple Virtualization.framework harness and Rosetta. The execution pack is local, diskless, networkless, and controlled by TurenOS; no Docker, Colima, Lima, Tart, shell, or user-provided VM path is used.",
           input: Input,

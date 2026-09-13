@@ -85,6 +85,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         [name]: Tool.make({
+          deferred: true,
           description:
             "Compile YARA-X rules and scan one local file with the bundled WebAssembly runtime. This is bounded static analysis: the target is never executed, no host YARA installation is required, file access is permission-checked, and scan time plus returned matches are capped.",
           input: Input,

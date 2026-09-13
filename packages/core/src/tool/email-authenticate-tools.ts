@@ -39,6 +39,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         email_authenticate: Tool.make({
+          deferred: true,
           description:
             "Verify DKIM, SPF, and DMARC using the bundled offline mail-auth WebAssembly engine. Requires explicit SMTP envelope values and a JSON DNS snapshot. Missing records are reported as incomplete; no DNS or network access is performed.",
           input: Input,

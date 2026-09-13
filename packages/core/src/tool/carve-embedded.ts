@@ -45,6 +45,7 @@ export const layer = Layer.effectDiscard(
     yield* tools
       .register({
         carve_embedded: Tool.make({
+          deferred: true,
           description:
             "Extract one explicitly selected byte range from a file into a retention-managed artifact. The range is capped at 128 MiB, and no decompression, recursion, path inference, workspace write, or execution occurs.",
           input: Input,

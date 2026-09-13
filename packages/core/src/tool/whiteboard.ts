@@ -245,6 +245,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         [readName]: Tool.make({
+          deferred: true,
           description:
             "Read the human-visible root session whiteboard before drawing. Returns revision for compare-and-swap updates, compact element bounds/text and file metadata (never image bytes). Supply elementIds to select up to 1000 elements; otherwise returns the first 1000 including tombstones. Explicit sessionID targets another session subject to permission.",
           input: Schema.Struct({
@@ -296,6 +297,7 @@ const layer = Layer.effectDiscard(
             }),
         }),
         [updateName]: Tool.make({
+          deferred: true,
           description:
             "Draw on the human-visible root session whiteboard. Read first and supply its baseRevision; concurrent changes fail, so read and retry. Operations use op: upsert or remove. New upserts require type,x,y (id optional); existing ids accept partial patches, including text alone. Text is standalone; use separate shapes and text labels. For line/arrow points use local [x,y] coordinates beginning at [0,0]; points determine bounds. No images, links or embeds. Removed elements remain tombstones. Explicit sessionID is permission checked.",
           input: Schema.Struct({

@@ -62,7 +62,7 @@ const layer = Layer.effectDiscard(
       .register({
         [name]: Tool.make({
           description:
-            "Search file contents by regular expression within the active Location or an absolute managed tool-output file. Use this instead of bash, grep, or rg for workspace searches. Use a path to narrow the search, include to filter files by glob, and limit to bound the match count. Returns concise file resources, line numbers, and bounded line previews.",
+            "Search file contents by regular expression within the active Location or an absolute managed tool-output file. Use this instead of bash, grep, or rg for workspace searches when you know the literal text or pattern to match; for natural-language questions about where functionality lives, prefer code_search. Use a path to narrow the search, include to filter files by glob, and limit to bound the match count. Returns concise file resources, line numbers, and bounded line previews.",
           input: Input,
           output: Output,
           // Location-relative on purpose: `execute` already relativized every path, and

@@ -864,6 +864,9 @@ export const dict = {
   "settings.general.row.shellToolPartsExpanded.description": "在時間軸中預設展開 shell 工具區塊",
   "settings.general.row.editToolPartsExpanded.title": "展開 edit 工具區塊",
   "settings.general.row.editToolPartsExpanded.description": "在時間軸中預設展開 edit、write 和 patch 工具區塊",
+  "settings.general.row.patchToolPartsExpanded.title": "Expand patch tool parts",
+  "settings.general.row.patchToolPartsExpanded.description":
+    "Show apply_patch tool parts expanded by default in the timeline",
   "settings.general.row.newInterface.title": "新版面",
   "settings.general.row.newInterface.badge": "新",
   "settings.general.row.newInterface.description": "使用新的分頁和首頁版面。在限定時間內可切換版面。",

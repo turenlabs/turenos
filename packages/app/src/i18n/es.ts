@@ -904,6 +904,9 @@ export const dict = {
   "settings.general.row.editToolPartsExpanded.title": "Expandir partes de la herramienta de edición",
   "settings.general.row.editToolPartsExpanded.description":
     "Mostrar las partes de las herramientas de edición, escritura y parcheado expandidas por defecto en la línea de tiempo",
+  "settings.general.row.patchToolPartsExpanded.title": "Expand patch tool parts",
+  "settings.general.row.patchToolPartsExpanded.description":
+    "Show apply_patch tool parts expanded by default in the timeline",
   "settings.general.row.newInterface.title": "Nuevo diseño",
   "settings.general.row.newInterface.badge": "Nuevo",
   "settings.general.row.newInterface.description":

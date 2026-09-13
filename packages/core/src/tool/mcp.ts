@@ -6,6 +6,7 @@ import { Location } from "../location"
 import { PermissionV2 } from "../permission"
 import { Wildcard } from "../util/wildcard"
 import { SessionToolProvider } from "./session-provider"
+import { ToolBroker } from "./broker"
 import { Tool } from "./tool"
 
 /**
@@ -419,7 +420,12 @@ const layer = Layer.effectDiscard(
         const sessionPermission = target.mcpPermission ?? permission
         const listed = target.mcpDefinitions ?? (yield* sessionSource.list({ directory: location.directory }))
         const definitions = new Map<string, Definition>()
-        const names = new Set([SEARCH_TOOL_NAME, LOAD_TOOL_NAME])
+        const names = new Set([
+          SEARCH_TOOL_NAME,
+          LOAD_TOOL_NAME,
+          ToolBroker.SEARCH_TOOL_NAME,
+          ToolBroker.LOAD_TOOL_NAME,
+        ])
         for (const definition of listed) {
           const name = toolName(definition.server, definition.name)
           if (names.has(name)) {

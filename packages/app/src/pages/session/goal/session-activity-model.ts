@@ -26,6 +26,7 @@ const toolKinds: Record<string, SessionActivityKind> = Object.fromEntries([
     "reflection_read",
     "reflection_state",
     "room_read",
+    "board_read",
     "list_agents",
     "get_goal",
   ].map((tool) => [tool, "context"] as const),

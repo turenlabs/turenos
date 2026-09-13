@@ -83,6 +83,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         protocol_inspect: Tool.make({
+          deferred: true,
           description:
             "Inspect bounded packets from one offline PCAP or PCAPNG with the official libpcap capture path and the bundled protocol WebAssembly parser. Supports numeric classic BPF filters, packet offsets, and packet limits; raw packet payloads are never returned, and live capture, devices, paths, dumping, and network access are unavailable.",
           input: Input,

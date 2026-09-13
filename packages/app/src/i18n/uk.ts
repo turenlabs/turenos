@@ -992,6 +992,9 @@ export const dict = {
   "settings.general.row.editToolPartsExpanded.title": "Розгортати частини інструменту редагування",
   "settings.general.row.editToolPartsExpanded.description":
     "Показувати частини інструментів редагування, запису та патчів розгорнутими за замовчуванням на часовій шкалі",
+  "settings.general.row.patchToolPartsExpanded.title": "Expand patch tool parts",
+  "settings.general.row.patchToolPartsExpanded.description":
+    "Show apply_patch tool parts expanded by default in the timeline",
   "settings.general.row.newInterface.title": "Новий макет",
   "settings.general.row.newInterface.badge": "Нове",
   "settings.general.row.newInterface.description":

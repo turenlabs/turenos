@@ -24,6 +24,7 @@ import { SessionSchema } from "@turenlabs/core/session/schema"
 import { SessionTerminal } from "@turenlabs/core/session/terminal"
 import { HandoffTool } from "@turenlabs/core/tool/handoff"
 import { McpTool } from "@turenlabs/core/tool/mcp"
+import { ToolBroker } from "@turenlabs/core/tool/broker"
 import { SessionToolProvider } from "@turenlabs/core/tool/session-provider"
 import { SessionToolSnapshot } from "@turenlabs/core/tool/session-snapshot"
 import { SubagentTool } from "@turenlabs/core/tool/subagent"
@@ -310,7 +311,7 @@ v2McpTest.instance("uses the canonical V2 snapshot after a configured static OAu
     const capability = first.snapshot.broker.capabilities.find((item) => item.name === "test_tool")
     expect(capability?.key).toBe(`${name}_test_tool`)
     const key = capability!.key
-    expect(first.snapshot.broker.visible).toEqual([McpTool.SEARCH_TOOL_NAME, McpTool.LOAD_TOOL_NAME])
+    expect(first.snapshot.broker.visible).toEqual([ToolBroker.SEARCH_TOOL_NAME, ToolBroker.LOAD_TOOL_NAME])
 
     const settle = (materialization: ToolRegistry.Materialization, name: string, input: unknown, id: string) =>
       materialization.settle({

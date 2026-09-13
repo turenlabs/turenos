@@ -697,6 +697,20 @@ const SettingsGeneralContent: Component<{
           </SettingsRowV2>
         </Show>
 
+        <Show when={props.page === "app"}>
+          <SettingsRowV2
+            title={language.t("settings.general.row.patchToolPartsExpanded.title")}
+            description={language.t("settings.general.row.patchToolPartsExpanded.description")}
+          >
+            <div data-action="settings-feed-patch-tool-parts-expanded">
+              <Switch
+                checked={settings.general.patchToolPartsExpanded() ?? settings.general.editToolPartsExpanded()}
+                onChange={(checked) => settings.general.setPatchToolPartsExpanded(checked)}
+              />
+            </div>
+          </SettingsRowV2>
+        </Show>
+
         <Show when={props.page === "app" && mobile()}>
           <SettingsRowV2
             title={language.t("settings.general.row.mobileTitlebarBottom.title")}

@@ -1251,7 +1251,10 @@ export const dict = {
     "Show shell tool parts expanded by default in the timeline",
   "settings.general.row.editToolPartsExpanded.title": "Expand edit tool parts",
   "settings.general.row.editToolPartsExpanded.description":
-    "Show edit, write, and patch tool parts expanded by default in the timeline",
+    "Show edit and write tool parts expanded by default in the timeline",
+  "settings.general.row.patchToolPartsExpanded.title": "Expand patch tool parts",
+  "settings.general.row.patchToolPartsExpanded.description":
+    "Show apply_patch tool parts expanded by default in the timeline",
   "settings.general.row.newInterface.title": "New layout",
   "settings.general.row.newInterface.badge": "New",
   "settings.general.row.newInterface.description":

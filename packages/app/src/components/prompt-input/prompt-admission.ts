@@ -4,6 +4,7 @@ import type { DirectorySDK } from "@/context/sdk"
 import type { Platform } from "@/context/platform"
 import { ScopedKey, type ServerScope } from "@/utils/server-scope"
 import { sessionPromptOutbox } from "@/pages/session/goal/session-prompt-state"
+import { uuid } from "@/utils/uuid"
 
 type Client = DirectorySDK["client"]
 type Payload = Parameters<Client["v2"]["session"]["prompt"]>[0] & { id: string; sessionID: string }
@@ -28,6 +29,20 @@ export type PromptAdmissionStorage = {
 }
 
 const PREFIX = "v1:"
+
+// The desktop store and the server-side KV behind it cap one value at 1 MiB,
+// while a journaled prompt can carry tens of MiB once attachments are inlined
+// as data URLs. Larger values are split across `<key>\0\0<epoch>.<index>`
+// sibling keys; the logical key holds a small manifest naming the epoch so a
+// reader never joins parts written by two different writes.
+const VALUE_PART_LIMIT = 768 * 1024
+const VALUE_MANIFEST = "\u0000parts\u0000"
+const PART_SEPARATOR = "\u0000\u0000"
+
+// Optimistic file parts repeat the payload's data URLs byte for byte. On disk
+// they reference the payload file by index instead of storing it twice.
+const FILE_REFERENCE = "\u0000f"
+
 const services = new WeakMap<Platform, ReturnType<typeof createPromptAdmission>>()
 
 export function promptAdmissionFor(platform: Platform) {
@@ -88,6 +103,7 @@ export function createPromptAdmission(input: {
   const confirmed = new Map<string, "pending" | "projected" | "cancelled">()
   const sendingPayloads = new Map<string, Payload>()
   const timeout = input.requestTimeoutMs ?? 5_000
+  const storage = chunkedStorage(input.storage)
   const keyFor = (scope: ServerScope, sessionID: string, messageID: string) =>
     ScopedKey.from(scope, sessionID, messageID)
   const notify = (cancelled?: Cancellation) => listeners.forEach((listener) => listener(cancelled))
@@ -98,19 +114,10 @@ export function createPromptAdmission(input: {
       if (writes.get(key) === request) writes.delete(key)
     })
   }
-  const persist = (key: string, entry: PromptAdmission) =>
+  const persist = (key: string, value: string) =>
     serializeWrite(key, async () => {
-      const value = JSON.stringify({
-        scope: entry.scope,
-        sessionID: entry.sessionID,
-        directory: entry.directory,
-        payload: entry.payload,
-        message: entry.message,
-        parts: entry.parts,
-        state: entry.state,
-      })
-      await input.storage.setItem(PREFIX + key, value)
-      if ((await input.storage.getItem(PREFIX + key)) !== value)
+      await storage.setItem(PREFIX + key, value)
+      if ((await storage.getItem(PREFIX + key)) !== value)
         throw new Error("The prompt could not be saved. It has not been sent.")
     })
   let initialized = false
@@ -120,14 +127,14 @@ export function createPromptAdmission(input: {
     if (loading) return loading
     loading = Promise.resolve()
       .then(async () => {
-        const keys = (await timedRequest(async () => input.storage.keys(), undefined, timeout)).filter((key) =>
+        const keys = (await timedRequest(async () => storage.keys(), undefined, timeout)).filter((key) =>
           key.startsWith(PREFIX),
         )
         const records = await Promise.all(
           keys.map(async (key) => {
-            const raw = await timedRequest(async () => input.storage.getItem(key), undefined, timeout)
+            const raw = await timedRequest(async () => storage.getItem(key), undefined, timeout)
             if (!raw) return
-            const value: unknown = JSON.parse(raw)
+            const value: unknown = decodeEntry(JSON.parse(raw))
             if (!validEntry(value) || PREFIX + keyFor(value.scope, value.sessionID, value.payload.id) !== key)
               throw new Error("Saved prompt delivery information could not be read. Keep this device's storage intact.")
             return { key: key.slice(PREFIX.length), value }
@@ -189,7 +196,7 @@ export function createPromptAdmission(input: {
     }
     // Failure to delete only leaves a stale same-ID intent to reconcile next
     // time; it must never turn confirmed admission into an unsent composer.
-    void serializeWrite(key, async () => input.storage.removeItem(PREFIX + key)).catch(() => undefined)
+    void serializeWrite(key, async () => storage.removeItem(PREFIX + key)).catch(() => undefined)
     notify(outcome === "cancelled" ? { scope, sessionID, messageID } : undefined)
   }
   const check = async (
@@ -250,11 +257,16 @@ export function createPromptAdmission(input: {
       }),
     )
     const other = Object.entries(state.entries).filter(
-      ([id, value]) => id !== key && !!value && value.state !== "admitted",
+      (pair): pair is [string, PromptAdmission] =>
+        pair[0] !== key && !!pair[1] && pair[1].state !== "admitted",
     )
+    // The bound covers the stored encoding — file parts keep references into the
+    // payload rather than a second copy of each attachment's data URL.
+    const encoded = encodeEntry(next)
     if (
       other.length >= (input.maxEntries ?? 100) ||
-      JSON.stringify([...other.map(([, value]) => value), next]).length * 2 > (input.maxBytes ?? 64 * 1024 * 1024)
+      other.reduce((size, [, value]) => size + encodeEntry(value).length, encoded.length) * 2 >
+        (input.maxBytes ?? 128 * 1024 * 1024)
     )
       throw new Error(
         "Too many prompts await delivery confirmation. Check their delivery before sending another prompt.",
@@ -266,12 +278,12 @@ export function createPromptAdmission(input: {
     const errors: unknown[] = []
     const retry = input.retryDelays ?? [250, 750, 1500]
     try {
-      await timedRequest(() => persist(key, next), signal, timeout).catch((error: unknown) => {
+      await timedRequest(() => persist(key, encoded), signal, timeout).catch((error: unknown) => {
         // The adapter may finish after our deadline. Keep cleanup behind the
         // actual write, while releasing the sender with its composer intact.
         // An earlier uncertain POST still owns its journal on retry failure.
         if (!existing)
-          void serializeWrite(key, async () => input.storage.removeItem(PREFIX + key)).catch(() => undefined)
+          void serializeWrite(key, async () => storage.removeItem(PREFIX + key)).catch(() => undefined)
         throw error
       })
       setState("entries", key, next)
@@ -316,7 +328,7 @@ export function createPromptAdmission(input: {
         error: error instanceof Error ? error.message : "Delivery could not be confirmed.",
       }
       if (state.entries[key]?.state !== "admitted") {
-        await timedRequest(() => persist(key, failed), signal, timeout).catch(() => undefined)
+        await timedRequest(() => persist(key, encodeEntry(failed)), signal, timeout).catch(() => undefined)
         if (confirmed.has(key)) return confirmed.get(key) === "cancelled" ? "cancelled" : "admitted"
         setState("entries", key, failed)
       }
@@ -511,6 +523,99 @@ export async function timedRequest<T>(
     clearTimeout(timer)
     signal?.removeEventListener("abort", cancel)
   })
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function chunkedStorage(storage: PromptAdmissionStorage): PromptAdmissionStorage {
+  const partKey = (key: string, epoch: string, index: number) => `${key}${PART_SEPARATOR}${epoch}.${index}`
+  const partKeys = async (key: string) =>
+    (await storage.keys()).filter((name) => name.startsWith(`${key}${PART_SEPARATOR}`))
+  return {
+    async getItem(key) {
+      const head = await storage.getItem(key)
+      if (head === null || head === undefined || !head.startsWith(VALUE_MANIFEST)) return head
+      const [epoch, raw] = head.slice(VALUE_MANIFEST.length).split(":")
+      const chunks = await Promise.all(
+        Array.from({ length: Number(raw) }, (_, index) => storage.getItem(partKey(key, epoch ?? "", index))),
+      )
+      if (chunks.some((chunk) => chunk === null || chunk === undefined))
+        throw new Error("Stored prompt data is incomplete.")
+      return chunks.join("")
+    },
+    async setItem(key, value) {
+      if (value.length <= VALUE_PART_LIMIT) {
+        await storage.setItem(key, value)
+        for (const stale of await partKeys(key)) await storage.removeItem(stale)
+        return
+      }
+      const epoch = uuid()
+      const count = Math.ceil(value.length / VALUE_PART_LIMIT)
+      await Promise.all(
+        Array.from({ length: count }, (_, index) =>
+          storage.setItem(
+            partKey(key, epoch, index),
+            value.slice(index * VALUE_PART_LIMIT, (index + 1) * VALUE_PART_LIMIT),
+          ),
+        ),
+      )
+      // The manifest lands last: a reader either sees the previous value whole
+      // or this epoch's complete part set, never a partial write.
+      await storage.setItem(key, `${VALUE_MANIFEST}${epoch}:${count}`)
+      const current = `${key}${PART_SEPARATOR}${epoch}.`
+      for (const stale of await partKeys(key)) {
+        if (!stale.startsWith(current)) await storage.removeItem(stale)
+      }
+    },
+    async removeItem(key) {
+      const stale = await partKeys(key)
+      await storage.removeItem(key)
+      await Promise.all(stale.map((name) => storage.removeItem(name)))
+    },
+    async keys() {
+      return (await storage.keys()).filter((name) => !name.includes(PART_SEPARATOR))
+    },
+  }
+}
+
+function encodeEntry(entry: PromptAdmission) {
+  const files = entry.payload.prompt?.files ?? []
+  const parts = files.length
+    ? entry.parts.map((part) => {
+        if (part.type !== "file") return part
+        const index = files.findIndex((file) => file.uri === part.url)
+        return index === -1 ? part : { ...part, url: `${FILE_REFERENCE}${index}` }
+      })
+    : entry.parts
+  return JSON.stringify({
+    scope: entry.scope,
+    sessionID: entry.sessionID,
+    directory: entry.directory,
+    payload: entry.payload,
+    message: entry.message,
+    parts,
+    state: entry.state,
+  })
+}
+
+function decodeEntry(value: unknown) {
+  if (!isRecord(value) || !Array.isArray(value.parts)) return value
+  const files =
+    isRecord(value.payload) && isRecord(value.payload.prompt) && Array.isArray(value.payload.prompt.files)
+      ? value.payload.prompt.files
+      : undefined
+  if (!files?.length) return value
+  return {
+    ...value,
+    parts: value.parts.map((part) => {
+      if (!isRecord(part) || part.type !== "file" || typeof part.url !== "string" || !part.url.startsWith(FILE_REFERENCE))
+        return part
+      const file = files[Number(part.url.slice(FILE_REFERENCE.length))]
+      return isRecord(file) && typeof file.uri === "string" ? { ...part, url: file.uri } : part
+    }),
+  }
 }
 
 function waitFor(ms: number, signal?: AbortSignal): Promise<boolean> {

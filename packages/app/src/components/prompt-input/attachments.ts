@@ -26,6 +26,10 @@ function dataUrl(file: File, mime: string) {
 }
 
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+// A path-backed file is sent as a file:// reference — its bytes never enter the
+// renderer — so its bound is the per-turn materialization cost server-side,
+// not a base64 copy held in memory.
+export const MAX_PATH_ATTACHMENT_BYTES = 256 * 1024 * 1024
 
 type PromptTarget = Pick<ReturnType<ReturnType<typeof usePrompt>["capture"]>, "current" | "cursor" | "set">
 type AttachmentTarget = { prompt: PromptTarget; cursor: number | undefined }
@@ -63,7 +67,8 @@ export function createPromptAttachmentsCore(input: PromptAttachmentsCoreInput) {
   // renderer memory, so an unbounded attachment can freeze the window.
   const add = async (file: File, toast = true, target = capture()) => {
     if (!target) return false
-    if (file.size > MAX_ATTACHMENT_BYTES) {
+    const sourcePath = input.getPathForFile?.(file) || undefined
+    if (file.size > (sourcePath ? MAX_PATH_ATTACHMENT_BYTES : MAX_ATTACHMENT_BYTES)) {
       if (toast) input.warn?.()
       return false
     }
@@ -73,16 +78,27 @@ export function createPromptAttachmentsCore(input: PromptAttachmentsCoreInput) {
       return false
     }
 
-    const url = await dataUrl(file, mime)
-    if (!url) return false
+    let url = ""
+    let previewUrl: string | undefined
+    if (sourcePath) {
+      // Picker-sampled Files declare the real size but carry only a mime head.
+      // The tail probe tells a streamable File from a truncated sample before an
+      // object URL is handed to the preview chip.
+      const tail = await file.slice(file.size - 1, file.size).arrayBuffer()
+      if (tail.byteLength > 0) previewUrl = URL.createObjectURL(file)
+    } else {
+      url = await dataUrl(file, mime)
+      if (!url) return false
+    }
 
     const attachment: ImageAttachmentPart = {
       type: "image",
       id: uuid(),
       filename: file.name,
-      sourcePath: input.getPathForFile?.(file) || undefined,
+      sourcePath,
       mime,
       dataUrl: url,
+      previewUrl,
     }
     target.prompt.set([...target.prompt.current(), attachment], target.cursor)
     return true
@@ -111,8 +127,9 @@ export function createPromptAttachmentsCore(input: PromptAttachmentsCoreInput) {
   const removeAttachment = (id: string) => {
     const target = input.capture()
     const current = target.current()
-    const next = current.filter((part) => part.type !== "image" || part.id !== id)
-    target.set(next, target.cursor())
+    const removed = current.find((part) => part.type === "image" && part.id === id)
+    if (removed?.type === "image" && removed.previewUrl) URL.revokeObjectURL(removed.previewUrl)
+    target.set(current.filter((part) => part.type !== "image" || part.id !== id), target.cursor())
   }
 
   const handlePaste = async (event: ClipboardEvent) => {

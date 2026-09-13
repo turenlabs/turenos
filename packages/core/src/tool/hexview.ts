@@ -73,6 +73,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         [name]: Tool.make({
+          deferred: true,
           description:
             "Read a bounded hexadecimal and ASCII view of any file without relying on host utilities. Use this for binary headers, embedded data, offsets, and byte-level verification. Relative paths resolve from the active Location; external absolute paths require external_directory approval.",
           input: Input,

@@ -64,6 +64,12 @@ type Config<
   readonly inputJsonSchema?: JsonSchema.JsonSchema
   readonly output: Output
   /**
+   * Keep the tool callable but withhold its definition from the advertised catalog until a
+   * session broker selects it. The tool search/load pair discovers deferred tools by name and
+   * description only; a direct call by name still settles and marks the tool loaded.
+   */
+  readonly deferred?: boolean
+  /**
    * Release a generic execution claim when the tool returns an error settlement, allowing the
    * same call identity to execute again. Use only when an error intentionally leaves a durable,
    * tool-owned operation pending and that operation reconciles the retry itself.
@@ -86,6 +92,7 @@ type Config<
 
 type Runtime = {
   readonly permission?: string
+  readonly deferred: boolean
   readonly retryableError: boolean
   readonly requiresSubagentContext: boolean
   readonly definition: (name: string) => ToolDefinition
@@ -102,6 +109,7 @@ export function make<
   const tool = Object.freeze({}) as Definition<Input, Structured>
   const definitions = new Map<string, ToolDefinition>()
   runtimes.set(tool, {
+    deferred: config.deferred ?? false,
     retryableError: config.retryableError ?? false,
     requiresSubagentContext: false,
     definition: (name) => {
@@ -181,7 +189,16 @@ export const withSubagentContext = <Input extends SchemaType<any>, Output extend
   return decorated
 }
 
+export const withDeferred = <Input extends SchemaType<any>, Output extends SchemaType<any>>(
+  tool: Definition<Input, Output>,
+) => {
+  const decorated = Object.freeze({}) as Definition<Input, Output>
+  runtimes.set(decorated, { ...runtimeOf(tool), deferred: true })
+  return decorated
+}
+
 export const permission = (tool: AnyTool, name: string) => runtimeOf(tool).permission ?? name
+export const isDeferred = (tool: AnyTool) => runtimeOf(tool).deferred
 export const retryableError = (tool: AnyTool) => runtimeOf(tool).retryableError
 export const requiresSubagentContext = (tool: AnyTool) => runtimeOf(tool).requiresSubagentContext
 export const definition = (name: string, tool: AnyTool) => runtimeOf(tool).definition(name)

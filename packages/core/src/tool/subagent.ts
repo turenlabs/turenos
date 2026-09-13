@@ -441,6 +441,7 @@ const layer = Layer.effect(
             }),
         }),
         [agentDocName]: Tool.make({
+          deferred: true,
           description:
             "Return the definition of the agent you are running as (or a named agent): name, description, mode, prompt, and any agent definition file content found in the workspace. Use this to know exactly what identity and instructions you work under, and to coordinate improvements with your team.",
           input: Schema.Struct({
@@ -490,6 +491,7 @@ const layer = Layer.effect(
             }),
         }),
         [listName]: Tool.make({
+          deferred: true,
           description: `List up to ${MAX_LIST_TASKS} sibling subagents (and direct children when you are the durable parent), retaining active tasks and the newest terminal tasks. Sibling lists let coordinated analysts message each other with ${sendName}. Result and error previews appear only for terminal tasks, capped at ${MAX_TASK_PREVIEW_LENGTH} characters with truncation marked explicitly; use ${peekName} to observe a running direct child's transcript and ${waitName} to collect a finished child's complete result.`,
           input: Schema.Struct({}),
           output: ListOutput,
@@ -514,6 +516,7 @@ const layer = Layer.effect(
             }),
         }),
         [peekName]: Tool.make({
+          deferred: true,
           description: `Read the newest durable transcript entries of one direct child subagent: user prompts, assistant text and reasoning excerpts, and tool calls with their name, status, and input. Tool output bodies are never included, so this stays cheap on a running child. Use it to observe mid-flight progress between ${SwarmRoomTool.postName} updates; ${waitName} still delivers the complete final report.`,
           input: Schema.Struct({
             task_id: SessionTaskV2.ID,

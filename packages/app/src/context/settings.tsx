@@ -35,6 +35,7 @@ export interface Settings {
     showReasoningSummaries: boolean
     shellToolPartsExpanded: boolean
     editToolPartsExpanded: boolean
+    patchToolPartsExpanded?: boolean
     showCustomAgents: boolean
     catalogEndpoint?: string
     lobbyBetaEnabled?: boolean
@@ -386,6 +387,11 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         ),
         setEditToolPartsExpanded(value: boolean) {
           setStore("general", "editToolPartsExpanded", value)
+        },
+        // Unset means patch cards keep following editToolPartsExpanded.
+        patchToolPartsExpanded: () => store.general?.patchToolPartsExpanded,
+        setPatchToolPartsExpanded(value: boolean) {
+          setStore("general", "patchToolPartsExpanded", value)
         },
         showCustomAgents,
         setShowCustomAgents(value: boolean) {

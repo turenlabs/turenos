@@ -73,6 +73,7 @@ const layer = Layer.effect(
           if (taskOwned) return {} as Readonly<Record<string, Tool.AnyTool>>
           const available: Readonly<Record<string, Tool.AnyTool>> = {
             [name]: Tool.make({
+              deferred: true,
               description:
                 "Create a new top-level TurenOS session in the current project or an explicitly supplied project directory with a durable continuation brief and start it immediately. This is a full left-nav session, not a subagent child. Use once when the current work should continue in a separate session.",
               input: Input,

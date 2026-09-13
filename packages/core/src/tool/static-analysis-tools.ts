@@ -117,6 +117,7 @@ const layer = Layer.effectDiscard(
       ...operations.map(([name, description]) => [
         name,
         Tool.make({
+          deferred: true,
           description,
           input: extraInput(name),
           output: ReportOutput,
@@ -127,6 +128,7 @@ const layer = Layer.effectDiscard(
       [
         "extract_archive_entry",
         Tool.make({
+          deferred: true,
           description:
             "Extract one selected ZIP, tar, gzip-tar, ar, cpio, or supported plain-header 7z member into an approved new output file. Archive paths are never written; encrypted and unsupported formats fail explicitly.",
           input: Schema.Struct({
@@ -209,6 +211,7 @@ const layer = Layer.effectDiscard(
       [
         "demangle_symbol",
         Tool.make({
+          deferred: true,
           description:
             "Demangle one Rust or Itanium C++ symbol with the bundled WebAssembly runtime. No file is read or executed.",
           input: Schema.Struct({

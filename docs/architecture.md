@@ -10,11 +10,29 @@ see [Branding](./branding.md) for the complete policy.
 
 ## System shape
 
-The product has two primary entry paths and one shared runtime:
+TurenOS is the user-facing web UI and Desktop application. `forge` is the supporting backend CLI
+utility, used for headless servers, remote hosts, and backend administration rather than a separate
+user-facing product. Both use one shared server implementation:
 
-- The desktop shell starts a supervised local sidecar and hosts the web renderer.
-- The `forge` CLI starts commands, serves HTTP, or runs an agent without Electron.
-- The sidecar and CLI compose the `packages/forge` server with the services in `@turenlabs/core`.
+- The desktop shell hosts the web renderer and starts a supervised local server directly in an
+  Electron utility process. It does not launch `forge serve` for its local backend or require a
+  separately installed CLI.
+- For SSH and managed WSL backends, Desktop starts the native executable with `forge serve`.
+  The SSH path manages the remote server and connects through a tunnel. Operators can also use
+  `forge serve` for a separately managed headless server.
+- The local sidecar and headless server compose the `packages/forge` server with the services in
+  `@turenlabs/core`; they are not separate session engines.
+
+The executable currently retains broader commands such as agent runs, providers, sessions, and
+upgrades. Those commands are real supported entrypoints in the current implementation, but are not
+the intended primary user experience. This role clarification does not remove them or rename any
+compatibility identifiers.
+
+Source: [local process startup](../packages/desktop/src/main/server.ts),
+[direct server loading](../packages/desktop/src/main/sidecar.ts),
+[SSH server startup](../packages/desktop/src/main/ssh/shim.ts),
+[WSL server startup](../packages/desktop/src/main/wsl/sidecar.ts), and
+[current CLI registration](../packages/forge/src/index.ts).
 
 The browser renderer does not call Core services directly. It uses a generated SDK client contract over
 HTTP, server-sent events (SSE), and selected WebSocket routes.
@@ -23,8 +41,9 @@ HTTP, server-sent events (SSE), and selected WebSocket routes.
 flowchart LR
     User[User]
     Desktop[Desktop shell\npackages/desktop]
-    Renderer[Web renderer\npackages/app]
-    CLI[CLI\npackages/forge/src/index.ts]
+    Renderer[TurenOS web UI\npackages/app]
+    Operator[Backend operator]
+    CLI[forge backend utility\nheadless, SSH, WSL]
     Sidecar[Local sidecar\nNode process]
     Server[TurenOS server\npackages/forge]
     API[Typed HTTP API\nProtocol and Server]
@@ -35,7 +54,9 @@ flowchart LR
     Data[SQLite and local files]
 
     User --> Desktop
-    User --> CLI
+    User --> Renderer
+    Operator --> CLI
+    Desktop -->|SSH or WSL| CLI
     Desktop --> Renderer
     Desktop --> Sidecar
     Renderer --> Client

@@ -158,6 +158,7 @@ export function SessionTurn(
     showReasoningSummaries?: boolean
     shellToolDefaultOpen?: boolean
     editToolDefaultOpen?: boolean
+    patchToolDefaultOpen?: boolean
     active?: boolean
     status?: SessionStatus
     onUserInteracted?: () => void
@@ -415,6 +416,7 @@ export function SessionTurn(
                     showReasoningSummaries={showReasoningSummaries()}
                     shellToolDefaultOpen={props.shellToolDefaultOpen}
                     editToolDefaultOpen={props.editToolDefaultOpen}
+                    patchToolDefaultOpen={props.patchToolDefaultOpen}
                   />
                 </div>
               </Show>

@@ -1,6 +1,10 @@
 import { afterEach, expect, test } from "bun:test"
 import type { ContentPart } from "@/context/prompt"
-import { MAX_ATTACHMENT_BYTES, createPromptAttachmentsCore } from "@/components/prompt-input/attachments"
+import {
+  MAX_ATTACHMENT_BYTES,
+  MAX_PATH_ATTACHMENT_BYTES,
+  createPromptAttachmentsCore,
+} from "@/components/prompt-input/attachments"
 
 const originalFileReader = globalThis.FileReader
 
@@ -8,7 +12,7 @@ afterEach(() => {
   globalThis.FileReader = originalFileReader
 })
 
-function attachmentHarness() {
+function attachmentHarness(getPathForFile?: (file: File) => string) {
   let parts: ContentPart[] = []
   let warnings = 0
   const editor = document.createElement("div")
@@ -22,6 +26,7 @@ function attachmentHarness() {
     }),
     editor: () => editor,
     warn: () => warnings++,
+    getPathForFile,
   })
   return { attachments, parts: () => parts, warnings: () => warnings }
 }
@@ -66,4 +71,36 @@ test("keeps the prompt unchanged when FileReader conversion fails", async () => 
 
   expect(await harness.attachments.addAttachment(new File(["x"], "broken.png", { type: "image/png" }))).toBe(false)
   expect(harness.parts()).toEqual([])
+})
+
+test("attaches a path-backed file over the inline limit without reading its bytes", async () => {
+  class BrokenFileReader {
+    result: string | ArrayBuffer | null = null
+    #listeners = new Map<string, EventListener>()
+    addEventListener(type: string, listener: EventListener) {
+      this.#listeners.set(type, listener)
+    }
+    readAsDataURL() {
+      this.#listeners.get("error")?.(new Event("error"))
+    }
+  }
+  globalThis.FileReader = BrokenFileReader as unknown as typeof FileReader
+  const harness = attachmentHarness(() => "/real/path/big.png")
+  const file = new File([Uint8Array.of(1)], "big.png", { type: "image/png" })
+  Object.defineProperty(file, "size", { value: MAX_ATTACHMENT_BYTES + 1 })
+
+  expect(await harness.attachments.addAttachment(file)).toBe(true)
+  expect(harness.parts()).toMatchObject([
+    { type: "image", filename: "big.png", sourcePath: "/real/path/big.png", dataUrl: "", previewUrl: undefined },
+  ])
+})
+
+test("rejects a path-backed file over the path limit", async () => {
+  const harness = attachmentHarness(() => "/real/path/enormous.png")
+  const file = new File([Uint8Array.of(1)], "enormous.png", { type: "image/png" })
+  Object.defineProperty(file, "size", { value: MAX_PATH_ATTACHMENT_BYTES + 1 })
+
+  expect(await harness.attachments.addAttachment(file)).toBe(false)
+  expect(harness.parts()).toEqual([])
+  expect(harness.warnings()).toBe(1)
 })

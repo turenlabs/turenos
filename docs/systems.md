@@ -10,12 +10,20 @@ its compatibility spelling. See [Branding](./branding.md).
 
 ## Runtime map
 
+TurenOS is the user-facing web UI and Desktop application. The `forge` CLI is a supporting utility
+for headless servers, SSH/WSL backends, and backend administration, not a parallel user-facing
+product. Desktop loads its local server directly in an Electron utility process; SSH and managed
+WSL backends use the native executable's `serve` command. The CLI catalog below describes commands
+that still exist, not a requirement to preserve a separate CLI product. See
+[Architecture](./architecture.md#system-shape) for process boundaries and
+[Branding](./branding.md#product-and-backend-roles) for naming policy.
+
 ```mermaid
 flowchart TB
     Desktop[Desktop shell]
-    Renderer[Renderer app]
+    Renderer[TurenOS web UI]
     Sidecar[Supervised sidecar]
-    CLI[CLI]
+    CLI[forge backend utility]
     Product[Product server]
     Standard[Standard Server handlers]
     Core[Core services]
@@ -25,6 +33,7 @@ flowchart TB
 
     Desktop --> Renderer
     Desktop --> Sidecar
+    Desktop -->|SSH or WSL| CLI
     Renderer --> Standard
     CLI --> Product
     Sidecar --> Product

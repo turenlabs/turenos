@@ -18,6 +18,14 @@ describe("ServerScope", () => {
     const key = "http://localhost:4096" as Parameters<typeof ServerScope.fromServerKey>[0]
     expect(String(ServerScope.fromServerKey(key, key))).toBe("local")
   })
+
+  test("detects scopes whose server runs on this machine", () => {
+    expect(ServerScope.isLocal(ServerScope.local)).toBe(true)
+    expect(ServerScope.isLocal("http://localhost:4096" as ServerScope)).toBe(true)
+    expect(ServerScope.isLocal("http://127.0.0.1:4096" as ServerScope)).toBe(true)
+    expect(ServerScope.isLocal("https://debian.example" as ServerScope)).toBe(false)
+    expect(ServerScope.isLocal("debian.example" as ServerScope)).toBe(false)
+  })
 })
 
 describe("SessionStateKey", () => {

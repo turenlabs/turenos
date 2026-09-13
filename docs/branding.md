@@ -7,6 +7,23 @@ as a documentation-only rebrand.
 
 ## Naming rules
 
+### Product and backend roles
+
+**TurenOS** names the user-facing web UI and Desktop application. It is where users work with
+sessions, agents, tools, providers, and security workflows. **`forge`** names the supporting backend
+CLI utility, not a second user-facing product or an alternative product name for TurenOS.
+
+Use `forge` when referring to the actual executable or commands such as `forge serve`. Its role is
+headless server operation, remote hosts over SSH, managed WSL backends, and backend administration.
+Desktop starts its local server directly in an Electron utility process; users do not need to install
+the CLI separately to use the local TurenOS application.
+
+The current executable still exposes broader commands, including agent runs, provider management,
+sessions, and upgrades. This policy defines the intended product roles; it does not claim those
+commands have been removed. Preserving `forge` and `forge-cli` for compatibility does not make the
+full existing command surface a parallel product direction. Command removal or renaming requires a
+separate implementation and compatibility review.
+
 ### Use TurenOS for product copy
 
 Use **TurenOS** in user-facing prose when referring to the product, application, desktop experience,

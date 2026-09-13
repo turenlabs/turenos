@@ -22,6 +22,10 @@ export class Error extends Schema.TaggedErrorClass<Error>()("Snapshot.Error", {
   cause: Schema.optional(Schema.Defect()),
 }) {}
 
+// Capture runs on the provider-turn critical path; a poisoned shadow index or
+// slow filesystem must degrade to "no snapshot" rather than hang the session.
+const CAPTURE_TIMEOUT = "30 seconds"
+
 export interface CompareInput {
   readonly from: ID
   readonly to: ID
@@ -166,6 +170,13 @@ const layer = Layer.effect(
           }),
         )
       }).pipe(
+        Effect.timeoutOrElse({
+          duration: CAPTURE_TIMEOUT,
+          orElse: () =>
+            Effect.logWarning("snapshot capture timed out", { duration: CAPTURE_TIMEOUT }).pipe(
+              Effect.as(undefined),
+            ),
+        }),
         Effect.catch((cause) => Effect.logWarning("failed to capture snapshot", { cause }).pipe(Effect.as(undefined))),
       )
     })

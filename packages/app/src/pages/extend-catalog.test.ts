@@ -185,6 +185,114 @@ describe("loadExternalCatalog", () => {
     expect(error).toBe(aborted)
     expect(calls).toHaveLength(1)
   })
+
+  test("describes DNS resolution failures with the catalog host", async () => {
+    const resolution = Object.assign(new Error("getaddrinfo ENOTFOUND catalog.turen.io"), { code: "ENOTFOUND" })
+    const failed = new TypeError("fetch failed", { cause: resolution })
+    const { fetcher } = mockFetch(() => {
+      throw failed
+    })
+
+    const error = await loadExternalCatalog("https://catalog.turen.io", new AbortController().signal, fetcher).catch(
+      (cause: unknown) => cause,
+    )
+
+    expect(error).toBeInstanceOf(Error)
+    if (!(error instanceof Error)) throw error
+    expect(error.message).toBe(
+      'Could not resolve the extension catalog host "catalog.turen.io". Check your internet connection or DNS settings.',
+    )
+    expect(error.cause).toBe(failed)
+  })
+
+  test("describes refused connections", async () => {
+    const { fetcher } = mockFetch(() => {
+      throw new TypeError("fetch failed", {
+        cause: Object.assign(new Error("connect ECONNREFUSED 10.0.0.1:443"), { code: "ECONNREFUSED" }),
+      })
+    })
+
+    const error = await loadExternalCatalog("https://catalog.example.test", new AbortController().signal, fetcher).catch(
+      (cause: unknown) => cause,
+    )
+
+    expect(error).toBeInstanceOf(Error)
+    if (!(error instanceof Error)) throw error
+    expect(error.message).toBe(
+      "The extension catalog at catalog.example.test refused the connection. It may be down or blocked by a firewall.",
+    )
+  })
+
+  test("describes request timeouts", async () => {
+    const { fetcher } = mockFetch(() => {
+      throw new DOMException("The operation timed out", "TimeoutError")
+    })
+
+    const error = await loadExternalCatalog("https://catalog.example.test", new AbortController().signal, fetcher).catch(
+      (cause: unknown) => cause,
+    )
+
+    expect(error).toBeInstanceOf(Error)
+    if (!(error instanceof Error)) throw error
+    expect(error.message).toBe(
+      "Timed out connecting to the extension catalog at catalog.example.test. Check your internet connection and try again.",
+    )
+  })
+
+  test("describes generic connection failures", async () => {
+    const { fetcher } = mockFetch(() => {
+      throw new TypeError("Failed to fetch")
+    })
+
+    const error = await loadExternalCatalog("https://catalog.example.test", new AbortController().signal, fetcher).catch(
+      (cause: unknown) => cause,
+    )
+
+    expect(error).toBeInstanceOf(Error)
+    if (!(error instanceof Error)) throw error
+    expect(error.message).toBe(
+      "Could not connect to the extension catalog at catalog.example.test. Check your internet connection and try again.",
+    )
+  })
+
+  test("describes catalog server errors by status", async () => {
+    const { fetcher } = mockFetch(() => json({}, 503))
+
+    const error = await loadExternalCatalog("https://catalog.example.test", new AbortController().signal, fetcher).catch(
+      (cause: unknown) => cause,
+    )
+
+    expect(error).toBeInstanceOf(Error)
+    if (!(error instanceof Error)) throw error
+    expect(error.message).toBe(
+      "The extension catalog at catalog.example.test is unavailable right now (HTTP 503). Try again later.",
+    )
+  })
+
+  test("describes responses that are not valid JSON", async () => {
+    const { fetcher } = mockFetch(() => new Response("<html>not json</html>", { status: 200 }))
+
+    const error = await loadExternalCatalog("https://catalog.example.test", new AbortController().signal, fetcher).catch(
+      (cause: unknown) => cause,
+    )
+
+    expect(error).toBeInstanceOf(Error)
+    if (!(error instanceof Error)) throw error
+    expect(error.message).toBe("The extension catalog at catalog.example.test returned an invalid response.")
+  })
+
+  test("rejects an invalid catalog endpoint before fetching", async () => {
+    const { calls, fetcher } = mockFetch(() => json({ extensions: [] }))
+
+    const error = await loadExternalCatalog("not a url", new AbortController().signal, fetcher).catch(
+      (cause: unknown) => cause,
+    )
+
+    expect(error).toBeInstanceOf(Error)
+    if (!(error instanceof Error)) throw error
+    expect(error.message).toBe('The catalog endpoint "not a url" is not a valid URL')
+    expect(calls).toHaveLength(0)
+  })
 })
 
 describe("catalogHomepage", () => {

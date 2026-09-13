@@ -49,15 +49,45 @@ const cassette =
         mode: "record",
       })
     : HttpRecorder.http("session-runner/openai-chat-streams-text", {
-        directory: path.resolve(import.meta.dir, "fixtures/recordings"),
-        match: (incoming, expected) => {
+      directory: path.resolve(import.meta.dir, "fixtures/recordings"),
+      match: (incoming, expected) => {
           if (incoming.method !== expected.method || incoming.url !== expected.url) return false
           if (JSON.stringify(incoming.headers) !== JSON.stringify(expected.headers)) return false
           const body = JSON.parse(incoming.body ?? "{}") as Record<string, unknown>
-          return (
-            JSON.stringify(Object.fromEntries(Object.entries(body).filter(([key]) => key !== "tools"))) ===
-            expected.body
+          const stripDiscoveryContext = (content: string) =>
+            content.replace(
+              /Additional built-in capabilities —[\s\S]*?The selected tool becomes available on the following model turn within the same user request; use it then to complete the request\.\s*/,
+              "",
+            )
+          const messages = Array.isArray(body.messages)
+            ? body.messages.map((message) => {
+                if (!message || typeof message !== "object") return message
+                const content = (message as { content?: unknown }).content
+                if (typeof content === "string") return { ...message, content: stripDiscoveryContext(content).trimEnd() }
+                if (!Array.isArray(content)) return message
+                return {
+                  ...message,
+                  content: content.filter(
+                    (part) =>
+                      !part ||
+                      typeof part !== "object" ||
+                      typeof (part as { text?: unknown }).text !== "string" ||
+                      !(part as { text: string }).text.startsWith("Additional built-in capabilities —"),
+                  ).map((part) =>
+                    part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
+                      ? { ...part, text: stripDiscoveryContext((part as { text: string }).text) }
+                      : part,
+                  ),
+                }
+              })
+            : body.messages
+          const normalizedBody = Object.fromEntries(
+            Object.entries({ ...body, messages }).filter(([key]) => key !== "tools"),
           )
+          const matches =
+            JSON.stringify(normalizedBody) ===
+            expected.body
+          return matches
         },
       })
 const executor = RequestExecutor.layer.pipe(Layer.provide(cassette))

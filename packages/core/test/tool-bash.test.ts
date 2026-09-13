@@ -438,6 +438,48 @@ describe("BashTool", () => {
     ),
   )
 
+  if (process.platform !== "win32")
+    it.live("intercepts a bare apply_patch heredoc through the patch pipeline", () =>
+      Effect.acquireUseRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => {
+          reset()
+          const target = path.join(tmp.path, "patched.txt")
+          return Effect.promise(() => fs.writeFile(target, "before\ncontext\n")).pipe(
+            Effect.andThen(
+              withTool(tmp.path, (registry) =>
+                settleTool(
+                  registry,
+                  call({
+                    command:
+                      "apply_patch <<'PATCH'\n*** Begin Patch\n*** Update File: patched.txt\n@@ context\n-before\n+after\n context\n*** End Patch\nPATCH",
+                  }),
+                ),
+              ),
+            ),
+            Effect.andThen((settled) =>
+              Effect.sync(() => {
+                expect(settled.result).toMatchObject({
+                  type: "text",
+                  value: expect.stringContaining("intercepted"),
+                })
+                // the edit permission fired through the patch pipeline; no
+                // process was spawned and no bash grant was consumed
+                expect(assertions.map((item) => item.action)).toEqual(["edit"])
+                expect(runs).toEqual([])
+              }),
+            ),
+            Effect.andThen(() =>
+              Effect.promise(() => fs.readFile(target, "utf8")).pipe(
+                Effect.tap((content) => Effect.sync(() => expect(content).toBe("after\ncontext\n"))),
+              ),
+            ),
+          )
+        },
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      ),
+    )
+
   it.live("hard-denies a recursive target with a symlink intermediate before permission or execution", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),

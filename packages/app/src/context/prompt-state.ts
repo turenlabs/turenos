@@ -46,7 +46,10 @@ export interface ImageAttachmentPart {
   filename: string
   sourcePath?: string
   mime: string
+  /** Inline data: payload — empty when the file stays on disk (sourcePath set). */
   dataUrl: string
+  /** Object URL for previews when the bytes never entered memory; falls back to dataUrl. */
+  previewUrl?: string
 }
 
 export type ContentPart = TextPart | FileAttachmentPart | AgentPart | SurfacePart | ImageAttachmentPart
@@ -191,7 +194,16 @@ function sanitizePersistedPrompt(value: unknown) {
   if (!Array.isArray(prompt)) return value
   return {
     ...value,
-    prompt: prompt.filter((part) => !part || typeof part !== "object" || (part as { type?: unknown }).type !== "image"),
+    // Image parts hold inline bytes; path-backed ones are only a file://
+    // pointer. Object URLs die with the document, so they never persist.
+    prompt: prompt.flatMap((part) => {
+      if (!part || typeof part !== "object") return [part]
+      const item = part as { type?: unknown; sourcePath?: unknown; previewUrl?: unknown; dataUrl?: unknown }
+      if (item.type !== "image") return [part]
+      if (typeof item.sourcePath !== "string") return []
+      const { previewUrl: _previewUrl, dataUrl: _dataUrl, ...rest } = item
+      return [rest]
+    }),
   }
 }
 

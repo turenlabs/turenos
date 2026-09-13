@@ -9,6 +9,7 @@ import * as path from "node:path"
 import { HttpRecorder } from "../src"
 import { HttpRecorderInternal } from "../src/internal"
 import { redactedErrorRequest } from "../src/internal-effect"
+import { requestDiff } from "../src/matching"
 import type { Interaction } from "../src/schema"
 
 const seedCassetteDirectory = (directory: string, name: string, interactions: ReadonlyArray<Interaction>) =>
@@ -636,6 +637,28 @@ describe("http-recorder", () => {
         expect(message).not.toContain("sk-123456789012345678901234")
       }),
     )
+  })
+
+  test("limits large-array mismatch diagnostics to the first eight differences", () => {
+    const body = Array.from({ length: 100_000 }, () => 0)
+    const received = body.map((value, index) => (index < 20 ? 1 : value))
+
+    expect(
+      requestDiff(
+        { method: "POST", url: "https://example.test/echo", headers: {}, body: JSON.stringify(body) },
+        { method: "POST", url: "https://example.test/echo", headers: {}, body: JSON.stringify(received) },
+      ),
+    ).toEqual([
+      "body:",
+      "  $[0] expected 0, received 1",
+      "  $[1] expected 0, received 1",
+      "  $[2] expected 0, received 1",
+      "  $[3] expected 0, received 1",
+      "  $[4] expected 0, received 1",
+      "  $[5] expected 0, received 1",
+      "  $[6] expected 0, received 1",
+      "  $[7] expected 0, received 1",
+    ])
   })
 
   test("records to disk when the cassette is missing", async () => {

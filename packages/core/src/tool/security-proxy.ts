@@ -50,6 +50,7 @@ function makeProxyTools(location: Location.Interface, runtime: SecurityProxyRunt
   const caseID = (sessionID: SessionSchema.ID) => `browser_${String(sessionID)}`
 
   const start = Tool.make({
+    deferred: true,
     input: CaseInput,
     output: CaseOutput,
     description:
@@ -84,6 +85,7 @@ function makeProxyTools(location: Location.Interface, runtime: SecurityProxyRunt
   })
 
   const navigate = Tool.make({
+    deferred: true,
     input: Schema.Struct({ url: Schema.String }),
     output: SecurityProxy.Result,
     description:
@@ -98,6 +100,7 @@ function makeProxyTools(location: Location.Interface, runtime: SecurityProxyRunt
   })
 
   const status = Tool.make({
+    deferred: true,
     input: Empty,
     output: SecurityProxy.Result,
     description: "Read the current shared Security Browser status and paused requests for this session.",
@@ -106,6 +109,7 @@ function makeProxyTools(location: Location.Interface, runtime: SecurityProxyRunt
   })
 
   const intercept = Tool.make({
+    deferred: true,
     input: Schema.Struct({ on: Schema.Boolean, settle: Schema.optional(Schema.Literals(["drop", "forward"])) }),
     output: SecurityProxy.Result,
     description:
@@ -121,6 +125,7 @@ function makeProxyTools(location: Location.Interface, runtime: SecurityProxyRunt
   })
 
   const decide = Tool.make({
+    deferred: true,
     input: DecisionInput,
     output: SecurityProxy.Result,
     description:
@@ -135,6 +140,7 @@ function makeProxyTools(location: Location.Interface, runtime: SecurityProxyRunt
   })
 
   const history = Tool.make({
+    deferred: true,
     input: Empty,
     output: SecurityProxy.Result,
     description: "List the latest bounded masked HTTP flows captured by this session's Security Browser.",
@@ -143,6 +149,7 @@ function makeProxyTools(location: Location.Interface, runtime: SecurityProxyRunt
   })
 
   const flow = Tool.make({
+    deferred: true,
     input: Schema.Struct({ flowID: Schema.String, reveal: Schema.optional(Schema.Boolean) }),
     output: SecurityProxy.Result,
     description: "Inspect one captured browser flow. It is masked by default; reveal is explicit and owner-scoped.",
@@ -156,6 +163,7 @@ function makeProxyTools(location: Location.Interface, runtime: SecurityProxyRunt
   })
 
   const replay = Tool.make({
+    deferred: true,
     input: ReplayInput,
     output: SecurityProxy.Result,
     description:
@@ -187,6 +195,7 @@ function makeProxyTools(location: Location.Interface, runtime: SecurityProxyRunt
   })
 
   const stop = Tool.make({
+    deferred: true,
     input: Empty,
     output: SecurityProxy.Result,
     description:

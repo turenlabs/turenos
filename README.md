@@ -4,12 +4,20 @@
 
 <h1 align="center">TurenOS</h1>
 
-TurenOS is Turen Labs' batteries-included Desktop workbench for security engineers. It starts from the excellent [OpenCode](https://github.com/anomalyco/opencode) agent foundation and is being shaped into a focused environment for code review, application security, investigation, and remediation.
+TurenOS is Turen Labs' batteries-included security engineering workbench: the user-facing web UI and its Desktop application. It starts from the excellent [OpenCode](https://github.com/anomalyco/opencode) agent foundation and is being shaped into a focused environment for code review, application security, investigation, and remediation.
 
 > [!IMPORTANT]
 > TurenOS is under active development. Security-specific capabilities continue to evolve, so review the documented trust boundaries before using them in sensitive environments.
 
 ## Direction
+
+**TurenOS is the product; `forge` is its backend CLI utility.** Users work in the TurenOS UI.
+The `forge` executable supports headless server operation, remote hosts over SSH, managed WSL
+backends, and backend administration. It is not a separate user-facing agent product.
+Desktop runs its local server directly in an Electron utility process; a separate CLI installation
+is not required. Existing CLI commands remain available, but their presence does not define a
+parallel CLI product direction. See [Architecture](docs/architecture.md#system-shape) for the runtime
+boundaries and [Branding](docs/branding.md) for retained compatibility names.
 
 TurenOS should make a useful security workflow available without spending the first hour wiring tools together:
 
@@ -29,7 +37,7 @@ The first milestone is a stable, continuously mergeable TurenOS distribution. Se
 - deep links (`forge://`), config (`forge.json`), and data paths (`.forge`) — retained as load-bearing compatibility identifiers for existing installs;
 - MCP, LSP, permission, session, and tool infrastructure inherited from [OpenCode](https://github.com/anomalyco/opencode);
 - signed TurenOS Desktop builds for macOS, Linux, and Windows;
-- a bundled native runtime used by Desktop locally and in managed WSL environments;
+- a bundled `forge` utility for backend operations, with managed SSH and WSL server support;
 - cross-platform release packaging and upstream compatibility tracking.
 
 TurenOS is not a sandbox. Agents can execute commands and modify files with your user privileges. Read [SECURITY.md](SECURITY.md) before using it on untrusted repositories.

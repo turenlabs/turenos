@@ -1223,7 +1223,12 @@ export function MessageTimeline(props: {
     const defaultOpen = createMemo(() => {
       const item = part()
       if (!item) return
-      return partDefaultOpen(item, settings.general.shellToolPartsExpanded(), settings.general.editToolPartsExpanded())
+      return partDefaultOpen(
+        item,
+        settings.general.shellToolPartsExpanded(),
+        settings.general.editToolPartsExpanded(),
+        settings.general.patchToolPartsExpanded(),
+      )
     })
 
     // A stubbed body under an expanded card is a fetch, not a layout: tools that render open by

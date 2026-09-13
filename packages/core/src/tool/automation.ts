@@ -125,6 +125,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         [listName]: Tool.make({
+          deferred: true,
           description:
             "List this machine's Automations: durable scheduled workflows that run on a repeating interval in their own session. Use this before creating or changing one so you know what already exists.",
           input: Schema.Struct({}),
@@ -132,6 +133,7 @@ const layer = Layer.effectDiscard(
           execute: () => loops.list().pipe(Effect.map((infos) => infos.map(toAutomation))),
         }),
         [createName]: Tool.make({
+          deferred: true,
           description: `Create one Automation: a repeating interval or cron trigger, or a local file-change or session-end event trigger, plus 1 to 12 ordered steps that run in their own session and deliver back to the user.
 Only create an Automation when the user asked for recurring, scheduled, or event-driven work; a one-off task belongs in this session.
 The interval must be at least ${Loop.MIN_INTERVAL_SECONDS} seconds, cron uses five fields like '*/5 * * * *', an Automation stops running after seven days, and at most ${Loop.MAX_ACTIVE} may be active at once. Report the returned id and expiry to the user.`,
@@ -212,6 +214,7 @@ The interval must be at least ${Loop.MIN_INTERVAL_SECONDS} seconds, cron uses fi
             }),
         }),
         [updateName]: Tool.make({
+          deferred: true,
           description:
             "Change one existing Automation: rename it, change its interval, cron, or event trigger, inherited agent/model, replace its steps, or pause, resume, or delete it. Replacing steps replaces the whole ordered list. Returns null when the Automation was deleted.",
           input: Schema.Struct({

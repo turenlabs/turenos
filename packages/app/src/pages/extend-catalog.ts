@@ -91,10 +91,90 @@ function isCatalogPage(value: unknown): value is { items: unknown[]; nextCursor?
   )
 }
 
+const CATALOG_TIMEOUT = 15_000
+
+function endpointUrl(endpoint: string) {
+  try {
+    return new URL(endpoint)
+  } catch (cause) {
+    throw new Error(`The catalog endpoint "${endpoint}" is not a valid URL`, { cause })
+  }
+}
+
 function endpointPath(endpoint: string) {
-  const url = new URL(endpoint)
+  const url = endpointUrl(endpoint)
   const pathname = url.pathname.replace(/\/+$/, "")
   return { url, pathname, registry: pathname.toLowerCase().endsWith(".json") }
+}
+
+function errorChain(cause: unknown) {
+  const parts: string[] = []
+  const seen = new Set<unknown>()
+  let current = cause
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current)
+    parts.push(current.name, current.message)
+    const code = (current as { code?: unknown }).code
+    if (typeof code === "string") parts.push(code)
+    current = current.cause
+  }
+  if (typeof current === "string") parts.push(current)
+  else if (isRecord(current) && typeof current.code === "string") parts.push(current.code)
+  if (parts.length === 0) parts.push(String(current))
+  return parts.join(" ").toLowerCase()
+}
+
+function catalogNetworkMessage(url: URL, cause: unknown, timedOut: boolean) {
+  const host = url.host
+  const detail = errorChain(cause)
+  if (timedOut || /timed?[\s_]?out/.test(detail))
+    return `Timed out connecting to the extension catalog at ${host}. Check your internet connection and try again.`
+  if (/enotfound|eai_again|name_not_resolved|name_resolution|dns/.test(detail))
+    return `Could not resolve the extension catalog host "${host}". Check your internet connection or DNS settings.`
+  if (/econnrefused|connection_refused/.test(detail))
+    return `The extension catalog at ${host} refused the connection. It may be down or blocked by a firewall.`
+  if (/econnreset|connection_reset|connection_aborted|epipe|socket/.test(detail))
+    return `The connection to the extension catalog at ${host} was interrupted. Try again.`
+  if (/enetunreach|ehostunreach|eaddrnotavail|internet_disconnected|network_(unreachable|changed)|address_unreachable/.test(detail))
+    return `The network is unreachable while connecting to the extension catalog at ${host}. Check your internet connection.`
+  if (/proxy|tunnel/.test(detail))
+    return `Could not reach the extension catalog at ${host} through the configured proxy.`
+  if (/cert|ssl|tls|unable_to_verify|self.?signed|certificate/.test(detail))
+    return `The secure connection to the extension catalog at ${host} failed certificate verification.`
+  return `Could not connect to the extension catalog at ${host}. Check your internet connection and try again.`
+}
+
+function catalogHttpMessage(status: number, url: URL) {
+  if (status === 401 || status === 403)
+    return `The extension catalog at ${url.host} rejected the request (HTTP ${status}).`
+  if (status === 429) return `The extension catalog at ${url.host} is rate limiting requests. Try again shortly.`
+  if (status >= 500)
+    return `The extension catalog at ${url.host} is unavailable right now (HTTP ${status}). Try again later.`
+  return `The extension catalog at ${url.host} returned HTTP ${status}.`
+}
+
+async function catalogFetch(url: URL, signal: AbortSignal, fetcher: CatalogFetch) {
+  const timeout = AbortSignal.timeout(CATALOG_TIMEOUT)
+  try {
+    return await fetcher(url, {
+      signal: AbortSignal.any([signal, timeout]),
+      headers: { Accept: "application/json" },
+    })
+  } catch (cause) {
+    if (signal.aborted) throw cause
+    if (cause instanceof DOMException && cause.name === "AbortError") throw cause
+    throw new Error(catalogNetworkMessage(url, cause, timeout.aborted), { cause })
+  }
+}
+
+async function readCatalogJson(response: Response, url: URL, signal: AbortSignal) {
+  try {
+    return (await response.json()) as unknown
+  } catch (cause) {
+    if (signal.aborted) throw cause
+    if (!(cause instanceof SyntaxError)) throw new Error(catalogNetworkMessage(url, cause, false), { cause })
+    throw new Error(`The extension catalog at ${url.host} returned an invalid response.`, { cause })
+  }
 }
 
 function registryUrl(endpoint: string) {
@@ -127,10 +207,10 @@ async function loadCatalogApi(endpoint: string, signal: AbortSignal, fetcher: Ca
     url.searchParams.set("limit", "100")
     if (cursor) url.searchParams.set("cursor", cursor)
     trace?.("catalog.api.requested", { url: traceUrl(url), cursor: cursor ?? null })
-    const response = await fetcher(url, { signal, headers: { Accept: "application/json" } })
+    const response = await catalogFetch(url, signal, fetcher)
     trace?.("catalog.api.responded", { status: response.status, cursor: cursor ?? null })
-    if (!response.ok) throw new Error(`Catalog request failed with HTTP ${response.status}`)
-    const data: unknown = await response.json()
+    if (!response.ok) throw new Error(catalogHttpMessage(response.status, url))
+    const data = await readCatalogJson(response, url, signal)
     if (!isCatalogPage(data)) throw new Error("Catalog response has an invalid manifest shape")
     const items = data.items.filter(isManifest)
     manifests.push(...items)
@@ -155,15 +235,15 @@ export async function loadExternalCatalog(
 ) {
   const url = registryUrl(endpoint)
   trace?.("catalog.registry.requested", { url: traceUrl(url) })
-  const response = await fetcher(url, { signal, headers: { Accept: "application/json" } })
+  const response = await catalogFetch(url, signal, fetcher)
   trace?.("catalog.registry.responded", { status: response.status })
   if (response.status === 403 || response.status === 404) {
     signal.throwIfAborted()
     trace?.("catalog.registry.fallback", { status: response.status })
     return loadCatalogApi(endpoint, signal, fetcher, trace)
   }
-  if (!response.ok) throw new Error(`Catalog request failed with HTTP ${response.status}`)
-  const data: unknown = await response.json()
+  if (!response.ok) throw new Error(catalogHttpMessage(response.status, url))
+  const data = await readCatalogJson(response, url, signal)
   if (!isRegistry(data)) throw new Error("Catalog registry has an invalid manifest shape")
   const manifests = data.extensions.filter(isManifest)
   trace?.("catalog.registry.loaded", {

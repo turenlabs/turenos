@@ -39,4 +39,41 @@ describe("ShellToolRouting", () => {
       Effect.asVoid,
     ),
   )
+
+  it.effect("extracts the body of a bare apply_patch heredoc", () =>
+    ShellToolRouting.patchHeredoc({
+      command: "apply_patch <<'PATCH'\n*** Begin Patch\n*** Add File: a.ts\n+x\n*** End Patch\nPATCH",
+      shell: "bash",
+    }).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => expect(result).toBe("*** Begin Patch\n*** Add File: a.ts\n+x\n*** End Patch")),
+      ),
+      Effect.asVoid,
+    ),
+  )
+
+  it.effect("strips leading tabs for an indented <<- heredoc", () =>
+    ShellToolRouting.patchHeredoc({
+      command: "apply_patch <<-EOF\n\t*** Begin Patch\n\t*** End Patch\n\tEOF",
+      shell: "bash",
+    }).pipe(
+      Effect.tap((result) => Effect.sync(() => expect(result).toBe("*** Begin Patch\n*** End Patch"))),
+      Effect.asVoid,
+    ),
+  )
+
+  it.effect("refuses apply_patch invocations that are not a lone heredoc", () =>
+    Effect.gen(function* () {
+      for (const command of [
+        "cd subdir && apply_patch <<EOF\nx\nEOF",
+        "apply_patch <<EOF\nx\nEOF && echo done",
+        "apply_patch --check <<EOF\nx\nEOF",
+        "cat <<EOF | apply_patch\nx\nEOF",
+        "apply_patch",
+      ]) {
+        const result = yield* ShellToolRouting.patchHeredoc({ command, shell: "bash" })
+        expect(result).toBeUndefined()
+      }
+    }),
+  )
 })

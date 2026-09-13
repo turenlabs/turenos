@@ -213,6 +213,7 @@ const layer = Layer.effectDiscard(
         ),
         [forgetName]: Tool.withPermission(
           Tool.make({
+            deferred: true,
             description:
               "Permanently delete one durable memory from the current project. Use only when explicitly requested.",
             input: Schema.Struct({ id: MemorySchema.DrawerID }),

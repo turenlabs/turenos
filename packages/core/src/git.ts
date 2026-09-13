@@ -172,6 +172,9 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@forge/GitV2") {}
 
+/** Stale-index removals beyond this size rebuild the index wholesale instead of per-pathspec. */
+export const BULK_REBUILD_THRESHOLD = 2_000
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -325,7 +328,7 @@ const layer = Layer.effect(
       operationName: OperationError["operation"],
       repository: Repository,
       args: string[],
-      options?: { stdin?: string; env?: Record<string, string> },
+      options?: { stdin?: string; env?: Record<string, string>; exitCodes?: readonly number[] },
     ) {
       const result = yield* proc
         .run(
@@ -348,7 +351,7 @@ const layer = Layer.effect(
           ),
         )
       const text = result.stdout.toString("utf8")
-      if (result.exitCode === 0) return { text, stderr: result.stderr.toString("utf8") }
+      if ((options?.exitCodes ?? [0]).includes(result.exitCode)) return { text, stderr: result.stderr.toString("utf8") }
       return yield* new OperationError({
         operation: operationName,
         directory: repository.worktree,
@@ -445,11 +448,15 @@ const layer = Layer.effect(
       )
       const candidates = Array.from(new Set([...tracked, ...untracked]))
       if (!candidates.length) return { skipped: [] }
+      // check-ignore exits 1 when nothing is ignored; any other failure must
+      // propagate, since treating it as "nothing ignored" would stage every
+      // untracked candidate into the index.
       const ignored = input.ignores
         ? new Set(
             (yield* repositoryOperation("refresh", input.ignores, ["check-ignore", "--no-index", "--stdin", "-z"], {
               stdin: candidates.join("\0") + "\0",
-            }).pipe(Effect.catch(() => Effect.succeed({ text: "", stderr: "" })))).text
+              exitCodes: [0, 1],
+            })).text
               .split("\0")
               .filter(Boolean),
           )
@@ -469,9 +476,25 @@ const layer = Layer.effect(
             { concurrency: 8 },
           )).filter((item): item is RelativePath => item !== undefined)
         : []
-      const skippedFiles = skipped.length > 0 ? new Set<string>(skipped) : undefined
-      const stage = skippedFiles ? allowed.filter((item) => !skippedFiles.has(item)) : allowed
       const remove = [...ignored, ...skipped]
+      // A poisoned index can hold hundreds of thousands of stale entries; a
+      // wholesale rebuild through Git's own traversal is far cheaper than
+      // removing each pathspec. The index is a scratch staging area for
+      // write-tree, and `add --all -- scope` re-stages every valid entry while
+      // honoring the worktree's ignore rules.
+      if (remove.length > BULK_REBUILD_THRESHOLD) {
+        yield* Effect.logInfo("refresh bulk rebuild", { remove: remove.length })
+        yield* repositoryOperation("refresh", input.repository, ["read-tree", "--empty"])
+        yield* repositoryOperation("refresh", input.repository, ["add", "--all", "--sparse", "--", input.scope])
+        if (skipped.length)
+          yield* repositoryOperation(
+            "refresh",
+            input.repository,
+            ["rm", "--cached", "-f", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul"],
+            { stdin: skipped.join("\0") + "\0" },
+          )
+        return { skipped }
+      }
       if (remove.length)
         yield* repositoryOperation(
           "refresh",
@@ -479,6 +502,8 @@ const layer = Layer.effect(
           ["rm", "--cached", "-f", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul"],
           { stdin: remove.join("\0") + "\0" },
         )
+      const skippedFiles = skipped.length > 0 ? new Set<string>(skipped) : undefined
+      const stage = skippedFiles ? allowed.filter((item) => !skippedFiles.has(item)) : allowed
       if (stage.length)
         yield* repositoryOperation(
           "refresh",
@@ -539,13 +564,24 @@ const layer = Layer.effect(
         ignores?: Repository
         maximumUntrackedFileBytes?: number
       }) =>
-        locked(
-          input.repository,
-          Effect.gen(function* () {
-            yield* Effect.forEach(input.scopes, (scope) => refresh({ ...input, scope }), { discard: true })
-            return yield* writeTree(input.repository)
-          }),
-        ),
+        Effect.gen(function* () {
+          const requestedAt = Date.now()
+          return yield* locked(
+            input.repository,
+            Effect.gen(function* () {
+              const acquiredAt = Date.now()
+              yield* Effect.forEach(input.scopes, (scope) => refresh({ ...input, scope }), { discard: true })
+              const tree = yield* writeTree(input.repository)
+              yield* Effect.logInfo("Git tree capture", {
+                gitDirectory: input.repository.gitDirectory,
+                lockWaitMs: acquiredAt - requestedAt,
+                workMs: Date.now() - acquiredAt,
+                scopes: input.scopes.length,
+              })
+              return tree
+            }),
+          )
+        }),
     )
 
     const treeFiles = Effect.fn("Git.tree.files")(function* (input: {

@@ -172,7 +172,12 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       if (!result) return
       try {
         for (const file of result.files) {
-          const selected = new File([await window.api.readPickedFile(result.token, file.path)], file.name)
+          const picked = await window.api.readPickedFile(result.token, file.path)
+          const selected = new File([picked.bytes], file.name)
+          // Over-preview-size picks arrive as a mime head; pin the real size so
+          // the composer sees the actual attachment size, not the head's.
+          if (picked.bytes.byteLength < picked.size)
+            Object.defineProperty(selected, "size", { value: picked.size })
           attachmentPaths.set(selected, file.path)
           await onFile(selected)
         }

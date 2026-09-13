@@ -104,8 +104,13 @@ describe("session runner loop detector", () => {
   })
 
   test("reaches the same verdict however the deltas are split", () => {
-    const text = looping(300)
-    expect(feed(text, 1)).toBe(feed(text, 512))
-    expect(feed(prose(60), 1)).toBe(feed(prose(60), 512))
+    const samples = [looping(300), prose(60), `${prose(40)}\n${looping(300)}`]
+    for (const text of samples) {
+      // A single giant delta yields at most one window check, which cannot
+      // satisfy REQUIRED_COLLAPSED_DELTAS — invariance holds up to deltas that
+      // still allow four checks.
+      expect(feed(text, 1)).toBe(feed(text, 24))
+      expect(feed(text, 1)).toBe(feed(text, 512))
+    }
   })
 })

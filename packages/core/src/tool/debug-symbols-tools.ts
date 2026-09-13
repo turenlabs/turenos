@@ -40,6 +40,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         debug_symbols: Tool.make({
+          deferred: true,
           description:
             "Inspect bounded DWARF sections, PDB public symbols, object symbols, and demangled names with the bundled WebAssembly parser. Source paths are omitted by default; the target is never executed.",
           input: Input,

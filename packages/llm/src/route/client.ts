@@ -374,7 +374,15 @@ const prepareWith = Effect.fn("LLMClient.prepare")(function* (request: LLMReques
 const streamRequestWith = (runtime: TransportRuntime) => (request: LLMRequest) =>
   Stream.unwrap(
     Effect.gen(function* () {
+      const startedAt = Date.now()
       const compiled = yield* compile(request)
+      yield* Effect.logInfo("LLM request compiled", {
+        route: compiled.route.id,
+        provider: compiled.request.model.provider,
+        messages: compiled.request.messages.length,
+        tools: compiled.request.tools.length,
+        elapsedMs: Date.now() - startedAt,
+      })
       return compiled.route.streamPrepared(compiled.prepared, compiled.request, runtime)
     }),
   )

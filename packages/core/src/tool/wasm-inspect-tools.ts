@@ -23,6 +23,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         wasm_inspect: Tool.make({
+          deferred: true,
           description:
             "Inspect and validate one WebAssembly core module or component with the bundled WASM parser. The input is never instantiated or executed.",
           input: Schema.Struct({

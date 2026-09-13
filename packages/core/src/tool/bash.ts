@@ -7,6 +7,7 @@ import { ShellJob } from "../shell-job"
 import { ChildProcess } from "effect/unstable/process"
 import { Config } from "../config"
 import { makeLocationNode } from "../effect/app-node"
+import { FileMutation } from "../file-mutation"
 import { FSUtil } from "../fs-util"
 import { LocationMutation } from "../location-mutation"
 import { Global } from "../global"
@@ -15,6 +16,7 @@ import { PermissionV2 } from "../permission"
 import { PositiveInt } from "../schema"
 import { ShellSafety } from "../shell-safety"
 import { ShellToolRouting } from "../shell-tool-routing"
+import { ApplyPatchTool } from "./apply-patch"
 import { ToolRegistry } from "./registry"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
@@ -135,6 +137,7 @@ const layer = Layer.effect(
     const jobs = yield* ShellJob.Service
     const tools = yield* Tools.Service
     const mutation = yield* LocationMutation.Service
+    const files = yield* FileMutation.Service
     const fs = yield* FSUtil.Service
     const appProcess = yield* AppProcess.Service
     const config = yield* Config.Service
@@ -205,8 +208,27 @@ const layer = Layer.effect(
               cwd: target.canonical,
               shell: ShellSafety.kind(shell),
             })
-            if (recommendation)
+            if (recommendation) {
+              // A bare `apply_patch <<EOF` heredoc is the model writing a patch
+              // in Codex style — run it through the real patch pipeline (fuzzy
+              // matching, permission, diff tracking) instead of blocking.
+              const kind = ShellSafety.kind(shell)
+              const patchText =
+                recommendation.tool === "apply_patch" &&
+                kind !== "cmd" &&
+                (yield* mutation.resolve({ path: ".", kind: "directory" })).canonical === target.canonical
+                  ? yield* ShellToolRouting.patchHeredoc({ command: input.command, shell: kind })
+                  : undefined
+              if (patchText !== undefined) {
+                const result = yield* ApplyPatchTool.run({ patchText, context, mutation, files, fs, permission })
+                return {
+                  output: `apply_patch command intercepted and applied through the patch pipeline:\n${ApplyPatchTool.toModelOutput(result)}`,
+                  truncated: false,
+                  exit: 0,
+                }
+              }
               return yield* new ToolFailure({ message: ShellToolRouting.blockedMessage(recommendation) })
+            }
             const external = target.externalDirectory
             if (external)
               yield* assertPermission({
@@ -323,6 +345,7 @@ export const node = makeLocationNode({
   deps: [
     ToolRegistry.node,
     LocationMutation.node,
+    FileMutation.node,
     FSUtil.node,
     AppProcess.node,
     Config.node,

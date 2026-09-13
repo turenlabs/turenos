@@ -106,6 +106,16 @@ const SessionToolSnapshotResponse = Schema.Struct({
     loaded: Schema.Array(Schema.String),
     notLoaded: Schema.Array(Schema.String),
   }),
+  deferred: Schema.Struct({
+    available: Schema.Array(
+      Schema.Struct({
+        name: Schema.String,
+        description: Schema.String,
+        selected: Schema.Boolean,
+      }),
+    ),
+    loaded: Schema.Array(Schema.String),
+  }),
   exclusions: Schema.Array(SessionToolSnapshotExclusion),
 }).annotate({ identifier: "SessionToolSnapshot" })
 export const ToolListQuery = Schema.Struct({

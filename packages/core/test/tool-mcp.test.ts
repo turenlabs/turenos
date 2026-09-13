@@ -8,6 +8,7 @@ import { PermissionV2 } from "@turenlabs/core/permission"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { SessionV2 } from "@turenlabs/core/session"
 import { McpTool } from "@turenlabs/core/tool/mcp"
+import { ToolBroker } from "@turenlabs/core/tool/broker"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
 import { SessionToolProvider } from "@turenlabs/core/tool/session-provider"
 import { SessionToolSnapshot } from "@turenlabs/core/tool/session-snapshot"
@@ -614,7 +615,7 @@ describe("SessionToolSnapshot", () => {
           .filter((tool) => tool.source === "mcp-broker")
           .map((tool) => tool.id)
           .toSorted(),
-      ).toEqual([McpTool.LOAD_TOOL_NAME, McpTool.SEARCH_TOOL_NAME])
+      ).toEqual([ToolBroker.LOAD_TOOL_NAME, ToolBroker.SEARCH_TOOL_NAME])
       expect(before.snapshot.visible.map((tool) => tool.id)).not.toContain("invalid")
       expect(before.snapshot.broker.capabilities.map((capability) => capability.key).toSorted()).toEqual(
         listing.map((item) => item.key).toSorted(),
@@ -631,8 +632,8 @@ describe("SessionToolSnapshot", () => {
         agent: AgentV2.ID.make("build"),
       })
       expect(after.materialization.definitions.map((tool) => tool.name)).toContain("capture-fixture_echo")
-      expect(after.materialization.definitions.map((tool) => tool.name)).toContain(McpTool.SEARCH_TOOL_NAME)
-      expect(after.materialization.definitions.map((tool) => tool.name)).toContain(McpTool.LOAD_TOOL_NAME)
+      expect(after.materialization.definitions.map((tool) => tool.name)).toContain(ToolBroker.SEARCH_TOOL_NAME)
+      expect(after.materialization.definitions.map((tool) => tool.name)).toContain(ToolBroker.LOAD_TOOL_NAME)
       expect(after.snapshot.visible.map((tool) => tool.id)).toEqual(
         after.materialization.definitions.map((tool) => tool.name),
       )

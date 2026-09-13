@@ -2384,6 +2384,14 @@ export type SessionToolSnapshot = {
     loaded: Array<string>
     notLoaded: Array<string>
   }
+  deferred: {
+    available: Array<{
+      name: string
+      description: string
+      selected: boolean
+    }>
+    loaded: Array<string>
+  }
   exclusions: Array<SessionToolSnapshotExclusion>
 }
 

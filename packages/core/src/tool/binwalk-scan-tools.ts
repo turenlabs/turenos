@@ -26,6 +26,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         binwalk_scan: Tool.make({
+          deferred: true,
           description:
             "Perform a bounded, scan-only signature search over one local binary file. It does not extract, decompress, or execute the input or any embedded content.",
           input: Schema.Struct({

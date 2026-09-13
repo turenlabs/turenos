@@ -43,7 +43,8 @@ function open(raw: string) {
 function closesFence(raw: string, suffix: string) {
   const mark = raw.match(/^[ \t]{0,3}(`{3,}|~{3,})/)?.[1]
   if (!mark) return suffix.includes("```") || suffix.includes("~~~")
-  return `${raw.slice(-(mark.length - 1))}${suffix}`.includes(mark)
+  if (suffix.includes(mark)) return true
+  return `${raw.slice(-(mark.length - 1))}${suffix.slice(0, mark.length - 1)}`.includes(mark)
 }
 
 function heal(text: string) {

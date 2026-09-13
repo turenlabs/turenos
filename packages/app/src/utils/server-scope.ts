@@ -24,6 +24,13 @@ export const ServerScope = {
       key === "sidecar" || key === canonicalLocalServer ? ServerScope.local : key,
     ) as ServerScope
   },
+  // file:// prompt parts only resolve when the session's server runs on this
+  // machine: the sidecar, the canonical web server, or any loopback host.
+  isLocal(scope: ServerScope) {
+    if (scope === ServerScope.local) return true
+    const host = scope.replace(/^https?:\/\//, "").split(":")[0]
+    return host === "localhost" || host === "127.0.0.1"
+  },
 }
 
 export const SessionRouteKey = {

@@ -20,6 +20,7 @@ import {
   ProviderInternalReason,
   ProviderMetadata,
   RateLimitReason,
+  type CacheHint,
   ToolResultValue,
   isContextOverflow,
   TransportReason,
@@ -251,6 +252,35 @@ const ProviderOptionsSchema = Schema.Record(Schema.String, Schema.Record(Schema.
 const providerOptions = (value: unknown): SharedV3ProviderOptions | undefined =>
   Schema.is(ProviderOptionsSchema)(value) ? (value as unknown as SharedV3ProviderOptions) : undefined
 
+// Provider packages whose LanguageModelV3 reads `providerOptions.anthropic.cacheControl`
+// on parts, system blocks, and tool definitions. Matches `providerOptionKey` in
+// `./model.ts` — the options namespace these packages consume is "anthropic".
+const cacheProviderKey = (model: ModelV2.Info) =>
+  model.api.type === "aisdk" &&
+  (model.api.package === "@ai-sdk/anthropic" || model.api.package === "@ai-sdk/google-vertex/anthropic")
+    ? "anthropic"
+    : undefined
+
+// The native Anthropic route lowers `CacheHint` into `cache_control`; the bridge
+// does the same through providerOptions so bridged models keep prompt caching.
+const withCacheControl = (
+  key: string | undefined,
+  options: SharedV3ProviderOptions | undefined,
+  cache: CacheHint | undefined,
+): SharedV3ProviderOptions | undefined => {
+  if (key === undefined || cache === undefined) return options
+  const scoped = options?.[key]
+  if (typeof scoped === "object" && scoped !== null && "cacheControl" in scoped) return options
+  const ttl = cache.ttlSeconds !== undefined && cache.ttlSeconds >= 3600 ? "1h" : "5m"
+  return {
+    ...options,
+    [key]: {
+      ...(typeof scoped === "object" && scoped !== null ? scoped : {}),
+      cacheControl: { type: "ephemeral", ttl },
+    },
+  }
+}
+
 const MEDIA_TYPE = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i
 
 type BridgeToolOutputItem = Extract<LanguageModelV3ToolResultOutput, { type: "content" }>["value"][number]
@@ -291,12 +321,13 @@ type BridgeContentPart = Extract<LanguageModelV3Message, { role: "assistant" }>[
 
 const contentPart = (
   part: LLMRequest["messages"][number]["content"][number],
+  cacheKey: string | undefined,
 ): Effect.Effect<BridgeContentPart, LLMError> => {
   if (part.type === "text")
     return Effect.succeed({
       type: "text",
       text: part.text,
-      providerOptions: providerOptions(part.providerMetadata),
+      providerOptions: withCacheControl(cacheKey, providerOptions(part.providerMetadata), part.cache),
     })
   if (part.type === "media") {
     if (!MEDIA_TYPE.test(part.mediaType))
@@ -307,6 +338,7 @@ const contentPart = (
         data: media.base64,
         mediaType: media.mime,
         filename: part.filename,
+        providerOptions: withCacheControl(cacheKey, undefined, part.cache),
       })),
     )
   }
@@ -331,13 +363,14 @@ const contentPart = (
       toolCallId: part.id,
       toolName: part.name,
       output,
-      providerOptions: providerOptions(part.providerMetadata),
+      providerOptions: withCacheControl(cacheKey, providerOptions(part.providerMetadata), part.cache),
     })),
   )
 }
 
 const message = Effect.fn("AISDKBridge.message")(function* (
   input: LLMRequest["messages"][number],
+  cacheKey: string | undefined,
 ): Effect.fn.Return<LanguageModelV3Message, LLMError> {
   if (input.role === "system") {
     if (input.content.some((part) => part.type !== "text"))
@@ -345,11 +378,18 @@ const message = Effect.fn("AISDKBridge.message")(function* (
     return {
       role: "system",
       content: input.content.map((part) => (part.type === "text" ? part.text : "")).join("\n"),
-      providerOptions: providerOptions(input.native?.providerOptions),
+      providerOptions: withCacheControl(
+        cacheKey,
+        providerOptions(input.native?.providerOptions),
+        input.content.findLast(
+          (part): part is Extract<typeof part, { type: "text" }> =>
+            part.type === "text" && part.cache !== undefined,
+        )?.cache,
+      ),
     }
   }
 
-  const content = yield* Effect.forEach(input.content, contentPart)
+  const content = yield* Effect.forEach(input.content, (part) => contentPart(part, cacheKey))
   if (input.role === "user") {
     if (content.some((part) => part.type !== "text" && part.type !== "file"))
       return yield* invalidOutput("AI SDK bridge user messages only support text and immutable file parts")
@@ -401,23 +441,24 @@ const toolInputSchema = (
 const callOptions = Effect.fn("AISDKBridge.callOptions")(function* (
   request: LLMRequest,
   signal: AbortSignal,
+  cacheKey: string | undefined,
 ): Effect.fn.Return<LanguageModelV3CallOptions, LLMError> {
   const prompt = [
     ...request.system.map(
       (part): LanguageModelV3Message => ({
         role: "system",
         content: part.text,
-        providerOptions: providerOptions(part.metadata),
+        providerOptions: withCacheControl(cacheKey, providerOptions(part.metadata), part.cache),
       }),
     ),
-    ...(yield* Effect.forEach(request.messages, message)),
+    ...(yield* Effect.forEach(request.messages, (input) => message(input, cacheKey))),
   ]
   const tools: LanguageModelV3FunctionTool[] = request.tools.map((tool) => ({
     type: "function",
     name: tool.name,
     description: tool.description,
     inputSchema: toolInputSchema(tool.inputSchema),
-    providerOptions: providerOptions(tool.native?.providerOptions),
+    providerOptions: withCacheControl(cacheKey, providerOptions(tool.native?.providerOptions), tool.cache),
   }))
   return {
     prompt,
@@ -600,6 +641,7 @@ const transport = (
   language: LanguageModelV3,
   sanitize: (value: string) => string,
   providerID: string,
+  cacheKey: string | undefined,
 ): TransportDef<LLMRequest, Prepared, LLMEvent> => ({
   id: "aisdk-language-model-v3",
   prepare: (input) => Effect.succeed({ request: input.request }),
@@ -610,7 +652,7 @@ const transport = (
           Effect.sync(() => new AbortController()),
           (controller) => Effect.sync(() => controller.abort()),
         )
-        const options = yield* callOptions(prepared.request, controller.signal)
+        const options = yield* callOptions(prepared.request, controller.signal, cacheKey)
         const result = yield* Effect.tryPromise({
           try: () => language.doStream(options),
           catch: (error) => streamFailure("doStream", error, "Provider API request failed", providerID, sanitize),
@@ -644,7 +686,12 @@ export const model = (input: {
     provider: input.model.providerID,
     protocol,
     endpoint: Endpoint.path("", { baseURL: "https://aisdk-transport.invalid" }),
-    transport: transport(input.language, errorSanitizer(input.model), input.model.providerID),
+    transport: transport(
+      input.language,
+      errorSanitizer(input.model),
+      input.model.providerID,
+      cacheProviderKey(input.model),
+    ),
     defaults: input.defaults,
   }).model({ id: input.model.api.id, compatibility: input.compatibility })
 

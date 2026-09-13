@@ -80,7 +80,8 @@ export const PromptImageAttachments: Component<PromptImageAttachmentsProps> = (p
           </Show>
           <For each={props.attachments}>
             {(attachment) => {
-              const image = attachment.mime.startsWith("image/")
+              const src = attachment.previewUrl ?? attachment.dataUrl
+              const image = attachment.mime.startsWith("image/") && src !== ""
               const media = () => (
                 <Show
                   when={image}
@@ -100,7 +101,7 @@ export const PromptImageAttachments: Component<PromptImageAttachmentsProps> = (p
                   }
                 >
                   <img
-                    src={attachment.dataUrl}
+                    src={src}
                     alt={attachment.filename}
                     class={props.newLayoutDesigns ? imageClassV2 : imageClass}
                     onClick={() => props.onOpen(attachment)}

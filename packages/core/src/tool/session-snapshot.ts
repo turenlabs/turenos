@@ -1,7 +1,7 @@
 export * as SessionToolSnapshot from "./session-snapshot"
 
 import type { ToolDefinition } from "@turenlabs/llm"
-import { Context, Effect, Layer, Option } from "effect"
+import { Context, Effect, Layer, Option, Schema } from "effect"
 import { AgentV2 } from "../agent"
 import { Location } from "../location"
 import { ModelV2 } from "../model"
@@ -14,6 +14,7 @@ import { SessionSchema } from "../session/schema"
 import { SessionTaskV2 } from "../session/task"
 import { SessionTerminal } from "../session/terminal"
 import { HandoffTool } from "./handoff"
+import { ToolBroker } from "./broker"
 import { McpTool } from "./mcp"
 import { SubagentTool } from "./subagent"
 import { ShellJobTool } from "./shell-job"
@@ -60,6 +61,14 @@ export interface Snapshot {
     readonly loaded: ReadonlyArray<string>
     readonly notLoaded: ReadonlyArray<string>
   }
+  readonly deferred: {
+    readonly available: ReadonlyArray<{
+      readonly name: string
+      readonly description: string
+      readonly selected: boolean
+    }>
+    readonly loaded: ReadonlyArray<string>
+  }
   readonly exclusions: ReadonlyArray<Exclusion>
 }
 
@@ -75,7 +84,16 @@ export interface Input {
   readonly harnessState?: SessionHarness.State
   readonly harnessSessionID?: SessionSchema.ID
   readonly operationID?: string
+  /** Advances the deferred-tool broker turn clock; pass false for non-mutating diagnostics. */
+  readonly advanceTurn?: boolean
+  /** @deprecated Use `advanceTurn`; built-in and MCP deferral share one turn clock. */
   readonly advanceMcpTurn?: boolean
+  readonly deferral?: {
+    /** Defaults to true. When false, deferred tools are advertised inline like any other. */
+    readonly enabled?: boolean
+    /** Pins the advertised deferred selection for this materialization without mutating broker state. */
+    readonly selected?: ReadonlySet<string>
+  }
 }
 
 export interface Result {
@@ -90,6 +108,25 @@ export interface Interface {
 }
 
 export class Service extends Context.Service<Service, Interface>()("@forge/v2/SessionToolSnapshot") {}
+
+const DiscoveryCapability = Schema.Struct({
+  key: Schema.String,
+  name: Schema.String,
+  description: Schema.optional(Schema.String),
+  source: Schema.optional(Schema.String),
+  server: Schema.optional(Schema.String),
+  selected: Schema.Boolean,
+})
+const DiscoverySearchOutput = Schema.Struct({
+  matches: Schema.Array(DiscoveryCapability),
+  selected: Schema.Array(Schema.String),
+  available: Schema.Int,
+})
+const DiscoveryLoadOutput = Schema.Struct({
+  loaded: Schema.Array(Schema.Struct({ key: Schema.String, source: Schema.String })),
+  selected: Schema.Array(Schema.String),
+  message: Schema.String,
+})
 
 const layer = Layer.effect(
   Service,
@@ -171,6 +208,8 @@ const layer = Layer.effect(
       const mcpExclusions: Exclusion[] = []
       const usableMcpDefinitions: McpTool.Definition[] = []
       const mcpNames = new Set([
+        ToolBroker.SEARCH_TOOL_NAME,
+        ToolBroker.LOAD_TOOL_NAME,
         McpTool.SEARCH_TOOL_NAME,
         McpTool.LOAD_TOOL_NAME,
         ...Object.keys(harnessTools),
@@ -218,8 +257,9 @@ const layer = Layer.effect(
       const inventory = source.inventory
         ? yield* source.inventory({ directory: input.directory, definitions: usableMcpDefinitions })
         : inventoryFromDefinitions(usableMcpDefinitions)
+      const advance = input.advanceTurn ?? input.advanceMcpTurn ?? true
       const mcpSelectedKeys =
-        input.advanceMcpTurn === false && source.selected
+        !advance && source.selected
           ? yield* source.selected({
               sessionID: input.sessionID,
               directory: input.directory,
@@ -241,9 +281,9 @@ const layer = Layer.effect(
         mcpSource: source,
         mcpPermission: permissions,
         mcpSelectedKeys,
-        advanceMcpTurn: input.advanceMcpTurn,
+        advanceMcpTurn: advance,
       })
-      const sessionTools = {
+      const sessionToolsBase = {
         ...providerTools,
         ...(yield* shellJobs.forExecution({ sessionID: input.sessionID, control })),
         ...harnessTools,
@@ -252,11 +292,170 @@ const layer = Layer.effect(
         ...handoffTools,
         ...terminalTools,
       }
-      const materialization = yield* registry.materialize({
+      // The deferred catalog is owned by the registry's registration view, so it takes one
+      // probe materialization to learn which built-ins are deferrable before the broker's
+      // selection can decide what the real materialization advertises. Definition derivation
+      // is cached per tool name, so the second pass is cheap.
+      const deferredCandidates = (yield* registry.materialize({
+        permissionSets,
+        session: sessionToolsBase,
+      })).deferred
+      const deferralEnabled = input.deferral?.enabled !== false && deferredCandidates.length > 0
+      const builtinCapabilities = deferredCandidates.map(
+        (candidate): ToolBroker.Capability => ({
+          key: candidate.name,
+          name: candidate.name,
+          description: candidate.description,
+          source: "builtin",
+          server: ToolBroker.BUILTIN_SERVER,
+        }),
+      )
+      // An explicit non-catch-all allow rule means the agent declared this tool part of its
+      // own contract (e.g. specialist profiles), so it stays inline rather than deferred.
+      const forceInline = new Set(
+        deferralEnabled
+          ? deferredCandidates
+              .filter((candidate) =>
+                [input.permissions, ...permissionSets].some((rules) =>
+                  (rules ?? []).some(
+                    (rule) =>
+                      rule.effect === "allow" &&
+                      !(rule.action === "*" && rule.resource === "*") &&
+                      Wildcard.match(candidate.action, rule.action),
+                  ),
+                ),
+              )
+              .map((candidate) => candidate.name)
+          : [],
+      )
+      const builtinSelected = new Set(
+        !deferralEnabled
+          ? []
+          : input.deferral?.selected !== undefined
+            ? input.deferral.selected
+            : !advance
+              ? ToolBroker.selected(input.sessionID, builtinCapabilities, input.directory).map(
+                  (capability) => capability.key,
+                )
+              : ToolBroker.beginTurn(input.sessionID, builtinCapabilities, input.directory),
+      )
+      const inline = () =>
+        new Set(
+          deferralEnabled
+            ? [
+                ...(input.deferral?.selected ??
+                  ToolBroker.selected(input.sessionID, builtinCapabilities, input.directory).map(
+                    (capability) => capability.key,
+                  )),
+                ...forceInline,
+              ]
+            : builtinCapabilities.map((capability) => capability.key),
+        )
+      const sessionTools = {
+        ...sessionToolsBase,
+        [ToolBroker.SEARCH_TOOL_NAME]: Tool.make({
+          description: ToolBroker.SEARCH_TOOL_DESCRIPTION,
+          input: Schema.Struct({ query: Schema.optional(Schema.String) }),
+          output: DiscoverySearchOutput,
+          execute: (args) =>
+            Effect.gen(function* () {
+              const mcp = yield* source.search({
+                sessionID: input.sessionID,
+                directory: input.directory,
+                capabilities: inventory.capabilities,
+                query: args.query,
+              })
+              const builtin = ToolBroker.search(input.sessionID, builtinCapabilities, args.query, input.directory)
+              const loaded = inline()
+              return {
+                matches: [
+                  ...builtin.matches.map((match) => ({ ...match, selected: loaded.has(match.key) })),
+                  ...mcp.matches.map((match) => ({ ...match, source: "mcp" as const })),
+                ],
+                selected: [...loaded, ...mcp.selected].toSorted(),
+                available: builtin.available + mcp.available,
+              }
+            }),
+        }),
+        [ToolBroker.LOAD_TOOL_NAME]: Tool.make({
+          description: ToolBroker.LOAD_TOOL_DESCRIPTION,
+          input: Schema.Struct({ tools: Schema.Array(Schema.String) }),
+          output: DiscoveryLoadOutput,
+          execute: (args) =>
+            Effect.gen(function* () {
+              if (args.tools.length === 0)
+                return yield* new Tool.Failure({ message: "tools must be a non-empty array" })
+              const builtinKeys = new Set(builtinCapabilities.map((capability) => capability.key))
+              const mcpKeys = new Set(inventory.capabilities.map((capability) => capability.key))
+              const unknown = args.tools.find((key) => !builtinKeys.has(key) && !mcpKeys.has(key))
+              if (unknown) return yield* new Tool.Failure({ message: `Tool is not available: ${unknown}` })
+              const builtin = args.tools.some((key) => builtinKeys.has(key))
+                ? yield* Effect.try({
+                    try: () =>
+                      ToolBroker.load(
+                        input.sessionID,
+                        builtinCapabilities,
+                        args.tools.filter((key) => builtinKeys.has(key)),
+                        input.directory,
+                        { globalCap: ToolBroker.BUILTIN_MAX_LOADED_TOOLS },
+                      ),
+                    catch: (error) =>
+                      new Tool.Failure({ message: error instanceof Error ? error.message : String(error) }),
+                  })
+                : undefined
+              const mcp = args.tools.some((key) => mcpKeys.has(key))
+                ? yield* source.load({
+                    sessionID: input.sessionID,
+                    directory: input.directory,
+                    capabilities: inventory.capabilities,
+                    tools: args.tools.filter((key) => mcpKeys.has(key)),
+                  })
+                : undefined
+              const loaded = [
+                ...(builtin?.loaded ?? []).map((key) => ({ key, source: "builtin" as const })),
+                ...(mcp?.loaded ?? []).map((key) => ({ key, source: "mcp" as const })),
+              ]
+              return {
+                loaded,
+                selected: [...(builtin?.selected ?? []), ...(mcp?.selected ?? [])].toSorted(),
+                message:
+                  loaded.length === 0
+                    ? "Those tools are already loaded."
+                    : `Loaded ${loaded.map((item) => item.key).join(", ")}. The tools will be available on the next model turn.`,
+              }
+            }),
+        }),
+      }
+      const materialized = yield* registry.materialize({
         permissionSets,
         session: sessionTools,
+        deferred: deferralEnabled ? { selected: builtinSelected, forceInline } : undefined,
         subagentPromptContext: { harnessSnapshot: harnessState?.snapshot ?? null },
       })
+      // `mcp_search`/`mcp_load` remain settleable as hidden aliases for the MCP subset; the
+      // unified `tool_search`/`tool_load` pair is what the model sees.
+      const hiddenAliases = new Set([McpTool.SEARCH_TOOL_NAME, McpTool.LOAD_TOOL_NAME])
+      const deferredNames = new Set(deferredCandidates.map((candidate) => candidate.name))
+      const materialization: ToolRegistry.Materialization = {
+        ...materialized,
+        definitions: materialized.definitions.filter((definition) => !hiddenAliases.has(definition.name)),
+        settle: (executeInput) => {
+          const name = executeInput.call.name
+          if (deferralEnabled && input.deferral?.selected === undefined && deferredNames.has(name)) {
+            if (!inline().has(name)) {
+              try {
+                ToolBroker.load(input.sessionID, builtinCapabilities, [name], input.directory, {
+                  globalCap: ToolBroker.BUILTIN_MAX_LOADED_TOOLS,
+                })
+              } catch {
+                // A cap-exceeded or raced-out candidate still executes; it just stays unadvertised.
+              }
+            }
+            ToolBroker.touch(input.sessionID, name, input.directory)
+          }
+          return materialized.settle(executeInput)
+        },
+      }
       const searched = yield* source.search({
         sessionID: input.sessionID,
         directory: input.directory,
@@ -320,6 +519,14 @@ const layer = Layer.effect(
           loaded: capabilities.filter((capability) => capability.selected).map((capability) => capability.key),
           notLoaded: capabilities.filter((capability) => !capability.selected).map((capability) => capability.key),
         },
+        deferred: {
+          available: materialization.deferred.map(({ name, description, selected }) => ({
+            name,
+            description,
+            selected,
+          })),
+          loaded: materialization.deferred.filter((candidate) => candidate.selected).map((candidate) => candidate.name),
+        },
         exclusions,
       }
       yield* Effect.logInfo("V2 session tool snapshot materialized", {
@@ -353,7 +560,13 @@ function sourceFor(
   tool: Tool.AnyTool | undefined,
   capabilities: ReadonlyArray<McpTool.Capability>,
 ): ToolSource {
-  if (name === McpTool.SEARCH_TOOL_NAME || name === McpTool.LOAD_TOOL_NAME) return "mcp-broker"
+  if (
+    name === ToolBroker.SEARCH_TOOL_NAME ||
+    name === ToolBroker.LOAD_TOOL_NAME ||
+    name === McpTool.SEARCH_TOOL_NAME ||
+    name === McpTool.LOAD_TOOL_NAME
+  )
+    return "mcp-broker"
   if (tool) return McpTool.isMcpTool(tool) ? "mcp" : "session"
   if (capabilities.some((capability) => McpTool.toolName(capability.server, capability.name) === name)) return "mcp"
   return "builtin"

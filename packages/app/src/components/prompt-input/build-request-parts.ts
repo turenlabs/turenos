@@ -230,7 +230,7 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
       id: Identifier.ascending("part"),
       type: "file",
       mime: attachment.mime,
-      url: attachment.dataUrl,
+      url: attachment.sourcePath ? `file://${encodeFilePath(attachment.sourcePath)}` : attachment.dataUrl,
       filename: attachment.sourcePath ?? attachment.filename,
     } satisfies PromptRequestPart
   })

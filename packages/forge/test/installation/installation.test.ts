@@ -67,8 +67,40 @@ function testLayer(
 
 describe("installation", () => {
   describe("latest", () => {
-    testEffect(testLayer(() => jsonResponse({ tag_name: "v1.2.3" }))).effect(
-      "reads release version from GitHub releases",
+    testEffect(
+      testLayer(
+        () => {
+          throw new Error("HTTP fallback must not run when gh returns a release")
+        },
+        (cmd, args) => {
+          expect(cmd).toBe("gh")
+          expect(args).toEqual([
+            "release",
+            "view",
+            "--repo",
+            "turenlabs/turenos",
+            "--json",
+            "tagName",
+            "--jq",
+            ".tagName",
+          ])
+          return "v1.2.3\n"
+        },
+      ),
+    ).effect("reads the public TurenOS release through gh without an HTTP fallback", () =>
+      Effect.gen(function* () {
+        const result = yield* Installation.use.latest("curl")
+        expect(result).toBe("1.2.3")
+      }),
+    )
+
+    testEffect(
+      testLayer((request) => {
+        expect(request.url).toBe("https://api.github.com/repos/turenlabs/turenos/releases/latest")
+        return jsonResponse({ tag_name: "v1.2.3" })
+      }),
+    ).effect(
+      "falls back to the public TurenOS release API when gh returns no tag",
       () =>
         Effect.gen(function* () {
           const result = yield* Installation.use.latest("unknown")

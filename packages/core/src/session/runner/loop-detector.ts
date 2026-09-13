@@ -59,9 +59,9 @@ export function make() {
 
     window.push(...words.slice(-WINDOW))
     sinceCheck += words.length
-    if (window.length > WINDOW) window.splice(0, window.length - WINDOW)
     if (window.length < WINDOW || sinceCheck < STRIDE) return false
 
+    if (window.length > WINDOW) window.splice(0, window.length - WINDOW)
     sinceCheck = 0
     const { unigram, trigram } = ratios()
     collapsedDeltas = unigram < MAX_UNIGRAM_RATIO && trigram < MAX_TRIGRAM_RATIO ? collapsedDeltas + 1 : 0

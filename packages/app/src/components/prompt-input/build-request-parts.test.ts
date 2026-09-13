@@ -208,9 +208,14 @@ describe("buildRequestParts", () => {
       sessionDirectory: "C:\\Repos\\sst\\opencode",
     })
 
-    expect(result.requestParts.find((part) => part.type === "file")?.filename).toBe(
+    const file = result.requestParts.find((part) => part.type === "file")
+    expect(file?.filename).toBe(
       "C:\\Users\\Luke\\AppData\\Roaming\\ai.forge.desktop.beta\\forge.global.dat",
     )
+    expect(file?.url).toBe(
+      "file:///C:/Users/Luke/AppData/Roaming/ai.forge.desktop.beta/forge.global.dat",
+    )
+    expect(result.v2Prompt.files?.[0]?.uri).toBe(file?.url)
   })
 
   test("preserves reference aliases as directory file parts", () => {

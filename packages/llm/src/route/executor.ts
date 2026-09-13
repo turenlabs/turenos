@@ -387,7 +387,14 @@ const retryStatusFailures = <A, R>(
     // `packages/core/src/session/runner/retry.ts`.
     if (error.retryAfterMs !== undefined && error.retryAfterMs > MAX_DELAY_MS) return Effect.fail(error)
     return retryDelay(error, attempt).pipe(
-      Effect.flatMap((delay) => Effect.sleep(delay)),
+      Effect.flatMap((delay) =>
+        Effect.logInfo("LLM request retrying", {
+          attempt: attempt + 1,
+          reason: error.reason._tag,
+          retryAfterMs: error.retryAfterMs,
+          delayMs: delay,
+        }).pipe(Effect.andThen(Effect.sleep(delay))),
+      ),
       Effect.flatMap(() => retryStatusFailures(effect, retries - 1, attempt + 1)),
     )
   })

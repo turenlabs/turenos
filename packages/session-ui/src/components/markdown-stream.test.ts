@@ -302,6 +302,22 @@ describe("markdown stream", () => {
     ])
   })
 
+  test("closes a code fence contained within one provider delta", () => {
+    const open = project(undefined, "```ts\nconst one = 1\n", true)
+    const closed = project(open, `${open.text}const two = 2\n\`\`\`\nafter`, true)
+
+    expect(closed.blocks).toEqual([
+      {
+        raw: "```ts\nconst one = 1\nconst two = 2\n```\n",
+        src: "const one = 1\nconst two = 2",
+        mode: "code",
+        language: "ts",
+        complete: true,
+      },
+      { raw: "after", src: "after", mode: "live" },
+    ])
+  })
+
   test("closes tilde fences split across provider deltas", () => {
     const open = project(undefined, "~~~ts\nconst x = 1\n", true)
     const one = project(open, `${open.text}~`, true)

@@ -56,4 +56,13 @@ describe("trimSessions", () => {
       "root-2",
     ])
   })
+
+  test("selects tied roots deterministically regardless of input order", () => {
+    const now = 20_000_000
+    const list = [session({ id: "c", created: 1 }), session({ id: "a", created: 1 }), session({ id: "b", created: 1 })]
+    const ids = (input: Session[]) => trimSessions(input, { limit: 2, permission: {}, now }).map((x) => x.id)
+
+    expect(ids(list)).toEqual(["a", "b"])
+    expect(ids(list.toReversed())).toEqual(["a", "b"])
+  })
 })

@@ -403,12 +403,14 @@ export function getToolInfo(
 ): ToolInfo {
   const i18n = useI18n()
   switch (tool) {
-    case "read":
+    case "read": {
+      const readPath = input.filePath ?? input.path
       return {
         icon: "glasses",
         title: i18n.t("ui.tool.read"),
-        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
+        subtitle: readPath ? getFilename(readPath) : undefined,
       }
+    }
     case "list":
       return {
         icon: "bullet-list",
@@ -456,18 +458,22 @@ export function getToolInfo(
         title: i18n.t("ui.tool.shell"),
         subtitle: input.command,
       }
-    case "edit":
+    case "edit": {
+      const editPath = input.filePath ?? input.path
       return {
         icon: "code-lines",
         title: i18n.t("ui.messagePart.title.edit"),
-        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
+        subtitle: editPath ? getFilename(editPath) : undefined,
       }
-    case "write":
+    }
+    case "write": {
+      const writePath = input.filePath ?? input.path
       return {
         icon: "code-lines",
         title: i18n.t("ui.messagePart.title.write"),
-        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
+        subtitle: writePath ? getFilename(writePath) : undefined,
       }
+    }
     case "apply_patch":
       return {
         icon: "code-lines",
@@ -601,6 +607,7 @@ export function AssistantParts(props: {
   showReasoningSummaries?: boolean
   shellToolDefaultOpen?: boolean
   editToolDefaultOpen?: boolean
+  patchToolDefaultOpen?: boolean
 }) {
   const data = useData()
   const emptyParts: PartType[] = []
@@ -682,7 +689,12 @@ export function AssistantParts(props: {
                         showAssistantCopyPartID={props.showAssistantCopyPartID}
                         turnDurationMs={props.turnDurationMs}
                         useV2Actions={props.useV2Actions}
-                        defaultOpen={partDefaultOpen(item()!, props.shellToolDefaultOpen, props.editToolDefaultOpen)}
+                        defaultOpen={partDefaultOpen(
+                          item()!,
+                          props.shellToolDefaultOpen,
+                          props.editToolDefaultOpen,
+                          props.patchToolDefaultOpen,
+                        )}
                       />
                     </Show>
                   </Show>
@@ -714,7 +726,9 @@ function contextToolDetail(part: ToolPart): string | undefined {
 function contextToolTrigger(part: ToolPart, i18n: ReturnType<typeof useI18n>) {
   const input = (part.state.input ?? {}) as Record<string, unknown>
   const path = typeof input.path === "string" ? input.path : "/"
-  const filePath = typeof input.filePath === "string" ? input.filePath : undefined
+  const filePath =
+    (typeof input.filePath === "string" ? input.filePath : undefined) ??
+    (typeof input.path === "string" ? input.path : undefined)
   const pattern = typeof input.pattern === "string" ? input.pattern : undefined
   const include = typeof input.include === "string" ? input.include : undefined
   const offset = typeof input.offset === "number" ? input.offset : undefined
@@ -2224,16 +2238,36 @@ ToolRegistry.register({
   render(props) {
     const i18n = useI18n()
     const fileComponent = useFileComponent()
-    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
-    const path = createMemo(() => props.metadata?.filediff?.file || props.input.filePath || "")
-    const filename = () => getFilename(props.input.filePath ?? "")
+    // V1 lands the diff on `filediff` and names the input `filePath`; V2 settles
+    // `{ files: [FileDiff.Info] }` under `structured`/`result` and names it `path`.
+    const file = createMemo(
+      () =>
+        patchFiles(
+          props.metadata.files ??
+            (props.metadata.structured as Record<string, unknown> | undefined)?.files ??
+            (props.metadata.result as Record<string, unknown> | undefined)?.files,
+        )[0],
+    )
+    const inputPath = createMemo(() => {
+      const value = props.input.filePath ?? props.input.path
+      return typeof value === "string" ? value : undefined
+    })
+    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, inputPath()))
+    const path = createMemo(() => props.metadata?.filediff?.file || file()?.filePath || inputPath() || "")
+    const filename = () => getFilename(path())
     const pending = () => props.status === "pending" || props.status === "running"
+    const changes = createMemo(() => {
+      const filediff = props.metadata?.filediff
+      if (filediff) return filediff as { additions: number; deletions: number }
+      const view = file()
+      if (view) return { additions: view.additions, deletions: view.deletions }
+    })
     const diffSource = createMemo(
       () => {
         const filediff = props.metadata?.filediff
         if (!filediff) return
         return {
-          file: filediff.file || props.input.filePath || "",
+          file: filediff.file || inputPath() || "",
           patch: typeof filediff.patch === "string" ? filediff.patch : undefined,
           before: typeof filediff.before === "string" ? filediff.before : undefined,
           after: typeof filediff.after === "string" ? filediff.after : undefined,
@@ -2247,6 +2281,9 @@ ToolRegistry.register({
     )
 
     const fileCompProps = createMemo(() => {
+      const view = file()?.view
+      if (view)
+        return { fileDiff: view.fileDiff, hunkSeparators: view.fileDiff.isPartial ? "simple" : "line-info-basic" }
       try {
         const source = diffSource()
         if (source) {
@@ -2257,11 +2294,11 @@ ToolRegistry.register({
 
       return {
         before: {
-          name: props.metadata?.filediff?.file || props.input.filePath,
+          name: path(),
           contents: props.metadata?.filediff?.before || props.input.oldString || "",
         },
         after: {
-          name: props.metadata?.filediff?.file || props.input.filePath,
+          name: path(),
           contents: props.metadata?.filediff?.after || props.input.newString || "",
         },
       }
@@ -2284,15 +2321,15 @@ ToolRegistry.register({
                     <span data-slot="message-part-title-filename">{filename()}</span>
                   </Show>
                 </div>
-                <Show when={!pending() && props.input.filePath?.includes("/")}>
+                <Show when={!pending() && path().includes("/")}>
                   <div data-slot="message-part-path">
-                    <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
+                    <span data-slot="message-part-directory">{getDirectory(path())}</span>
                   </div>
                 </Show>
               </div>
               <div data-slot="message-part-actions">
-                <Show when={!pending() && props.metadata.filediff}>
-                  <DiffChanges changes={props.metadata.filediff} />
+                <Show when={!pending() && changes()}>
+                  <DiffChanges changes={changes()!} />
                 </Show>
               </div>
             </div>
@@ -2302,8 +2339,8 @@ ToolRegistry.register({
             <ToolFileAccordion
               path={path()}
               actions={
-                <Show when={!pending() && props.metadata.filediff}>
-                  <DiffChanges changes={props.metadata.filediff!} />
+                <Show when={!pending() && changes()}>
+                  <DiffChanges changes={changes()!} />
                 </Show>
               }
             >
@@ -2330,9 +2367,14 @@ ToolRegistry.register({
   render(props) {
     const i18n = useI18n()
     const fileComponent = useFileComponent()
-    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
-    const path = createMemo(() => props.input.filePath || "")
-    const filename = () => getFilename(props.input.filePath ?? "")
+    // V2 names the input field `path`; V1 used `filePath`.
+    const inputPath = createMemo(() => {
+      const value = props.input.filePath ?? props.input.path
+      return typeof value === "string" ? value : undefined
+    })
+    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, inputPath()))
+    const path = createMemo(() => inputPath() || "")
+    const filename = () => getFilename(path())
     const pending = () => props.status === "pending" || props.status === "running"
     return (
       <div data-component="write-tool">
@@ -2351,9 +2393,9 @@ ToolRegistry.register({
                     <span data-slot="message-part-title-filename">{filename()}</span>
                   </Show>
                 </div>
-                <Show when={!pending() && props.input.filePath?.includes("/")}>
+                <Show when={!pending() && path().includes("/")}>
                   <div data-slot="message-part-path">
-                    <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
+                    <span data-slot="message-part-directory">{getDirectory(path())}</span>
                   </div>
                 </Show>
               </div>
@@ -2368,7 +2410,7 @@ ToolRegistry.register({
                   component={fileComponent}
                   mode="text"
                   file={{
-                    name: props.input.filePath,
+                    name: path(),
                     contents: props.input.content,
                     cacheKey: checksum(props.input.content),
                   }}
@@ -2390,7 +2432,15 @@ ToolRegistry.register({
   render(props) {
     const i18n = useI18n()
     const fileComponent = useFileComponent()
-    const files = createMemo(() => patchFiles(props.metadata.files))
+    // V1 lands `files` directly on tool metadata; V2 settles the tool's
+    // structured output under `structured`/`result` instead.
+    const files = createMemo(() =>
+      patchFiles(
+        props.metadata.files ??
+          (props.metadata.structured as Record<string, unknown> | undefined)?.files ??
+          (props.metadata.result as Record<string, unknown> | undefined)?.files,
+      ),
+    )
     const pending = createMemo(() => props.status === "pending" || props.status === "running")
     const single = createMemo(() => {
       const list = files()
@@ -2428,7 +2478,20 @@ ToolRegistry.register({
                 subtitle: subtitle(),
               }}
             >
-              <Show when={files().length > 0}>
+              <Show
+                when={files().length > 0}
+                fallback={
+                  // A stub or an output shape the parser didn't recognise still has
+                  // the tool's text output — never expand to a blank body.
+                  <Show when={props.output}>
+                    <div data-component="apply-patch-output">
+                      <pre data-slot="bash-pre">
+                        <code>{props.output}</code>
+                      </pre>
+                    </div>
+                  </Show>
+                }
+              >
                 <Accordion
                   multiple
                   data-scope="apply-patch"

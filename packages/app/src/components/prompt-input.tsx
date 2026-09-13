@@ -80,6 +80,7 @@ import { PromptDragOverlay } from "./prompt-input/drag-overlay"
 import { promptPlaceholder } from "./prompt-input/placeholder"
 import { createPromptInputTransientState } from "./prompt-input/transient-state"
 import { showToast } from "@/utils/toast"
+import { ServerScope } from "@/utils/server-scope"
 import { ImagePreview } from "@turenlabs/ui/image-preview"
 
 export type PromptInputState = ReturnType<typeof usePrompt>
@@ -1256,7 +1257,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     },
     addPart,
     readClipboardImage: platform.readClipboardImage,
-    getPathForFile: platform.getPathForFile,
+    // file:// pointers only resolve when the session's server runs on this
+    // machine; remote scopes keep the inline data URL path.
+    getPathForFile: (file) => (ServerScope.isLocal(sdk().scope) ? platform.getPathForFile?.(file) : "") || "",
   })
 
   const fileAttachmentInput = () => (
@@ -1726,7 +1729,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               <PromptImageAttachments
                 attachments={imageAttachments()}
                 onOpen={(attachment) =>
-                  dialog.show(() => <ImagePreview src={attachment.dataUrl} alt={attachment.filename} />)
+                  dialog.show(() => (
+                    <ImagePreview src={attachment.previewUrl ?? attachment.dataUrl} alt={attachment.filename} />
+                  ))
                 }
                 onRemove={removeAttachment}
                 removeLabel={language.t("prompt.attachment.remove")}
@@ -1912,7 +1917,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <PromptImageAttachments
               attachments={imageAttachments()}
               onOpen={(attachment) =>
-                dialog.show(() => <ImagePreview src={attachment.dataUrl} alt={attachment.filename} />)
+                dialog.show(() => (
+                  <ImagePreview src={attachment.previewUrl ?? attachment.dataUrl} alt={attachment.filename} />
+                ))
               }
               onRemove={removeAttachment}
               removeLabel={language.t("prompt.attachment.remove")}

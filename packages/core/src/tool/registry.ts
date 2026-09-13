@@ -12,6 +12,7 @@ import { ApplicationTools } from "./application-tools"
 import { ToolInterceptor } from "./interceptor"
 import {
   definition,
+  isDeferred,
   permission,
   retryableError,
   settle,
@@ -40,6 +41,16 @@ export type MaterializeInput = {
   readonly permissionSets?: ReadonlyArray<PermissionV2.Ruleset>
   /** Canonical tools visible only to this provider turn. */
   readonly session?: Readonly<Record<string, AnyTool>>
+  /**
+   * Deferral view for this materialization. When present, a deferred registration whose name
+   * is absent from both sets stays settleable — a direct call by name still executes — but is
+   * withheld from `definitions`. When absent, deferred tools are advertised inline like any
+   * other registration.
+   */
+  readonly deferred?: {
+    readonly selected: ReadonlySet<string>
+    readonly forceInline?: ReadonlySet<string>
+  }
   /** Parent context made available to child-control tools when they admit child prompts. */
   readonly subagentPromptContext?: Pick<Tool.SubagentPromptContext, "harnessSnapshot">
 }
@@ -61,6 +72,17 @@ export interface Interface {
 
 export interface Materialization {
   readonly definitions: ReadonlyArray<ToolDefinition>
+  /**
+   * Every deferred registration that survived permission filtering — name, description, and
+   * permission action only, never a schema. `selected` reports whether the definition was
+   * advertised this turn.
+   */
+  readonly deferred: ReadonlyArray<{
+    readonly name: string
+    readonly description: string
+    readonly action: string
+    readonly selected: boolean
+  }>
   readonly settle: (input: ExecuteInput) => Effect.Effect<Settlement, ToolOutputStore.Error>
   readonly completeTurn: (input: ToolInterceptor.TurnEvent) => Effect.Effect<void>
 }
@@ -241,7 +263,26 @@ const registryLayer = Layer.effect(
         for (const [name, registration] of registrations)
           if (permissionSets.some((rules) => whollyDisabled(permission(registration.tool, name), rules)))
             registrations.delete(name)
-        const definitions = Array.from(registrations, ([name, registration]) => definition(name, registration.tool))
+        const deferred: Materialization["deferred"][number][] = []
+        const definitions: ToolDefinition[] = []
+        for (const [name, registration] of registrations) {
+          const advertised = definition(name, registration.tool)
+          if (!isDeferred(registration.tool)) {
+            definitions.push(advertised)
+            continue
+          }
+          const selected =
+            options.deferred === undefined ||
+            options.deferred.selected.has(name) ||
+            options.deferred.forceInline?.has(name) === true
+          deferred.push({
+            name,
+            description: advertised.description,
+            action: permission(registration.tool, name),
+            selected,
+          })
+          if (selected) definitions.push(advertised)
+        }
         const subagentContext = options.subagentPromptContext
           ? {
               toolDefinitions: definitions,
@@ -250,6 +291,7 @@ const registryLayer = Layer.effect(
           : undefined
         return {
           definitions,
+          deferred,
           completeTurn: interceptors.runTurnComplete,
           settle: (input) => {
             const registration = registrations.get(input.call.name)

@@ -143,6 +143,13 @@ const parts: Prompt = [
     sourcePath: "/images/screenshot.png",
   },
 ]
+const persistedParts = (prompt: Prompt) =>
+  prompt.flatMap((part) => {
+    if (part.type !== "image") return [part]
+    if (typeof part.sourcePath !== "string") return []
+    const { dataUrl: _dataUrl, previewUrl: _previewUrl, ...rest } = part
+    return [rest]
+  })
 prompt.set(parts, 12)
 prompt.model.set(model)
 prompt.context.add({
@@ -173,7 +180,7 @@ const recovered = restored.prompt(draft.draftID)
 await recovered.ready.promise
 assert.deepEqual(
   JSON.parse(JSON.stringify(recovered.current())),
-  parts.filter((part) => part.type !== "image"),
+  persistedParts(parts),
 )
 assert.equal(recovered.cursor(), 12)
 assert.deepEqual(JSON.parse(JSON.stringify(recovered.model.current())), model)
@@ -309,7 +316,7 @@ const unsaved: Prompt = [
   { ...parts[1]!, start: 10, end: 23 },
   parts[2]!,
 ]
-const persistedUnsaved = unsaved.filter((part) => part.type !== "image")
+const persistedUnsaved = persistedParts(unsaved)
 const unsavedModel = { ...model, variant: "max" }
 quota = true
 try {

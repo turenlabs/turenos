@@ -2,7 +2,8 @@ import { describe, expect } from "bun:test"
 import { $ } from "bun"
 import fs from "fs/promises"
 import path from "path"
-import { Effect } from "effect"
+import { Effect, Exit } from "effect"
+import * as TestConsole from "effect/testing/TestConsole"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Git } from "@turenlabs/core/git"
 import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
@@ -202,6 +203,107 @@ describe("Git trees", () => {
       expect(yield* read(path.join(root.path, "scope", "tracked.txt"))).toBe("one\n")
       expect(yield* read(path.join(root.path, "scope", "added.txt"))).toBe("added\n")
       expect(yield* read(path.join(root.path, "outside.txt"))).toBe("changed outside\n")
+    }),
+  )
+})
+
+describe("Git index", () => {
+  it.live("rebuilds a poisoned index wholesale when stale entries exceed the bulk threshold", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      const project = path.join(root.path, "project")
+      yield* Effect.promise(async () => {
+        await fs.mkdir(project)
+        await initRepo(project)
+        await fs.writeFile(path.join(project, ".gitignore"), "build/\n")
+        await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
+        await $`git add .`.cwd(project).quiet()
+        await $`git commit -qm tracked`.cwd(project).quiet()
+      })
+      const git = yield* Git.Service
+      const source = yield* git.repo.discover(AbsolutePath.make(project))
+      if (!source) throw new Error("Repository not found")
+      const repository = yield* git.repo.create({
+        worktree: source.worktree,
+        gitDirectory: AbsolutePath.make(path.join(root.path, "shadow")),
+        seed: source,
+      })
+      // A failed ignore check once staged ignored build output; reproduce it by
+      // injecting stale entries straight into the shadow index.
+      yield* Effect.promise(async () => {
+        const blob = await $`git rev-parse HEAD:tracked.txt`.cwd(project).text()
+        const entries = Array.from(
+          { length: Git.BULK_REBUILD_THRESHOLD + 1 },
+          (_, index) => `100644 ${blob.trim()}\tbuild/stale-${index}.txt`,
+        ).join("\n")
+        const child = Bun.spawn(
+          [
+            "git",
+            "--git-dir",
+            repository.gitDirectory,
+            "--work-tree",
+            repository.worktree,
+            "update-index",
+            "--index-info",
+          ],
+          { cwd: project, stdin: new Blob([entries + "\n"]) },
+        )
+        await child.exited
+        expect(child.exitCode).toBe(0)
+      })
+
+      yield* git.tree.capture({ repository, scopes: [RelativePath.make(".")], ignores: source })
+
+      const lines = yield* TestConsole.logLines
+      expect(lines.some((line) => String(line).includes("refresh bulk rebuild"))).toBe(true)
+      const files = yield* Effect.promise(() =>
+        $`git --git-dir ${repository.gitDirectory} --work-tree ${repository.worktree} ls-files`.cwd(project).text(),
+      )
+      expect(files.split("\n").filter(Boolean)).toEqual([".gitignore", "tracked.txt"])
+    }),
+  )
+
+  it.live("fails instead of staging untracked files when the ignore check errors", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      const project = path.join(root.path, "project")
+      yield* Effect.promise(async () => {
+        await fs.mkdir(project)
+        await initRepo(project)
+        await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
+        await fs.writeFile(path.join(project, "untracked.txt"), "new\n")
+        await $`git add tracked.txt`.cwd(project).quiet()
+        await $`git commit -qm tracked`.cwd(project).quiet()
+      })
+      const git = yield* Git.Service
+      const source = yield* git.repo.discover(AbsolutePath.make(project))
+      if (!source) throw new Error("Repository not found")
+      const repository = yield* git.repo.create({
+        worktree: source.worktree,
+        gitDirectory: AbsolutePath.make(path.join(root.path, "shadow")),
+        seed: source,
+      })
+      const broken = new Git.Repository({
+        worktree: source.worktree,
+        gitDirectory: AbsolutePath.make(path.join(root.path, "missing-git")),
+        commonDirectory: AbsolutePath.make(path.join(root.path, "missing-git")),
+      })
+
+      const exit = yield* git.index
+        .refresh({ repository, scope: RelativePath.make("."), ignores: broken })
+        .pipe(Effect.exit)
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      const files = yield* Effect.promise(() =>
+        $`git --git-dir ${repository.gitDirectory} --work-tree ${repository.worktree} ls-files`.cwd(project).text(),
+      )
+      expect(files.split("\n").filter(Boolean)).toEqual(["tracked.txt"])
     }),
   )
 })

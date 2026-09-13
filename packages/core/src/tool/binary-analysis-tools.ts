@@ -82,6 +82,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         binary_inspect: Tool.make({
+          deferred: true,
           description:
             "Inspect one PE, ELF, Mach-O, TE, COFF, or Unix archive with the bundled bounded Goblin WebAssembly parser. Returns headers, sections, segments, imports, exports, symbols, libraries, and entry-point metadata without executing the file.",
           input: BinaryInspectInput,
@@ -97,6 +98,7 @@ const layer = Layer.effectDiscard(
             }).pipe(Effect.mapError(toToolFailure(`Unable to inspect ${input.path}`))),
         }),
         extract_strings: Tool.make({
+          deferred: true,
           description:
             "Recover bounded raw, UTF-16LE, decoded, classified, and XOR-obfuscated strings from one file with the bundled stng-core WebAssembly runtime. The target is never executed and no host string utility is required.",
           input: StringInput,
@@ -119,6 +121,7 @@ const layer = Layer.effectDiscard(
             }).pipe(Effect.mapError(toToolFailure(`Unable to extract strings from ${input.path}`))),
         }),
         pcap_inspect: Tool.make({
+          deferred: true,
           description:
             "Read a bounded page from an offline PCAP or PCAPNG file with the official tcpdump-group libpcap compiled to WebAssembly. Supports numeric classic BPF filters; live capture, devices, paths, dumping, and network access are unavailable.",
           input: CaptureInput,
@@ -140,6 +143,7 @@ const layer = Layer.effectDiscard(
             }).pipe(Effect.mapError(toToolFailure(`Unable to inspect capture ${input.path}`))),
         }),
         unpack_static: Tool.make({
+          deferred: true,
           description:
             "Statically unpack a standard UPX executable or reconstruct an MPRESS PE32 sample with bundled WebAssembly. The analyzed executable is never run. UPX output is runnable; MPRESS output is analysis-grade and may require import rebuilding.",
           input: UnpackInput,

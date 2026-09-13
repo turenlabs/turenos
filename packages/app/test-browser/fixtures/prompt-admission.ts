@@ -408,6 +408,46 @@ try {
   both.settle(remoteScope, "session", "shared", "cancelled")
   assert.equal(both.get(scope, "session", "shared")?.payload.id, "shared")
 
+  // A prompt carrying a large attachment journals across bounded sibling
+  // values, stores each data URL once, rehydrates identically after restart,
+  // and drops every part row on settle.
+  mode = "hold"
+  const largeStorage = storage()
+  const large = owner(largeStorage.port)
+  const bigFile = `data:image/png;base64,${"A".repeat(1_600_000)}`
+  const bigEntry = entry("large")
+  bigEntry.payload.prompt = { text: "large prompt", files: [{ uri: bigFile, name: "big.png" }] }
+  bigEntry.parts = [
+    {
+      id: "part-large",
+      sessionID: "session",
+      messageID: "large",
+      type: "file",
+      mime: "image/png",
+      filename: "big.png",
+      url: bigFile,
+    },
+  ]
+  const largeAbort = new AbortController()
+  const largeSend = large.send(bigEntry, client, largeAbort.signal)
+  await until(() => received.has("large"))
+  largeAbort.abort()
+  assert.equal(await largeSend, "unknown")
+  const rows = [...largeStorage.values.entries()]
+  assert.ok(rows.filter(([key]) => key.includes("\u0000\u0000")).length >= 2)
+  assert.ok(rows.every(([, value]) => value.length <= 768 * 1024))
+  assert.equal(
+    rows.map(([, value]) => value).join("").split(bigFile).length - 1,
+    1,
+  )
+  const largeReopened = owner(largeStorage.port)
+  await largeReopened.ready
+  assert.deepEqual(largeReopened.get(scope, "session", "large")?.payload, bigEntry.payload)
+  assert.equal(largeReopened.get(scope, "session", "large")?.parts[0]?.url, bigFile)
+  largeReopened.settle(scope, "session", "large", "cancelled")
+  await until(() => largeStorage.values.size === 0)
+  releases.get("large")!()
+
   // Exercise the desktop storage adapter's asynchronous key enumeration used
   // by the real renderer, with two fresh platform identities after relaunch.
   const desktop = storage()

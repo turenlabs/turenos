@@ -10,6 +10,7 @@
 // Manual `cache: CacheHint` placements on individual parts are preserved —
 // this function only fills gaps the caller left empty.
 import { CacheHint, type CachePolicy, type CachePolicyObject } from "./schema/options"
+import { ProviderID } from "./schema/ids"
 import { LLMRequest, Message, ToolDefinition, type ContentPart } from "./schema/messages"
 
 const AUTO: CachePolicyObject = {
@@ -37,6 +38,15 @@ const resolve = (policy: CachePolicy | undefined): CachePolicyObject => {
 // prefix caching, Gemini's implicit + out-of-band CachedContent). Skip the
 // whole policy pass for these — emitting hints would be harmless but pointless.
 const RESPECTS_INLINE_HINTS = new Set(["anthropic-messages", "bedrock-converse"])
+
+// The AISDK bridge route is provider-agnostic, so the underlying provider —
+// not the route id — decides whether hints lower to wire markers. The bridge
+// currently lowers them only into Anthropic's `cacheControl` provider option
+// (`packages/core/src/session/runner/aisdk-bridge.ts`).
+const respectsInlineHints = (request: LLMRequest) =>
+  RESPECTS_INLINE_HINTS.has(request.model.route.id) ||
+  (request.model.route.id === "aisdk-language-model-v3" &&
+    request.model.route.provider === ProviderID.make("anthropic"))
 
 const makeHint = (ttlSeconds: number | undefined): CacheHint =>
   ttlSeconds !== undefined ? new CacheHint({ type: "ephemeral", ttlSeconds }) : new CacheHint({ type: "ephemeral" })
@@ -114,7 +124,7 @@ const markMessages = (
 }
 
 export const applyCachePolicy = (request: LLMRequest): LLMRequest => {
-  if (!RESPECTS_INLINE_HINTS.has(request.model.route.id)) return request
+  if (!respectsInlineHints(request)) return request
   const policy = resolve(request.cache)
   if (!policy.tools && !policy.system && !policy.messages) return request
 

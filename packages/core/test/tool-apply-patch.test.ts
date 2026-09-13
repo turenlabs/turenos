@@ -202,26 +202,77 @@ describe("ApplyPatchTool", () => {
     ),
   )
 
-  it.live("rejects moves before applying any hunk", () =>
+  it.live("applies a move as create-then-remove with both paths approved", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
       (tmp) => {
         reset()
         const source = path.join(tmp.path, "old.txt")
+        const moved = path.join(tmp.path, "moved.txt")
         return Effect.promise(() => fs.writeFile(source, "before\n")).pipe(
           Effect.andThen(
             withTool(tmp.path, (registry) =>
               Effect.gen(function* () {
-                expect(
-                  yield* executeTool(
-                    registry,
-                    call(
-                      "*** Begin Patch\n*** Add File: created.txt\n+created\n*** Update File: old.txt\n*** Move to: moved.txt\n@@\n-before\n+after\n*** End Patch",
-                    ),
+                const settled = yield* settleTool(
+                  registry,
+                  call(
+                    "*** Begin Patch\n*** Add File: created.txt\n+created\n*** Update File: old.txt\n*** Move to: moved.txt\n@@\n-before\n+after\n*** End Patch",
                   ),
-                ).toEqual({ type: "error", value: "apply_patch moves are not supported yet" })
-                expect(yield* exists(path.join(tmp.path, "created.txt"))).toBe(false)
-                expect(assertions).toEqual([])
+                )
+                expect(settled.result).toEqual({
+                  type: "text",
+                  value: "Applied patch sequentially:\nA created.txt\nM moved.txt",
+                })
+                expect(settled.output?.structured).toMatchObject({
+                  applied: [
+                    { type: "add", resource: "created.txt" },
+                    { type: "update", resource: "moved.txt" },
+                  ],
+                  files: [
+                    { file: "created.txt", status: "added" },
+                    { file: "moved.txt", status: "modified" },
+                  ],
+                })
+                expect(assertions).toMatchObject([
+                  {
+                    sessionID,
+                    action: "edit",
+                    resources: ["created.txt", "old.txt", "moved.txt"],
+                    save: ["*"],
+                  },
+                ])
+                expect(yield* Effect.promise(() => fs.readFile(moved, "utf8"))).toBe("after\n")
+                expect(yield* exists(source)).toBe(false)
+              }),
+            ),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("renames without content changes when a move hunk has no @@ chunks", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const source = path.join(tmp.path, "old.txt")
+        const moved = path.join(tmp.path, "renamed.txt")
+        return Effect.promise(() => fs.writeFile(source, "unchanged\n")).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              Effect.gen(function* () {
+                const settled = yield* settleTool(
+                  registry,
+                  call("*** Begin Patch\n*** Update File: old.txt\n*** Move to: renamed.txt\n*** End Patch"),
+                )
+                expect(settled.result).toEqual({
+                  type: "text",
+                  value: "Applied patch sequentially:\nM renamed.txt",
+                })
+                expect(yield* Effect.promise(() => fs.readFile(moved, "utf8"))).toBe("unchanged\n")
+                expect(yield* exists(source)).toBe(false)
               }),
             ),
           ),
@@ -313,7 +364,10 @@ describe("ApplyPatchTool", () => {
                   "*** Begin Patch\n*** Add File: created.txt\n+created\n*** Update File: missing.txt\n@@\n-before\n+after\n*** End Patch",
                 ),
               ),
-            ).toEqual({ type: "error", value: "Unable to apply patch at missing.txt" })
+            ).toMatchObject({
+              type: "error",
+              value: expect.stringContaining("Unable to apply patch at missing.txt"),
+            })
             expect(yield* exists(path.join(tmp.path, "created.txt"))).toBe(false)
           }),
         )
@@ -337,7 +391,10 @@ describe("ApplyPatchTool", () => {
                     registry,
                     call("*** Begin Patch\n*** Add File: existing.txt\n+replacement\n*** End Patch"),
                   ),
-                ).toEqual({ type: "error", value: "Unable to apply patch at existing.txt" })
+                ).toMatchObject({
+                  type: "error",
+                  value: expect.stringContaining("Unable to apply patch at existing.txt"),
+                })
                 expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("sentinel\n")
               }),
             ),
@@ -362,7 +419,10 @@ describe("ApplyPatchTool", () => {
                 registry,
                 call("*** Begin Patch\n*** Add File: appeared.txt\n+replacement\n*** End Patch"),
               ),
-            ).toEqual({ type: "error", value: "Unable to apply patch at appeared.txt" })
+            ).toMatchObject({
+              type: "error",
+              value: expect.stringContaining("Unable to apply patch at appeared.txt"),
+            })
             expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("winner\n")
           }),
         )

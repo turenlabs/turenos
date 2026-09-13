@@ -42,6 +42,12 @@ Both are scoped:
 
 `ApplicationTools.Service` is process-scoped and shared by all Locations. `ToolRegistry.Service` is Location-scoped. Do not make the registry process-global or construct a separate application-tool service for each Location.
 
+## Deferral
+
+`Tool.make({ deferred: true })` (or `Tool.withDeferred` for helper-built tools) keeps a tool settleable while withholding its definition from the advertised catalog. `SessionToolSnapshot` catalogs deferred registrations by name and description only, brokers selection per session through `broker.ts` (`tool_search`/`tool_load`, scoped by the Location directory), and passes the selected set into `materialize` so a selected tool's definition appears on the next provider turn. A direct call to a deferred-but-unselected name still executes and marks it loaded; an explicit non-catch-all agent allow rule keeps a deferred tool inline instead.
+
+Deferral is catalog visibility, not execution authorization — `settle` stays the only execution boundary, and `MaterializeInput.deferred` only gates which definitions are advertised. `mcp_search`/`mcp_load` remain registered as hidden aliases over the MCP capability subset; MCP capability state uses the same broker through the `McpTool.Source` adapter.
+
 ## Permissions
 
 The registry has no `PermissionV2.Service` dependency and performs no execution authorization. An internal built-in-only operation attaches a permission action solely to preserve whole-tool definition filtering; it is not part of public `Tool.make`. Most tools default to their registered name; `edit`, `write`, and `apply_patch` declare the shared `edit` action.

@@ -41,4 +41,36 @@ describe("extractPromptFromParts", () => {
       { type: "image", filename: "b.pdf", mime: "application/pdf", dataUrl: "data:application/pdf;base64,BBB" },
     ])
   })
+
+  test("restores a path-backed attachment as a file reference", () => {
+    const parts = [
+      {
+        id: "text_1",
+        type: "text",
+        text: "look at this",
+        sessionID: "ses_1",
+        messageID: "msg_1",
+      },
+      {
+        id: "file_1",
+        type: "file",
+        mime: "image/png",
+        url: "file:///Users/tom/Pictures/big%20shot.png",
+        filename: "/Users/tom/Pictures/big shot.png",
+        sessionID: "ses_1",
+        messageID: "msg_1",
+      },
+    ] satisfies Part[]
+
+    const result = extractPromptFromParts(parts)
+
+    expect(result).toHaveLength(2)
+    expect(result[1]).toMatchObject({
+      type: "image",
+      filename: "/Users/tom/Pictures/big shot.png",
+      mime: "image/png",
+      dataUrl: "",
+      sourcePath: "/Users/tom/Pictures/big shot.png",
+    })
+  })
 })

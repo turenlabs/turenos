@@ -152,7 +152,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           "release",
           "view",
           "--repo",
-          "turenlabs/forge",
+          "turenlabs/turenos",
           "--json",
           "tagName",
           "--jq",
@@ -161,7 +161,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         if (ghTag.trim()) return ghTag.trim().replace(/^v/, "")
 
         const response = yield* httpOk.execute(
-          HttpClientRequest.get("https://api.github.com/repos/turenlabs/forge/releases/latest").pipe(
+          HttpClientRequest.get("https://api.github.com/repos/turenlabs/turenos/releases/latest").pipe(
             HttpClientRequest.acceptJson,
           ),
         )

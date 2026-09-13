@@ -69,6 +69,7 @@ const layer = Layer.effectDiscard(
     yield* tools
       .register({
         [name]: Tool.make({
+          deferred: true,
           description:
             "Decompile one function from a binary into bounded pseudo-C with the bundled Ghidra WebAssembly decompiler. This is static analysis: the binary is never executed and no host decompiler, Java runtime, container, or network download is required. Pass the function virtual address, architecture, byte order, and the virtual address represented by file offset 0.",
           input: Input,

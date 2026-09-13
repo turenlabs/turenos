@@ -30,7 +30,7 @@ import { SystemContext } from "../../system-context/index"
 import { SystemContextRegistry } from "../../system-context/registry"
 import { SkillGuidance } from "../../skill/guidance"
 import { ReferenceGuidance } from "../../reference/guidance"
-import { McpTool } from "../../tool/mcp"
+import { ToolBroker } from "../../tool/broker"
 import { SessionToolSnapshot } from "../../tool/session-snapshot"
 import { ToolVisibleError } from "../../tool/visible-error"
 import { GoalTool } from "../../tool/goal"
@@ -861,8 +861,8 @@ const layer = Layer.effect(
       const base = [
         agent.info?.system ?? ProviderPrompt.forModel(model.id),
         system.baseline,
-        toolSnapshot?.snapshot.broker.visible.includes(McpTool.SEARCH_TOOL_NAME)
-          ? McpTool.DISCOVERY_SYSTEM_PROMPT
+        toolSnapshot?.snapshot.broker.visible.includes(ToolBroker.SEARCH_TOOL_NAME)
+          ? ToolBroker.DISCOVERY_SYSTEM_PROMPT
           : undefined,
       ]
         .filter((part): part is string => part !== undefined && part.length > 0)
@@ -1092,6 +1092,7 @@ const layer = Layer.effect(
             : getGoal(session.id),
       })
       const startSnapshot = yield* snapshots.capture()
+      yield* startupPhase("snapshot_captured", { captured: startSnapshot !== undefined })
       // From here on the publisher owns failure reporting for this turn. Provisionally: the
       // publisher only opens the durable step on the first content frame, so if the turn ends
       // with the step never opened, the settlement block below hands the responsibility back.

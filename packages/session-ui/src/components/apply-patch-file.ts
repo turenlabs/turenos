@@ -13,6 +13,9 @@ type Raw = {
   additions?: number
   deletions?: number
   movePath?: string
+  // V2 tool output emits FileDiff.Info instead: `file` + `status`.
+  file?: string
+  status?: string
 }
 
 export type ApplyPatchFile = {
@@ -29,6 +32,12 @@ function kind(value: unknown) {
   if (value === "add" || value === "update" || value === "delete" || value === "move") return value
 }
 
+function kindFromStatus(value: unknown) {
+  if (value === "added") return "add" as const
+  if (value === "deleted") return "delete" as const
+  if (value === "modified") return "update" as const
+}
+
 function status(type: Kind): "added" | "deleted" | "modified" {
   if (type === "add") return "added"
   if (type === "delete") return "deleted"
@@ -39,8 +48,10 @@ export function patchFile(raw: unknown): ApplyPatchFile | undefined {
   if (!raw || typeof raw !== "object") return
 
   const value = raw as Raw
-  const type = kind(value.type)
-  const filePath = typeof value.filePath === "string" ? value.filePath : undefined
+  const filePath =
+    (typeof value.filePath === "string" ? value.filePath : undefined) ??
+    (typeof value.file === "string" ? value.file : undefined)
+  const type = kind(value.type) ?? kindFromStatus(value.status)
   const relativePath = typeof value.relativePath === "string" ? value.relativePath : filePath
   const patch = typeof value.patch === "string" ? value.patch : typeof value.diff === "string" ? value.diff : undefined
   const before = typeof value.before === "string" ? value.before : undefined

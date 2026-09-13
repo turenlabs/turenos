@@ -104,6 +104,7 @@ import { location as locationFixture } from "./fixture/location"
 import { agentHost, host } from "./plugin/host"
 
 const requests: LLMRequest[] = []
+const discoveryContextPrefix = "Additional built-in capabilities —"
 let response: LLMEvent[] = []
 let responses: LLMEvent[][] | undefined
 let responseStream: Stream.Stream<LLMEvent, LLMError> | undefined
@@ -124,7 +125,10 @@ const client = Layer.succeed(
   LLMClient.Service.of({
     prepare: () => Effect.die("unused"),
     stream: ((request: LLMRequest) => {
-      requests.push(request)
+      requests.push({
+        ...request,
+        system: request.system.filter((part) => !part.text.startsWith(discoveryContextPrefix)),
+      })
       if (responseStream) {
         const stream = responseStream
         responseStream = undefined
@@ -1231,8 +1235,9 @@ describe("SessionRunnerLLM", () => {
         "bash",
         "shell_job",
         "harness_review_request",
-        "handoff_session",
         "terminal",
+        "tool_search",
+        "tool_load",
       ])
       const reviewTool = requests[0]?.tools.find((tool) => tool.name === "harness_review_request")
       expect(reviewTool?.inputSchema).toMatchObject({
@@ -2626,8 +2631,9 @@ describe("SessionRunnerLLM", () => {
         "bash",
         "shell_job",
         "harness_review_request",
-        "handoff_session",
         "terminal",
+        "tool_search",
+        "tool_load",
       ])
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Use tools" },
