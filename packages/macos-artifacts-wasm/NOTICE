@@ -1,0 +1,29 @@
+Turen macOS Artifacts is a bounded, offline WebAssembly parser for macOS
+forensic artifacts (property lists, .fseventsd disk logs, .tracev3 unified
+log chunks, and .DS_Store files). The wrapper, dispatch/bounding layer,
+FSEvents record decoder, and DS_Store buddy-allocator/B-tree decoder are
+original Turen code licensed Apache-2.0 OR MIT.
+
+This package vendors compiled third-party Rust components:
+
+- macos-unifiedlogs 0.6.0 — Copyright Mandiant, Inc.; Apache-2.0.
+  Used for .tracev3 header/catalog/chunkset parsing and firehose entry
+  reconstruction. String tables (uuidtext, dsc shared cache, timesync)
+  are not distributed or consulted; unresolved format strings surface as
+  explicit missing-data markers.
+- plist 1.10.1 — MIT (the plist crate authors). Used for
+  streaming binary/XML property-list event parsing.
+- flate2 1.1.10 — MIT OR Apache-2.0. Used for bounded gzip decompression
+  of .fseventsd disk-log pages (miniz_oxide backend).
+- sha2 0.10.9 — MIT OR Apache-2.0 (RustCrypto). Used for data-value
+  digests.
+- serde 1.0.228 and serde_json 1.0.151 — MIT OR Apache-2.0.
+- wasm-bindgen 0.2.108 — MIT OR Apache-2.0.
+
+Transitive components of the above (including nom, lz4_flex, regex,
+chrono, miniz_oxide, sunlight, walkdir, encoding_rs, and related crates)
+are distributed under permissive MIT, Apache-2.0, BSD, Unicode, or Zlib
+licenses; no GPL-family code is linked.
+
+The compiled module also uses Rust standard-library components,
+distributed under the Apache-2.0 or MIT license at the user's option.

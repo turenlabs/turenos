@@ -1,0 +1,21 @@
+{
+  "name": "turen-binary-diff-wasm",
+  "type": "module",
+  "description": "Bounded binary differencing and patching WebAssembly wrapper for Turen",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_binary_diff_wasm_bg.wasm",
+    "turen_binary_diff_wasm.js",
+    "turen_binary_diff_wasm.d.ts"
+  ],
+  "main": "turen_binary_diff_wasm.js",
+  "types": "turen_binary_diff_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

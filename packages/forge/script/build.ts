@@ -41,6 +41,35 @@ const binaryPackages = [
   name,
   root: path.dirname(createRequire(path.join(dir, "../core/package.json")).resolve(packageName)),
 }))
+const wasmLeaves = [
+  "apk-dex",
+  "binary-diff",
+  "browser-artifacts",
+  "capa-match",
+  "code-signing",
+  "codec",
+  "crypto-markers",
+  "firmware-formats",
+  "fuzzy-hash",
+  "git-inspect",
+  "image-inspect",
+  "installer-inspect",
+  "java-inspect",
+  "json-query",
+  "macos-artifacts",
+  "minidump",
+  "pdf-inspect",
+  "rtf-inspect",
+  "sourcemap",
+  "sqlite-inspect",
+  "squashfs",
+  "unicode-audit",
+  "wasm-toolkit",
+]
+const wasmLeafPackages = wasmLeaves.map((name) => ({
+  name,
+  root: path.dirname(createRequire(path.join(dir, "../core/package.json")).resolve(`@turenlabs/${name}-wasm`)),
+}))
 const generated = await import("./generate.ts")
 
 import { Script } from "@turenlabs/script"
@@ -231,6 +260,7 @@ for (const item of targets) {
       "../core/src/tool/wasm-inspect-worker.ts",
       "../core/src/tool/debug-symbols-worker.ts",
       "../core/src/tool/binwalk-scan-worker.ts",
+      ...wasmLeaves.map((leaf) => `../core/src/tool/${leaf}-worker.ts`),
     ],
     outdir: `dist/${name}/bin`,
     naming: {
@@ -259,6 +289,8 @@ for (const item of targets) {
     await cp(path.join(binaryPackage.root, ".."), path.join("dist", name, "bin", binaryPackage.name), {
       recursive: true,
     })
+  for (const leaf of wasmLeafPackages)
+    await cp(path.join(leaf.root, ".."), path.join("dist", name, "bin", leaf.name), { recursive: true })
   await stageVigil(item, path.join("dist", name, "bin", "vigil"))
   await Bun.write(path.join("dist", name, "bin", "package.json"), JSON.stringify({ type: "module" }, null, 2))
 

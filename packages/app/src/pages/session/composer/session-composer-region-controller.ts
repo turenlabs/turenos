@@ -25,6 +25,13 @@ export type SessionComposerGoalDock = {
   onClear: () => void
 }
 
+export type SessionComposerFollowupDock = {
+  items: { id: string; text: string }[]
+  pending?: boolean
+  onSend: (id: string) => void
+  onEdit: (id: string) => void
+}
+
 /**
  * Composer readiness must stay a plain signal — never a resource read.
  *
@@ -54,6 +61,7 @@ export function createSessionComposerRegionController(input: {
     onToggle: () => void
   }
   goal: Accessor<SessionComposerGoalDock | undefined>
+  followup: Accessor<SessionComposerFollowupDock | undefined>
   revert: Accessor<SessionComposerRevertDock | undefined>
   onResponseSubmit: () => void
   openParent: () => void
@@ -139,6 +147,7 @@ export function createSessionComposerRegionController(input: {
     centered: input.centered,
     todo: input.todo,
     goal: input.goal,
+    followup: input.followup,
     revert: input.revert,
     onResponseSubmit: input.onResponseSubmit,
     openParent: input.openParent,

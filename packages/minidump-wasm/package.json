@@ -1,0 +1,15 @@
+{
+  "name": "@turenlabs/minidump-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist/",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "SOURCE.json",
+    "SHA256SUMS"
+  ],
+  "exports": "./dist/turen_minidump_wasm.js"
+}

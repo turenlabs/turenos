@@ -1,0 +1,26 @@
+{
+  "name": "@turenlabs/capa-match-wasm",
+  "version": "0.1.0-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "TurenOS bounded static-subset capa capability matcher (embedded mandiant/capa-rules)",
+  "main": "dist/turen_capa_match_wasm.js",
+  "types": "dist/turen_capa_match_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/turen_capa_match_wasm.d.ts",
+      "import": "./dist/turen_capa_match_wasm.js",
+      "default": "./dist/turen_capa_match_wasm.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "SOURCE.json",
+    "SHA256SUMS"
+  ],
+  "license": "Apache-2.0 OR MIT",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

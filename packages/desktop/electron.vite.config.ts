@@ -22,6 +22,31 @@ const protocolInspectAsset = "protocol-inspect"
 const debugSymbolsAsset = "debug-symbols"
 const binwalkScanAsset = "binwalk-scan"
 const forensicAssets = new Set(["wifi-offline", "windows-artifacts", "rebuild-timeline"])
+const wasmToolLeaves = new Set([
+  "apk-dex",
+  "binary-diff",
+  "browser-artifacts",
+  "capa-match",
+  "code-signing",
+  "codec",
+  "crypto-markers",
+  "firmware-formats",
+  "fuzzy-hash",
+  "git-inspect",
+  "image-inspect",
+  "installer-inspect",
+  "java-inspect",
+  "json-query",
+  "macos-artifacts",
+  "minidump",
+  "pdf-inspect",
+  "rtf-inspect",
+  "sourcemap",
+  "sqlite-inspect",
+  "squashfs",
+  "unicode-audit",
+  "wasm-toolkit",
+])
 
 const sentry =
   process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
@@ -160,6 +185,15 @@ const require = __cjs_mod__.createRequire(import.meta.url);
             if (forensicAssets.has(l)) {
               await fs.mkdir("./out/main/chunks/forensic-tools", { recursive: true })
               await fs.cp(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/forensic-tools/${l}`, { recursive: true })
+            }
+            const wasmLeaf = l.endsWith("-worker.js") ? l.slice(0, -"-worker.js".length) : undefined
+            if (wasmLeaf && wasmToolLeaves.has(wasmLeaf)) {
+              await fs.mkdir(`./out/main/chunks/${wasmLeaf}`, { recursive: true })
+              await fs.copyFile(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/${wasmLeaf}/${l}`)
+              continue
+            }
+            if (wasmToolLeaves.has(l)) {
+              await fs.cp(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/${l}`, { recursive: true })
             }
           }
         },

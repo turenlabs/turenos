@@ -1,0 +1,21 @@
+{
+  "name": "turen-squashfs-wasm",
+  "type": "module",
+  "description": "Bounded SquashFS listing and single-entry extraction WebAssembly module for Turen",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_squashfs_wasm_bg.wasm",
+    "turen_squashfs_wasm.js",
+    "turen_squashfs_wasm.d.ts"
+  ],
+  "main": "turen_squashfs_wasm.js",
+  "types": "turen_squashfs_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

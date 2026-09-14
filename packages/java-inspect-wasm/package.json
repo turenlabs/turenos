@@ -1,0 +1,26 @@
+{
+  "name": "@turenlabs/java-inspect-wasm",
+  "version": "0.1.0-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "TurenOS bounded offline Java .class/.jar static inspector",
+  "main": "dist/turen_java_inspect_wasm.js",
+  "types": "dist/turen_java_inspect_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/turen_java_inspect_wasm.d.ts",
+      "import": "./dist/turen_java_inspect_wasm.js",
+      "default": "./dist/turen_java_inspect_wasm.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "SOURCE.json",
+    "SHA256SUMS"
+  ],
+  "license": "Apache-2.0 OR MIT",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

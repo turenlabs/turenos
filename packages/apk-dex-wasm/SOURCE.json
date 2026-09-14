@@ -1,0 +1,48 @@
+{
+  "crate": "turen-apk-dex-wasm",
+  "version": "0.1.0",
+  "upstream": {
+    "zip": {
+      "repository": "https://github.com/zip-rs/zip2",
+      "version": "4.6.1",
+      "license": "MIT"
+    },
+    "flate2": {
+      "repository": "https://github.com/rust-lang/flate2-rs",
+      "version": "1.1.10",
+      "license": "Apache-2.0 OR MIT",
+      "note": "rust_backend only: pure-Rust miniz_oxide DEFLATE"
+    },
+    "sha2": {
+      "repository": "https://github.com/RustCrypto/hashes",
+      "version": "0.10.9",
+      "license": "Apache-2.0 OR MIT"
+    },
+    "formats": "AOSP binary XML / DEX / ARSC / APK-signing-block layout per the public Android platform documentation; parsers are original bounded implementations"
+  },
+  "derivation": "Turen bounded wasm-bindgen wrapper over hand-rolled, bounds-checked AXML/DEX/ARSC decoders plus the pinned zip crate for the container. Crates.io releases are exact-pinned and committed in Cargo.lock. Candidate AXML crates were evaluated and rejected: axml-parser is unpublished, abxml 0.8.2 (2019) requires a valid resources.arsc to construct its Decoder and pulls deprecated failure/encoding deps, rusty-axml 0.2.1 hardcodes the root element to \"manifest\", leaves most typed values as TODO/println!, orders attributes via HashMap, and panics on unknown chunk types.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "runtimeDependencies": ["zip 4.6.1", "flate2 1.1.10 (rust_backend/miniz_oxide)", "sha2 0.10.9"],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": true,
+  "signatureVerification": false,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "outputBytes": 4194304,
+    "listItems": 4096,
+    "decodedXmlBytes": 1048576,
+    "dexStringChars": 512,
+    "zipEntriesPreScan": 65536,
+    "perEntryDecompressedBytes": 33554432,
+    "axmlElements": 65536,
+    "axmlDepth": 256,
+    "findings": 1024
+  }
+}

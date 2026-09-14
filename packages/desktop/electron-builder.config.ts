@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process"
-import { access, readFile } from "node:fs/promises"
+import { access, readFile, readdir } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
@@ -109,6 +109,31 @@ const forensicToolsResource = {
   from: "out/main/chunks/forensic-tools/",
   to: "forensic-tools/",
 }
+const wasmToolLeaves = [
+  "apk-dex",
+  "binary-diff",
+  "browser-artifacts",
+  "capa-match",
+  "code-signing",
+  "codec",
+  "crypto-markers",
+  "firmware-formats",
+  "fuzzy-hash",
+  "git-inspect",
+  "image-inspect",
+  "installer-inspect",
+  "java-inspect",
+  "json-query",
+  "macos-artifacts",
+  "minidump",
+  "pdf-inspect",
+  "rtf-inspect",
+  "sourcemap",
+  "sqlite-inspect",
+  "squashfs",
+  "unicode-audit",
+  "wasm-toolkit",
+]
 async function signWindows(configuration: { path: string }) {
   if (process.platform !== "win32") return
   if (process.env.GITHUB_ACTIONS !== "true") return
@@ -195,11 +220,19 @@ const verifyPackage: NonNullable<Configuration["afterPack"]> = async (context) =
       "vigil/compact-model.onnx.json",
       `vigil/${context.electronPlatformName === "win32" ? "vigil-compact.exe" : "vigil-compact"}`,
       `vigil/${context.electronPlatformName === "darwin" ? "libonnxruntime.dylib" : context.electronPlatformName === "win32" ? "onnxruntime.dll" : "libonnxruntime.so"}`,
+      ...wasmToolLeaves.flatMap((name) => [`${name}/${name}-worker.js`, `${name}/package.json`]),
     ].map((file) =>
       access(path.join(resources, file)).catch(() => {
         throw new Error(`Packaged decompile artifact is missing: ${file}`)
       }),
     ),
+  )
+  await Promise.all(
+    wasmToolLeaves.map(async (name) => {
+      const dist = await readdir(path.join(resources, name, "dist")).catch(() => [] as string[])
+      if (!dist.some((file) => file.endsWith(".wasm")))
+        throw new Error(`Packaged wasm tool artifact is missing: ${name}/dist/*.wasm`)
+    }),
   )
   const mainOutput = path.join(packageDir, "out/main")
   const protocolInspectMetadata = JSON.parse(
@@ -349,6 +382,7 @@ const getBase = (appId: string): Configuration => ({
     "!out/main/chunks/binary-tools/**/*",
     "!out/main/chunks/static-analysis/**/*",
     "!out/main/chunks/forensic-tools/**/*",
+    ...wasmToolLeaves.map((name) => `!out/main/chunks/${name}/**/*`),
     "resources/**/*",
     "!resources/forge-cli*",
   ],
@@ -383,6 +417,10 @@ const getBase = (appId: string): Configuration => ({
     staticAnalysisWorkerResource,
     staticAnalysisAssetsResource,
     forensicToolsResource,
+    ...wasmToolLeaves.map((name) => ({
+      from: `out/main/chunks/${name}/`,
+      to: `${name}/`,
+    })),
     {
       from: noticeFile,
       to: "licenses/TurenOS-NOTICE.txt",

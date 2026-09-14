@@ -1,0 +1,15 @@
+Turen JSON Query wraps the jaq library crates — jaq-core 3.1.1,
+jaq-json 2.0.3, and jaq-std 3.0.3 — a pure-Rust jq implementation by
+Michael Färber and contributors, distributed under the MIT License.
+Upstream: https://github.com/01mf02/jaq
+
+The upstream CLI, module loading, filesystem access, environment access,
+and clock access are not exposed; this package exposes only the bounded
+wasm-bindgen operations documented in README.md.
+
+Transitive Rust dependencies used by the compiled module are licensed under
+permissive terms (MIT, Apache-2.0, Zlib, Unicode-3.0, BSL-1.0, or the
+Unlicense; self_cell is elected under Apache-2.0 from its
+Apache-2.0 OR GPL-2.0-only dual license). The compiled module also uses
+Rust standard-library components distributed under Apache-2.0 or MIT.
+See Cargo.lock for the complete pinned dependency closure.

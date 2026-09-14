@@ -1,0 +1,29 @@
+{
+  "crate": "turen-squashfs-wasm",
+  "upstream": "https://github.com/wcampbell0x2a/backhand",
+  "upstreamVersion": "0.25.3",
+  "upstreamCommit": "eccf81b6f599cb90245d7c9694e95ee6023cad06",
+  "derivation": "Bounded wasm-bindgen wrapper around backhand's FilesystemReader APIs (FilesystemReaderTrait) exposing squashfs_list and squashfs_extract. Vendored at the pinned commit by script/import-upstream.sh with patches/0001-wasm-osstr.patch (wasm32 OsStr fallback). backhand features: gzip, lz4, v3 only; xz/zstd (C-backed), lzo and v3_lzma/v4_lzma (GPL) intentionally disabled.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmBindgen": true,
+  "wasmPack": "0.15.0",
+  "runtimeDependencies": [],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": true,
+  "decompressesInput": true,
+  "patches": [
+    "patches/0001-wasm-osstr.patch"
+  ],
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "jsonOutputBytes": 4194304,
+    "listedEntries": 4096,
+    "entryBytes": 134217728,
+    "serializedContentBytes": 3144960,
+    "pathBytes": 4096
+  }
+}

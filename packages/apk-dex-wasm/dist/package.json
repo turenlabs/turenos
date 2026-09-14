@@ -1,0 +1,21 @@
+{
+  "name": "turen-apk-dex-wasm",
+  "type": "module",
+  "description": "Bounded Android APK/DEX static inspection WebAssembly wrapper for Turen",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_apk_dex_wasm_bg.wasm",
+    "turen_apk_dex_wasm.js",
+    "turen_apk_dex_wasm.d.ts"
+  ],
+  "main": "turen_apk_dex_wasm.js",
+  "types": "turen_apk_dex_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

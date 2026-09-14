@@ -1,0 +1,8 @@
+{
+  "name": "turen-fuzzy-hash-wasm",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "type": "module",
+  "main": "turen_fuzzy_hash_wasm.js",
+  "types": "turen_fuzzy_hash_wasm.d.ts"
+}

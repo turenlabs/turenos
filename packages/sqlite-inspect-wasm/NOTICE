@@ -1,0 +1,15 @@
+Turen sqlite-inspect is an original bounded implementation of the documented
+SQLite 3 database file format (https://sqlite.org/fileformat.html — public
+domain specification). No SQLite source code is included.
+
+This package embeds unmodified builds of:
+
+- RustCrypto hashes: sha2 (Apache-2.0 OR MIT) —
+  https://github.com/RustCrypto/hashes
+- serde, serde_json, wasm-bindgen and their transitive dependencies
+  (Apache-2.0 OR MIT)
+
+All operations are read-only structural reporting over caller-supplied bytes.
+The database is never modified, WAL journals are never replayed, and no
+network or filesystem access occurs. Carved records are heuristic candidates,
+not verified live rows.

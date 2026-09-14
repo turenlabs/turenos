@@ -1,0 +1,290 @@
+{
+  "crate": "turen-sourcemap-wasm",
+  "upstream": "https://github.com/getsentry/rust-sourcemap",
+  "upstreamVersion": "9.3.2",
+  "upstreamCrate": "sourcemap",
+  "upstreamCrateSha256": "314d62a489431668f719ada776ca1d49b924db951b7450f8974c9ae51ab05ad7",
+  "derivation": "Turen-authored bounded WebAssembly wrapper around the unmodified crates.io sourcemap 9.3.2 crate (default features disabled); no upstream code is vendored or patched.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmBindgen": true,
+  "wasmPack": "0.15.0",
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": false,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "outputBytes": 4194304,
+    "listItems": 4096,
+    "extractedSourceBytes": 8388608,
+    "flattenedBytes": 33554432,
+    "stringChars": 1024,
+    "matchedSources": 16
+  },
+  "runtimeDependencies": [
+    {
+      "crate": "sourcemap",
+      "version": "9.3.2",
+      "license": "BSD-3-Clause"
+    },
+    {
+      "crate": "base64-simd",
+      "version": "0.8.0",
+      "license": "MIT"
+    },
+    {
+      "crate": "bitvec",
+      "version": "1.1.1",
+      "license": "MIT"
+    },
+    {
+      "crate": "block-buffer",
+      "version": "0.10.4",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "bumpalo",
+      "version": "3.20.3",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "cfg-if",
+      "version": "1.0.4",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "cpufeatures",
+      "version": "0.2.17",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "crypto-common",
+      "version": "0.1.7",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "data-encoding",
+      "version": "2.11.1",
+      "license": "MIT"
+    },
+    {
+      "crate": "debugid",
+      "version": "0.8.0",
+      "license": "Apache-2.0"
+    },
+    {
+      "crate": "digest",
+      "version": "0.10.7",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "form_urlencoded",
+      "version": "1.2.2",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "funty",
+      "version": "2.0.0",
+      "license": "MIT"
+    },
+    {
+      "crate": "generic-array",
+      "version": "0.14.7",
+      "license": "MIT"
+    },
+    {
+      "crate": "idna",
+      "version": "0.4.0",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "if_chain",
+      "version": "1.0.3",
+      "license": "MIT/Apache-2.0"
+    },
+    {
+      "crate": "itoa",
+      "version": "1.0.18",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "js-sys",
+      "version": "0.3.85",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "libc",
+      "version": "0.2.189",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "memchr",
+      "version": "2.8.3",
+      "license": "Unlicense OR MIT"
+    },
+    {
+      "crate": "once_cell",
+      "version": "1.21.4",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "outref",
+      "version": "0.5.2",
+      "license": "MIT"
+    },
+    {
+      "crate": "percent-encoding",
+      "version": "2.3.2",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "proc-macro2",
+      "version": "1.0.107",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "quote",
+      "version": "1.0.47",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "radium",
+      "version": "0.7.0",
+      "license": "MIT"
+    },
+    {
+      "crate": "rustc-hash",
+      "version": "2.1.3",
+      "license": "Apache-2.0 OR MIT"
+    },
+    {
+      "crate": "rustversion",
+      "version": "1.0.23",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "ryu",
+      "version": "1.0.23",
+      "license": "Apache-2.0 OR BSL-1.0"
+    },
+    {
+      "crate": "serde",
+      "version": "1.0.228",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "serde_core",
+      "version": "1.0.228",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "serde_derive",
+      "version": "1.0.228",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "serde_json",
+      "version": "1.0.145",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "sha2",
+      "version": "0.10.9",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "syn",
+      "version": "2.0.119",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "tap",
+      "version": "1.0.1",
+      "license": "MIT"
+    },
+    {
+      "crate": "tinyvec",
+      "version": "1.13.2",
+      "license": "Zlib OR Apache-2.0 OR MIT"
+    },
+    {
+      "crate": "tinyvec_macros",
+      "version": "0.1.1",
+      "license": "MIT OR Apache-2.0 OR Zlib"
+    },
+    {
+      "crate": "typenum",
+      "version": "1.20.1",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "unicode-bidi",
+      "version": "0.3.18",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "unicode-id-start",
+      "version": "1.4.0",
+      "license": "(MIT OR Apache-2.0) AND Unicode-3.0"
+    },
+    {
+      "crate": "unicode-ident",
+      "version": "1.0.24",
+      "license": "(MIT OR Apache-2.0) AND Unicode-3.0"
+    },
+    {
+      "crate": "unicode-normalization",
+      "version": "0.1.25",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "url",
+      "version": "2.4.1",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "uuid",
+      "version": "1.26.1",
+      "license": "Apache-2.0 OR MIT"
+    },
+    {
+      "crate": "version_check",
+      "version": "0.9.5",
+      "license": "MIT/Apache-2.0"
+    },
+    {
+      "crate": "vsimd",
+      "version": "0.8.0",
+      "license": "MIT"
+    },
+    {
+      "crate": "wasm-bindgen",
+      "version": "0.2.108",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "wasm-bindgen-macro",
+      "version": "0.2.108",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "wasm-bindgen-macro-support",
+      "version": "0.2.108",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "wasm-bindgen-shared",
+      "version": "0.2.108",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "crate": "wyz",
+      "version": "0.5.1",
+      "license": "MIT"
+    }
+  ],
+  "run": null
+}

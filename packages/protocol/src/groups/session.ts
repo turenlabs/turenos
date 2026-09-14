@@ -1172,6 +1172,37 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S>(sessionLo
         ),
     )
     .add(
+      HttpApiEndpoint.post("session.inputSteer", "/api/session/:sessionID/input/:messageID/steer", {
+        params: { sessionID: Session.ID, messageID: SessionMessage.ID },
+        success: Schema.Struct({ data: Schema.Boolean }),
+        error: [InvalidRequestError, SessionNotFoundError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "v2.session.inputSteer",
+            summary: "Steer a queued session input",
+            description:
+              "Upgrade one admitted queue-delivered input to steer delivery so it promotes ahead of queued inputs at the next provider-turn boundary.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.inputCancel", "/api/session/:sessionID/input/:messageID/cancel", {
+        params: { sessionID: Session.ID, messageID: SessionMessage.ID },
+        success: Schema.Struct({ data: Schema.Boolean }),
+        error: [InvalidRequestError, SessionNotFoundError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "v2.session.inputCancel",
+            summary: "Cancel a pending session input",
+            description: "Cancel one admitted input that has not yet been promoted into the projected transcript.",
+          }),
+        ),
+    )
+    .add(
       HttpApiEndpoint.get("session.history", "/api/session/:sessionID/history", {
         params: { sessionID: Session.ID },
         query: SessionHistoryQuery,

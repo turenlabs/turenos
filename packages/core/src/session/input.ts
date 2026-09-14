@@ -128,6 +128,44 @@ export const cancelPending = Effect.fn("SessionInput.cancelPending")(function* (
   return cancelled !== undefined
 })
 
+export const steerPending = Effect.fn("SessionInput.steerPending")(function* (
+  db: DatabaseService,
+  input: { readonly sessionID: SessionSchema.ID; readonly id: SessionMessage.ID },
+) {
+  const upgraded = yield* db
+    .update(SessionInputTable)
+    .set({ delivery: "steer" })
+    .where(
+      and(
+        eq(SessionInputTable.id, input.id),
+        eq(SessionInputTable.session_id, input.sessionID),
+        eq(SessionInputTable.delivery, "queue"),
+        isNull(SessionInputTable.promoted_seq),
+        isNull(SessionInputTable.time_cancelled),
+      ),
+    )
+    .returning({ id: SessionInputTable.id })
+    .get()
+    .pipe(Effect.orDie)
+  if (!upgraded) return false
+  // Promotion publishes the row's current delivery; keep the durable identity in
+  // step so `matchesProjection` still holds when the upgraded input promotes.
+  const identity = yield* db
+    .select({ input: SessionMessageIdentityTable.input })
+    .from(SessionMessageIdentityTable)
+    .where(eq(SessionMessageIdentityTable.id, input.id))
+    .get()
+    .pipe(Effect.orDie)
+  if (identity?.input?.admitted.delivery === "queue")
+    yield* db
+      .update(SessionMessageIdentityTable)
+      .set({ input: { ...identity.input, admitted: { ...identity.input.admitted, delivery: "steer" } } })
+      .where(eq(SessionMessageIdentityTable.id, input.id))
+      .run()
+      .pipe(Effect.orDie)
+  return true
+})
+
 export const findCommand = Effect.fn("SessionInput.findCommand")(function* (
   db: DatabaseService,
   id: SessionMessage.ID,

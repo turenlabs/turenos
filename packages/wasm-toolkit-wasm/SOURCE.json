@@ -1,0 +1,35 @@
+{
+  "crate": "turen-wasm-toolkit-wasm",
+  "upstream": "https://github.com/bytecodealliance/wasm-tools",
+  "upstreamVersion": "wasmparser-0.259.0 wasmprinter-0.259.0 wat-1.259.0 wast-259.0.0 wasm-metadata-0.259.0",
+  "derivation": "Turen bounded wrapper exposing wasm_print, wasm_analyze, wasm_metadata, and wat_compile over pinned crates.io releases of the wasm-tools crates; no upstream source is vendored.",
+  "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "runtimeDependencies": [
+    "wasmparser =0.259.0",
+    "wasmprinter =0.259.0",
+    "wast =259.0.0",
+    "wat =1.259.0",
+    "wasm-metadata =0.259.0",
+    "serde =1.0.228",
+    "serde_json =1.0.145",
+    "wasm-bindgen =0.2.108"
+  ],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": false,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "outputBytes": 4194304,
+    "watOutputBytes": 8388608,
+    "printEnvelopeBytes": 12582912,
+    "listEntries": 4096,
+    "compiledOutputBytes": 33554432,
+    "indexSpaceEntries": 262144
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "turen-crypto-markers-wasm",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "main": "turen_crypto_markers_wasm.js",
+  "types": "turen_crypto_markers_wasm.d.ts"
+}

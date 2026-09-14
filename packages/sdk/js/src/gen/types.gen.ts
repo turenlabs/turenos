@@ -14904,6 +14904,82 @@ export type V2SessionOutboxResponses = {
 
 export type V2SessionOutboxResponse = V2SessionOutboxResponses[keyof V2SessionOutboxResponses]
 
+export type V2SessionInputSteerData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/input/{messageID}/steer"
+}
+
+export type V2SessionInputSteerErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+}
+
+export type V2SessionInputSteerError = V2SessionInputSteerErrors[keyof V2SessionInputSteerErrors]
+
+export type V2SessionInputSteerResponses = {
+  /**
+   * Success
+   */
+  200: {
+    data: boolean
+  }
+}
+
+export type V2SessionInputSteerResponse = V2SessionInputSteerResponses[keyof V2SessionInputSteerResponses]
+
+export type V2SessionInputCancelData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/input/{messageID}/cancel"
+}
+
+export type V2SessionInputCancelErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+}
+
+export type V2SessionInputCancelError = V2SessionInputCancelErrors[keyof V2SessionInputCancelErrors]
+
+export type V2SessionInputCancelResponses = {
+  /**
+   * Success
+   */
+  200: {
+    data: boolean
+  }
+}
+
+export type V2SessionInputCancelResponse = V2SessionInputCancelResponses[keyof V2SessionInputCancelResponses]
+
 export type V2SessionHistoryData = {
   body?: never
   path: {

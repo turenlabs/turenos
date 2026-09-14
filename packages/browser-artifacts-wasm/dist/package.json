@@ -1,0 +1,21 @@
+{
+  "name": "turen-browser-artifacts-wasm",
+  "type": "module",
+  "description": "Bounded offline browser forensic artifact parser WebAssembly module for Turen",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_browser_artifacts_wasm_bg.wasm",
+    "turen_browser_artifacts_wasm.js",
+    "turen_browser_artifacts_wasm.d.ts"
+  ],
+  "main": "turen_browser_artifacts_wasm.js",
+  "types": "turen_browser_artifacts_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

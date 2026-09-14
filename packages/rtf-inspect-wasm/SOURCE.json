@@ -1,0 +1,73 @@
+{
+  "crate": "turen-rtf-inspect-wasm",
+  "version": "0.1.0",
+  "upstream": {
+    "parser": {
+      "repository": null,
+      "version": null,
+      "license": "Apache-2.0 OR MIT",
+      "derivation": "No vendored upstream source. The RTF tokenizer, bounded scanner, group/destination tracking, control-word and hex-escape handling, \\uN resolution, objdata decoding, and audit heuristics are original hand-rolled Turen code written for this target."
+    },
+    "encoding_rs": {
+      "repository": "https://github.com/hsivonen/encoding_rs",
+      "version": "0.8.41",
+      "license": "(Apache-2.0 OR MIT) AND BSD-3-Clause"
+    },
+    "serde": {
+      "repository": "https://github.com/serde-rs/serde",
+      "version": "1.0.228",
+      "license": "MIT OR Apache-2.0"
+    },
+    "serde_json": {
+      "repository": "https://github.com/serde-rs/json",
+      "version": "1.0.145",
+      "license": "MIT OR Apache-2.0"
+    },
+    "hashes": {
+      "repository": "https://github.com/RustCrypto/hashes",
+      "crates": [
+        "sha2 0.11.0"
+      ],
+      "license": "MIT OR Apache-2.0"
+    },
+    "wasm-bindgen": {
+      "repository": "https://github.com/rustwasm/wasm-bindgen",
+      "version": "0.2.108",
+      "license": "MIT OR Apache-2.0"
+    }
+  },
+  "derivation": "Bounded wasm-bindgen wrapper exposing four operations over a hand-rolled RTF scanner: rtf_inspect (group tree, control-word histogram, font/style/color tables, generator, info metadata, pictures, datastore, file table), rtf_objects (embedded object class, dimensions, bounded objdata hex decode, SHA-256, OLE compound-magic detection), rtf_audit (exploit-document findings: objdata payloads, OLE classes, file tables, template paths, field instructions, protection markers, obfuscation, hex-heavy regions, deep nesting, unbalanced braces, trailing data, mixed encodings), and rtf_text (bounded plain-text extraction with \\'hh and \\uN resolution). Runtime crates are used unmodified via exact-pinned crates.io releases committed in Cargo.lock.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "wasmOpt": [
+    "-Os",
+    "--enable-bulk-memory",
+    "--enable-nontrapping-float-to-int"
+  ],
+  "runtimeDependencies": [
+    "encoding_rs 0.8.41",
+    "serde 1.0.228",
+    "serde_json 1.0.145",
+    "sha2 0.11.0",
+    "wasm-bindgen 0.2.108"
+  ],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": false,
+  "limits": {
+    "inputBytes": 16777216,
+    "optionsBytes": 4096,
+    "jsonOutputBytes": 4194304,
+    "findings": 4096,
+    "groupDepth": 64,
+    "histogramTop": 256,
+    "objdataKeptBytes": 65536,
+    "inlinePayloadHexBytes": 65536,
+    "textChars": 524288,
+    "previewChars": 1024
+  }
+}

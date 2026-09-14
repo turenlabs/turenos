@@ -1,0 +1,21 @@
+{
+  "name": "turen-rtf-inspect-wasm",
+  "type": "module",
+  "description": "Bounded Rich Text Format structure and embedded-object inspection for Turen",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_rtf_inspect_wasm_bg.wasm",
+    "turen_rtf_inspect_wasm.js",
+    "turen_rtf_inspect_wasm.d.ts"
+  ],
+  "main": "turen_rtf_inspect_wasm.js",
+  "types": "turen_rtf_inspect_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

@@ -1,0 +1,25 @@
+This package contains a bounded WebAssembly Windows installer inspector built
+on the following permissively licensed Rust crates (exact versions pinned in
+Cargo.lock):
+
+  cfb 0.14.0                 MIT               https://github.com/mdsteele/rust-cfb
+  msi 0.10.0                 MIT               https://github.com/mdsteele/rust-msi
+  cab 0.6.0                  MIT               https://github.com/mdsteele/rust-cab
+  lzxd 0.2.7                 MIT OR Apache-2.0 https://github.com/mdsteele/rust-lzxd
+  flate2 1.1.x               MIT OR Apache-2.0 (pure-Rust miniz_oxide backend)
+  miniz_oxide                MIT
+  data-encoding 2.11.1       MIT
+  serde / serde_json         MIT OR Apache-2.0
+  sha2 0.10.9                MIT OR Apache-2.0
+  wasm-bindgen 0.2.108       MIT OR Apache-2.0
+  encoding_rs 0.8.41         (Apache-2.0 OR MIT) AND BSD-3-Clause
+  uuid / byteorder / time    MIT OR Apache-2.0
+
+No GPL, LGPL, copyleft, or proprietary code is linked into the distributed
+module. Cabinet Quantum decompression is intentionally unsupported
+(unsupported_compression); MSZIP and stored members decode through flate2/
+miniz_oxide and LZX members through the pure-Rust lzxd crate.
+
+Turen added the bounded WebAssembly wrapper (msi_inspect / msi_stream_read /
+cab_list / cab_extract). The wrapper code is Apache-2.0 OR MIT, copyright
+2026 Turen Labs.

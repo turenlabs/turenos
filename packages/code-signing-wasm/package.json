@@ -1,0 +1,21 @@
+{
+  "name": "@turenlabs/code-signing-wasm",
+  "version": "0.1.0-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "Turen-packaged bounded code-signing and PKI structure inspector",
+  "main": "dist/turen_code_signing_wasm.js",
+  "types": "dist/turen_code_signing_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/turen_code_signing_wasm.d.ts",
+      "import": "./dist/turen_code_signing_wasm.js",
+      "default": "./dist/turen_code_signing_wasm.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "license": "Apache-2.0 OR MIT",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

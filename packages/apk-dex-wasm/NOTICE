@@ -1,0 +1,17 @@
+Turen APK/DEX Inspect is an original bounded, parse-only implementation of
+Android binary XML (ResXMLTree), DEX, resources.arsc, and APK signing-block
+parsing, informed by the publicly documented AOSP binary formats. No upstream
+Android runtime code is included, and no Dalvik bytecode is ever executed or
+emulated.
+
+The compiled module links the following permissive Rust crates:
+- zip 4.6.1 (MIT) — ZIP container reading; only the deflate read path via
+  flate2's pure-Rust miniz_oxide backend is enabled.
+- flate2 1.1.10 + miniz_oxide (MIT/Apache-2.0) — DEFLATE decompression.
+- sha2 0.10.9 (MIT/Apache-2.0) — SHA-256 hashing of dex entries.
+- serde / serde_json (MIT/Apache-2.0) — JSON output.
+- wasm-bindgen 0.2.108 (MIT/Apache-2.0) — WASM bindings.
+
+The compiled module also uses Rust standard-library components distributed
+under Apache-2.0 or MIT. See Cargo.lock for the complete pinned dependency
+closure.

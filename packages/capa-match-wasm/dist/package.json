@@ -1,0 +1,21 @@
+{
+  "name": "turen-capa-match-wasm",
+  "type": "module",
+  "description": "Bounded static-subset capa capability matcher (mandiant/capa-rules) WebAssembly module for Turen",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_capa_match_wasm_bg.wasm",
+    "turen_capa_match_wasm.js",
+    "turen_capa_match_wasm.d.ts"
+  ],
+  "main": "turen_capa_match_wasm.js",
+  "types": "turen_capa_match_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

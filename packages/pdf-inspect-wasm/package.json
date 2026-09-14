@@ -1,0 +1,26 @@
+{
+  "name": "@turenlabs/pdf-inspect-wasm",
+  "version": "0.1.0-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "TurenOS bounded offline PDF structure inspector for document triage",
+  "main": "dist/turen_pdf_inspect_wasm.js",
+  "types": "dist/turen_pdf_inspect_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/turen_pdf_inspect_wasm.d.ts",
+      "import": "./dist/turen_pdf_inspect_wasm.js",
+      "default": "./dist/turen_pdf_inspect_wasm.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "SOURCE.json",
+    "SHA256SUMS"
+  ],
+  "license": "MIT",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

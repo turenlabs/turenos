@@ -1,0 +1,45 @@
+This package contains backhand (https://github.com/wcampbell0x2a/backhand),
+version 0.25.3, commit eccf81b6f599cb90245d7c9694e95ee6023cad06,
+licensed MIT OR Apache-2.0, by wcampbell0x2a and contributors.
+
+Turen added a bounded WebAssembly wrapper (squashfs_list / squashfs_extract)
+and applies one maintained patch (patches/0001-wasm-osstr.patch) that adds a
+non-unix/non-Windows OsStr byte fallback so the crate compiles for
+wasm32-unknown-unknown.
+
+backhand is built with a reduced pure-Rust feature set: gzip (flate2 +
+zlib-rs), lz4 (lz4_flex), and v3 image support. The following upstream
+features are intentionally disabled:
+
+  - lzo        — the selected decompressor is GPL-licensed.
+  - v3_lzma /  — pull in lzma-adaptive-sys, C++ code containing GPL-2.0
+    v4_lzma      material; not compatible with this artifact's license
+                 closure. Affected vendor kinds (qshs, shsq, lzma v4) report
+                 unsupported_kind / unsupported_compression.
+  - xz         — pulls in liblzma-sys (native C build).
+  - zstd       — pulls in zstd-sys (native C build).
+  - parallel   — rayon threading; not applicable to single-threaded WASM.
+
+Images using those compressors are detected and report explicit
+unsupported_compression errors rather than failing silently.
+
+Runtime transitive dependencies (see Cargo.lock for the pinned set):
+
+  backhand 0.25.3           MIT OR Apache-2.0
+  deku 0.20.3               MIT OR Apache-2.0
+  flate2 1.1.10             MIT OR Apache-2.0
+  zlib-rs 0.6.7             MIT OR Apache-2.0
+  lz4_flex 0.14.0           MIT
+  no_std_io2 0.9.4          MIT OR Apache-2.0
+  solana-nohash-hasher 0.2.1  Apache-2.0
+  thiserror 2.0.20          MIT OR Apache-2.0
+  tracing 0.1.44            MIT
+  xxhash-rust 0.8.18        MIT OR Apache-2.0
+  serde / serde_json        MIT OR Apache-2.0
+  sha2 0.10.9               MIT OR Apache-2.0
+  data-encoding 2.11.1      MIT
+  wasm-bindgen 0.2.108      MIT OR Apache-2.0
+  plus their own transitive dependencies (bitvec, darling, syn, winnow,
+  and related support crates), all MIT or Apache-2.0.
+
+No GPL, LGPL, or native-C dependency is part of the distributed module.

@@ -1,0 +1,67 @@
+{
+  "crate": "turen-browser-artifacts-wasm",
+  "version": "0.1.0",
+  "upstream": {
+    "formats": "LevelDB log and table on-disk layouts (doc/log_format.md, doc/table_format.md including masked CRC-32C and WriteBatch structure), Chromium simple-disk-cache entry format (net/disk_cache/simple/simple_entry_format.h plus HttpResponseInfo pickle), and the Safari Cookies.binarycookies layout as documented by WebKit-compatible decoders. All parsers are original bounded implementations written against the documented formats; no upstream application code is included.",
+    "snap": {
+      "repository": "https://github.com/BurntSushi/rust-snappy",
+      "version": "1.1.1",
+      "license": "BSD-3-Clause"
+    },
+    "crc32c": {
+      "repository": "https://github.com/mrhooray/crc-rs",
+      "version": "0.6.8",
+      "license": "Apache-2.0 OR MIT"
+    },
+    "sha2": {
+      "repository": "https://github.com/RustCrypto/hashes",
+      "version": "0.10.9",
+      "license": "MIT OR Apache-2.0"
+    },
+    "serde_json": {
+      "repository": "https://github.com/serde-rs/json",
+      "version": "1.0.151",
+      "license": "MIT OR Apache-2.0"
+    },
+    "wasm-bindgen": {
+      "repository": "https://github.com/rustwasm/wasm-bindgen",
+      "version": "0.2.108",
+      "license": "MIT OR Apache-2.0"
+    }
+  },
+  "derivation": "Original bounded implementation of documented on-disk formats",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "runtimeDependencies": [
+    "snap 1.1.1 (BSD-3-Clause)",
+    "crc32c 0.6.8 (Apache-2.0 OR MIT)",
+    "sha2 0.10.9 (MIT OR Apache-2.0)",
+    "serde 1.0.228 (MIT OR Apache-2.0)",
+    "serde_json 1.0.151 (MIT OR Apache-2.0)",
+    "wasm-bindgen 0.2.108 (MIT OR Apache-2.0)"
+  ],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": true,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "outputBytes": 4194304,
+    "resultsMaximum": 4096,
+    "resultsDefault": 256,
+    "decompressedBytes": 67108864,
+    "leveldbBlockSize": 32768,
+    "leveldbTableBlocks": 4096,
+    "previewBytes": 64,
+    "previewChars": 512,
+    "cookieValuePreviewBytes": 512,
+    "safariPages": 4096,
+    "safariCookieSize": 16384,
+    "cacheHeaders": 128,
+    "warnings": 64
+  }
+}

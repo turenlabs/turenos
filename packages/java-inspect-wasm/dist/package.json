@@ -1,0 +1,21 @@
+{
+  "name": "turen-java-inspect-wasm",
+  "type": "module",
+  "description": "Bounded offline Java .class/.jar static inspection WebAssembly module for Turen",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_java_inspect_wasm_bg.wasm",
+    "turen_java_inspect_wasm.js",
+    "turen_java_inspect_wasm.d.ts"
+  ],
+  "main": "turen_java_inspect_wasm.js",
+  "types": "turen_java_inspect_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

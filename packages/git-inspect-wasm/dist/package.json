@@ -1,0 +1,21 @@
+{
+  "name": "turen-git-inspect-wasm",
+  "type": "module",
+  "description": "Bounded offline git object, packfile, and index inspection WebAssembly module for Turen",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_git_inspect_wasm_bg.wasm",
+    "turen_git_inspect_wasm.js",
+    "turen_git_inspect_wasm.d.ts"
+  ],
+  "main": "turen_git_inspect_wasm.js",
+  "types": "turen_git_inspect_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

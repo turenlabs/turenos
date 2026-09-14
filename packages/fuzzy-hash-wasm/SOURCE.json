@@ -1,0 +1,21 @@
+{
+  "crate": "turen-fuzzy-hash-wasm",
+  "upstream": "https://github.com/rustysec/fuzzyhash-rs",
+  "upstreamVersion": "0.2.2",
+  "derivation": "Original bounded Turen wrapper over pinned pure-Rust crates: fuzzyhash 0.2.2 (ssdeep-compatible CTPH), tlsh2 1.1.0 (TLSH, diff feature), goblin 0.10.7 pe32/pe64 only (imphash import table parsing), RustCrypto md-5 0.11.0 / sha1 0.11.0 / sha2 0.11.0, blake3 1.8.7, xxhash-rust 0.8.18 (xxh64). No upstream application code or CLI is exposed.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmBindgen": true,
+  "runtimeDependencies": [],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": false,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "imphashImportsMaximum": 4096,
+    "outputBytes": 4194304
+  }
+}

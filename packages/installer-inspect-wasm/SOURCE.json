@@ -1,0 +1,38 @@
+{
+  "crate": "turen-installer-inspect-wasm",
+  "upstream": "https://github.com/mdsteele/rust-msi",
+  "upstreamVersion": "0.10.0",
+  "derivation": "Bounded wasm-bindgen wrapper combining cfb 0.14.0 (OLE/CFB container listing), msi 0.10.0 (Windows Installer database table decode), and cab 0.6.0 (MSCF decompression). The CFHEADER/CFFOLDER/CFFILE directory walk is hand-rolled in src/cab.rs so cab_list can report per-file folder offsets, reserved header/folder/data fields, and previous/next cabinet names that the cab crate does not expose; the cab crate performs bounded decompression inside cab_extract. All dependencies are exact-pinned crates.io versions resolved by Cargo.lock; no vendored source or patches.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "runtimeDependencies": [
+    "cfb 0.14.0 (MIT)",
+    "msi 0.10.0 (MIT)",
+    "cab 0.6.0 (MIT)",
+    "lzxd 0.2.7 (MIT OR Apache-2.0)",
+    "flate2 (MIT OR Apache-2.0, rust_backend/miniz_oxide)",
+    "data-encoding 2.11.1 (MIT)",
+    "serde_json 1.0.145 (MIT OR Apache-2.0)",
+    "sha2 0.10.9 (MIT OR Apache-2.0)",
+    "wasm-bindgen 0.2.108 (MIT OR Apache-2.0)"
+  ],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": true,
+  "decompressesInput": true,
+  "patches": [],
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "jsonOutputBytes": 4194304,
+    "listedEntries": 4096,
+    "tableRows": 4096,
+    "streamReadBytes": 8388608,
+    "extractedBytes": 134217728,
+    "serializedContentBytes": 3144960,
+    "stringChars": 4096
+  }
+}

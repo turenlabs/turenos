@@ -31,6 +31,29 @@ import { ForensicTools } from "./forensic-tools"
 import { RosettaExecTool } from "./rosetta-exec"
 import { WasmInspectTools } from "./wasm-inspect-tools"
 import { BinwalkScanTools } from "./binwalk-scan-tools"
+import { BinaryDiffTools } from "./binary-diff-tools"
+import { CodecTools } from "./codec-tools"
+import { SourcemapTools } from "./sourcemap-tools"
+import { JsonQueryTools } from "./json-query-tools"
+import { FuzzyHashTools } from "./fuzzy-hash-tools"
+import { CryptoMarkersTools } from "./crypto-markers-tools"
+import { PdfInspectTools } from "./pdf-inspect-tools"
+import { MinidumpTools } from "./minidump-tools"
+import { SquashfsTools } from "./squashfs-tools"
+import { CodeSigningTools } from "./code-signing-tools"
+import { ApkDexTools } from "./apk-dex-tools"
+import { JavaInspectTools } from "./java-inspect-tools"
+import { ImageInspectTools } from "./image-inspect-tools"
+import { UnicodeAuditTools } from "./unicode-audit-tools"
+import { WasmToolkitTools } from "./wasm-toolkit-tools"
+import { InstallerInspectTools } from "./installer-inspect-tools"
+import { GitInspectTools } from "./git-inspect-tools"
+import { FirmwareFormatsTools } from "./firmware-formats-tools"
+import { CapaMatchTools } from "./capa-match-tools"
+import { MacosArtifactsTools } from "./macos-artifacts-tools"
+import { BrowserArtifactsTools } from "./browser-artifacts-tools"
+import { SqliteInspectTools } from "./sqlite-inspect-tools"
+import { RtfInspectTools } from "./rtf-inspect-tools"
 import { CarveEmbeddedTool } from "./carve-embedded"
 import { DebugSymbolsTools } from "./debug-symbols-tools"
 import { LobbyRoomContextTool } from "./lobby-room-context"
@@ -88,6 +111,29 @@ export const node = makeLocationNode({
     RosettaExecTool.node,
     WasmInspectTools.node,
     BinwalkScanTools.node,
+    BinaryDiffTools.node,
+    CodecTools.node,
+    SourcemapTools.node,
+    JsonQueryTools.node,
+    FuzzyHashTools.node,
+    CryptoMarkersTools.node,
+    PdfInspectTools.node,
+    MinidumpTools.node,
+    SquashfsTools.node,
+    CodeSigningTools.node,
+    ApkDexTools.node,
+    JavaInspectTools.node,
+    ImageInspectTools.node,
+    UnicodeAuditTools.node,
+    WasmToolkitTools.node,
+    InstallerInspectTools.node,
+    GitInspectTools.node,
+    FirmwareFormatsTools.node,
+    CapaMatchTools.node,
+    MacosArtifactsTools.node,
+    BrowserArtifactsTools.node,
+    SqliteInspectTools.node,
+    RtfInspectTools.node,
     CarveEmbeddedTool.node,
     DebugSymbolsTools.node,
     LobbyRoomContextTool.node,

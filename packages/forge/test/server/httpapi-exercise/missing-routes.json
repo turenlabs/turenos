@@ -21,6 +21,8 @@
   "POST /api/session/{sessionID}/harness/proposal/{proposalID}/status",
   "POST /api/session/{sessionID}/harness/reload",
   "POST /api/session/{sessionID}/harness/rollback",
+  "POST /api/session/{sessionID}/input/{messageID}/cancel",
+  "POST /api/session/{sessionID}/input/{messageID}/steer",
   "POST /api/session/{sessionID}/model",
   "POST /api/session/{sessionID}/resume",
   "POST /api/session/{sessionID}/shell",

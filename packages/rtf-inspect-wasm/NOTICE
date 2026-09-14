@@ -1,0 +1,13 @@
+rtf-inspect WASM
+
+Copyright (c) 2026 Turen Labs. Licensed under Apache-2.0 OR MIT.
+
+Original hand-rolled RTF parser written for this repository; no vendored
+upstream source is distributed.
+
+Bundled runtime dependencies (Rust crates, fetched by cargo at build time):
+- encoding_rs 0.8.41   — (Apache-2.0 OR MIT) AND BSD-3-Clause
+- serde 1.0.228        — Apache-2.0 OR MIT
+- serde_json 1.0.145   — Apache-2.0 OR MIT
+- sha2 0.11.0          — Apache-2.0 OR MIT
+- wasm-bindgen 0.2.108 — Apache-2.0 OR MIT

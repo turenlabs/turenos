@@ -1,0 +1,21 @@
+{
+  "name": "turen-json-query-wasm",
+  "type": "module",
+  "description": "Bounded jq-style JSON querying WebAssembly wrapper for Turen",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_json_query_wasm_bg.wasm",
+    "turen_json_query_wasm.js",
+    "turen_json_query_wasm.d.ts"
+  ],
+  "main": "turen_json_query_wasm.js",
+  "types": "turen_json_query_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

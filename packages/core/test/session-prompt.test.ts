@@ -209,6 +209,47 @@ describe("SessionV2.prompt", () => {
     }),
   )
 
+  it.effect("upgrades a queued input to steer delivery ahead of the next boundary", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const events = yield* EventV2.Service
+      const { db } = yield* Database.Service
+      const queued = yield* session.prompt({
+        sessionID,
+        id: SessionMessage.ID.make("msg_steer_pending_upgrade"),
+        prompt: { text: "Send this now" },
+        delivery: "queue",
+        resume: false,
+      })
+      const alreadySteer = yield* session.prompt({
+        sessionID,
+        id: SessionMessage.ID.make("msg_steer_pending_direct"),
+        prompt: { text: "Already steering" },
+        delivery: "steer",
+        resume: false,
+      })
+      const wakesBefore = wakeCalls.length
+
+      expect(yield* session.steerPendingInput({ sessionID, messageID: queued.id })).toBe(true)
+      expect(yield* session.steerPendingInput({ sessionID, messageID: queued.id })).toBe(false)
+      expect(yield* session.steerPendingInput({ sessionID, messageID: alreadySteer.id })).toBe(false)
+      expect(yield* Database.Service.use(({ db }) => SessionInput.hasPending(db, sessionID, "queue"))).toBe(false)
+      expect(wakeCalls.length).toBeGreaterThan(wakesBefore)
+
+      const cutoff = yield* EventV2.latestSequence(db, sessionID)
+      expect(yield* SessionInput.promoteSteers(db, events, sessionID, cutoff)).toBe(2)
+      expect(yield* session.inputStatus({ sessionID, messageID: queued.id })).toMatchObject({
+        id: queued.id,
+        status: "promoted",
+      })
+      expect(yield* session.inputStatus({ sessionID, messageID: alreadySteer.id })).toMatchObject({
+        id: alreadySteer.id,
+        status: "promoted",
+      })
+    }),
+  )
+
   it.effect("lists only durable inputs still awaiting promotion", () =>
     Effect.gen(function* () {
       yield* setup

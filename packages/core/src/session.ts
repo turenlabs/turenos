@@ -242,6 +242,10 @@ export interface Interface {
     sessionID: SessionSchema.ID
     messageID: SessionMessage.ID
   }) => Effect.Effect<boolean, NotFoundError | SessionTaskV2.OwnedSessionError>
+  readonly steerPendingInput: (input: {
+    sessionID: SessionSchema.ID
+    messageID: SessionMessage.ID
+  }) => Effect.Effect<boolean, NotFoundError | SessionTaskV2.OwnedSessionError>
   readonly resumePending: (
     sessionID: SessionSchema.ID,
   ) => Effect.Effect<void, NotFoundError | SessionRunner.RunError | AdoptionFailure>
@@ -1024,6 +1028,25 @@ const layer = Layer.effect(
             if (cancelled && (source?.source ?? "user") !== "user")
               yield* execution.retry?.(input.sessionID) ?? Effect.void
             return cancelled
+          }),
+        ).pipe(operations.withLock(input.sessionID)),
+      ),
+      steerPendingInput: Effect.fn("V2Session.steerPendingInput")((input) =>
+        Effect.uninterruptible(
+          Effect.gen(function* () {
+            const session = yield* result.get(input.sessionID)
+            yield* tasks.authorizeMutation({ sessionID: input.sessionID })
+            const upgraded = yield* SessionInput.steerPending(primary, {
+              sessionID: input.sessionID,
+              id: input.messageID,
+            })
+            if (!upgraded) return false
+            // Parity with a freshly admitted steer: an upgraded input must not
+            // sit behind a parked question dock, and an idle session still
+            // needs the advisory wake to drain it.
+            yield* dismissPendingQuestions(session)
+            yield* wakeUnlessShellActive(session)
+            return true
           }),
         ).pipe(operations.withLock(input.sessionID)),
       ),

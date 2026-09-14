@@ -1,0 +1,36 @@
+{
+  "crate": "turen-git-inspect-wasm",
+  "version": "0.1.0",
+  "upstream": {
+    "flate2": {
+      "repository": "https://github.com/rust-lang/flate2-rs",
+      "version": "1.1.10",
+      "license": "MIT OR Apache-2.0"
+    },
+    "hashes": {
+      "repository": "https://github.com/RustCrypto/hashes",
+      "crates": ["sha1", "sha2"],
+      "license": "Apache-2.0 OR MIT"
+    }
+  },
+  "derivation": "Original implementation of the documented git loose-object, packfile, pack-index, and index (DIRC) formats in a bounded wasm-bindgen wrapper; runtime crates are used unmodified via exact-pinned crates.io releases committed in Cargo.lock.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "decompressesInput": true,
+  "extractsInput": true,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "outputBytes": 4194304,
+    "maxItems": 4096,
+    "maxPreviewBytes": 65536,
+    "extractedObjectBytes": 134217728,
+    "maxDeltaDepth": 64,
+    "resolveBudgetBytes": 268435456
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@turenlabs/git-inspect-wasm",
+  "version": "0.1.0-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "Turen-packaged bounded offline git object/pack/index inspector",
+  "main": "dist/turen_git_inspect_wasm.js",
+  "types": "dist/turen_git_inspect_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/turen_git_inspect_wasm.d.ts",
+      "import": "./dist/turen_git_inspect_wasm.js",
+      "default": "./dist/turen_git_inspect_wasm.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "license": "Apache-2.0 OR MIT",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

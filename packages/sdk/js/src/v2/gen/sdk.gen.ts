@@ -417,8 +417,12 @@ import type {
   V2SessionHarnessStateResponses,
   V2SessionHistoryErrors,
   V2SessionHistoryResponses,
+  V2SessionInputCancelErrors,
+  V2SessionInputCancelResponses,
   V2SessionInputStatusErrors,
   V2SessionInputStatusResponses,
+  V2SessionInputSteerErrors,
+  V2SessionInputSteerResponses,
   V2SessionInterruptAllErrors,
   V2SessionInterruptAllResponses,
   V2SessionInterruptErrors,
@@ -6458,6 +6462,72 @@ export class Session3 extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<V2SessionOutboxResponses, V2SessionOutboxErrors, ThrowOnError>({
       url: "/api/session/{sessionID}/outbox",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Steer a queued session input
+   *
+   * Upgrade one admitted queue-delivered input to steer delivery so it promotes ahead of queued inputs at the next provider-turn boundary.
+   */
+  public inputSteer<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2SessionInputSteerResponses, V2SessionInputSteerErrors, ThrowOnError>(
+      {
+        url: "/api/session/{sessionID}/input/{messageID}/steer",
+        ...options,
+        ...params,
+      },
+    )
+  }
+
+  /**
+   * Cancel a pending session input
+   *
+   * Cancel one admitted input that has not yet been promoted into the projected transcript.
+   */
+  public inputCancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      V2SessionInputCancelResponses,
+      V2SessionInputCancelErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/input/{messageID}/cancel",
       ...options,
       ...params,
     })

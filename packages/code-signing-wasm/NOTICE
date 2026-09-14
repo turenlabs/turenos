@@ -1,0 +1,18 @@
+This package contains Turen's bounded, parse-only WebAssembly wrapper for
+code-signing and PKI structure inspection.
+
+It embeds unmodified builds of:
+
+- x509-parser (Apache-2.0 OR MIT) — https://github.com/rusticata/x509-parser
+- RustCrypto formats crates: cms, der, const-oid, x509-cert, spki, pkcs8,
+  x509-ocsp, and friends (Apache-2.0 OR MIT) —
+  https://github.com/RustCrypto/formats
+- RustCrypto hashes: sha1, sha2, md-5 (Apache-2.0 OR MIT) —
+  https://github.com/RustCrypto/hashes
+- goblin (MIT) — https://github.com/m4b/goblin
+- serde, serde_json, wasm-bindgen and their transitive dependencies
+  (Apache-2.0 OR MIT)
+
+All operations are parse-only structural reporting. No signature, trust-chain,
+timestamp, or revocation verification is performed, and no network access
+occurs.

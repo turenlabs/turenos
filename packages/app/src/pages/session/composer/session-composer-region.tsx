@@ -1,6 +1,7 @@
 import { Show, type JSX } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
+import { SessionFollowupDock } from "@/pages/session/composer/session-followup-dock"
 import { SessionPermissionDock } from "@/pages/session/composer/session-permission-dock"
 import { SessionQuestionDock } from "@/pages/session/composer/session-question-dock"
 import { SessionRevertDock } from "@/pages/session/composer/session-revert-dock"
@@ -158,6 +159,16 @@ export function SessionComposerRegion(props: {
                 onResume={controller.goal()!.onResume}
                 onClear={controller.goal()!.onClear}
               />
+            </Show>
+            <Show when={controller.followup()}>
+              {(followup) => (
+                <SessionFollowupDock
+                  items={followup().items}
+                  disabled={followup().pending}
+                  onSend={followup().onSend}
+                  onEdit={followup().onEdit}
+                />
+              )}
             </Show>
             <div class="flex w-full flex-col gap-2 @[48rem]:flex-row @[48rem]:items-end">
               <div class="min-w-0 flex-1">

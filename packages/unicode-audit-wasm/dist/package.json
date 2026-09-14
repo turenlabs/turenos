@@ -1,0 +1,21 @@
+{
+  "name": "turen-unicode-audit-wasm",
+  "type": "module",
+  "description": "Bounded text encoding detection, transcoding, and Unicode security audit WebAssembly wrapper for Turen",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_unicode_audit_wasm_bg.wasm",
+    "turen_unicode_audit_wasm.js",
+    "turen_unicode_audit_wasm.d.ts"
+  ],
+  "main": "turen_unicode_audit_wasm.js",
+  "types": "turen_unicode_audit_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

@@ -28,7 +28,7 @@ import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { debounce } from "@solid-primitives/scheduled"
 import { useLocal } from "@/context/local"
 import { FileProvider, selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
-import { createStore } from "solid-js/store"
+import { createStore, reconcile } from "solid-js/store"
 import type { SessionReviewLineComment } from "@turenlabs/session-ui/session-review"
 import { ResizeHandle } from "@turenlabs/ui/resize-handle"
 import { Select } from "@turenlabs/ui/select"
@@ -120,6 +120,13 @@ import { applySessionV2Revert, clearSessionV2Revert, stageSessionV2Revert } from
 import { createSessionLineage, nextSessionActivation, SESSION_ACTIVATION_MAX_AGE_MS } from "./session/session-lineage"
 import { createSessionGoalController } from "./session/goal/session-goal-controller"
 import { SessionGoalDock } from "./session/goal/session-goal-dock"
+import {
+  sessionPromptOutbox,
+  sessionPromptPending,
+  sessionPromptStartup,
+} from "./session/goal/session-prompt-state"
+import { promptAdmissionFor } from "@/components/prompt-input/prompt-admission"
+import { responseData } from "@/pages/loops/api"
 import { createSessionHarnessController } from "./session/harness/session-harness-controller"
 import { SessionHarnessPanel } from "./session/harness/session-harness-panel"
 import {
@@ -522,6 +529,7 @@ export default function Page() {
   const serverSDK = useServerSDK()
   const settings = useSettings()
   const platform = usePlatform()
+  const admission = promptAdmissionFor(platform)
   const prompt = usePrompt()
   const comments = useComments()
   const command = useCommand()
@@ -2035,6 +2043,72 @@ export default function Page() {
     return busy(id) && !composer.blocked() && !isChildSession()
   })
 
+  const [followupBusy, setFollowupBusy] = createStore<Record<string, boolean | undefined>>({})
+  const queuedInputs = createMemo(() => {
+    const id = params.id
+    if (!id) return []
+    return (sync().data.message[id] ?? []).filter(
+      (message) => message.role === "user" && sessionPromptPending.delivery(message.id) === "queue",
+    )
+  })
+  const followupItems = createMemo(() => queuedInputs().map((message) => ({ id: message.id, text: line(message.id) })))
+
+  const steerFollowup = (messageID: string) => {
+    const sessionID = params.id
+    if (!sessionID || followupBusy[messageID]) return
+    setFollowupBusy(messageID, true)
+    void sdk()
+      .client.v2.session.inputSteer({ sessionID, messageID })
+      .then((response) => {
+        if (responseData(response)) sessionPromptPending.mark(messageID, "steer")
+      })
+      .catch(fail)
+      .finally(() => setFollowupBusy(messageID, undefined))
+  }
+
+  const editFollowup = (messageID: string) => {
+    const sessionID = params.id
+    if (!sessionID || followupBusy[messageID]) return
+    const value = draft(messageID)
+    setFollowupBusy(messageID, true)
+    void sdk()
+      .client.v2.session.inputCancel({ sessionID, messageID })
+      .then((response) => {
+        if (!responseData(response)) return
+        const scope = sdk().scope
+        batch(() => {
+          sessionPromptPending.clear(messageID)
+          sessionPromptOutbox.clear(messageID, scope)
+          sessionPromptStartup.clear(messageID)
+          admission.settle(scope, sessionID, messageID, "cancelled")
+          sync().set(
+            "message",
+            sessionID,
+            reconcile(
+              (sync().data.message[sessionID] ?? []).filter((message) => message.id !== messageID),
+              { key: "id" },
+            ),
+          )
+          sync().set("part", messageID, reconcile([], { key: "id" }))
+        })
+        prompt.set(value, promptLength(value))
+        requestAnimationFrame(() => inputRef?.focus())
+      })
+      .catch(fail)
+      .finally(() => setFollowupBusy(messageID, undefined))
+  }
+
+  const sessionFollowupControls = () => {
+    const items = followupItems()
+    if (items.length === 0) return
+    return {
+      items,
+      pending: Object.values(followupBusy).some(Boolean),
+      onSend: steerFollowup,
+      onEdit: editFollowup,
+    }
+  }
+
   const revertMutation = useMutation(() => ({
     mutationFn: async (input: { sessionID: string; messageID: string }) => {
       const client = sdk().client
@@ -2384,6 +2458,7 @@ export default function Page() {
         onToggle: () => view().todoCollapsed.set(!view().todoCollapsed.get()),
       },
       goal: sessionGoalControls,
+      followup: sessionFollowupControls,
       revert: () =>
         rolled().length > 0
           ? {

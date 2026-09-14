@@ -1,0 +1,13 @@
+Turen PDF Inspect is a bounded offline PDF structure-analysis WebAssembly
+module built on lopdf 0.45.0.
+
+lopdf is Copyright (c) its contributors and is licensed under the MIT License.
+Upstream repository: https://github.com/J-F-Liu/lopdf
+
+The compiled module also embeds permissively licensed crates.io dependencies
+(MIT, Apache-2.0, BSD, Unicode, or Zlib licensed; see Cargo.lock for the full
+closure) and Rust standard-library components distributed under Apache-2.0 or
+MIT.
+
+Turen added the bounded WebAssembly inspection wrapper, the suspicious-feature
+scan, the bounded stream decode, and the packaging.

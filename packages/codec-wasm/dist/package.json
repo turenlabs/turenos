@@ -1,0 +1,21 @@
+{
+  "name": "turen-codec-wasm",
+  "type": "module",
+  "description": "Bounded compression and encoding transform WebAssembly module for Turen",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_codec_wasm_bg.wasm",
+    "turen_codec_wasm.js",
+    "turen_codec_wasm.d.ts"
+  ],
+  "main": "turen_codec_wasm.js",
+  "types": "turen_codec_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

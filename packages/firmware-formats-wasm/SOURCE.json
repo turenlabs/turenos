@@ -1,0 +1,41 @@
+{
+  "crate": "turen-firmware-formats-wasm",
+  "version": "0.1.0",
+  "upstream": {
+    "formats": "Flattened device tree structure block (Devicetree Specification), DENX U-Boot legacy uImage header and environment blob layout, Intel HEX and Motorola S-Record record formats, AOSP libsparse Android sparse image format. All parsers are original bounded implementations written against public specifications; no upstream code is included.",
+    "serde_json": {
+      "repository": "https://github.com/serde-rs/json",
+      "version": "1.0.145",
+      "license": "MIT OR Apache-2.0"
+    },
+    "wasm-bindgen": {
+      "repository": "https://github.com/rustwasm/wasm-bindgen",
+      "version": "0.2.108",
+      "license": "MIT OR Apache-2.0"
+    }
+  },
+  "derivation": "Original bounded implementation of public format specifications",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "runtimeDependencies": [
+    "serde_json 1.0.145",
+    "serde 1.0.x",
+    "wasm-bindgen 0.2.108"
+  ],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": true,
+  "decompressesInput": false,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "jsonOutputBytes": 4194304,
+    "listItems": 4096,
+    "transformBytes": 134217728,
+    "dtbNodes": 65536,
+    "dtbDepth": 256
+  }
+}

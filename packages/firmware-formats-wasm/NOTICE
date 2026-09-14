@@ -1,0 +1,20 @@
+turen-firmware-formats-wasm
+Copyright (c) 2026 Turen Labs
+
+This package contains Turen's bounded WebAssembly decoders for embedded and
+firmware file formats: flattened device trees (Devicetree Specification),
+legacy U-Boot images and environment blobs (DENX U-Boot), Intel HEX,
+Motorola S-Record, and Android sparse images (AOSP libsparse format). All
+parsers are original implementations written against the public format
+specifications; no upstream application code is included.
+
+Built from the following permissively licensed crates.io dependencies:
+
+- serde_json 1.0.145 (MIT OR Apache-2.0) — JSON envelopes and serialization
+- serde 1.0.x (MIT OR Apache-2.0) — serde_json data model
+- wasm-bindgen 0.2.108 (MIT OR Apache-2.0) — JavaScript bindings
+
+Notable transitive crates: itoa, memchr, ryu, serde_core (MIT OR
+Apache-2.0). The full dependency closure is recorded in Cargo.lock; every
+entry is permissively licensed. No GPL, LGPL, or proprietary code is linked
+into the module.

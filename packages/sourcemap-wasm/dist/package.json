@@ -1,0 +1,8 @@
+{
+  "name": "turen-sourcemap-wasm",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "type": "module",
+  "main": "turen_sourcemap_wasm.js",
+  "types": "turen_sourcemap_wasm.d.ts"
+}

@@ -1,0 +1,21 @@
+{
+  "name": "turen-sqlite-inspect-wasm",
+  "type": "module",
+  "description": "Bounded offline SQLite 3 database file forensics WebAssembly module for Turen",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_sqlite_inspect_wasm_bg.wasm",
+    "turen_sqlite_inspect_wasm.js",
+    "turen_sqlite_inspect_wasm.d.ts"
+  ],
+  "main": "turen_sqlite_inspect_wasm.js",
+  "types": "turen_sqlite_inspect_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

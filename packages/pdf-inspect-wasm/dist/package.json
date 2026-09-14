@@ -1,0 +1,21 @@
+{
+  "name": "turen-pdf-inspect-wasm",
+  "type": "module",
+  "description": "Bounded offline PDF structure inspection WebAssembly wrapper for Turen",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_pdf_inspect_wasm_bg.wasm",
+    "turen_pdf_inspect_wasm.js",
+    "turen_pdf_inspect_wasm.d.ts"
+  ],
+  "main": "turen_pdf_inspect_wasm.js",
+  "types": "turen_pdf_inspect_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

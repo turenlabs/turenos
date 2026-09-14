@@ -90,6 +90,10 @@ import type {
   SessionsInputStatusOutput,
   SessionsOutboxInput,
   SessionsOutboxOutput,
+  SessionsInputSteerInput,
+  SessionsInputSteerOutput,
+  SessionsInputCancelInput,
+  SessionsInputCancelOutput,
   SessionsHistoryInput,
   SessionsHistoryOutput,
   SessionsReplayHistoryInput,
@@ -936,6 +940,28 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
+      inputSteer: (input: SessionsInputSteerInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionsInputSteerOutput }>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/input/${encodeURIComponent(input.messageID)}/steer`,
+            successStatus: 200,
+            declaredStatuses: [400, 404, 401],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      inputCancel: (input: SessionsInputCancelInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionsInputCancelOutput }>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/input/${encodeURIComponent(input.messageID)}/cancel`,
+            successStatus: 200,
+            declaredStatuses: [400, 404, 401],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
       history: (input: SessionsHistoryInput, requestOptions?: RequestOptions) =>
         request<SessionsHistoryOutput>(
           {

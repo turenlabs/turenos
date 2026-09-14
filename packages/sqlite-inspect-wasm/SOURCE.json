@@ -1,0 +1,41 @@
+{
+  "crate": "turen-sqlite-inspect-wasm",
+  "version": "0.1.0",
+  "upstream": {
+    "hashes": {
+      "repository": "https://github.com/RustCrypto/hashes",
+      "crates": ["sha2"],
+      "license": "Apache-2.0 OR MIT"
+    },
+    "fileFormat": {
+      "specification": "https://sqlite.org/fileformat.html",
+      "license": "public domain",
+      "note": "Hand-rolled parser written against the documented SQLite 3 file format; no SQLite source or C dependency is used."
+    }
+  },
+  "derivation": "Original implementation of the documented SQLite 3 database file format in a bounded wasm-bindgen wrapper; runtime crates are used unmodified via exact-pinned crates.io releases committed in Cargo.lock.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "decompressesInput": false,
+  "extractsInput": false,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "outputBytes": 4194304,
+    "maxItems": 4096,
+    "maxRows": 256,
+    "maxColumns": 2000,
+    "maxCellPayloadBytes": 8388608,
+    "maxOverflowPages": 4096,
+    "maxSqlTextBytes": 8192,
+    "maxTextValueBytes": 4096,
+    "maxBlobPreviewBytes": 256,
+    "maxCarveCandidates": 4096,
+    "maxFreelistTrunks": 4096
+  }
+}

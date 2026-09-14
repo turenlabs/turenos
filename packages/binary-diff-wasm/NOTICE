@@ -1,0 +1,33 @@
+turen-binary-diff-wasm
+Copyright (c) 2026 Turen Labs
+
+This package contains Turen's bounded WebAssembly binary differencing and
+patching module. The diff scan in src/bsdiff.rs is an original
+single-threaded Rust port of the bsdiff-style partition scan from
+divvun/bidiff 1.0.0 (Apache-2.0 OR MIT,
+https://github.com/divvun/bidiff), itself derived from Colin Percival's
+bsdiff (BSD-2-Clause); the rayon and wall-clock paths upstream uses are not
+present here. Patches use the upstream bipatch wire format and are applied
+by the unmodified bipatch crate.
+
+Built from the following permissively licensed crates.io dependencies:
+
+- bipatch 1.0.0 (Apache-2.0 OR MIT) — bipatch patch stream decoder
+  (https://github.com/divvun/bidiff)
+- divsufsort 2.0.0 + sacabase 2.0.0 (MIT) — suffix array construction and
+  longest-substring-match search
+  (https://github.com/fasterthanlime/stringsearch)
+- byteorder 1.5.0 (Unlicense OR MIT) — little-endian header fields
+- integer-encoding 2.1.3 (MIT) — varint control records
+- data-encoding 2.11.1 (MIT) — canonical base64 for the JSON input document
+- sha2 0.11.0 (MIT OR Apache-2.0) — RustCrypto SHA-256 for reported digests
+  and expectedSha256 output verification
+- serde 1.0.228 / serde_json 1.0.145 (MIT OR Apache-2.0) — report model and
+  JSON envelopes
+- wasm-bindgen 0.2.108 (MIT OR Apache-2.0) — JavaScript bindings
+
+The full dependency closure is recorded in Cargo.lock; every entry is
+permissively licensed. No GPL, LGPL, or proprietary code is linked into the
+module. All operations are deterministic, offline byte processing over
+caller-supplied buffers: no filesystem, network, subprocess, environment,
+or clock access.

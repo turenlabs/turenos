@@ -1,0 +1,26 @@
+{
+  "name": "@turenlabs/firmware-formats-wasm",
+  "version": "0.1.0-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "TurenOS bounded embedded/firmware format decoders",
+  "main": "dist/turen_firmware_formats_wasm.js",
+  "types": "dist/turen_firmware_formats_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/turen_firmware_formats_wasm.d.ts",
+      "import": "./dist/turen_firmware_formats_wasm.js",
+      "default": "./dist/turen_firmware_formats_wasm.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "SOURCE.json",
+    "SHA256SUMS"
+  ],
+  "license": "Apache-2.0 OR MIT",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

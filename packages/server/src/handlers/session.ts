@@ -1069,6 +1069,46 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         }),
       )
       .handle(
+        "session.inputSteer",
+        Effect.fn(function* (ctx) {
+          return {
+            data: yield* session
+              .steerPendingInput({ sessionID: ctx.params.sessionID, messageID: ctx.params.messageID })
+              .pipe(
+                Effect.catchTag("SessionTask.OwnedSessionError", taskOwned),
+                Effect.catchTag(
+                  "Session.NotFoundError",
+                  (error) =>
+                    new SessionNotFoundError({
+                      sessionID: error.sessionID,
+                      message: `Session not found: ${error.sessionID}`,
+                    }),
+                ),
+              ),
+          }
+        }),
+      )
+      .handle(
+        "session.inputCancel",
+        Effect.fn(function* (ctx) {
+          return {
+            data: yield* session
+              .cancelPendingInput({ sessionID: ctx.params.sessionID, messageID: ctx.params.messageID })
+              .pipe(
+                Effect.catchTag("SessionTask.OwnedSessionError", taskOwned),
+                Effect.catchTag(
+                  "Session.NotFoundError",
+                  (error) =>
+                    new SessionNotFoundError({
+                      sessionID: error.sessionID,
+                      message: `Session not found: ${error.sessionID}`,
+                    }),
+                ),
+              ),
+          }
+        }),
+      )
+      .handle(
         "session.outbox",
         Effect.fn(function* (ctx) {
           return yield* session

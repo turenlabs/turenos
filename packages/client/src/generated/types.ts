@@ -2650,6 +2650,20 @@ export type SessionsOutboxOutput = {
   readonly next?: number | null
 }
 
+export type SessionsInputSteerInput = {
+  readonly sessionID: { readonly sessionID: string; readonly messageID: string }["sessionID"]
+  readonly messageID: { readonly sessionID: string; readonly messageID: string }["messageID"]
+}
+
+export type SessionsInputSteerOutput = { readonly data: boolean }["data"]
+
+export type SessionsInputCancelInput = {
+  readonly sessionID: { readonly sessionID: string; readonly messageID: string }["sessionID"]
+  readonly messageID: { readonly sessionID: string; readonly messageID: string }["messageID"]
+}
+
+export type SessionsInputCancelOutput = { readonly data: boolean }["data"]
+
 export type SessionsHistoryInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]
   readonly limit?: { readonly limit?: number | undefined; readonly after?: number | undefined }["limit"]

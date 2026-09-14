@@ -23,9 +23,13 @@
         "turbo": "2.10.2",
       },
     },
+    "packages/apk-dex-wasm": {
+      "name": "@turenlabs/apk-dex-wasm",
+      "version": "0.1.0",
+    },
     "packages/app": {
       "name": "@turenlabs/app",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "@corvu/drawer": "catalog:",
         "@dnd-kit/abstract": "0.5.0",
@@ -100,9 +104,21 @@
         "vite-plugin-solid": "catalog:",
       },
     },
+    "packages/binary-diff-wasm": {
+      "name": "@turenlabs/binary-diff-wasm",
+      "version": "0.1.0-turen.1",
+    },
     "packages/binwalk-scan-wasm": {
       "name": "@turenlabs/binwalk-scan-wasm",
       "version": "0.1.0",
+    },
+    "packages/browser-artifacts-wasm": {
+      "name": "@turenlabs/browser-artifacts-wasm",
+      "version": "0.1.0-turen.1",
+    },
+    "packages/capa-match-wasm": {
+      "name": "@turenlabs/capa-match-wasm",
+      "version": "0.1.0-turen.1",
     },
     "packages/client": {
       "name": "@turenlabs/client",
@@ -127,9 +143,17 @@
         "effect",
       ],
     },
+    "packages/code-signing-wasm": {
+      "name": "@turenlabs/code-signing-wasm",
+      "version": "0.1.0-turen.1",
+    },
+    "packages/codec-wasm": {
+      "name": "@turenlabs/codec-wasm",
+      "version": "0.1.0-turen.1",
+    },
     "packages/codemode": {
       "name": "@turenlabs/codemode",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "acorn": "8.15.0",
         "effect": "catalog:",
@@ -144,7 +168,7 @@
     },
     "packages/core": {
       "name": "@turenlabs/core",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "@ai-sdk/alibaba": "1.0.17",
         "@ai-sdk/amazon-bedrock": "4.0.112",
@@ -182,22 +206,45 @@
         "@opentelemetry/sdk-trace-base": "2.11.0",
         "@parcel/watcher": "2.5.1",
         "@silvia-odwyer/photon-node": "0.3.4",
+        "@turenlabs/apk-dex-wasm": "workspace:*",
+        "@turenlabs/binary-diff-wasm": "workspace:*",
+        "@turenlabs/browser-artifacts-wasm": "workspace:*",
+        "@turenlabs/capa-match-wasm": "workspace:*",
+        "@turenlabs/code-signing-wasm": "workspace:*",
+        "@turenlabs/codec-wasm": "workspace:*",
         "@turenlabs/codemode": "workspace:*",
+        "@turenlabs/crypto-markers-wasm": "workspace:*",
         "@turenlabs/effect-drizzle-sqlite": "workspace:*",
         "@turenlabs/effect-sqlite-node": "workspace:*",
         "@turenlabs/extensions": "workspace:*",
+        "@turenlabs/firmware-formats-wasm": "workspace:*",
+        "@turenlabs/fuzzy-hash-wasm": "workspace:*",
         "@turenlabs/ghidra-decompiler-wasm": "workspace:*",
+        "@turenlabs/git-inspect-wasm": "workspace:*",
         "@turenlabs/goblin-wasm": "workspace:*",
+        "@turenlabs/image-inspect-wasm": "workspace:*",
+        "@turenlabs/installer-inspect-wasm": "workspace:*",
+        "@turenlabs/java-inspect-wasm": "workspace:*",
+        "@turenlabs/json-query-wasm": "workspace:*",
         "@turenlabs/libpcap-wasm": "workspace:*",
         "@turenlabs/llm": "workspace:*",
+        "@turenlabs/macos-artifacts-wasm": "workspace:*",
+        "@turenlabs/minidump-wasm": "workspace:*",
+        "@turenlabs/pdf-inspect-wasm": "workspace:*",
         "@turenlabs/plugin": "workspace:*",
         "@turenlabs/protocol": "workspace:*",
         "@turenlabs/protocol-inspect-wasm": "workspace:*",
         "@turenlabs/rebuild-timeline-wasm": "workspace:*",
+        "@turenlabs/rtf-inspect-wasm": "workspace:*",
         "@turenlabs/schema": "workspace:*",
+        "@turenlabs/sourcemap-wasm": "workspace:*",
+        "@turenlabs/sqlite-inspect-wasm": "workspace:*",
+        "@turenlabs/squashfs-wasm": "workspace:*",
         "@turenlabs/static-analysis-wasm": "workspace:*",
         "@turenlabs/static-unpack-wasm": "workspace:*",
         "@turenlabs/stng-core-wasm": "workspace:*",
+        "@turenlabs/unicode-audit-wasm": "workspace:*",
+        "@turenlabs/wasm-toolkit-wasm": "workspace:*",
         "@turenlabs/wifi-offline-wasm": "workspace:*",
         "@turenlabs/windows-artifacts-wasm": "workspace:*",
         "ai-gateway-provider": "3.1.2",
@@ -258,13 +305,17 @@
         "drizzle-kit": "catalog:",
       },
     },
+    "packages/crypto-markers-wasm": {
+      "name": "@turenlabs/crypto-markers-wasm",
+      "version": "0.1.0",
+    },
     "packages/debug-symbols-wasm": {
       "name": "@turenlabs/debug-symbols-wasm",
       "version": "0.1.0",
     },
     "packages/desktop": {
       "name": "@turenlabs/desktop",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "@turenlabs/binwalk-scan-wasm": "workspace:*",
         "@turenlabs/debug-symbols-wasm": "workspace:*",
@@ -339,7 +390,7 @@
     },
     "packages/effect-drizzle-sqlite": {
       "name": "@turenlabs/effect-drizzle-sqlite",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
@@ -353,7 +404,7 @@
     },
     "packages/effect-sqlite-node": {
       "name": "@turenlabs/effect-sqlite-node",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "effect": "catalog:",
       },
@@ -383,9 +434,13 @@
         "@typescript/native-preview": "catalog:",
       },
     },
+    "packages/firmware-formats-wasm": {
+      "name": "@turenlabs/firmware-formats-wasm",
+      "version": "0.1.0-turen.1",
+    },
     "packages/forge": {
       "name": "@turenlabs/forge",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "bin": {
         "forge": "./bin/forge",
       },
@@ -508,9 +563,17 @@
         "why-is-node-running": "3.2.2",
       },
     },
+    "packages/fuzzy-hash-wasm": {
+      "name": "@turenlabs/fuzzy-hash-wasm",
+      "version": "0.1.0-turen.1",
+    },
     "packages/ghidra-decompiler-wasm": {
       "name": "@turenlabs/ghidra-decompiler-wasm",
       "version": "0.1.0",
+    },
+    "packages/git-inspect-wasm": {
+      "name": "@turenlabs/git-inspect-wasm",
+      "version": "0.1.0-turen.1",
     },
     "packages/goblin-wasm": {
       "name": "@turenlabs/goblin-wasm",
@@ -518,7 +581,7 @@
     },
     "packages/http-recorder": {
       "name": "@turenlabs/http-recorder",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "@effect/platform-node": "4.0.0-beta.83",
         "@effect/platform-node-shared": "4.0.0-beta.83",
@@ -547,13 +610,29 @@
         "@typescript/native-preview": "catalog:",
       },
     },
+    "packages/image-inspect-wasm": {
+      "name": "@turenlabs/image-inspect-wasm",
+      "version": "0.1.0-turen.1",
+    },
+    "packages/installer-inspect-wasm": {
+      "name": "@turenlabs/installer-inspect-wasm",
+      "version": "0.1.0-turen.1",
+    },
+    "packages/java-inspect-wasm": {
+      "name": "@turenlabs/java-inspect-wasm",
+      "version": "0.1.0-turen.1",
+    },
+    "packages/json-query-wasm": {
+      "name": "@turenlabs/json-query-wasm",
+      "version": "0.1.0",
+    },
     "packages/libpcap-wasm": {
       "name": "@turenlabs/libpcap-wasm",
       "version": "1.10.6-turen.1",
     },
     "packages/llm": {
       "name": "@turenlabs/llm",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "@smithy/eventstream-codec": "4.2.14",
         "@smithy/util-utf8": "4.2.2",
@@ -570,13 +649,25 @@
         "@typescript/native-preview": "catalog:",
       },
     },
+    "packages/macos-artifacts-wasm": {
+      "name": "@turenlabs/macos-artifacts-wasm",
+      "version": "0.1.0-turen.1",
+    },
+    "packages/minidump-wasm": {
+      "name": "@turenlabs/minidump-wasm",
+      "version": "0.1.0",
+    },
     "packages/monodis-wasm": {
       "name": "@turenlabs/monodis-wasm",
       "version": "0.1.0",
     },
+    "packages/pdf-inspect-wasm": {
+      "name": "@turenlabs/pdf-inspect-wasm",
+      "version": "0.1.0-turen.1",
+    },
     "packages/plugin": {
       "name": "@turenlabs/plugin",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "@ai-sdk/provider": "3.0.8",
         "@turenlabs/sdk": "workspace:*",
@@ -610,6 +701,10 @@
       "name": "@turenlabs/rebuild-timeline-wasm",
       "version": "0.1.0-turen.1",
     },
+    "packages/rtf-inspect-wasm": {
+      "name": "@turenlabs/rtf-inspect-wasm",
+      "version": "0.1.0-turen.1",
+    },
     "packages/schema": {
       "name": "@turenlabs/schema",
       "dependencies": {
@@ -623,7 +718,7 @@
     },
     "packages/script": {
       "name": "@turenlabs/script",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "semver": "^7.6.3",
       },
@@ -648,7 +743,7 @@
     },
     "packages/sdk/js": {
       "name": "@turenlabs/sdk",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "cross-spawn": "catalog:",
       },
@@ -663,7 +758,7 @@
     },
     "packages/server": {
       "name": "@turenlabs/server",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "@turenlabs/core": "workspace:*",
         "@turenlabs/protocol": "workspace:*",
@@ -679,7 +774,7 @@
     },
     "packages/session-ui": {
       "name": "@turenlabs/session-ui",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "@kobalte/core": "catalog:",
         "@pierre/diffs": "catalog:",
@@ -723,6 +818,18 @@
         "vite": "catalog:",
       },
     },
+    "packages/sourcemap-wasm": {
+      "name": "@turenlabs/sourcemap-wasm",
+      "version": "0.1.0",
+    },
+    "packages/sqlite-inspect-wasm": {
+      "name": "@turenlabs/sqlite-inspect-wasm",
+      "version": "0.1.0-turen.1",
+    },
+    "packages/squashfs-wasm": {
+      "name": "@turenlabs/squashfs-wasm",
+      "version": "0.1.0-turen.1",
+    },
     "packages/static-analysis-wasm": {
       "name": "@turenlabs/static-analysis-wasm",
       "version": "0.1.0-turen.1",
@@ -737,7 +844,7 @@
     },
     "packages/ui": {
       "name": "@turenlabs/ui",
-      "version": "1.0.18",
+      "version": "1.0.19",
       "dependencies": {
         "@hugeicons/core-free-icons": "4.2.3",
         "@kobalte/core": "catalog:",
@@ -787,12 +894,20 @@
         "solid-js": "^1.9.0",
       },
     },
+    "packages/unicode-audit-wasm": {
+      "name": "@turenlabs/unicode-audit-wasm",
+      "version": "0.1.0",
+    },
     "packages/vigil-runtime": {
       "name": "@turenlabs/vigil-runtime",
       "version": "0.9.0-beta.3",
     },
     "packages/wasm-inspect-wasm": {
       "name": "@turenlabs/wasm-inspect-wasm",
+      "version": "0.1.0",
+    },
+    "packages/wasm-toolkit-wasm": {
+      "name": "@turenlabs/wasm-toolkit-wasm",
       "version": "0.1.0",
     },
     "packages/wifi-offline-wasm": {
@@ -1884,15 +1999,29 @@
 
     "@turbo/windows-arm64": ["@turbo/windows-arm64@2.10.2", "", { "os": "win32", "cpu": "arm64" }, "sha512-Gf+S7ICAdimT/n02bOuVWKvhHnct/HYjZg3oBNIz5hZ9ZyWHbQim9J3P5Qip8WpX0ksxF7eaBVziJCuLnjhqDg=="],
 
+    "@turenlabs/apk-dex-wasm": ["@turenlabs/apk-dex-wasm@workspace:packages/apk-dex-wasm"],
+
     "@turenlabs/app": ["@turenlabs/app@workspace:packages/app"],
+
+    "@turenlabs/binary-diff-wasm": ["@turenlabs/binary-diff-wasm@workspace:packages/binary-diff-wasm"],
 
     "@turenlabs/binwalk-scan-wasm": ["@turenlabs/binwalk-scan-wasm@workspace:packages/binwalk-scan-wasm"],
 
+    "@turenlabs/browser-artifacts-wasm": ["@turenlabs/browser-artifacts-wasm@workspace:packages/browser-artifacts-wasm"],
+
+    "@turenlabs/capa-match-wasm": ["@turenlabs/capa-match-wasm@workspace:packages/capa-match-wasm"],
+
     "@turenlabs/client": ["@turenlabs/client@workspace:packages/client"],
+
+    "@turenlabs/code-signing-wasm": ["@turenlabs/code-signing-wasm@workspace:packages/code-signing-wasm"],
+
+    "@turenlabs/codec-wasm": ["@turenlabs/codec-wasm@workspace:packages/codec-wasm"],
 
     "@turenlabs/codemode": ["@turenlabs/codemode@workspace:packages/codemode"],
 
     "@turenlabs/core": ["@turenlabs/core@workspace:packages/core"],
+
+    "@turenlabs/crypto-markers-wasm": ["@turenlabs/crypto-markers-wasm@workspace:packages/crypto-markers-wasm"],
 
     "@turenlabs/debug-symbols-wasm": ["@turenlabs/debug-symbols-wasm@workspace:packages/debug-symbols-wasm"],
 
@@ -1908,9 +2037,15 @@
 
     "@turenlabs/extensions": ["@turenlabs/extensions@workspace:packages/extensions"],
 
+    "@turenlabs/firmware-formats-wasm": ["@turenlabs/firmware-formats-wasm@workspace:packages/firmware-formats-wasm"],
+
     "@turenlabs/forge": ["@turenlabs/forge@workspace:packages/forge"],
 
+    "@turenlabs/fuzzy-hash-wasm": ["@turenlabs/fuzzy-hash-wasm@workspace:packages/fuzzy-hash-wasm"],
+
     "@turenlabs/ghidra-decompiler-wasm": ["@turenlabs/ghidra-decompiler-wasm@workspace:packages/ghidra-decompiler-wasm"],
+
+    "@turenlabs/git-inspect-wasm": ["@turenlabs/git-inspect-wasm@workspace:packages/git-inspect-wasm"],
 
     "@turenlabs/goblin-wasm": ["@turenlabs/goblin-wasm@workspace:packages/goblin-wasm"],
 
@@ -1918,11 +2053,25 @@
 
     "@turenlabs/httpapi-codegen": ["@turenlabs/httpapi-codegen@workspace:packages/httpapi-codegen"],
 
+    "@turenlabs/image-inspect-wasm": ["@turenlabs/image-inspect-wasm@workspace:packages/image-inspect-wasm"],
+
+    "@turenlabs/installer-inspect-wasm": ["@turenlabs/installer-inspect-wasm@workspace:packages/installer-inspect-wasm"],
+
+    "@turenlabs/java-inspect-wasm": ["@turenlabs/java-inspect-wasm@workspace:packages/java-inspect-wasm"],
+
+    "@turenlabs/json-query-wasm": ["@turenlabs/json-query-wasm@workspace:packages/json-query-wasm"],
+
     "@turenlabs/libpcap-wasm": ["@turenlabs/libpcap-wasm@workspace:packages/libpcap-wasm"],
 
     "@turenlabs/llm": ["@turenlabs/llm@workspace:packages/llm"],
 
+    "@turenlabs/macos-artifacts-wasm": ["@turenlabs/macos-artifacts-wasm@workspace:packages/macos-artifacts-wasm"],
+
+    "@turenlabs/minidump-wasm": ["@turenlabs/minidump-wasm@workspace:packages/minidump-wasm"],
+
     "@turenlabs/monodis-wasm": ["@turenlabs/monodis-wasm@workspace:packages/monodis-wasm"],
+
+    "@turenlabs/pdf-inspect-wasm": ["@turenlabs/pdf-inspect-wasm@workspace:packages/pdf-inspect-wasm"],
 
     "@turenlabs/plugin": ["@turenlabs/plugin@workspace:packages/plugin"],
 
@@ -1931,6 +2080,8 @@
     "@turenlabs/protocol-inspect-wasm": ["@turenlabs/protocol-inspect-wasm@workspace:packages/protocol-inspect-wasm"],
 
     "@turenlabs/rebuild-timeline-wasm": ["@turenlabs/rebuild-timeline-wasm@workspace:packages/rebuild-timeline-wasm"],
+
+    "@turenlabs/rtf-inspect-wasm": ["@turenlabs/rtf-inspect-wasm@workspace:packages/rtf-inspect-wasm"],
 
     "@turenlabs/schema": ["@turenlabs/schema@workspace:packages/schema"],
 
@@ -1944,6 +2095,12 @@
 
     "@turenlabs/session-ui": ["@turenlabs/session-ui@workspace:packages/session-ui"],
 
+    "@turenlabs/sourcemap-wasm": ["@turenlabs/sourcemap-wasm@workspace:packages/sourcemap-wasm"],
+
+    "@turenlabs/sqlite-inspect-wasm": ["@turenlabs/sqlite-inspect-wasm@workspace:packages/sqlite-inspect-wasm"],
+
+    "@turenlabs/squashfs-wasm": ["@turenlabs/squashfs-wasm@workspace:packages/squashfs-wasm"],
+
     "@turenlabs/static-analysis-wasm": ["@turenlabs/static-analysis-wasm@workspace:packages/static-analysis-wasm"],
 
     "@turenlabs/static-unpack-wasm": ["@turenlabs/static-unpack-wasm@workspace:packages/static-unpack-wasm"],
@@ -1952,9 +2109,13 @@
 
     "@turenlabs/ui": ["@turenlabs/ui@workspace:packages/ui"],
 
+    "@turenlabs/unicode-audit-wasm": ["@turenlabs/unicode-audit-wasm@workspace:packages/unicode-audit-wasm"],
+
     "@turenlabs/vigil-runtime": ["@turenlabs/vigil-runtime@workspace:packages/vigil-runtime"],
 
     "@turenlabs/wasm-inspect-wasm": ["@turenlabs/wasm-inspect-wasm@workspace:packages/wasm-inspect-wasm"],
+
+    "@turenlabs/wasm-toolkit-wasm": ["@turenlabs/wasm-toolkit-wasm@workspace:packages/wasm-toolkit-wasm"],
 
     "@turenlabs/wifi-offline-wasm": ["@turenlabs/wifi-offline-wasm@workspace:packages/wifi-offline-wasm"],
 

@@ -1,0 +1,21 @@
+{
+  "name": "turen-code-signing-wasm",
+  "type": "module",
+  "description": "Bounded offline code-signing and PKI structure inspection WebAssembly wrapper for Turen",
+  "version": "0.1.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
+  "files": [
+    "turen_code_signing_wasm_bg.wasm",
+    "turen_code_signing_wasm.js",
+    "turen_code_signing_wasm.d.ts"
+  ],
+  "main": "turen_code_signing_wasm.js",
+  "types": "turen_code_signing_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

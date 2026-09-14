@@ -1,0 +1,34 @@
+{
+  "crate": "turen-image-inspect-wasm",
+  "upstream": null,
+  "derivation": "Original bounded implementation. Format structure walkers are Turen-written parse-only code; EXIF/TIFF tag parsing delegates to the pinned kamadak-exif crate and bounded pixel decode to the pinned image crate (PNG/JPEG features only). No upstream CLI, filesystem, network, or extraction APIs are exposed.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "wasmOpt": [
+    "-Os",
+    "--enable-bulk-memory",
+    "--enable-nontrapping-float-to-int"
+  ],
+  "runtimeDependencies": [],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": true,
+  "decompressionBounds": "zTXt/iTXt metadata inflate capped at 262144 bytes; pixel decode capped at 4096x4096 dimensions checked from the header before allocation",
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "outputBytes": 4194304,
+    "entries": 4096,
+    "textBytes": 2048,
+    "textEntries": 4096,
+    "exifFields": 4096,
+    "thumbnailBytes": 262144,
+    "inflateBytes": 262144,
+    "pixelDimension": 4096,
+    "pixelSamples": 4000000
+  }
+}

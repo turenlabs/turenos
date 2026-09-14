@@ -1,0 +1,26 @@
+{
+  "name": "@turenlabs/macos-artifacts-wasm",
+  "version": "0.1.0-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "Bounded offline macOS forensic artifact parser for Turen",
+  "main": "dist/turen_macos_artifacts_wasm.js",
+  "types": "dist/turen_macos_artifacts_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/turen_macos_artifacts_wasm.d.ts",
+      "import": "./dist/turen_macos_artifacts_wasm.js",
+      "default": "./dist/turen_macos_artifacts_wasm.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "SOURCE.json",
+    "SHA256SUMS"
+  ],
+  "license": "Apache-2.0 OR MIT",
+  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+}

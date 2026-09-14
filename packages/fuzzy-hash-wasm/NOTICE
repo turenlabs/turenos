@@ -1,0 +1,26 @@
+Turen fuzzy-hash is a bounded WebAssembly hashing wrapper that combines the
+following pure-Rust crates from crates.io:
+
+- fuzzyhash 0.2.2 (https://github.com/rustysec/fuzzyhash-rs), MIT —
+  ssdeep-compatible context-triggered piecewise hashing and comparison.
+- tlsh2 1.1.0 (https://github.com/vthib/tlsh), Apache-2.0 OR BSD-3-Clause —
+  Trend Micro TLSH similarity hashing and difference scoring.
+- goblin 0.10.7 (https://github.com/m4b/goblin), MIT — PE import table parsing
+  for the imphash computation. Only the PE parsers are enabled.
+- md-5 0.11.0, sha1 0.11.0, sha2 0.11.0 (https://github.com/RustCrypto/hashes),
+  MIT OR Apache-2.0.
+- blake3 1.8.7 (https://github.com/BLAKE3-team/BLAKE3),
+  CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception; the Apache-2.0
+  option is elected for this distribution.
+- xxhash-rust 0.8.18 (https://github.com/DoumanAsh/xxhash-rust), BSL-1.0
+  (Boost Software License 1.0, permissive) — xxHash64 only.
+- serde 1.0.228, serde_json 1.0.145, wasm-bindgen 0.2.108 and their transitive
+  dependencies, MIT OR Apache-2.0 (memchr: Unlicense OR MIT; ryu:
+  Apache-2.0 OR BSL-1.0; unicode-ident: MIT OR Apache-2.0 AND Unicode-3.0;
+  constant_time_eq: CC0-1.0 OR MIT-0 OR Apache-2.0).
+
+The complete pinned dependency set is recorded in Cargo.lock. No GPL or
+copyleft code is linked into the distributed module.
+
+The compiled module uses Rust standard-library components, distributed under
+the Apache-2.0 or MIT license at the user's option.
