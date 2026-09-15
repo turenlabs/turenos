@@ -7,9 +7,18 @@ export type ProviderIconProps = JSX.SVGElementTags["svg"] & {
   id: string
 }
 
+// Provider IDs without their own sprite glyph resolve to the closest brand mark.
+const aliases: Record<string, IconName> = {
+  "claude-code": "anthropic",
+  ollama: "ollama-cloud",
+  "llama-cpp": "llama",
+}
+
 export const ProviderIcon: Component<ProviderIconProps> = (props) => {
   const [local, rest] = splitProps(props, ["id", "class", "classList"])
-  const resolved = createMemo(() => (iconNames.includes(local.id as IconName) ? local.id : "synthetic"))
+  const resolved = createMemo(
+    () => aliases[local.id] ?? (iconNames.includes(local.id as IconName) ? (local.id as IconName) : "synthetic"),
+  )
   return (
     <svg
       data-component="provider-icon"

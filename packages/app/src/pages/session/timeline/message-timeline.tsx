@@ -66,13 +66,14 @@ import { useDialog } from "@turenlabs/ui/context/dialog"
 import { SessionContextUsage } from "@/components/session-context-usage"
 import { useLanguage } from "@/context/language"
 import { ServerConnection } from "@/context/server"
-import { useSessionKey } from "@/pages/session/session-layout"
+import { useSessionLayout } from "@/pages/session/session-layout"
 import { useServerSDK } from "@/context/server-sdk"
 import { useSettings } from "@/context/settings"
 import { useTabs } from "@/context/tabs"
 import { legacySessionHref, requireServerKey, sessionHref } from "@/utils/session-route"
 import { useSDK } from "@/context/sdk"
 import { PromptAdmissionStatus } from "@/components/prompt-input/prompt-admission-status"
+import { useFile } from "@/context/file"
 import { useSync } from "@/context/sync"
 import { notifySessionTabsRemoved } from "@/components/titlebar-session-events"
 import {
@@ -83,6 +84,7 @@ import {
   type TurnStatus,
 } from "@/pages/session/goal/session-v2-timeline-controller"
 import { isSessionV2ToolStub } from "@/pages/session/goal/session-v2-presentation"
+import { createOpenSessionFileTab } from "@/pages/session/helpers"
 import { sessionTitle } from "@/utils/session-title"
 import { scheduleConnectedMeasure } from "./measure"
 import { observeElementOffsetReconnectAware } from "./observe-element-offset"
@@ -407,7 +409,8 @@ export function MessageTimeline(props: {
   const tabs = useTabs()
   const dialog = useDialog()
   const language = useLanguage()
-  const { params, sessionKey } = useSessionKey()
+  const { params, sessionKey, tabs: sessionTabs, view: sessionView } = useSessionLayout()
+  const file = useFile()
   const ownerSessionKey = sessionKey()
   const cached = timelineCache.get(ownerSessionKey)
   const initialMeasurements = cached?.measurements
@@ -440,6 +443,17 @@ export function MessageTimeline(props: {
     markdownImageCache.set(key, { expires: Date.now() + 5_000, request })
     return request
   }
+  const openFileTab = createOpenSessionFileTab({
+    normalizeTab: (tab) => (tab.startsWith("file://") ? file.tab(tab) : tab),
+    openTab: sessionTabs().open,
+    pathFromTab: file.pathFromTab,
+    loadFile: file.load,
+    openReviewPanel: () => {
+      if (!sessionView().reviewPanel.opened()) sessionView().reviewPanel.open()
+    },
+    setActive: sessionTabs().setActive,
+  })
+  const openMarkdownFile = (path: string) => openFileTab(file.tab(path))
   const info = createMemo(() => {
     const id = sessionID()
     if (!id) return
@@ -1260,6 +1274,7 @@ export function MessageTimeline(props: {
                 virtualizeDiff={false}
                 onContentRendered={onSizeChange}
                 resolveMarkdownImage={resolveMarkdownImage}
+                onFileLink={openMarkdownFile}
               />
             )}
           </Show>
@@ -1421,6 +1436,7 @@ export function MessageTimeline(props: {
                     text={summary() ?? ""}
                     label={language.t("session.compaction.summary")}
                     onSizeChange={onSizeChange}
+                    onFileLink={openMarkdownFile}
                   />
                 </Show>
               </div>

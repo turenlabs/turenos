@@ -28,6 +28,7 @@ import { ServerSDKProvider, useServerSDK } from "@/context/server-sdk"
 import { ServerSyncProvider, useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
+import { isLocalProviderEndpoint, localProviders } from "@/hooks/provider-visibility"
 import { useProviderConnection } from "@/hooks/use-provider-connection"
 import { CustomProviderForm } from "./dialog-custom-provider"
 
@@ -189,6 +190,8 @@ function ProviderConnection(props: {
   setBack: (handler: () => void) => void
 }) {
   if (props.provider === "claude-code" || props.provider === "muse-code") return <LocalCliConnection {...props} />
+  if (localProviders.some((item) => item.id === props.provider && item.kind === "server"))
+    return <LocalServerConnection {...props} />
 
   const dialog = useDialog()
   const serverSync = useServerSync()
@@ -903,6 +906,121 @@ function LocalCliConnection(props: { provider: string; onBack: () => void; setBa
             {language.t("provider.connect.status.inProgress")}
           </Show>
         </Button>
+      </div>
+    </div>
+  )
+}
+
+function LocalServerConnection(props: {
+  provider: string
+  onBack: () => void
+  setBack: (handler: () => void) => void
+}) {
+  const dialog = useDialog()
+  const serverSDK = useServerSDK()
+  const serverSync = useServerSync()
+  const language = useLanguage()
+  const connection = useProviderConnection()
+
+  const meta = localProviders.find((item) => item.id === props.provider && item.kind === "server")
+  const provider = meta?.name ?? props.provider
+  const configured = () => {
+    const value = serverSync().data.config.provider?.[props.provider]?.options?.baseURL
+    return typeof value === "string" ? value : undefined
+  }
+  const [state, setState] = createStore({
+    endpoint: configured() ?? meta?.endpoint ?? "",
+    pending: false,
+    error: undefined as string | undefined,
+  })
+  const descriptionKey = () =>
+    props.provider === "ollama"
+      ? ("provider.connect.localServer.description.ollama" as const)
+      : ("provider.connect.localServer.description.llamaCpp" as const)
+  const command = () => (props.provider === "ollama" ? "ollama pull qwen3" : "llama-server -m model.gguf")
+
+  props.setBack(props.onBack)
+
+  const connect = async () => {
+    const endpoint = state.endpoint.trim() || meta?.endpoint
+    if (endpoint && !isLocalProviderEndpoint(endpoint)) {
+      setState("error", language.t("provider.connect.localServer.endpoint.invalid"))
+      return
+    }
+    setState({ pending: true, error: undefined })
+    try {
+      if (endpoint && endpoint !== configured()) {
+        await serverSync().updateConfig({
+          provider: { [props.provider]: { options: { baseURL: endpoint } } },
+        })
+      }
+      await connection.enable(props.provider)
+      await serverSDK().client.global.dispose()
+      await serverSync().refreshProviders()
+      if (!serverSync().data.provider.connected.includes(props.provider)) {
+        setState({
+          pending: false,
+          error: language.t("provider.connect.localServer.notReady", {
+            provider,
+            endpoint: endpoint ?? meta?.endpoint ?? "",
+          }),
+        })
+        return
+      }
+      dialog.close()
+      showToast({
+        variant: "success",
+        icon: "circle-check",
+        title: language.t("provider.connect.toast.connected.title", { provider }),
+        description: language.t("provider.connect.toast.connected.description", { provider }),
+      })
+    } catch (error) {
+      setState({
+        pending: false,
+        error: error instanceof Error ? error.message : language.t("common.requestFailed"),
+      })
+    }
+  }
+
+  return (
+    <div class="flex flex-col gap-6 px-2.5 pb-3">
+      <div class="px-2.5 flex gap-4 items-center">
+        <ProviderIcon id={props.provider} class="size-5 shrink-0 icon-strong-base" />
+        <div class="text-16-medium text-text-strong">{language.t("provider.connect.title", { provider })}</div>
+      </div>
+      <div class="px-2.5 pb-10 flex flex-col items-start gap-4">
+        <div class="text-14-regular text-text-base">{language.t(descriptionKey())}</div>
+        <TextField class="font-mono" label={language.t("provider.connect.localServer.command")} value={command()} readOnly copyable />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            void connect()
+          }}
+          class="w-full flex flex-col items-start gap-4"
+        >
+          <TextField
+            type="text"
+            label={language.t("provider.connect.localServer.endpoint.label")}
+            placeholder={meta?.endpoint}
+            description={language.t("provider.connect.localServer.endpoint.description")}
+            name="endpoint"
+            value={state.endpoint}
+            onChange={(v) => setState("endpoint", v)}
+            validationState={state.error ? "invalid" : undefined}
+          />
+          <Show when={state.error}>
+            <div class="text-14-regular text-text-base flex items-center gap-x-2">
+              <Icon name="circle-ban-sign" class="text-icon-critical-base" />
+              <span>{state.error}</span>
+            </div>
+          </Show>
+          <Button class="w-auto" type="submit" size="large" variant="primary" disabled={state.pending}>
+            <Show when={state.pending} fallback={language.t("common.connect")}>
+              <Spinner />
+              {language.t("provider.connect.status.inProgress")}
+            </Show>
+          </Button>
+        </form>
       </div>
     </div>
   )

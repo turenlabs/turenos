@@ -3,7 +3,12 @@ import { createStore } from "solid-js/store"
 import { Markdown } from "@turenlabs/session-ui/markdown"
 
 /** The saved model checkpoint is inspectable without parsing hidden Markdown on every refresh. */
-export function CompactionSummary(props: { text: string; label: string; onSizeChange?: () => void }) {
+export function CompactionSummary(props: {
+  text: string
+  label: string
+  onSizeChange?: () => void
+  onFileLink?: (path: string) => void
+}) {
   const [state, setState] = createStore({ open: false })
   return (
     <details
@@ -16,7 +21,12 @@ export function CompactionSummary(props: { text: string; label: string; onSizeCh
     >
       <summary class="cursor-pointer py-2">{props.label}</summary>
       <Show when={state.open}>
-        <Markdown text={props.text} class="py-2 text-text-base" onImageSettled={props.onSizeChange} />
+        <Markdown
+          text={props.text}
+          class="py-2 text-text-base"
+          onImageSettled={props.onSizeChange}
+          onFileLink={props.onFileLink}
+        />
       </Show>
     </details>
   )

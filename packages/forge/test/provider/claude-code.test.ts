@@ -30,7 +30,10 @@ describe("ClaudeCodeProvider", () => {
       expect(model.cost.input).toBe(0)
       expect(model.cost.output).toBe(0)
     }
-    expect(provider.models.fable.api.id).toBe("claude-fable-5")
+    // `fable` is a floating CLI alias like `sonnet`/`opus`/`haiku` — the
+    // provider passes it through so the CLI's bundled catalog picks the
+    // current Fable generation rather than a pinned id that goes stale.
+    expect(provider.models.fable.api.id).toBe("fable")
     expect(provider.models.fable.limit).toEqual({ context: 1_000_000, output: 128_000 })
   })
 

@@ -11654,6 +11654,36 @@ export type ProviderOauthAuthorizeResponses = {
 
 export type ProviderOauthAuthorizeResponse = ProviderOauthAuthorizeResponses[keyof ProviderOauthAuthorizeResponses]
 
+export type ProviderRemoveData = {
+  body?: never
+  path: {
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/provider/{providerID}"
+}
+
+export type ProviderRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderRemoveError = ProviderRemoveErrors[keyof ProviderRemoveErrors]
+
+export type ProviderRemoveResponses = {
+  /**
+   * Provider removed
+   */
+  200: boolean
+}
+
+export type ProviderRemoveResponse = ProviderRemoveResponses[keyof ProviderRemoveResponses]
+
 export type ProviderOauthCallbackData = {
   body?: {
     /**

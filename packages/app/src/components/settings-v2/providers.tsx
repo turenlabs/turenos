@@ -3,6 +3,7 @@ import { Tag } from "@turenlabs/ui/v2/badge-v2"
 import { useDialog } from "@turenlabs/ui/context/dialog"
 import { ProviderIcon } from "@turenlabs/ui/provider-icon"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
+import { isLocalProvider, isLocalProviderID } from "@/hooks/provider-visibility"
 import { useProviderConnection } from "@/hooks/use-provider-connection"
 import { createMemo, type Component, For, Show } from "solid-js"
 import { useLanguage } from "@/context/language"
@@ -53,14 +54,14 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
     void dialog.show(() => <DialogConnectProvider controller={providerConnect} />)
   }
 
-  const connected = createMemo(() => providers.connected())
+  const connected = createMemo(() => providers.connected().filter((item) => !isLocalProvider(item)))
 
   const popular = createMemo(() => {
     const connectedIDs = new Set(connected().map((p) => p.id))
     const excludedIDs = new Set(connection.excluded())
     const items = providers
       .popular()
-      .filter((p) => !connectedIDs.has(p.id) && !excludedIDs.has(p.id))
+      .filter((p) => !connectedIDs.has(p.id) && !excludedIDs.has(p.id) && !isLocalProvider(p))
       .slice()
     items.sort((a, b) => popularProviders.indexOf(a.id) - popularProviders.indexOf(b.id))
     return items
@@ -101,10 +102,13 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
 
   const disabled = createMemo(() => {
     const all = providers.all()
-    return connection.excluded().map((id) => ({
-      id,
-      name: all.get(id)?.name ?? id,
-    }))
+    return connection
+      .excluded()
+      .filter((id) => !isLocalProviderID(id, serverSync().data.config.provider?.[id]?.options?.baseURL))
+      .map((id) => ({
+        id,
+        name: all.get(id)?.name ?? id,
+      }))
   })
 
   return (
@@ -141,22 +145,29 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
                         <Tag>{type(item)}</Tag>
                       </div>
                     </div>
-                    <Show
-                      when={canDisconnect(item)}
-                      fallback={
-                        <span class="settings-v2-provider-env-hint">
-                          {language.t("settings.providers.connected.environmentDescription")}
-                        </span>
-                      }
-                    >
-                      <ButtonV2
-                        size="normal"
-                        variant="ghost-muted"
-                        onClick={() => void connection.disconnect(item.id, item.name)}
+                    <div class="flex items-center gap-2">
+                      <Show
+                        when={canDisconnect(item)}
+                        fallback={
+                          <span class="settings-v2-provider-env-hint">
+                            {language.t("settings.providers.connected.environmentDescription")}
+                          </span>
+                        }
                       >
-                        {language.t("common.disconnect")}
-                      </ButtonV2>
-                    </Show>
+                        <Show when={item.auth !== "wellknown"}>
+                          <ButtonV2 size="normal" variant="ghost-muted" onClick={() => connect(item.id)}>
+                            {language.t("common.reconnect")}
+                          </ButtonV2>
+                        </Show>
+                        <ButtonV2
+                          size="normal"
+                          variant="ghost-muted"
+                          onClick={() => void connection.disconnect(item.id, item.name)}
+                        >
+                          {language.t("common.disconnect")}
+                        </ButtonV2>
+                      </Show>
+                    </div>
                   </div>
                 )}
               </For>

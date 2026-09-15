@@ -3,7 +3,7 @@ export type MarkdownImageResolver = (path: string) => Promise<string | undefined
 const scheme = /^[a-z][a-z\d+.-]*:/i
 const windowsPath = /^[a-z]:[\\/]/i
 
-export function localMarkdownImagePath(source: string) {
+export function localMarkdownPath(source: string) {
   const value = source.trim()
   if (!value || value.startsWith("#") || value.startsWith("//")) return
   if (value.toLowerCase().startsWith("file://")) return fileUrlPath(value)
@@ -35,7 +35,7 @@ export function resolveMarkdownImages(root: ParentNode, resolve: MarkdownImageRe
   let resolving = false
   Array.from(root.querySelectorAll("img")).forEach((image) => {
     const source = image.getAttribute("data-local-image-source") ?? image.getAttribute("src") ?? ""
-    const path = localMarkdownImagePath(source)
+    const path = localMarkdownPath(source)
     if (
       !path ||
       image.getAttribute("data-local-image-resolved") === source ||

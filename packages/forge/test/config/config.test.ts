@@ -302,6 +302,62 @@ it.effect("updates global config and omits empty shell key in jsonc", () =>
   ),
 )
 
+it.effect("removes only the v1 provider spelling when that is all that exists", () =>
+  withGlobalConfig({ config: { provider: { "custom-local": { options: { baseURL: "http://127.0.0.1:9000" } } } } }, ({ dir }) =>
+    Effect.gen(function* () {
+      const file = path.join(dir, "forge.json")
+      expect(yield* Config.use.removeGlobalProvider("custom-local")).toBe(true)
+
+      const written = yield* FSUtil.use.readJson(file)
+      expect(written).not.toHaveProperty("provider")
+    }),
+  ),
+)
+
+it.effect("removes only the v2 providers spelling when that is all that exists", () =>
+  withGlobalConfig({ config: { providers: { "custom-local": { request: { body: { baseURL: "http://127.0.0.1:9000" } } } } } }, ({ dir }) =>
+    Effect.gen(function* () {
+      const file = path.join(dir, "forge.json")
+      expect(yield* Config.use.removeGlobalProvider("custom-local")).toBe(true)
+
+      const written = yield* FSUtil.use.readJson(file)
+      expect(written).not.toHaveProperty("providers")
+    }),
+  ),
+)
+
+it.effect("removes provider entries from global config preserving comments", () =>
+  withGlobalConfig({}, ({ dir }) =>
+    Effect.gen(function* () {
+      const file = path.join(dir, "forge.jsonc")
+      yield* FSUtil.use.writeWithDirs(
+        file,
+        [
+          "{",
+          '  "$schema": "https://github.com/turenlabs/forge/config.json",',
+          "  // local runtimes",
+          '  "model": "test/model",',
+          '  "provider": { "custom-local": { "options": { "baseURL": "http://127.0.0.1:9000" } }, "other-v1": {} },',
+          '  "providers": { "custom-local": {}, "other-local": {} }',
+          "}",
+        ].join("\n"),
+      )
+
+      expect(yield* Config.use.removeGlobalProvider("custom-local")).toBe(true)
+
+      const written = yield* FSUtil.use.readFileString(file)
+      // Comments attached to surviving properties are kept; the provider sections lose
+      // only the removed entry.
+      expect(written).toContain("// local runtimes")
+      expect(written).not.toContain("custom-local")
+      expect(written).toContain('"other-local"')
+      expect(written).toContain('"other-v1"')
+
+      expect(yield* Config.use.removeGlobalProvider("custom-local")).toBe(false)
+    }),
+  ),
+)
+
 it.instance(
   "loads formatter boolean config",
   Effect.gen(function* () {

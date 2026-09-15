@@ -37,6 +37,10 @@ type Provider = {
   id: string
   name: string
   source?: "env" | "config" | "custom" | "api"
+  auth?: "api" | "oauth" | "wellknown"
+  env?: string[]
+  key?: string
+  options?: Record<string, unknown>
   models: {
     [key: string]: Model
   }

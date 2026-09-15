@@ -4,6 +4,7 @@ import { Config } from "../../config"
 import { ModelV2 } from "../../model"
 import { ProviderV2 } from "../../provider"
 import type { PluginInternal } from "../internal"
+import { normalizeLocalHttpEndpoint } from "./local-endpoint"
 
 const PROVIDER_ID = ProviderV2.ID.make("ollama")
 const DEFAULT_ENDPOINT = "http://127.0.0.1:11434"
@@ -27,23 +28,7 @@ class OllamaTags extends Schema.Class<OllamaTags>("OllamaTags")({
 }) {}
 
 export function normalizeOllamaEndpoint(value: unknown) {
-  if (value !== undefined && value !== null && typeof value !== "string") return undefined
-  const raw = typeof value === "string" && value.trim() !== "" ? value.trim() : DEFAULT_ENDPOINT
-  const candidate = raw.includes("://") ? raw : `http://${raw}`
-
-  try {
-    const url = new URL(candidate)
-    const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase()
-    if (host !== "localhost" && host !== "127.0.0.1" && host !== "::1") return undefined
-    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
-    if (url.username || url.password || url.search || url.hash) return undefined
-
-    const pathname = url.pathname.replace(/\/+$/, "")
-    url.pathname = pathname.endsWith("/v1") ? pathname.slice(0, -3) || "/" : pathname || "/"
-    return url.toString().replace(/\/$/, "")
-  } catch {
-    return undefined
-  }
+  return normalizeLocalHttpEndpoint(value, DEFAULT_ENDPOINT)
 }
 
 export const OllamaPlugin = {
@@ -60,7 +45,10 @@ export const OllamaPlugin = {
 
     yield* ctx.catalog.transform(
       Effect.fn(function* (catalog) {
-        if (!models?.length) return
+        // A reachable server with zero pulled models still registers: the provider shows as
+        // connected with an empty model list, which is what lets the UI tell "running, no models"
+        // apart from "not installed".
+        if (!models) return
         catalog.provider.update(PROVIDER_ID, (provider) => {
           provider.name = "Ollama"
           provider.api = {

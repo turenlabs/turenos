@@ -16,6 +16,7 @@ import { GooglePlugin } from "./provider/google"
 import { GoogleVertexAnthropicPlugin, GoogleVertexPlugin } from "./provider/google-vertex"
 import { GroqPlugin } from "./provider/groq"
 import { KiloPlugin } from "./provider/kilo"
+import { LlamaCppPlugin } from "./provider/llama-cpp"
 import { LLMGatewayPlugin } from "./provider/llmgateway"
 import { MistralPlugin } from "./provider/mistral"
 import { MoonshotPlugin } from "./provider/moonshot"
@@ -57,6 +58,7 @@ export const ProviderPlugins: PluginInternal.Plugin<PluginInternal.Requirements 
   GoogleVertexPlugin,
   GroqPlugin,
   KiloPlugin,
+  LlamaCppPlugin,
   LLMGatewayPlugin,
   MistralPlugin,
   MoonshotPlugin,

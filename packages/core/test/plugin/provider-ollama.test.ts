@@ -145,7 +145,9 @@ describe("OllamaPlugin", () => {
         Effect.provideService(Config.Service, emptyConfig),
         Effect.provideService(HttpClient.HttpClient, http),
       )
-      expect(yield* catalog.provider.get(providerID)).toBeUndefined()
+      // Reachable with zero pulled models still registers the provider — just no models yet.
+      expect(yield* catalog.provider.get(providerID)).toBeDefined()
+      expect(yield* catalog.model.get(providerID, ModelV2.ID.make("late-model:latest"))).toBeUndefined()
 
       yield* TestClock.adjust("10 seconds")
 

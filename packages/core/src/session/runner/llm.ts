@@ -1108,15 +1108,19 @@ const layer = Layer.effect(
       const toolTurnIDs = new Set<SessionMessage.ID>()
       const publish = (event: LLMEvent, outputPaths: ReadonlyArray<string> = []) =>
         withPublication(publisher.publish(event, outputPaths))
+      // Tool-settle fibers from the failed attempt can still be publishing when this marker goes
+      // out; the permit keeps the turn's event log single-ordered.
       const publishRetry = Effect.fnUntraced(function* (decision: SessionRunnerRetry.Decision) {
-        yield* events.publish(SessionEvent.Retried, {
-          sessionID: session.id,
-          timestamp: yield* DateTime.now,
-          attempt: decision.attempt,
-          delay: decision.delay,
-          error: decision.error,
-          ...(decision.action === undefined ? {} : { action: decision.action }),
-        })
+        yield* withPublication(
+          events.publish(SessionEvent.Retried, {
+            sessionID: session.id,
+            timestamp: yield* DateTime.now,
+            attempt: decision.attempt,
+            delay: decision.delay,
+            error: decision.error,
+            ...(decision.action === undefined ? {} : { action: decision.action }),
+          }),
+        )
       })
       if (claudeMcpToken && toolMaterialization) {
         executeClaudeTool = (call) =>
@@ -1306,6 +1310,10 @@ const layer = Layer.effect(
                   Effect.catchCause((cause) => {
                     if (isUserDeclined(cause) || (event.name === "question" && Cause.hasInterrupts(cause)))
                       userDeclined = true
+                    // Interrupted settles keep the flag: settlement reads it as a question that was
+                    // still awaiting an answer when the interrupt landed. Any other failure already
+                    // ended the call, and a stale flag lets a later interrupt misread as a decline.
+                    if (event.name === "question" && !Cause.hasInterrupts(cause)) questionToolInFlight = false
                     return Effect.failCause(cause)
                   }),
                   Effect.flatMap((settlement) => {

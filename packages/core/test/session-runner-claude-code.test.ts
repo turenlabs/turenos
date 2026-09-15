@@ -262,6 +262,31 @@ describe("SessionRunner claude-code transport", () => {
     }),
   )
 
+  // The picker's catalog id is not what the CLI must receive -- `--model` has
+  // to carry the catalog entry's `api.id` (e.g. `fable` -> `claude-fable-5`
+  // before the alias was adopted), or the picker silently runs a different
+  // model than it offered.
+  it.effect("passes the catalog api id to --model rather than the model id", () =>
+    Effect.gen(function* () {
+      const cli = recordingCLI()
+      const info = ModelV2.Info.make({
+        ...catalogModel(cli.executable),
+        id: ModelV2.ID.make("fable"),
+        api: { type: "native", id: ModelV2.ID.make("fable-resolved"), url: ClaudeCodeCLI.API_URL, settings: {} },
+      })
+      const model = yield* SessionRunnerModel.resolveWithRef(sessionWithVariant(), info)
+      yield* LLM.stream(
+        LLM.request({
+          model: model.model,
+          system: "system context",
+          messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+        }),
+      ).pipe(Stream.runCollect)
+      const argv = cli.argv()
+      expect(argv[argv.indexOf("--model") + 1]).toBe("fable-resolved")
+    }).pipe(Effect.provide(layer)),
+  )
+
   // A variant id is sticky session state, so a stored one the model no longer
   // publishes must degrade to the CLI's own default instead of being forwarded
   // as a flag the CLI would warn about and ignore.

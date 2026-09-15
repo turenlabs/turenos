@@ -31,9 +31,14 @@ function rewrite(request: Request, values: { directory?: string; workspace?: str
       key === "directory" ? encodeURIComponent : undefined,
     )
     if (!value) continue
-    for (const query of url.pathname.startsWith("/api/") ? [key, `location[${key}]`] : [key]) {
+    const queries = url.pathname.startsWith("/api/") ? [key, `location[${key}]`] : [key]
+    // A request that already carries either form is authoritative for that location:
+    // mirror it into the missing form rather than injecting the configured location,
+    // which the server rejects as conflicting when the values differ.
+    const existing = queries.map((query) => url.searchParams.get(query)).find((item) => item !== null)
+    for (const query of queries) {
       if (!url.searchParams.has(query)) {
-        url.searchParams.set(query, value)
+        url.searchParams.set(query, existing ?? value)
       }
     }
     changed = true

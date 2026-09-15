@@ -164,6 +164,16 @@ export const dict = {
     "Install Claude Code on this machine and sign in with your Claude subscription. Then refresh to offer its models in TurenOS.",
   "provider.connect.claudeCode.command": "Run this command in a terminal",
   "provider.connect.claudeCode.notReady": "Claude Code is not installed or is not signed in yet.",
+  "provider.connect.localServer.description.ollama":
+    "Ollama serves local models over HTTP on this machine. Install it, pull a model, then connect.",
+  "provider.connect.localServer.description.llamaCpp":
+    "llama.cpp serves a local GGUF model over an OpenAI-compatible HTTP API. Start llama-server, then connect.",
+  "provider.connect.localServer.command": "Run this command in a terminal",
+  "provider.connect.localServer.endpoint.label": "Server address",
+  "provider.connect.localServer.endpoint.description":
+    "Optional. Defaults are used unless your server listens somewhere else.",
+  "provider.connect.localServer.endpoint.invalid": "Use a local http(s) address such as http://127.0.0.1:8080",
+  "provider.connect.localServer.notReady": "{{provider}} is not reachable at {{endpoint}}. Start the server, then connect.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen gives you access to a curated set of reliable optimized models for coding agents.",
   "provider.connect.opencodeZen.line2":
@@ -227,6 +237,9 @@ export const dict = {
   "provider.disconnect.toast.disconnected.title": "{{provider}} disconnected",
   "provider.disconnect.toast.disconnected.description": "{{provider}} models are no longer available.",
 
+  "provider.remove.toast.removed.title": "{{provider}} removed",
+  "provider.remove.toast.removed.description": "{{provider}} credentials and configuration were removed.",
+
   "model.tag.latest": "Latest",
   "model.provider.anthropic": "Anthropic",
   "model.provider.openai": "OpenAI",
@@ -258,6 +271,9 @@ export const dict = {
   "common.open": "Open",
   "common.connect": "Connect",
   "common.disconnect": "Disconnect",
+  "common.reconnect": "Reconnect",
+  "common.remove": "Remove",
+  "common.restore": "Restore",
   "common.continue": "Continue",
   "common.submit": "Submit",
   "common.save": "Save",
@@ -1363,8 +1379,9 @@ export const dict = {
   "settings.shortcuts.group.terminal": "Terminal",
   "settings.shortcuts.group.prompt": "Prompt",
 
-  "settings.providers.title": "Providers",
-  "settings.providers.description": "Connect model providers and manage their availability on the selected server.",
+  "settings.providers.title": "Cloud Providers",
+  "settings.providers.description":
+    "Connect remote model providers and manage their availability on the selected server.",
   "settings.providers.section.connected": "Connected providers",
   "settings.providers.connected.empty": "No connected providers",
   "settings.providers.connected.environmentDescription": "Connected from your environment variables",
@@ -1379,6 +1396,27 @@ export const dict = {
   "settings.providers.tag.account": "Account",
   "settings.providers.tag.oauth": "OAuth",
   "settings.providers.tag.subscription": "Subscription",
+  "settings.localProviders.title": "Local Providers",
+  "settings.localProviders.description":
+    "Set up local runtimes that serve models on this machine or server — CLI bridges and local model servers.",
+  "settings.localProviders.section.connected": "Running providers",
+  "settings.localProviders.connected.empty": "No local providers are running",
+  "settings.localProviders.section.available": "Available providers",
+  "settings.localProviders.section.removed": "Removed providers",
+  "settings.localProviders.removed.description":
+    "Removed for this machine. Restore to offer its models again.",
+  "settings.localProviders.offline.description": "Configured but not reachable right now.",
+  "settings.localProviders.available.claudeCode": "Runs Claude through the Claude Code CLI using your Claude sign-in.",
+  "settings.localProviders.available.museCode": "Runs models through the Muse Code CLI using its own local sign-in.",
+  "settings.localProviders.available.ollama": "Serves models you pull locally over an OpenAI-compatible API.",
+  "settings.localProviders.available.llamaCpp": "Serves a local GGUF model through llama-server.",
+  "settings.localProviders.custom.title": "Custom local endpoint",
+  "settings.localProviders.custom.description": "Add an OpenAI-compatible server running on this machine.",
+  "settings.localProviders.remove.confirm": 'Remove "{{provider}}"?',
+  "settings.localProviders.models.one": "{{count}} model",
+  "settings.localProviders.models.other": "{{count}} models",
+  "settings.localProviders.tag.cli": "CLI",
+  "settings.localProviders.tag.server": "Server",
   "settings.toggle.enabled": "Enabled",
   "settings.toggle.disabled": "Disabled",
   "settings.models.title": "Model Picker",

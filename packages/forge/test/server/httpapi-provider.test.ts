@@ -9,6 +9,7 @@ import { SessionMessage } from "@turenlabs/core/session/message"
 import { DateTime, Effect, Layer } from "effect"
 import path from "path"
 import { Session } from "@/session/session"
+import { Global } from "@turenlabs/core/global"
 import { resetDatabase } from "../fixture/db"
 import { TestInstance } from "../fixture/fixture"
 import { markPluginDependenciesReady } from "../fixture/plugin"
@@ -469,6 +470,44 @@ describe("provider HttpApi", () => {
       expect(providerByID(configBody, "providers", "google")).toBeDefined()
     }),
     { ...projectOptions, init: writeFunctionOptionsPlugin },
+  )
+
+  it.instance(
+    "removes a provider's config entry and durably disables it",
+    Effect.gen(function* () {
+      const directory = (yield* TestInstance).directory
+      const removable = "test-remove-parity"
+      // Global config lives outside the project; the test env points it at an isolated dir.
+      // ConfigService prefers forge.jsonc when it exists, so seed whichever file resolves.
+      const jsonc = path.join(Global.Path.config, "forge.jsonc")
+      const globalFile = (yield* FSUtil.use.existsSafe(jsonc)) ? jsonc : path.join(Global.Path.config, "forge.json")
+      const existing = yield* FSUtil.use.readFileStringSafe(globalFile).pipe(Effect.orDie)
+      const seed = { ...JSON.parse(existing ?? "{}"), provider: { [removable]: { options: { baseURL: "http://127.0.0.1:9000" } } } }
+      yield* FSUtil.use.writeWithDirs(globalFile, JSON.stringify(seed))
+
+      const response = yield* request(`/provider/${removable}`, {
+        method: "DELETE",
+        headers: { "x-forge-directory": directory },
+      })
+
+      expect({ status: response.status, body: yield* response.text }).toEqual({ status: 200, body: "true" })
+
+      // The remove marks the instance for disposal and lands on `disabled_providers` in the
+      // global file so re-registration stays suppressed until setup clears it.
+      const body = JSON.parse(yield* FSUtil.use.readFileString(globalFile))
+      expect(body.provider?.[removable]).toBeUndefined()
+      expect(body.disabled_providers).toContain(removable)
+
+      // A second remove is idempotent: still 200, still a single deny entry.
+      const again = yield* request(`/provider/${removable}`, {
+        method: "DELETE",
+        headers: { "x-forge-directory": directory },
+      })
+      expect(again.status).toBe(200)
+      const rewritten = JSON.parse(yield* FSUtil.use.readFileString(globalFile))
+      expect((rewritten.disabled_providers as string[]).filter((id) => id === removable)).toHaveLength(1)
+    }),
+    projectOptions,
   )
 
   it.instance(

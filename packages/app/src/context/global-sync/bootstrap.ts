@@ -323,7 +323,7 @@ export async function bootstrapDirectory(input: {
         ),
       () =>
         retry(() =>
-          input.sdk.v2.question.request.list({ location: { directory: input.directory } }).then((x) => {
+          input.sdk.v2.question.request.list().then((x) => {
             const questions = x.data?.data ?? []
             const ids = questions.map((question) => question.sessionID)
             const grouped = groupBySession(questions.filter((q): q is QuestionRequest => !!q.id && !!q.sessionID))

@@ -461,7 +461,8 @@ const defaults = (model: ModelV2.Info) => {
     provider: model.providerID,
     headers: runtimeHeaders(model),
     ...request,
-    ...(model.providerID === ProviderV2.ID.make("ollama")
+    ...(model.providerID === ProviderV2.ID.make("ollama") ||
+    model.providerID === ProviderV2.ID.make("llama-cpp")
       ? { http: { ...request.http, redirect: "error" as const } }
       : {}),
     limits: { context: model.limit.context, input: model.limit.input, output: model.limit.output },

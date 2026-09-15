@@ -90,6 +90,31 @@ describe("CatalogV2", () => {
     }).pipe(Effect.provide(localCatalogLayer))
   })
 
+  it.effect("suppresses a policy-denied provider until the deny is lifted", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const policy = yield* Policy.Service
+      const providerID = ProviderV2.ID.make("test")
+
+      // `disabled_providers` lowers to a `provider.use` deny, which is what removing a
+      // built-in provider writes. The transform stays registered — finalize re-evaluates
+      // the deny on every reload — so lifting it restores the provider without re-setup.
+      yield* Effect.gen(function* () {
+        yield* catalog.transform((editor) => editor.provider.update(providerID, () => {}))
+        expect(yield* catalog.provider.get(providerID)).toBeDefined()
+
+        yield* policy.load([new Policy.Info({ action: "provider.use", effect: "deny", resource: "test" })])
+        yield* catalog.reload()
+        expect(yield* catalog.provider.get(providerID)).toBeUndefined()
+        expect(yield* catalog.provider.available()).toEqual([])
+
+        yield* policy.load([])
+        yield* catalog.reload()
+        expect(yield* catalog.provider.get(providerID)).toBeDefined()
+      }).pipe(Effect.ensuring(policy.load([])))
+    }),
+  )
+
   it.effect("derives availability from a provider's integration", () => {
     const integrationID = Integration.ID.make("gateway")
     const providerID = ProviderV2.ID.make("remote")

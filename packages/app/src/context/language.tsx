@@ -28,6 +28,7 @@ export type Locale =
 
 type RawDictionary = typeof en & typeof uiEn
 type Dictionary = i18n.Flatten<RawDictionary>
+export type TranslationKey = keyof Dictionary
 type Source = { dict: Record<string, string> }
 
 function cookie(locale: Locale) {

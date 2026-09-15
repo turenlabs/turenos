@@ -208,7 +208,8 @@ export const windowFor = (item: ModelDefinition, byFamily?: ReadonlyMap<string, 
  * subscription, not per-token API pricing — showing API rates would be a lie.
  *
  * Effort support is per model, not per provider. The CLI resolves these aliases
- * against its own bundled catalog (`opus` -> Opus 5, `sonnet` -> Sonnet 5) and
+ * against its own bundled catalog (`fable` -> Fable 5.1, `opus` -> Opus 5,
+ * `sonnet` -> Sonnet 5) and
  * gates `--effort` on a model capability; the current Fable/Opus/Sonnet
  * generations carry the full `effort`/`max_effort`/`xhigh_effort` set, while
  * Haiku 4.5 carries none and is refused the flag outright. Offering levels a
@@ -217,8 +218,8 @@ export const windowFor = (item: ModelDefinition, byFamily?: ReadonlyMap<string, 
 export const MODELS: ReadonlyArray<ModelDefinition> = [
   {
     id: "fable",
-    apiID: "claude-fable-5",
-    name: "Claude Fable 5",
+    apiID: "fable",
+    name: "Claude Fable",
     family: "claude-fable",
     context: 1_000_000,
     output: 128_000,

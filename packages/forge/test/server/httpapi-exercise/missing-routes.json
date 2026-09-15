@@ -2,6 +2,7 @@
   "DELETE /api/session/{sessionID}/goal",
   "DELETE /global/storage",
   "DELETE /global/storage/scope",
+  "DELETE /provider/{providerID}",
   "GET /api/session/replay",
   "GET /api/session/{sessionID}/goal",
   "GET /api/session/{sessionID}/harness",

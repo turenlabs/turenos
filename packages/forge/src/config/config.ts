@@ -93,6 +93,7 @@ export interface Interface {
   readonly getConsoleState: () => Effect.Effect<ConsoleState>
   readonly update: (config: Info) => Effect.Effect<void>
   readonly updateGlobal: (config: Info) => Effect.Effect<{ info: Info; changed: boolean }>
+  readonly removeGlobalProvider: (providerID: string) => Effect.Effect<boolean>
   readonly invalidate: () => Effect.Effect<void>
   readonly directories: () => Effect.Effect<string[]>
   readonly waitForDependencies: () => Effect.Effect<void>
@@ -527,12 +528,39 @@ const layer = Layer.effect(
       updateGlobalLock.withPermit(updateGlobalUnlocked(config)),
     )
 
+    const removeGlobalProvider = Effect.fn("Config.removeGlobalProvider")((providerID: string) =>
+      updateGlobalLock.withPermit(
+        Effect.gen(function* () {
+          const file = globalConfigFile()
+          const before = (yield* readConfigFile(file)) ?? "{}"
+          // `modify` deletes a property when the replacement is undefined, so both the legacy
+          // `provider.<id>` and the v2 `providers.<id>` spellings are dropped while comments and
+          // undeclared keys in the rest of the file survive untouched. It throws when the parent
+          // path is absent though, so only keys actually in the document may be patched.
+          const document = ConfigParse.jsonc(before, file)
+          const patch = (["provider", "providers"] as const).flatMap((key) => {
+            const section = isRecord(document) ? document[key] : undefined
+            if (!isRecord(section) || !(providerID in section)) return []
+            // Drop the whole section when the removed entry is its only member so the file
+            // is not left holding an empty "provider": {}.
+            return [Object.keys(section).length === 1 ? { [key]: undefined } : { [key]: { [providerID]: undefined } }]
+          })
+          if (patch.length === 0) return false
+          const updated = patch.reduce((result, section) => patchJsonc(result, section), before)
+          yield* fs.writeFileString(file, updated).pipe(Effect.orDie)
+          yield* invalidate()
+          return true
+        }),
+      ),
+    )
+
     return Service.of({
       get,
       getGlobal,
       getConsoleState,
       update,
       updateGlobal,
+      removeGlobalProvider,
       invalidate,
       directories,
       waitForDependencies,

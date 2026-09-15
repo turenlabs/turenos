@@ -1,5 +1,8 @@
 import { ProviderAuth } from "@/provider/auth"
 import { Auth } from "@/auth"
+import { Config } from "@/config/config"
+import * as InstanceState from "@/effect/instance-state"
+import { markInstanceForDisposal } from "../lifecycle"
 import { ProviderQuota } from "@/provider/quota"
 import { Provider } from "@/provider/provider"
 
@@ -44,6 +47,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
     const provider = yield* Provider.Service
     const svc = yield* ProviderAuth.Service
     const credentials = yield* Auth.Service
+    const configSvc = yield* Config.Service
     const { db } = yield* Database.Service
 
     const list = Effect.fn("ProviderHttpApi.list")(function* () {
@@ -205,12 +209,30 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       return true
     })
 
+    const remove = Effect.fn("ProviderHttpApi.remove")(function* (ctx: {
+      params: { providerID: ProviderV2.ID }
+    }) {
+      const providerID = ctx.params.providerID
+      yield* credentials.remove(providerID).pipe(Effect.orDie)
+      // Config-defined providers need their entry dropped from the global file; providers that a
+      // plugin or models.dev keeps re-registering additionally land on disabled_providers so the
+      // policy deny suppresses them. Restore paths clear that entry again.
+      yield* configSvc.removeGlobalProvider(providerID)
+      const disabled = (yield* configSvc.getGlobal()).disabled_providers ?? []
+      if (!disabled.includes(providerID)) {
+        yield* configSvc.updateGlobal({ disabled_providers: [...disabled, providerID] })
+      }
+      yield* markInstanceForDisposal(yield* InstanceState.context)
+      return true
+    })
+
     return handlers
       .handle("list", list)
       .handle("auth", auth)
       .handle("usage", usage)
       .handleRaw("authorize", authorizeRaw)
       .handle("callback", callback)
+      .handle("remove", remove)
   }),
 )
 

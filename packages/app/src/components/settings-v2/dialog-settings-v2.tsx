@@ -12,6 +12,7 @@ import { SettingsKeybinds } from "../settings-keybinds"
 import { SettingsAgentsV2 } from "./agents"
 import { SettingsModelsV2 } from "./models"
 import { SettingsProvidersV2 } from "./providers"
+import { SettingsLocalProvidersV2 } from "./local-providers"
 import "./settings-v2.css"
 import { SettingsServersV2 } from "./servers"
 import { SettingsIntelV2 } from "./intel"
@@ -83,9 +84,15 @@ export const DialogSettings: Component<{
           navigationItem("models", "models", language.t("settings.models.title"), "models visibility picker providers"),
           navigationItem(
             "providers",
-            "providers",
+            "cloud-upload",
             language.t("settings.providers.title"),
-            "providers credentials api oauth custom models",
+            "cloud providers credentials api oauth custom models remote",
+          ),
+          navigationItem(
+            "local-providers",
+            "terminal",
+            language.t("settings.localProviders.title"),
+            "local providers ollama llama claude code muse cli gguf localhost",
           ),
           navigationItem(
             "capabilities",
@@ -106,7 +113,7 @@ export const DialogSettings: Component<{
           ),
           navigationItem(
             "server-settings",
-            "shield",
+            "settings-gear",
             language.t("settings.serverSettings.title"),
             "server shell permissions runtime mcp storage retention docker",
           ),
@@ -254,6 +261,9 @@ export const DialogSettings: Component<{
           </TabsV2.Content>
           <TabsV2.Content value="providers" class="settings-v2-panel">
             <SettingsProvidersV2 />
+          </TabsV2.Content>
+          <TabsV2.Content value="local-providers" class="settings-v2-panel">
+            <SettingsLocalProvidersV2 />
           </TabsV2.Content>
           <TabsV2.Content value="capabilities" class="settings-v2-panel">
             <SettingsGeneralV2 sessionID={props.sessionID} page="capabilities" />

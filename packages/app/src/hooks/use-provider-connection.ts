@@ -66,9 +66,35 @@ export function useProviderConnection() {
     }
   }
 
+  // Remove deletes credentials and config entries and durably disables the provider. Built-in
+  // providers stay restorable through their setup wizard; configured ones are gone until re-added.
+  const remove = async (providerID: string, name: string) => {
+    const sdk = serverSDK()
+    const sync = serverSync()
+    try {
+      await sdk.client.provider.remove({ providerID }, { throwOnError: true })
+      await sdk.client.global.dispose({ throwOnError: true }).finally(sync.refreshProviders)
+      showToast({
+        variant: "success",
+        icon: "circle-check",
+        title: language.t("provider.remove.toast.removed.title", { provider: name }),
+        description: language.t("provider.remove.toast.removed.description", { provider: name }),
+      })
+    } catch (err) {
+      failed(err)
+    }
+  }
+
+  // Refresh disposes the runtime so the next provider read re-runs local probes and discovery.
+  const refresh = async () => {
+    const sdk = serverSDK()
+    const sync = serverSync()
+    await sdk.client.global.dispose().finally(sync.refreshProviders)
+  }
+
   const excluded = () => [
     ...new Set([...(serverSync().data.config.disabled_providers ?? []), ...serverSync().provider.excluded()]),
   ]
 
-  return { disconnect, enable, excluded }
+  return { disconnect, enable, remove, refresh, excluded }
 }

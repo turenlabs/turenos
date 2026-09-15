@@ -145,6 +145,8 @@ import type {
   ProviderOauthAuthorizeResponses,
   ProviderOauthCallbackErrors,
   ProviderOauthCallbackResponses,
+  ProviderRemoveErrors,
+  ProviderRemoveResponses,
   ProviderUsageErrors,
   ProviderUsageResponses,
   PtyConnectErrors,
@@ -3594,6 +3596,38 @@ export class Provider extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<ProviderUsageResponses, ProviderUsageErrors, ThrowOnError>({
       url: "/provider/usage",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove a provider
+   *
+   * Remove a provider's stored credentials and configured entries, and disable it until it is set up again.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<ProviderRemoveResponses, ProviderRemoveErrors, ThrowOnError>({
+      url: "/provider/{providerID}",
       ...options,
       ...params,
     })

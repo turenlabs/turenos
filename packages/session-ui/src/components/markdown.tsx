@@ -37,7 +37,7 @@ import { markdownBlockKey, type MarkdownToken } from "./markdown-worker-protocol
 import { shouldResetCodeTokens, type RenderedCodeState } from "./markdown-code-state"
 import { getCachedMarkdown, sanitizeMarkdown, touchCachedMarkdown, type MarkdownCacheEntry } from "./markdown-cache"
 import { inlineCodeKind } from "./markdown-inline-code-kind"
-import { resolveMarkdownImages, type MarkdownImageResolver } from "./markdown-image"
+import { localMarkdownPath, resolveMarkdownImages, type MarkdownImageResolver } from "./markdown-image"
 
 type RenderedBlock =
   | (MarkdownCacheEntry & { key: string; mode: Exclude<Block["mode"], "code"> })
@@ -366,6 +366,7 @@ export function Markdown(
     streaming?: boolean
     resolveImage?: MarkdownImageResolver
     onImageSettled?: () => void
+    onFileLink?: (path: string) => void
     class?: string
     classList?: Record<string, boolean>
   },
@@ -376,6 +377,7 @@ export function Markdown(
     "streaming",
     "resolveImage",
     "onImageSettled",
+    "onFileLink",
     "class",
     "classList",
   ])
@@ -482,6 +484,32 @@ export function Markdown(
   onCleanup(() => {
     disposed = true
     htmlGeneration++
+  })
+
+  // Workspace-relative hrefs (e.g. [report](out/report.html)) resolve against the
+  // app origin and navigate nowhere useful — intercept them before the
+  // document-level external-link handler sees the click.
+  createEffect(() => {
+    const container = root()
+    if (!container || isServer) return
+    const handleLinkClick = (event: MouseEvent) => {
+      if (event.type === "auxclick" && event.button !== 1) return
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const anchor = target.closest("a")
+      if (!(anchor instanceof HTMLAnchorElement)) return
+      const path = localMarkdownPath(anchor.getAttribute("href") ?? "")
+      if (!path) return
+      event.preventDefault()
+      event.stopPropagation()
+      local.onFileLink?.(path)
+    }
+    container.addEventListener("click", handleLinkClick)
+    container.addEventListener("auxclick", handleLinkClick)
+    onCleanup(() => {
+      container.removeEventListener("click", handleLinkClick)
+      container.removeEventListener("auxclick", handleLinkClick)
+    })
   })
 
   let copyCleanup: (() => void) | undefined

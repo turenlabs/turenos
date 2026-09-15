@@ -205,6 +205,7 @@ export interface MessagePartProps {
   turnDurationMs?: number
   useV2Actions?: boolean
   resolveMarkdownImage?: MarkdownImageResolver
+  onFileLink?: (path: string) => void
 }
 
 function MessageActionButton(
@@ -257,6 +258,7 @@ function PacedMarkdown(props: {
   streaming: boolean
   resolveImage?: MarkdownImageResolver
   onImageSettled?: () => void
+  onFileLink?: (path: string) => void
 }) {
   const value = createPacedValue(
     () => props.text,
@@ -271,6 +273,7 @@ function PacedMarkdown(props: {
         streaming={props.streaming}
         resolveImage={props.resolveImage}
         onImageSettled={props.onImageSettled}
+        onFileLink={props.onFileLink}
       />
     </Show>
   )
@@ -1435,6 +1438,7 @@ export function Part(props: MessagePartProps) {
         turnDurationMs={props.turnDurationMs}
         useV2Actions={props.useV2Actions}
         resolveMarkdownImage={props.resolveMarkdownImage}
+        onFileLink={props.onFileLink}
       />
     </Show>
   )
@@ -1771,6 +1775,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
             streaming={streaming()}
             resolveImage={props.resolveMarkdownImage}
             onImageSettled={props.onContentRendered}
+            onFileLink={props.onFileLink}
           />
         </div>
         <Show when={showCopy()}>
@@ -1806,7 +1811,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   return (
     <Show when={text()}>
       <div data-component="reasoning-part" data-timeline-part-id={part().id}>
-        <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
+        <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} onFileLink={props.onFileLink} />
       </div>
     </Show>
   )

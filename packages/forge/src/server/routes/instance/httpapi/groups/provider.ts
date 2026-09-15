@@ -81,6 +81,18 @@ export const ProviderApi = HttpApi.make("provider")
             description: "Start the OAuth authorization flow for a provider.",
           }),
         ),
+        HttpApiEndpoint.delete("remove", `${root}/:providerID`, {
+          params: { providerID: ProviderV2.ID },
+          query: WorkspaceRoutingQuery,
+          success: described(Schema.Boolean, "Provider removed"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "provider.remove",
+            summary: "Remove a provider",
+            description:
+              "Remove a provider's stored credentials and configured entries, and disable it until it is set up again.",
+          }),
+        ),
         HttpApiEndpoint.post("callback", `${root}/:providerID/oauth/callback`, {
           params: { providerID: ProviderV2.ID },
           query: WorkspaceRoutingQuery,
