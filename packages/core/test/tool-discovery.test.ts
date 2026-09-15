@@ -57,7 +57,8 @@ const mcpCapability = {
   maxLoadedTools: 4,
   unloadAfterIdleTurns: 3,
 } satisfies McpTool.Capability
-const mcpSelected = new Set<string>()
+// Mirrors the production McpToolSource: MCP selection is brokered through the same
+// ToolBroker state map the snapshot uses for deferred built-ins, scoped by directory.
 const source = Layer.succeed(
   McpTool.Source,
   McpTool.Source.of({
@@ -69,24 +70,22 @@ const source = Layer.succeed(
           call: () => Effect.succeed({ content: [{ type: "text", text: "found" }] }),
         } satisfies McpTool.Definition,
       ]),
-    begin: () => Effect.succeed([...mcpSelected]),
-    selected: () => Effect.succeed([...mcpSelected]),
+    begin: (input) =>
+      Effect.sync(() => ToolBroker.beginTurn(input.sessionID, input.capabilities, input.directory)),
+    selected: (input) =>
+      Effect.sync(() =>
+        ToolBroker.selected(input.sessionID, input.capabilities, input.directory).map(
+          (capability) => capability.key,
+        ),
+      ),
     search: (input) =>
-      Effect.succeed({
-        matches: input.capabilities.map((capability) => ({
-          ...capability,
-          selected: mcpSelected.has(capability.key),
-        })),
-        selected: [...mcpSelected],
-        available: input.capabilities.length,
-      }),
+      Effect.sync(() => ToolBroker.search(input.sessionID, input.capabilities, input.query, input.directory)),
     load: (input) =>
-      Effect.sync(() => {
-        const loaded = input.tools.filter((key) => !mcpSelected.has(key))
-        for (const key of input.tools) mcpSelected.add(key)
-        return { loaded, selected: [...mcpSelected], message: "Loaded for next turn." }
+      Effect.try({
+        try: () => ToolBroker.load(input.sessionID, input.capabilities, input.tools, input.directory),
+        catch: (error) => new Tool.Failure({ message: error instanceof Error ? error.message : String(error) }),
       }),
-    touch: () => Effect.void,
+    touch: (input) => Effect.sync(() => ToolBroker.touch(input.sessionID, input.key, input.directory)),
   }),
 )
 
@@ -127,7 +126,6 @@ const call = (sessionID: SessionSchema.ID, name: string, input: unknown, id = "c
 
 const setup = Effect.fnUntraced(function* (suffix: string) {
   ToolBroker.clear()
-  mcpSelected.clear()
   const tools = yield* Tools.Service
   yield* tools.register({ fixture_yara: fixtureYara, fixture_inline: fixtureInline })
   return SessionSchema.ID.make(`ses_tool_discovery_${suffix}`)
@@ -175,6 +173,31 @@ describe("SessionToolSnapshot tool discovery", () => {
       const names = after.materialization.definitions.map((definition) => definition.name)
       expect(names).toContain("fixture_yara")
       expect(after.materialization.deferred.find((entry) => entry.name === "fixture_yara")?.selected).toBe(true)
+    }),
+  )
+
+  it.effect("keeps built-in and MCP selections alive while sharing the broker across turns", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* setup("coexist")
+      const first = yield* materialize(sessionID)
+      const loaded = yield* first.materialization.settle(
+        call(sessionID, ToolBroker.LOAD_TOOL_NAME, { tools: ["fixture_yara", mcpCapability.key] }),
+      )
+      expect(loaded.result.type).not.toBe("error")
+
+      // One beginTurn per domain runs on every materialization; a shared scope would have
+      // each domain prune the other's selections, so neither tool would ever appear.
+      const second = yield* materialize(sessionID)
+      const names = second.materialization.definitions.map((definition) => definition.name)
+      expect(names).toContain("fixture_yara")
+      expect(names).toContain(McpTool.toolName(mcpCapability.server, mcpCapability.name))
+      expect(second.snapshot.deferred.loaded).toContain("fixture_yara")
+      expect(second.snapshot.broker.loaded).toContain(mcpCapability.key)
+
+      const third = yield* materialize(sessionID)
+      const later = third.materialization.definitions.map((definition) => definition.name)
+      expect(later).toContain("fixture_yara")
+      expect(later).toContain(McpTool.toolName(mcpCapability.server, mcpCapability.name))
     }),
   )
 

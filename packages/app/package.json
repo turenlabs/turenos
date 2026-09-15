@@ -1,6 +1,6 @@
 {
   "name": "@turenlabs/app",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "private": true,
   "description": "TurenOS Desktop and web renderer",
   "type": "module",

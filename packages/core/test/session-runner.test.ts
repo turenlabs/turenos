@@ -52,6 +52,8 @@ import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
 import { SessionRunnerRetry } from "@turenlabs/core/session/runner/retry"
 import { SessionStatus } from "@turenlabs/core/session/status"
 import { Reflection } from "@turenlabs/core/reflection"
+import { McpTool } from "@turenlabs/core/tool/mcp"
+import { ToolBroker } from "@turenlabs/core/tool/broker"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
 import { ReflectionTool } from "@turenlabs/core/tool/reflection"
 import { GoalTool } from "@turenlabs/core/tool/goal"
@@ -376,6 +378,32 @@ const config = Layer.succeed(
       ]),
   }),
 )
+// Production's McpToolSource brokers MCP selection through the same ToolBroker state map
+// the snapshot uses for deferred built-ins; a purely in-memory stub would hide the
+// shared-state interaction this suite needs to cover. No capabilities are listed, which
+// is the common case — a session with no MCP servers connected.
+const mcpSource = Layer.succeed(
+  McpTool.Source,
+  McpTool.Source.of({
+    list: () => Effect.succeed([]),
+    begin: (input) =>
+      Effect.sync(() => ToolBroker.beginTurn(input.sessionID, input.capabilities, input.directory)),
+    selected: (input) =>
+      Effect.sync(() =>
+        ToolBroker.selected(input.sessionID, input.capabilities, input.directory).map(
+          (capability) => capability.key,
+        ),
+      ),
+    search: (input) =>
+      Effect.sync(() => ToolBroker.search(input.sessionID, input.capabilities, input.query, input.directory)),
+    load: (input) =>
+      Effect.try({
+        try: () => ToolBroker.load(input.sessionID, input.capabilities, input.tools, input.directory),
+        catch: (error) => new Tool.Failure({ message: error instanceof Error ? error.message : String(error) }),
+      }),
+    touch: (input) => Effect.sync(() => ToolBroker.touch(input.sessionID, input.key, input.directory)),
+  }),
+)
 const runnerLayer = AppNodeBuilder.build(
   LayerNode.group([SessionRunnerLLM.node, SessionTodo.node, SessionHarness.node, ReflectionTool.node]),
   [
@@ -388,6 +416,7 @@ const runnerLayer = AppNodeBuilder.build(
     [ReferenceGuidance.node, referenceGuidance],
     [PermissionV2.node, permission],
     [Config.node, config],
+    [McpTool.sourceNode, mcpSource],
   ],
 )
 const execution = Layer.effect(
@@ -457,6 +486,7 @@ const it = testEffect(
       [SessionExecution.node, execution],
       [LocationServiceMap.node, executionLocations],
       [Config.node, config],
+      [McpTool.sourceNode, mcpSource],
     ],
   ),
 )
@@ -985,6 +1015,41 @@ describe("SessionRunnerLLM", () => {
           ],
         },
       ])
+    }),
+  )
+
+  it.effect("advertises a deferred tool on the provider turn after tool_load selects it", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const registry = yield* ToolRegistry.Service
+      yield* registry.register({
+        fixture_deferred: Tool.make({
+          deferred: true,
+          description: "Deferred fixture tool",
+          input: Schema.Struct({}),
+          output: Schema.Struct({ ok: Schema.Boolean }),
+          execute: () => Effect.succeed({ ok: true }),
+        }),
+      })
+      const session = yield* SessionV2.Service
+      responses = [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "call-load", name: "tool_load", input: { tools: ["fixture_deferred"] } }),
+          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+          LLMEvent.finish({ reason: "tool-calls" }),
+        ],
+        fragmentFixture("text", "deferred-done", ["Done"]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Load the fixture tool" }), resume: false })
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      const first = requests[0]?.tools.map((tool) => tool.name) ?? []
+      const second = requests[1]?.tools.map((tool) => tool.name) ?? []
+      expect(first).not.toContain("fixture_deferred")
+      expect(first).toContain("tool_load")
+      expect(second).toContain("fixture_deferred")
     }),
   )
 

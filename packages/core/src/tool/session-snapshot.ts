@@ -310,6 +310,11 @@ const layer = Layer.effect(
           server: ToolBroker.BUILTIN_SERVER,
         }),
       )
+      // MCP and deferred built-in selections share the broker's process-global state map.
+      // The built-in domain needs its own scope: beginTurn prunes selections absent from
+      // the caller's capability list, so one shared scope would have each domain evict
+      // the other on every materialization.
+      const brokerScope = `builtin\u0000${input.directory}`
       // An explicit non-catch-all allow rule means the agent declared this tool part of its
       // own contract (e.g. specialist profiles), so it stays inline rather than deferred.
       const forceInline = new Set(
@@ -334,17 +339,17 @@ const layer = Layer.effect(
           : input.deferral?.selected !== undefined
             ? input.deferral.selected
             : !advance
-              ? ToolBroker.selected(input.sessionID, builtinCapabilities, input.directory).map(
+              ? ToolBroker.selected(input.sessionID, builtinCapabilities, brokerScope).map(
                   (capability) => capability.key,
                 )
-              : ToolBroker.beginTurn(input.sessionID, builtinCapabilities, input.directory),
+              : ToolBroker.beginTurn(input.sessionID, builtinCapabilities, brokerScope),
       )
       const inline = () =>
         new Set(
           deferralEnabled
             ? [
                 ...(input.deferral?.selected ??
-                  ToolBroker.selected(input.sessionID, builtinCapabilities, input.directory).map(
+                  ToolBroker.selected(input.sessionID, builtinCapabilities, brokerScope).map(
                     (capability) => capability.key,
                   )),
                 ...forceInline,
@@ -365,7 +370,7 @@ const layer = Layer.effect(
                 capabilities: inventory.capabilities,
                 query: args.query,
               })
-              const builtin = ToolBroker.search(input.sessionID, builtinCapabilities, args.query, input.directory)
+              const builtin = ToolBroker.search(input.sessionID, builtinCapabilities, args.query, brokerScope)
               const loaded = inline()
               return {
                 matches: [
@@ -396,7 +401,7 @@ const layer = Layer.effect(
                         input.sessionID,
                         builtinCapabilities,
                         args.tools.filter((key) => builtinKeys.has(key)),
-                        input.directory,
+                        brokerScope,
                         { globalCap: ToolBroker.BUILTIN_MAX_LOADED_TOOLS },
                       ),
                     catch: (error) =>
@@ -444,14 +449,14 @@ const layer = Layer.effect(
           if (deferralEnabled && input.deferral?.selected === undefined && deferredNames.has(name)) {
             if (!inline().has(name)) {
               try {
-                ToolBroker.load(input.sessionID, builtinCapabilities, [name], input.directory, {
+                ToolBroker.load(input.sessionID, builtinCapabilities, [name], brokerScope, {
                   globalCap: ToolBroker.BUILTIN_MAX_LOADED_TOOLS,
                 })
               } catch {
                 // A cap-exceeded or raced-out candidate still executes; it just stays unadvertised.
               }
             }
-            ToolBroker.touch(input.sessionID, name, input.directory)
+            ToolBroker.touch(input.sessionID, name, brokerScope)
           }
           return materialized.settle(executeInput)
         },
