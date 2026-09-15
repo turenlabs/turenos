@@ -60,6 +60,13 @@ export type Result = {
 }
 type Score = Omit<Result, "reviewed">
 
+/**
+ * Digests of reviewed catalog skill manifests — `sha256` of the normalized
+ * `Extension.Manifest` JSON the client submits at install. Regenerate by
+ * normalizing each catalog entry through `Extension.normalizeExternalManifest`
+ * and hashing `JSON.stringify(new Extension.Manifest(...))`; the digest covers
+ * every model-visible field, so any manifest edit re-flags the skill.
+ */
 const reviewedSkillDigests = new Set([
   "a37f910dad1abe5169b4634b8c49c62431ffe888265439b418752d1994d5a29a",
   "044e12760ac3d7fa1271d2cacee2b9a948da9eb94169b9f2a6c467ad649da580",
@@ -73,6 +80,10 @@ const reviewedSkillDigests = new Set([
   "879a0c07db2c0511924354737730173c75b19d86aaa1ec01ea3cf75f002737d9",
   "c76012a2883684c4a53d83a1d9172d27ab14ef298a754ad36ee2b776323e2853",
   "71250d9b6b067975a618c8191e338d4e3001b11cadfd871105b1e09aa9d1bf99",
+  // turenlabs/iac-config-review
+  "a87235c795b385cb97da55117e4b8d9d9cd30a37de14304103bff5845e4b05e8",
+  // turenlabs/threat-model-review
+  "b38682d889fa35e7d3ff8a620ddc2a0ae0019769a0d9bf45bbca3161824bb52b",
 ])
 
 type Dependencies = {

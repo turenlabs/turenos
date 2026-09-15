@@ -188,6 +188,68 @@ export const windowsByFamily = (entries: Iterable<CatalogEntry>): ReadonlyMap<st
   return new Map([...best].map(([family, item]) => [family, item.limit]))
 }
 
+/** A catalog entry reduced to what pinned-generation seeding needs. */
+export type PinnedEntry = CatalogEntry & {
+  readonly id: string
+  readonly name?: string
+  readonly status?: string
+}
+
+export type PinnedModel = ModelDefinition & {
+  /** Epoch millis from the upstream catalog; drives release ordering in the picker. */
+  readonly released: number
+}
+
+/**
+ * A dated deployment id (`claude-opus-4-5-20251101`) names the same generation
+ * as the undated id the CLI accepts; seeding both would offer two rows for one
+ * model.
+ */
+const DATED_DEPLOYMENT = /-\d{8}$/
+
+/**
+ * Fixed-generation entries mirrored from the anthropic catalog.
+ *
+ * The aliases in `MODELS` float to whatever generation the installed CLI
+ * currently ships, so there is otherwise no way to keep an older generation —
+ * or to disable a specific one — once the float moves on. A pinned entry
+ * passes its own id to `--model` and is enabled/disabled independently of the
+ * alias.
+ *
+ * Effort variants follow the alias contract: only the newest catalog entry per
+ * family is known to accept `--effort`, so older generations publish none and
+ * run at the CLI default.
+ */
+export const pinnedModels = (entries: Iterable<PinnedEntry>): ReadonlyArray<PinnedModel> => {
+  const served = new Map(MODELS.map((item) => [item.family, item]))
+  const candidates = Array.from(entries).flatMap((entry) => {
+    const family = entry.family
+    if (family === undefined) return []
+    const alias = served.get(family)
+    if (alias === undefined) return []
+    if (entry.status !== undefined && entry.status !== "active") return []
+    if (entry.limit.context <= 0 || DATED_DEPLOYMENT.test(entry.id)) return []
+    return [{ entry, family, alias }]
+  })
+  const newest = new Map<string, number>()
+  for (const { entry, family } of candidates) {
+    const current = newest.get(family)
+    if (current === undefined || entry.released > current) newest.set(family, entry.released)
+  }
+  return candidates
+    .map(({ entry, family, alias }): PinnedModel => ({
+      id: entry.id,
+      apiID: entry.id,
+      name: entry.name ?? entry.id,
+      family,
+      context: entry.limit.context,
+      output: entry.limit.output,
+      released: entry.released,
+      efforts: entry.released === newest.get(family) ? alias.efforts : [],
+    }))
+    .sort((a, b) => b.released - a.released)
+}
+
 /**
  * The window TurenOS should report and budget against for a CLI model.
  *

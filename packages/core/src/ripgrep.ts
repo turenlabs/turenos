@@ -7,6 +7,7 @@ import { makeGlobalNode } from "./effect/app-node"
 import { AppProcess, collectStream, waitForAbort } from "./process"
 import { NonNegativeInt, PositiveInt, RelativePath } from "./schema"
 import { RipgrepBinary } from "./ripgrep/binary"
+import { RipgrepWasm } from "./ripgrep/wasm"
 import { Protected } from "./filesystem/protected"
 
 /**
@@ -121,7 +122,7 @@ const argvBatches = (files: readonly string[]) => {
   return batches
 }
 
-const layer = Layer.effect(
+const native = Layer.effect(
   Service,
   Effect.gen(function* () {
     const process = yield* AppProcess.Service
@@ -338,4 +339,17 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = makeGlobalNode({ service: Service, layer: layer, deps: [RipgrepBinary.node, AppProcess.node] })
+// The WASM backend (libripgrep crates compiled to wasm32, worker_threads pool)
+// is the default when its asset resolves; FORGE_RIPGREP_WASM=0 or a missing
+// artifact falls back to the spawned rg binary.
+const layer = Layer.unwrap(
+  Effect.map(RipgrepWasm.Service, (wasm) =>
+    wasm.enabled && process.env.FORGE_RIPGREP_WASM !== "0" ? Layer.succeed(Service, wasm.iface) : native,
+  ),
+)
+
+export const node = makeGlobalNode({
+  service: Service,
+  layer,
+  deps: [RipgrepBinary.node, AppProcess.node, RipgrepWasm.node],
+})

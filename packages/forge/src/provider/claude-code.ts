@@ -69,6 +69,7 @@ function model(
     readonly context?: number
     readonly output?: number
     readonly efforts?: ReadonlyArray<string>
+    readonly releaseDate?: string
   } = {},
 ): Model {
   return {
@@ -97,7 +98,7 @@ function model(
     status: "active",
     options: {},
     headers: {},
-    release_date: "",
+    release_date: limits.releaseDate ?? "",
     // The composer renders its effort selector from this snapshot, so the ids
     // here must be exactly the ones the v2 catalog publishes — a level offered
     // here but absent there would fall back to the model default at run time.
@@ -111,21 +112,23 @@ function model(
  * catalog is reachable, in which case the static table's fallbacks apply.
  */
 export function info(catalog?: Record<string, ModelsDev.Provider>): Info {
-  const byFamily = ClaudeCodeCLI.windowsByFamily(
-    Object.values(catalog?.[ClaudeCodeCLI.CATALOG_PROVIDER]?.models ?? {}).map((model) => ({
-      family: model.family,
-      released: Date.parse(model.release_date ?? "") || 0,
-      limit: { context: model.limit.context, output: model.limit.output },
-    })),
-  )
+  const entries = Object.entries(catalog?.[ClaudeCodeCLI.CATALOG_PROVIDER]?.models ?? {}).map(([id, model]) => ({
+    id,
+    name: model.name,
+    family: model.family,
+    released: Date.parse(model.release_date ?? "") || 0,
+    limit: { context: model.limit.context, output: model.limit.output },
+    status: model.status,
+  }))
+  const byFamily = ClaudeCodeCLI.windowsByFamily(entries)
   return {
     id: ID,
     name: "Claude Code (local)",
     source: "custom",
     env: [],
     options: {},
-    models: Object.fromEntries(
-      ClaudeCodeCLI.MODELS.map((item) => {
+    models: Object.fromEntries([
+      ...ClaudeCodeCLI.MODELS.map((item) => {
         const window = ClaudeCodeCLI.windowFor(item, byFamily)
         return [
           item.id,
@@ -135,9 +138,25 @@ export function info(catalog?: Record<string, ModelsDev.Provider>): Info {
             output: window.output,
             efforts: item.efforts,
           }),
-        ]
+        ] as const
       }),
-    ),
+      // Fixed-generation entries next to the floating aliases, so a specific
+      // release stays selectable — and individually hideable — after the alias
+      // moves on to a newer one.
+      ...ClaudeCodeCLI.pinnedModels(entries).map(
+        (pinned) =>
+          [
+            pinned.id,
+            model(pinned.id, pinned.name, pinned.family, {
+              apiID: pinned.apiID,
+              context: pinned.context,
+              output: pinned.output,
+              efforts: pinned.efforts,
+              releaseDate: pinned.released ? new Date(pinned.released).toISOString().slice(0, 10) : "",
+            }),
+          ] as const,
+      ),
+    ]),
   }
 }
 

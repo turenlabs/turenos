@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "name": "@turenlabs/core",
   "type": "module",
   "license": "MIT",
@@ -65,6 +65,7 @@
     "@turenlabs/wasm-inspect-wasm": "workspace:*",
     "@turenlabs/binwalk-scan-wasm": "workspace:*",
     "@turenlabs/monodis-wasm": "workspace:*",
+    "@turenlabs/ripgrep-wasm": "workspace:*",
     "@turenlabs/debug-symbols-wasm": "workspace:*",
     "drizzle-kit": "catalog:"
   },

@@ -5,6 +5,7 @@ import { ProxyPolicy } from "@turenlabs/protocol/proxy-policy"
 import { SecurityProxy } from "@turenlabs/schema/security-proxy"
 import { usePlatform } from "@/context/platform"
 import { useServer } from "@/context/server"
+import { useServerSync } from "@/context/server-sync"
 import {
   canEditNote,
   codec,
@@ -14,6 +15,7 @@ import {
   parseHeaders,
   parseRawRequest,
   previewRule,
+  proxyOwner,
 } from "./security-proxy-model"
 
 const control =
@@ -120,6 +122,16 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
   const supported = () =>
     !!platform.securityProxy && server.current?.type === "sidecar" && server.current.variant === "base"
   const directory = () => server.projects.last() ?? ""
+  const serverSync = useServerSync()
+  // Session-scoped owners come from the session record so directory and
+  // workspaceID match the tool's Location identity exactly.
+  const session = createMemo(() => {
+    const id = sessionID()
+    return id ? serverSync().session.peek(id) : undefined
+  })
+  const owner = createMemo(() =>
+    proxyOwner({ directory: directory(), session: session(), sessionID: sessionID() || undefined }),
+  )
   const [state, set] = createStore({
     caseID: "",
     cases: [] as SecurityProxy.Case[],
@@ -185,10 +197,7 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
     lane = result.catch(() => undefined)
     return result
   }
-  const owned = () => ({
-    owner: { directory: directory(), ...(sessionID() ? { sessionID: sessionID() } : {}) },
-    caseID: state.caseID,
-  })
+  const owned = () => ({ owner: owner(), caseID: state.caseID })
   const action = async (label: string, fn: (version: number) => Promise<void> | void) => {
     if (state.busy) return
     const version = epoch
@@ -217,11 +226,14 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
       set("caseID", supported() && /^[a-zA-Z0-9_-]{1,128}$/.test(next) ? next : "")
     }),
   )
+  createEffect(() => {
+    const id = sessionID()
+    if (id && !serverSync().session.peek(id)) void serverSync().session.resolve(id).catch(() => undefined)
+  })
   createEffect(
-    on([directory, supported, sessionID, () => state.caseID], ([directory, available, session, caseID]) => {
+    on([owner, supported, () => state.caseID], ([owner, available, caseID]) => {
       const version = ++epoch
       finishConfirmation(false)
-      const owner = { directory, ...(session ? { sessionID: session } : {}) }
       set({
         cases: [],
         current: undefined,
@@ -247,7 +259,7 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
         decodeInput: "",
         decodeOutput: "",
       })
-      if (!available || !directory) {
+      if (!available || !owner.directory) {
         set("cases", [])
         return
       }
@@ -570,16 +582,7 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                   disabled={!!state.busy}
                   onClick={() =>
                     action("Refresh cases", async (version) => {
-                      apply(
-                        await invoke(
-                          {
-                            type: "list",
-                            owner: { directory: directory(), ...(sessionID() ? { sessionID: sessionID() } : {}) },
-                          },
-                          version,
-                        ),
-                        version,
-                      )
+                      apply(await invoke({ type: "list", owner: owner() }, version), version)
                     })
                   }
                 >
@@ -594,21 +597,21 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                       disabled={!!state.busy}
                       onClick={() =>
                         action("Create case", async (version) => {
-                          const owner = { directory: directory(), ...(sessionID() ? { sessionID: sessionID() } : {}) }
+                          const current = owner()
                           const id = sessionID() ? `browser_${sessionID()}` : crypto.randomUUID()
                           const created = await invoke(
                             {
                               type: "create",
-                              owner,
+                              owner: current,
                               input: { id, name: state.name.trim() || "Browser case" },
                             },
                             version,
                           )
                           if (!created.case || version !== epoch || !mounted) return
                           if (state.caseID) await invoke({ type: "close", ...owned() }, version)
-                          await invoke({ type: "open", owner, caseID: created.case.id }, version)
+                          await invoke({ type: "open", owner: current, caseID: created.case.id }, version)
                           if (version !== epoch || !mounted) {
-                            await invoke({ type: "close", owner, caseID: created.case.id })
+                            await invoke({ type: "close", owner: current, caseID: created.case.id })
                             return
                           }
                           set("cases", [...state.cases.filter((item) => item.id !== id), created.case])

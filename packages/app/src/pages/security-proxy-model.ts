@@ -3,6 +3,7 @@ import { SecurityProxy } from "@turenlabs/schema/security-proxy"
 import { ProxyPolicy } from "@turenlabs/protocol/proxy-policy"
 
 // These headers belong to the transport, not the editable message.
+// ":"-prefixed names are HTTP/2 pseudo-headers derived from the method and URL.
 const framing = new Set([
   "content-length",
   "transfer-encoding",
@@ -15,11 +16,27 @@ const framing = new Set([
   "te",
 ])
 export function editableHeaders(headers: readonly SecurityProxy.Header[]) {
-  return headers.filter((header) => !framing.has(header.name.toLowerCase()))
+  return headers.filter((header) => !header.name.startsWith(":") && !framing.has(header.name.toLowerCase()))
 }
 
 export function canEditNote(existing: string, revealed: boolean) {
   return revealed || existing === ""
+}
+
+// Bindings and case storage scope by the exact owner identity, so the owner
+// must match the tool's construction: session Location directory and
+// workspaceID. The project-list path can differ (WSL mounts, symlinked roots)
+// and lacks workspaceID, which splits the panel onto an empty scope.
+export function proxyOwner(input: {
+  directory: string
+  session?: { directory: string; workspaceID?: string }
+  sessionID?: string
+}): SecurityProxy.Owner {
+  return {
+    directory: input.session?.directory || input.directory,
+    ...(input.session?.workspaceID ? { workspaceID: input.session.workspaceID } : {}),
+    ...(input.sessionID ? { sessionID: input.sessionID } : {}),
+  }
 }
 
 export function parseHeaders(text: string) {

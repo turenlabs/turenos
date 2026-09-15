@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process"
 import { realpath, stat } from "node:fs/promises"
-import { basename, isAbsolute, join } from "node:path"
+import { basename, isAbsolute, join, posix } from "node:path"
 import { Schema } from "effect"
 import { SecurityProxy } from "@turenlabs/schema/security-proxy"
 import { app, BrowserWindow, Notification, clipboard, dialog, shell } from "electron"
@@ -159,6 +159,14 @@ export function registerIpcHandlers(deps: Deps) {
   ipcMain.handle("export-debug-logs", () => deps.exportDebugLogs())
   ipcMain.handle("security-proxy", async (event, value: unknown) => {
     const command = Schema.decodeUnknownSync(Schema.toType(SecurityProxy.Command))(value)
+    // Session-scoped owners carry the sidecar's Location directory verbatim: it
+    // is not always a host path (WSL sidecars), and the binding/store identity
+    // must match the tool's string exactly, so no host-side canonicalization.
+    if (command.owner.sessionID) {
+      if (!isAbsolute(command.owner.directory) && !posix.isAbsolute(command.owner.directory))
+        throw new Error("An absolute owner directory is required")
+      return proxy.invoke(storageOwner(event), command)
+    }
     if (!isAbsolute(command.owner.directory)) throw new Error("An absolute local project directory is required")
     const directory = await realpath(command.owner.directory)
     if (!(await stat(directory)).isDirectory()) throw new Error("Project directory not found")

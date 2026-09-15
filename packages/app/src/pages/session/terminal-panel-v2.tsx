@@ -233,7 +233,7 @@ export function TerminalPanelV2(
         "w-full": !isDesktop() || stacked(),
         "min-w-0 h-full flex-1": isDesktop() && opened() && !stacked(),
         "w-0 h-full pointer-events-none": isDesktop() && !opened(),
-        "rounded-[10px] shadow-[var(--v2-elevation-raised)]": isDesktop() && newLayout(),
+        "border-t border-v2-border-border-base": isDesktop() && newLayout() && opened() && stacked(),
         "transition-[height] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[height] motion-reduce:transition-none":
           !isDesktop() && !size.active(),
       }}

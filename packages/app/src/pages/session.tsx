@@ -205,7 +205,7 @@ export function TargetSessionRouteContent() {
     // when session content falls back to the route error boundary.
     <TargetServerScopedProviders directory={directory} sessionID={() => params.id}>
       <TargetSessionSettingsCommand />
-      <SessionRouteErrorBoundary sessionID={params.id} serverKey={requireServerKey(params.serverKey)} padded>
+      <SessionRouteErrorBoundary sessionID={params.id} serverKey={requireServerKey(params.serverKey)}>
         <ResolvedTargetSessionRoute />
       </SessionRouteErrorBoundary>
     </TargetServerScopedProviders>
@@ -218,15 +218,15 @@ function TargetSessionSettingsCommand() {
 }
 
 export function SessionRouteErrorBoundary(
-  props: ParentProps<{ sessionID?: string; serverKey?: ServerConnection.Key; padded?: boolean }>,
+  props: ParentProps<{ sessionID?: string; serverKey?: ServerConnection.Key }>,
 ) {
   const settings = useSettings()
   return (
     <ErrorBoundary
       fallback={(error) =>
         settings.general.newLayoutDesigns() ? (
-          <SessionRouteFrame padded={props.padded}>
-            <SessionPanelFrame newLayout raised={!!props.sessionID}>
+          <SessionRouteFrame>
+            <SessionPanelFrame newLayout>
               <SessionErrorFallback error={error} sessionID={props.sessionID} serverKey={props.serverKey} />
             </SessionPanelFrame>
           </SessionRouteFrame>
@@ -353,7 +353,7 @@ function ResolvedTargetSessionRoute() {
     </SDKProvider>
   )
   const sessionShell = () => (
-    <SessionPanelFrame newLayout raised>
+    <SessionPanelFrame newLayout>
       <header data-session-shell-header class="flex h-12 shrink-0 items-center border-b border-border-weak-base px-4">
         <h1 data-session-shell-title class="truncate font-mono text-14-medium text-text-strong">
           {targetActivation()?.title ?? cachedTitle() ?? "Loading session"}
@@ -463,53 +463,27 @@ function SessionProviders(props: ParentProps) {
   )
 }
 
-function SessionRouteFrame(props: ParentProps<{ padded?: boolean }>) {
-  return (
-    <div class="relative size-full min-w-0 overflow-hidden flex flex-col" classList={{ "p-2": props.padded }}>
-      {props.children}
-    </div>
-  )
+function SessionRouteFrame(props: ParentProps) {
+  return <div class="relative size-full min-w-0 overflow-hidden flex flex-col">{props.children}</div>
 }
 
 /*
  * The session pane. v2 reads as a terminal split, so it matches the dock
- * surfaces: square corners and a real 1px rule where the soft 10px radius and
- * the `--v2-elevation-raised` drop shadow (whose "border" was a 0.5px spread
- * ring) used to be. `raised` still means "this pane holds a session" — it now
- * draws the edge rather than the shadow, so the new-session view stays
- * edgeless exactly as before. The legacy shell is untouched.
- *
- * Drawn as an overlay, not a border. The shadow it replaced cost no layout; a
- * border would take 2px out of the transcript's width permanently and turn every
- * side-panel or terminal toggle into a content-width change, which in a
- * virtualised transcript can move a wrap in rows that are not mounted to
- * re-measure. An absolutely positioned ring is out of flow, so it costs nothing.
- *
- * It is an overlay rather than an inset `outline` because the timeline header is
- * `sticky top-0 z-30` (message-timeline.tsx) and paints over the pane's own
- * outline: measured from a screenshot, an outline gave a hairline on the left,
- * right and bottom edges and nothing at all along the top. The ring sits above
- * everything in the pane instead, and `pointer-events-none` keeps it inert.
+ * surfaces: edge-to-edge, separated from sibling panes and the Agents panel
+ * by 1px rules rather than floating on the deep background inside a card.
+ * The legacy shell is untouched.
  */
-function SessionPanelFrame(props: ParentProps<{ newLayout: boolean; raised?: boolean }>) {
+function SessionPanelFrame(props: ParentProps<{ newLayout: boolean }>) {
   return (
     <div
       classList={{
         "flex-1 min-h-0 min-w-0 flex flex-col": true,
         "bg-v2-background-bg-base": props.newLayout,
         "bg-background-stronger": !props.newLayout,
-        "relative rounded-surface overflow-hidden": props.newLayout,
+        "relative overflow-hidden": props.newLayout,
       }}
     >
       {props.children}
-      <Show when={props.newLayout && props.raised}>
-        <div
-          aria-hidden="true"
-          data-slot="session-panel-edge"
-          class="pointer-events-none absolute inset-0 z-[80] rounded-surface"
-          style={{ "box-shadow": "inset 0 0 0 var(--v2-rule-width) var(--v2-border-border-base)" }}
-        />
-      </Show>
     </div>
   )
 }
@@ -2861,13 +2835,7 @@ export default function Page() {
   return (
     <SessionRouteFrame>
       <SessionHeader />
-      <div
-        ref={panelRow}
-        class="flex-1 min-h-0 min-w-0 flex flex-col md:flex-row"
-        classList={{
-          "gap-2 p-2": settings.general.newLayoutDesigns(),
-        }}
-      >
+      <div ref={panelRow} class="flex-1 min-h-0 min-w-0 flex flex-col md:flex-row">
         <Show when={!binarySnapshot() && !isDesktop() && !!params.id && !settings.general.newLayoutDesigns()}>
           {mobileTabs()}
         </Show>
@@ -2884,13 +2852,11 @@ export default function Page() {
           }}
         >
           {settings.general.newLayoutDesigns() ? (
-            <SessionPanelFrame newLayout raised={!!params.id}>
+            <SessionPanelFrame newLayout>
               <ErrorBoundary fallback={sessionErrorFallback}>{sessionPanelContent()}</ErrorBoundary>
             </SessionPanelFrame>
           ) : (
-            <SessionPanelFrame newLayout={false} raised={!!params.id}>
-              {sessionPanelContent()}
-            </SessionPanelFrame>
+            <SessionPanelFrame newLayout={false}>{sessionPanelContent()}</SessionPanelFrame>
           )}
 
           <Show when={!binarySnapshot() && desktopSessionResizeOpen()}>
@@ -2958,7 +2924,7 @@ export default function Page() {
           </Show>
           <Show when={newSessionDesign()}>
             <Show when={isDesktop() ? desktopV2PanelLayout().visible : terminalOpen()}>
-              <div class="min-w-0 h-full flex flex-1 flex-col">
+              <div class="min-w-0 h-full flex flex-1 flex-col border-l border-v2-border-border-base">
                 <Show when={isDesktop() && (desktopV2ReviewOpen() || desktopFileTreeOpen())}>
                   <div class="min-h-0 flex-1">
                     <SessionSidePanel

@@ -8,8 +8,36 @@ import {
   parseHeaders,
   parseRawRequest,
   previewRule,
+  proxyOwner,
 } from "./security-proxy-model"
 import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
+
+describe("proxyOwner", () => {
+  test("session-scoped owners use the session location, not the project path", () => {
+    // The tool keys bindings and case storage by Location directory plus
+    // workspaceID; a project path that differs in string form (WSL mounts,
+    // symlinked roots) or omits workspaceID lands on an empty scope.
+    expect(
+      proxyOwner({
+        directory: "C:\\work\\repo",
+        session: { directory: "/mnt/c/work/repo", workspaceID: "wrk_1" },
+        sessionID: "ses_1",
+      }),
+    ).toEqual({ directory: "/mnt/c/work/repo", workspaceID: "wrk_1", sessionID: "ses_1" })
+  })
+  test("omits workspaceID when the session location has none", () => {
+    expect(
+      proxyOwner({ directory: "/other", session: { directory: "/repo" }, sessionID: "ses_1" }),
+    ).toEqual({ directory: "/repo", sessionID: "ses_1" })
+  })
+  test("falls back to the project directory outside a session", () => {
+    expect(proxyOwner({ directory: "/repo" })).toEqual({ directory: "/repo" })
+    expect(proxyOwner({ directory: "/repo", session: { directory: "" }, sessionID: "ses_1" })).toEqual({
+      directory: "/repo",
+      sessionID: "ses_1",
+    })
+  })
+})
 
 describe("security proxy editors", () => {
   test("existing notes require reveal; empty notes allow new input", () => {
@@ -36,6 +64,9 @@ describe("security proxy editors", () => {
     expect(
       editableHeaders([
         { name: "Host", value: "example.test" },
+        { name: ":authority", value: "example.test" },
+        { name: ":method", value: "GET" },
+        { name: ":path", value: "/" },
         { name: "Cookie", value: "a=b" },
       ]),
     ).toEqual([{ name: "Cookie", value: "a=b" }])

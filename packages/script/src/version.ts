@@ -51,6 +51,7 @@ export const INDEPENDENTLY_VERSIONED_PACKAGE_FILES = [
   "packages/monodis-wasm/package.json",
   "packages/pdf-inspect-wasm/package.json",
   "packages/rebuild-timeline-wasm/package.json",
+  "packages/ripgrep-wasm/package.json",
   "packages/rtf-inspect-wasm/package.json",
   "packages/sourcemap-wasm/package.json",
   "packages/sqlite-inspect-wasm/package.json",

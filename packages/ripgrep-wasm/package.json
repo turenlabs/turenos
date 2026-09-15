@@ -1,0 +1,16 @@
+{
+  "name": "@turenlabs/ripgrep-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "dist/",
+    "README.md",
+    "SHA256SUMS"
+  ],
+  "exports": "./dist/index.js",
+  "scripts": {
+    "build": "bun run script/build.ts"
+  }
+}

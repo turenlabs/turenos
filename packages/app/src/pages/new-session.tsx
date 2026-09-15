@@ -161,9 +161,9 @@ export default function NewSessionPage() {
           </Portal>
         )}
       </Show>
-      <div class="flex-1 min-h-0 flex flex-col gap-2 p-2 md:flex-row">
+      <div class="flex-1 min-h-0 flex flex-col md:flex-row">
         <div class="@container relative flex flex-col min-w-0 min-h-0 h-full flex-1">
-          <div class="flex-1 min-h-0 overflow-hidden rounded-[10px]">
+          <div class="flex-1 min-h-0 overflow-hidden">
             <NewSessionDesignView>
               <div class={NEW_SESSION_CONTENT_WIDTH}>
                 <Show
@@ -234,7 +234,7 @@ export default function NewSessionPage() {
           </div>
         </div>
         <Show when={terminalOpen()}>
-          <div class="min-w-0 min-h-0 shrink-0 md:h-full md:flex-1">
+          <div class="min-w-0 min-h-0 shrink-0 md:h-full md:flex-1 border-t border-v2-border-border-base md:border-t-0 md:border-l">
             <TerminalPanelV2 />
           </div>
         </Show>

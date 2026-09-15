@@ -72,6 +72,8 @@ dist
 !packages/minidump-wasm/dist/**
 !packages/pdf-inspect-wasm/dist/
 !packages/pdf-inspect-wasm/dist/**
+!packages/ripgrep-wasm/dist/
+!packages/ripgrep-wasm/dist/**
 !packages/rtf-inspect-wasm/dist/
 !packages/rtf-inspect-wasm/dist/**
 !packages/sourcemap-wasm/dist/
@@ -128,6 +130,7 @@ tmp-pentest/
 /.case/
 /experiments/
 /scratch/
+/workbench/
 /secpapers/
 /node-*.js
 

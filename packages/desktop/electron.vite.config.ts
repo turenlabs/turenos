@@ -40,6 +40,7 @@ const wasmToolLeaves = new Set([
   "macos-artifacts",
   "minidump",
   "pdf-inspect",
+  "ripgrep-wasm",
   "rtf-inspect",
   "sourcemap",
   "sqlite-inspect",
@@ -146,6 +147,7 @@ const require = __cjs_mod__.createRequire(import.meta.url);
               await fs.copyFile(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/binwalk-scan/${l}`)
               continue
             }
+
             if (l === "binary-analysis-worker.js") {
               await fs.mkdir("./out/main/chunks/binary-tools", { recursive: true })
               await fs.copyFile(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/binary-tools/${l}`)
@@ -176,6 +178,7 @@ const require = __cjs_mod__.createRequire(import.meta.url);
               await fs.cp(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/${l}`, { recursive: true })
             if (l === binwalkScanAsset)
               await fs.cp(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/${l}`, { recursive: true })
+
             if (binaryAssetNames.has(l)) {
               await fs.mkdir("./out/main/chunks/binary-tools", { recursive: true })
               await fs.cp(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/binary-tools/${l}`, { recursive: true })

@@ -55,13 +55,15 @@ export const ClaudeCodePlugin = define({
         // This plugin runs after the models.dev transform, so the entries are
         // already in the draft.
         const upstream = catalog.provider.get(ProviderV2.ID.make(ClaudeCodeCLI.CATALOG_PROVIDER))
-        const byFamily = ClaudeCodeCLI.windowsByFamily(
-          [...(upstream?.models.values() ?? [])].map((model) => ({
-            family: model.family,
-            released: model.time.released,
-            limit: { context: model.limit.context, output: model.limit.output },
-          })),
-        )
+        const entries = [...(upstream?.models.values() ?? [])].map((model) => ({
+          id: model.id,
+          name: model.name,
+          family: model.family,
+          released: model.time.released,
+          limit: { context: model.limit.context, output: model.limit.output },
+          status: model.status,
+        }))
+        const byFamily = ClaudeCodeCLI.windowsByFamily(entries)
         catalog.provider.update(ClaudeCodeCLI.ID, (provider) => {
           provider.name = ClaudeCodeCLI.NAME
           provider.disabled = probe.status !== "authenticated"
@@ -96,6 +98,26 @@ export const ClaudeCodePlugin = define({
             // fork a CLI for background work like title generation.
             model.time.released = 0
             model.limit = ClaudeCodeCLI.windowFor(item, byFamily)
+          })
+        }
+        for (const pinned of ClaudeCodeCLI.pinnedModels(entries)) {
+          catalog.model.update(ClaudeCodeCLI.ID, pinned.id, (model) => {
+            model.name = pinned.name
+            model.family = pinned.family
+            model.api = { type: "native", id: pinned.apiID, url: ClaudeCodeCLI.API_URL, settings: {} }
+            model.capabilities = { tools: true, input: ["text"], output: ["text"] }
+            model.variants = pinned.efforts.map((effort) => ({
+              id: effort,
+              headers: {},
+              body: { [ClaudeCodeCLI.EFFORT_KEY]: effort },
+            }))
+            model.cost = []
+            model.status = "active"
+            model.enabled = true
+            // Same reasoning as the aliases: a CLI run must never win the
+            // recency-ranked default or small-model picks.
+            model.time.released = 0
+            model.limit = { context: pinned.context, output: pinned.output }
           })
         }
       }),

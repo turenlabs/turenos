@@ -85,6 +85,72 @@ describe("ClaudeCodeProvider", () => {
     expect(provider.models.haiku.limit).toEqual({ context: 200_000, output: 64_000 })
   })
 
+  test("publishes each served generation as a pinned entry next to the aliases", () => {
+    const catalog = {
+      anthropic: {
+        models: {
+          "claude-opus-5": {
+            name: "Claude Opus 5",
+            family: "claude-opus",
+            release_date: "2026-07-24",
+            limit: { context: 1_000_000, output: 128_000 },
+          },
+          "claude-opus-4-5": {
+            name: "Claude Opus 4.5",
+            family: "claude-opus",
+            release_date: "2025-11-24",
+            limit: { context: 200_000, output: 64_000 },
+          },
+          // The dated deployment id names the same generation the undated id
+          // does — seeding both would offer two rows for one model.
+          "claude-opus-4-5-20251101": {
+            name: "Claude Opus 4.5",
+            family: "claude-opus",
+            release_date: "2025-11-24",
+            limit: { context: 200_000, output: 64_000 },
+          },
+          // Both live Fable generations pin separately; effort variants ride
+          // on the newer one.
+          "claude-fable-5": {
+            name: "Claude Fable 5",
+            family: "claude-fable",
+            release_date: "2026-06-07",
+            limit: { context: 1_000_000, output: 128_000 },
+          },
+          "claude-fable-5-1": {
+            name: "Claude Fable 5.1",
+            family: "claude-fable",
+            release_date: "2026-09-01",
+            limit: { context: 1_000_000, output: 128_000 },
+          },
+        },
+      },
+    } as never
+
+    const provider = ClaudeCodeProvider.info(catalog)
+
+    const pinned = provider.models["claude-opus-4-5"]
+    expect(pinned.api.id).toBe("claude-opus-4-5")
+    expect(pinned.api.url).toBe("local://claude-code")
+    // The pinned entry keeps its own 200k window, not the family's newest 1M.
+    expect(pinned.limit).toEqual({ context: 200_000, output: 64_000 })
+    expect(pinned.release_date).toBe("2025-11-24")
+    expect(pinned.cost.input).toBe(0)
+    // Effort variants ride only on the newest generation per family.
+    expect(pinned.variants).toEqual({})
+    expect(Object.keys(provider.models["claude-opus-5"]!.variants ?? {})).toEqual([...ClaudeCodeCLI.EFFORT_LEVELS])
+    expect(provider.models["claude-opus-4-5-20251101"]).toBeUndefined()
+    expect(provider.models.opus.api.id).toBe("opus")
+
+    const fable5 = provider.models["claude-fable-5"]
+    expect(fable5.api.id).toBe("claude-fable-5")
+    expect(fable5.release_date).toBe("2026-06-07")
+    expect(fable5.variants).toEqual({})
+    const fable51 = provider.models["claude-fable-5-1"]
+    expect(fable51.api.id).toBe("claude-fable-5-1")
+    expect(Object.keys(fable51.variants ?? {})).toEqual([...ClaudeCodeCLI.EFFORT_LEVELS])
+  })
+
   test("falls back to the static table when no catalog is available", () => {
     // A packaged build with no snapshot must still publish a usable window.
     const provider = ClaudeCodeProvider.info()

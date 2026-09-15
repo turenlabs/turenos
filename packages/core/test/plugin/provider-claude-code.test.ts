@@ -16,11 +16,15 @@ const it = testEffect(PluginTestLayer)
 
 const addPlugin = (result: ClaudeCodeCLI.ProbeResult) =>
   Effect.gen(function* () {
+    // The override must outlive this test's catalog materializations: the
+    // plugin's transform re-runs `currentProbe` on every reload, so resetting
+    // it when `addPlugin` returns would re-probe the live binary mid-test.
+    yield* Effect.addFinalizer(() => Effect.sync(() => overrideProbe()))
     overrideProbe(() => Promise.resolve(result))
     const plugin = yield* PluginV2.Service
     const host = yield* PluginHost.make(plugin)
     yield* ClaudeCodePlugin.effect(host)
-  }).pipe(Effect.ensuring(Effect.sync(() => overrideProbe())))
+  })
 
 describe("ClaudeCodePlugin", () => {
   it.effect("is registered so the local CLI provider reaches the v2 catalog", () =>

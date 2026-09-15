@@ -39,7 +39,9 @@ function headers(input: unknown): SecurityProxy.Header[] {
 const header = (items: readonly SecurityProxy.Header[], name: string) =>
   items.find((item) => item.name.toLowerCase() === name)?.value
 const framing = /^(host|content-length|transfer-encoding|connection|keep-alive|trailer|upgrade|proxy-connection)$/i
-const transportHeaders = (items: readonly SecurityProxy.Header[]) => items.filter((item) => !framing.test(item.name))
+// ":"-prefixed HTTP/2 pseudo-headers are also transport-derived from the method and URL.
+const transportHeaders = (items: readonly SecurityProxy.Header[]) =>
+  items.filter((item) => !item.name.startsWith(":") && !framing.test(item.name))
 async function within<T>(
   operation: Promise<T>,
   milliseconds: number,
@@ -1085,6 +1087,8 @@ export function createSecurityProxyController(deps: {
       const generation = stored.generation
       if (!generation || generation.closed) throw new Error("Security browser is not open")
       await generation.ready
+      // A close during startup resolves ready but destroys the contents.
+      if (generation.closed) throw new Error("Security browser is not open")
       if (command.type === "navigate") {
         // Bare hosts go to https; an explicit non-HTTP(S) scheme stays blocked.
         const url = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(command.url) ? command.url : `https://${command.url}`
@@ -1133,7 +1137,12 @@ export function createSecurityProxyController(deps: {
   }
 
   async function toolbar(event: Electron.IpcMainInvokeEvent, input: unknown): Promise<SecurityProxy.Result> {
-    const binding = [...bindings.values()].find((item) => item.generation?.window.webContents === event.sender)
+    // A closed generation keeps its destroyed window so `snapshot` can still report post-close
+    // state; reading `window.webContents` on it throws, so it must be skipped before comparing.
+    const binding = [...bindings.values()].find((item) => {
+      const window = item.generation?.window
+      return window !== undefined && !window.isDestroyed() && window.webContents === event.sender
+    })
     const generation = binding?.generation
     if (
       !binding ||

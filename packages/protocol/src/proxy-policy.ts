@@ -63,7 +63,7 @@ export function validateEdits(edits: SecurityProxy.Edits) {
       throw new Error("Headers exceed the limit")
     edits.headers.forEach((header) => {
       if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(header.name) || /[\r\n\0]/.test(header.value))
-        throw new Error("Invalid HTTP header")
+        throw new Error(`Invalid HTTP header "${header.name.slice(0, 64)}"`)
       if (["host", "content-length", "transfer-encoding", "connection"].includes(header.name.toLowerCase()))
         throw new Error("Framing headers are managed by the transport")
       if (header.value === "[REDACTED]") throw new Error("Reveal protected headers before replacing them")

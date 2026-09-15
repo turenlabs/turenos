@@ -37,6 +37,7 @@ const binaryPackages = [
   ["windows-artifacts", "@turenlabs/windows-artifacts-wasm"],
   ["rebuild-timeline", "@turenlabs/rebuild-timeline-wasm"],
   ["binwalk-scan", "@turenlabs/binwalk-scan-wasm"],
+  ["ripgrep-wasm", "@turenlabs/ripgrep-wasm"],
 ].map(([name, packageName]) => ({
   name,
   root: path.dirname(createRequire(path.join(dir, "../core/package.json")).resolve(packageName)),
@@ -260,6 +261,7 @@ for (const item of targets) {
       "../core/src/tool/wasm-inspect-worker.ts",
       "../core/src/tool/debug-symbols-worker.ts",
       "../core/src/tool/binwalk-scan-worker.ts",
+      "../core/src/ripgrep/wasm/ripgrep-wasm-worker.ts",
       ...wasmLeaves.map((leaf) => `../core/src/tool/${leaf}-worker.ts`),
     ],
     outdir: `dist/${name}/bin`,

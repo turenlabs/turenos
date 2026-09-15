@@ -92,6 +92,7 @@ const binwalkScanAssetsResource = {
   from: "out/main/chunks/binwalk-scan/",
   to: "binwalk-scan/",
 }
+
 const binaryToolsResource = {
   from: "out/main/chunks/binary-tools/",
   to: "binary-tools/",
@@ -127,6 +128,7 @@ const wasmToolLeaves = [
   "macos-artifacts",
   "minidump",
   "pdf-inspect",
+  "ripgrep-wasm",
   "rtf-inspect",
   "sourcemap",
   "sqlite-inspect",
@@ -191,6 +193,7 @@ const verifyPackage: NonNullable<Configuration["afterPack"]> = async (context) =
       "binwalk-scan/dist/turen_binwalk_scan_wasm.js",
       "binwalk-scan/dist/turen_binwalk_scan_wasm.d.ts",
       "binwalk-scan/dist/turen_binwalk_scan_wasm_bg.wasm",
+
       "binary-tools/binary-analysis-worker.js",
       "binary-tools/goblin/dist/turen_goblin_wasm_bg.wasm",
       "binary-tools/stng-core/dist/turen_stng_core_wasm_bg.wasm",

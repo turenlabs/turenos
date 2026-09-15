@@ -63,6 +63,12 @@ const ANTHROPIC = [
     released: "2026-06-07",
     limit: { context: 1_000_000, output: 128_000 },
   },
+  {
+    id: "claude-fable-5-1",
+    family: "claude-fable",
+    released: "2026-09-01",
+    limit: { context: 1_000_000, output: 128_000 },
+  },
 ] as const
 
 const seedAnthropic = Effect.gen(function* () {
@@ -81,11 +87,16 @@ const seedAnthropic = Effect.gen(function* () {
 })
 
 const addPlugin = Effect.gen(function* () {
+  // The override must outlive this test's catalog materializations: the
+  // plugin's transform re-runs `currentProbe` on every reload, so resetting it
+  // when `addPlugin` returns would re-probe the live binary mid-test and flip
+  // `provider.disabled` on machines without `claude`.
+  yield* Effect.addFinalizer(() => Effect.sync(() => overrideProbe()))
   overrideProbe(() => Promise.resolve({ status: "authenticated", executable: "/usr/local/bin/claude" }) as never)
   const plugin = yield* PluginV2.Service
   const host = yield* PluginHost.make(plugin)
   yield* ClaudeCodePlugin.effect(host)
-}).pipe(Effect.ensuring(Effect.sync(() => overrideProbe())))
+})
 
 describe("ClaudeCodePlugin context limits", () => {
   it.effect("resolves limits inside the plugin the runtime actually loads", () =>
@@ -253,6 +264,73 @@ describe("the window the plugin publishes is the window compaction budgets again
 
       expect(resolved.route.defaults.limits?.context).toBe(200_000)
       expect(yield* gate(resolved, 400_000)).toBe(true)
+    }),
+  )
+})
+
+describe("ClaudeCodePlugin pinned generations", () => {
+  it.effect("seeds each served generation as its own selectable entry", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      yield* seedAnthropic
+      yield* addPlugin
+
+      const pinned = yield* catalog.model.get(ClaudeCodeCLI.ID, ModelV2.ID.make("claude-opus-4-5"))
+      expect(pinned?.api).toMatchObject({ type: "native", id: "claude-opus-4-5", url: ClaudeCodeCLI.API_URL })
+      // Its own 200k window, not the family's newest 1M — pinning is only
+      // honest if the limits are pinned too.
+      expect(pinned?.limit).toEqual({ context: 200_000, output: 64_000 })
+      expect(pinned?.enabled).toBe(true)
+      expect(pinned?.time.released).toBe(0)
+      // Only the newest generation publishes effort variants; older ones run
+      // at the CLI default rather than offer a flag the model would refuse.
+      expect(pinned?.variants).toEqual([])
+
+      const newest = yield* catalog.model.get(ClaudeCodeCLI.ID, ModelV2.ID.make("claude-opus-5"))
+      expect(newest?.variants.map((variant) => String(variant.id))).toEqual([...ClaudeCodeCLI.EFFORT_LEVELS])
+
+      // Both Fable generations are live in the catalog; each becomes its own
+      // selectable entry, with effort variants on the newer one only.
+      const fable5 = yield* catalog.model.get(ClaudeCodeCLI.ID, ModelV2.ID.make("claude-fable-5"))
+      expect(fable5?.api).toMatchObject({ type: "native", id: "claude-fable-5", url: ClaudeCodeCLI.API_URL })
+      expect(fable5?.variants).toEqual([])
+      const fable51 = yield* catalog.model.get(ClaudeCodeCLI.ID, ModelV2.ID.make("claude-fable-5-1"))
+      expect(fable51?.variants.map((variant) => String(variant.id))).toEqual([...ClaudeCodeCLI.EFFORT_LEVELS])
+    }),
+  )
+
+  it.effect("resolves a pinned entry to its own model id rather than the alias", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      yield* seedAnthropic
+      yield* addPlugin
+
+      const info = yield* catalog.model.get(ClaudeCodeCLI.ID, ModelV2.ID.make("claude-opus-4-5"))
+      const resolved = yield* SessionRunnerModel.fromCatalogModel(info!)
+      expect(String(resolved.id)).toBe("claude-opus-4-5")
+      expect(resolved.route.defaults.limits?.context).toBe(200_000)
+    }),
+  )
+
+  it.effect("drops a single generation from the available list when a later transform disables it", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      yield* seedAnthropic
+      yield* addPlugin
+      // Same ordering the config plugin relies on: `providers.<id>.models.<id>
+      // .disabled` lands after the provider seed on every reload.
+      yield* catalog.transform((draft) => {
+        draft.model.update(ClaudeCodeCLI.ID, ModelV2.ID.make("claude-opus-5"), (model) => {
+          model.enabled = false
+        })
+      })
+
+      const available = (yield* catalog.model.available())
+        .filter((model) => model.providerID === ClaudeCodeCLI.ID)
+        .map((model) => String(model.id))
+      expect(available).not.toContain("claude-opus-5")
+      expect(available).toContain("claude-opus-4-5")
+      expect(available).toContain("opus")
     }),
   )
 })

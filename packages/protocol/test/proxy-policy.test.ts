@@ -41,7 +41,7 @@ describe("proxy policy", () => {
   })
 
   test("rejects invalid headers and transport-managed framing", () => {
-    for (const name of ["Host", "content-length", "transfer-encoding", "connection", "bad\nheader"])
+    for (const name of ["Host", "content-length", "transfer-encoding", "connection", ":authority", "bad\nheader"])
       expect(() => ProxyPolicy.validateEdits({ headers: [{ name, value: "10" }] })).toThrow()
     expect(() => ProxyPolicy.validateEdits({ headers: [{ name: "Cookie", value: "[REDACTED]" }] })).toThrow()
     expect(() => ProxyPolicy.validateEdits({ headers: [{ name: "x-test", value: "x\r\nCookie: secret" }] })).toThrow()
