@@ -1,6 +1,9 @@
 import type { Argv, InferredOptionTypes } from "yargs"
 import { ConfigV1 } from "@turenlabs/core/v1/config/config"
+import { Flag } from "@turenlabs/core/flag/flag"
 import type { Config } from "@/config/config"
+import { isLoopbackHostname } from "@/server/shared/local-request"
+import { fail } from "./effect-cmd"
 import { Effect } from "effect"
 
 const options = {
@@ -30,6 +33,11 @@ const options = {
     describe: "additional domains to allow for CORS",
     default: [] as string[],
   },
+  insecure: {
+    type: "boolean" as const,
+    describe: "allow listening on a non-loopback interface without FORGE_SERVER_PASSWORD",
+    default: false,
+  },
 }
 
 export type NetworkOptions = InferredOptionTypes<typeof options>
@@ -56,7 +64,14 @@ function networkArgs() {
 export const resolveNetworkOptions = Effect.fn("Cli.resolveNetworkOptions")(function* (args: NetworkOptions) {
   const { Config } = yield* Effect.promise(() => import("@/config/config"))
   const config = yield* Config.Service.use((cfg) => cfg.getGlobal())
-  return resolveNetworkOptionsNoConfig(args, config)
+  const resolved = resolveNetworkOptionsNoConfig(args, config)
+  if (!Flag.FORGE_SERVER_PASSWORD && !args.insecure && !isLoopbackHostname(resolved.hostname)) {
+    return yield* fail(
+      `Refusing to listen on ${resolved.hostname} without FORGE_SERVER_PASSWORD. ` +
+        "Set FORGE_SERVER_PASSWORD, bind a loopback hostname, or pass --insecure to override.",
+    )
+  }
+  return resolved
 })
 
 export function resolveNetworkOptionsNoConfig(args: NetworkOptions, config?: ConfigV1.Info) {
@@ -76,5 +91,5 @@ export function resolveNetworkOptionsNoConfig(args: NetworkOptions, config?: Con
   const argsCors = Array.isArray(args.cors) ? args.cors : args.cors ? [args.cors] : []
   const cors = [...configCors, ...argsCors]
 
-  return { hostname, port, mdns, mdnsDomain, cors }
+  return { hostname, port, mdns, mdnsDomain, cors, insecure: args.insecure }
 }

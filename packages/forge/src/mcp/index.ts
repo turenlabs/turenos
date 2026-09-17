@@ -46,6 +46,8 @@ import { ExtensionCatalog } from "@turenlabs/extensions"
 import { SecurityRegistry } from "@/security/registry"
 
 const DEFAULT_TIMEOUT = 30_000
+/** Cooldown between reconcile attempts for a managed server already admitted in a directory. */
+const MANAGED_RETRY_MS = 30_000
 const CLIENT_OPTIONS = {
   capabilities: {
     // https://github.com/turenlabs/forge/issues/11948
@@ -236,6 +238,7 @@ interface State {
   clients: Record<string, MCPClient>
   defs: Record<string, MCPToolDef[]>
   instructions: Record<string, string>
+  managedRetry: Record<string, number>
   jobs: FiberMap.FiberMap<string, void, never>
 }
 
@@ -499,9 +502,11 @@ const layer = (allowUnmanaged: boolean) =>
                   // slot, or the callback completes against a transport that can only
                   // discard what the user just authorized.
                   if (!pendingOAuthTransports.get(key)?.provider) {
+                    const evicted = dropPending(key)
                     const pending: PendingOAuth = { transport }
                     pendingOAuthTransports.set(key, pending)
                     armStaleExpiry(key, pending)
+                    if (evicted) void evicted.transport.close().catch(() => undefined)
                   }
                   lastStatus = { status: "needs_auth" as const }
                   return
@@ -839,6 +844,7 @@ const layer = (allowUnmanaged: boolean) =>
             clients: {},
             defs: {},
             instructions: {},
+            managedRetry: {},
             jobs: yield* FiberMap.make<string, void, never>(),
           }
           // Runtime lookups must retain the private marker too. Otherwise a later
@@ -1009,7 +1015,24 @@ const layer = (allowUnmanaged: boolean) =>
             Effect.gen(function* () {
               const manifest = McpIntegration.contribution(definition.id).manifest
               if (!(yield* extensions.enabled(manifest.id))) return
-              if (s.config[definition.id]) return
+              const current = s.status[definition.id]?.status
+              if (current === "connected" || current === "connecting") return
+              if (s.config[definition.id]) {
+                // Admission already ran for this directory. `needs_auth` clears only
+                // after OAuth tokens are committed -- process-global in McpAuth and
+                // potentially written by an `authenticate` running under a different
+                // directory -- while other terminal states retry on a cooldown so a
+                // broken server does not respawn on every `tools()` call. The clock
+                // is keyed per status so a fresh credential retry is never blocked
+                // by an earlier failure's backoff.
+                if (current === "needs_auth") {
+                  const stored = yield* auth.get(definition.id)
+                  if (!stored?.tokens) return
+                }
+                const gate = `${definition.id}:${current ?? "unknown"}`
+                if (Date.now() - (s.managedRetry[gate] ?? 0) < MANAGED_RETRY_MS) return
+                s.managedRetry[gate] = Date.now()
+              }
               const configuration = yield* extensions.configuration(manifest.id)
               const declaredSecrets = manifest.contributions.flatMap((contribution) => contribution.secrets)
               const secrets = Object.fromEntries(
@@ -1017,8 +1040,10 @@ const layer = (allowUnmanaged: boolean) =>
                   extensions.secret(manifest.id, secret.id).pipe(Effect.map((value) => [secret.id, value] as const)),
                 ),
               )
-              const entry = yield* McpIntegration.configuration(definition.id, configuration, secrets)
-              if (!entry) return
+              const resolved = yield* McpIntegration.configuration(definition.id, configuration, secrets)
+              if (!resolved) return
+              const entry = yield* McpIntegration.runtimeEntry(definition.id, resolved)
+              yield* closeClient(s, definition.id)
               s.config[definition.id] = entry
               s.status[definition.id] = { status: "connecting" }
               yield* FiberMap.run(

@@ -38,7 +38,13 @@ import {
   SummarizePayload,
   UpdatePayload,
 } from "../groups/session"
-import { ConflictError, InvalidRequestError, PermissionNotFoundError, ServiceUnavailableError } from "../errors"
+import {
+  ConflictError,
+  InvalidRequestError,
+  notFound,
+  PermissionNotFoundError,
+  ServiceUnavailableError,
+} from "../errors"
 import * as SessionError from "./session-errors"
 
 const tryParseJson = (text: string) =>
@@ -137,7 +143,12 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     })
 
     const requireSession = Effect.fn("SessionHttpApi.requireSession")(function* (sessionID: SessionID) {
-      return yield* SessionError.mapStorageNotFound(session.get(sessionID))
+      const info = yield* SessionError.mapStorageNotFound(session.get(sessionID))
+      // Session IDs resolve against the global table; a session is only reachable
+      // here when it belongs to the routed project, otherwise report it missing.
+      if (info.projectID !== (yield* InstanceState.context).project.id)
+        return yield* notFound(`Session not found: ${sessionID}`)
+      return info
     })
 
     const get = Effect.fn("SessionHttpApi.get")(function* (ctx: { params: { sessionID: SessionID } }) {
@@ -158,6 +169,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       params: { sessionID: SessionID }
       query: typeof DiffQuery.Type
     }) {
+      yield* requireSession(ctx.params.sessionID)
       return yield* summary.diff({ sessionID: ctx.params.sessionID, messageID: ctx.query.messageID })
     })
 
@@ -205,13 +217,17 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const message = Effect.fn("SessionHttpApi.message")(function* (ctx: {
       params: { sessionID: SessionID; messageID: MessageID }
     }) {
+      yield* requireSession(ctx.params.sessionID)
       return yield* SessionError.mapStorageNotFound(
         MessageV2.get({ sessionID: ctx.params.sessionID, messageID: ctx.params.messageID }),
       )
     })
 
     const create = Effect.fn("SessionHttpApi.create")(function* (ctx: { payload?: Session.CreateInput }) {
-      if (ctx.payload?.parentID) yield* assertMutation(ctx.payload.parentID)
+      if (ctx.payload?.parentID) {
+        yield* requireSession(ctx.payload.parentID)
+        yield* assertMutation(ctx.payload.parentID)
+      }
       return yield* session.create(ctx.payload)
     })
 
@@ -290,6 +306,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       params: { sessionID: SessionID }
       payload?: typeof ForkPayload.Type
     }) {
+      yield* requireSession(ctx.params.sessionID)
       yield* assertMutation(ctx.params.sessionID)
       return yield* SessionError.mapStorageNotFound(
         session.fork({
@@ -314,6 +331,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     })
 
     const abort = Effect.fn("SessionHttpApi.abort")(function* (ctx: { params: { sessionID: SessionID } }) {
+      yield* requireSession(ctx.params.sessionID)
       yield* assertMutation(ctx.params.sessionID)
       yield* cancelDescendants(ctx.params.sessionID)
       yield* promptSvc.cancel(ctx.params.sessionID)
@@ -351,9 +369,10 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       params: { sessionID: SessionID }
       payload: typeof SummarizePayload.Type
     }) {
+      const current = yield* requireSession(ctx.params.sessionID)
       yield* assertMutation(ctx.params.sessionID)
       const messages = yield* SessionError.mapStorageNotFound(session.messages({ sessionID: ctx.params.sessionID }))
-      yield* revertSvc.cleanup(yield* requireSession(ctx.params.sessionID))
+      yield* revertSvc.cleanup(current)
       const defaultAgent = yield* agentSvc.defaultAgent()
       const currentAgent = messages.findLast((message) => message.info.role === "user")?.info.agent ?? defaultAgent
 

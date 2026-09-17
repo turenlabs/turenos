@@ -84,7 +84,9 @@ export const OllamaPlugin = {
       Effect.andThen(
         Effect.gen(function* () {
           const discovered = yield* discover(http, endpoint)
-          if (!discovered || signature(discovered) === signature(models)) return
+          if (signature(discovered) === signature(models)) return
+          // A failed probe is a state change too: a server that stops answering
+          // must drop out of the catalog, not stay listed as connected forever.
           models = discovered
           yield* ctx.catalog.reload()
         }),
@@ -135,8 +137,11 @@ const discover = Effect.fnUntraced(function* (http: HttpClient.HttpClient, endpo
   return models
 })
 
+// Unreachable and reachable-with-no-models are different states: the first removes the
+// provider from the catalog, the second registers it with an empty model list.
 function signature(models: readonly { readonly model: OllamaModel; readonly id: string }[] | undefined) {
-  return JSON.stringify(models?.map((item) => [item.id, item.model.modified_at, item.model.details?.family]) ?? [])
+  if (models === undefined) return "unreachable"
+  return JSON.stringify(models.map((item) => [item.id, item.model.modified_at, item.model.details?.family]))
 }
 
 function released(value: string | undefined) {

@@ -278,6 +278,51 @@ describe("workspace HttpApi", () => {
     }),
   )
 
+  it.live("rejects workspaces and sessions owned by another project", () =>
+    Effect.gen(function* () {
+      Flag.FORGE_EXPERIMENTAL_WORKSPACES = true
+      const dir = yield* tmpdirScoped({ git: true })
+      const foreignDir = yield* tmpdirScoped({ git: true })
+      const foreignProject = yield* Project.use.fromDirectory(foreignDir)
+      registerAdapter(foreignProject.project.id, "foreign-local", localAdapter(path.join(foreignDir, ".workspace")))
+      const createdForeign = yield* request(WorkspacePaths.list, foreignDir, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "foreign-local", branch: null }),
+      })
+      expect(createdForeign.status).toBe(200)
+      const foreignWorkspace = (yield* createdForeign.json) as Workspace.Info
+
+      const session = yield* Session.use.create({}).pipe(provideInstance(dir))
+
+      // A foreign workspace ID is indistinguishable from a missing one: remove is
+      // a no-op under this project's route and the workspace survives under its own.
+      const removed = yield* request(WorkspacePaths.remove.replace(":id", foreignWorkspace.id), dir, {
+        method: "DELETE",
+      })
+      expect(removed.status).toBe(200)
+      const foreignListed = yield* request(WorkspacePaths.list, foreignDir)
+      expect(yield* foreignListed.json).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: foreignWorkspace.id })]),
+      )
+
+      const warped = yield* request(WorkspacePaths.warp, dir, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: foreignWorkspace.id, sessionID: session.id }),
+      })
+      expect(warped.status).toBe(404)
+
+      const foreignSession = yield* Session.use.create({}).pipe(provideInstance(foreignDir))
+      const warpedSession = yield* request(WorkspacePaths.warp, dir, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: null, sessionID: foreignSession.id }),
+      })
+      expect(warpedSession.status).toBe(404)
+    }),
+  )
+
   it.live("creates workspace with the legacy payload shape", () =>
     Effect.gen(function* () {
       Flag.FORGE_EXPERIMENTAL_WORKSPACES = true

@@ -36,6 +36,17 @@ export interface Definition {
 
 export const Definitions: Definition[] = []
 
+let policyDependencies: ProviderConnectionPolicy.ConnectionPolicyDependencies | undefined
+
+/**
+ * Test seam: replaces the network dependencies used to qualify managed remote
+ * endpoints so a fixture server can stand in for a hosted MCP. Production code
+ * never sets this -- tests install it and must clear it again on cleanup.
+ */
+export function setPolicyDependencies(dependencies: ProviderConnectionPolicy.ConnectionPolicyDependencies | undefined) {
+  policyDependencies = dependencies
+}
+
 export function sync(manifests: ReadonlyArray<Extension.Manifest>) {
   catalogMcp.clear()
   for (const manifest of manifests) {
@@ -381,14 +392,15 @@ export const runtimeEntry = Effect.fn("McpIntegration.runtimeEntry")(function* (
   }
   const deployment = contribution(id).item.deployment
   if (entry.enabled === false) return mark(id, entry)
+  const deps = dependencies ?? policyDependencies
   if (deployment.type === "hosted" && entry.type === "remote") {
     const policy = yield* Effect.tryPromise({
-      try: () => hostedEndpointFetch(id, entry.url, dependencies),
+      try: () => hostedEndpointFetch(id, entry.url, deps),
       catch: (error) => error,
     }).pipe(
       Effect.match({
         onFailure: () => ({ error: "Hosted MCP endpoint failed network qualification" }),
-        onSuccess: (fetch) => ({ fetch: oauthOriginFetch(id, entry.url, deployment, fetch, dependencies) }),
+        onSuccess: (fetch) => ({ fetch: oauthOriginFetch(id, entry.url, deployment, fetch, deps) }),
       }),
     )
     return mark(id, entry, policy)
@@ -397,13 +409,13 @@ export const runtimeEntry = Effect.fn("McpIntegration.runtimeEntry")(function* (
     const endpoint = resolveCustomerEndpoint(entry.url, deployment)
     if (!endpoint) return mark(id, entry, { error: "Customer MCP endpoint is not allowed" })
     const policy = yield* Effect.tryPromise({
-      try: () => customerEndpointFetch(id, endpoint, deployment, dependencies),
+      try: () => customerEndpointFetch(id, endpoint, deployment, deps),
       catch: (error) => error,
     }).pipe(
       Effect.match({
         onFailure: () => ({ error: "Customer MCP endpoint failed network qualification" }),
         onSuccess: (fetch) => ({
-          fetch: oauthOriginFetch(id, endpoint, deployment, fetch, dependencies, fetch.networkZone),
+          fetch: oauthOriginFetch(id, endpoint, deployment, fetch, deps, fetch.networkZone),
         }),
       }),
     )

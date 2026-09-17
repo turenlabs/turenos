@@ -43,7 +43,14 @@ export function SessionComposerRegion(props: {
       >
         {props.subagents}
 
-        <Show when={controller.state.questionRequest()} keyed>
+        <Show
+          when={
+            controller.child() || !settings.general.newLayoutDesigns()
+              ? controller.state.questionRequest()
+              : undefined
+          }
+          keyed
+        >
           {(request) => (
             <div data-prevent-autofocus>
               <SessionQuestionDock request={request} onSubmit={controller.onResponseSubmit} />
@@ -66,7 +73,13 @@ export function SessionComposerRegion(props: {
           )}
         </Show>
 
-        <Show when={controller.state.blocked() && !controller.child()}>
+        <Show
+          when={
+            controller.state.blocked() &&
+            !controller.child() &&
+            !(settings.general.newLayoutDesigns() && controller.state.questionRequest())
+          }
+        >
           <p data-component="session-request-guidance" class="px-1 pb-2 text-12-regular text-text-weak">
             {language.t(
               controller.state.permissionRequest()

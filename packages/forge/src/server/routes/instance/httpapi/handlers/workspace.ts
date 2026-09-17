@@ -2,6 +2,8 @@ import { listAdapters } from "@/control-plane/adapters"
 import { Workspace } from "@/control-plane/workspace"
 import * as InstanceState from "@/effect/instance-state"
 import { Vcs } from "@/project/vcs"
+import { Session } from "@/session/session"
+import { NotFoundError } from "@/storage/storage"
 import { Cause, Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
@@ -12,6 +14,7 @@ import { ApiWorkspaceCreateError, ApiWorkspaceWarpError, CreatePayload, WarpPayl
 export const workspaceHandlers = HttpApiBuilder.group(InstanceHttpApi, "workspace", (handlers) =>
   Effect.gen(function* () {
     const workspace = yield* Workspace.Service
+    const session = yield* Session.Service
 
     const adapters = Effect.fn("WorkspaceHttpApi.adapters")(function* () {
       const instance = yield* InstanceState.context
@@ -58,10 +61,25 @@ export const workspaceHandlers = HttpApiBuilder.group(InstanceHttpApi, "workspac
     })
 
     const remove = Effect.fn("WorkspaceHttpApi.remove")(function* (ctx: { params: { id: Workspace.Info["id"] } }) {
+      // Workspace IDs resolve globally; only the routed project may remove one,
+      // so a foreign workspace is indistinguishable from missing.
+      const info = yield* workspace.get(ctx.params.id)
+      if (!info || info.projectID !== (yield* InstanceState.context).project.id) return undefined
       return yield* workspace.remove(ctx.params.id)
     })
 
     const warp = Effect.fn("WorkspaceHttpApi.warp")(function* (ctx: { payload: typeof WarpPayload.Type }) {
+      const projectID = (yield* InstanceState.context).project.id
+      if (ctx.payload.id !== null) {
+        const target = yield* workspace.get(ctx.payload.id)
+        if (!target || target.projectID !== projectID)
+          return yield* notFound(`Workspace not found: ${ctx.payload.id}`)
+      }
+      const owner = yield* session
+        .get(ctx.payload.sessionID)
+        .pipe(Effect.catchIf(NotFoundError.isInstance, () => Effect.succeed(undefined)))
+      if (!owner || owner.projectID !== projectID)
+        return yield* notFound(`Session not found: ${ctx.payload.sessionID}`)
       yield* workspace
         .sessionWarp({
           workspaceID: ctx.payload.id,

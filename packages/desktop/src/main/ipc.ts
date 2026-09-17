@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process"
 import { realpath, stat } from "node:fs/promises"
-import { basename, isAbsolute, join, posix } from "node:path"
+import { basename, isAbsolute, join, posix, sep } from "node:path"
 import { Schema } from "effect"
 import { SecurityProxy } from "@turenlabs/schema/security-proxy"
 import { app, BrowserWindow, Notification, clipboard, dialog, shell } from "electron"
@@ -305,12 +305,19 @@ export function registerIpcHandlers(deps: Deps) {
   })
 
   ipcMain.handle("reveal-path", async (_event: IpcMainInvokeEvent, path: string) => {
-    const exists = await stat(path).then(
-      () => true,
-      () => false,
-    )
-    if (!exists) return false
-    shell.showItemInFolder(path)
+    // Reveal is a confused deputy: session attachment metadata can name any
+    // absolute path, so only user-picked files and app-owned directories
+    // (userData, which includes profiler runs and logs) may be shown.
+    if (typeof path !== "string" || !isAbsolute(path)) return false
+    const resolved = await realpath(path).catch(() => undefined)
+    if (!resolved) return false
+    const root = await realpath(app.getPath("userData")).catch(() => undefined)
+    const allowed =
+      pickedFiles.allowsReveal(path) ||
+      pickedFiles.allowsReveal(resolved) ||
+      (root !== undefined && (resolved === root || resolved.startsWith(root + sep)))
+    if (!allowed) return false
+    shell.showItemInFolder(resolved)
     return true
   })
 

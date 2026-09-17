@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Session question + view dock — mocks</title>
+<style>
+  :root {
+    --bg: #161616;
+    --bg-deep: #080808;
+    --layer-01: #242424;
+    --layer-02: #2e2e2e;
+    --layer-03: #3a3a3a;
+    --text: #f2f2f2;
+    --text-muted: #aeaeae;
+    --text-faint: #808080;
+    --border: rgba(255,255,255,.10);
+    --border-muted: rgba(255,255,255,.08);
+    --hover: rgba(255,255,255,.06);
+    --accent: #ff8648;
+    --accent-soft: rgba(255,134,72,.16);
+    --danger: #f17471;
+    --green: #6bd586;
+    --shadow-overlay: 0 16px 32px rgba(0,0,0,.30), 0 8px 16px rgba(0,0,0,.30), 0 0 0 .5px rgba(255,255,255,.16);
+    --shadow-floating: 0 8px 16px rgba(0,0,0,.30), 0 4px 8px rgba(0,0,0,.30), 0 0 0 .5px rgba(255,255,255,.16);
+    --sans: "Inter", -apple-system, "Helvetica Neue", sans-serif;
+    --mono: "JetBrainsMono Nerd Font Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: #0e0e0e;
+    color: var(--text);
+    font-family: var(--sans);
+    padding: 48px 32px 96px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+  }
+  .page-head { max-width: 860px; width: 100%; }
+  .page-head h1 { font-size: 20px; font-weight: 600; }
+  .page-head p { margin-top: 6px; font-size: 13px; color: var(--text-faint); line-height: 1.5; }
+  .section { max-width: 860px; width: 100%; display: flex; flex-direction: column; gap: 28px; }
+  .section > h2 {
+    font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text-faint); border-bottom: 1px solid var(--border-muted); padding-bottom: 10px;
+  }
+  .mock-label { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .mock-label .tag {
+    font-family: var(--mono); font-size: 10px; color: var(--accent);
+    border: 1px solid rgba(255,134,72,.35); border-radius: 4px; padding: 1px 6px;
+  }
+  .mock-label h3 { font-size: 14px; font-weight: 600; }
+  .mock-label p { font-size: 12px; color: var(--text-faint); margin-left: auto; max-width: 380px; text-align: right; }
+
+  /* ── fake app frame ── */
+  .frame {
+    position: relative;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 460px;
+  }
+  .frame .titlebar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-bottom: 1px solid var(--border-muted);
+    font-size: 11px; color: var(--text-muted); font-family: var(--mono);
+  }
+  .titlebar .dot { width: 6px; height: 6px; border-radius: 99px; background: var(--accent); }
+  .transcript {
+    flex: 1; padding: 18px 22px 90px; font-family: var(--mono);
+    font-size: 12px; line-height: 1.8; color: var(--text-muted);
+    position: relative;
+  }
+  .t-line { margin-bottom: 14px; }
+  .t-line .u { color: var(--text-faint); }
+  .t-line .u b { color: var(--text); font-weight: 500; }
+  .t-line .a { color: var(--text); }
+  code, .chip {
+    font-family: var(--mono); font-size: 11px;
+    background: rgba(255,255,255,.07); border-radius: 4px; padding: 1px 5px; color: var(--text);
+  }
+  .activity { color: var(--text-faint); }
+  .activity .k { color: var(--text-muted); }
+  .ghost { opacity: .45; }
+
+  /* ── bottom bar (shared) ── */
+  .bottom {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 0 16px 14px;
+    display: flex; flex-direction: column; gap: 10px;
+    background: linear-gradient(to bottom, transparent, var(--bg) 34%);
+  }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .dock {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: rgba(36,36,36,.95); border: 1px solid var(--border);
+    border-radius: 12px; padding: 4px; box-shadow: var(--shadow-floating);
+    backdrop-filter: blur(8px);
+  }
+  .dock-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px; padding: 0 10px; border-radius: 8px;
+    font-size: 11px; color: var(--text-muted); font-family: var(--sans);
+    white-space: nowrap; position: relative;
+  }
+  .dock-btn svg { width: 14px; height: 14px; }
+  .dock-btn.sel { background: var(--layer-02); color: var(--text); }
+  .dock-btn .bdg {
+    position: absolute; top: 5px; right: 5px; width: 6px; height: 6px;
+    border-radius: 99px; background: var(--accent);
+  }
+  .dock-btn .cnt {
+    font-size: 9px; font-family: var(--mono); color: var(--text-faint);
+  }
+  .dock-sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; }
+  .model-cluster { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); }
+  .model-cluster .m { padding: 4px 8px; border-radius: 6px; }
+  .model-cluster .m.accent { color: var(--accent); }
+  .model-cluster .sep { color: var(--border); }
+  .composer {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--layer-01); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px;
+    font-family: var(--mono); font-size: 12px; color: var(--text-faint);
+  }
+  .composer .plus { color: var(--text-muted); font-size: 14px; }
+
+  /* ── question card (shared) ── */
+  .qcard {
+    background: var(--layer-01); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-overlay); overflow: hidden;
+  }
+  .qcard .q-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; border-bottom: 1px solid var(--border-muted);
+    font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint);
+  }
+  .qcard .q-body { padding: 12px; }
+  .qcard .q-text { font-size: 12px; line-height: 1.6; color: var(--text); margin-bottom: 10px; }
+  .qopt {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    padding: 7px 9px; border-radius: 7px; font-size: 12px; color: var(--text-muted);
+    text-align: left;
+  }
+  .qopt:hover, .qopt.focus { background: var(--hover); color: var(--text); }
+  .qopt .radio {
+    width: 13px; height: 13px; border-radius: 99px; flex-shrink: 0;
+    border: 1px solid var(--border); position: relative;
+  }
+  .qopt.picked .radio { border-color: var(--accent); }
+  .qopt.picked .radio::after {
+    content: ""; position: absolute; inset: 3px; border-radius: 99px; background: var(--accent);
+  }
+  .qopt .desc { font-size: 10px; color: var(--text-faint); margin-left: auto; }
+  .qcard .q-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 12px; border-top: 1px solid var(--border-muted);
+  }
+  .btn { font-size: 11px; padding: 5px 12px; border-radius: 7px; color: var(--text-muted); }
+  .btn.primary { background: var(--accent); color: #161616; font-weight: 600; }
+  .btn.ghost { color: var(--text-faint); }
+  .kbd { font-family: var(--mono); font-size: 9px; color: var(--text-faint); border: 1px solid var(--border-muted); border-radius: 4px; padding: 1px 4px; margin-left: 6px; }
+
+  /* variant-specific */
+  .q-inline {
+    border-left: 2px solid var(--accent);
+    margin: 6px 0 14px;
+  }
+  .receipt {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--text-faint); font-family: var(--mono);
+    padding: 6px 0;
+  }
+  .receipt .tick { color: var(--green); }
+  .receipt.pending .tick { color: var(--accent); }
+  .receipt .jump { margin-left: auto; color: var(--accent); font-size: 10px; }
+
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .reply-chip {
+    font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+  }
+  .reply-chip.hot { border-color: rgba(255,134,72,.5); color: var(--accent); }
+  .composer.q { flex-direction: column; align-items: stretch; gap: 8px; }
+  .composer .q-line { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+  .composer .q-line .ic { color: var(--accent); }
+  .composer .q-line .qt { color: var(--text); }
+  .composer .q-line .esc { margin-left: auto; color: var(--text-faint); font-size: 9px; }
+
+  .floater {
+    position: absolute; right: 16px; bottom: 118px; width: 300px;
+  }
+  .floater .peek {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; font-size: 11px; color: var(--text-muted);
+  }
+  .floater .peek .ic { color: var(--accent); }
+  .floater .peek b { color: var(--text); font-weight: 500; }
+
+  /* rail variant */
+  .rail {
+    position: absolute; top: 44px; right: 0; bottom: 118px; width: 44px;
+    border-left: 1px solid var(--border-muted);
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding-top: 10px; background: rgba(22,22,22,.6);
+  }
+  .rail-btn {
+    width: 32px; height: 32px; border-radius: 8px; color: var(--text-faint);
+    display: flex; align-items: center; justify-content: center; position: relative;
+  }
+  .rail-btn svg { width: 15px; height: 15px; }
+  .rail-btn:hover { background: var(--hover); color: var(--text); }
+  .rail-btn .bdg { position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 99px; background: var(--accent); }
+  .rail-btn .bdg.red { background: var(--danger); }
+  .rail-sep { width: 18px; height: 1px; background: var(--border-muted); margin: 4px 0; }
+
+  /* overflow strip variant */
+  .strip {
+    display: flex; gap: 6px; justify-content: center; margin-bottom: 2px;
+  }
+  .strip-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--layer-01); border: 1px solid var(--border);
+    border-radius: 999px; padding: 5px 12px;
+    font-size: 10px; color: var(--text-muted);
+  }
+  .strip-chip svg { width: 12px; height: 12px; }
+  .strip-chip .cnt { font-family: var(--mono); font-size: 9px; color: var(--accent); }
+  .strip-chip .cnt.red { color: var(--danger); }
+
+  .more-menu {
+    position: absolute; bottom: 118px; left: 50%; transform: translateX(-30%);
+    width: 230px; z-index: 5;
+  }
+  .more-menu .mi {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    padding: 7px 10px; border-radius: 8px; font-size: 12px; color: var(--text-muted);
+  }
+  .more-menu .mi:hover { background: var(--hover); color: var(--text); }
+  .more-menu .mi svg { width: 14px; height: 14px; }
+  .more-menu .mi .st { margin-left: auto; font-family: var(--mono); font-size: 9px; color: var(--text-faint); }
+  .more-menu .mi .st.accent { color: var(--accent); }
+  .more-menu .mi .st.red { color: var(--danger); }
+  .more-menu .mi .kbd { margin-left: 0; }
+
+  .note { font-size: 11px; color: var(--text-faint); line-height: 1.6; margin-top: 8px; }
+  .note b { color: var(--text-muted); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>Session view — question placement &amp; view dock</h1>
+  <p>Static mocks against the current dark v2 theme. Same scenario as the screenshot:
+     the agent needs a time range for Cloudflare audit logs. Today the question renders
+     as transcript prose and the six secondary views hide under "More".</p>
+</div>
+
+<div class="section">
+  <h2>A · Where the question gets asked</h2>
+
+  <!-- ─────────── A1 ─────────── -->
+  <div>
+    <div class="mock-label">
+      <span class="tag">A1</span>
+      <h3>Inline card — keeps today’s position, upgrades the surface</h3>
+      <p>Question is a real card in the flow with an accent rule; transcript is the record.</p>
+    </div>
+    <div class="frame">
+      <div class="titlebar"><span class="dot"></span> Cloudflare MCP Tool Access</div>
+      <div class="transcript">
+        <div class="t-line"><span class="u">❯ <b>attagroup maybe?</b></span></div>
+        <div class="qcard q-inline" style="max-width:520px">
+          <div class="q-head">
+            <span>Question · 1 of 1</span>
+            <span>esc to dismiss</span>
+          </div>
+          <div class="q-body">
+            <div class="q-text">I can use Cloudflare account <code>attagroup</code>. What time range should I check?</div>
+            <div class="qopt focus"><span class="radio"></span> Last 24 hours <span class="desc">since 2026-09-15 21:05 UTC</span></div>
+            <div class="qopt"><span class="radio"></span> Last 7 days <span class="desc">2026-09-09 → 2026-09-16</span></div>
+            <div class="qopt"><span class="radio"></span> Custom range…</div>
+            <div class="qopt"><span class="radio"></span> Type your own answer</div>
+          </div>
+          <div class="q-foot">
+            <button class="btn ghost">Dismiss</button>
+            <button class="btn primary">Submit<span class="kbd">⌘↩</span></button>
+          </div>
+        </div>
+        <div class="t-line ghost"><span class="a">Session activity · 1 shell command</span></div>
+      </div>
+      <div class="bottom">
+        <div class="bar">
+          <div class="dock">
+            <span class="dock-btn sel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 3h12v8H6l-3 2.5V3z"/></svg>Transcript</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M6 8h4M6 11h4"/></svg>Changes</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M11 2l3 3-8 8-3.5.5L3 10z"/></svg>Whiteboard</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2.5 2 2.5 10 0 12-2.5-2-2.5-10 0-12z"/></svg>Browser</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="4" cy="4" r="1.3"/><circle cx="8" cy="4" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="4" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12" cy="8" r="1.3"/><circle cx="4" cy="12" r="1.3"/><circle cx="8" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/></svg>More</span>
+          </div>
+          <div class="model-cluster"><span class="m">GPT-5.6 Luna ▾</span><span class="m accent">Maximum ▾</span><span class="m">Fast off</span></div>
+        </div>
+        <div class="composer"><span class="plus">+</span> Ask anything, / for commands, @ for context…</div>
+      </div>
+    </div>
+    <div class="note">Smallest conceptual change — the question stays where it was asked, scrolls
+    with history, and doubles as the answered record. Cost: it competes with the composer for
+    bottom-of-screen attention and pushes the transcript up while open.</div>
+  </div>
+
+  <!-- ─────────── A2 ─────────── -->
+  <div>
+    <div class="mock-label">
+      <span class="tag">A2</span>
+      <h3>Composer-attached prompt — transcript keeps a receipt line</h3>
+      <p>Interaction docks above the input; a one-line receipt stays in the flow.</p>
+    </div>
+    <div class="frame">
+      <div class="titlebar"><span class="dot"></span> Cloudflare MCP Tool Access</div>
+      <div class="transcript">
+        <div class="t-line"><span class="u">❯ <b>attagroup maybe?</b></span></div>
+        <div class="receipt pending">
+          <span class="tick">?</span>
+          <span>Agent asked — <span style="color:var(--text-muted)">“What time range should I check?”</span></span>
+          <span class="jump">↓ jump to reply</span>
+        </div>
+        <div class="t-line ghost"><span class="a">Session activity · 1 shell command</span></div>
+      </div>
+      <div class="bottom">
+        <div class="qcard" style="margin:0 2px">
+          <div class="q-head">
+            <span>Question · 1 of 1</span>
+            <span style="display:flex;gap:8px;align-items:center"><span class="kbd">esc</span><span>▾</span></span>
+          </div>
+          <div class="q-body" style="padding-bottom:8px">
+            <div class="q-text">What time range should I check on <code>attagroup</code>?</div>
+            <div class="qopt focus"><span class="radio"></span> Last 24 hours <span class="desc">recommended</span></div>
+            <div class="qopt"><span class="radio"></span> Last 7 days</div>
+            <div class="qopt"><span class="radio"></span> Custom range…</div>
+          </div>
+          <div class="q-foot">
+            <button class="btn ghost">Dismiss</button>
+            <button class="btn primary">Submit<span class="kbd">⌘↩</span></button>
+          </div>
+        </div>
+        <div class="bar">
+          <div class="dock">
+            <span class="dock-btn sel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 3h12v8H6l-3 2.5V3z"/></svg>Transcript</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M6 8h4M6 11h4"/></svg>Changes</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M11 2l3 3-8 8-3.5.5L3 10z"/></svg>Whiteboard</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2.5 2 2.5 10 0 12-2.5-2-2.5-10 0-12z"/></svg>Browser</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="4" cy="4" r="1.3"/><circle cx="8" cy="4" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="4" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12" cy="8" r="1.3"/><circle cx="4" cy="12" r="1.3"/><circle cx="8" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/></svg>More</span>
+          </div>
+          <div class="model-cluster"><span class="m">GPT-5.6 Luna ▾</span><span class="m accent">Maximum ▾</span><span class="m">Fast off</span></div>
+        </div>
+        <div class="composer"><span class="plus">+</span> Ask anything, / for commands, @ for context…</div>
+      </div>
+    </div>
+    <div class="note">This is essentially today’s <b>SessionQuestionDock</b> behavior made explicit:
+    the reply surface lives where the user’s hands already are, and the transcript keeps a
+    receipt (“Agent asked … → answered: Last 24 hours”) so history stays readable.</div>
+  </div>
+
+  <!-- ─────────── A3 ─────────── -->
+  <div>
+    <div class="mock-label">
+      <span class="tag">A3</span>
+      <h3>Composer takeover — quick-reply chips, zero new chrome</h3>
+      <p>The composer itself becomes the answer field; options are chips above the input.</p>
+    </div>
+    <div class="frame">
+      <div class="titlebar"><span class="dot"></span> Cloudflare MCP Tool Access</div>
+      <div class="transcript">
+        <div class="t-line"><span class="u">❯ <b>attagroup maybe?</b></span></div>
+        <div class="t-line"><span class="a">I can use Cloudflare account <code>attagroup</code>. What time range should I check? For example, <code>2026-09-09</code> through <code>2026-09-16</code>, or “last 24 hours.”</span></div>
+        <div class="t-line ghost"><span class="a">Session activity · 1 shell command</span></div>
+      </div>
+      <div class="bottom">
+        <div class="bar">
+          <div class="dock">
+            <span class="dock-btn sel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 3h12v8H6l-3 2.5V3z"/></svg>Transcript</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M6 8h4M6 11h4"/></svg>Changes</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M11 2l3 3-8 8-3.5.5L3 10z"/></svg>Whiteboard</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2.5 2 2.5 10 0 12-2.5-2-2.5-10 0-12z"/></svg>Browser</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="4" cy="4" r="1.3"/><circle cx="8" cy="4" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="4" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12" cy="8" r="1.3"/><circle cx="4" cy="12" r="1.3"/><circle cx="8" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/></svg>More</span>
+          </div>
+          <div class="model-cluster"><span class="m">GPT-5.6 Luna ▾</span><span class="m accent">Maximum ▾</span><span class="m">Fast off</span></div>
+        </div>
+        <div class="composer q">
+          <div class="q-line">
+            <span class="ic">?</span>
+            <span class="qt">What time range should I check?</span>
+            <span class="esc">esc dismisses · typing answers</span>
+          </div>
+          <div class="chips">
+            <span class="reply-chip hot">last 24 hours</span>
+            <span class="reply-chip">last 7 days</span>
+            <span class="reply-chip">custom range…</span>
+          </div>
+          <div style="color:var(--text-faint)">last 24 is fine▌</div>
+        </div>
+      </div>
+    </div>
+    <div class="note">No card at all — the pending question annotates the composer and offers
+    one-tap chips. Feels lightest, matches how the user actually answered in the screenshot
+    (“last 24 is fine”). Cost: multi-question flows and rich options get cramped; the transcript
+    text is still the only record.</div>
+  </div>
+
+  <!-- ─────────── A4 ─────────── -->
+  <div>
+    <div class="mock-label">
+      <span class="tag">A4</span>
+      <h3>Floating mini-card — out of the flow, minimizable to the dock</h3>
+      <p>Bottom-right card that never blocks the composer; collapses to a “1 question” badge.</p>
+    </div>
+    <div class="frame">
+      <div class="titlebar"><span class="dot"></span> Cloudflare MCP Tool Access</div>
+      <div class="transcript">
+        <div class="t-line"><span class="u">❯ <b>attagroup maybe?</b></span></div>
+        <div class="t-line"><span class="a">I can use Cloudflare account <code>attagroup</code>. What time range should I check? For example, <code>2026-09-09</code> through <code>2026-09-16</code>, or “last 24 hours.”</span></div>
+        <div class="t-line ghost"><span class="a">Session activity · 1 shell command</span></div>
+      </div>
+      <div class="floater qcard">
+        <div class="q-head"><span>Question · 1 of 1</span><span>—&nbsp;&nbsp;✕</span></div>
+        <div class="q-body" style="padding-bottom:8px">
+          <div class="q-text" style="margin-bottom:8px">What time range should I check on <code>attagroup</code>?</div>
+          <div class="chips">
+            <span class="reply-chip hot">24h</span>
+            <span class="reply-chip">7d</span>
+            <span class="reply-chip">custom…</span>
+          </div>
+        </div>
+      </div>
+      <div class="bottom">
+        <div class="bar">
+          <div class="dock">
+            <span class="dock-btn sel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 3h12v8H6l-3 2.5V3z"/></svg>Transcript</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M6 8h4M6 11h4"/></svg>Changes</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M11 2l3 3-8 8-3.5.5L3 10z"/></svg>Whiteboard</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2.5 2 2.5 10 0 12-2.5-2-2.5-10 0-12z"/></svg>Browser</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="4" cy="4" r="1.3"/><circle cx="8" cy="4" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="4" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12" cy="8" r="1.3"/><circle cx="4" cy="12" r="1.3"/><circle cx="8" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/></svg>More<span class="bdg"></span></span>
+          </div>
+          <div class="model-cluster"><span class="m">GPT-5.6 Luna ▾</span><span class="m accent">Maximum ▾</span><span class="m">Fast off</span></div>
+        </div>
+        <div class="composer"><span class="plus">+</span> Ask anything, / for commands, @ for context…</div>
+      </div>
+    </div>
+    <div class="note">Treats a pending question like a notification the user can park —
+    useful when the agent is blocked but the user wants to keep typing or reading.
+    The “More” dot doubles as the minimized indicator here; could also be its own slot.</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>B · The view dock</h2>
+
+  <!-- ─────────── B1 ─────────── -->
+  <div>
+    <div class="mock-label">
+      <span class="tag">B1</span>
+      <h3>One pill, everything visible — secondary views go icon-only</h3>
+      <p>Kills “More” at desktop width; badges carry live status.</p>
+    </div>
+    <div class="frame" style="min-height:300px">
+      <div class="titlebar"><span class="dot"></span> Cloudflare MCP Tool Access</div>
+      <div class="transcript">
+        <div class="t-line"><span class="u">❯ <b>last 24 is fine</b></span></div>
+        <div class="activity"><span class="k">Session activity</span> · 1 shell command<br>
+          Called <code>cloudflare-audit-logs_auditlogs_by_account_id</code> account… since=2026-… before=202-…<br>
+          No audit log entries were found for Cloudflare account <code>attagroup</code> in the last 24 hours.</div>
+      </div>
+      <div class="bottom">
+        <div class="bar">
+          <div class="dock">
+            <span class="dock-btn sel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 3h12v8H6l-3 2.5V3z"/></svg>Transcript</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M6 8h4M6 11h4"/></svg>Changes</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M11 2l3 3-8 8-3.5.5L3 10z"/></svg>Whiteboard</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2.5 2 2.5 10 0 12-2.5-2-2.5-10 0-12z"/></svg>Browser</span>
+            <span class="dock-sep"></span>
+            <span class="dock-btn" title="Terminal"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M4.5 6l2.5 2-2.5 2M8 10.5h3.5"/></svg></span>
+            <span class="dock-btn" title="ToDos"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.5H14M7.5 9.5H14M2 14h12"/></svg><span class="cnt">3/5</span></span>
+            <span class="dock-btn" title="Subagents"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="3" r="1.8"/><circle cx="4" cy="12.5" r="1.8"/><circle cx="12" cy="12.5" r="1.8"/><path d="M8 5v3M8 8L4.8 10.9M8 8l3.2 2.9"/></svg><span class="cnt" style="color:var(--accent)">2</span></span>
+            <span class="dock-btn" title="Activity"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.5 8h3l2-4.5 3 9 2-4.5h3"/></svg></span>
+            <span class="dock-btn" title="Context"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5.5"/><path d="M8 5.5v5M5.5 8h5"/></svg></span>
+            <span class="dock-btn" title="Harness"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5l5.5 2v4c0 3.5-2.3 5.8-5.5 7-3.2-1.2-5.5-3.5-5.5-7v-4z"/></svg></span>
+          </div>
+          <div class="model-cluster"><span class="m">GPT-5.6 Luna ▾</span><span class="m accent">Maximum ▾</span><span class="m">Fast off</span></div>
+        </div>
+        <div class="composer"><span class="plus">+</span> Ask anything, / for commands, @ for context…</div>
+      </div>
+    </div>
+    <div class="note">Ten icon-only buttons fit once labels drop; inline counts (<b>3/5</b> todos,
+    <b>2</b> running subagents) make the dock a status surface instead of a menu of mysteries.
+    Below some width it falls back to today’s “More”. Risk: discoverability — icons need
+    tooltips and the set must stay stable to build muscle memory.</div>
+  </div>
+
+  <!-- ─────────── B2 ─────────── -->
+  <div>
+    <div class="mock-label">
+      <span class="tag">B2</span>
+      <h3>Edge rail — secondary views move to a slim right rail</h3>
+      <p>Bottom bar keeps the four primary views; tools live on the pane edge.</p>
+    </div>
+    <div class="frame" style="min-height:300px">
+      <div class="titlebar"><span class="dot"></span> Cloudflare MCP Tool Access</div>
+      <div class="rail">
+        <span class="rail-btn" title="Terminal"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M4.5 6l2.5 2-2.5 2M8 10.5h3.5"/></svg></span>
+        <span class="rail-btn" title="ToDos"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.5H14M7.5 9.5H14M2 14h12"/></svg></span>
+        <span class="rail-btn" title="Subagents · 2 active"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="3" r="1.8"/><circle cx="4" cy="12.5" r="1.8"/><circle cx="12" cy="12.5" r="1.8"/><path d="M8 5v3M8 8L4.8 10.9M8 8l3.2 2.9"/></svg><span class="bdg"></span></span>
+        <span class="rail-sep"></span>
+        <span class="rail-btn" title="Activity"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.5 8h3l2-4.5 3 9 2-4.5h3"/></svg></span>
+        <span class="rail-btn" title="Context"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5.5"/><path d="M8 5.5v5M5.5 8h5"/></svg></span>
+        <span class="rail-btn" title="Harness"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5l5.5 2v4c0 3.5-2.3 5.8-5.5 7-3.2-1.2-5.5-3.5-5.5-7v-4z"/></svg><span class="bdg red"></span></span>
+      </div>
+      <div class="transcript">
+        <div class="t-line"><span class="u">❯ <b>last 24 is fine</b></span></div>
+        <div class="activity"><span class="k">Session activity</span> · 1 shell command<br>
+          Called <code>cloudflare-audit-logs_auditlogs_by_account_id</code> account… since=2026-… before=202-…<br>
+          No audit log entries were found for Cloudflare account <code>attagroup</code> in the last 24 hours.</div>
+      </div>
+      <div class="bottom">
+        <div class="bar">
+          <div class="dock">
+            <span class="dock-btn sel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 3h12v8H6l-3 2.5V3z"/></svg>Transcript</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M6 8h4M6 11h4"/></svg>Changes</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M11 2l3 3-8 8-3.5.5L3 10z"/></svg>Whiteboard</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2.5 2 2.5 10 0 12-2.5-2-2.5-10 0-12z"/></svg>Browser</span>
+          </div>
+          <div class="model-cluster"><span class="m">GPT-5.6 Luna ▾</span><span class="m accent">Maximum ▾</span><span class="m">Fast off</span></div>
+        </div>
+        <div class="composer"><span class="plus">+</span> Ask anything, / for commands, @ for context…</div>
+      </div>
+    </div>
+    <div class="note">Secondary views are “panels”, not “pages” — a rail reads like an IDE tool
+    window strip and frees the bottom bar to stay small and centered. Dots = needs attention
+    (2 running subagents, a failed harness check). Cost: another persistent screen edge to
+    spend; on narrow windows the rail can collapse into the same More menu.</div>
+  </div>
+
+  <!-- ─────────── B3 ─────────── -->
+  <div>
+    <div class="mock-label">
+      <span class="tag">B3</span>
+      <h3>Overflow strip — “More” expands into live chips above the bar</h3>
+      <p>Same footprint as today; opening More reveals a horizontal strip with status baked in.</p>
+    </div>
+    <div class="frame" style="min-height:300px">
+      <div class="titlebar"><span class="dot"></span> Cloudflare MCP Tool Access</div>
+      <div class="transcript">
+        <div class="t-line"><span class="u">❯ <b>last 24 is fine</b></span></div>
+        <div class="activity"><span class="k">Session activity</span> · 1 shell command<br>
+          Called <code>cloudflare-audit-logs_auditlogs_by_account_id</code> account… since=2026-… before=202-…<br>
+          No audit log entries were found for Cloudflare account <code>attagroup</code> in the last 24 hours.</div>
+      </div>
+      <div class="bottom">
+        <div class="strip">
+          <span class="strip-chip"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M4.5 6l2.5 2-2.5 2M8 10.5h3.5"/></svg>Terminal</span>
+          <span class="strip-chip"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.5H14M7.5 9.5H14M2 14h12"/></svg>ToDos <span class="cnt">3/5</span></span>
+          <span class="strip-chip"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="3" r="1.8"/><circle cx="4" cy="12.5" r="1.8"/><circle cx="12" cy="12.5" r="1.8"/><path d="M8 5v3M8 8L4.8 10.9M8 8l3.2 2.9"/></svg>Subagents <span class="cnt">2 active</span></span>
+          <span class="strip-chip"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.5 8h3l2-4.5 3 9 2-4.5h3"/></svg>Activity</span>
+          <span class="strip-chip"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5.5"/><path d="M8 5.5v5M5.5 8h5"/></svg>Context</span>
+          <span class="strip-chip"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5l5.5 2v4c0 3.5-2.3 5.8-5.5 7-3.2-1.2-5.5-3.5-5.5-7v-4z"/></svg>Harness <span class="cnt red">failed</span></span>
+        </div>
+        <div class="bar">
+          <div class="dock">
+            <span class="dock-btn sel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 3h12v8H6l-3 2.5V3z"/></svg>Transcript</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M6 8h4M6 11h4"/></svg>Changes</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M11 2l3 3-8 8-3.5.5L3 10z"/></svg>Whiteboard</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2.5 2 2.5 10 0 12-2.5-2-2.5-10 0-12z"/></svg>Browser</span>
+            <span class="dock-btn sel"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="4" cy="4" r="1.3"/><circle cx="8" cy="4" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="4" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12" cy="8" r="1.3"/><circle cx="4" cy="12" r="1.3"/><circle cx="8" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/></svg>Less</span>
+          </div>
+          <div class="model-cluster"><span class="m">GPT-5.6 Luna ▾</span><span class="m accent">Maximum ▾</span><span class="m">Fast off</span></div>
+        </div>
+        <div class="composer"><span class="plus">+</span> Ask anything, / for commands, @ for context…</div>
+      </div>
+    </div>
+    <div class="note">Smallest delta from today: “More” toggles a chip strip instead of a vertical
+    menu. Chips can carry live status (<b>2 active</b>, <b>failed</b>) so the overflow becomes a
+    summary surface. Could also pin the strip open per-session for people who live in Terminal.</div>
+  </div>
+
+  <!-- ─────────── B4 ─────────── -->
+  <div>
+    <div class="mock-label">
+      <span class="tag">B4</span>
+      <h3>Richer menu — keep the dropdown, make it earn its place</h3>
+      <p>Same More menu as today, but each row shows live state + a shortcut.</p>
+    </div>
+    <div class="frame" style="min-height:300px">
+      <div class="titlebar"><span class="dot"></span> Cloudflare MCP Tool Access</div>
+      <div class="transcript">
+        <div class="t-line"><span class="u">❯ <b>last 24 is fine</b></span></div>
+        <div class="activity"><span class="k">Session activity</span> · 1 shell command<br>
+          Called <code>cloudflare-audit-logs_auditlogs_by_account_id</code> account… since=2026-… before=202-…<br>
+          No audit log entries were found for Cloudflare account <code>attagroup</code> in the last 24 hours.</div>
+      </div>
+      <div class="more-menu qcard" style="padding:6px">
+        <div class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M4.5 6l2.5 2-2.5 2M8 10.5h3.5"/></svg>Terminal<span class="st">idle</span><span class="kbd">⌃1</span></div>
+        <div class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.5H14M7.5 9.5H14M2 14h12"/></svg>ToDos<span class="st">3/5 done</span><span class="kbd">⌃2</span></div>
+        <div class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="3" r="1.8"/><circle cx="4" cy="12.5" r="1.8"/><circle cx="12" cy="12.5" r="1.8"/><path d="M8 5v3M8 8L4.8 10.9M8 8l3.2 2.9"/></svg>Subagents<span class="st accent">● 2 running</span><span class="kbd">⌃3</span></div>
+        <div class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.5 8h3l2-4.5 3 9 2-4.5h3"/></svg>Activity<span class="st">12 events</span><span class="kbd">⌃4</span></div>
+        <div class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5.5"/><path d="M8 5.5v5M5.5 8h5"/></svg>Context<span class="st">48% window</span><span class="kbd">⌃5</span></div>
+        <div class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5l5.5 2v4c0 3.5-2.3 5.8-5.5 7-3.2-1.2-5.5-3.5-5.5-7v-4z"/></svg>Harness<span class="st red">1 failed check</span><span class="kbd">⌃6</span></div>
+      </div>
+      <div class="bottom">
+        <div class="bar">
+          <div class="dock">
+            <span class="dock-btn sel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 3h12v8H6l-3 2.5V3z"/></svg>Transcript</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M6 8h4M6 11h4"/></svg>Changes</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M11 2l3 3-8 8-3.5.5L3 10z"/></svg>Whiteboard</span>
+            <span class="dock-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2.5 2 2.5 10 0 12-2.5-2-2.5-10 0-12z"/></svg>Browser</span>
+            <span class="dock-btn sel"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="4" cy="4" r="1.3"/><circle cx="8" cy="4" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="4" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12" cy="8" r="1.3"/><circle cx="4" cy="12" r="1.3"/><circle cx="8" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/></svg>More</span>
+          </div>
+          <div class="model-cluster"><span class="m">GPT-5.6 Luna ▾</span><span class="m accent">Maximum ▾</span><span class="m">Fast off</span></div>
+        </div>
+        <div class="composer"><span class="plus">+</span> Ask anything, / for commands, @ for context…</div>
+      </div>
+    </div>
+    <div class="note">Cheapest option: keep the menu exactly where it is but let it answer
+    “is anything happening in there?” — counts, running state, failure color, and a shortcut
+    hint so power users stop opening it at all.</div>
+  </div>
+</div>
+
+</body>
+</html>

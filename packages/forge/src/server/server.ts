@@ -17,6 +17,8 @@ import { PublicApi } from "./routes/instance/httpapi/public"
 import type { CorsOptions } from "@turenlabs/server/cors"
 import { startScheduler } from "@turenlabs/server/intel/scheduler"
 import { lazy } from "@/util/lazy"
+import { Flag } from "@turenlabs/core/flag/flag"
+import { isLoopbackHostname } from "./shared/local-request"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 import { SecurityProxyStore } from "@turenlabs/core/security-proxy"
 import { SecurityProxyRuntime } from "@turenlabs/core/security-proxy-runtime"
@@ -41,6 +43,8 @@ type ServerApp = {
 type ListenOptions = CorsOptions & {
   port: number
   hostname: string
+  /** Opt out of refusing non-loopback binds without FORGE_SERVER_PASSWORD. */
+  insecure?: boolean
   mdns?: boolean
   mdnsDomain?: string
   credentialVault?: {
@@ -85,6 +89,15 @@ export async function openapi() {
 export let url: URL | undefined
 
 export async function listen(opts: ListenOptions): Promise<Listener> {
+  // Binding a non-loopback interface exposes every privileged API on the LAN, so a
+  // password is mandatory there unless the caller explicitly opts into insecure mode.
+  const password = process.env.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD
+  if (!password && !opts.insecure && !isLoopbackHostname(opts.hostname)) {
+    throw new Error(
+      `Refusing to listen on ${opts.hostname} without FORGE_SERVER_PASSWORD. ` +
+        "Set FORGE_SERVER_PASSWORD, bind a loopback hostname, or pass --insecure to override.",
+    )
+  }
   if (opts.credentialVault) SecretVault.configure(opts.credentialVault)
   const listener = await Effect.runPromise(listenEffect(opts))
   return {

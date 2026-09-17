@@ -128,6 +128,7 @@ export const GlobalApi = HttpApi.make("global").add(
       HttpApiEndpoint.put("permissionChecksUpdate", GlobalPaths.permissionChecks, {
         payload: GlobalPermissionChecks,
         success: described(GlobalPermissionChecks, "Updated permission check policy"),
+        error: HttpApiError.Forbidden,
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "global.permissionChecks.update",

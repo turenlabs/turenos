@@ -335,6 +335,27 @@ describe("ClaudeCodePlugin pinned generations", () => {
   )
 })
 
+describe("ClaudeCodeCLI.pinnedModels", () => {
+  it.effect("drops the upstream '(latest)' alias marker from pinned names", () =>
+    Effect.sync(() => {
+      // models.dev marks undated alias ids "(latest)" — the newest dated
+      // deployment of that generation, not the newest generation. The app
+      // renders the suffix as a "Latest" badge, which would be a lie on a
+      // fixed-generation row sitting next to newer siblings.
+      const pinned = ClaudeCodeCLI.pinnedModels([
+        {
+          id: "claude-opus-4-5",
+          name: "Claude Opus 4.5 (latest)",
+          family: "claude-opus",
+          released: 1,
+          limit: { context: 200_000, output: 64_000 },
+        },
+      ])
+      expect(pinned[0]?.name).toBe("Claude Opus 4.5")
+    }),
+  )
+})
+
 describe("ClaudeCodeCLI.windowsByFamily", () => {
   it.effect("ignores entries with no family or no declared window", () =>
     Effect.sync(() => {

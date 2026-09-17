@@ -17,6 +17,7 @@ import {
   useWslServers,
 } from "@turenlabs/app"
 import type { UpdaterState } from "@turenlabs/app/updater"
+import { mountLaunchScreen } from "@turenlabs/app/launch"
 import * as Sentry from "@sentry/solid"
 import type { AsyncStorage } from "@solid-primitives/storage"
 import { createMemoryHistory, MemoryRouter, type BaseRouterProps } from "@solidjs/router"
@@ -41,6 +42,8 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 }
 
 installStartupDiagnostics()
+
+const launch = mountLaunchScreen()
 
 if (import.meta.env.VITE_SENTRY_DSN) {
   Sentry.init({
@@ -471,3 +474,5 @@ render(() => {
     </Show>
   )
 }, root!)
+
+launch.release()

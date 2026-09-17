@@ -1,7 +1,7 @@
 import { MainLogger } from "electron-log"
 import log from "electron-log/main.js"
 import { app, crashReporter, netLog, shell } from "electron"
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { ZipWriter, BlobWriter, BlobReader } from "@zip.js/zip.js"
 import { dirname, join } from "node:path"
 import { homedir } from "node:os"
@@ -158,23 +158,44 @@ type Entry = { name: string; path?: string; data?: Buffer }
 
 function collect(dir: string, prefix: string): Entry[] {
   if (!existsSync(dir)) return []
+  // Symlinks are never followed: a planted link inside a log root must not turn
+  // the export into a read of an unrelated file or a directory cycle.
+  let base: string
+  try {
+    base = realpathSync(dir)
+  } catch {
+    return []
+  }
   const cutoff = Date.now() - EXPORT_WINDOW
   const result: Entry[] = []
   const walk = (current: string) => {
-    for (const entry of readdirSync(current)) {
+    let entries: string[]
+    try {
+      entries = readdirSync(current)
+    } catch {
+      return
+    }
+    for (const entry of entries) {
       const file = join(current, entry)
-      const info = statSync(file)
+      let info
+      try {
+        info = lstatSync(file)
+      } catch {
+        continue
+      }
+      if (info.isSymbolicLink()) continue
       if (info.isDirectory()) {
         walk(file)
         continue
       }
+      if (!info.isFile()) continue
       if (info.mtimeMs < cutoff) continue
       if (info.size > MAX_EXPORT_FILE_SIZE) continue
       if (file.endsWith(".heapsnapshot")) continue
-      result.push({ name: join(prefix, file.slice(dir.length + 1)).replace(/\\/g, "/"), path: file })
+      result.push({ name: join(prefix, file.slice(base.length + 1)).replace(/\\/g, "/"), path: file })
     }
   }
-  walk(dir)
+  walk(base)
   return result
 }
 

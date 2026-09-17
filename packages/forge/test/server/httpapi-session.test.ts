@@ -484,8 +484,8 @@ describe("session HttpApi", () => {
           headers,
           method: "POST",
         })
-        expect(abort.status).toBe(200)
-        expect(yield* responseJson(abort)).toBe(true)
+        expect(abort.status).toBe(404)
+        expect(yield* responseJson(abort)).toEqual(missingSessionBody)
 
         const session = yield* createSession({ title: "missing message" })
         const missingMessage = MessageID.ascending()
@@ -497,6 +497,31 @@ describe("session HttpApi", () => {
         expect(yield* responseJson(message)).toEqual({
           name: "NotFoundError",
           data: { message: `Message not found: ${missingMessage}` },
+        })
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
+    "rejects a parent session owned by another project",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const headers = { "x-forge-directory": test.directory }
+        const foreignDir = yield* tmpdirScoped({ git: true })
+        const foreign = yield* createSession({ title: "foreign" }).pipe(provideInstanceEffect(foreignDir))
+
+        // Session IDs resolve against the global table; a foreign project ID must
+        // answer like a missing session rather than resolving across projects.
+        const created = yield* request(SessionPaths.create, {
+          headers: { ...headers, "content-type": "application/json" },
+          method: "POST",
+          body: JSON.stringify({ parentID: foreign.id }),
+        })
+        expect(created.status).toBe(404)
+        expect(yield* responseJson(created)).toEqual({
+          name: "NotFoundError",
+          data: { message: `Session not found: ${foreign.id}` },
         })
       }),
     { git: true, config: { formatter: false, lsp: false } },

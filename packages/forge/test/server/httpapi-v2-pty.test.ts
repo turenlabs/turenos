@@ -125,6 +125,14 @@ describe("v2 pty HttpApi", () => {
 
       const invalid = await request(`/api/pty/${info.id}/connect?ticket=not-a-ticket`, tmp.path)
       expect(invalid.status).toBe(403)
+
+      const ticketless = await request(`/api/pty/${info.id}/connect`, tmp.path)
+      expect(ticketless.status).toBe(403)
+
+      const crossOrigin = await request(`/api/pty/${info.id}/connect?ticket=${ticket}`, tmp.path, {
+        headers: { origin: "https://evil.example" },
+      })
+      expect(crossOrigin.status).toBe(403)
     } finally {
       await request(`/api/pty/${info.id}`, tmp.path, { method: "DELETE" })
     }
@@ -143,8 +151,16 @@ describe("v2 pty HttpApi", () => {
         const body = yield* Schema.decodeUnknownEffect(Location.response(Pty.Info))(yield* created.json)
         const info = body.data
 
+        const token = yield* HttpClientRequest.post(`/api/pty/${info.id}/connect-token`).pipe(
+          directoryHeader(dir),
+          HttpClientRequest.setHeader("x-forge-ticket", "1"),
+          HttpClient.execute,
+        )
+        expect(token.status).toBe(200)
+        const ticket = yield* Schema.decodeUnknownEffect(Location.response(PtyTicket.ConnectToken))(yield* token.json)
+
         const socket = yield* Socket.makeWebSocket(
-          `${(yield* serverUrl()).replace(/^http/, "ws")}/api/pty/${info.id}/connect?cursor=-1&location[directory]=${encodeURIComponent(dir)}`,
+          `${(yield* serverUrl()).replace(/^http/, "ws")}/api/pty/${info.id}/connect?cursor=-1&location[directory]=${encodeURIComponent(dir)}&ticket=${ticket.data.ticket}`,
           { closeCodeIsError: () => false },
         )
         const messages = yield* Queue.unbounded<string>()

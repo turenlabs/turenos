@@ -240,7 +240,11 @@ export const pinnedModels = (entries: Iterable<PinnedEntry>): ReadonlyArray<Pinn
     .map(({ entry, family, alias }): PinnedModel => ({
       id: entry.id,
       apiID: entry.id,
-      name: entry.name ?? entry.id,
+      // Upstream suffixes undated alias ids with "(latest)", meaning "latest
+      // dated deployment of this generation" — not the newest generation —
+      // and the app renders that suffix as a "Latest" badge. A pinned row is
+      // a fixed generation, so the marker does not belong on it.
+      name: entry.name?.replace(/ \(latest\)$/, "") ?? entry.id,
       family,
       context: entry.limit.context,
       output: entry.limit.output,

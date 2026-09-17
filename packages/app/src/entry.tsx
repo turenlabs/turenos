@@ -9,6 +9,7 @@ import { dict as en } from "@/i18n/en"
 import { dict as zh } from "@/i18n/zh"
 import { handleNotificationClick } from "@/utils/notification-click"
 import { authFromToken } from "@/utils/server"
+import { mountLaunchScreen } from "./launch/launch-screen"
 import pkg from "../package.json"
 import { ServerConnection } from "./context/server"
 
@@ -79,8 +80,21 @@ const notify: Platform["notify"] = async (title, description, href) => {
   }
 }
 
+const MAX_EXTERNAL_URL_LENGTH = 4096
+
+const externalHttpUrl = (input: string) => {
+  if (input.length === 0 || input.length > MAX_EXTERNAL_URL_LENGTH) return
+  const url = URL.parse(input)
+  if (!url) return
+  if (url.protocol !== "http:" && url.protocol !== "https:") return
+  if (url.username || url.password) return
+  return url.href
+}
+
 const openLink: Platform["openLink"] = (url) => {
-  window.open(url, "_blank")
+  const external = externalHttpUrl(url)
+  if (!external) return
+  window.open(external, "_blank", "noopener,noreferrer")
 }
 
 const back: Platform["back"] = () => {
@@ -154,6 +168,7 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 }
 
 if (root instanceof HTMLElement) {
+  const launch = mountLaunchScreen()
   const auth = authFromToken(new URLSearchParams(location.search).get("auth_token"))
   clearAuthToken()
   const server: ServerConnection.Http = {
@@ -179,4 +194,5 @@ if (root instanceof HTMLElement) {
     ),
     root,
   )
+  launch.release()
 }

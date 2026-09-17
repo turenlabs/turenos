@@ -88,4 +88,18 @@ describe("picked file authorizations", () => {
     await authorizations.read(1, token, "a.txt")
     await expect(authorizations.read(1, token, "a.txt")).rejects.toThrow("not selected")
   })
+
+  test("keeps picked paths revealable after the read authorization is consumed", async () => {
+    const authorizations = createPickedFileAuthorizations(read)
+    const token = authorizations.add(1, ["a.txt", "b.txt"])
+
+    expect(authorizations.allowsReveal("a.txt")).toBe(true)
+    expect(authorizations.allowsReveal("other.txt")).toBe(false)
+
+    await authorizations.read(1, token, "a.txt")
+    expect(authorizations.allowsReveal("a.txt")).toBe(true)
+
+    authorizations.release(1, token)
+    expect(authorizations.allowsReveal("b.txt")).toBe(true)
+  })
 })

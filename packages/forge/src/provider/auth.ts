@@ -204,6 +204,8 @@ const layer: Layer.Layer<Service, never, Auth.Service | Plugin.Service> = Layer.
         match.method === "code" ? match.callback(input.code!) : match.callback(),
       )
       if (!result || result.type !== "success") return yield* new OauthCallbackFailed({})
+      // Consume the pending authorization so a replayed callback cannot reuse it.
+      pending.delete(input.providerID)
 
       if ("key" in result) {
         yield* auth.set(input.providerID, {

@@ -83,7 +83,9 @@ export const LlamaCppPlugin = {
       Effect.andThen(
         Effect.gen(function* () {
           const next = yield* discover(http, endpoint)
-          if (!next || signature(next) === signature(discovered)) return
+          if (signature(next) === signature(discovered)) return
+          // A failed probe is a state change too: a server that stops answering
+          // must drop out of the catalog, not stay listed as connected forever.
           discovered = next
           yield* ctx.catalog.reload()
         }),
@@ -145,6 +147,9 @@ function modelID(model: LlamaCppModel) {
   return normalized
 }
 
+// Unreachable and reachable-with-no-models are different states: the first removes the
+// provider from the catalog, the second registers it with an empty model list.
 function signature(discovered: { models: readonly { readonly model: LlamaCppModel; readonly id: string }[]; context?: number } | undefined) {
-  return JSON.stringify([discovered?.models.map((item) => item.id), discovered?.context])
+  if (discovered === undefined) return "unreachable"
+  return JSON.stringify([discovered.models.map((item) => item.id), discovered.context])
 }

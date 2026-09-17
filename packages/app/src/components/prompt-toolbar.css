@@ -20,7 +20,9 @@
 
   [data-component="session-live-dock"] nav {
     display: flex;
+    flex-wrap: nowrap;
     width: auto;
+    max-width: none;
     padding: 0;
     border: 0;
     background: transparent;

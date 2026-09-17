@@ -1,7 +1,9 @@
 import { createUniqueId, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Icon } from "@turenlabs/ui/icon"
+import type { Todo } from "@turenlabs/sdk/v2"
 import type { SessionLiveView } from "@/session-live-view"
+import "./session-live-dock.css"
 
 export const SESSION_LIVE_VIEWS = [
   { value: "history", label: "Transcript", icon: "speech-bubble", primary: true },
@@ -20,6 +22,7 @@ export function SessionLiveDock(props: {
   view: () => SessionLiveView
   onViewChange: (view: SessionLiveView) => void
   agents?: () => { active: number; failed?: number }
+  todos?: () => Todo[]
 }) {
   const [store, setStore] = createStore({ moreOpen: false })
   const menuID = createUniqueId()
@@ -30,6 +33,20 @@ export function SessionLiveDock(props: {
     const count = failedAgents() || activeAgents()
     if (!count) return ""
     return `${count} ${failedAgents() ? "failed" : "active"} ${count === 1 ? "subagent" : "subagents"}`
+  }
+  const count = (value: SessionLiveView) => {
+    if (value === "subagents") {
+      if (failedAgents() > 0) return { text: `${failedAgents()}`, danger: true }
+      if (activeAgents() > 0) return { text: `${activeAgents()}`, danger: false }
+      return
+    }
+    if (value === "todos") {
+      const list = props.todos?.() ?? []
+      if (list.length === 0) return
+      const done = list.filter((todo) => todo.status === "completed" || todo.status === "cancelled").length
+      return { text: `${done}/${list.length}`, danger: false }
+    }
+    return
   }
   let moreButton!: HTMLButtonElement
   let moreMenu!: HTMLDivElement
@@ -45,6 +62,11 @@ export function SessionLiveDock(props: {
       const selected = moreMenu.querySelector<HTMLButtonElement>('[aria-checked="true"]')
       ;(selected ?? items[last ? items.length - 1 : 0])?.focus()
     })
+  }
+
+  const pick = (value: SessionLiveView) => {
+    setStore("moreOpen", false)
+    props.onViewChange(value)
   }
 
   return (
@@ -97,8 +119,8 @@ export function SessionLiveDock(props: {
                 role="menuitemradio"
                 data-action={`session-live-dock-${item.value}`}
                 aria-checked={props.view() === item.value}
-                class="flex min-w-0 items-center gap-2 rounded-[8px] px-3 py-2 text-left text-[12px] text-v2-text-muted outline-none hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-strong focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:text-v2-text-strong"
-                classList={{ "bg-v2-background-bg-layer-02 text-v2-text-strong": props.view() === item.value }}
+                class="flex min-w-0 items-center gap-2 rounded-[8px] px-3 py-2 text-left text-[12px] text-v2-text-text-muted outline-none hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:text-v2-text-text-base"
+                classList={{ "bg-v2-background-bg-layer-02 text-v2-text-text-base": props.view() === item.value }}
                 onClick={() => {
                   props.onViewChange(item.value)
                   close()
@@ -106,10 +128,12 @@ export function SessionLiveDock(props: {
               >
                 <Icon name={item.icon} size="small" />
                 <span class="flex-1">{item.label}</span>
-                <Show when={item.value === "subagents" && (activeAgents() > 0 || failedAgents() > 0)}>
-                  <span class="text-[10px]" classList={{ "text-v2-state-fg-danger": failedAgents() > 0 }}>
-                    {failedAgents() > 0 ? `${failedAgents()} failed` : `${activeAgents()} active`}
-                  </span>
+                <Show when={count(item.value)}>
+                  {(badge) => (
+                    <span class="text-[10px]" classList={{ "text-v2-state-fg-danger": badge().danger }}>
+                      {badge().text}
+                    </span>
+                  )}
                 </Show>
                 <Show when={props.view() === item.value}>
                   <Icon name="check-small" size="small" />
@@ -121,7 +145,7 @@ export function SessionLiveDock(props: {
       </Show>
       <nav
         aria-label="Session views"
-        class="grid w-full max-w-md grid-cols-4 gap-0.5 rounded-[12px] border border-v2-border-border-base bg-v2-background-bg-layer-01/95 p-1 shadow-[var(--v2-elevation-floating)] backdrop-blur-md sm:w-auto"
+        class="flex w-fit max-w-full flex-wrap items-center justify-center gap-0.5 rounded-[12px] border border-v2-border-border-base bg-v2-background-bg-layer-01/95 p-1 shadow-[var(--v2-elevation-floating)] backdrop-blur-md"
       >
         <For each={SESSION_LIVE_VIEWS.filter((item) => item.primary)}>
           {(item) => (
@@ -132,21 +156,54 @@ export function SessionLiveDock(props: {
               aria-pressed={props.view() === item.value}
               aria-label={item.label}
               title={item.label}
-              class="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-2 text-[11px] text-v2-text-muted outline-none transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-strong focus-visible:outline-2 focus-visible:outline-v2-border-border-focus sm:px-3"
-              classList={{ "bg-v2-background-bg-layer-02 text-v2-text-strong": props.view() === item.value }}
-              onClick={() => {
-                setStore("moreOpen", false)
-                props.onViewChange(item.value)
-              }}
+              class="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-2 text-[11px] text-v2-text-text-muted outline-none transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base focus-visible:outline-2 focus-visible:outline-v2-border-border-focus sm:px-3"
+              classList={{ "bg-v2-background-bg-layer-02 text-v2-text-text-base": props.view() === item.value }}
+              onClick={() => pick(item.value)}
             >
               <Icon name={item.icon} size="small" />
               <span data-slot="session-view-label">{item.label}</span>
             </button>
           )}
         </For>
+        <div data-slot="dock-secondary">
+          <span class="mx-0.5 h-4.5 w-px self-center bg-v2-border-border-base" aria-hidden="true" />
+          <For each={SESSION_LIVE_VIEWS.filter((item) => !item.primary)}>
+            {(item) => (
+              <button
+                type="button"
+                data-action={`session-live-dock-${item.value}`}
+                data-selected={props.view() === item.value ? "true" : undefined}
+                aria-pressed={props.view() === item.value}
+                aria-label={item.label}
+                title={item.label}
+                class="flex h-9 min-w-8 items-center justify-center gap-1 rounded-[8px] px-1.5 text-[11px] text-v2-text-text-muted outline-none transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base focus-visible:outline-2 focus-visible:outline-v2-border-border-focus"
+                classList={{ "bg-v2-background-bg-layer-02 text-v2-text-text-base": props.view() === item.value }}
+                onClick={() => pick(item.value)}
+              >
+                <Icon name={item.icon} size="small" />
+                <Show when={count(item.value)}>
+                  {(badge) => (
+                    <span
+                      data-slot="dock-count"
+                      class="font-mono text-[9px] leading-none"
+                      classList={{
+                        "text-v2-state-fg-danger": badge().danger,
+                        "text-v2-icon-icon-accent": !badge().danger && item.value === "subagents",
+                        "text-v2-text-text-faint": !badge().danger && item.value !== "subagents",
+                      }}
+                    >
+                      {badge().text}
+                    </span>
+                  )}
+                </Show>
+              </button>
+            )}
+          </For>
+        </div>
         <button
           ref={moreButton}
           type="button"
+          data-slot="dock-more"
           data-action="session-live-dock-more"
           aria-label={["More session views", secondary() && `${secondary()!.label} selected`, agentStatus()]
             .filter(Boolean)
@@ -156,8 +213,8 @@ export function SessionLiveDock(props: {
           title="More session views"
           aria-controls={store.moreOpen ? menuID : undefined}
           aria-pressed={!!secondary()}
-          class="relative flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-2 text-[11px] text-v2-text-muted outline-none transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-strong focus-visible:outline-2 focus-visible:outline-v2-border-border-focus sm:px-3"
-          classList={{ "bg-v2-background-bg-layer-02 text-v2-text-strong": store.moreOpen || !!secondary() }}
+          class="relative h-9 min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-2 text-[11px] text-v2-text-text-muted outline-none transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base focus-visible:outline-2 focus-visible:outline-v2-border-border-focus sm:px-3"
+          classList={{ "bg-v2-background-bg-layer-02 text-v2-text-text-base": store.moreOpen || !!secondary() }}
           onClick={() => (store.moreOpen ? close() : open())}
           onKeyDown={(event) => {
             if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return

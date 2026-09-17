@@ -1,0 +1,32 @@
+[data-component="session-live-dock"] [data-slot="dock-secondary"] {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+[data-component="session-live-dock"] [data-slot="dock-more"] {
+  display: none;
+}
+
+/* Standalone placement (child-session strip, pending surface) has no toolbar
+   container — fall back to a viewport query there. */
+@media (max-width: 640px) {
+  [data-component="session-live-dock"] [data-slot="dock-secondary"] {
+    display: none;
+  }
+  [data-component="session-live-dock"] [data-slot="dock-more"] {
+    display: flex;
+  }
+}
+
+/* Inside the prompt toolbar the model cluster (~300px) shares the row, so the
+   secondary views collapse into More until there is room for all of them. */
+@container prompt-toolbar (max-width: 920px) {
+  [data-component="session-live-dock"] [data-slot="dock-secondary"] {
+    display: none;
+  }
+  [data-component="session-live-dock"] [data-slot="dock-more"] {
+    display: flex;
+  }
+}
+

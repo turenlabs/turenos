@@ -1,11 +1,4 @@
 import { expect } from "bun:test"
-import { Server } from "@modelcontextprotocol/sdk/server/index.js"
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
-import {
-  CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js"
 import { AgentV2 } from "@turenlabs/core/agent"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { Database } from "@turenlabs/core/database/database"
@@ -37,9 +30,9 @@ import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { McpAuth } from "../../src/mcp/auth"
 import { MCP } from "../../src/mcp/index"
 import { McpIntegration } from "../../src/mcp/integration"
-import { McpOAuthCallback } from "../../src/mcp/oauth-callback"
 import { McpOAuthAutoProvider, McpOAuthPendingProvider, McpOAuthProvider } from "../../src/mcp/oauth-provider"
 import { McpBroker } from "../../src/mcp/broker"
+import { serveOAuthMcp, stopOAuthCallback } from "./fixture/oauth-server"
 import { testEffect } from "../lib/effect"
 
 const mcpTest = testEffect(
@@ -47,124 +40,6 @@ const mcpTest = testEffect(
     LayerNode.group([MCP.testNode, McpAuth.node, EventV2Bridge.node, Config.node, CrossSpawnSpawner.node, FSUtil.node]),
   ),
 )
-
-interface OAuthMcpOptions {
-  capabilities?: "tools" | "resources"
-  unauthorizedDelay?: number
-  tokenDelay?: number
-}
-
-function serveOAuthMcp(options: OAuthMcpOptions = {}) {
-  return Effect.acquireRelease(
-    Effect.promise(async () => {
-      const capabilities = options.capabilities ?? "tools"
-      const protocol = new Server(
-        { name: "oauth-auto-connect", version: "1.0.0" },
-        { capabilities: capabilities === "tools" ? { tools: {} } : { resources: {} } },
-      )
-      const transport = new WebStandardStreamableHTTPServerTransport({
-        sessionIdGenerator: () => crypto.randomUUID(),
-        enableJsonResponse: true,
-      })
-      let listToolsCalls = 0
-      let requiresAuth = true
-
-      if (capabilities === "tools") {
-        protocol.setRequestHandler(ListToolsRequestSchema, () => {
-          listToolsCalls++
-          return Promise.resolve({ tools: [{ name: "test_tool", inputSchema: { type: "object" } }] })
-        })
-        protocol.setRequestHandler(CallToolRequestSchema, (request) =>
-          Promise.resolve({ content: [{ type: "text", text: `fake:${request.params.name}` }] }),
-        )
-      }
-      if (capabilities === "resources") {
-        protocol.setRequestHandler(ListResourcesRequestSchema, () =>
-          Promise.resolve({ resources: [{ name: "docs", uri: "docs://readme" }] }),
-        )
-      }
-
-      await protocol.connect(transport)
-      const http = Bun.serve({
-        port: 0,
-        async fetch(request) {
-          const url = new URL(request.url)
-          const origin = url.origin
-          const mcpUrl = `${origin}/mcp`
-
-          if (url.pathname === "/.well-known/oauth-protected-resource/mcp") {
-            return Response.json({
-              resource: mcpUrl,
-              authorization_servers: [origin],
-              scopes_supported: ["mcp"],
-            })
-          }
-          if (url.pathname === "/.well-known/oauth-protected-resource") {
-            return Response.json({
-              resource: mcpUrl,
-              authorization_servers: [origin],
-              scopes_supported: ["mcp"],
-            })
-          }
-          if (url.pathname === "/.well-known/oauth-authorization-server") {
-            return Response.json({
-              issuer: origin,
-              authorization_endpoint: `${origin}/authorize`,
-              token_endpoint: `${origin}/token`,
-              registration_endpoint: `${origin}/register`,
-              response_types_supported: ["code"],
-              grant_types_supported: ["authorization_code", "refresh_token"],
-              token_endpoint_auth_methods_supported: ["none"],
-              code_challenge_methods_supported: ["S256"],
-              scopes_supported: ["mcp"],
-            })
-          }
-          if (url.pathname === "/register") {
-            const metadata = (await request.json()) as Record<string, unknown>
-            return Response.json({ ...metadata, client_id: "replacement-client" }, { status: 201 })
-          }
-          if (url.pathname === "/token") {
-            const body = new URLSearchParams(await request.text())
-            if (body.get("code") !== "valid-code") {
-              return Response.json(
-                { error: "invalid_grant", error_description: "Token exchange failed" },
-                { status: 400 },
-              )
-            }
-            if (options.tokenDelay) await Bun.sleep(options.tokenDelay)
-            return Response.json({ access_token: "replacement-token", token_type: "Bearer" })
-          }
-          if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 })
-
-          if (request.method === "GET") return new Response(null, { status: 405 })
-          if (requiresAuth && request.headers.get("authorization") !== "Bearer replacement-token") {
-            if (options.unauthorizedDelay) await Bun.sleep(options.unauthorizedDelay)
-            return new Response("Unauthorized", {
-              status: 401,
-              headers: {
-                "WWW-Authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource", scope="mcp"`,
-              },
-            })
-          }
-          return transport.handleRequest(request)
-        },
-      })
-
-      return {
-        url: new URL("/mcp", http.url).toString(),
-        allowAnonymous: () => {
-          requiresAuth = false
-        },
-        listToolsCalls: () => listToolsCalls,
-        close: async () => {
-          await http.stop(true)
-          await protocol.close()
-        },
-      }
-    }),
-    (server) => Effect.promise(server.close),
-  )
-}
 
 const remote = (url: string, enabled = true) => ({
   type: "remote" as const,
@@ -269,8 +144,6 @@ const v2McpTest = testEffect(
     ],
   ),
 )
-
-const stopOAuthCallback = Effect.addFinalizer(() => Effect.promise(() => McpOAuthCallback.stop()).pipe(Effect.ignore))
 
 v2McpTest.instance("uses the canonical V2 snapshot after a configured static OAuth connection", () =>
   Effect.gen(function* () {

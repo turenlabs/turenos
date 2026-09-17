@@ -1909,9 +1909,7 @@ const scenarios: Scenario[] = [
       path: route("/session/{sessionID}/abort", { sessionID: "ses_httpapi_missing" }),
       headers: ctx.headers(),
     }))
-    .json(200, (body) => {
-      check(body === true, "missing session abort should remain a no-op success")
-    }),
+    .status(404),
   http.protected
     .post("/session/{sessionID}/revert", "session.revert")
     .mutating()

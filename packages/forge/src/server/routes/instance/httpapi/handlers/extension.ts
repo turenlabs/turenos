@@ -1,9 +1,9 @@
 import { ExtensionManager } from "@/extension"
 import { Extension } from "@turenlabs/schema"
 import { ExtensionCatalog } from "@turenlabs/extensions"
-import { Flag } from "@turenlabs/core/flag/flag"
 import { Cause, Effect, RcMap } from "effect"
 import { HttpServerRequest } from "effect/unstable/http"
+import { isLocalPlacement, isLocalRequest } from "@/server/shared/local-request"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { LocationServiceMap } from "@turenlabs/core/location-services"
 import { ToolVisibleError } from "@turenlabs/core/tool/visible-error"
@@ -22,26 +22,12 @@ export function localExtensionRequest(input: {
   readonly inProcess: boolean
   readonly remoteAddress?: string
 }) {
-  if (input.workspaceID) return false
-  if (input.inProcess) return true
-  const address = input.remoteAddress?.toLowerCase()
-  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1"
+  return isLocalPlacement(input)
 }
 
 const admission = Effect.fnUntraced(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest
-  const source = request.source
-  const remoteAddress =
-    source && typeof source === "object" && "socket" in source
-      ? (source.socket as { readonly remoteAddress?: string } | undefined)?.remoteAddress
-      : undefined
-  return {
-    local: localExtensionRequest({
-      workspaceID: Flag.FORGE_WORKSPACE_ID,
-      inProcess: source instanceof Request,
-      remoteAddress,
-    }),
-  }
+  return { local: isLocalRequest(request) }
 })
 
 export const extensionListHandlers = HttpApiBuilder.group(InstanceHttpApi, "extensionRead", (handlers) =>

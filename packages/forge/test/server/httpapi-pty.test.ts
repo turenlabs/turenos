@@ -252,6 +252,39 @@ describe("pty HttpApi bridge", () => {
       message: `PTY session not found: ${missingID}`,
     })
   })
+
+  testPty("rejects ticketless and cross-origin websocket upgrades", async () => {
+    await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
+    const headers = { "x-forge-directory": tmp.path }
+    const created = await app().request(PtyPaths.create, {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ command: "/usr/bin/env", args: ["sh", "-c", "sleep 5"], title: "guard" }),
+    })
+    expect(created.status).toBe(200)
+    const info = await created.json()
+
+    try {
+      const connect = `${PtyPaths.connect.replace(":ptyID", info.id)}?cursor=-1`
+      const ticketless = await app().request(connect, { headers })
+      expect(ticketless.status).toBe(403)
+
+      const token = await app().request(PtyPaths.connectToken.replace(":ptyID", info.id), {
+        method: "POST",
+        headers: { ...headers, "x-forge-ticket": "1" },
+      })
+      const ticket = (await token.json()) as { ticket: string }
+      const crossOrigin = await app().request(`${connect}&ticket=${ticket.ticket}`, {
+        headers: { ...headers, origin: "https://evil.example" },
+      })
+      expect(crossOrigin.status).toBe(403)
+      // Origin is checked before the ticket is consumed, so it stays valid.
+      const retry = await app().request(`${connect}&ticket=${ticket.ticket}`, { headers })
+      expect(retry.status).not.toBe(403)
+    } finally {
+      await app().request(PtyPaths.remove.replace(":ptyID", info.id), { method: "DELETE", headers })
+    }
+  })
   ;(process.platform === "win32" ? effectIt.live.skip : effectIt.live)(
     "serves PTY websocket output and input through Effect routes",
     () =>
@@ -265,8 +298,16 @@ describe("pty HttpApi bridge", () => {
         expect(created.status).toBe(200)
         const info = yield* Schema.decodeUnknownEffect(Pty.Info)(yield* created.json)
 
+        const token = yield* HttpClientRequest.post(PtyPaths.connectToken.replace(":ptyID", info.id)).pipe(
+          directoryHeader(dir),
+          HttpClientRequest.setHeader("x-forge-ticket", "1"),
+          HttpClient.execute,
+        )
+        expect(token.status).toBe(200)
+        const ticket = (yield* token.json) as { ticket: string }
+
         const socket = yield* Socket.makeWebSocket(
-          `${(yield* serverUrl()).replace(/^http/, "ws")}${PtyPaths.connect.replace(":ptyID", info.id)}?cursor=-1&directory=${encodeURIComponent(dir)}`,
+          `${(yield* serverUrl()).replace(/^http/, "ws")}${PtyPaths.connect.replace(":ptyID", info.id)}?cursor=-1&directory=${encodeURIComponent(dir)}&ticket=${ticket.ticket}`,
           { closeCodeIsError: () => false },
         )
         const messages = yield* Queue.unbounded<string>()

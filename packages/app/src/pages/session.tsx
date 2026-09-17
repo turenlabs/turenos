@@ -2465,7 +2465,7 @@ export default function Page() {
         subagents={settings.general.newLayoutDesigns() ? undefined : subagentDock()}
         liveDock={
           <Show when={newSessionDesign() && !!params.id}>
-            <SessionLiveDock view={liveView} onViewChange={setLiveDockView} agents={liveAgents} />
+            <SessionLiveDock view={liveView} onViewChange={setLiveDockView} agents={liveAgents} todos={composer.todos} />
           </Show>
         }
         promptInput={
@@ -2473,7 +2473,12 @@ export default function Page() {
             controls={inputController()}
             sessionDock={
               <Show when={newSessionDesign() && !!params.id}>
-                <SessionLiveDock view={liveView} onViewChange={setLiveDockView} agents={liveAgents} />
+                <SessionLiveDock
+                  view={liveView}
+                  onViewChange={setLiveDockView}
+                  agents={liveAgents}
+                  todos={composer.todos}
+                />
               </Show>
             }
             ref={(el) => {
@@ -2497,6 +2502,7 @@ export default function Page() {
             }}
             shouldQueue={queueEnabled}
             goal={goal}
+            question={{ request: composer.questionRequest, onSubmit: resumeScroll }}
             onAbort={async (signal) => {
               const id = params.id
               if (!id) return

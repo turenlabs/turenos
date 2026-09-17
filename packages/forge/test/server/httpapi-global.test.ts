@@ -15,6 +15,7 @@ import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LocationServiceMap } from "@turenlabs/core/location-service-map"
 import type { LocationError, LocationServices } from "@turenlabs/core/location-services"
 import { ProjectV2 } from "@turenlabs/core/project"
+import { Flag } from "@turenlabs/core/flag/flag"
 import { ServerAuth } from "../../src/server/auth"
 import { RootHttpApi } from "../../src/server/routes/instance/httpapi/api"
 import { GlobalPaths } from "../../src/server/routes/instance/httpapi/groups/global"
@@ -83,6 +84,26 @@ describe("global HttpApi", () => {
       expect(yield* stored.json).toEqual({ enforced: true })
     }),
   )
+
+  it.live("rejects permission policy changes from non-local callers", () => {
+    // FORGE_WORKSPACE_ID means the server is deployed inside a remote workspace;
+    // no request counts as local there, so the policy mutation must be refused.
+    const workspaceID = Flag.FORGE_WORKSPACE_ID
+    Flag.FORGE_WORKSPACE_ID = "wrk_remote"
+    return Effect.gen(function* () {
+      const before = yield* HttpClient.get(GlobalPaths.permissionChecks)
+      const initial = yield* before.json
+
+      const response = yield* HttpClientRequest.put(GlobalPaths.permissionChecks).pipe(
+        HttpClientRequest.bodyJsonUnsafe({ enforced: !(initial as { enforced: boolean }).enforced }),
+        HttpClient.execute,
+      )
+      expect(response.status).toBe(403)
+
+      const after = yield* HttpClient.get(GlobalPaths.permissionChecks)
+      expect(yield* after.json).toEqual(initial)
+    }).pipe(Effect.ensuring(Effect.sync(() => (Flag.FORGE_WORKSPACE_ID = workspaceID))))
+  })
 
   it.live("upgrades to latest when the request body is omitted", () =>
     Effect.gen(function* () {

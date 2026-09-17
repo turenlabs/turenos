@@ -1,19 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import {
-  homeSessionFocusGroup,
-  isAutomationSession,
-  partitionBySessionOrigin,
   prioritizeHomeSessionRecords,
   recentHomeSessionRecords,
-  recentlyFinishedHomeSessions,
   sessionOrigin,
   sessionOriginLabel,
 } from "./home-session-origin"
 
 describe("session origin", () => {
   test("recognises the id the scheduler assigns an automation run", () => {
-    expect(isAutomationSession({ id: "ses_loop_run123" })).toBe(true)
-    expect(isAutomationSession({ id: "ses_042173712ffeArQsZmpkpA07vx" })).toBe(false)
+    expect(sessionOrigin({ id: "ses_loop_run123" })).toBe("automation")
+    expect(sessionOrigin({ id: "ses_042173712ffeArQsZmpkpA07vx" })).toBe("manual")
   })
 
   test("classifies generated run sessions separately from manual sessions", () => {
@@ -23,36 +19,6 @@ describe("session origin", () => {
     expect(sessionOrigin({ id: `ses-${removedOrigin}-team-run123` })).toBe("manual")
     expect(sessionOrigin({ id: "ses_manual" })).toBe("manual")
     expect(sessionOriginLabel("automation")).toBe("Workflow")
-  })
-
-  test("keeps both groups in their original order", () => {
-    const records = [
-      { session: { id: "ses_a" } },
-      { session: { id: "ses_loop_1" } },
-      { session: { id: "ses_b" } },
-      { session: { id: "ses_loop_2" } },
-    ]
-    const { manual, automation } = partitionBySessionOrigin(records)
-    expect(manual.map((r) => r.session.id)).toEqual(["ses_a", "ses_b"])
-    expect(automation.map((r) => r.session.id)).toEqual(["ses_loop_1", "ses_loop_2"])
-  })
-
-  test("keeps personal focus to manual work but promotes any blocked run", () => {
-    expect(
-      homeSessionFocusGroup({ origin: "automation", status: "working", selectedProject: false, pinned: false }),
-    ).toBeUndefined()
-    expect(
-      homeSessionFocusGroup({ origin: "automation", status: "attention", selectedProject: false, pinned: false }),
-    ).toBe("attention")
-    expect(homeSessionFocusGroup({ origin: "manual", status: "working", selectedProject: true, pinned: false })).toBe(
-      "working",
-    )
-    expect(homeSessionFocusGroup({ origin: "manual", status: "unread", selectedProject: false, pinned: false })).toBe(
-      "unread",
-    )
-    expect(
-      homeSessionFocusGroup({ origin: "manual", status: "working", selectedProject: false, pinned: true }),
-    ).toBeUndefined()
   })
 
   test("prioritizes attention before active and recent sessions", () => {
@@ -74,26 +40,5 @@ describe("session origin", () => {
       { session: { time: { created: 2, updated: 2 } } },
     ]
     expect(recentHomeSessionRecords(records, 2).map((record) => record.session.time.created)).toEqual([3, 2])
-  })
-
-  test("finds recent settled manual root sessions without including active or generated work", () => {
-    const now = 10_000
-    const records = [
-      { session: { id: "manual-finished", time: { created: 9_000, updated: 9_500 } } },
-      { session: { id: "manual-working", time: { created: 9_000, updated: 9_500 } } },
-      { session: { id: "ses_loop_generated", time: { created: 9_000, updated: 9_500 } } },
-      { session: { id: "manual-child", parentID: "manual-finished", time: { created: 9_000, updated: 9_500 } } },
-      { session: { id: "manual-old", time: { created: 1, updated: 1 } } },
-    ]
-    const statuses = new Map([
-      ["manual-finished", "settled"],
-      ["manual-working", "working"],
-      ["ses_loop_generated", "settled"],
-      ["manual-child", "settled"],
-      ["manual-old", "settled"],
-    ] as const)
-    expect(recentlyFinishedHomeSessions(records, statuses, now, 2_000).map((record) => record.session.id)).toEqual([
-      "manual-finished",
-    ])
   })
 })

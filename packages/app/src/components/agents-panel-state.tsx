@@ -230,12 +230,12 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
     const inactiveLoad = useQuery(
       () => ({
         queryKey: homeInactiveSessionsKey(selection().server ?? "", selection().directory ?? ""),
-        enabled: inactiveOpen() && !!focusedServerCtx() && !!selectedProject(),
+        enabled: inactiveOpen() && !!focusedServerCtx(),
         queryFn: async ({ signal }) => {
           const ctx = focusedServerCtx()
+          if (!ctx) return [] as Session[]
           const project = selectedProject()
-          if (!ctx || !project) return [] as Session[]
-          const scope = project.id ? { project: project.id } : { directory: project.worktree }
+          const scope = project ? (project.id ? { project: project.id } : { directory: project.worktree }) : {}
           const response = await ctx.sdk.client.v2.session.list(
             {
               ...scope,
@@ -266,12 +266,12 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
     const archivedLoad = useQuery(
       () => ({
         queryKey: homeArchivedSessionsKey(selection().server ?? "", selection().directory ?? ""),
-        enabled: archivedOpen() && !!focusedServerCtx() && !!selectedProject(),
+        enabled: archivedOpen() && !!focusedServerCtx(),
         queryFn: async ({ signal }) => {
           const ctx = focusedServerCtx()
+          if (!ctx) return [] as Session[]
           const project = selectedProject()
-          if (!ctx || !project) return [] as Session[]
-          const scope = project.id ? { project: project.id } : { directory: project.worktree }
+          const scope = project ? (project.id ? { project: project.id } : { directory: project.worktree }) : {}
           const response = await ctx.sdk.client.v2.session.list(
             {
               ...scope,

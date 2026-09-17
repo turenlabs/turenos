@@ -11,12 +11,20 @@ export function createPickedFileAuthorizations(
   read: (path: string, previewBytes: number, headBytes: number) => Promise<{ bytes: ArrayBuffer; size: number }> = readAttachment,
 ) {
   const selections = new Map<string, { sender: number; paths: Set<string> }>()
+  // Paths the user explicitly chose in the open dialog stay revealable for the
+  // session lifetime so stored attachments can still be shown in the file
+  // manager, while arbitrary session metadata cannot target unrelated files.
+  const revealable = new Set<string>()
 
   return {
     add(sender: number, paths: string[]) {
       const token = randomUUID()
       selections.set(token, { sender, paths: new Set(paths) })
+      for (const path of paths) revealable.add(path)
       return token
+    },
+    allowsReveal(path: string) {
+      return revealable.has(path)
     },
     async read(sender: number, token: string, path: string) {
       const selection = selections.get(token)

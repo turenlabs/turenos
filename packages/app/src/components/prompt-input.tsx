@@ -11,6 +11,7 @@ import {
   createSignal,
   Switch,
   Match,
+  type Accessor,
   type JSX,
 } from "solid-js"
 import { createStore, type SetStoreFunction, type Store } from "solid-js/store"
@@ -60,6 +61,8 @@ import { usePlatform } from "@/context/platform"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { resolveSkillSlash, visibleCustomSlashCommands } from "@/pages/session/skill-slash"
 import { createTextFragment, getCursorPosition, setCursorPosition, setRangeEdge } from "./prompt-input/editor-dom"
+import { ComposerQuestionStrip, createComposerQuestion } from "./prompt-input/question"
+import type { QuestionRequest } from "@turenlabs/sdk/v2"
 import { createPromptAttachments } from "./prompt-input/attachments"
 import { pickAttachmentFiles } from "./prompt-input/files"
 import {
@@ -181,6 +184,10 @@ export interface PromptInputProps {
   toolbar?: JSX.Element
   sessionDock?: JSX.Element
   goal?: PromptGoalControls
+  question?: {
+    request: Accessor<QuestionRequest | undefined>
+    onSubmit: () => void
+  }
 }
 
 const EXAMPLES = [
@@ -372,13 +379,24 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (store.mode === "shell") return 0
     return prompt.context.items().filter((item) => !!item.comment?.trim()).length
   })
-  const blank = createMemo(() => {
-    const text = prompt
+  const draftText = () =>
+    prompt
       .current()
       .map((part) => ("content" in part ? part.content : ""))
       .join("")
-    return text.trim().length === 0 && imageAttachments().length === 0 && commentCount() === 0
+
+  const blank = createMemo(() => {
+    return draftText().trim().length === 0 && imageAttachments().length === 0 && commentCount() === 0
   })
+
+  const question = createComposerQuestion({
+    request: () => props.question?.request(),
+    text: draftText,
+    clearText: () => prompt.set(DEFAULT_PROMPT, 0),
+    refocus: () => editorRef?.focus(),
+    onSubmit: () => props.question?.onSubmit(),
+  })
+  const questionTakeover = () => props.controls.newLayoutDesigns && store.mode === "normal" && question.active()
   const stopping = createMemo(() => working() && blank())
   const tip = () => {
     if (stopping()) {
@@ -1387,10 +1405,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       goal: props.goal,
     })
 
+  const submitOrAnswer = (event: Event, steer?: boolean) => {
+    if (questionTakeover()) {
+      event.preventDefault()
+      question.commit()
+      return
+    }
+    return handleSubmit(event, steer)
+  }
+
   const steer = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    void handleSubmit(event, true)
+    void submitOrAnswer(event, true)
   }
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -1439,6 +1466,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
       if (store.mode === "shell") {
         setStore("mode", "normal")
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
+      if (questionTakeover()) {
+        question.dismiss()
         event.preventDefault()
         event.stopPropagation()
         return
@@ -1542,6 +1576,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
       if (event.repeat) return
+      if (questionTakeover()) {
+        question.commit()
+        return
+      }
       if (
         working() &&
         prompt
@@ -1699,7 +1737,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               data-component={newSession() ? "session-new-composer" : "session-composer"}
               data-rule="muted"
               data-rule-focus
-              onSubmit={handleSubmit}
+              onSubmit={submitOrAnswer}
               classList={{
                 "group/prompt-input min-h-[96px] w-full !rounded-[18px] bg-v2-background-bg-base": true,
                 "border-icon-info-active border-dashed": store.draggingType !== null,
@@ -1747,6 +1785,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   prompt.context.remove(item.key)
                 }}
               />
+              <ComposerQuestionStrip state={question} />
               <div
                 class="relative min-h-[52px]"
                 onMouseDown={(e) => {

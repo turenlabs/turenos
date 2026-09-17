@@ -421,18 +421,41 @@ describe("HttpApi Server.listen", () => {
     }
   })
 
-  testPty("keeps PTY websocket tickets optional when server auth is disabled", async () => {
+  testPty("requires a PTY ticket even when server auth is disabled", async () => {
     await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
     const listener = await startNoAuthListener()
     try {
       const info = await createCat(listener, tmp.path)
-      const ws = await openSocket(socketURL(listener, info.id, tmp.path))
+      // Browsers open cross-origin WebSockets without any credential prompt, so a
+      // single-use ticket is the only thing between a web page and a live shell.
+      await expectSocketRejected(socketURL(listener, info.id, tmp.path))
+
+      const foreign = await connectTicket(listener, info.id, tmp.path)
+      await expectSocketRejected(socketURL(listener, info.id, tmp.path, foreign.ticket), {
+        headers: { origin: "https://evil.example" },
+      })
+
+      const ticket = await connectTicket(listener, info.id, tmp.path)
+      const ws = await openSocket(socketURL(listener, info.id, tmp.path, ticket.ticket))
       const message = waitForMessage(ws, (message) => message.includes("ping-no-auth"))
       ws.send("ping-no-auth\n")
       expect(await message).toContain("ping-no-auth")
       ws.close(1000)
     } finally {
       await stop(listener, "timed out cleaning up no-auth listener").catch(() => undefined)
+    }
+  })
+
+  test("refuses non-loopback binds without a server password unless insecure", async () => {
+    Flag.FORGE_SERVER_PASSWORD = undefined
+    delete process.env.FORGE_SERVER_PASSWORD
+    await expect(Server.listen({ hostname: "0.0.0.0", port: 0 })).rejects.toThrow(/FORGE_SERVER_PASSWORD/)
+
+    const listener = await Server.listen({ hostname: "0.0.0.0", port: 0, insecure: true })
+    try {
+      expect(listener.port).toBeGreaterThan(0)
+    } finally {
+      await stop(listener, "timed out cleaning up insecure listener")
     }
   })
 })

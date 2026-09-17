@@ -195,13 +195,14 @@ export const ptyConnectHandlers = HttpApiBuilder.group(PtyConnectApi, "pty-conne
 
         const query = Schema.decodeUnknownOption(CursorQuery)(yield* HttpServerRequest.ParsedSearchParams)
         if (Option.isNone(query)) return HttpServerResponse.empty({ status: 400 })
+        // Every upgrade requires a single-use ticket: browsers can open WebSockets
+        // cross-origin without any credential prompt, so Basic auth alone cannot
+        // protect this route when ambient authentication is absent.
+        if (!validOrigin(ctx.request, cors)) return HttpServerResponse.empty({ status: 403 })
         const ticket = new URL(ctx.request.url, "http://localhost").searchParams.get(PTY_CONNECT_TICKET_QUERY)
-        if (ticket) {
-          const valid = validOrigin(ctx.request, cors)
-            ? yield* tickets.consume({ ticket, ptyID: ctx.params.ptyID, ...(yield* ticketScope) })
-            : false
-          if (!valid) return HttpServerResponse.empty({ status: 403 })
-        }
+        if (!ticket) return HttpServerResponse.empty({ status: 403 })
+        const valid = yield* tickets.consume({ ticket, ptyID: ctx.params.ptyID, ...(yield* ticketScope) })
+        if (!valid) return HttpServerResponse.empty({ status: 403 })
         const parsedCursor = query.value.cursor === undefined ? undefined : Number(query.value.cursor)
         const cursor =
           parsedCursor !== undefined && Number.isSafeInteger(parsedCursor) && parsedCursor >= -1

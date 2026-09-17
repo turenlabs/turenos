@@ -178,6 +178,7 @@ export const SessionApi = HttpApi.make("session")
           params: { sessionID: SessionID },
           query: DiffQuery,
           success: described(Schema.Array(Snapshot.FileDiff), "Successfully retrieved diff"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "session.diff",
@@ -213,7 +214,7 @@ export const SessionApi = HttpApi.make("session")
           query: WorkspaceRoutingQuery,
           payload: [HttpApiSchema.NoContent, Session.CreateInput],
           success: described(Session.Info, "Successfully created session"),
-          error: [HttpApiError.BadRequest, InvalidRequestError],
+          error: [HttpApiError.BadRequest, ApiNotFoundError, InvalidRequestError],
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "session.create",
@@ -263,7 +264,13 @@ export const SessionApi = HttpApi.make("session")
           params: { sessionID: SessionID },
           query: WorkspaceRoutingQuery,
           success: described(Schema.Boolean, "Aborted session"),
-          error: [HttpApiError.BadRequest, ConflictError, InvalidRequestError, ServiceUnavailableError],
+          error: [
+            HttpApiError.BadRequest,
+            ApiNotFoundError,
+            ConflictError,
+            InvalidRequestError,
+            ServiceUnavailableError,
+          ],
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "session.abort",
