@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@turenlabs/command-guard",
+  "version": "0.1.0",
+  "description": "Standalone dangerous shell command detector",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "command-guard": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsgo --noEmit"
+  }
+}

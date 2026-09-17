@@ -1,0 +1,33 @@
+[package]
+name = "turen-installer-inspect-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Bounded Windows installer (MSI/CAB) inspection WebAssembly module for Turen"
+repository = "https://github.com/turenio/wasm-tools"
+license = "Apache-2.0 OR MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cab = "=0.6.0"
+data-encoding = "=2.11.1"
+cfb = "=0.14.0"
+msi = "=0.10.0"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.145"
+sha2 = "=0.10.9"
+wasm-bindgen = "=0.2.108"
+
+[dev-dependencies]
+# Used only by unit-test fixture builders to deflate MSZIP CFDATA blocks.
+flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]

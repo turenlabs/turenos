@@ -1,0 +1,35 @@
+name: "CI"
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: cargo fmt -- --check
+        run: cargo fmt --all -- --check
+      - name: clippy (aws-lc-rs / dns-hickory)
+        run: cargo clippy --no-default-features --features aws-lc-rs,report,generate,arc -- -D warnings
+      - name: clippy (rust-crypto / dns-doh)
+        run: cargo clippy --no-default-features --features dns-doh,rust-crypto,report,generate,arc -- -D warnings
+      - name: Build
+        run: cargo build --verbose
+      - name: Run tests (aws-lc-rs)
+        run: cargo test --verbose
+      - name: Run tests (dns-doh / rust-crypto)
+        run: cargo test --verbose --lib --no-default-features --features dns-doh,rust-crypto,report,generate,arc

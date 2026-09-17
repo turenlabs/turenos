@@ -1,0 +1,34 @@
+[package]
+name = "hashify"
+version = "0.2.9"
+description = "Fast perfect hashing without dependencies"
+edition = "2024"
+authors = [ "Stalwart Labs <hello@stalw.art>"]
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/stalwartlabs/hashify"
+homepage = "https://github.com/stalwartlabs/hashify"
+keywords = ["hash", "perfect", "minimal"]
+categories = ["data-structures", "no-std"]
+readme = "README.md"
+resolver = "2"
+
+[features]
+force-32bit = []
+
+[lib]
+proc-macro = true
+doctest = false
+
+[dependencies]
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+indexmap = "2.13.0"
+
+[dev-dependencies]
+criterion = "0.5"
+phf = { version = "0.11.3", features = ["macros"] }
+
+[[bench]]
+name = "phf_bench"
+harness = false

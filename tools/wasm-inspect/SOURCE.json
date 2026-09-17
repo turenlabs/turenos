@@ -1,0 +1,16 @@
+{
+  "crate": "turen-wasm-inspect-wasm",
+  "upstream": "https://github.com/bytecodealliance/wasm-tools",
+  "upstreamVersion": "wasmparser-0.239",
+  "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+  "rust": "1.94.0",
+  "wasmPack": "0.15.0",
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "limits": {
+    "inputBytes": 16777216,
+    "sections": 4096,
+    "outputBytes": 4194304
+  }
+}

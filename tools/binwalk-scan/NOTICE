@@ -1,0 +1,10 @@
+Turen Binwalk Scan is an original bounded scanner informed by the signature
+catalog and format knowledge in ReFirmLabs Binwalk v3.1.1 at commit
+26713972e3f9f52dc37d4a421c4554b0bd9e82ef.
+
+Binwalk is Copyright (c) 2024 ReFirm Labs and is licensed under the MIT
+License. No Binwalk runtime code, extraction code, decompression code, or
+dependency graph is included in this package.
+
+The compiled module uses Rust standard-library components, distributed under
+the Apache-2.0 or MIT license at the user's option.

@@ -141,14 +141,21 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner
 
-    const runCommand = (command: ChildProcess.Command, options?: RunOptions) => {
+    const runCommand = (
+      command: ChildProcess.Command,
+      options: RunOptions | undefined,
+      stdin?: Stream.Stream<Uint8Array, PlatformError>,
+    ) => {
       const description = describeCommand(command)
       const collect = Effect.scoped(
         Effect.gen(function* () {
           const handle = yield* spawner.spawn(command)
+          // Feeding stdin through the handle keeps a broken pipe on the typed
+          // channel; the child's own exit/stderr then reports the real failure.
+          const feed = stdin ? Stream.run(stdin, handle.stdin).pipe(Effect.ignore) : Effect.void
           if (options?.combineOutput) {
-            const [output, exitCode] = yield* Effect.all(
-              [collectStream(handle.all, options.maxOutputBytes), handle.exitCode],
+            const [, output, exitCode] = yield* Effect.all(
+              [feed, collectStream(handle.all, options.maxOutputBytes), handle.exitCode],
               { concurrency: "unbounded" },
             )
             return {
@@ -162,8 +169,9 @@ const layer = Layer.effect(
               stderrTruncated: false,
             } satisfies RunResult
           }
-          const [stdout, stderr, exitCode] = yield* Effect.all(
+          const [, stdout, stderr, exitCode] = yield* Effect.all(
             [
+              feed,
               collectStream(handle.stdout, options?.maxOutputBytes),
               collectStream(handle.stderr, options?.maxErrorBytes),
               handle.exitCode,
@@ -204,11 +212,7 @@ const layer = Layer.effect(
           cause: new Error("stdin option only supports StandardCommand; received PipedCommand"),
         })
       }
-      const next = ChildProcess.make(command.command, command.args, {
-        ...command.options,
-        stdin: normalizeStdin(options.stdin),
-      })
-      return yield* runCommand(next, options)
+      return yield* runCommand(command, options, normalizeStdin(options.stdin))
     })
 
     const runStream = (

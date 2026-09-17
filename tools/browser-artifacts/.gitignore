@@ -1,0 +1,9 @@
+# Vendored pinned upstream source (if an import script is added)
+upstream/
+# Build outputs
+pkg/
+target/
+node_modules/
+# Local packaging output
+artifact/
+.DS_Store

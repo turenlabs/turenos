@@ -1,0 +1,59 @@
+name: Build binwalk-scan WASM
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/build-binwalk-scan.yml"
+      - "tools/binwalk-scan/**"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-binwalk-scan
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  RUST_TOOLCHAIN: 1.97.1
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+      - name: Set up Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+      - name: Test
+        run: cargo +"$RUST_TOOLCHAIN" test --manifest-path tools/binwalk-scan/Cargo.toml
+      - name: Build
+        run: cargo +"$RUST_TOOLCHAIN" build --manifest-path tools/binwalk-scan/Cargo.toml --target wasm32-unknown-unknown --release
+      - name: Pack
+        run: node tools/binwalk-scan/script/pack.mjs tools/binwalk-scan/target/wasm32-unknown-unknown/release/turen_binwalk_scan_wasm.wasm packages/binwalk-scan-wasm
+      - name: Verify
+        run: node tools/binwalk-scan/test/verify.mjs packages/binwalk-scan-wasm/dist
+      - name: Verify package hashes
+        working-directory: packages/binwalk-scan-wasm
+        run: shasum -a 256 -c SHA256SUMS
+
+      - name: Open package update PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          add-paths: packages/binwalk-scan-wasm
+          branch: wasm/binwalk-scan-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild binwalk-scan-wasm"
+          title: "chore(wasm): rebuild binwalk-scan-wasm"
+          body: "Rebuilt `packages/binwalk-scan-wasm` from `tools/binwalk-scan` at ${{ github.sha }}."

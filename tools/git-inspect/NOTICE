@@ -1,0 +1,15 @@
+Turen git-inspect is an original bounded implementation of the documented git
+loose-object, packfile, pack-index, and index (DIRC) binary formats. No git or
+gitoxide source code is included.
+
+This package embeds unmodified builds of:
+
+- flate2 (MIT OR Apache-2.0) with the pure-Rust miniz_oxide backend (MIT) —
+  https://github.com/rust-lang/flate2-rs
+- RustCrypto hashes: sha1, sha2 (Apache-2.0 OR MIT) —
+  https://github.com/RustCrypto/hashes
+- serde, serde_json, wasm-bindgen and their transitive dependencies
+  (Apache-2.0 OR MIT)
+
+All operations are read-only structural reporting over caller-supplied bytes.
+No repository checkout, refs traversal, network, or filesystem access occurs.

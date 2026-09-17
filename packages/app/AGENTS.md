@@ -19,6 +19,10 @@
 
 - Always prefer `createStore` over multiple `createSignal` calls
 
+## Extend Page
+
+- `src/pages/extend.tsx` renders only the server's built-in catalog (`extension.list`). There is no remote catalog endpoint or external merge; catalog content comes from `services/catalog/manifests` via `packages/extensions`.
+
 ## Tool Calling
 
 - ALWAYS USE PARALLEL TOOLS WHEN APPLICABLE.

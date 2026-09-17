@@ -1809,7 +1809,7 @@ it.instance("command execution loads an installed Extension skill", () =>
     const extensions = yield* ExtensionRuntime.Service
     const manifest = new Extension.Manifest({
       schemaVersion: 1,
-      id: Extension.ID.make("community", "threat-intel-brief"),
+      id: Extension.ID.make("community", "osint-brief"),
       name: "Threat Intelligence Brief",
       description: "Produce a sourced intelligence brief",
       version: "1.0.0",
@@ -1818,11 +1818,11 @@ it.instance("command execution loads an installed Extension skill", () =>
       contributions: [
         {
           type: "skill",
-          id: Extension.ContributionID.make("threat-intel-brief"),
+          id: Extension.ContributionID.make("osint-brief"),
           name: "Threat Intelligence Brief",
           description: "Produce a sourced intelligence brief",
           instructions: "Use for defensive threat intelligence.",
-          adapter: "skill:threat-intel-brief",
+          adapter: "skill:osint-brief",
           secrets: [],
           defaultEnabled: false,
           source: { type: "catalog", content: "Corroborate indicators and report confidence." },
@@ -1836,7 +1836,7 @@ it.instance("command execution loads an installed Extension skill", () =>
 
     const result = yield* prompt.command({
       sessionID: chat.id,
-      command: "threat-intel-brief",
+      command: "osint-brief",
       arguments: "8.8.8.8 include confidence",
     })
 

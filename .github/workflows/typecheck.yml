@@ -4,8 +4,10 @@ name: typecheck
 on:
   push:
     branches: [dev]
+    paths-ignore: ["tools/**", "services/**", "docs/**"]
   pull_request:
     branches: [dev]
+    paths-ignore: ["tools/**", "services/**", "docs/**"]
   workflow_dispatch:
 
 concurrency:

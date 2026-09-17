@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/euvd",
+  "name": "ENISA EUVD",
+  "description": "Query the European Vulnerability Database for recent and enriched vulnerabilities",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://euvd.enisa.europa.eu/",
+  "contributions": [{
+    "type": "data",
+    "id": "euvd",
+    "name": "ENISA EUVD",
+    "description": "Query the European Vulnerability Database for recent and enriched vulnerabilities",
+    "instructions": "Use EUVD as a supplemental European vulnerability source, preserve ENISA attribution and upstream aliases, and corroborate critical decisions with primary advisories or another authority.",
+    "adapter": "security:euvd",
+    "secrets": [],
+    "defaultEnabled": false,
+    "group": "vulnerability-intelligence",
+    "tools": { "allow": ["euvd_lookup", "euvd_recent"], "write": [] }
+  }],
+  "versions": [{ "version": "1.0.0", "published": "2026-08-25" }]
+}

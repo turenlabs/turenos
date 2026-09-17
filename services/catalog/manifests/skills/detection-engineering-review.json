@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/detection-engineering-review",
+  "name": "Detection Engineering Review",
+  "description": "Review a detection rule for observable behavior, data dependencies, false positives, and validation",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "detection-engineering-review",
+      "name": "Detection Engineering Review",
+      "description": "Evaluate supplied Sigma, SIEM, EDR, or analytic logic without executing it",
+      "instructions": "Use for a bounded defensive review of a supplied detection or hunting analytic.",
+      "adapter": "skill:detection-engineering-review",
+      "secrets": [],
+      "defaultEnabled": false,
+      "source": {
+        "type": "catalog",
+        "content": "## Use when\nUse this for an authorized Sigma rule, SIEM query, EDR analytic, or detection design. Do not use it to execute queries against live telemetry or claim efficacy without representative data.\n\n## Inputs\nRequire the rule, target data schema, intended behavior, environment assumptions, and known benign patterns. Use `read`, `grep`, `attack_lookup`, and `d3fend_lookup` for supplied files and defensive context. Ask when event-field semantics or telemetry coverage are missing.\n\n## Workflow\n1. Restate the behavior hypothesis and required observable sequence.\n2. Trace every condition to a documented event field, source, and collection dependency.\n3. Evaluate evasion opportunities, false-positive populations, temporal logic, and rule portability.\n4. Map supported behavior to ATT&CK with `attack_lookup` and defensive context with `d3fend_lookup`; reject unsupported mappings.\n5. Design positive, negative, boundary, and noisy-environment validation cases.\n\n## Evidence rules\nCite exact rule clauses and schema fields. Separate observable evidence from attacker-intent hypotheses. Do not infer coverage for data that is missing or unavailable; state confidence per conclusion.\n\n## Output\n- Detection objective and required telemetry.\n- Logic findings with exact clause evidence.\n- False-positive and evasion analysis.\n- ATT&CK/D3FEND mappings with confidence.\n- Validation matrix and tuning plan.\n\n## Stop conditions\nStop and ask the user when the event schema, target platform, authorization, or intended behavior is unavailable. Stop a mapping when the observable evidence does not support it.\n\n## Safety\nReview only explicitly supplied and authorized rule content. Never run live queries, generate offensive payloads, alter production detections, or expose telemetry samples containing secrets.\n\n## Quality bar\n- Every clause is tied to a real field and source.\n- Every mapping is evidence-supported.\n- Validation includes positive and negative cases.\n- Tuning preserves the stated detection objective.\n\nLimit the review to at most 1,300 words and include confidence, unknown telemetry, and expected blind spots."
+      },
+      "requires": ["read", "grep", "attack_lookup", "d3fend_lookup"]
+    }
+  ],
+  "versions": [{ "version": "1.0.0", "published": "2026-08-27" }]
+}

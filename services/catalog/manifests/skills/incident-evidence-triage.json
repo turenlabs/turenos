@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/incident-evidence-triage",
+  "name": "Incident Evidence Triage",
+  "description": "Convert supplied alerts, logs, and notes into a defensible incident picture and next checks",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "incident-evidence-triage",
+      "name": "Incident Evidence Triage",
+      "description": "Build a bounded timeline, scope hypothesis, and evidence-request plan",
+      "instructions": "Use for initial defensive triage of explicitly supplied incident evidence.",
+      "adapter": "skill:incident-evidence-triage",
+      "secrets": [],
+      "defaultEnabled": false,
+      "source": {
+        "type": "catalog",
+        "content": "## Use when\nUse this for authorized alerts, logs, tickets, timelines, or responder notes that need initial incident triage. Do not use it to make attribution claims, alter systems, or replace evidence collection.\n\n## Inputs\nRequire the time window, affected environment, supplied evidence, business criticality, and known response actions. Use `read`, `grep`, and `glob` only on approved artifacts. Ask when timestamps, timezone, source provenance, or scope are missing.\n\n## Workflow\n1. Normalize timestamps, sources, assets, identities, and observable actions.\n2. Build a timeline and label each event as fact, inference, or unresolved claim.\n3. Group evidence into incident hypotheses and test supporting and contradicting observations.\n4. Estimate scope, impact, and urgency from evidence rather than alert severity alone.\n5. Define preservation-safe containment options and the next discriminating evidence requests.\n\n## Evidence rules\nCite artifact, line, event, or timestamp for every fact. Keep evidence separate from hypotheses and attribution. State confidence, conflicts, and unknown collection coverage.\n\n## Output\n- Executive incident status.\n- Evidence-linked timeline.\n- Scope and impact matrix.\n- Supported and rejected hypotheses.\n- Containment options and prioritized evidence requests.\n\n## Stop conditions\nStop and ask the user when authorization, timestamps, evidence provenance, or system ownership is unavailable. Stop escalation claims when the evidence does not establish impact.\n\n## Safety\nInspect only explicitly supplied and authorized artifacts. Never disable accounts, isolate hosts, delete evidence, contact indicators, reveal secrets, or recommend irreversible containment without confirmation.\n\n## Quality bar\n- Every fact cites evidence.\n- Every hypothesis has supporting and contradicting observations.\n- Scope distinguishes confirmed from possible assets.\n- Next checks are reversible and discriminating.\n\nLimit the report to at most 1,400 words and include confidence, unknowns, and evidence gaps."
+      },
+      "requires": ["read", "grep", "glob"]
+    }
+  ],
+  "versions": [{ "version": "1.0.0", "published": "2026-08-27" }]
+}

@@ -1,0 +1,43 @@
+[package]
+name = "turen-capa-match-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Bounded static-subset capa capability matcher (mandiant/capa-rules) WebAssembly module for Turen"
+repository = "https://github.com/turenio/wasm-tools"
+license = "Apache-2.0 OR MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+aho-corasick = "=1.1.5"
+flate2 = "=1.1.10"
+# goblin is vendored at the pinned commit under upstream/goblin (shared with
+# tools/goblin); crates.io yanked 0.10.6, so a registry pin cannot resolve.
+goblin = { path = "../../upstream/goblin" }
+regex = "=1.13.1"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.145"
+sha2 = "=0.10.9"
+wasm-bindgen = "=0.2.108"
+
+[build-dependencies]
+# Build-time YAML front end for the ruleset compiler (build.rs). Runs on the
+# host only; it never enters the wasm closure. serde_norway is the maintained
+# serde_yaml fork (unsafe-libyaml-norway parser core).
+serde_norway = "=0.9.42"
+serde_json = "=1.0.145"
+flate2 = "=1.1.10"
+
+[dev-dependencies]
+# Same YAML front end for the unit tests that fabricate rules in test code.
+serde_norway = "=0.9.42"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]

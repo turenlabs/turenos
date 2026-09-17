@@ -1256,10 +1256,6 @@ export const dict = {
   "settings.general.row.profilerResult.description":
     "{{samples}} samples at {{rate}} Hz over {{duration}}. Open the .cpuprofile in Chrome DevTools (Performance › Load profile) or at speedscope.app.",
   "settings.general.profiler.reveal": "Reveal",
-  "settings.general.section.catalog": "Developer catalog",
-  "settings.general.row.catalog.title": "Catalog endpoint",
-  "settings.general.row.catalog.description":
-    "Optional catalog registry or API endpoint. Leave blank to use the TurenOS catalog.",
   "settings.general.row.mobileTitlebarBottom.title": "Bottom navigation",
   "settings.general.row.mobileTitlebarBottom.description":
     "Place the title bar and session tabs at the bottom of the screen on mobile",

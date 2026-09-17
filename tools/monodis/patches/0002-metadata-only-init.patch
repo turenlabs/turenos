@@ -1,0 +1,88 @@
+diff --git a/mono/metadata/appdomain.h b/mono/metadata/appdomain.h
+index bc8a1f2..48078a1 100644
+--- a/mono/metadata/appdomain.h
++++ b/mono/metadata/appdomain.h
+@@ -36,6 +36,11 @@ mono_init_from_assembly    (const char *domain_name, const char *filename);
+ MONO_API MonoDomain *
+ mono_init_version          (const char *domain_name, const char *version);
+ 
++/* Turen addition for the WebAssembly monodis target: domain plus metadata
++ * subsystems with no corlib. See 0002-metadata-only-init.patch. */
++MONO_API MonoDomain *
++mono_init_metadata_only    (const char *domain_name);
++
+ MONO_API MonoDomain*
+ mono_get_root_domain       (void);
+ 
+diff --git a/mono/metadata/domain.c b/mono/metadata/domain.c
+index e3b0b73..880b536 100644
+--- a/mono/metadata/domain.c
++++ b/mono/metadata/domain.c
+@@ -856,6 +856,67 @@ mono_init_version (const char *domain_name, const char *version)
+ 	return mono_init_internal (domain_name, NULL, version);
+ }
+ 
++/**
++ * mono_init_metadata_only:
++ *
++ * Turen addition for the WebAssembly monodis target (see
++ * tools/monodis/patches/0002-metadata-only-init.patch).
++ *
++ * Creates the initial application domain and initializes every metadata
++ * subsystem, but loads no corlib and fills no mono_defaults classes, so
++ * metadata-only tools work with no managed class library installed.
++ * Mirrors the head of mono_init_internal; never run IL code after this.
++ *
++ * \returns the initial domain.
++ */
++MonoDomain *
++mono_init_metadata_only (const char *domain_name)
++{
++	static MonoDomain *domain = NULL;
++
++	if (domain)
++		return domain;
++
++#ifndef HOST_WIN32
++	mono_w32handle_init ();
++	mono_w32handle_namespace_init ();
++#endif
++
++	mono_w32mutex_init ();
++	mono_w32semaphore_init ();
++	mono_w32event_init ();
++	mono_w32process_init ();
++	mono_w32file_init ();
++
++#ifndef DISABLE_PERFCOUNTERS
++	mono_perfcounters_init ();
++#endif
++	mono_counters_init ();
++
++	mono_gc_base_init ();
++	mono_thread_info_attach ();
++
++	mono_coop_mutex_init_recursive (&appdomains_mutex);
++
++	mono_metadata_init ();
++	mono_images_init ();
++	mono_assemblies_init ();
++	mono_classes_init ();
++	mono_loader_init ();
++	mono_reflection_init ();
++	mono_runtime_init_tls ();
++	mono_icall_init ();
++
++	domain = mono_domain_create ();
++	mono_root_domain = domain;
++
++	SET_APPDOMAIN (domain);
++
++	domain->friendly_name = g_strdup (domain_name);
++
++	return domain;
++}
++
+ /**
+  * mono_cleanup:
+  *

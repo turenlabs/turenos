@@ -4,9 +4,9 @@ Extension v1 is the declarative catalog consumed by TurenOS. An extension may
 contribute tools, MCP servers, data sources, and skills. Runtime code stays in
 TurenOS adapters; catalog entries cannot execute arbitrary JavaScript.
 
-Each extension is one JSON manifest under `manifests/`. Add the file, then run
-`bun run generate` from this package. CI runs `bun run check` and rejects stale,
-invalid, or duplicate catalog entries.
+Each extension is one JSON manifest under `services/catalog/manifests/`. Add the
+file there, then run `bun run generate` from this package. CI runs `bun run check`
+and rejects stale, invalid, or duplicate catalog entries.
 
 New entries must declare every secret, executable, upstream tool, and
 write-capable operation. Unknown MCP tools are blocked by default. Linear is

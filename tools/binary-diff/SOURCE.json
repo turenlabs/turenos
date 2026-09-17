@@ -1,0 +1,81 @@
+{
+  "crate": "turen-binary-diff-wasm",
+  "version": "0.1.0",
+  "upstream": {
+    "bidiff": {
+      "repository": "https://github.com/divvun/bidiff",
+      "version": "1.0.0",
+      "license": "Apache-2.0 OR MIT",
+      "derivation": "src/bsdiff.rs is a single-threaded port of the bsdiff-style Scanner/Translator partition scan; rayon parallelism and Instant timing are removed. The bipatch 1.0.0 crate from the same repository is linked unmodified for patch decoding."
+    },
+    "stringsearch": {
+      "repository": "https://github.com/fasterthanlime/stringsearch",
+      "crates": ["divsufsort 2.0.0", "sacabase 2.0.0"],
+      "license": "MIT"
+    },
+    "data-encoding": {
+      "repository": "https://github.com/ia0/data-encoding",
+      "version": "2.11.1",
+      "license": "MIT"
+    },
+    "integer-encoding": {
+      "repository": "https://github.com/dermesser/integer-encoding-rs",
+      "version": "2.1.3",
+      "license": "MIT"
+    },
+    "byteorder": {
+      "repository": "https://github.com/BurntSushi/byteorder",
+      "version": "1.5.0",
+      "license": "Unlicense OR MIT"
+    },
+    "hashes": {
+      "repository": "https://github.com/RustCrypto/hashes",
+      "crates": ["sha2 0.11.0"],
+      "license": "MIT OR Apache-2.0"
+    },
+    "serde_json": {
+      "repository": "https://github.com/serde-rs/json",
+      "version": "1.0.145",
+      "license": "MIT OR Apache-2.0"
+    },
+    "wasm-bindgen": {
+      "repository": "https://github.com/rustwasm/wasm-bindgen",
+      "version": "0.2.108",
+      "license": "MIT OR Apache-2.0"
+    }
+  },
+  "derivation": "Bounded wasm-bindgen wrapper for binary delta operations: JSON-document two-input ABI, changed-region comparison and rolling-hash alignment reports, bipatch-format diff production via a ported single-threaded bsdiff scan over a divsufsort suffix array, bipatch patch application, and patch introspection. Runtime crates are used unmodified via exact-pinned crates.io releases committed in Cargo.lock.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "runtimeDependencies": [
+    "bipatch 1.0.0",
+    "divsufsort 2.0.0",
+    "sacabase 2.0.0",
+    "byteorder 1.5.0",
+    "integer-encoding 2.1.3",
+    "data-encoding 2.11.1",
+    "sha2 0.11.0",
+    "serde 1.0.228",
+    "serde_json 1.0.145",
+    "wasm-bindgen 0.2.108"
+  ],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": false,
+  "limits": {
+    "inputDocumentBytes": 96468992,
+    "embeddedInputBytes": 33554432,
+    "patchInfoBytes": 33554432,
+    "optionsBytes": 4096,
+    "jsonOutputBytes": 4194304,
+    "regions": 4096,
+    "transformBytes": 134217728,
+    "patchInfoControlRecords": 1000000,
+    "regionPreviewBytes": 32,
+    "regionAnchorBlockBytes": 64
+  }
+}

@@ -1,0 +1,22 @@
+Turen Java Inspect is a bounded offline Java .class/.jar static-inspection
+WebAssembly module. It is the JVM counterpart to the monodis (.NET CIL)
+target.
+
+The class-file parser, bytecode disassembler, findings scanner, and JAR
+walker are original Turen code implementing the public JVMS class-file
+format specification. No javap/JDK code is included.
+
+It directly uses one permissively licensed crate:
+
+- zip 4.6.1 (https://github.com/zip-rs/zip2), MIT OR Apache-2.0, for
+  read-only JAR/ZIP central-directory listing and bounded per-entry inflate
+  via its pure-Rust flate2/miniz_oxide backend. No archive extraction or
+  path APIs are used.
+
+The compiled module also embeds other permissively licensed crates.io
+dependencies (MIT, Apache-2.0, BSD, Unicode, or Zlib licensed; see
+Cargo.lock for the full closure) and Rust standard-library components
+distributed under Apache-2.0 or MIT.
+
+Turen added the bounded WebAssembly wrapper, the findings and degradation
+surfaces, and the packaging.

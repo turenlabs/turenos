@@ -1,6 +1,6 @@
 export * as Extension from "./extension"
 
-import { Option, Schema } from "effect"
+import { Schema } from "effect"
 import { optional, statics } from "./schema"
 
 const slugPattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
@@ -190,170 +190,6 @@ export class Manifest extends Schema.Class<Manifest>("Extension.Manifest")({
   contributions: Schema.Array(Contribution),
 }) {}
 
-function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined
-}
-
-function normalizeExternalContribution(value: unknown, manifestDescription?: string) {
-  const contribution = record(value)
-  if (contribution?.type === "mcp") return normalizeExternalMcp(contribution)
-  if (contribution?.type === "skill") return normalizeExternalSkill(contribution, manifestDescription)
-}
-
-function normalizeExternalMcp(contribution: Record<string, unknown>) {
-  const deployment = record(contribution.deployment)
-  const tools = record(contribution.tools)
-  if (
-    typeof contribution.id !== "string" ||
-    (contribution.authentication !== "none" && contribution.authentication !== "oauth") ||
-    (Array.isArray(contribution.secrets) && contribution.secrets.length > 0) ||
-    contribution.connection !== undefined ||
-    deployment?.type !== "hosted" ||
-    typeof deployment.url !== "string" ||
-    !tools ||
-    !Array.isArray(tools.allow) ||
-    !Array.isArray(tools.write) ||
-    tools.allow.some((tool) => typeof tool !== "string") ||
-    tools.write.some((tool) => typeof tool !== "string")
-  ) {
-    return
-  }
-  const context = record(contribution.mcpContext)
-  const writes = new Set(tools.write as string[])
-  return {
-    ...contribution,
-    adapter: `mcp:${contribution.id}`,
-    secrets: Array.isArray(contribution.secrets) ? contribution.secrets : [],
-    configuration: Array.isArray(contribution.configuration) ? contribution.configuration : [],
-    upstreamPolicy: "static",
-    deployment: {
-      type: "hosted",
-      url: deployment.url,
-      ...(record(deployment.headers) ? { headers: deployment.headers } : {}),
-    },
-    localOnly: contribution.localOnly === true,
-    mcpContext: {
-      maxLoadedTools:
-        typeof context?.maxLoadedTools === "number"
-          ? context.maxLoadedTools
-          : Math.min(12, Math.max(1, tools.allow.length || 4)),
-      unloadAfterIdleTurns: typeof context?.unloadAfterIdleTurns === "number" ? context.unloadAfterIdleTurns : 3,
-    },
-    // Dynamic installs remain read-only until runtime permissions can ingest a signed write policy.
-    tools: { allow: (tools.allow as string[]).filter((tool) => !writes.has(tool)), write: [] },
-  }
-}
-
-function normalizeExternalSkill(contribution: Record<string, unknown>, manifestDescription?: string) {
-  const source = record(contribution.source)
-  const agent = normalizeExternalSkillAgent(contribution.agent)
-  const requires = normalizeExternalSkillRequirements(contribution.requires)
-  if (
-    typeof contribution.id !== "string" ||
-    contribution.id.length > 80 ||
-    typeof contribution.name !== "string" ||
-    typeof contribution.description !== "string" ||
-    manifestDescription === undefined ||
-    typeof contribution.instructions !== "string" ||
-    (Array.isArray(contribution.secrets) && contribution.secrets.length > 0) ||
-    source?.type !== "catalog" ||
-    typeof source.content !== "string" ||
-    source.content.length === 0 ||
-    source.content.trim() !== source.content ||
-    source.content.length > 32_768 ||
-    requires === undefined ||
-    new Set(requires).size !== requires.length ||
-    agent === false ||
-    (agent !== undefined && externalReservedAgentIDs.has(contribution.id))
-  ) {
-    return
-  }
-  return {
-    type: "skill",
-    id: contribution.id,
-    name: contribution.name,
-    description: manifestDescription,
-    instructions: contribution.instructions,
-    adapter: `skill:${contribution.id}`,
-    secrets: [],
-    defaultEnabled: false,
-    source: { type: "catalog", content: source.content },
-    requires,
-    ...(agent ? { agent } : {}),
-  }
-}
-
-const externalReservedAgentIDs = new Set([
-  "build",
-  "plan",
-  "general",
-  "explore",
-  "worker",
-  "adversarial-review",
-  "harness-reviewer",
-  "qualification",
-  "research",
-  "lobby",
-  "compaction",
-  "title",
-  "summary",
-])
-
-function normalizeExternalSkillRequirements(value: unknown) {
-  const requires = value === undefined ? [] : value
-  if (
-    !Array.isArray(requires) ||
-    requires.length > 20 ||
-    requires.some((item) => typeof item !== "string" || item.length > 80)
-  ) {
-    return
-  }
-  return requires as string[]
-}
-
-function normalizeExternalSkillAgent(
-  value: unknown,
-): { profile: "read" | "data" | "binary"; steps?: number } | false | undefined {
-  if (value === undefined) return
-  const agent = record(value)
-  if (!agent || (agent.profile !== "read" && agent.profile !== "data" && agent.profile !== "binary")) return false
-  if (
-    agent.steps !== undefined &&
-    (!Number.isInteger(agent.steps) || (agent.steps as number) < 1 || (agent.steps as number) > 50)
-  ) {
-    return false
-  }
-  return { profile: agent.profile, ...(typeof agent.steps === "number" ? { steps: agent.steps } : {}) }
-}
-
-/** Projects catalog metadata onto runtime-safe hosted MCP and prompt-only skill shapes. */
-export function normalizeExternalManifest(input: unknown): Manifest | undefined {
-  const source = record(input)
-  if (!source || !Array.isArray(source.contributions) || source.contributions.length === 0) return
-  const manifestDescription =
-    typeof source.description === "string" &&
-    source.description.length <= 500 &&
-    source.description.trim() === source.description &&
-    !/[\r\n]/.test(source.description)
-      ? source.description
-      : undefined
-  const contributions = source.contributions.map((value) => normalizeExternalContribution(value, manifestDescription))
-  if (contributions.some((contribution) => contribution === undefined)) return
-
-  const decoded = Schema.decodeUnknownOption(Manifest, {
-    errors: "all",
-    onExcessProperty: "ignore",
-  })({
-    ...source,
-    // Display metadata from a configured catalog is not proof of publisher identity.
-    trust: "community",
-    contributions,
-  })
-  return Option.getOrUndefined(decoded)
-}
-
 export const RuntimeStatus = Schema.Literals([
   "available",
   "disabled",
@@ -375,7 +211,6 @@ export class Item extends Schema.Class<Item>("Extension.Item")({
   status: RuntimeStatus,
   detail: optional(Schema.String),
   installed: optional(Schema.Boolean),
-  updateAvailable: optional(Schema.Boolean),
   secretsSet: Schema.Record(Schema.String, Schema.Boolean),
   configurationSet: Schema.Record(Schema.String, Schema.Boolean),
 }) {}

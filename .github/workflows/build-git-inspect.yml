@@ -1,0 +1,70 @@
+name: Build git-inspect WASM
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/build-git-inspect.yml"
+      - "tools/git-inspect/**"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-git-inspect
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  RUST_TOOLCHAIN: 1.97.1
+  WASM_PACK_VERSION: 0.15.0
+
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Turen build repository
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+
+      - name: Install pinned wasm-pack
+        run: cargo +"$RUST_TOOLCHAIN" install --locked wasm-pack --version "$WASM_PACK_VERSION"
+
+      - name: Run Rust tests
+        run: cargo +"$RUST_TOOLCHAIN" test --manifest-path tools/git-inspect/Cargo.toml --locked
+
+      - name: Build git-inspect WASM
+        run: wasm-pack build tools/git-inspect --target web --release --out-dir pkg
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Pack Forge workspace artifact
+        run: node tools/git-inspect/script/pack.mjs tools/git-inspect/pkg packages/git-inspect-wasm
+
+      - name: Verify packaged inspection API
+        run: node tools/git-inspect/test/verify.mjs packages/git-inspect-wasm/dist
+
+      - name: Verify artifact checksums
+        run: cd packages/git-inspect-wasm && (shasum -a 256 -c SHA256SUMS || sha256sum -c SHA256SUMS)
+
+      - name: Open package update PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          add-paths: packages/git-inspect-wasm
+          branch: wasm/git-inspect-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild git-inspect-wasm"
+          title: "chore(wasm): rebuild git-inspect-wasm"
+          body: "Rebuilt `packages/git-inspect-wasm` from `tools/git-inspect` at ${{ github.sha }}."

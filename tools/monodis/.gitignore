@@ -1,0 +1,4 @@
+upstream/
+wasm_obj/
+dist/
+artifact/

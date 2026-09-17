@@ -1,0 +1,28 @@
+[package]
+name = "turen-unicode-audit-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Bounded text encoding detection, transcoding, and Unicode security audit WebAssembly wrapper for Turen"
+repository = "https://github.com/turenio/wasm-tools"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+chardetng = "=1.0.0"
+encoding_rs = "=0.8.41"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.145"
+unicode-normalization = "=0.1.25"
+unicode-script = "=0.5.8"
+wasm-bindgen = "=0.2.108"
+
+[profile.release]
+lto = true
+opt-level = "s"
+strip = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]

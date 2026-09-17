@@ -1,0 +1,64 @@
+name: Build protocol inspection WASM
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/build-protocol-inspect.yml"
+      - "tools/protocol-inspect/**"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-protocol-inspect
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  RUST_TOOLCHAIN: 1.94.0
+  WASM_PACK_VERSION: 0.15.0
+
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Turen build repository
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+
+      - name: Install pinned wasm-pack
+        run: cargo +"$RUST_TOOLCHAIN" install --locked wasm-pack --version "$WASM_PACK_VERSION"
+
+      - name: Build protocol inspection WASM
+        run: wasm-pack build tools/protocol-inspect --target web --release --out-dir pkg
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Verify bounded protocol API
+        run: node tools/protocol-inspect/test/verify.mjs tools/protocol-inspect/pkg
+
+      - name: Pack Forge workspace artifact
+        run: node tools/protocol-inspect/script/pack.mjs tools/protocol-inspect/pkg packages/protocol-inspect-wasm tools/protocol-inspect/LICENSE
+
+      - name: Open package update PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          add-paths: packages/protocol-inspect-wasm
+          branch: wasm/protocol-inspect-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild protocol-inspect-wasm"
+          title: "chore(wasm): rebuild protocol-inspect-wasm"
+          body: "Rebuilt `packages/protocol-inspect-wasm` from `tools/protocol-inspect` at ${{ github.sha }}."

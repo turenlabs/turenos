@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/threat-model-review",
+  "name": "Threat Model Review",
+  "description": "Review a supplied threat model against a supplied architecture for grounding, coverage, mappings, and falsifiability",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "threat-model-review",
+      "name": "Threat Model Review",
+      "description": "Critique a supplied threat model against a supplied architecture without executing anything",
+      "instructions": "Use for a bounded defensive review of a supplied threat model against a supplied architecture.",
+      "adapter": "skill:threat-model-review",
+      "secrets": [],
+      "defaultEnabled": false,
+      "source": {
+        "type": "catalog",
+        "content": "# Threat Model Review\n\n## Use when\n\nUse this for a bounded defensive review of a supplied threat model against a supplied architecture description.\nDo not use it to execute tests, run scans, generate exploits, or to review when the architecture or the model is missing.\n\n## Inputs\n\nRequire the architecture (components, data flows, data stores, trust boundaries, each with stable IDs), the threat model under review (threats, assumptions, ATT&CK mappings, mitigations), and the review question.\nAsk for whichever artifact is missing before producing findings. Never invent architecture elements. No tools required; review the supplied documents directly.\n\n## Workflow\n\n1. Inventory every architecture ID (components C-n, flows F-n, boundaries B-n) and quote the boundary definitions.\n2. Ground each threat: map it to the exact component and flow IDs it requires. Flag any threat that needs an element not present in the architecture, or that contradicts a stated assumption, as ungrounded.\n3. Check completeness: every trust boundary and every data flow should be covered by at least one threat or an explicit out-of-scope note. An explicit false coverage claim is a finding; a bare uncovered flow or boundary with no claim about it is a note. Verify the justification inside each out-of-scope note against component definitions and reachable paths; a justification that contradicts the architecture (for example claiming no external actor for a flow to an external component, or for data reachable through an app path) is a finding, not a valid scope note.\n4. Verify each ATT&CK mapping against the described attacker action, not the vulnerability or asset name. Flag mismatches and name the correct technique when confident.\n5. Test each mitigation for falsifiability: it must state an observable outcome and how to check it, and the stated test must exercise the threatened action or verify the stated mitigation's own outcome (config state, version, count) rather than an unrelated or adjacent control. Flag vague mitigations, mismatched tests, and threats that are bare CVE IDs without an attacker action. Flag vague only when no concrete control is named; a mitigation that names concrete controls but states no check is a note naming the missing check, not a finding. A stated cadence, version, or threshold counts as an observable bound.\n\n## Evidence rules\n\nCite exact quoted clauses from the model plus the architecture IDs they depend on. Separate quoted observations from your hypotheses. State confidence (high/medium/low) per finding and name what evidence would raise it. Never assert coverage for data that is missing. Threat models propose controls, so never flag a mitigation solely for naming controls the architecture does not list. When the architecture is silent on a detail (for example whether SSH also allows passwords), do not claim a mismatch; emit a note and record it as an unknown.\n\n## Output\n\nEmit the review in the JSON schema given in the task, with one finding per defect. Keep titles short and put quotes plus IDs in evidence.\n\n- Finding title and defect category per item.\n- Severity finding for defects, note for observations.\n- Exact quoted evidence plus architecture IDs.\n- Confidence per finding plus constraining unknowns.\n\n## Stop conditions\n\nStop and ask the user when the architecture, the threat model, or the review question is missing. Stop a mapping correction when you are not confident of the right technique; say so instead. Stop expanding scope beyond the supplied artifacts.\n\n## Safety\n\nReview only explicitly supplied content. Never generate exploit payloads, attack commands, or instructions that facilitate wrongdoing; refuse that portion and continue the defensive review. Never contact external systems or claim live validation.\n\n## Quality bar\n\n- Every finding cites an exact quoted clause and at least one architecture ID or explicitly states none exists.\n- Every ATT&CK correction names the attacker action first, then the technique.\n- Out-of-scope justifications are verified, never taken at face value.\n- Vague is flagged only when no concrete control is named.\n- A stated cadence, version bound, or threshold is accepted as an observable outcome.\n- Concrete-but-terse mitigations are notes naming the missing check, never findings.\n- Coverage gaps without an explicit false claim are notes, not findings.\n- Architecture-silence caveats are notes, never mismatch findings.\n- Mismatched tests are flagged only when the stated test observes neither the threatened action nor the mitigation's own outcome.\n- No finding invents components, flows, or boundaries.\n\nLimit the review to at most 800 words. Include confidence per finding plus unknowns that constrain the verdict."
+      },
+      "requires": []
+    }
+  ],
+  "versions": [
+    {
+      "version": "1.0.0",
+      "published": "2026-09-08"
+    }
+  ]
+}

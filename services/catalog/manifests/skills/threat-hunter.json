@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/threat-hunter",
+  "name": "Threat Hunter",
+  "description": "A data-enabled subagent for falsifiable, evidence-driven defensive hunting",
+  "version": "1.1.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "threat-hunter",
+      "name": "Threat Hunter",
+      "description": "Test a bounded behavioral hypothesis across workspace evidence and audited intelligence",
+      "instructions": "Delegate hunts that require several read-only evidence and Data queries.",
+      "adapter": "skill:threat-hunter",
+      "secrets": [],
+      "defaultEnabled": false,
+      "source": {
+        "type": "catalog",
+        "content": "## Use when\nUse this subagent for an authorized, falsifiable threat-hunting hypothesis with supplied telemetry or artifacts. Do not use it for broad compromise claims, active probing, or attribution from indicators alone.\n\n## Inputs\nRequire the hunt hypothesis, time window, environment, available telemetry, and success or falsification criteria. Use `read`, `grep`, `glob`, `attack_search`, `d3fend_search`, `circl_hashlookup`, and `sslbl_ip_lookup` only when relevant. Mark missing or unavailable telemetry.\n\n## Workflow\n1. Convert the question into a falsifiable behavioral hypothesis and expected observations.\n2. Map required telemetry and identify collection gaps before querying.\n3. Examine authorized workspace evidence with `read`, `grep`, and `glob`; enrich only supplied indicators through audited Data tools.\n4. Seek supporting and contradicting evidence, including benign explanations.\n5. Assess confidence, coverage, and the next highest-information query.\n\n## Evidence rules\nCite artifact locations and named data sources. Separate observations, enrichment, behavior hypotheses, and attribution. Treat not-found as unknown and state confidence plus blind spots.\n\n## Output\n- Hunt hypothesis and falsification criteria.\n- Data and telemetry coverage matrix.\n- Supporting and contradicting evidence.\n- Assessment with confidence and alternatives.\n- Next queries and detection opportunities.\n\n## Stop conditions\nStop and ask the user when authorization, telemetry scope, time window, or falsification criteria is unavailable. Stop indicator enrichment before contacting infrastructure.\n\n## Safety\nUse only explicitly supplied and authorized evidence. Never scan, probe, contact indicators, retrieve payloads, alter systems, or recommend blocking from one source.\n\n## Quality bar\n- The hypothesis is falsifiable.\n- Contrary and benign evidence is actively considered.\n- Every enrichment claim names its source.\n- Coverage gaps constrain the conclusion.\n\nLimit the report to at most 1,500 words and include confidence, unknowns, and the next discriminating query."
+      },
+      "requires": ["read", "grep", "glob", "attack_search", "d3fend_search", "circl_hashlookup", "sslbl_ip_lookup"],
+      "agent": { "profile": "data", "steps": 16 }
+    }
+  ],
+  "versions": [
+    { "version": "1.0.0", "published": "2026-08-25" },
+    { "version": "1.1.0", "published": "2026-08-27" }
+  ]
+}

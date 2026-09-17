@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/bug-root-cause",
+  "name": "Bug Root Cause",
+  "description": "Turn a reproducible software failure into a tested causal explanation and minimal repair plan",
+  "version": "1.1.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "bug-root-cause",
+      "name": "Bug Root Cause",
+      "description": "Trace symptoms through state, callers, and invariants without speculative rewrites",
+      "instructions": "Use when a software defect has a bounded symptom, reproduction, error, or failing test.",
+      "adapter": "skill:bug-root-cause",
+      "secrets": [],
+      "defaultEnabled": false,
+      "source": {
+        "type": "catalog",
+        "content": "## Use when\nUse this for an authorized codebase with a bounded failure, regression, stack trace, or failing test. Do not use it for feature ideation or a repository-wide refactor without a reproducible symptom.\n\n## Inputs\nRequire observed versus expected behavior, reproduction conditions, relevant logs or tests, and the allowed code scope. Use `read`, `grep`, `glob`, and `lsp` to inspect implementation and callers. When reproduction, stack traces, relevant code, environment details, or required tools are missing, return `not enough evidence to identify root cause` with the exact next input needed.\n\n## Workflow\n1. Normalize the symptom into a falsifiable failure statement.\n2. Trace the failing value or state backward from the observed boundary through callers and persistence.\n3. Identify the earliest violated invariant and compare it with nearby successful paths.\n4. Form at least two competing causal hypotheses. For each, name the observation or test that would falsify it, then use available `read`, `grep`, `glob`, and `lsp` evidence to reject or retain it.\n5. Specify the smallest behavior-preserving repair and the regression test that fails before it.\n\n## Evidence rules\nCite exact files, symbols, branches, and state transitions. Keep correlation separate from causation and label every untested hypothesis. If tests, repository search, runtime evidence, or tools are unavailable, mark the corresponding conclusion unverified rather than implying success. State confidence and environment-dependent unknowns.\n\n## Output\n- Reproduction and failure statement.\n- Causal chain from trigger to symptom.\n- Root cause with exact evidence.\n- Rejected alternatives.\n- Minimal fix and regression-test design.\n\n## Stop conditions\nStop and ask the user when the failure cannot be reproduced from supplied evidence, required generated code is unavailable, or multiple causes remain equally plausible.\n\n## Safety\nInspect only explicitly supplied and authorized code. Do not mutate files, run destructive commands, change production data, or present a guess as a root cause.\n\n## Quality bar\n- The root cause explains every observed symptom.\n- At least one competing hypothesis is actively falsified.\n- The proposed test fails for the identified cause, not merely the symptom.\n- The repair changes the smallest responsible boundary.\n\nLimit the report to at most 1,200 words and state confidence, unknowns, and the next discriminating check."
+      },
+      "requires": ["read", "grep", "glob", "lsp"]
+    }
+  ],
+  "versions": [
+    { "version": "1.0.0", "published": "2026-08-27" },
+    { "version": "1.1.0", "published": "2026-08-27" }
+  ]
+}

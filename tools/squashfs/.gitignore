@@ -1,0 +1,4 @@
+# Vendored pinned upstream source (script/import-upstream.sh)
+upstream/
+# Generated WASM fixtures (DUMP_FIXTURES=1 cargo test)
+test/fixtures/*.sqfs

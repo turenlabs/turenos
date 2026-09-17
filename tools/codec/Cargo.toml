@@ -1,0 +1,31 @@
+[package]
+name = "turen-codec-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Bounded compression and encoding transform WebAssembly module for Turen"
+repository = "https://github.com/turenio/wasm-tools"
+license = "Apache-2.0 OR MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+brotli = "=8.0.4"
+bs58 = { version = "=0.5.1", features = ["check"] }
+bzip2-rs = "=0.1.2"
+data-encoding = "=2.11.1"
+flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
+lz4_flex = "=0.14.0"
+lzma-rs = "=0.3.0"
+ruzstd = "=0.9.0"
+serde_json = "=1.0.145"
+wasm-bindgen = "=0.2.108"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]

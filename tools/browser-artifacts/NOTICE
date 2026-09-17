@@ -1,0 +1,28 @@
+Turen Browser Artifacts is a bounded, offline WebAssembly parser for browser
+forensic artifacts: Chromium LevelDB write logs (.log, used by Local Storage,
+Session Storage, and IndexedDB), Chromium LevelDB tables (.ldb/.sst),
+Chromium simple-disk-cache entry files, and Safari Cookies.binarycookies
+jars. The wrapper, dispatch/bounding layer, and all four format decoders are
+original Turen code written against documented on-disk formats (LevelDB
+log_format/table_format, Chromium net/disk_cache/simple entry format,
+WebKit-compatible binarycookies layout). No upstream application code is
+included. Licensed Apache-2.0 OR MIT.
+
+This package vendors compiled third-party Rust components:
+
+- snap 1.1.1 — BSD-3-Clause (Andrew Gallant / BurntSushi). Pure-Rust Snappy
+  raw-block decompression for LevelDB table blocks; decompressed size is
+  bounded before allocation.
+- crc32c 0.6.8 — Apache-2.0 OR MIT. CRC-32C (Castagnoli) checksums for
+  LevelDB record and table-block integrity; the software table
+  implementation is used on wasm32.
+- serde 1.0.228 and serde_json 1.0.151 — MIT OR Apache-2.0.
+- sha2 0.10.9 — MIT OR Apache-2.0 (RustCrypto). Used for cache-entry key
+  SHA-256 validation and record digests.
+- wasm-bindgen 0.2.108 — MIT OR Apache-2.0.
+
+Transitive components of the above are distributed under permissive MIT,
+Apache-2.0, BSD, or Unicode licenses; no GPL-family code is linked.
+
+The compiled module also uses Rust standard-library components,
+distributed under the Apache-2.0 or MIT license at the user's option.

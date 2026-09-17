@@ -268,6 +268,10 @@ export const make = Effect.gen(function* () {
     Effect.callback<readonly [NodeChildProcess.ChildProcess, ExitSignal], PlatformError.PlatformError>((resume) => {
       const signal = Deferred.makeUnsafe<readonly [code: number | null, signal: NodeJS.Signals | null]>()
       const proc = launch(command.command, command.args, opts)
+      // The stdin sink attaches its own error handling lazily; a child that
+      // exits first would otherwise surface EPIPE as an unhandled 'error'
+      // event instead of the sink's typed PlatformError.
+      proc.stdin?.on("error", () => {})
       let end = false
       let exit: readonly [code: number | null, signal: NodeJS.Signals | null] | undefined
       proc.on("error", (err) => {

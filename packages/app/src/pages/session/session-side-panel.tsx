@@ -238,6 +238,7 @@ export function SessionSidePanel(props: {
     return active !== "review" && active !== "context" && active !== "empty"
   })
   const openFileKeybind = createMemo(() => command.keybindParts("file.open"))
+  const reviewToggleKeybind = createMemo(() => command.keybindParts("review.toggle"))
   const [store, setStore] = createStore({
     activeDraggable: undefined as string | undefined,
   })
@@ -456,6 +457,20 @@ export function SessionSidePanel(props: {
                                     aria-label={language.t("command.file.open")}
                                   />
                                 </TooltipKeybind>
+                                <TooltipKeybind
+                                  title={language.t("command.review.toggle")}
+                                  keybind={command.keybind("review.toggle")}
+                                  class="flex items-center"
+                                >
+                                  <IconButton
+                                    icon="close-small"
+                                    variant="ghost"
+                                    iconSize="large"
+                                    class="!rounded-md"
+                                    onClick={() => view().reviewPanel.close()}
+                                    aria-label={language.t("command.review.toggle")}
+                                  />
+                                </TooltipKeybind>
                               </div>
                             </Tabs.List>
                           </div>
@@ -668,11 +683,31 @@ export function SessionSidePanel(props: {
                             </div>
                           </Tabs.List>
                           <div
-                            class="session-review-v2-open-in-app-slot shrink-0 flex items-center pr-3"
+                            class="session-review-v2-open-in-app-slot shrink-0 flex items-center gap-1 pr-3"
                             onPointerDown={(event) => event.stopPropagation()}
                             onClick={(event) => event.stopPropagation()}
                           >
                             <OpenInAppV2 directory={projectDirectory} />
+                            <TooltipV2
+                              value={
+                                <>
+                                  {language.t("command.review.toggle")}
+                                  <Show when={reviewToggleKeybind().length > 0}>
+                                    <KeybindV2 keys={reviewToggleKeybind()} variant="neutral" />
+                                  </Show>
+                                </>
+                              }
+                              placement="bottom"
+                              class="flex items-center"
+                            >
+                              <IconButtonV2
+                                icon={<Icon name="close-small" />}
+                                variant="ghost-muted"
+                                size="large"
+                                onClick={() => view().reviewPanel.close()}
+                                aria-label={language.t("command.review.toggle")}
+                              />
+                            </TooltipV2>
                           </div>
                         </div>
 

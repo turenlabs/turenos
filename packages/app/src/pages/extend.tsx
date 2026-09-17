@@ -8,9 +8,9 @@ import { Icon } from "@turenlabs/ui/v2/icon"
 import { ServerConnection } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
 import { useSettingsDialog } from "@/components/settings-dialog"
-import { useSettings } from "@/context/settings"
 import { PageHeader } from "@/components/page-header"
 import {
+  catalogHomepage,
   extensionAction,
   extensionCategories,
   extensionCategory,
@@ -26,7 +26,6 @@ import {
   type ExtensionSort,
   type ExtensionStatusFilter,
 } from "./extend-model"
-import { catalogHomepage, loadExternalCatalog, mergeExternalCatalog, type CatalogExtensionItem } from "./extend-catalog"
 import { ExtensionLogo } from "./extend-logo"
 
 const tabs = {
@@ -55,8 +54,7 @@ const statusLabel = (status: ExtensionItem["status"]) =>
 const activeStatus = (item: ExtensionItem) =>
   item.status === "connected" || (item.enabled && item.status === "available")
 
-const displayStatus = (item: ExtensionItem, preview: boolean) => {
-  if (preview) return "Preview"
+const displayStatus = (item: ExtensionItem) => {
   if (item.enabled && item.status === "available") return "Enabled"
   return statusLabel(item.status)
 }
@@ -99,7 +97,7 @@ const skillContent = (skill: ExtensionSkill) => (skill.source.type === "catalog"
 const cardActionLabel = (item: ExtensionItem) => {
   if (!item.mutable) return "View details"
   if (item.installed === false) return "Install"
-  if (directOAuthConnect(item as CatalogExtensionItem)) return "Connect"
+  if (directOAuthConnect(item)) return "Connect"
   return item.enabled ? "Manage" : "Configure"
 }
 
@@ -145,7 +143,6 @@ const filterSelectClass =
 export default function ExtendPage() {
   const dialog = useDialog()
   const serverSdk = useServerSDK()
-  const settings = useSettings()
   const showSubagents = useSettingsDialog("agents")
   const params = useParams<{ view?: string }>()
   const location = useLocation()
@@ -153,11 +150,11 @@ export default function ExtendPage() {
   let listRequest: AbortController | undefined
   let listGeneration = 0
   const [catalog, { mutate, refetch }] = createResource(
-    () => ({ sdk: serverSdk(), endpoint: settings.general.catalogEndpoint().trim() }),
-    async ({ sdk, endpoint }) => {
+    () => serverSdk(),
+    async (sdk) => {
       const operationID = crypto.randomUUID()
       const startedAt = performance.now()
-      traceCatalog("catalog.load.started", { operationID, external: Boolean(endpoint) })
+      traceCatalog("catalog.load.started", { operationID })
       listRequest?.abort()
       const request = new AbortController()
       const generation = ++listGeneration
@@ -168,40 +165,13 @@ export default function ExtendPage() {
           throwOnError: true,
         })
         if (generation !== listGeneration || sdk !== serverSdk()) throw new DOMException("Stale request", "AbortError")
-        const current = response.data ?? []
-        traceCatalog("catalog.server-list.completed", { operationID, itemCount: current.length })
-        if (!endpoint) {
-          traceCatalog("catalog.load.completed", {
-            operationID,
-            itemCount: current.length,
-            durationMs: Math.round(performance.now() - startedAt),
-          })
-          return { sdk, items: current, catalogIssue: undefined }
-        }
-        try {
-          const external = await loadExternalCatalog(endpoint, request.signal, globalThis.fetch, (phase, fields) =>
-            traceCatalog(phase, { operationID, ...fields }),
-          )
-          const items = mergeExternalCatalog(current, external)
-          traceCatalog("catalog.external-merge.completed", {
-            operationID,
-            serverItemCount: current.length,
-            externalItemCount: external.length,
-            itemCount: items.length,
-            durationMs: Math.round(performance.now() - startedAt),
-          })
-          return { sdk, items, catalogIssue: undefined }
-        } catch (cause) {
-          if (request.signal.aborted || generation !== listGeneration) throw cause
-          const message =
-            cause instanceof Error && cause.message ? cause.message : "Could not load the extension catalog."
-          traceCatalog("catalog.external.failed", {
-            operationID,
-            error: cause instanceof Error ? `${cause.name}: ${cause.message}` : "Unknown catalog load error",
-            durationMs: Math.round(performance.now() - startedAt),
-          })
-          return { sdk, items: current, catalogIssue: `${message} Showing extensions known to this server.` }
-        }
+        const items = response.data ?? []
+        traceCatalog("catalog.load.completed", {
+          operationID,
+          itemCount: items.length,
+          durationMs: Math.round(performance.now() - startedAt),
+        })
+        return { sdk, items }
       } catch (cause) {
         traceCatalog("catalog.load.failed", {
           operationID,
@@ -224,7 +194,6 @@ export default function ExtendPage() {
   const requests = new Set<AbortController>()
   createEffect(() => {
     serverSdk()
-    settings.general.catalogEndpoint()
     requests.forEach((request) => request.abort())
     requests.clear()
     setPending(undefined)
@@ -277,7 +246,7 @@ export default function ExtendPage() {
   const updateSecret = (extensionID: string, name: string, value: string) =>
     setSecrets((current) => ({ ...current, [`${extensionID}:${name}`]: value }))
 
-  const toggle = async (item: CatalogExtensionItem) => {
+  const toggle = async (item: ExtensionItem) => {
     const sdk = loaded()?.sdk
     const contribution = item.manifest.contributions[0]
     const action = extensionAction(item, secrets())
@@ -314,8 +283,7 @@ export default function ExtendPage() {
         { signal: request.signal, throwOnError: true },
       )
       if (sdk !== serverSdk()) return false
-      if (settings.general.catalogEndpoint().trim()) void refetch()
-      else mutate({ sdk, items: result.data ?? [], catalogIssue: undefined })
+      mutate({ sdk, items: result.data ?? [] })
       traceCatalog("extension.update.completed", {
         operationID,
         extensionID: item.manifest.id,
@@ -357,13 +325,13 @@ export default function ExtendPage() {
     void dialog.show(
       () => (
         <ExtensionConfigDialog
-          item={item as CatalogExtensionItem}
+          item={item}
           pending={pending}
           error={error}
           secrets={secrets}
           updateSecret={updateSecret}
           localServer={!!loaded()?.sdk && ServerConnection.local(loaded()!.sdk.server)}
-          submit={() => toggle(item as CatalogExtensionItem)}
+          submit={() => toggle(item)}
         />
       ),
       undefined,
@@ -492,13 +460,6 @@ export default function ExtendPage() {
             </div>
           )}
         </Show>
-        <Show when={loaded()?.catalogIssue}>
-          {(message) => (
-            <div role="status" class="mb-4 text-[12px] text-v2-state-fg-warning">
-              {message()}
-            </div>
-          )}
-        </Show>
         <Show when={loaded()} fallback={<div class="text-[12px] text-v2-text-text-muted">Loading extensions...</div>}>
           <Show
             when={items().length}
@@ -514,7 +475,6 @@ export default function ExtendPage() {
                   const mcp = () => extensionMcps(item)[0]
                   const mcpTools = () => extensionMcpTools(item)
                   const skill = () => extensionSkills(item)[0]
-                  const preview = () => (item as CatalogExtensionItem).preview
                   return (
                     <button
                       type="button"
@@ -537,7 +497,7 @@ export default function ExtendPage() {
                         </span>
                         <span
                           class="flex shrink-0 items-center gap-1.5 rounded-full bg-v2-background-bg-base px-2 py-1 text-[9px] text-v2-text-text-muted"
-                          classList={{ "text-v2-state-fg-success": !preview() && activeStatus(item) }}
+                          classList={{ "text-v2-state-fg-success": activeStatus(item) }}
                         >
                           <span
                             class="size-1.5 rounded-full bg-v2-icon-icon-muted"
@@ -550,7 +510,7 @@ export default function ExtendPage() {
                               "bg-v2-state-fg-danger": item.status === "failed" || item.status === "unavailable",
                             }}
                           />
-                          {displayStatus(item, preview() !== undefined)}
+                          {displayStatus(item)}
                         </span>
                       </div>
 
@@ -632,7 +592,7 @@ function ExtensionField(props: {
 }
 
 function ExtensionConfigDialog(props: {
-  item: CatalogExtensionItem
+  item: ExtensionItem
   pending: () => string | undefined
   error: () => string | undefined
   secrets: () => Record<string, string>
@@ -647,7 +607,6 @@ function ExtensionConfigDialog(props: {
   const customerUrl = () => mcps().find((mcp) => mcp.deployment.type === "customer-url")
   const configuration = () => extensionConfiguration(props.item)
   const declaredSecrets = () => extensionSecrets(props.item)
-  const preview = () => props.item.preview
   const homepage = () => catalogHomepage(props.item.manifest.homepage)
   const action = () => extensionAction(props.item, props.secrets())
   const remoteBlocked = () =>
@@ -669,8 +628,8 @@ function ExtensionConfigDialog(props: {
               <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 <span>{extensionCategoryLabel(extensionCategory(props.item))}</span>
                 <span aria-hidden="true">·</span>
-                <span classList={{ "text-v2-state-fg-success": !preview() && activeStatus(props.item) }}>
-                  {displayStatus(props.item, preview() !== undefined)}
+                <span classList={{ "text-v2-state-fg-success": activeStatus(props.item) }}>
+                  {displayStatus(props.item)}
                 </span>
               </span>
             }
@@ -728,15 +687,6 @@ function ExtensionConfigDialog(props: {
               TurenOS downloads checksum-verified uv 0.12.6, starts pinned falcon-mcp 0.16.1, and always passes the
               vendor --read-only control.
             </section>
-          </Show>
-
-          <Show when={preview()}>
-            {(value) => (
-              <section class="rounded-[8px] bg-v2-background-bg-layer-01 px-3 py-2.5 [box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-muted)]">
-                <p class="text-[11px] [font-weight:650] text-v2-text-text-base">{value().label}</p>
-                <p class="mt-1 text-[11px] leading-[1.45] text-v2-text-text-muted">{value().detail}</p>
-              </section>
-            )}
           </Show>
 
           <Show when={props.item.detail}>

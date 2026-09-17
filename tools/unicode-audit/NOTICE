@@ -1,0 +1,20 @@
+Turen Unicode Audit wraps these upstream libraries:
+
+- chardetng 1.0.0 by Henri Sivonen and Mozilla, distributed under the
+  Apache-2.0 OR MIT licenses. Upstream: https://github.com/hsivonen/chardetng
+- encoding_rs 0.8.41 by Henri Sivonen and Mozilla, distributed under the
+  (Apache-2.0 OR MIT) AND BSD-3-Clause licenses.
+  Upstream: https://github.com/hsivonen/encoding_rs
+- unicode-normalization 0.1.25 and unicode-script 0.5.8 by the unicode-rs
+  contributors, distributed under the MIT OR Apache-2.0 licenses.
+  Upstream: https://github.com/unicode-rs/unicode-normalization and
+  https://github.com/unicode-rs/unicode-script
+
+The upstream applications, command-line interfaces, and any filesystem or
+network integration are not exposed; this package exposes only the bounded
+wasm-bindgen operations documented in README.md.
+
+Transitive Rust dependencies used by the compiled module are licensed under
+permissive terms (MIT, Apache-2.0, BSD-3-Clause, or Unicode-3.0). The compiled
+module also uses Rust standard-library components distributed under
+Apache-2.0 or MIT. See Cargo.lock for the complete pinned dependency closure.

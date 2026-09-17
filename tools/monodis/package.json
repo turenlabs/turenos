@@ -1,0 +1,31 @@
+{
+  "name": "@turenlabs/monodis-wasm",
+  "version": "0.1.0",
+  "description": "Turen-maintained Mono monodis CIL disassembler built for WebAssembly",
+  "main": "dist/monodis.js",
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "import": "./script/import-upstream.sh",
+    "build": "make -f Makefile.wasm",
+    "build:spike": "make -f Makefile.wasm spike",
+    "test": "node test/verify.mjs",
+    "pack:forge": "node script/pack-forge.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/turenio/wasm-tools.git"
+  },
+  "keywords": [
+    "mono",
+    "monodis",
+    "cil",
+    "dotnet",
+    "wasm",
+    "webassembly",
+    "reverse-engineering"
+  ],
+  "author": "Turen",
+  "license": "MIT"
+}

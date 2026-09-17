@@ -10,6 +10,12 @@
 - Running `bun dev` from the repository root starts TurenOS Desktop.
 - Run package-scoped runtime commands from `packages/forge` only when testing the bundled server or headless automation path.
 
+## Extension Catalog
+
+- Built-in catalog items come from `@turenlabs/extensions` (`ExtensionCatalog`), generated from `services/catalog/manifests`. Do not add manifest JSON here.
+- `src/extension` serves `extension.list`/`extension.update`; installing a skill or generic hosted MCP submits the client manifest, which Vigil scans in `src/skill/vigil.ts`.
+- Changing a catalog skill manifest invalidates its `reviewedSkillDigests` entry in `src/skill/vigil.ts`; regenerate per `services/catalog/AGENTS.md` or installs lose the reviewed exemption.
+
 # Module shape
 
 Do not use `export namespace Foo { ... }` for module organization. It is not

@@ -1,0 +1,25 @@
+{
+  "crate": "turen-codec-wasm",
+  "upstream": "crates.io pinned dependency set; see Cargo.lock",
+  "upstreamVersion": "flate2=1.1.10 brotli=8.0.4 lz4_flex=0.14.0 bzip2-rs=0.1.2 lzma-rs=0.3.0 ruzstd=0.9.0 data-encoding=2.11.1 bs58=0.5.1",
+  "derivation": "Original bounded wrapper around pure-Rust codec crates; no upstream application code is included.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmBindgen": true,
+  "wasmPack": "0.15.0",
+  "runtimeDependencies": [],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": true,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "jsonOutputBytes": 4194304,
+    "transformBytes": 134217728,
+    "lzmaDictBytes": 67108864,
+    "zstdWindowBytes": 67108864,
+    "allocationHintBytes": 4194304
+  }
+}

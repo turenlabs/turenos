@@ -30,7 +30,6 @@ import { SettingsRowV2 } from "./parts/row"
 import { LayoutRetirementNotice, LayoutTransitionToggle } from "./interface-transition"
 import { shouldShowDebugBar } from "../debug-bar-visibility"
 import { SettingsProfilerSection } from "./profiler"
-import { SettingsCatalogSection } from "./catalog"
 import { yolkExtension, YOLK_EXTENSION_ID } from "@/utils/extension-surface"
 import { LobbyConfigurationError, normalizeLobbyAPIURL } from "@/pages/lobby-client"
 import { SettingsServerPicker, SettingsServerScope } from "../settings-server-picker"
@@ -44,7 +43,6 @@ import { toggleLabelKey } from "./toggle-label"
  * beta and prod bundles rather than shipped and hidden.
  */
 const PROFILER_SECTION_ENABLED = import.meta.env.VITE_FORGE_CHANNEL === "dev"
-const CATALOG_SECTION_ENABLED = import.meta.env.VITE_FORGE_CHANNEL !== "prod"
 import { createPermissionChecksUpdater } from "../permission-checks"
 import "./settings-v2.css"
 
@@ -1239,7 +1237,6 @@ const SettingsGeneralContent: Component<{
               <SettingsProfilerSection />
             </Show>
           )}
-          {CATALOG_SECTION_ENABLED && <SettingsCatalogSection />}
         </Show>
       </div>
     </>

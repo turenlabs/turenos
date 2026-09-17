@@ -1,6 +1,5 @@
 import type { ExtensionItem, ExtensionUpdate } from "@turenlabs/sdk/v2/client"
 import { settingsOwnedExtension } from "@/utils/extension-surface"
-import type { CatalogExtensionItem } from "./extend-catalog"
 
 export type ExtensionKind = "all" | "tool" | "mcp" | "data" | "skill"
 
@@ -80,7 +79,9 @@ const categoryByExtensionID: Readonly<Record<string, ClassifiedExtensionCategory
   "turenlabs/software-architecture-reviewer": "software-engineering",
   "turenlabs/threat-intel-brief": "threat-intelligence",
   "turenlabs/detection-engineering-review": "security-operations",
+  "turenlabs/iac-config-review": "cloud-security",
   "turenlabs/incident-evidence-triage": "incident-response",
+  "turenlabs/threat-model-review": "application-security",
   "turenlabs/technical-security-blog": "security-knowledge",
   "turenlabs/scorecard": "supply-chain",
   "turenlabs/microsoft-sentinel": "security-operations",
@@ -243,16 +244,9 @@ function compareExtensionNames(left: ExtensionItem, right: ExtensionItem) {
   return left.manifest.name.localeCompare(right.manifest.name) || left.manifest.id.localeCompare(right.manifest.id)
 }
 
-export function extensionAction(item: CatalogExtensionItem, drafts: Readonly<Record<string, string>>) {
+export function extensionAction(item: ExtensionItem, drafts: Readonly<Record<string, string>>) {
   const contributions = item.manifest.contributions
   if (contributions.length === 0) return undefined
-  if (item.updateAvailable) {
-    return {
-      payload: { enabled: item.enabled, manifest: item.manifest } as ExtensionUpdate,
-      missingRequired: false,
-      label: "Update",
-    }
-  }
   const dynamicInstall = contributions.every(
     (contribution) =>
       (contribution.type === "mcp" &&
@@ -332,7 +326,7 @@ export function extensionAction(item: CatalogExtensionItem, drafts: Readonly<Rec
   }
 }
 
-export function directOAuthConnect(item: CatalogExtensionItem) {
+export function directOAuthConnect(item: ExtensionItem) {
   return (
     item.mutable &&
     item.status === "needs-auth" &&
@@ -346,4 +340,15 @@ export function directOAuthConnect(item: CatalogExtensionItem) {
         (!contribution.configuration || contribution.configuration.length === 0),
     )
   )
+}
+
+export function catalogHomepage(value: string | undefined) {
+  if (!value) return undefined
+  try {
+    const url = new URL(value)
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) return undefined
+    return url.toString()
+  } catch {
+    return undefined
+  }
 }

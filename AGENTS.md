@@ -3,6 +3,8 @@
 - Keep runtime dependencies directed from Schema to Core and Protocol, then from Core and Protocol to Server. Client runtime code may depend on Schema and Protocol but never Core or Server; `sdk-next` composes Client, Core, and Server.
 - The default branch in this repo is `dev`.
 - Local `main` ref may not exist; use `dev` or `origin/dev` for diffs.
+- `tools/` holds the imported wasm-tools bounded WASM tool targets; follow `tools/AGENTS.md` when working there. `.github/workflows/build-<target>.yml` rebuilds and opens a PR updating `packages/<target>-wasm`; locally run `bun run build:wasm <target>` (recipes live in `script/build-wasm.ts`) and `bun run verify:wasm` checks package checksums.
+- `services/catalog/manifests` is the canonical built-in extension catalog (data, skills, MCP, tools); follow `services/catalog/AGENTS.md` when editing it. Run `bun run generate` in `packages/extensions` to update `src/generated.ts`. There is no remote catalog.
 
 ## Releases
 

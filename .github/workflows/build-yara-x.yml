@@ -1,0 +1,76 @@
+name: Build YARA-X WASM
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/build-yara-x.yml"
+      - "tools/yara-x/**"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-yara-x
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  YARA_X_COMMIT: fe40349ea12c5ccb89aae9f304b979c4fb410f66
+  RUST_TOOLCHAIN: 1.94.0
+  WASM_PACK_VERSION: 0.15.0
+
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Turen build repository
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+
+      - name: Checkout YARA-X
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          repository: VirusTotal/yara-x
+          ref: ${{ env.YARA_X_COMMIT }}
+          path: upstream/yara-x
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+
+      - name: Install pinned wasm-pack
+        run: cargo +"$RUST_TOOLCHAIN" install --locked wasm-pack --version "$WASM_PACK_VERSION"
+
+      - name: Apply bounded result patch
+        run: git -C upstream/yara-x apply "$GITHUB_WORKSPACE/tools/yara-x/patches/bounded-results.patch"
+
+      - name: Build official YARA-X browser package
+        run: npm --prefix upstream/yara-x/js-wasm run build:web
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Verify bounded scanner API
+        run: node tools/yara-x/test/verify.mjs upstream/yara-x/js-wasm/pkg
+
+      - name: Pack Forge workspace artifact
+        run: node tools/yara-x/script/pack.mjs upstream/yara-x/js-wasm/pkg packages/yara-x-wasm
+
+      - name: Open package update PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          add-paths: packages/yara-x-wasm
+          branch: wasm/yara-x-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild yara-x-wasm"
+          title: "chore(wasm): rebuild yara-x-wasm"
+          body: "Rebuilt `packages/yara-x-wasm` from `tools/yara-x` at ${{ github.sha }}."

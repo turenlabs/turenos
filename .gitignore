@@ -126,6 +126,9 @@ tsconfig.tsbuildinfo
 tmp-pentest/
 .forge/pentest/
 
+# Pinned upstream checkouts for tools/ WASM builds (CI and script/build-wasm.ts)
+/upstream/
+
 # Machine-local investigation and build outputs
 /.case/
 /experiments/

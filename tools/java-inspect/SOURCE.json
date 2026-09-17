@@ -1,0 +1,31 @@
+{
+  "crate": "turen-java-inspect-wasm",
+  "upstream": null,
+  "derivation": "Original bounded implementation. The .class parser, constant-pool model, bytecode disassembler, findings scanner, and JAR walker are Turen-written parse-only code; JAR (ZIP) container reading delegates to the pinned zip crate with its pure-Rust deflate backend (flate2/miniz_oxide). The cafebabe and noak parser crates were evaluated and rejected in favor of a hand-rolled parser for tighter bounds control and a smaller dependency closure. No upstream CLI, filesystem, network, or execution APIs are exposed.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "wasmOpt": ["-Os", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"],
+  "runtimeDependencies": [],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": true,
+  "decompressionBounds": "MANIFEST.MF inflate capped at 262144 bytes; a single selected class entry inflated at most to 33554432 bytes before parsing; decompressed output never leaves the module",
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "outputBytes": 4194304,
+    "entries": 4096,
+    "constantPoolDump": 4096,
+    "stringChars": 1024,
+    "annotationElements": 512,
+    "switchCases": 4096,
+    "jarEntriesScanned": 65536,
+    "manifestBytes": 262144,
+    "selectedEntryBytes": 33554432,
+    "disassemblyBytes": 2097152
+  }
+}

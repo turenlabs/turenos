@@ -1,0 +1,50 @@
+{
+  "crate": "turen-code-signing-wasm",
+  "version": "0.1.0",
+  "upstream": {
+    "x509-parser": {
+      "repository": "https://github.com/rusticata/x509-parser",
+      "version": "0.18.1",
+      "license": "Apache-2.0 OR MIT"
+    },
+    "cms": {
+      "repository": "https://github.com/RustCrypto/formats",
+      "version": "0.2.3",
+      "license": "Apache-2.0 OR MIT"
+    },
+    "der": {
+      "repository": "https://github.com/RustCrypto/formats",
+      "version": "0.7.10",
+      "license": "Apache-2.0 OR MIT"
+    },
+    "goblin": {
+      "repository": "https://github.com/m4b/goblin",
+      "version": "0.10.7",
+      "license": "MIT"
+    },
+    "hashes": {
+      "repository": "https://github.com/RustCrypto/hashes",
+      "crates": ["sha1", "sha2", "md-5"],
+      "license": "Apache-2.0 OR MIT"
+    }
+  },
+  "derivation": "Turen wasm-bindgen wrapper exposing bounded parse-only inspection operations; upstream parsers are used unmodified via exact-pinned crates.io releases committed in Cargo.lock.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "network": false,
+  "signatureVerification": false,
+  "trustValidation": false,
+  "timestampVerification": false,
+  "ocspCrlFetch": false,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "outputBytes": 4194304,
+    "maxItems": 4096,
+    "maxStringBytes": 4096,
+    "maxXmlBytes": 262144,
+    "maxBlobIndex": 4096
+  }
+}

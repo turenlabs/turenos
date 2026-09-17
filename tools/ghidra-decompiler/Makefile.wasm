@@ -1,0 +1,53 @@
+# WASM Makefile for Ghidra Decompiler using Emscripten
+# MODIFICATION IN THIS FORK: This file supports WebAssembly builds.
+
+EMSDK_VERSION=6.0.8
+CXX=em++
+.DEFAULT_GOAL := all
+# MODIFICATION IN THIS FORK: GHIDRA_NO_BFD added to support standalone/WASM builds.
+OPT_CXXFLAGS=-O3 -Wall -Wno-sign-compare -DGHIDRA_NO_BFD -fexceptions -gsource-map -s USE_ZLIB=1
+
+CORE=	xml marshal space float address pcoderaw translate opcodes globalcontext
+DECCORE=capability architecture options graph cover block cast typeop database cpool \
+	comment stringmanage modelrules fspec action loadimage grammar varnode op type \
+	variable varmap jumptable emulate emulateutil flow userop expression multiprecision \
+	funcdata funcdata_block funcdata_op funcdata_varnode unionresolve pcodeinject \
+	heritage prefersplit rangeutil ruleaction subflow blockaction merge double \
+	transform constseq bitfield coreaction condexe override dynamic crc32 prettyprint \
+	printlanguage printc printjava memstate opbehavior paramid signature
+SLEIGH=	sleigh pcodeparse pcodecompile sleighbase slghsymbol \
+	slghpatexpress slghpattern semantics context slaformat compression filemanage
+EXTRA=callgraph ifacedecomp ifaceterm interface loadimage_xml raw_arch testfunction unify xml_arch codedata sleigh_arch inject_sleigh
+
+LIBDECOMP_NAMES=$(CORE) $(DECCORE) $(EXTRA) $(SLEIGH) libdecomp
+
+OBJS=$(LIBDECOMP_NAMES:%=wasm_obj/%.o) wasm_obj/wasm_wrapper.o
+
+DIST_DIR=dist
+
+# Exported functions for JS access
+EXPORTED_FUNCTIONS=['_init_decompiler', '_decompile_pcode', '_detect_architecture', '_free_string', '_malloc', '_free']
+EXPORTED_RUNTIME_METHODS=['ccall', 'cwrap', 'HEAPU8', 'UTF8ToString', 'stringToUTF8']
+
+wasm_obj/%.o: %.cc
+	@mkdir -p wasm_obj
+	$(CXX) -c $(OPT_CXXFLAGS) $< -o $@
+
+$(DIST_DIR)/ghidra_decompiler.js: $(OBJS)
+	@mkdir -p $(DIST_DIR)
+	$(CXX) $(OPT_CXXFLAGS) $(OBJS) -o $(DIST_DIR)/ghidra_decompiler.js \
+		-s EXPORTED_FUNCTIONS="$(EXPORTED_FUNCTIONS)" \
+		-s EXPORTED_RUNTIME_METHODS="$(EXPORTED_RUNTIME_METHODS)" \
+		-s MODULARIZE=1 -s EXPORT_NAME="GhidraDecompiler" \
+		-s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=64MB -s STACK_SIZE=16MB -s USE_ZLIB=1
+	@mkdir -p $(DIST_DIR)/Processors
+	(cd Processors && find . \( -name "*.sla" -o -name "*.pspec" -o -name "*.cspec" \) -exec cp --parents {} ../$(DIST_DIR)/Processors \;)
+	cp wasm_examples/processors.json $(DIST_DIR)/processors.json
+
+all: $(DIST_DIR)/ghidra_decompiler.js
+	@cp package.json LICENSE NOTICE $(DIST_DIR)/
+	@printf '%s\n' '$(EMSDK_VERSION)' > $(DIST_DIR)/EMSDK_VERSION
+	@find $(DIST_DIR) -type f ! -name SHA256SUMS -exec sha256sum {} \; | sort -k2 > $(DIST_DIR)/SHA256SUMS
+
+clean:
+	rm -rf wasm_obj $(DIST_DIR)

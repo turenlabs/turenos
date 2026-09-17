@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/test-strategy",
+  "name": "Test Strategy",
+  "description": "Design a risk-driven test plan tied to real code boundaries and failure modes",
+  "version": "1.1.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "test-strategy",
+      "name": "Test Strategy",
+      "description": "Select the smallest high-signal tests for a supplied change or subsystem",
+      "instructions": "Use before implementing tests for a bounded feature, bug fix, migration, or risky subsystem.",
+      "adapter": "skill:test-strategy",
+      "secrets": [],
+      "defaultEnabled": false,
+      "source": {
+        "type": "catalog",
+        "content": "## Use when\nUse this for an authorized code change, feature, migration, or subsystem that needs a deliberate test plan. Do not use it to inflate coverage metrics or duplicate implementation logic in tests.\n\n## Inputs\nRequire the behavior contract, changed paths, acceptance criteria, known risks, supported environments, fixtures and test data, nondeterministic dependencies, observability signals, and current test conventions. Use `read`, `grep`, `glob`, and `lsp` to inspect boundaries and existing tests. Ask when requirements, expected behavior, failure semantics, environments, fixtures, or runnable commands are missing.\n\n## Workflow\n1. Build a requirements-to-test matrix covering normal behavior, failure semantics, boundaries, integration, regression, and observability.\n2. Rank failure modes by likelihood, impact, and regression risk, including nondeterminism and unavailable dependencies.\n3. Map each high-risk behavior to the cheapest reliable test level: unit, integration, contract, end-to-end, property, or recovery.\n4. Inspect fixtures and helpers with `read`, `grep`, `glob`, and `lsp`; add compatibility, migration, rollback, performance, and security tests when the change touches those concerns.\n5. Define deterministic setup, assertions, cleanup, diagnostics, and measurable entry and exit criteria. Mark every test as runnable now, specified only, or blocked.\n\n## Evidence rules\nTie every proposed test to an exact requirement, behavior, or code boundary. Distinguish confirmed behavior from hypotheses. If tests, repository search, environments, or dependencies are unavailable, mark the affected tests unexecuted and the conclusions unverified; never infer a pass.\n\n## Output\n- Requirements-to-test matrix with behavior, failure, boundary, and observability coverage.\n- Selected tests with level, rationale, and runnable/specified/blocked status.\n- Required environments, fixtures, data, setup, and cleanup.\n- Assertions, expected diagnostics, and measurable entry/exit criteria.\n- Compatibility, migration, rollback, performance, and security coverage where relevant.\n- Unexecuted tests, residual risk, and the next prerequisite to unblock each gap.\n\n## Stop conditions\nStop and ask the user when requirements, acceptance criteria, environments, fixtures, or behavior are undefined; when the required integration is unavailable; or when a proposed test needs production credentials or destructive state. Return a blocked plan rather than inventing coverage.\n\n## Safety\nOperate only on explicitly supplied and authorized code. Do not request live secrets, mutate production systems, or recommend flaky timing, global mocks, or broad network dependencies.\n\n## Quality bar\n- Every requirement and high-risk failure mode maps to a named test or explicit residual risk.\n- Entry and exit criteria are measurable, and unexecuted tests are never reported as passing.\n- The plan prefers real implementation over mocks and covers compatibility or rollback when relevant.\n- Cleanup, retry, nondeterminism, and expected diagnostics are explicit.\n- No test merely mirrors the implementation.\n\nLimit the plan to at most 12 tests unless the user requests more; include confidence and unknown environments."
+      },
+      "requires": ["read", "grep", "glob", "lsp"]
+    }
+  ],
+  "versions": [
+    { "version": "1.0.0", "published": "2026-08-27" },
+    { "version": "1.1.0", "published": "2026-08-27" }
+  ]
+}

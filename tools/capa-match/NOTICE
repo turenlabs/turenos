@@ -1,0 +1,42 @@
+turen-capa-match-wasm
+Copyright (c) 2026 Turen Labs
+
+This package contains Turen's bounded static-subset capa capability
+matcher. It embeds a compiled form of the Mandiant capa-rules ruleset
+(mandiant/capa-rules, Apache-2.0,
+https://github.com/mandiant/capa-rules) at commit
+805f9eaccfb6a4e1ddffc809d71d1e2b5ccc15e5. Rule YAML is normalized to a
+compact JSON blob at build time; the YAML parser never ships in the
+module. The matcher itself is original Turen code implementing a static
+subset of capa's evaluation semantics — it is not the capa engine.
+
+Built from the following permissively licensed dependencies:
+
+- goblin 0.10.6 (MIT) — PE/ELF/Mach-O/archive structure parsing, vendored
+  at commit cec6e6eba5bdcec78ec79edc80b3a1f44856039a
+  (https://github.com/m4b/goblin), with scroll 0.13.0 / scroll_derive
+  0.13.2 / plain 0.2.3
+- aho-corasick 1.1.5 (Unlicense OR MIT) — shared multi-pattern scan for
+  exact string and byte-pattern features
+  (https://github.com/BurntSushi/aho-corasick)
+- regex 1.13.1 (MIT OR Apache-2.0) — bounded byte regexes for
+  `string: /.../` and wildcard `bytes:` patterns
+  (https://github.com/rust-lang/regex)
+- flate2 1.1.10 + zlib-rs 0.6.7 (MIT OR Apache-2.0 / zlib) — decompression
+  of the embedded rules blob (https://github.com/rust-lang/flate2-rs)
+- sha2 0.10.9 + digest 0.10.7 (MIT OR Apache-2.0) — RustCrypto SHA-256 for
+  reported input digests (https://github.com/RustCrypto/hashes)
+- serde 1.0.228 / serde_json 1.0.145 (MIT OR Apache-2.0) — report model
+  and JSON envelopes (https://github.com/serde-rs/json)
+- wasm-bindgen 0.2.108 (MIT OR Apache-2.0) — JavaScript bindings
+  (https://github.com/rustwasm/wasm-bindgen)
+
+Build-time only (never linked into the module): serde_norway 0.9.42
+(MIT OR Apache-2.0) parses capa-rules YAML for the ruleset compiler in
+build.rs and for unit-test fixtures (https://github.com/cafkafk/serde-norway).
+
+The full dependency closure is recorded in Cargo.lock; every entry is
+permissively licensed. No GPL, LGPL, or proprietary code is linked into
+the module. All operations are deterministic, offline byte processing
+over caller-supplied buffers: no filesystem, network, subprocess,
+environment, or clock access.

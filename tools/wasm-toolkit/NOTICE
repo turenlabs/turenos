@@ -1,0 +1,16 @@
+Turen Wasm Toolkit links the following Bytecode Alliance wasm-tools crates:
+
+  wasmparser    0.259.0
+  wasmprinter   0.259.0
+  wast          259.0.0
+  wat           1.259.0
+  wasm-metadata 0.259.0
+  wasm-encoder  0.259.0 (test-only, via wasm-metadata)
+
+wasm-tools is Copyright the Bytecode Alliance and its contributors and is
+licensed under Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT:
+https://github.com/bytecodealliance/wasm-tools
+
+The compiled module also uses serde, serde_json, and wasm-bindgen (Apache-2.0
+OR MIT) and Rust standard-library components distributed under Apache-2.0 or
+MIT at the user's option.

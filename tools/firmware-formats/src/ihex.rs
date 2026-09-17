@@ -1,0 +1,361 @@
+//! Intel HEX record parsing and image flattening.
+//!
+//! Each record is one ASCII line `:LLAAAATT<data>CC` — byte count, 16-bit
+//! address, record type, data, and a two's-complement checksum covering all
+//! bytes in the record. Extended segment (type 02, base << 4) and extended
+//! linear (type 04, base << 16) records set the upper address bits for
+//! following data records; types 03/05 carry the start address and 01 is EOF.
+//!
+//! `parse` reports every record with a per-record `checksum_valid` flag plus
+//! a merged address-range map and the gaps between ranges (the segment
+//! layout signal). `flatten` produces one contiguous image covering
+//! `[min_address, max_address]` with gaps filled by `fill` (default 0xFF,
+//! the erased-flash convention); the output base is `min_address` from the
+//! parse report.
+
+use serde_json::{json, Value};
+
+use crate::{error_json, hex};
+
+pub(crate) struct ParseOptions {
+    pub max_records: usize,
+}
+
+pub(crate) struct FlattenOptions {
+    pub fill: u8,
+    pub ignore_checksums: bool,
+    pub max_output_bytes: u64,
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn invalid_record(line: usize, offset: usize, detail: &str) -> String {
+    error_json(
+        "invalid_record",
+        json!({ "line": line, "offset": offset, "detail": detail }),
+    )
+}
+
+fn trim(line: &[u8]) -> &[u8] {
+    let start = line
+        .iter()
+        .position(|&b| !matches!(b, b' ' | b'\t' | b'\r'))
+        .unwrap_or(line.len());
+    let end = line
+        .iter()
+        .rposition(|&b| !matches!(b, b' ' | b'\t' | b'\r'))
+        .map(|index| index + 1)
+        .unwrap_or(start);
+    &line[start..end]
+}
+
+#[derive(Default)]
+struct Inner {
+    records: Vec<Value>,
+    records_truncated: bool,
+    record_count: usize,
+    data_ranges: Vec<(u64, u64)>,
+    data_blobs: Vec<(u64, Vec<u8>)>,
+    data_bytes: u64,
+    data_records: usize,
+    eof_seen: bool,
+    eof_line: Option<usize>,
+    data_after_eof: usize,
+    start_address: Option<u64>,
+    start_kind: Option<&'static str>,
+    invalid_checksums: usize,
+    unknown_types: usize,
+    warnings: Vec<String>,
+}
+
+fn inner(bytes: &[u8], record_cap: usize, collect_blobs: bool) -> Result<Inner, String> {
+    let mut it = Inner::default();
+    let mut base: u64 = 0;
+    let mut line_no = 0usize;
+    let mut pos = 0usize;
+
+    for raw_line in bytes.split(|&byte| byte == b'\n') {
+        line_no += 1;
+        let line_start = pos;
+        pos += raw_line.len() + 1;
+        let line = trim(raw_line);
+        if line.is_empty() {
+            continue;
+        }
+        if line[0] != b':' {
+            return Err(invalid_record(
+                line_no,
+                line_start,
+                "record does not start with ':'",
+            ));
+        }
+        let hexpart = &line[1..];
+        if hexpart.len() < 10 || hexpart.len() % 2 != 0 {
+            return Err(invalid_record(
+                line_no,
+                line_start,
+                "record has odd or too-short hex payload",
+            ));
+        }
+        let mut record = Vec::with_capacity(hexpart.len() / 2);
+        for pair in hexpart.chunks_exact(2) {
+            match (hex_value(pair[0]), hex_value(pair[1])) {
+                (Some(hi), Some(lo)) => record.push((hi << 4) | lo),
+                _ => {
+                    return Err(invalid_record(
+                        line_no,
+                        line_start,
+                        "non-hexadecimal character in record",
+                    ))
+                }
+            }
+        }
+        let count = record[0] as usize;
+        if record.len() != count + 5 {
+            return Err(invalid_record(
+                line_no,
+                line_start,
+                "byte count does not match record length",
+            ));
+        }
+        let address = u16::from_be_bytes([record[1], record[2]]) as u64;
+        let rtype = record[3];
+        let data = &record[4..4 + count];
+        let sum: u32 = record.iter().map(|&b| b as u32).sum();
+        let checksum_valid = sum & 0xff == 0;
+        if !checksum_valid {
+            it.invalid_checksums += 1;
+        }
+
+        let mut type_name = "unknown";
+        let mut address_json = Value::Null;
+        match rtype {
+            0x00 => {
+                type_name = "data";
+                let effective = base + address;
+                address_json = json!(hex(effective));
+                if it.eof_seen {
+                    it.data_after_eof += 1;
+                }
+                if count > 0 {
+                    it.data_ranges.push((effective, effective + count as u64));
+                    it.data_records += 1;
+                    it.data_bytes += count as u64;
+                    if collect_blobs {
+                        it.data_blobs.push((effective, data.to_vec()));
+                    }
+                }
+            }
+            0x01 => {
+                type_name = "eof";
+                it.eof_seen = true;
+                it.eof_line = Some(line_no);
+                if count != 0 {
+                    it.warnings.push("eof_record_with_data".into());
+                }
+            }
+            0x02 => {
+                if count != 2 {
+                    return Err(invalid_record(
+                        line_no,
+                        line_start,
+                        "extended segment record needs 2 data bytes",
+                    ));
+                }
+                type_name = "extended_segment";
+                base = (u16::from_be_bytes([data[0], data[1]]) as u64) << 4;
+                address_json = json!(hex(base));
+            }
+            0x03 => {
+                if count != 4 {
+                    return Err(invalid_record(
+                        line_no,
+                        line_start,
+                        "start segment record needs 4 data bytes",
+                    ));
+                }
+                type_name = "start_segment";
+                let value = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as u64;
+                it.start_address = Some(value);
+                it.start_kind = Some("segment");
+                address_json = json!(hex(value));
+            }
+            0x04 => {
+                if count != 2 {
+                    return Err(invalid_record(
+                        line_no,
+                        line_start,
+                        "extended linear record needs 2 data bytes",
+                    ));
+                }
+                type_name = "extended_linear";
+                base = (u16::from_be_bytes([data[0], data[1]]) as u64) << 16;
+                address_json = json!(hex(base));
+            }
+            0x05 => {
+                if count != 4 {
+                    return Err(invalid_record(
+                        line_no,
+                        line_start,
+                        "start linear record needs 4 data bytes",
+                    ));
+                }
+                type_name = "start_linear";
+                let value = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as u64;
+                it.start_address = Some(value);
+                it.start_kind = Some("linear");
+                address_json = json!(hex(value));
+            }
+            _ => {
+                it.unknown_types += 1;
+            }
+        }
+
+        it.record_count += 1;
+        if it.records.len() < record_cap {
+            it.records.push(json!({
+                "index": it.record_count - 1,
+                "offset": line_start,
+                "line": line_no,
+                "type": type_name,
+                "record_type": rtype,
+                "address": address_json,
+                "byte_count": count,
+                "checksum_valid": checksum_valid,
+            }));
+        } else {
+            it.records_truncated = true;
+        }
+    }
+
+    if it.data_after_eof > 0 {
+        it.warnings
+            .push(format!("data_after_eof:{}", it.data_after_eof));
+    }
+    if it.unknown_types > 0 {
+        it.warnings
+            .push(format!("unknown_record_types:{}", it.unknown_types));
+    }
+    Ok(it)
+}
+
+/// Merge sorted ranges (overlapping or adjacent coalesce), then derive gaps.
+fn merged_ranges(ranges: &mut Vec<(u64, u64)>) -> (Vec<(u64, u64)>, Vec<(u64, u64)>) {
+    ranges.sort_unstable();
+    let mut merged: Vec<(u64, u64)> = Vec::with_capacity(ranges.len());
+    for &(start, end) in ranges.iter() {
+        if let Some(last) = merged.last_mut() {
+            if start <= last.1 {
+                last.1 = last.1.max(end);
+                continue;
+            }
+        }
+        merged.push((start, end));
+    }
+    let mut gaps = Vec::new();
+    for pair in merged.windows(2) {
+        gaps.push((pair[0].1, pair[1].0));
+    }
+    (merged, gaps)
+}
+
+pub(crate) fn parse(bytes: &[u8], options: &ParseOptions) -> Result<Value, String> {
+    let mut it = inner(bytes, options.max_records, false)?;
+
+    let (merged, gaps) = merged_ranges(&mut it.data_ranges);
+    let range_values: Vec<Value> = merged
+        .iter()
+        .take(crate::MAX_LIST_ITEMS)
+        .map(|&(start, end)| {
+            json!({ "start": hex(start), "end": hex(end), "size": end - start })
+        })
+        .collect();
+    let gap_values: Vec<Value> = gaps
+        .iter()
+        .take(crate::MAX_LIST_ITEMS)
+        .map(|&(start, end)| {
+            json!({ "start": hex(start), "end": hex(end), "size": end - start })
+        })
+        .collect();
+    let ranges_truncated = merged.len() > range_values.len() || gaps.len() > gap_values.len();
+    if ranges_truncated {
+        it.warnings.push("range_list_truncated".into());
+    }
+    if it.records_truncated {
+        it.warnings.push("record_list_truncated".into());
+    }
+
+    let min_address = merged.first().map(|range| range.0);
+    let max_address = merged.last().map(|range| range.1);
+    let image_bytes: u64 = merged.iter().map(|range| range.1 - range.0).sum();
+
+    Ok(json!({
+        "schema_version": 1,
+        "kind": "ihex",
+        "input_bytes": bytes.len(),
+        "record_count": it.record_count,
+        "data_record_count": it.data_records,
+        "data_bytes": it.data_bytes,
+        "records": it.records,
+        "ranges": range_values,
+        "range_count": merged.len(),
+        "gaps": gap_values,
+        "gap_count": gaps.len(),
+        "min_address": min_address.map(hex),
+        "max_address": max_address.map(hex),
+        "image_bytes": image_bytes,
+        "eof": it.eof_seen,
+        "eof_line": it.eof_line,
+        "start_address": it.start_address.map(hex),
+        "start_address_kind": it.start_kind,
+        "invalid_checksums": it.invalid_checksums,
+        "unknown_record_types": it.unknown_types,
+        "truncated": it.records_truncated || ranges_truncated,
+        "warnings": it.warnings,
+    }))
+}
+
+pub(crate) fn flatten(bytes: &[u8], options: &FlattenOptions) -> Result<Vec<u8>, String> {
+    let it = inner(bytes, 0, true)?;
+    if it.invalid_checksums > 0 && !options.ignore_checksums {
+        return Err(error_json(
+            "checksum_mismatch",
+            json!({ "invalid_checksums": it.invalid_checksums }),
+        ));
+    }
+    if it.data_blobs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let min = it
+        .data_blobs
+        .iter()
+        .map(|blob| blob.0)
+        .min()
+        .unwrap_or(0);
+    let max = it
+        .data_blobs
+        .iter()
+        .map(|blob| blob.0 + blob.1.len() as u64)
+        .max()
+        .unwrap_or(0);
+    let size = max - min;
+    if size > options.max_output_bytes {
+        return Err(error_json(
+            "output_too_large",
+            json!({ "size": size, "limit": options.max_output_bytes }),
+        ));
+    }
+    let mut out = vec![options.fill; size as usize];
+    for (address, blob) in &it.data_blobs {
+        let start = (address - min) as usize;
+        out[start..start + blob.len()].copy_from_slice(blob);
+    }
+    Ok(out)
+}

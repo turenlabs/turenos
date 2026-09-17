@@ -1,0 +1,5 @@
+Turen wasm inspector uses Bytecode Alliance wasmparser.
+
+wasmparser is licensed under Apache-2.0 WITH LLVM-exception, Apache-2.0, or
+MIT. Preserve the upstream wasm-tools workspace notices when distributing the
+generated artifact.

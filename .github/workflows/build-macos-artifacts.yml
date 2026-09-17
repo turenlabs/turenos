@@ -1,0 +1,72 @@
+name: Build macos artifacts WASM
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/build-macos-artifacts.yml"
+      - "tools/macos-artifacts/**"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-macos-artifacts
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  RUST_TOOLCHAIN: 1.97.1
+  WASM_PACK_VERSION: 0.15.0
+
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Turen build repository
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+
+      - name: Install pinned wasm-pack
+        run: cargo +"$RUST_TOOLCHAIN" install --locked wasm-pack --version "$WASM_PACK_VERSION"
+
+      - name: Run Rust unit tests
+        run: cargo test --manifest-path tools/macos-artifacts/Cargo.toml
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Build macos artifacts WASM
+        run: wasm-pack build tools/macos-artifacts --target web --release --out-dir pkg
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Pack Forge workspace artifact
+        run: node tools/macos-artifacts/script/pack.mjs tools/macos-artifacts/pkg packages/macos-artifacts-wasm
+
+      - name: Verify bounded analysis API
+        run: node tools/macos-artifacts/test/verify.mjs packages/macos-artifacts-wasm/dist
+
+      - name: Validate checksum manifest
+        run: cd packages/macos-artifacts-wasm && shasum -a 256 -c SHA256SUMS
+
+      - name: Open package update PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          add-paths: packages/macos-artifacts-wasm
+          branch: wasm/macos-artifacts-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild macos-artifacts-wasm"
+          title: "chore(wasm): rebuild macos-artifacts-wasm"
+          body: "Rebuilt `packages/macos-artifacts-wasm` from `tools/macos-artifacts` at ${{ github.sha }}."

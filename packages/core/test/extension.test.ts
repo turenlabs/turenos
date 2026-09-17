@@ -40,20 +40,20 @@ const hosted = (version = "1.0.0") =>
 const catalogSkill = (version = "1.0.0", profile: Extension.SkillAgentProfile = "read") =>
   new Extension.Manifest({
     schemaVersion: 1,
-    id: Extension.ID.make("community", "incident-responder"),
-    name: "Incident Responder",
-    description: "Read-only incident response subagent",
+    id: Extension.ID.make("community", "evidence-analyst"),
+    name: "Evidence Analyst",
+    description: "Read-only evidence analysis subagent",
     version,
     publisher: "Community",
     trust: "community",
     contributions: [
       {
         type: "skill",
-        id: Extension.ContributionID.make("incident-responder"),
-        name: "Incident Responder",
+        id: Extension.ContributionID.make("evidence-analyst"),
+        name: "Evidence Analyst",
         description: "Review supplied incident evidence",
         instructions: "Use for defensive incident analysis.",
-        adapter: "skill:incident-responder",
+        adapter: "skill:evidence-analyst",
         secrets: [],
         defaultEnabled: false,
         source: { type: "catalog", content: `Review incident evidence safely. Version ${version}.` },
@@ -197,7 +197,7 @@ describe("ExtensionRuntime", () => {
       ).toEqual(
         expect.objectContaining({
           manifest: expect.objectContaining({ id: manifest.id }),
-          contribution: expect.objectContaining({ id: "incident-responder", agent: { profile: "read", steps: 8 } }),
+          contribution: expect.objectContaining({ id: "evidence-analyst", agent: { profile: "read", steps: 8 } }),
         }),
       )
 
@@ -283,6 +283,41 @@ describe("ExtensionRuntime", () => {
       })
       expect(stored?.value).toStartWith("forge-secret:v1:")
       expect(stored?.value).not.toContain("pagerduty-secret-canary")
+    }),
+  )
+
+  it.effect("rejects caller-supplied manifests for built-in catalog extensions", () =>
+    Effect.gen(function* () {
+      const extensions = yield* ExtensionRuntime.Service
+      const builtin = ExtensionCatalog.get("turenlabs/secure-code-review")!
+      expect(
+        Exit.isFailure(
+          yield* extensions.update(builtin.id, { enabled: true, manifest: builtin }).pipe(Effect.exit),
+        ),
+      ).toBe(true)
+
+      expect((yield* extensions.update(builtin.id, { enabled: true })).changed).toBe(true)
+      expect(yield* extensions.enabled(builtin.id)).toBe(true)
+    }),
+  )
+
+  it.effect("surfaces enabled built-in catalog skills through enabledSkills", () =>
+    Effect.gen(function* () {
+      const extensions = yield* ExtensionRuntime.Service
+      const customize = Extension.ID.make("turenlabs", "customize-forge")
+      const review = Extension.ID.make("turenlabs", "secure-code-review")
+
+      const initial = (yield* ExtensionRuntime.enabledSkills(extensions)).find(
+        (item) => item.manifest.id === customize,
+      )
+      expect(initial?.contribution.source).toMatchObject({ type: "embedded" })
+
+      yield* extensions.update(review, { enabled: true })
+      const enabled = (yield* ExtensionRuntime.enabledSkills(extensions)).find(
+        (item) => item.manifest.id === review,
+      )
+      expect(enabled?.manifest.trust).toBe("official")
+      expect(enabled?.contribution.source).toMatchObject({ type: "catalog" })
     }),
   )
 })

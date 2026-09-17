@@ -10,6 +10,7 @@ const expected = [
   "turenlabs/automox-local",
   "turenlabs/bandit",
   "turenlabs/batou",
+  "turenlabs/bug-root-cause",
   "turenlabs/certfr-misp",
   "turenlabs/chainguard-docs",
   "turenlabs/checkov",
@@ -22,7 +23,9 @@ const expected = [
   "turenlabs/d3fend",
   "turenlabs/datadog-malicious",
   "turenlabs/datadog-security",
+  "turenlabs/dependency-risk-review",
   "turenlabs/depsdev",
+  "turenlabs/detection-engineering-review",
   "turenlabs/elastic-security",
   "turenlabs/epss",
   "turenlabs/euvd",
@@ -35,7 +38,10 @@ const expected = [
   "turenlabs/grype",
   "turenlabs/gtfobins",
   "turenlabs/hibp",
+  "turenlabs/iac-config-review",
+  "turenlabs/incident-evidence-triage",
   "turenlabs/incident-io",
+  "turenlabs/incident-responder",
   "turenlabs/jfrog-xray",
   "turenlabs/kev",
   "turenlabs/linear",
@@ -52,14 +58,22 @@ const expected = [
   "turenlabs/pagerduty",
   "turenlabs/phishing-database",
   "turenlabs/scorecard",
+  "turenlabs/secure-code-review",
   "turenlabs/semgrep-hosted",
   "turenlabs/sentry",
   "turenlabs/socket",
+  "turenlabs/software-architecture-reviewer",
   "turenlabs/sonarqube-cloud-security",
+  "turenlabs/technical-security-blog",
   "turenlabs/tenable",
+  "turenlabs/test-strategy",
+  "turenlabs/threat-hunter",
+  "turenlabs/threat-intel-brief",
+  "turenlabs/threat-model-review",
   "turenlabs/tor-exit",
   "turenlabs/trivy",
   "turenlabs/tweetfeed",
+  "turenlabs/vulnerability-analyst",
   "turenlabs/websearch-exa",
   "turenlabs/websearch-parallel",
   "turenlabs/yolk",
@@ -129,6 +143,20 @@ describe("ExtensionCatalog", () => {
     )
     expect(data.length).toBeGreaterThan(0)
     expect(data.every((contribution) => contribution.tools.write.length === 0)).toBe(true)
+  })
+
+  test("keeps every skill contribution self-contained", () => {
+    const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
+      manifest.contributions.filter((contribution) => contribution.type === "skill"),
+    )
+    expect(skills.length).toBe(15)
+    expect(
+      skills.every((contribution) => {
+        if (contribution.source.type === "catalog") return contribution.source.content.length > 0
+        if (contribution.source.type === "embedded") return contribution.source.name.length > 0
+        return false
+      }),
+    ).toBe(true)
   })
 
   test("rejects invalid or duplicate executable declarations", () => {

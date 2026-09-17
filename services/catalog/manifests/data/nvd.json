@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/nvd",
+  "name": "NVD",
+  "description": "Query the NIST National Vulnerability Database",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "data",
+      "id": "nvd",
+      "name": "NVD",
+      "description": "Query the NIST National Vulnerability Database",
+      "adapter": "security:nvd",
+      "secrets": [
+        {
+          "id": "NVD_KEY",
+          "label": "NVD API key",
+          "required": false
+        }
+      ],
+      "tools": {
+        "allow": [
+          "nvd_cve_detail"
+        ],
+        "write": []
+      },
+      "defaultEnabled": false,
+      "instructions": "Use NVD for its declared purpose: Query the NIST National Vulnerability Database. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ],
+  "versions": [
+    {
+      "version": "1.0.0",
+      "published": "2026-08-08"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+[package]
+name = "turen-code-signing-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Bounded offline code-signing and PKI structure inspection WebAssembly wrapper for Turen"
+repository = "https://github.com/turenio/wasm-tools"
+license = "Apache-2.0 OR MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cms = { version = "=0.2.3", default-features = false, features = ["alloc", "std"] }
+der = { version = "=0.7.10", default-features = false, features = ["alloc", "derive", "oid"] }
+goblin = "=0.10.7"
+md-5 = "=0.10.6"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.145"
+sha1 = "=0.10.6"
+sha2 = "=0.10.9"
+wasm-bindgen = "=0.2.108"
+x509-parser = { version = "=0.18.1", default-features = false }
+
+[profile.release]
+lto = true
+opt-level = "s"
+strip = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]

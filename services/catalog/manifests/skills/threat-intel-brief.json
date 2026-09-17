@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/threat-intel-brief",
+  "name": "Threat Intelligence Brief",
+  "description": "Produce a sourced, uncertainty-aware intelligence brief from supplied indicators and audited data",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "threat-intel-brief",
+      "name": "Threat Intelligence Brief",
+      "description": "Correlate indicators, vulnerabilities, ATT&CK behavior, and defensive context without active contact",
+      "instructions": "Use for a bounded defensive intelligence question with explicit indicators, actor claims, or campaign evidence.",
+      "adapter": "skill:threat-intel-brief",
+      "secrets": [],
+      "defaultEnabled": false,
+      "source": {
+        "type": "catalog",
+        "content": "## Use when\nUse this for an authorized defensive intelligence question with supplied indicators, vulnerability IDs, behaviors, or reports. Do not use it for attribution from one source, active reconnaissance, or automatic blocking decisions.\n\n## Inputs\nRequire the intelligence question, time window, supplied indicators, target audience, and handling restrictions. Use `attack_search`, `nvd_cve_detail`, `kev_check`, `epss_score`, `circl_hashlookup`, and `sslbl_ip_lookup` only when relevant and enabled. Mark missing or unavailable sources.\n\n## Workflow\n1. Normalize indicators and separate observables, claims, and assumptions.\n2. Query the minimum relevant audited sources and record retrieval context.\n3. Correlate behavior with ATT&CK, vulnerabilities with NVD/KEV/EPSS, and files or infrastructure with CIRCL/SSLBL.\n4. Identify corroboration, contradictions, source age, and collection gaps.\n5. Draft assessments using confidence language and derive defensive actions that do not contact indicators.\n\n## Evidence rules\nAttribute every claim to a named source and retrieval context. Treat not-found as unknown, correlation as non-attribution, and hypotheses as hypotheses. Separate source reporting from analyst assessment.\n\n## Output\n- Executive assessment and confidence.\n- Normalized indicator and behavior table.\n- Source-by-source evidence with timestamps.\n- Corroboration, contradictions, and gaps.\n- Defensive implications and collection priorities.\n\n## Stop conditions\nStop and ask the user when handling restrictions, the intelligence question, or required indicators are missing. Stop attribution when independent corroboration is unavailable.\n\n## Safety\nUse only explicitly supplied and authorized data. Never dereference indicator URLs, contact infrastructure, retrieve payloads, expose private intelligence, or convert one feed into a blocking decision.\n\n## Quality bar\n- Every assessment is source-attributed.\n- Confidence reflects source quality and corroboration.\n- Not-found is never labeled benign.\n- Defensive recommendations are reversible and evidence-linked.\n\nLimit the brief to at most 1,500 words and include confidence, unknowns, and collection gaps."
+      },
+      "requires": ["attack_search", "nvd_cve_detail", "kev_check", "epss_score", "circl_hashlookup", "sslbl_ip_lookup"]
+    }
+  ],
+  "versions": [{ "version": "1.0.0", "published": "2026-08-27" }]
+}

@@ -1,0 +1,17 @@
+diff --git a/mono/dis/main.c b/mono/dis/main.c
+--- a/mono/dis/main.c
++++ b/mono/dis/main.c
+@@ -704,6 +704,12 @@ dis_code (MonoImage *m, int rva, MonoMethodHeader *mh, const char *ptr, MonoErro
+ */
+ 		mono_metadata_free_mh (mh);
+ 	} else {
++		/* Turen (0004): offline decoding can fail when locals reference
++		 * assemblies that are unavailable (see 0003). Never skip a
++		 * method body silently: emit the reason as a comment so
++		 * analysts know code was not decoded. */
++		const char *reason = mono_error_get_message (error);
++		fprintf (output, "\t// WARNING: method body not decoded: %s\n", reason ? reason : "unknown error");
+ 		mono_error_cleanup (error);
+ 	}
+ }
+

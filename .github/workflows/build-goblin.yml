@@ -1,0 +1,73 @@
+name: Build Goblin WASM
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/build-goblin.yml"
+      - "tools/goblin/**"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-goblin
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  GOBLIN_COMMIT: cec6e6eba5bdcec78ec79edc80b3a1f44856039a
+  RUST_TOOLCHAIN: 1.94.0
+  WASM_PACK_VERSION: 0.15.0
+
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Turen build repository
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+
+      - name: Checkout Goblin
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          repository: m4b/goblin
+          ref: ${{ env.GOBLIN_COMMIT }}
+          path: upstream/goblin
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+
+      - name: Install pinned wasm-pack
+        run: cargo +"$RUST_TOOLCHAIN" install --locked wasm-pack --version "$WASM_PACK_VERSION"
+
+      - name: Build Goblin WASM
+        run: wasm-pack build tools/goblin --target web --release --out-dir pkg
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Verify bounded inspection API
+        run: node tools/goblin/test/verify.mjs tools/goblin/pkg
+
+      - name: Pack Forge workspace artifact
+        run: node tools/goblin/script/pack.mjs tools/goblin/pkg packages/goblin-wasm upstream/goblin
+
+      - name: Open package update PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          add-paths: packages/goblin-wasm
+          branch: wasm/goblin-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild goblin-wasm"
+          title: "chore(wasm): rebuild goblin-wasm"
+          body: "Rebuilt `packages/goblin-wasm` from `tools/goblin` at ${{ github.sha }}."

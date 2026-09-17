@@ -56,14 +56,40 @@ Engineering documentation lives in [docs/](docs/README.md). Start with:
   per-step `when`/`onFailure` conditions, and local file-change/session-end event triggers.
 - [Token efficiency](docs/token-efficiency.md) — measured context cost against Claude Code and Codex.
 
+## Monorepo
+
+This repository is the TurenOS monorepo. Three areas ship together:
+
+- **`packages/`** — TurenOS itself: a Bun + Turbo workspace covering the agent runtime, server, renderer, Electron host, SDKs, and the checked-in `packages/*-wasm` artifacts the runtime consumes.
+- **`tools/`** — the built-in WebAssembly security tools (formerly `wasm-tools`). Each `tools/<target>` is a self-contained, reproducible bounded-WASM build with pinned upstreams and provenance. See [tools/README.md](tools/README.md) and [tools/AGENTS.md](tools/AGENTS.md).
+- **`services/catalog/`** — the canonical built-in extension catalog: data sources, skills, MCP server definitions, and tool manifests under `manifests/`. They compile into `packages/extensions` at build time; there is no remote catalog. See [services/catalog/README.md](services/catalog/README.md).
+
 ## Develop
 
 TurenOS pins Bun 1.4.2.
 
 ```bash
 bun install --frozen-lockfile
-bun dev
+bun dev                 # TurenOS Desktop
 ```
+
+Common tasks:
+
+```bash
+bun run lint            # repo-wide lint (warnings allowed, errors fail)
+bun run verify:wasm     # validate packages/*-wasm checksum manifests
+
+# Rebuild a WASM tool into packages/<target>-wasm (needs its toolchain;
+# see script/build-wasm.ts --list):
+bun run build:wasm <target>
+
+# After editing a catalog manifest under services/catalog/manifests:
+cd packages/extensions
+bun run generate        # rewrite src/generated.ts
+bun run check           # verify generated output is current
+```
+
+Normal builds do not need WASM toolchains — `packages/*-wasm` artifacts are checked in. Pushes to `dev` that change `tools/<target>` trigger the self-hosted `build-<target>` workflow, which rebuilds and opens a PR updating the packaged artifact. PRs touching only `tools/`, `services/`, or `docs/` skip the app test matrix; PR checks still validate every `packages/*-wasm` checksum manifest and the generated extension catalog.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the pinned-runner fallback, build commands, and checks.
 
@@ -75,6 +101,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the pinned-runner fallback, build com
 - `packages/desktop` — TurenOS Electron host and packaging.
 - `packages/ui` — shared UI system and TurenOS identity.
 - `packages/sdk` and `packages/sdk-next` — client SDKs.
+- `packages/extensions` — the compiled extension catalog consumed by the server (`src/generated.ts` is generated; do not edit).
+- `packages/*-wasm` — checked-in, checksum-verified WASM tool packages produced from `tools/`.
+- `tools/` — WASM tool sources and build recipes; CI packs output into `packages/*-wasm`.
+- `services/catalog` — catalog manifest sources and authoring docs.
 
 All TurenOS-owned workspace packages use the `@turenlabs/*` scope. Upstream provider IDs and durable migration keys remain unchanged where compatibility requires them. See [branding and compatibility](docs/branding.md) before changing a `forge` identifier.
 

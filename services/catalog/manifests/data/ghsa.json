@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/ghsa",
+  "name": "GitHub Advisories",
+  "description": "Query the GitHub Security Advisory database",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "data",
+      "id": "ghsa",
+      "name": "GitHub Advisories",
+      "description": "Query the GitHub Security Advisory database",
+      "adapter": "security:ghsa",
+      "secrets": [
+        {
+          "id": "GITHUB_TOKEN",
+          "label": "GitHub token",
+          "required": false
+        }
+      ],
+      "tools": {
+        "allow": [
+          "ghsa_lookup"
+        ],
+        "write": []
+      },
+      "defaultEnabled": false,
+      "instructions": "Use GitHub Advisories for its declared purpose: Query the GitHub Security Advisory database. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ],
+  "versions": [
+    {
+      "version": "1.0.0",
+      "published": "2026-08-08"
+    }
+  ]
+}

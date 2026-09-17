@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/depsdev",
+  "name": "deps.dev",
+  "description": "Query package health, advisories, licenses, scores, and dependency graphs",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "data",
+      "id": "depsdev",
+      "name": "deps.dev",
+      "description": "Query package health, advisories, licenses, scores, and dependency graphs",
+      "adapter": "security:depsdev",
+      "secrets": [],
+      "tools": {
+        "allow": [
+          "depsdev_package_health",
+          "depsdev_package_dependencies"
+        ],
+        "write": []
+      },
+      "defaultEnabled": false,
+      "instructions": "Use deps.dev for its declared purpose: Query package health, advisories, licenses, scores, and dependency graphs. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ],
+  "versions": [
+    {
+      "version": "1.0.0",
+      "published": "2026-08-08"
+    }
+  ]
+}

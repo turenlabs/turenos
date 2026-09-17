@@ -1,0 +1,32 @@
+[package]
+name = "turen-windows-artifacts-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Windows forensic artifact parser for Turen"
+repository = "https://github.com/turenio/wasm-tools"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+amcache-core = "0.1.0"
+evtx = { version = "0.12.2", default-features = false }
+getrandom = { version = "0.3", features = ["wasm_js"] }
+jumplist_parser = "0.1.0"
+lnk-core = "0.4.1"
+mft = { version = "0.7.0", default-features = false }
+prefetch-core = "0.1.1"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+wasm-bindgen = "0.2.108"
+winreg-core = "0.2.1"
+
+[profile.release]
+lto = true
+opt-level = "s"
+strip = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]

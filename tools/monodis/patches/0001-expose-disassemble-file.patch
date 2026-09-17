@@ -1,0 +1,13 @@
+diff --git a/mono/dis/main.c b/mono/dis/main.c
+index d2939fd..8f8da13 100644
+--- a/mono/dis/main.c
++++ b/mono/dis/main.c
+@@ -1620,7 +1620,7 @@ struct {
+  *
+  * Disassembles the @file file.
+  */
+-static int
++int
+ disassemble_file (const char *file)
+ {
+ 	MonoImageOpenStatus status;

@@ -1,0 +1,9 @@
+# Build outputs
+pkg/
+target/
+artifact/
+
+# Generated WASM fixtures (DUMP_FIXTURES=1 cargo test)
+test/fixtures/*.msi
+test/fixtures/*.cab
+test/fixtures/*.cfb

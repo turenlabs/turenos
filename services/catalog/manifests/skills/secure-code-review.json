@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/secure-code-review",
+  "name": "Secure Code Review",
+  "description": "Review a bounded code change for exploitable security defects with evidence and concrete fixes",
+  "version": "1.1.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "secure-code-review",
+      "name": "Secure Code Review",
+      "description": "Trace trust boundaries, attacker-controlled inputs, and sensitive operations in a supplied change",
+      "instructions": "Use for defensive review of an explicitly supplied repository, diff, or feature boundary.",
+      "adapter": "skill:secure-code-review",
+      "secrets": [],
+      "defaultEnabled": false,
+      "source": {
+        "type": "catalog",
+        "content": "## Use when\nUse this for an authorized repository, diff, pull request, or named feature that needs security review. Do not use it for broad style review, unauthenticated live testing, or claims about code outside the supplied scope.\n\n## Inputs\nRequire the review objective, changed paths or diff, trust assumptions, and expected security properties. Use `read`, `grep`, `glob`, and `lsp` only within the approved workspace. Ask for missing entry points, data-flow context, or deployment assumptions instead of guessing.\n\n## Workflow\n1. Restate the scope, assets, actors, trust boundaries, and security invariants.\n2. Trace attacker-controlled input through validation, authorization, persistence, serialization, filesystem, process, and network sinks.\n3. Inspect adjacent callers and tests with `read`, `grep`, `glob`, and `lsp`; distinguish new regressions from pre-existing risks.\n4. Build exploit preconditions for each candidate and try to refute the issue from code evidence.\n5. Rank only confirmed code-level security findings and propose the smallest fix plus a regression test. Hand causal debugging without a security path to Bug Root Cause, and systemic trust-boundary tradeoffs without a line-level defect to Software Architecture Reviewer.\n\n## Evidence rules\nCite exact paths, symbols, and line ranges. Separate observed evidence from hypotheses. Do not call a weakness exploitable without a concrete input-to-impact path; state confidence and missing runtime evidence.\n\n## Output\n- Scope and trust-boundary summary.\n- Findings ordered by severity with exploit preconditions and exact evidence.\n- Minimal remediation and regression test for each finding.\n- Rejected hypotheses and why they were rejected.\n- Residual risks, unreviewed areas, and cross-skill handoffs with one canonical finding owner.\n\n## Stop conditions\nStop and ask the user when authorization, the changed code, a required caller, or a security invariant is missing. Stop a hypothesis when code evidence disproves a required exploit precondition.\n\n## Safety\nInspect only explicitly supplied and authorized code. Never execute untrusted code, authenticate to services, expose secrets, modify files, or expand into active testing.\n\n## Quality bar\n- Every finding has a reproducible code path and impact.\n- Every severity is justified by realistic preconditions.\n- Every fix is narrower than the defect and includes a test.\n- No generic checklist item is reported without repository evidence.\n\nLimit the final report to at most 1,500 words and include confidence plus unknowns for every finding."
+      },
+      "requires": ["read", "grep", "glob", "lsp"]
+    }
+  ],
+  "versions": [
+    { "version": "1.0.0", "published": "2026-08-27" },
+    { "version": "1.1.0", "published": "2026-08-27" }
+  ]
+}

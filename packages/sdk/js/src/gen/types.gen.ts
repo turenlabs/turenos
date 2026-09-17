@@ -2095,6 +2095,10 @@ export type GlobalPermissionChecks = {
   enforced: boolean
 }
 
+export type EffectHttpApiErrorForbidden = {
+  _tag: "Forbidden"
+}
+
 export type McpRuntimeLocalProcess = {
   enabled: boolean
 }
@@ -3444,10 +3448,6 @@ export type WhiteboardConflictError = {
   expectedRevision: number
   actualRevision: number
   message: string
-}
-
-export type EffectHttpApiErrorForbidden = {
-  _tag: "Forbidden"
 }
 
 export type ConnectionInfo = ConnectionCredentialInfo | ConnectionEnvInfo
@@ -4988,7 +4988,6 @@ export type ExtensionItem = {
     | "unavailable"
   detail?: string
   installed?: boolean
-  updateAvailable?: boolean
   secretsSet: {
     [key: string]: boolean
   }
@@ -9424,6 +9423,10 @@ export type GlobalPermissionChecksUpdateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Forbidden
+   */
+  403: EffectHttpApiErrorForbidden
 }
 
 export type GlobalPermissionChecksUpdateError =
@@ -11783,6 +11786,10 @@ export type SessionCreateErrors = {
    * BadRequest | InvalidRequestError
    */
   400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
 }
 
 export type SessionCreateError = SessionCreateErrors[keyof SessionCreateErrors]
@@ -12024,9 +12031,13 @@ export type SessionDiffData = {
 
 export type SessionDiffErrors = {
   /**
-   * Bad request
+   * BadRequest | InvalidRequestError
    */
-  400: BadRequestError
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
 }
 
 export type SessionDiffError = SessionDiffErrors[keyof SessionDiffErrors]
@@ -12261,6 +12272,10 @@ export type SessionAbortErrors = {
    * BadRequest | InvalidRequestError
    */
   400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
   /**
    * ConflictError
    */

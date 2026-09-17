@@ -1,0 +1,10 @@
+# Vendored pinned capa-rules source (script/import-upstream.sh)
+upstream/
+# Local packaging output
+artifact/
+# wasm-pack output
+pkg/
+# Rust build artifacts
+target/
+# Node tooling
+node_modules/

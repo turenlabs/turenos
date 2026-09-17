@@ -1,0 +1,64 @@
+name: Build windows artifacts WASM
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/build-windows-artifacts.yml"
+      - "tools/windows-artifacts/**"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-windows-artifacts
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  RUST_TOOLCHAIN: 1.94.0
+  WASM_PACK_VERSION: 0.15.0
+
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Turen build repository
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+
+      - name: Install pinned wasm-pack
+        run: cargo +"$RUST_TOOLCHAIN" install --locked wasm-pack --version "$WASM_PACK_VERSION"
+
+      - name: Build windows artifacts WASM
+        run: wasm-pack build tools/windows-artifacts --target web --release --out-dir pkg
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Verify bounded analysis API
+        run: node tools/windows-artifacts/test/verify.mjs tools/windows-artifacts/pkg
+
+      - name: Pack Forge workspace artifact
+        run: node tools/windows-artifacts/script/pack.mjs tools/windows-artifacts/pkg packages/windows-artifacts-wasm tools/windows-artifacts/LICENSE
+
+      - name: Open package update PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          add-paths: packages/windows-artifacts-wasm
+          branch: wasm/windows-artifacts-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild windows-artifacts-wasm"
+          title: "chore(wasm): rebuild windows-artifacts-wasm"
+          body: "Rebuilt `packages/windows-artifacts-wasm` from `tools/windows-artifacts` at ${{ github.sha }}."

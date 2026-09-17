@@ -1,0 +1,61 @@
+name: Build monodis WASM
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/build-monodis.yml"
+      - "tools/monodis/**"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-monodis
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: tools/monodis
+    steps:
+      - name: Checkout
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+
+      - name: Install Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984
+        with:
+          version: "6.0.8"
+          actions-cache-folder: emsdk-cache
+
+      - name: Import pinned Mono subset
+        run: ./script/import-upstream.sh
+
+      - name: Build
+        run: make -f Makefile.wasm -j"$(getconf _NPROCESSORS_ONLN)"
+
+      - name: Verify package
+        run: npm test
+
+      - name: Pack Forge workspace artifact
+        run: npm run pack:forge
+
+      - name: Open package update PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          add-paths: packages/monodis-wasm
+          branch: wasm/monodis-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild monodis-wasm"
+          title: "chore(wasm): rebuild monodis-wasm"
+          body: "Rebuilt `packages/monodis-wasm` from `tools/monodis` at ${{ github.sha }}."

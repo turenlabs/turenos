@@ -1,0 +1,25 @@
+{
+  "crate": "turen-email-security-wasm",
+  "upstream": "https://github.com/stalwartlabs/mail-parser",
+  "upstreamVersion": "0.11.8",
+  "upstreamCrateSha256": "0b3a9080c1fb8190e232df37a10aa1b3d6b08be084e537069913f025e0ce86c5",
+  "ammoniaVersion": "4.1.4",
+  "ammoniaCrateSha256": "dc6d763210e2eb7670d1a5183a08bebefa3f97db2a738a684f2ce00bd49f681d",
+  "sourceCommit": "fb82dc28086ea59fe6d27e956c5e822975d69ef2",
+  "workflowRun": "33260425299",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "features": ["full_encoding", "ammonia-4.1.4"],
+  "wasmOpt": ["-O", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"],
+  "network": false,
+  "filesystem": false,
+  "limits": {
+    "inputBytes": 33554432,
+    "headers": 512,
+    "attachments": 256,
+    "iocs": 2048,
+    "valueBytes": 65536,
+    "bodyBytes": 4194304,
+    "htmlBytes": 2097152
+  }
+}

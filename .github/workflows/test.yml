@@ -4,7 +4,9 @@ name: test
 on:
   push:
     branches: [dev, "release-*"]
+    paths-ignore: ["tools/**", "services/**", "docs/**"]
   pull_request:
+    paths-ignore: ["tools/**", "services/**", "docs/**"]
   merge_group:
   workflow_dispatch:
   workflow_call:
@@ -151,6 +153,9 @@ jobs:
       - name: Check generated client
         working-directory: packages/client
         run: bun run check:generated
+      - name: Check generated extension catalog
+        working-directory: packages/extensions
+        run: bun run check
 
   test:
     name: test

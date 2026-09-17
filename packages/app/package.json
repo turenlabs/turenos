@@ -1,6 +1,6 @@
 {
   "name": "@turenlabs/app",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "private": true,
   "description": "TurenOS Desktop and web renderer",
   "type": "module",
@@ -39,7 +39,6 @@
     "@types/node": "catalog:",
     "@types/react": "19.1.10",
     "@types/react-dom": "19.1.9",
-    "@types/semver": "catalog:",
     "@types/three": "0.169.0",
     "@typescript/native-preview": "catalog:",
     "babel-preset-solid": "1.9.12",
@@ -94,7 +93,6 @@
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "remeda": "catalog:",
-    "semver": "^7.6.3",
     "shiki": "catalog:",
     "simple-icons": "16.28.0",
     "solid-js": "catalog:",

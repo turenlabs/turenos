@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/technical-security-blog",
+  "name": "Technical Security Blog",
+  "description": "Turn verified engineering or security evidence into a clear, accurate technical article",
+  "version": "1.1.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "technical-security-blog",
+      "name": "Technical Security Blog",
+      "description": "Plan, draft, or edit a security engineering post without inventing benchmarks or incidents",
+      "instructions": "Use for evidence-backed technical blog posts, explainers, release deep dives, and incident lessons.",
+      "adapter": "skill:technical-security-blog",
+      "secrets": [],
+      "defaultEnabled": false,
+      "source": {
+        "type": "catalog",
+        "content": "## Use when\nUse this to plan, draft, or edit an authorized technical article about security, software engineering, threat intelligence, or a shipped system. Do not use it to fabricate benchmarks, customers, incidents, quotes, or unpublished claims.\n\n## Inputs\nRequire the audience, publication goal, thesis, technical depth, source URLs or files, publication dates, voice, disclosure sensitivity, and approval constraints. Use `read` and `grep` for supplied notes, code, reports, and citations. Return a short clarification request instead of generic prose when audience, goal, depth, disclosure policy, or evidence for a central claim is missing.\n\n## Workflow\n1. Extract the thesis, reader promise, verified facts, editorial framing, and claims needing support.\n2. Build a claim-to-source map with URL or file, publication date, quoted language, and confidence; mark conflicting or unavailable sources.\n3. Build an outline that moves from problem and evidence to mechanism, tradeoffs, and actionable lessons.\n4. Draft with concrete examples from supplied material, separating verified facts, analysis, and editorial framing.\n5. Verify technical terms, CVEs, exploit details, statistics, quotations, vendor statements, timelines, remediation outcomes, and sensitive disclosures with `read` and `grep`; then edit for clarity and honest limitations.\n\n## Evidence rules\nTie every factual or quantitative claim to a supplied source with URL or file, publication date, and claim mapping. Separate verified fact, analysis, editorial framing, and hypotheses; label hypotheses explicitly. Never invent citations, CVEs, exploit details, quotations, vendor statements, statistics, or remediation outcomes. When sources conflict or are unavailable, label the claim disputed or unverified and omit it from definitive prose.\n\n## Output\n- Proposed title, one-sentence thesis, audience, publication goal, and technical depth.\n- Structured outline with fact, analysis, and editorial-framing labels.\n- Draft or edited article.\n- Claim-to-source table with URL or file, publication date, support status, and confidence.\n- Conflicting or unavailable sources and claims removed from definitive prose.\n- Disclosure risks, factual-risk checklist, and unresolved approval questions.\n\n## Stop conditions\nStop and ask the user when audience, publication goal, technical depth, publication rights, confidential details, source attribution, or evidence for a central claim is unavailable. Stop definitive drafting when current claims rely on conflicting, inaccessible, or undated sources.\n\n## Safety\nUse only explicitly supplied and authorized material. Do not reveal secrets, private indicators, exploit-enabling detail, embargoed findings, customer identities, or unverified accusations.\n\n## Quality bar\n- Every central claim maps to a dated source or is explicitly labeled analysis or opinion.\n- No citation, CVE, exploit detail, quotation, statistic, vendor statement, or outcome is invented.\n- Conflicting and unavailable sources remain visible in the factual-risk checklist.\n- The article teaches a mechanism, not just a conclusion, at the requested technical depth.\n- Security-sensitive details are minimized without becoming vague, and the ending gives the intended audience a concrete takeaway.\n\nLimit the draft to at most 1,800 words unless the user requests another bound; include confidence and unknown facts in the fact-check table."
+      },
+      "requires": ["read", "grep"]
+    }
+  ],
+  "versions": [
+    { "version": "1.0.0", "published": "2026-08-27" },
+    { "version": "1.1.0", "published": "2026-08-27" }
+  ]
+}

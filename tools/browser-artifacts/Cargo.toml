@@ -1,0 +1,27 @@
+[package]
+name = "turen-browser-artifacts-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Bounded offline browser forensic artifact parser WebAssembly module for Turen"
+repository = "https://github.com/turenio/wasm-tools"
+license = "Apache-2.0 OR MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+crc32c = "=0.6.8"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.151"
+sha2 = "=0.10.9"
+snap = "=1.1.1"
+wasm-bindgen = "=0.2.108"
+
+[profile.release]
+lto = true
+opt-level = "s"
+strip = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]

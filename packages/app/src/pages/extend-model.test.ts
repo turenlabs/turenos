@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { ExtensionContribution, ExtensionItem } from "@turenlabs/sdk/v2/client"
 import {
+  catalogHomepage,
   extensionAction,
   extensionCategory,
   extensionCategoryLabel,
@@ -333,16 +334,11 @@ describe("filterExtensionItems", () => {
     })
   })
 
-  test("installs external hosted MCP manifests and offers later updates", () => {
+  test("installs hosted MCP manifests", () => {
     const external = { ...mcp, enabled: false, installed: false }
     expect(extensionAction(external, {})).toMatchObject({
       label: "Install & Enable",
       payload: { enabled: true, manifest: external.manifest },
-    })
-    const update = { ...mcp, installed: true, updateAvailable: true }
-    expect(extensionAction(update, {})).toMatchObject({
-      label: "Update",
-      payload: { enabled: true, manifest: update.manifest },
     })
   })
 
@@ -446,5 +442,15 @@ describe("extensionAction", () => {
         payload: { enabled: true },
       })
     }
+  })
+})
+
+describe("catalogHomepage", () => {
+  test("allows credential-free HTTP links and rejects active or local schemes", () => {
+    expect(catalogHomepage("https://docs.example.test/mcp")).toBe("https://docs.example.test/mcp")
+    expect(catalogHomepage("http://localhost:8080/docs")).toBe("http://localhost:8080/docs")
+    expect(catalogHomepage("https://user:secret@docs.example.test")).toBeUndefined()
+    expect(catalogHomepage("javascript:alert(document.domain)")).toBeUndefined()
+    expect(catalogHomepage("file:///etc/passwd")).toBeUndefined()
   })
 })

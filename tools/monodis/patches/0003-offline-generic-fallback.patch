@@ -1,0 +1,147 @@
+diff --git a/mono/dis/dump.c b/mono/dis/dump.c
+index 3bdaa0a..753ba07 100755
+--- a/mono/dis/dump.c
++++ b/mono/dis/dump.c
+@@ -594,14 +594,22 @@ dump_table_method (MonoImage *m)
+ 			type_container = mono_metadata_load_generic_params (m, MONO_TOKEN_TYPE_DEF | (current_type - 1), NULL, NULL);
+ 			if (type_container) {
+ 				mono_metadata_load_generic_param_constraints_checked (m, MONO_TOKEN_TYPE_DEF | (current_type - 1), type_container, error);
+-				g_assert (is_ok (error)); /*FIXME don't swallow the error message*/
++				if (!is_ok (error)) {
++					/* Turen (0003): constraints may reference
++					 * unavailable assemblies; continue without them. */
++					mono_error_cleanup (error);
++				}
+ 			}
+ 		}
+ 
+ 		method_container = mono_metadata_load_generic_params (m, MONO_TOKEN_METHOD_DEF | i, type_container, NULL);
+ 		if (method_container) {
+ 			mono_metadata_load_generic_param_constraints_checked (m, MONO_TOKEN_METHOD_DEF | i, method_container, error);
+-			g_assert (is_ok (error)); /*FIXME don't swallow the error message*/
++			if (!is_ok (error)) {
++				/* Turen (0003): constraints may reference
++				 * unavailable assemblies; continue without them. */
++				mono_error_cleanup (error);
++			}
+ 		}
+ 		mono_metadata_decode_table_row (m, MONO_TABLE_METHOD, i - 1, cols, MONO_METHOD_SIZE);
+ 		sigblob = mono_metadata_blob_heap (m, cols [MONO_METHOD_SIGNATURE]);
+diff --git a/mono/dis/get.c b/mono/dis/get.c
+index 635ec20..0901708 100755
+--- a/mono/dis/get.c
++++ b/mono/dis/get.c
+@@ -223,7 +223,13 @@ get_typespec (MonoImage *m, guint32 idx, gboolean is_def, MonoGenericContainer *
+ 	case MONO_TYPE_FNPTR: {
+ 		ERROR_DECL (error);
+ 		sig = mono_metadata_parse_method_signature_full (m, container, 0, ptr, &ptr, error);
+-		g_assert (is_ok (error)); /*FIXME don't swallow the error message*/
++		if (!is_ok (error)) {
++			/* Turen (0003): signature may reference unavailable
++			 * assemblies; render a placeholder instead of aborting. */
++			mono_error_cleanup (error);
++			g_string_append (res, "method <unresolvable>");
++			break;
++		}
+ 		s = dis_stringify_function_ptr (m, sig);
+ 		g_string_append (res, "method ");
+ 		g_string_append (res, s);
+@@ -905,12 +911,29 @@ dis_stringify_method_signature_full (MonoImage *m, MonoMethodSignature *method,
+ 			container = mono_metadata_load_generic_params (m, MONO_TOKEN_METHOD_DEF | methoddef_row, container, NULL);
+ 			if (container) {
+ 				mono_metadata_load_generic_param_constraints_checked (m, MONO_TOKEN_METHOD_DEF | methoddef_row, container, error);
+-				g_assert (is_ok (error)); /*FIXME don't swallow the error message*/
++				if (!is_ok (error)) {
++					/* Turen (0003): constraints may reference
++					 * unavailable assemblies; continue without them. */
++					mono_error_cleanup (error);
++				}
+ 			}
+ 
+ 			mono_metadata_decode_blob_size (sig, &sig);
+ 			method = mono_metadata_parse_method_signature_full (m, container, methoddef_row, sig, &sig, error);
+-			g_assert (is_ok (error)); /*FIXME don't swallow the error message*/
++			if (!is_ok (error)) {
++				/* Turen (0003): signature may reference unavailable
++				 * assemblies; render a placeholder instead of aborting. */
++				mono_error_cleanup (error);
++				if (method) {
++					mono_metadata_free_method_signature (method);
++					method = NULL;
++				}
++				retval = g_strdup_printf ("<unresolvable> %s", method_name);
++				g_string_free (result, TRUE);
++				g_string_free (result_ret, TRUE);
++				g_free (type);
++				return retval;
++			}
+ 			free_method = 1;
+ 		}
+ 
+@@ -1761,7 +1784,14 @@ get_fieldref_signature (MonoImage *m, int idx, MonoGenericContainer *container)
+ 				  idx - 1, cols, MONO_MEMBERREF_SIZE);
+ 
+ 	new_container = get_memberref_container (m, cols [MONO_MEMBERREF_CLASS], container, error);
+-	mono_error_assert_ok (error);
++	if (!is_ok (error)) {
++		/* Turen (0003): referenced assemblies are unavailable offline, so
++		 * generic containers cannot always be inflated. Fall back to the
++		 * ambient container instead of aborting; signatures render with
++		 * generic placeholders. */
++		mono_error_cleanup (error);
++		new_container = container;
++	}
+         sig = get_field_signature (m, cols [MONO_MEMBERREF_SIGNATURE], new_container);
+ 
+ 	type = get_memberref_parent (m, cols [MONO_MEMBERREF_CLASS], container);
+diff --git a/mono/dis/main.c b/mono/dis/main.c
+index d2939fd..f1342cd 100644
+--- a/mono/dis/main.c
++++ b/mono/dis/main.c
+@@ -863,7 +863,11 @@ dis_method_list (const char *klass_name, MonoImage *m, guint32 start, guint32 en
+ 		if (container) {
+ 			ERROR_DECL (error);
+ 			mono_metadata_load_generic_param_constraints_checked (m, MONO_TOKEN_METHOD_DEF | (i + 1), container, error);
+-			g_assert (is_ok (error)); /*FIXME don't swallow the error message*/
++			if (!is_ok (error)) {
++				/* Turen (0003): constraints may reference
++				 * unavailable assemblies; continue without them. */
++				mono_error_cleanup (error);
++			}
+ 		} else {
+ 			container = type_container;
+ 		}
+@@ -1206,7 +1210,11 @@ dis_type (MonoImage *m, int n, int is_nested, int forward)
+ 	if (container) {
+ 		ERROR_DECL (error);
+ 		mono_metadata_load_generic_param_constraints_checked (m, MONO_TOKEN_TYPE_DEF | (n + 1), container, error);
+-		g_assert (is_ok (error)); /*FIXME don't swallow the error message*/
++		if (!is_ok (error)) {
++			/* Turen (0003): constraints may reference unavailable
++			 * assemblies; continue without them. */
++			mono_error_cleanup (error);
++		}
+ 	}
+ 
+ 	esname = get_escaped_name (name);
+diff --git a/mono/metadata/metadata.c b/mono/metadata/metadata.c
+index b503071..c4c40be 100644
+--- a/mono/metadata/metadata.c
++++ b/mono/metadata/metadata.c
+@@ -4433,7 +4433,15 @@ do_mono_metadata_parse_type (MonoType *type, MonoImage *m, MonoGenericContainer
+ 		if (transient)
+ 			mono_metadata_free_type (etype);
+ 
+-		g_assert (type->data.klass); //This was previously a check for NULL, but mcfmt should never fail. It can return a borken MonoClass, but should return at least something.
++		if (!type->data.klass) {
++			/* Turen (0003): the element class may be unavailable offline
++			 * (no referenced assemblies); fail the parse so callers
++			 * render a placeholder instead of aborting. Names must be
++			 * heap-allocated: mono_error_set_type_load_name takes
++			 * ownership and cleanup frees them. */
++			mono_error_set_type_load_name (error, g_strdup (""), g_strdup (""), "Cannot resolve array element class without referenced assemblies");
++			return FALSE;
++		}
+ 		break;
+ 	}
+ 	case MONO_TYPE_PTR: {

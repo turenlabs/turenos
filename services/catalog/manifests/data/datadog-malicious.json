@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/datadog-malicious",
+  "name": "Datadog Malicious Artifacts",
+  "description": "Check AI skills and IDE extensions against Datadog's human-triaged dataset",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://github.com/DataDog/malicious-software-packages-dataset",
+  "contributions": [{
+    "type": "data", "id": "datadog-malicious", "name": "Datadog Malicious Artifacts",
+    "description": "Check AI skills and IDE extensions against Datadog's human-triaged dataset",
+    "adapter": "security:datadog-malicious", "secrets": [],
+    "tools": { "allow": ["datadog_malicious_artifact_lookup"], "write": [] }, "defaultEnabled": false,
+    "instructions": "Use exact artifact names, preserve Datadog attribution, and never fetch or execute listed package archives."
+  }],
+  "versions": [{ "version": "1.0.0", "published": "2026-08-27" }]
+}

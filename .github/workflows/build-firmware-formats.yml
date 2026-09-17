@@ -1,0 +1,76 @@
+name: Build firmware-formats WASM
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "tools/firmware-formats/**"
+      - ".github/workflows/build-firmware-formats.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-firmware-formats
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  RUST_TOOLCHAIN: 1.97.1
+  WASM_PACK_VERSION: 0.15.0
+
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Set up Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+
+      - name: Install wasm-pack
+        run: cargo +"$RUST_TOOLCHAIN" install --locked wasm-pack --version "$WASM_PACK_VERSION"
+
+      - name: Test firmware-formats crate
+        run: cargo +"$RUST_TOOLCHAIN" test --locked --manifest-path tools/firmware-formats/Cargo.toml
+
+      - name: Build firmware-formats WASM
+        run: wasm-pack build tools/firmware-formats --target web --release --out-dir pkg
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Verify firmware-formats WASM
+        run: node tools/firmware-formats/test/verify.mjs tools/firmware-formats/pkg
+
+      - name: Package
+        run: node tools/firmware-formats/script/pack.mjs tools/firmware-formats/pkg packages/firmware-formats-wasm
+
+      - name: Verify packaged artifact
+        run: node tools/firmware-formats/test/verify.mjs packages/firmware-formats-wasm/dist
+
+      - name: Verify package hashes
+        working-directory: packages/firmware-formats-wasm
+        run: shasum -a 256 -c SHA256SUMS
+
+      - name: Open package update PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          add-paths: packages/firmware-formats-wasm
+          branch: wasm/firmware-formats-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild firmware-formats-wasm"
+          title: "chore(wasm): rebuild firmware-formats-wasm"
+          body: "Rebuilt `packages/firmware-formats-wasm` from `tools/firmware-formats` at ${{ github.sha }}."

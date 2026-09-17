@@ -1,0 +1,16 @@
+Turen Minidump wraps the rust-minidump crates — minidump 0.27.0 and
+minidump-common 0.27.0 — distributed under the MIT License.
+Upstream: https://github.com/rust-minidump/rust-minidump
+
+The upstream CLI front-ends (minidump_stackwalk, minidump_dump), stack
+unwinding, symbol resolution, filesystem access, and network access are not
+exposed; this package exposes only the bounded wasm-bindgen operations
+documented in README.md. The HandleDataStream object-info chain and the
+ThreadNames stream are decoded by bounds-checked manual decoders in this
+wrapper rather than the upstream parsers.
+
+Transitive Rust dependencies used by the compiled module are licensed under
+permissive terms (MIT, Apache-2.0, BSD-3-Clause, Zlib, Unicode-3.0, or
+BSL-1.0). The compiled module also uses Rust standard-library components
+distributed under Apache-2.0 or MIT. See Cargo.lock for the complete pinned
+dependency closure.

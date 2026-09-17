@@ -1,0 +1,27 @@
+{
+  "name": "@turenlabs/ghidra-decompiler-wasm",
+  "version": "0.1.0",
+  "description": "Turen-maintained Ghidra C++ decompiler built for WebAssembly",
+  "main": "dist/ghidra_decompiler.js",
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "make -f Makefile.wasm",
+    "test": "node test/verify.mjs",
+    "pack:forge": "node script/pack-forge.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/turenio/wasm-tools.git"
+  },
+  "keywords": [
+    "ghidra",
+    "decompiler",
+    "wasm",
+    "webassembly",
+    "reverse-engineering"
+  ],
+  "author": "Turen",
+  "license": "Apache-2.0"
+}

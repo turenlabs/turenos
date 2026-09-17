@@ -1,0 +1,23 @@
+Turen Image Inspect is a bounded offline image/container metadata-inspection
+WebAssembly module.
+
+It directly uses two permissively licensed crates:
+
+- kamadak-exif 0.6.1 (https://github.com/kamadak/exif-rs), BSD-2-Clause,
+  for EXIF/TIFF tag parsing.
+- image 0.25.10 (https://github.com/image-rs/image), MIT OR Apache-2.0,
+  for bounded PNG/JPEG pixel decode inside image_pixel_stats only. Its PNG
+  path uses png 0.18.1 (MIT OR Apache-2.0) and its JPEG path uses
+  zune-jpeg (MIT OR Apache-2.0 OR Zlib).
+
+All format structure walkers (PNG, JPEG, GIF, BMP, WebP, TIFF, ICO, and the
+ISO BMFF/AVIF box table) are original Turen code and perform no decoding of
+pixel payloads.
+
+The compiled module also embeds other permissively licensed crates.io
+dependencies (MIT, Apache-2.0, BSD, Unicode, or Zlib licensed; see
+Cargo.lock for the full closure) and Rust standard-library components
+distributed under Apache-2.0 or MIT.
+
+Turen added the bounded WebAssembly wrapper, the anomaly and text-extraction
+surfaces, and the packaging.

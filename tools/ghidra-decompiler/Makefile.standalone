@@ -1,0 +1,66 @@
+# Standalone Makefile for Ghidra Decompiler
+# MODIFICATION IN THIS FORK: This file supports native standalone builds.
+
+CXX=g++ -std=c++11
+OS = $(shell uname -s)
+CPU = $(shell uname -m)
+
+ifeq ($(OS),Linux)
+  ifndef ARCH
+    ARCH=$(CPU)
+  endif
+  ifeq ($(ARCH),x86_64)
+    ARCH_TYPE=-m64
+  else
+    ARCH_TYPE=-m32
+  endif
+endif
+
+ifeq ($(OS),Darwin)
+  ARCH_TYPE=-arch x86_64
+  ADDITIONAL_FLAGS=-mmacosx-version-min=10.6 -w
+endif
+
+# MODIFICATION IN THIS FORK: GHIDRA_NO_BFD added to support standalone/WASM builds.
+OPT_CXXFLAGS=-O2 -Wall -Wno-sign-compare -DGHIDRA_NO_BFD
+BFDLIB=
+INCLUDES=
+LNK=-lz
+
+CORE=	xml marshal space float address pcoderaw translate opcodes globalcontext
+DECCORE=capability architecture options graph cover block cast typeop database cpool \
+	comment stringmanage modelrules fspec action loadimage grammar varnode op type \
+	variable varmap jumptable emulate emulateutil flow userop expression multiprecision \
+	funcdata funcdata_block funcdata_op funcdata_varnode unionresolve pcodeinject \
+	heritage prefersplit rangeutil ruleaction subflow blockaction merge double \
+	transform constseq bitfield coreaction condexe override dynamic crc32 prettyprint \
+	printlanguage printc printjava memstate opbehavior paramid signature
+SLEIGH=	sleigh pcodeparse pcodecompile sleighbase slghsymbol \
+	slghpatexpress slghpattern semantics context slaformat compression filemanage
+
+# EXTRA includes files not in the above categories but needed for standalone decompiler
+# ADDITION IN THIS FORK: sleigh_arch and inject_sleigh added to support standalone sleigh usage.
+EXTRA=callgraph ifacedecomp ifaceterm interface loadimage_xml raw_arch testfunction unify xml_arch codedata sleigh_arch inject_sleigh
+
+LIBDECOMP_NAMES=$(CORE) $(DECCORE) $(EXTRA) $(SLEIGH) libdecomp
+COMMANDLINE_NAMES=$(LIBDECOMP_NAMES) consolemain
+
+COMMANDLINE_OPT_OBJS=$(COMMANDLINE_NAMES:%=com_opt/%.o)
+LIBDECOMP_OPT_OBJS=$(LIBDECOMP_NAMES:%=com_opt/%.o)
+
+all: decomp_standalone libdecomp.a
+
+com_opt/%.o: %.cc
+	@mkdir -p com_opt
+	$(CXX) $(ARCH_TYPE) -c $(OPT_CXXFLAGS) $(ADDITIONAL_FLAGS) $< -o $@
+
+decomp_standalone: $(COMMANDLINE_OPT_OBJS)
+	$(CXX) $(OPT_CXXFLAGS) $(ARCH_TYPE) -o decomp_standalone $(COMMANDLINE_OPT_OBJS) $(LNK)
+
+libdecomp.a: $(LIBDECOMP_OPT_OBJS)
+	rm -f libdecomp.a
+	ar qc libdecomp.a $(LIBDECOMP_OPT_OBJS)
+	ranlib libdecomp.a
+
+clean:
+	rm -rf com_opt decomp_standalone libdecomp.a

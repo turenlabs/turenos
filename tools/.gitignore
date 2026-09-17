@@ -1,0 +1,10 @@
+.DS_Store
+artifact/
+upstream/
+*/pkg/
+*/target/
+*/build/
+*/dist/
+*/*-build/
+*/*/pkg/
+*/*/target/

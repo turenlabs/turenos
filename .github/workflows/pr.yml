@@ -34,6 +34,9 @@ jobs:
       - name: Run lint
         run: bun run lint
 
+      - name: Verify packaged WASM checksums
+        run: bun run verify:wasm
+
       - name: Check third-party license inventory
         run: bun run license:check
 

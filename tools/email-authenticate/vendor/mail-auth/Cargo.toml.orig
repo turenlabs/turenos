@@ -1,0 +1,76 @@
+[package]
+name = "mail-auth"
+description = "DKIM, ARC, SPF and DMARC library for Rust"
+version = "0.12.1"
+edition = "2024"
+authors = [ "Stalwart Labs LLC <hello@stalw.art>"]
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/stalwartlabs/mail-auth"
+homepage = "https://github.com/stalwartlabs/mail-auth"
+keywords = ["dkim", "dmarc", "spf", "arc", "mail"]
+categories = ["email", "authentication"]
+readme = "README.md"
+resolver = "2"
+
+[lib]
+doctest = false
+
+[features]
+default = ["aws-lc-rs", "report", "dns-hickory"]
+aws-lc-rs = ["dep:aws-lc-rs", "dns-hickory", "hickory-resolver/tls-aws-lc-rs", "hickory-resolver/dnssec-aws-lc-rs", "hickory-resolver/rustls-platform-verifier"]
+ring = ["dep:ring", "dns-hickory", "hickory-resolver/tls-ring", "hickory-resolver/dnssec-ring", "hickory-resolver/rustls-platform-verifier"]
+rust-crypto = ["rsa", "rand", "ed25519-dalek", "sha1", "sha2"]
+generate = ["rsa", "rand"]
+dns-hickory = ["dep:hickory-resolver"]
+dns-doh = ["dep:reqwest", "dep:web-time", "dep:hickory-proto"]
+arc = []
+report = ["quick-xml", "zip"]
+test = []
+rkyv = ["dep:rkyv", "mail-parser/rkyv"]
+
+[dependencies]
+flate2 = "1.1"
+mail-parser = { version = "0.11.5", features = ["full_encoding"] }
+quick-xml = { version = "0.41", optional = true }
+hashify =  { version = "0.2" }
+idna = "1.1"
+aws-lc-rs = { version = "1", optional = true }
+ring = { version = "0.17", optional = true }
+rsa = { version = "0.9.8", optional = true }
+ed25519-dalek = { version = "3", optional = true, features = ["pkcs8", "alloc"] }
+sha1 = { version = "0.11", optional = true }
+sha2 = { version = "0.11", optional = true }
+rustls-pki-types = "1.15"
+web-time = { version = "1", optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+similar = "3"
+hickory-resolver = { version = "0.26", optional = true }
+hickory-proto = { version = "0.26", optional = true }
+zip = { version = "8.5", optional = true, default-features = false, features = ["deflate-flate2"] }
+rand = { version = "0.8.5", optional = true }
+rkyv = { version = "0.8", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mail-builder = { version = "0.4" }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "webpki-roots", "http2", "json", "query"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+mail-builder = { version = "0.4", default-features = false }
+reqwest = { version = "0.13", default-features = false, features = ["json", "query"], optional = true }
+hickory-proto = { version = "0.26", optional = true, features = ["wasm-bindgen"] }
+getrandom = { version = "0.2", features = ["js"] }
+getrandom_v04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+
+[dev-dependencies]
+tokio = { version = "1.51", features = ["net", "io-util", "time", "rt-multi-thread", "macros"] }
+testcontainers = "0.28"
+tempfile = "3"
+
+[[example]]
+name = "arc_seal"
+required-features = ["arc"]
+
+[[example]]
+name = "arc_verify"
+required-features = ["arc"]

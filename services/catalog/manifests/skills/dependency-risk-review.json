@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/dependency-risk-review",
+  "name": "Dependency Risk Review",
+  "description": "Correlate package provenance, affected versions, exploitability, and repository evidence without installation",
+  "version": "1.1.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "dependency-risk-review",
+      "name": "Dependency Risk Review",
+      "description": "Review manifests, lockfiles, SBOMs, and audited advisory data for actionable package risk",
+      "instructions": "Use for a bounded software supply-chain review without resolving or executing packages.",
+      "adapter": "skill:dependency-risk-review",
+      "secrets": [],
+      "defaultEnabled": false,
+      "source": {
+        "type": "catalog",
+        "content": "## Use when\nUse this for authorized manifests, lockfiles, SBOMs, or a dependency change that needs risk assessment. Do not use it to install packages, execute lifecycle scripts, or claim runtime exposure from package presence alone.\n\n## Inputs\nRequire ecosystem, manifest or lockfile paths, deployment context, and the review objective. Use `read`, `grep`, `glob`, `depsdev_package_health`, `depsdev_package_dependencies`, `osv_query_package`, and `ghsa_lookup` only when relevant and enabled. Ask when versions, source registries, or deployment evidence are missing.\n\n## Workflow\n1. Inventory direct and transitive packages, versions, sources, integrity data, and lifecycle scripts.\n2. Identify provenance anomalies, unpinned sources, abandoned components, and risky overrides from repository evidence.\n3. Correlate candidate packages with deps.dev, OSV, and GitHub Advisories; preserve source and affected-version semantics.\n4. Determine environmental relevance from imports, build targets, deployment artifacts, and reachable functionality.\n5. Prioritize remediation by exploitability, exposure, fix availability, and change risk.\n\n## Evidence rules\nCite manifest path, lockfile record, package version, advisory ID, and source. Separate package presence, affected-version evidence, reachability hypotheses, and confirmed exposure. State confidence and unknown deployment state.\n\n## Output\n- Dependency and provenance summary.\n- Prioritized findings with advisory and repository evidence.\n- Affected-version and environmental-relevance analysis.\n- Minimal upgrade, pinning, or compensating-control plan.\n- Unverified packages, sources, and deployment assumptions.\n\n## Stop conditions\nStop and ask the user when package versions, registry provenance, authorization, or deployment context is unavailable. Stop vulnerability claims when affected-version evidence is ambiguous.\n\n## Safety\nInspect only explicitly supplied and authorized files and audited data. Never install, resolve, execute, publish, or authenticate packages; do not expose private registry credentials.\n\n## Quality bar\n- Every finding names the exact package and version evidence.\n- Advisory applicability is distinguished from package presence.\n- Recommendations preserve lockfile and deployment constraints.\n- Unknown reachability is labeled, not guessed.\n\nLimit the report to at most 1,500 words and include confidence, unknowns, and the next verification step."
+      },
+      "requires": ["read", "grep", "glob", "depsdev_package_health", "depsdev_package_dependencies", "osv_query_package", "ghsa_lookup"]
+    }
+  ],
+  "versions": [
+    { "version": "1.0.0", "published": "2026-08-25" },
+    { "version": "1.1.0", "published": "2026-08-27" }
+  ]
+}

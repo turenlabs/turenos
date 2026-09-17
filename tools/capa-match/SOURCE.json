@@ -1,0 +1,82 @@
+{
+  "crate": "turen-capa-match-wasm",
+  "version": "0.1.0",
+  "upstream": {
+    "capa-rules": {
+      "repository": "https://github.com/mandiant/capa-rules",
+      "commit": "805f9eaccfb6a4e1ddffc809d71d1e2b5ccc15e5",
+      "license": "Apache-2.0",
+      "derivation": "Data dependency only. script/import-upstream.sh fetches the pinned tree into tools/capa-match/upstream/capa-rules (gitignored); build.rs normalizes every *.yml rule into a compact JSON ruleset, gzip-compresses it, and embeds it via include_bytes!. Malformed rules are counted as parse errors and skipped rather than failing the build. The YAML parser (serde_norway) is a build/test dependency and is never linked into the module."
+    },
+    "goblin": {
+      "repository": "https://github.com/m4b/goblin",
+      "version": "0.10.6",
+      "commit": "cec6e6eba5bdcec78ec79edc80b3a1f44856039a",
+      "license": "MIT",
+      "derivation": "Vendored at upstream/goblin (shared with tools/goblin) because crates.io yanked 0.10.6. Used unmodified for PE/ELF/Mach-O/archive parsing; scroll/scroll_derive/plain are its transitive crates."
+    },
+    "aho-corasick": {
+      "repository": "https://github.com/BurntSushi/aho-corasick",
+      "version": "1.1.5",
+      "license": "Unlicense OR MIT"
+    },
+    "regex": {
+      "repository": "https://github.com/rust-lang/regex",
+      "version": "1.13.1",
+      "license": "MIT OR Apache-2.0"
+    },
+    "flate2": {
+      "repository": "https://github.com/rust-lang/flate2-rs",
+      "version": "1.1.10",
+      "license": "MIT OR Apache-2.0",
+      "note": "zlib-rs 0.6.7 backend for embedded-rules-blob decompression only; no input decompression"
+    },
+    "hashes": {
+      "repository": "https://github.com/RustCrypto/hashes",
+      "crates": ["sha2 0.10.9"],
+      "license": "MIT OR Apache-2.0"
+    },
+    "serde_json": {
+      "repository": "https://github.com/serde-rs/json",
+      "version": "1.0.145",
+      "license": "MIT OR Apache-2.0"
+    },
+    "wasm-bindgen": {
+      "repository": "https://github.com/rustwasm/wasm-bindgen",
+      "version": "0.2.108",
+      "license": "MIT OR Apache-2.0"
+    }
+  },
+  "derivation": "Bounded wasm-bindgen wrapper implementing a static subset of capa rule evaluation: normalized ruleset AST with compile-time constant folding of unsupported features, bounded FeatureSet extraction (strings, byte patterns, PE/ELF/Mach-O metadata), and a memoized evaluator with Aho-Corasick shared scans, regex-backed wildcard matching, work budgets, and count-range semantics. Not the capa engine; reports a lower bound of matches with explicit skipped/degraded/unsupported accounting.",
+  "license": "Apache-2.0 OR MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "runtimeDependencies": [
+    "goblin 0.10.6",
+    "aho-corasick 1.1.5",
+    "regex 1.13.1",
+    "flate2 1.1.10",
+    "zlib-rs 0.6.7",
+    "sha2 0.10.9",
+    "serde 1.0.228",
+    "serde_json 1.0.145",
+    "wasm-bindgen 0.2.108"
+  ],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": false,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "jsonOutputBytes": 4194304,
+    "matchedRules": 4096,
+    "evidencePerRule": 32,
+    "evidenceLocations": 8,
+    "aggregateEvidence": 4096,
+    "rulesBlobDecodedBytes": 16777216,
+    "workerWallSeconds": 60
+  }
+}

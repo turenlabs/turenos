@@ -1,0 +1,12 @@
+Ghidra
+
+This product includes software developed at National Security Agency
+(https://www.nsa.gov)
+
+Portions of this product were created by the U.S. Government and not subject to
+U.S. copyright protections under 17 U.S.C.
+
+The Ghidra software is released under the Apache License, Version 2.0.
+
+This distribution includes modifications and a WebAssembly bridge maintained by
+Turen. It incorporates work from the ghidra-decompiler fork by Maurice Lam.

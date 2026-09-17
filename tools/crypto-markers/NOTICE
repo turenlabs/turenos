@@ -1,0 +1,23 @@
+Turen Crypto Markers is an original bounded findcrypt-style scanner and
+byte-structure profiler. Its constant tables are transcribed from public,
+freely distributable specifications:
+
+- AES S-box, inverse S-box, Rcon, and T-tables: FIPS-197
+- SHA-1 and SHA-2 initial vectors: FIPS 180-4
+- MD5 T-table: RFC 1321 (sine formula)
+- ChaCha20 constants: RFC 8439
+- Salsa20 constants: D. J. Bernstein's public Salsa20 specification
+- Camellia S-boxes: RFC 3713
+- Serpent S-boxes: AES submission by Anderson, Biham, and Knudsen
+- Twofish S-boxes: the Twofish specification and reference tables
+- Blowfish tables: hexadecimal digits of pi per the Blowfish specification
+- DES S-boxes: FIPS 46-3
+- DER algorithm-identifer OIDs and ASN.1 templates: RFC 3279, RFC 5280,
+  RFC 5480, RFC 5758, RFC 8017, RFC 8410, and related public standards
+- PEM armor and JWT shapes: RFC 7468 and RFC 7519
+
+No third-party runtime code, extraction code, or dependency graph beyond the
+pinned serde/serde_json/wasm-bindgen closure is included in this package.
+
+The compiled module uses Rust standard-library components, distributed under
+the Apache-2.0 or MIT license at the user's option.

@@ -1,0 +1,30 @@
+{
+  "crate": "turen-pdf-inspect-wasm",
+  "upstream": "https://github.com/J-F-Liu/lopdf",
+  "upstreamVersion": "0.45.0",
+  "upstreamCrateSha256": "bfffda0fe1ab0157e1a13c14bebd3f28671f2fccb7922f0722ec53926e6922d3",
+  "derivation": "Thin bounded wrapper around the pinned lopdf crate; structure inspection, suspicious-indicator findings, bounded stream decode, and bounded text extraction are original Turen code. No upstream CLI or filesystem APIs are exposed.",
+  "license": "MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "wasmBindgen": true,
+  "wasmOpt": ["-Os", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "extractsInput": false,
+  "decompressesInput": true,
+  "limits": {
+    "inputBytes": 33554432,
+    "optionsBytes": 4096,
+    "outputBytes": 4194304,
+    "results": 4096,
+    "loadStreamBytes": 16777216,
+    "streamDecodeBytes": 8388608,
+    "pageContentBytes": 8388608,
+    "textChars": 524288,
+    "urls": 256,
+    "scanDepth": 16,
+    "scanNodesPerObject": 8192
+  }
+}

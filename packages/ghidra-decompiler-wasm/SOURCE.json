@@ -1,0 +1,5 @@
+{
+  "upstream": "https://github.com/mauricelam/ghidra-decompiler",
+  "commit": "894191f76199a14bf3d34f31e68a2f0c697f8bdd",
+  "emscripten": "6.0.8"
+}

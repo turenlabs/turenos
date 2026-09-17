@@ -1,0 +1,28 @@
+[package]
+name = "turen-stng-core-wasm"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Portable bounded stng-core string extraction WebAssembly module for Turen"
+repository = "https://github.com/turenio/wasm-tools"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+base64 = "0.22.1"
+data-encoding = "2.9.0"
+hex = "0.4.3"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+urlencoding = "2.1.3"
+wasm-bindgen = "0.2.108"
+
+[profile.release]
+lto = true
+opt-level = "s"
+strip = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os", "--enable-bulk-memory"]

@@ -1,55 +1,32 @@
 # Developer Catalog Runtime
 
-The Developer Catalog has two contracts that meet in the renderer:
+The Developer Catalog is built into the monorepo. `services/catalog/manifests/` holds the canonical manifests
+(data sources, skills, MCP servers, tools); `packages/extensions` compiles them into `src/generated.ts` at
+build time, and the server returns catalog items plus installed runtime state from `GET /api/extension`.
+There is no remote catalog endpoint.
 
-1. The server returns installed runtime state from `GET /api/extension`.
-2. An optional external endpoint returns discovery metadata from `registry.json`, with the paginated
-   `/v1/extensions` API retained only as a 403/404 compatibility fallback.
+## Dynamic Installation
 
-The renderer merges external manifests by manifest ID. A matching server item remains authoritative for
-`enabled`, `status`, credentials, configuration, and mutability. An external-only generic hosted MCP can be
-installed dynamically; native tools, local MCP processes, credential-injecting MCPs, and skills still require
-runtime adapter or packaged content support in a TurenOS release.
+For catalog entries with no packaged runtime requirement — prompt-only skills and generic hosted MCPs — the
+renderer submits the catalog manifest with `Extension.Update`. The server validates and stores that manifest
+beside the extension's desired state, then rehydrates it on restart. Skill content is scanned by Vigil at
+install; reviewed manifests are recognized by digest in `packages/forge/src/skill/vigil.ts`.
 
-## Dynamic MCP Installation
-
-The renderer projects an eligible external manifest onto TurenOS's runtime schema before sending it to the server.
-The server validates and stores that manifest beside the extension's desired state, then rehydrates it on restart.
 Installed manifests participate in the same MCP lifecycle, endpoint qualification, reviewed tool allowlist, lazy
-`mcp_search`/`mcp_load` broker limits, and result redaction as built-in MCP integrations.
+`mcp_search`/`mcp_load` broker limits, and result redaction as other built-in MCP integrations.
 
-Dynamic installation is deliberately narrower than the catalog schema:
-
-- Only generic HTTPS hosted MCP contributions using `none` or OAuth authentication are accepted.
-- Dynamic contributions are read-only. Catalog-declared write tools are removed until signed publisher policy can
-  safely extend runtime permissions.
-- Every dynamic MCP tool call requires explicit user confirmation because an unsigned catalog cannot prove that an
-  upstream action is actually read-only.
-- The server ignores catalog adapter authority and derives `mcp:<contribution-id>` itself.
-- Catalog trust labels are display metadata, not publisher authentication; dynamic entries run as community trust.
-- A version is immutable. Updates may increase semver and tool metadata, but cannot change endpoint, authentication,
-  contribution identity, configuration, or credential bindings.
-- Community tool descriptions, schema annotations, and server instructions are not admitted into agent context.
-
-External native tools and skills remain visible with an explicit compatibility reason instead of a generic preview
-message. Their manifests cannot install binaries or supply a `SKILL.md` body by themselves.
+Native tools and local MCP processes still require their audited adapters and packaged artifacts in the same
+TurenOS release; a manifest alone cannot install binaries or supply runtime code.
 
 ## Read Path
 
 The renderer emits these `[developer-catalog]` phases with one catalog-load `operationID`:
 
 1. `catalog.load.started`
-2. `catalog.server-list.completed`
-3. `catalog.registry.requested`
-4. `catalog.registry.responded`
-5. `catalog.registry.loaded`
-6. `catalog.registry.fallback` when static loading returns 403 or 404
-7. `catalog.api.requested`, `catalog.api.responded`, and `catalog.api.page.loaded` for compatibility pages
-8. `catalog.external-merge.completed` or `catalog.load.completed`
-9. `catalog.load.failed`
+2. `catalog.load.completed`
+3. `catalog.load.failed`
 
-Catalog traces contain URLs, status codes, counts, and elapsed time. They never contain credentials or
-extension configuration values.
+Catalog traces contain counts and elapsed time. They never contain credentials or extension configuration values.
 
 ## Update Path
 

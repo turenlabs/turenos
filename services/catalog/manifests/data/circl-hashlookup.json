@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/circl-hashlookup",
+  "name": "CIRCL Hashlookup",
+  "description": "Identify known files by cryptographic hash using CIRCL hashlookup",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://www.circl.lu/services/hashlookup/",
+  "contributions": [{
+    "type": "data",
+    "id": "circl-hashlookup",
+    "name": "CIRCL Hashlookup",
+    "description": "Identify known files by cryptographic hash using CIRCL hashlookup",
+    "instructions": "Use CIRCL hashlookup to identify known files. A match does not mean a file is malicious; report provenance and CIRCL CC-BY attribution.",
+    "adapter": "security:circl-hashlookup",
+    "secrets": [],
+    "defaultEnabled": false,
+    "group": "threat-intelligence",
+    "tools": { "allow": ["circl_hashlookup"], "write": [] }
+  }],
+  "versions": [{ "version": "1.0.0", "published": "2026-08-25" }]
+}

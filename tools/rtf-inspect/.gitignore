@@ -1,0 +1,7 @@
+# Vendored pinned upstream source (none currently — hand-rolled parser)
+upstream/
+# Build outputs
+pkg/
+target/
+artifact/
+node_modules/

@@ -1,0 +1,260 @@
+diff --git a/js-wasm/src/lib.rs b/js-wasm/src/lib.rs
+index 36f2c5ee..f5ee6765 100644
+--- a/js-wasm/src/lib.rs
++++ b/js-wasm/src/lib.rs
+@@ -23,8 +23,26 @@ struct ScanResult {
+     errors: Vec<String>,
+     warnings: Vec<String>,
+     matches: Vec<RuleMatch>,
++    truncated: bool,
+ }
+ 
++#[cfg(any(target_family = "wasm", test))]
++const MAX_RESULT_RULES: usize = 256;
++#[cfg(any(target_family = "wasm", test))]
++const MAX_RESULT_TAGS: usize = 4096;
++#[cfg(any(target_family = "wasm", test))]
++const MAX_RESULT_METADATA: usize = 4096;
++#[cfg(any(target_family = "wasm", test))]
++const MAX_RESULT_PATTERNS: usize = 4096;
++#[cfg(any(target_family = "wasm", test))]
++const MAX_RESULT_PATTERN_MATCHES: usize = 4096;
++#[cfg(any(target_family = "wasm", test))]
++const MAX_RESULT_WARNINGS: usize = 256;
++#[cfg(any(target_family = "wasm", test))]
++const MAX_COMPILED_RULES: usize = 4096;
++#[cfg(any(target_family = "wasm", test))]
++const MAX_COMPILED_PATTERNS: usize = 256;
++
+ #[cfg(any(target_family = "wasm", test))]
+ #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+ #[serde(rename_all = "camelCase")]
+@@ -94,6 +112,7 @@ fn scan_rules(rule_sources: &[String], payload: &[u8]) -> ScanResult {
+             errors: compile_outcome.errors,
+             warnings: compile_outcome.warnings,
+             matches: vec![],
++            truncated: false,
+         };
+     }
+ 
+@@ -103,6 +122,7 @@ fn scan_rules(rule_sources: &[String], payload: &[u8]) -> ScanResult {
+             errors: vec!["internal error: rules were not built".to_owned()],
+             warnings: compile_outcome.warnings,
+             matches: vec![],
++            truncated: false,
+         };
+     };
+ 
+@@ -125,6 +145,8 @@ fn scan_compiled_rules(
+     external_globals: Option<&[(String, serde_json::Value)]>,
+     warnings: Vec<String>,
+ ) -> ScanResult {
++    let mut truncated = warnings.len() > MAX_RESULT_WARNINGS;
++    let warnings = warnings.into_iter().take(MAX_RESULT_WARNINGS).collect();
+     let mut scanner = YaraScanner::new(rules);
+     #[cfg(not(target_family = "wasm"))]
+     if let Some(ms) = timeout_ms {
+@@ -136,9 +158,17 @@ fn scan_compiled_rules(
+         scanner.console_log(|message| emit_console_log(&message));
+     }
+ 
+-    if let Some(limit) = max_matches_per_pattern {
+-        scanner.max_matches_per_pattern(limit);
+-    }
++    let num_patterns = rules
++        .iter()
++        .map(|rule| rule.patterns().include_private(true).count())
++        .sum::<usize>();
++    let aggregate_match_limit =
++        (MAX_RESULT_PATTERN_MATCHES / num_patterns.max(1)).max(1);
++    scanner.max_matches_per_pattern(
++        max_matches_per_pattern
++            .unwrap_or(aggregate_match_limit)
++            .min(aggregate_match_limit),
++    );
+ 
+     if let Some(globals) = external_globals {
+         for (identifier, value) in globals {
+@@ -152,6 +182,7 @@ fn scan_compiled_rules(
+                     )],
+                     warnings,
+                     matches: vec![],
++                    truncated,
+                 };
+             }
+         }
+@@ -159,72 +190,98 @@ fn scan_compiled_rules(
+ 
+     match scanner.scan(payload) {
+         Ok(scan_results) => {
+-            let matches = scan_results
+-                .matching_rules()
+-                .include_private(true)
+-                .map(|rule| {
+-                    let metadata = rule
+-                        .metadata()
+-                        .map(|(identifier, value)| MetadataEntry {
+-                            identifier: identifier.to_owned(),
+-                            value: metadata_value(value),
+-                        })
+-                        .collect::<Vec<_>>();
++            let mut matches = Vec::new();
++            let mut remaining_tags = MAX_RESULT_TAGS;
++            let mut remaining_metadata = MAX_RESULT_METADATA;
++            let mut remaining_patterns = MAX_RESULT_PATTERNS;
++            let mut remaining_pattern_matches = MAX_RESULT_PATTERN_MATCHES;
++
++            for rule in scan_results.matching_rules().include_private(true) {
++                if matches.len() >= MAX_RESULT_RULES {
++                    truncated = true;
++                    break;
++                }
++
++                let all_tags = rule.tags().count();
++                let tags = rule
++                    .tags()
++                    .take(remaining_tags)
++                    .map(|tag| tag.identifier().to_owned())
++                    .collect::<Vec<_>>();
++                remaining_tags -= tags.len();
++                truncated |= tags.len() < all_tags;
++
++                let all_metadata = rule.metadata().count();
++                let metadata = rule
++                    .metadata()
++                    .take(remaining_metadata)
++                    .map(|(identifier, value)| MetadataEntry {
++                        identifier: identifier.to_owned(),
++                        value: metadata_value(value),
++                    })
++                    .collect::<Vec<_>>();
++                remaining_metadata -= metadata.len();
++                truncated |= metadata.len() < all_metadata;
++
++                let mut patterns = Vec::new();
++                for pattern in rule.patterns().include_private(true) {
++                    if remaining_patterns == 0 {
++                        truncated = true;
++                        break;
++                    }
+ 
+-                    let patterns = rule
+-                        .patterns()
+-                        .include_private(true)
+-                        .filter_map(|pattern| {
+-                            let pattern_matches = pattern
+-                                .matches()
+-                                .map(|entry| {
+-                                    let range = entry.range();
+-                                    PatternData {
+-                                        offset: range.start,
+-                                        length: range.end - range.start,
+-                                        xor_key: entry.xor_key(),
+-                                    }
+-                                })
+-                                .collect::<Vec<_>>();
+-
+-                            if pattern_matches.is_empty() {
+-                                None
+-                            } else {
+-                                Some(PatternMatchResult {
+-                                    identifier: pattern
+-                                        .identifier()
+-                                        .to_owned(),
+-                                    kind: pattern_kind(pattern.kind())
+-                                        .to_owned(),
+-                                    is_private: pattern.is_private(),
+-                                    matches: pattern_matches,
+-                                })
++                    let all_pattern_matches = pattern.matches().count();
++                    let pattern_matches = pattern
++                        .matches()
++                        .take(remaining_pattern_matches)
++                        .map(|entry| {
++                            let range = entry.range();
++                            PatternData {
++                                offset: range.start,
++                                length: range.end - range.start,
++                                xor_key: entry.xor_key(),
+                             }
+                         })
+                         .collect::<Vec<_>>();
+-
+-                    RuleMatch {
+-                        identifier: rule.identifier().to_owned(),
+-                        namespace: rule.namespace().to_owned(),
+-                        is_global: rule.is_global(),
+-                        is_private: rule.is_private(),
+-                        tags: rule
+-                            .tags()
+-                            .map(|tag| tag.identifier().to_owned())
+-                            .collect::<Vec<_>>(),
+-                        metadata,
+-                        patterns,
++                    remaining_pattern_matches -= pattern_matches.len();
++                    truncated |= pattern_matches.len() < all_pattern_matches;
++
++                    if !pattern_matches.is_empty() {
++                        remaining_patterns -= 1;
++                        patterns.push(PatternMatchResult {
++                            identifier: pattern.identifier().to_owned(),
++                            kind: pattern_kind(pattern.kind()).to_owned(),
++                            is_private: pattern.is_private(),
++                            matches: pattern_matches,
++                        });
+                     }
+-                })
+-                .collect::<Vec<_>>();
++                }
++
++                matches.push(RuleMatch {
++                    identifier: rule.identifier().to_owned(),
++                    namespace: rule.namespace().to_owned(),
++                    is_global: rule.is_global(),
++                    is_private: rule.is_private(),
++                    tags,
++                    metadata,
++                    patterns,
++                });
++            }
+ 
+-            ScanResult { valid: true, errors: vec![], warnings, matches }
++            ScanResult {
++                valid: true,
++                errors: vec![],
++                warnings,
++                matches,
++                truncated,
++            }
+         }
+         Err(err) => ScanResult {
+             valid: false,
+             errors: vec![format!("scan failed: {err}")],
+             warnings,
+             matches: vec![],
++            truncated,
+         },
+     }
+ }
+@@ -313,6 +370,21 @@ impl WasmCompiler {
+             .take()
+             .ok_or_else(|| js_error("compiler has already been consumed"))?;
+         let rules = compiler.build();
++        let num_rules = rules.iter().len();
++        if num_rules > MAX_COMPILED_RULES {
++            return Err(js_error(format!(
++                "compiled rule count {num_rules} exceeds limit {MAX_COMPILED_RULES}"
++            )));
++        }
++        let num_patterns = rules
++            .iter()
++            .map(|rule| rule.patterns().include_private(true).count())
++            .sum::<usize>();
++        if num_patterns > MAX_COMPILED_PATTERNS {
++            return Err(js_error(format!(
++                "compiled pattern count {num_patterns} exceeds limit {MAX_COMPILED_PATTERNS}"
++            )));
++        }
+         Ok(WasmRules { inner: Arc::new(rules) })
+     }
+ 

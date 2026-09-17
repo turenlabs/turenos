@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/d3fend",
+  "name": "MITRE D3FEND",
+  "description": "Search MITRE D3FEND defensive techniques and knowledge graph concepts",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://d3fend.mitre.org/",
+  "contributions": [{
+    "type": "data",
+    "id": "d3fend",
+    "name": "MITRE D3FEND",
+    "description": "Search MITRE D3FEND defensive techniques and knowledge graph concepts",
+    "instructions": "Use D3FEND for defensive countermeasure design and ATT&CK-to-defense analysis. Preserve MITRE attribution and report the ontology version with results.",
+    "adapter": "security:d3fend",
+    "secrets": [],
+    "defaultEnabled": false,
+    "group": "security-knowledge",
+    "tools": { "allow": ["d3fend_lookup", "d3fend_search"], "write": [] }
+  }],
+  "versions": [{ "version": "1.0.0", "published": "2026-08-25" }]
+}

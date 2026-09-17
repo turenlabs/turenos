@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/osv",
+  "name": "OSV",
+  "description": "Query OSV vulnerabilities and OpenSSF malicious-package intelligence",
+  "version": "1.1.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "data",
+      "id": "osv",
+      "name": "OSV",
+      "description": "Query OSV vulnerabilities and OpenSSF malicious-package intelligence",
+      "adapter": "security:osv",
+      "secrets": [],
+      "tools": {
+        "allow": [
+          "osv_query_package",
+          "osv_get_vuln"
+        ],
+        "write": []
+      },
+      "defaultEnabled": false,
+      "instructions": "Use OSV for package vulnerabilities and MAL malicious-package records. Preserve source IDs and evidence hashes, treat package-wide reports cautiously, and never install or fetch reported artifacts."
+    }
+  ],
+  "versions": [
+    {
+      "version": "1.0.0",
+      "published": "2026-08-08"
+    },
+    {
+      "version": "1.1.0",
+      "published": "2026-08-27"
+    }
+  ]
+}

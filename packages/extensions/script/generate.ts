@@ -5,10 +5,11 @@ import { validateCatalogPolicy, validateManifestPolicy } from "../src/validate"
 import { Schema } from "effect"
 
 const root = path.resolve(import.meta.dir, "..")
+const source = path.resolve(root, "../../services/catalog/manifests")
 const decode = Schema.decodeUnknownSync(Extension.Manifest)
-const files = [...new Bun.Glob("*.json").scanSync({ cwd: path.join(root, "manifests"), absolute: true })].toSorted()
+const files = [...new Bun.Glob("**/*.json").scanSync({ cwd: source, absolute: true })].toSorted()
 const values = await Promise.all(
-  files.map(async (file) => ({ file: path.basename(file), value: JSON.parse(await Bun.file(file).text()) })),
+  files.map(async (file) => ({ file: path.relative(source, file), value: JSON.parse(await Bun.file(file).text()) })),
 )
 const manifests = values.map((item) => decode(item.value))
 

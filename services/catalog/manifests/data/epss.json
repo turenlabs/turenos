@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/epss",
+  "name": "EPSS",
+  "description": "Fetch FIRST.org exploit-probability scores for CVEs",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "data",
+      "id": "epss",
+      "name": "EPSS",
+      "description": "Fetch FIRST.org exploit-probability scores for CVEs",
+      "adapter": "security:epss",
+      "secrets": [],
+      "tools": {
+        "allow": [
+          "epss_score"
+        ],
+        "write": []
+      },
+      "defaultEnabled": false,
+      "instructions": "Use EPSS for its declared purpose: Fetch FIRST.org exploit-probability scores for CVEs. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ],
+  "versions": [
+    {
+      "version": "1.0.0",
+      "published": "2026-08-08"
+    }
+  ]
+}

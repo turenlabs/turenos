@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/kev",
+  "name": "CISA KEV",
+  "description": "Check CVEs against the Known Exploited Vulnerabilities catalog",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "data",
+      "id": "kev",
+      "name": "CISA KEV",
+      "description": "Check CVEs against the Known Exploited Vulnerabilities catalog",
+      "adapter": "security:kev",
+      "secrets": [],
+      "tools": {
+        "allow": [
+          "kev_check",
+          "kev_recent"
+        ],
+        "write": []
+      },
+      "defaultEnabled": false,
+      "instructions": "Use CISA KEV for its declared purpose: Check CVEs against the Known Exploited Vulnerabilities catalog. Keep results scoped to the requested workspace and do not grant undeclared access."
+    }
+  ],
+  "versions": [
+    {
+      "version": "1.0.0",
+      "published": "2026-08-08"
+    }
+  ]
+}

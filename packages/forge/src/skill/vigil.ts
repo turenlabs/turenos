@@ -61,29 +61,41 @@ export type Result = {
 type Score = Omit<Result, "reviewed">
 
 /**
- * Digests of reviewed catalog skill manifests — `sha256` of the normalized
+ * Digests of reviewed catalog skill manifests — `sha256` of the
  * `Extension.Manifest` JSON the client submits at install. Regenerate by
- * normalizing each catalog entry through `Extension.normalizeExternalManifest`
- * and hashing `JSON.stringify(new Extension.Manifest(...))`; the digest covers
- * every model-visible field, so any manifest edit re-flags the skill.
+ * hashing `JSON.stringify(manifest)` for each catalog-sourced skill in
+ * `ExtensionCatalog.manifests` (services/catalog/manifests/skills); the digest
+ * covers every model-visible field, so any manifest edit re-flags the skill.
  */
 const reviewedSkillDigests = new Set([
-  "a37f910dad1abe5169b4634b8c49c62431ffe888265439b418752d1994d5a29a",
-  "044e12760ac3d7fa1271d2cacee2b9a948da9eb94169b9f2a6c467ad649da580",
-  "50cb868febebe92e6453193038c57a797109335ba6ba481b561f014aa6060ad0",
-  "4211ee283105a097c1c0bd54b49c710076b4361c73bfed8c4d5afc52f3bce217",
-  "b284da0187ad665730f1ed34fea6afd646228cee6e603fe4c9eed85febc6d7b2",
-  "6fd2cb54571d79bb636818830693d2118aed9360130d695f4c39060c3a35ae8c",
-  "fd18e7b9016719e80c4360a40ffa2e2519853926dd10ffa85dbc0ae22562c419",
-  "4c091241f13fae3ae5999200f906b6cd0bec928bdee0171ebbfce09a303fa5ef",
-  "798c1fccde07a7289dd4873b3b765973fb01c7f9bb15326f93cc8da3576e516f",
-  "879a0c07db2c0511924354737730173c75b19d86aaa1ec01ea3cf75f002737d9",
-  "c76012a2883684c4a53d83a1d9172d27ab14ef298a754ad36ee2b776323e2853",
-  "71250d9b6b067975a618c8191e338d4e3001b11cadfd871105b1e09aa9d1bf99",
+  // turenlabs/bug-root-cause
+  "a1dfb48317ba26f516b1e2173789979d911cdb35dac4620c5a08ac393367dfe8",
+  // turenlabs/dependency-risk-review
+  "232928e74daf16ae9bed90db0d4b53205f0e8612657d34e2231b439c77f013d9",
+  // turenlabs/detection-engineering-review
+  "a5cc17171c5a7cb8de62e84d6ac903ad1bcda2ab43b38a451d52474dc6bcac3b",
   // turenlabs/iac-config-review
-  "a87235c795b385cb97da55117e4b8d9d9cd30a37de14304103bff5845e4b05e8",
+  "9a2b0ee0b3b04c486022045245f005335526f962759c1c2981dc494004535bb0",
+  // turenlabs/incident-evidence-triage
+  "24d2c42d7b2d26c48960842ead85f7be515b6a357b34369a4af999c1a8f8de26",
+  // turenlabs/incident-responder
+  "7fa4e7460fc1eef51b1260dd7a5c00bc1702e67e057da00bba6ad10d08ea96e5",
+  // turenlabs/secure-code-review
+  "550415b8d5cf9256cef61a930c9439f88952ed14a9b73cd462390cd72d5fc3ce",
+  // turenlabs/software-architecture-reviewer
+  "17f0fc432154a9631087010bd58c30152ecd4f4cbbf9ae3ca821d02b3cb343aa",
+  // turenlabs/technical-security-blog
+  "aab1c54a3c1909c00d4cfcb69e9d2a5cfec1c763abcfab384db3aed8e34f1831",
+  // turenlabs/test-strategy
+  "9ef7b51f553db3f1b86cef791e07f6122ea9f5babc6350e08343a8ceff8bb161",
+  // turenlabs/threat-hunter
+  "1b61adcde5fc79f6df0e5fbfeff617e89533a0570f8895715c25877dbd25fb19",
+  // turenlabs/threat-intel-brief
+  "bf5b82ca07e89e3cf1fc1c4407714edde5a4226abd391f9f6089d97156b3f70f",
   // turenlabs/threat-model-review
-  "b38682d889fa35e7d3ff8a620ddc2a0ae0019769a0d9bf45bbca3161824bb52b",
+  "f38101c4cc5f44271bff2af3586876ce3b58aeb31997644606b774874f178a91",
+  // turenlabs/vulnerability-analyst
+  "74a72dc81faa69a6f2d868ca1917ea60588868c03d3f2a5d690f8dffdc42ec4b",
 ])
 
 type Dependencies = {

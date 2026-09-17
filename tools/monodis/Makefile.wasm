@@ -1,0 +1,157 @@
+# WASM Makefile for monodis (Mono CIL disassembler) using Emscripten.
+# Default `all` builds the full module. The `spike` target compiles the
+# eglib subset only and remains as a fast toolchain smoke check.
+
+EMSDK_VERSION=6.0.8
+UPSTREAM_COMMIT=0f53e9e151d92944cacab3e24ac359410c606df6
+CC=emcc
+.DEFAULT_GOAL := all
+
+ROOT := $(CURDIR)
+UPSTREAM := $(ROOT)/upstream
+SRC := $(UPSTREAM)/mono
+
+# -DHAVE_SGEN_GC mirrors configure's SGEN_DEFINES: monodis links the sgen
+# runtime (SUPPORT_SGEN branch in mono/dis/Makefile.am). It gates the
+# entire sgen-mono.c body; without it all mono_gc_* symbols are undefined.
+OPT_CFLAGS=-O2 -Wall -Wno-sign-compare -D_GNU_SOURCE -DTARGET_WASM -DDISABLE_CRASH_REPORTING -DHAVE_SGEN_GC -fexceptions -gsource-map
+INCLUDES=-I$(ROOT)/wasm -I$(UPSTREAM) -I$(SRC) -I$(SRC)/eglib -I$(SRC)/dis
+
+# eglib unix subset, per mono/eglib/Makefile.am (unix_files + portable files).
+EGLIB_SRCS=\
+	garray.c gbytearray.c gerror.c ghashtable.c giconv.c gmem.c goutput.c \
+	gqsort.c gstr.c gslist.c gstring.c gptrarray.c glist.c gqueue.c gpath.c \
+	gshell.c gfile.c gfile-posix.c gpattern.c gmarkup.c gutf8.c gunicode.c \
+	gdate-unix.c gdir-unix.c gfile-unix.c gmisc-unix.c gmodule-unix.c \
+	gtimer-unix.c gmodule-aix.c gspawn.c gclock-nanosleep.c
+# SPIKE: gspawn/gmodule-* need fork/dlopen; expect to exclude them here.
+
+# Full link closure, per mono/dis/Makefile.am minus LLVM flags and win32 files.
+# main.c is included with main renamed to monodis_main (-Dmain=), since the
+# bridge drives disassemble_file() directly (de-staticed by
+# patches/0001-expose-disassemble-file.patch); Emscripten must not run the
+# CLI on module startup. Only `main (int argc` and a comment mention the
+# bare `main` token in main.c, so the rename is safe.
+DIS_SRCS=get.c dis-cil.c util.c dump.c declsec.c main.c
+wasm_obj/dis/main.o: OPT_CFLAGS += -Dmain=monodis_main
+# boehm-gc.c is the non-sgen GC alternative (conditional in Makefile.am);
+# this target links sgen, so it is excluded like upstream does.
+# console-null.c is the no-console alternative to console-unix.c;
+# external-only.c and threadpool-io-{poll,epoll,kqueue}.c are EXTRA_DIST
+# fragments #included by other TUs, never compiled standalone.
+# threadpool-worker-default.c is the non-WASM alternative to
+# threadpool-worker-wasm.c (HOST_WASM branch in Makefile.am).
+METADATA_EXCLUDE=boehm-gc.c console-null.c external-only.c threadpool-io-poll.c threadpool-io-epoll.c threadpool-io-kqueue.c threadpool-worker-default.c
+METADATA_SRCS=$(filter-out %-win32.c $(METADATA_EXCLUDE),$(notdir $(wildcard $(SRC)/metadata/*.c)))
+# Arch-specific utils: upstream selects one hwcap + one mach-support file by
+# target. WASM takes mono-hwcap-wasm.c (HOST_WASM) and mach-support-unknown.c
+# (cross-compile path); every other arch variant is excluded.
+# mono-mmap.c contributes only mem-account helpers under HOST_WASM (its whole
+# unix body is in the #else branch); mono-mmap-wasm.c is the real
+# implementation and must be compiled. threadpool-worker-wasm.c replaces
+# -default.c per the HOST_WASM branch in mono/metadata/Makefile.am.
+UTILS_EXCLUDE=mono-hwcap-arm.c mono-hwcap-arm64.c mono-hwcap-cross.c mono-hwcap-loongarch64.c mono-hwcap-mips.c mono-hwcap-ppc.c mono-hwcap-riscv.c mono-hwcap-s390x.c mono-hwcap-sparc.c mono-hwcap-x86.c mach-support-amd64.c mach-support-arm.c mach-support-arm64.c mach-support-x86.c
+UTILS_SRCS=$(filter-out %-win32.c $(UTILS_EXCLUDE),$(notdir $(wildcard $(SRC)/utils/*.c)))
+SGEN_SRCS=$(notdir $(wildcard $(SRC)/sgen/*.c))
+ZLIB_SRCS=$(notdir $(wildcard $(SRC)/zlib/*.c))
+# mono/culture is libmono-culture.la (culture_libraries in
+# mono/metadata/Makefile.am): locales.c plus the unix platform file. It owns
+# all System.Globalization/System.Text.Normalization ves_icalls.
+CULTURE_SRCS=locales.c w32process-unix-language.c
+# support/zlib-helper.c owns the System.IO.Compression ZStream icalls. It
+# uses the bundled mono/zlib (HAVE_SYS_ZLIB stays undefined).
+SUPPORT_SRCS=zlib-helper.c
+
+SPIKE_OBJS=$(EGLIB_SRCS:%.c=wasm_obj/eglib/%.o)
+FULLOBJS=\
+	$(SPIKE_OBJS) \
+	$(DIS_SRCS:%.c=wasm_obj/dis/%.o) \
+	$(METADATA_SRCS:%.c=wasm_obj/metadata/%.o) \
+	$(UTILS_SRCS:%.c=wasm_obj/utils/%.o) \
+	$(SGEN_SRCS:%.c=wasm_obj/sgen/%.o) \
+	$(ZLIB_SRCS:%.c=wasm_obj/zlib/%.o) \
+	$(CULTURE_SRCS:%.c=wasm_obj/culture/%.o) \
+	$(SUPPORT_SRCS:%.c=wasm_obj/support/%.o) \
+	wasm_obj/wrapper/wasm_wrapper.o \
+	wasm_obj/wrapper/wasm_stubs.o
+
+DIST_DIR=dist
+
+EXPORTED_FUNCTIONS=['_init_monodis', '_monodis_disassemble', '_free_string', '_malloc', '_free']
+EXPORTED_RUNTIME_METHODS=['ccall', 'cwrap', 'HEAPU8', 'UTF8ToString', 'stringToUTF8']
+
+.PHONY: spike all check-upstream clean
+
+check-upstream:
+	@if [ ! -f "$(SRC)/dis/main.c" ]; then \
+		echo "error: upstream/ is missing; run ./script/import-upstream.sh first" >&2; \
+		exit 1; \
+	fi
+
+# wasm/config.h, wasm/eglib-config.h, and this Makefile feed every compile
+# (-I flags and -D flags), so every object depends on them. Without this,
+# flag/config changes silently leave stale objects behind.
+CONFIG_DEPS=$(ROOT)/wasm/config.h $(ROOT)/wasm/eglib-config.h $(ROOT)/Makefile.wasm
+
+wasm_obj/eglib/%.o: $(SRC)/eglib/%.c $(CONFIG_DEPS) | check-upstream
+	@mkdir -p wasm_obj/eglib
+	$(CC) -c $(OPT_CFLAGS) $(INCLUDES) $< -o $@
+
+wasm_obj/dis/%.o: $(SRC)/dis/%.c $(CONFIG_DEPS) | check-upstream
+	@mkdir -p wasm_obj/dis
+	$(CC) -c $(OPT_CFLAGS) $(INCLUDES) $< -o $@
+
+wasm_obj/metadata/%.o: $(SRC)/metadata/%.c $(CONFIG_DEPS) | check-upstream
+	@mkdir -p wasm_obj/metadata
+	$(CC) -c $(OPT_CFLAGS) $(INCLUDES) $< -o $@
+
+wasm_obj/utils/%.o: $(SRC)/utils/%.c $(CONFIG_DEPS) | check-upstream
+	@mkdir -p wasm_obj/utils
+	$(CC) -c $(OPT_CFLAGS) $(INCLUDES) $< -o $@
+
+wasm_obj/sgen/%.o: $(SRC)/sgen/%.c $(CONFIG_DEPS) | check-upstream
+	@mkdir -p wasm_obj/sgen
+	$(CC) -c $(OPT_CFLAGS) $(INCLUDES) $< -o $@
+
+wasm_obj/zlib/%.o: $(SRC)/zlib/%.c $(CONFIG_DEPS) | check-upstream
+	@mkdir -p wasm_obj/zlib
+	$(CC) -c $(OPT_CFLAGS) $(INCLUDES) $< -o $@
+
+wasm_obj/culture/%.o: $(SRC)/culture/%.c $(CONFIG_DEPS) | check-upstream
+	@mkdir -p wasm_obj/culture
+	$(CC) -c $(OPT_CFLAGS) $(INCLUDES) $< -o $@
+
+wasm_obj/support/%.o: $(UPSTREAM)/support/%.c $(CONFIG_DEPS) | check-upstream
+	@mkdir -p wasm_obj/support
+	$(CC) -c $(OPT_CFLAGS) $(INCLUDES) $< -o $@
+
+wasm_obj/wrapper/wasm_wrapper.o: wasm/wasm_wrapper.c $(CONFIG_DEPS) | check-upstream
+	@mkdir -p wasm_obj/wrapper
+	$(CC) -c $(OPT_CFLAGS) $(INCLUDES) $< -o $@
+
+wasm_obj/wrapper/wasm_stubs.o: wasm/wasm_stubs.c $(CONFIG_DEPS) | check-upstream
+	@mkdir -p wasm_obj/wrapper
+	$(CC) -c $(OPT_CFLAGS) $(INCLUDES) $< -o $@
+
+# Spike step 1: prove the toolchain + hand-written config on eglib alone.
+spike: $(SPIKE_OBJS)
+	@echo "spike: $(words $(SPIKE_OBJS)) eglib objects built"
+
+$(DIST_DIR)/monodis.js: $(FULLOBJS)
+	@mkdir -p $(DIST_DIR)
+	$(CC) $(OPT_CFLAGS) $(FULLOBJS) -o $(DIST_DIR)/monodis.js \
+		-s EXPORTED_FUNCTIONS="$(EXPORTED_FUNCTIONS)" \
+		-s EXPORTED_RUNTIME_METHODS="$(EXPORTED_RUNTIME_METHODS)" \
+		-s MODULARIZE=1 -s EXPORT_NAME="Monodis" \
+		-s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=64MB -s STACK_SIZE=16MB
+
+all: $(DIST_DIR)/monodis.js
+	@cp $(ROOT)/NOTICE $(UPSTREAM)/LICENSE $(UPSTREAM)/PATENTS.TXT $(DIST_DIR)/
+	@mv $(DIST_DIR)/LICENSE $(DIST_DIR)/LICENSE-MONO
+	@mv $(DIST_DIR)/PATENTS.TXT $(DIST_DIR)/PATENTS-MONO
+	@printf '%s\n' '$(EMSDK_VERSION)' > $(DIST_DIR)/EMSDK_VERSION
+	@printf '%s\n' '$(UPSTREAM_COMMIT)' > $(DIST_DIR)/UPSTREAM_COMMIT
+	@find $(DIST_DIR) -type f ! -name SHA256SUMS -exec sha256sum {} \; | sort -k2 > $(DIST_DIR)/SHA256SUMS
+
+clean:
+	rm -rf wasm_obj $(DIST_DIR)

@@ -1,0 +1,15 @@
+Turen Sourcemap is a bounded, offline WebAssembly wrapper written by Turen
+Labs around the rust-sourcemap crate.
+
+rust-sourcemap is Copyright (c) Sentry (getsentry) and contributors and is
+licensed under the BSD 3-Clause License:
+https://github.com/getsentry/rust-sourcemap/blob/master/LICENSE
+
+The compiled module also vendors crates.io dependencies distributed under the
+MIT, Apache-2.0, BSD-3-Clause, Zlib, Unicode-3.0, Unlicense, and BSL-1.0
+licenses as recorded in SOURCE.json. Unicode-3.0 applies to the
+unicode-id-start and unicode-ident crates:
+https://www.unicode.org/license.txt
+
+The compiled module uses Rust standard-library components, distributed under
+the Apache-2.0 or MIT license at the user's option.

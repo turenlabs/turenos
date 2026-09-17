@@ -342,6 +342,12 @@ if (prohibited.length > 0) {
 const expectedNotice = notice(packages)
 const expectedInventory = inventory(packages)
 if (write) {
+  if (process.platform !== "linux") {
+    // CI validates the Linux closure; platform-optional packages (fsevents,
+    // darwin/win32 prebuilds) are absent there, so artifacts generated on
+    // another OS fail the freshness check.
+    console.warn("license artifacts must be generated on Linux; this platform produces a different dependency closure")
+  }
   await Bun.write(noticePath, expectedNotice)
   await Bun.write(inventoryPath, expectedInventory)
   await Bun.write(markdownPath, markdown(packages))

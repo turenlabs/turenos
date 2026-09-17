@@ -1,0 +1,114 @@
+name: Build static unpack WASM
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/build-static-unpack.yml"
+      - "tools/static-unpack/**"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-static-unpack
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UPX_COMMIT: 034b6d0d81c53998c07ad6f34bfead6f5c5445ce
+  RETDEC_COMMIT: 53e55b4b26e9b843787f0e06d867441e32b1604e
+  EMSDK_VERSION: 6.0.8
+  RUST_TOOLCHAIN: 1.94.0
+  WASM_PACK_VERSION: 0.15.0
+
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout-minutes: 90
+    steps:
+      - name: Checkout Turen build repository
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+
+      - name: Checkout official UPX and vendors
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          repository: upx/upx
+          ref: ${{ env.UPX_COMMIT }}
+          path: upstream/upx
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Checkout RetDec provenance source
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          repository: avast/retdec
+          ref: ${{ env.RETDEC_COMMIT }}
+          path: upstream/retdec
+          persist-credentials: false
+
+      - name: Install pinned CMake
+        id: cmake
+        uses: lukka/get-cmake@fffaaafeea488556c2c12dad60690008bc1caacb
+        with:
+          cmakeVersion: 3.31.6
+          useCloudCache: false
+          useLocalCache: true
+
+      - name: Build native UPX oracle and fixture
+        run: |
+          "${{ steps.cmake.outputs.cmake-path }}cmake" -S upstream/upx -B tools/static-unpack/native-build -DUPX_CONFIG_CMAKE_DISABLE_TEST=ON -DUPX_CONFIG_CMAKE_DISABLE_INSTALL=ON -DUPX_CONFIG_DISABLE_GITREV=ON
+          "${{ steps.cmake.outputs.cmake-path }}cmake" --build tools/static-unpack/native-build --target upx -j2
+          cc tools/static-unpack/test/fixture.c -o tools/static-unpack/test/fixture
+          tools/static-unpack/native-build/upx --lzma -o tools/static-unpack/test/fixture.upx tools/static-unpack/test/fixture
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install pinned wasm-pack
+        run: cargo +"$RUST_TOOLCHAIN" install --locked wasm-pack --version "$WASM_PACK_VERSION"
+
+      - name: Install Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+
+      - name: Build and verify MPRESS reconstructor
+        run: |
+          wasm-pack build tools/static-unpack/mpress --target web --release --out-dir pkg
+          node tools/static-unpack/test/verify-mpress.mjs tools/static-unpack/mpress/pkg
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Build and verify official UPX runtime
+        run: |
+          bash tools/static-unpack/script/build-upx.sh
+          node tools/static-unpack/test/verify-upx.mjs tools/static-unpack/dist tools/static-unpack/test/fixture.upx tools/static-unpack/test/fixture
+        env:
+          CMAKE_BIN: ${{ steps.cmake.outputs.cmake-path }}
+
+      - name: Pack Forge workspace artifact
+        run: node tools/static-unpack/script/pack.mjs tools/static-unpack/dist tools/static-unpack/mpress/pkg packages/static-unpack-wasm upstream/upx upstream/retdec
+
+      - name: Verify packaged static API
+        run: node tools/static-unpack/test/verify-package.mjs packages/static-unpack-wasm/dist tools/static-unpack/test/fixture.upx tools/static-unpack/test/fixture
+
+      - name: Open package update PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          add-paths: packages/static-unpack-wasm
+          branch: wasm/static-unpack-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild static-unpack-wasm"
+          title: "chore(wasm): rebuild static-unpack-wasm"
+          body: "Rebuilt `packages/static-unpack-wasm` from `tools/static-unpack` at ${{ github.sha }}."

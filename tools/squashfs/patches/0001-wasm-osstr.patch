@@ -1,0 +1,106 @@
+backhand: add OsStr byte fallback for wasm32-unknown-unknown
+
+backhand's unix_string modules only implement their OsStrExt/OsStringExt
+traits under cfg(unix) and cfg(windows). wasm32-unknown-unknown is neither,
+so the v3 and v4 readers fail to compile for the WASM target.
+
+This patch adds a fallback implementation for any other target that uses the
+opaque self-synchronizing OsStr encoding (as_encoded_bytes /
+from_encoded_bytes_unchecked / from_encoded_bytes). On
+wasm32-unknown-unknown that encoding is the identity byte representation
+(std uses the byte-based os_str fallback on targets without a real OS
+string type), so arbitrary squashfs name bytes round-trip exactly, matching
+the unix implementation's behavior. On any hypothetical target where the
+encoding were not identity, the implementation still never reads back
+anything that was not produced through these same functions, so it remains
+self-consistent.
+
+Applies cleanly to backhand @ eccf81b6f599cb90245d7c9694e95ee6023cad06
+(v0.25.3). Reportable upstream as a portability gap.
+
+diff --git a/backhand/src/v3/unix_string.rs b/backhand/src/v3/unix_string.rs
+index 3c5cd41..2f639ce 100644
+--- a/backhand/src/v3/unix_string.rs
++++ b/backhand/src/v3/unix_string.rs
+@@ -35,6 +35,25 @@ impl OsStrExt for OsStr {
+     }
+ }
+ 
++/// Fallback for targets without unix or Windows `OsStr` extensions (for
++/// example `wasm32-unknown-unknown`). Squashfs entry names are arbitrary bytes,
++/// so they are kept verbatim through the opaque self-synchronizing encoding
++/// used by `as_encoded_bytes`/`from_encoded_bytes_unchecked`.
++#[cfg(not(any(unix, windows)))]
++impl OsStrExt for OsStr {
++    fn as_bytes(&self) -> &[u8] {
++        self.as_encoded_bytes()
++    }
++
++    fn from_bytes(slice: &[u8]) -> &Self {
++        // SAFETY: every `OsStr` this library stores is produced through
++        // `from_bytes`/`from_vec` below and only ever read back through
++        // `as_encoded_bytes` or lossy display, so the encoded representation
++        // stays self-consistent.
++        unsafe { OsStr::from_encoded_bytes_unchecked(slice) }
++    }
++}
++
+ pub trait OsStringExt {
+     fn from_vec(vec: Vec<u8>) -> Self;
+ }
+@@ -52,3 +71,12 @@ impl OsStringExt for OsString {
+         OsStr::from_bytes(vec.as_slice()).into()
+     }
+ }
++
++#[cfg(not(any(unix, windows)))]
++impl OsStringExt for OsString {
++    fn from_vec(vec: Vec<u8>) -> Self {
++        // SAFETY: see `OsStrExt::from_bytes` above; the byte representation is
++        // only ever produced and consumed inside this library.
++        unsafe { OsString::from_encoded_bytes_unchecked(vec) }
++    }
++}
+diff --git a/backhand/src/v4/unix_string.rs b/backhand/src/v4/unix_string.rs
+index 3c5cd41..2f639ce 100644
+--- a/backhand/src/v4/unix_string.rs
++++ b/backhand/src/v4/unix_string.rs
+@@ -35,6 +35,25 @@ impl OsStrExt for OsStr {
+     }
+ }
+ 
++/// Fallback for targets without unix or Windows `OsStr` extensions (for
++/// example `wasm32-unknown-unknown`). Squashfs entry names are arbitrary bytes,
++/// so they are kept verbatim through the opaque self-synchronizing encoding
++/// used by `as_encoded_bytes`/`from_encoded_bytes_unchecked`.
++#[cfg(not(any(unix, windows)))]
++impl OsStrExt for OsStr {
++    fn as_bytes(&self) -> &[u8] {
++        self.as_encoded_bytes()
++    }
++
++    fn from_bytes(slice: &[u8]) -> &Self {
++        // SAFETY: every `OsStr` this library stores is produced through
++        // `from_bytes`/`from_vec` below and only ever read back through
++        // `as_encoded_bytes` or lossy display, so the encoded representation
++        // stays self-consistent.
++        unsafe { OsStr::from_encoded_bytes_unchecked(slice) }
++    }
++}
++
+ pub trait OsStringExt {
+     fn from_vec(vec: Vec<u8>) -> Self;
+ }
+@@ -52,3 +71,12 @@ impl OsStringExt for OsString {
+         OsStr::from_bytes(vec.as_slice()).into()
+     }
+ }
++
++#[cfg(not(any(unix, windows)))]
++impl OsStringExt for OsString {
++    fn from_vec(vec: Vec<u8>) -> Self {
++        // SAFETY: see `OsStrExt::from_bytes` above; the byte representation is
++        // only ever produced and consumed inside this library.
++        unsafe { OsString::from_encoded_bytes_unchecked(vec) }
++    }
++}

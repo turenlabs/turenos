@@ -4,8 +4,6 @@ import { createSimpleContext } from "@turenlabs/ui/context"
 import { persisted } from "@/utils/persist"
 import { usePlatform } from "@/context/platform"
 
-export const OFFICIAL_CATALOG_ENDPOINT = "https://catalog.turen.io"
-
 export interface NotificationSettings {
   agent: boolean
   permissions: boolean
@@ -37,7 +35,6 @@ export interface Settings {
     editToolPartsExpanded: boolean
     patchToolPartsExpanded?: boolean
     showCustomAgents: boolean
-    catalogEndpoint?: string
     lobbyBetaEnabled?: boolean
     automationsEnabled?: boolean
     lobbyAPIURL?: string
@@ -185,7 +182,6 @@ const defaultSettings: Settings = {
     shellToolPartsExpanded: false,
     editToolPartsExpanded: false,
     showCustomAgents: false,
-    catalogEndpoint: OFFICIAL_CATALOG_ENDPOINT,
     lobbyBetaEnabled: lobbyBetaEnabledDefault,
     automationsEnabled: automationsEnabledDefault,
     lobbyAPIURL: "",
@@ -396,13 +392,6 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         showCustomAgents,
         setShowCustomAgents(value: boolean) {
           setStore("general", "showCustomAgents", value)
-        },
-        catalogEndpoint: withFallback(
-          () => store.general?.catalogEndpoint || OFFICIAL_CATALOG_ENDPOINT,
-          OFFICIAL_CATALOG_ENDPOINT,
-        ),
-        setCatalogEndpoint(value: string) {
-          setStore("general", "catalogEndpoint", value)
         },
         lobbyBetaEnabled: withFallback(() => store.general?.lobbyBetaEnabled, lobbyBetaEnabledDefault),
         setLobbyBetaEnabled(value: boolean) {

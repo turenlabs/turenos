@@ -1,0 +1,7 @@
+Stalwart Labs LLC mail-auth 0.12.1 is included as a vendored, modified
+dependency. Its Apache-2.0 OR MIT license and copyright notices are retained
+under vendor/mail-auth/LICENSES.
+
+The Turen fork adds the dns-offline feature. It never loads Hickory, DoH, or
+another live DNS backend; missing snapshot records return an explicit resolver
+error.

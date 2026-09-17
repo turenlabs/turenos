@@ -26,6 +26,7 @@ export const VERSIONED_PACKAGE_FILES = [
 ] as const
 
 export const INDEPENDENTLY_VERSIONED_PACKAGE_FILES = [
+  "command-guard/package.json",
   "packages/apk-dex-wasm/package.json",
   "packages/binary-diff-wasm/package.json",
   "packages/binwalk-scan-wasm/package.json",
@@ -110,7 +111,9 @@ export async function discoverVersionedPackageFiles() {
     "node_modules",
     "out",
     "scratch",
+    "services",
     "target",
+    "tools",
   ])
 
   async function scan(directory: string, relative: string): Promise<string[]> {

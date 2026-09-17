@@ -1,0 +1,68 @@
+name: Build pdf-inspect WASM
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/build-pdf-inspect.yml"
+      - "tools/pdf-inspect/**"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-pdf-inspect
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  RUST_TOOLCHAIN: 1.97.1
+  WASM_PACK_VERSION: 0.15.0
+
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Turen build repository
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+
+      - name: Install pinned wasm-pack
+        run: cargo +"$RUST_TOOLCHAIN" install --locked wasm-pack --version "$WASM_PACK_VERSION"
+
+      - name: Build pdf-inspect WASM
+        run: wasm-pack build tools/pdf-inspect --target web --release --out-dir pkg
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Verify bounded inspection API
+        run: node tools/pdf-inspect/test/verify.mjs tools/pdf-inspect/pkg
+
+      - name: Pack Forge workspace artifact
+        run: node tools/pdf-inspect/script/pack.mjs tools/pdf-inspect/pkg packages/pdf-inspect-wasm
+
+      - name: Verify package hashes
+        working-directory: packages/pdf-inspect-wasm
+        run: shasum -a 256 -c SHA256SUMS
+
+      - name: Open package update PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          add-paths: packages/pdf-inspect-wasm
+          branch: wasm/pdf-inspect-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild pdf-inspect-wasm"
+          title: "chore(wasm): rebuild pdf-inspect-wasm"
+          body: "Rebuilt `packages/pdf-inspect-wasm` from `tools/pdf-inspect` at ${{ github.sha }}."
