@@ -39,6 +39,7 @@ import { SecurityStorage } from "@/security/storage"
 import { Scanner } from "@/security/util/scanner"
 import { FORGE_CLI_COMMAND, resolvePtyCommand } from "@/server/pty-command"
 import { McpIntegration } from "./integration"
+import { McpCaBundle } from "./ca-bundle"
 import { McpRuntime } from "./runtime"
 import { ExtensionRuntime } from "@turenlabs/core/extension"
 import { Storage } from "@turenlabs/core/storage"
@@ -568,9 +569,11 @@ const layer = (allowUnmanaged: boolean) =>
           command: cmd,
           args,
           cwd,
-          env: resolved
-            ? isolatedStdioEnvironment(resolved.environment)
-            : localProcessEnvironment(key, mcp, environment, process.env, managed),
+          env: McpCaBundle.environment(
+            resolved
+              ? isolatedStdioEnvironment(resolved.environment)
+              : localProcessEnvironment(key, mcp, environment, process.env, managed),
+          ),
         })
 
         const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
