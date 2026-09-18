@@ -76,10 +76,14 @@ export function missingReleaseAssets(expected: readonly ReleaseAsset[], release:
     assertPublicInventory(expected, release.assets)
     return []
   }
-  const present = new Set(release.assets.map((asset) => asset.name))
+  // 'starter' records are uploads whose bytes arrived but were never finalized
+  // server-side. They are stale, not present — the upload loop removes them
+  // before re-uploading the name. 'uploaded' assets are never deleted.
+  const uploaded = release.assets.filter((asset) => asset.state === "uploaded")
+  const present = new Set(uploaded.map((asset) => asset.name))
   assertPublicInventory(
     expected.filter((asset) => present.has(asset.name)),
-    release.assets,
+    uploaded,
   )
   return expected.filter((asset) => !present.has(asset.name))
 }
@@ -306,7 +310,13 @@ async function main() {
     if (existingTag) {
       assertMirrorDiff(git(["diff", "--name-status", source, existingTag]))
       assert.equal(git(["show", "-s", "--format=%P", existingTag]), parent, "Public release has unexpected ancestry")
-      if (!verifyOnly) assert.equal(head, existingTag, "Public main has unrelated changes; refusing to overwrite")
+      // Main either still sits on the previous release (a prior run pushed the
+      // tag but died before publishing) or already advanced to this tag.
+      if (!verifyOnly)
+        assert.ok(
+          head === parent || head === existingTag,
+          "Public main has unrelated changes; refusing to overwrite",
+        )
       publicSource = existingTag
     } else {
       assert.ok(!existing, "A release exists without its public tag")
@@ -320,16 +330,11 @@ async function main() {
       const ref = `refs/release-public/${tag}`
       git(["update-ref", ref, publicSource])
       console.log("Publishing sanitized source with public-only ancestry")
-      git(
-        [
-          "push",
-          "--atomic",
-          `https://github.com/${PUBLIC_REPOSITORY}.git`,
-          `${ref}:refs/heads/main`,
-          `${ref}:refs/tags/${tag}`,
-        ],
-        publicToken,
-      )
+      // Only the tag is pushed here. Main advances after the release is fully
+      // published, so a run that dies mid-upload leaves a resumable orphan tag
+      // instead of moving main ahead of the last published release — which
+      // would fail this guard on every subsequent version.
+      git(["push", `https://github.com/${PUBLIC_REPOSITORY}.git`, `${ref}:refs/tags/${tag}`], publicToken)
     }
     assert.equal(publicTag(), publicSource, "Public tag changed during publication")
 
@@ -346,31 +351,42 @@ async function main() {
     assert.equal(release.tag_name, tag)
     if (release.draft && !verifyOnly) {
       console.log("Uploading missing verified artifacts without replacing existing assets")
-      for (const asset of missingReleaseAssets(privateRelease.assets, release)) {
+      while (true) {
         const current = await api<Release>(PUBLIC_REPOSITORY, `releases/${release.id}`)
         assert.equal(current.tag_name, tag, "Release tag changed during upload")
-        if (!missingReleaseAssets(privateRelease.assets, current).some((item) => item.name === asset.name)) continue
-        // The API rejects duplicate names. Never DELETE an asset or use --clobber,
-        // even if another operator publishes the draft during a long upload.
-        const upload = await fetch(
-          `https://uploads.github.com/repos/${PUBLIC_REPOSITORY}/releases/${release.id}/assets?name=${encodeURIComponent(asset.name)}`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${publicToken}`,
-              "Content-Type": "application/octet-stream",
-              "Content-Length": String(asset.size),
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-            body: Bun.file(path.join(privateDirectory, asset.name)),
-            signal: AbortSignal.timeout(15 * 60_000),
-          },
+        const pending = missingReleaseAssets(privateRelease.assets, current)
+        if (pending.length === 0) break
+        await Promise.all(
+          pending.slice(0, 4).map(async (asset) => {
+            // A 'starter' record is an upload whose bytes arrived but never
+            // finalized; it blocks the name until removed. Only 'starter'
+            // records are deleted — never 'uploaded' assets, even if another
+            // operator publishes the draft during a long upload.
+            const stuck = current.assets.find(
+              (entry) => entry.name === asset.name && entry.state === "starter",
+            )
+            if (stuck) await api(PUBLIC_REPOSITORY, `releases/assets/${stuck.id}`, "DELETE")
+            const upload = await fetch(
+              `https://uploads.github.com/repos/${PUBLIC_REPOSITORY}/releases/${release.id}/assets?name=${encodeURIComponent(asset.name)}`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${publicToken}`,
+                  "Content-Type": "application/octet-stream",
+                  "Content-Length": String(asset.size),
+                  "X-GitHub-Api-Version": "2022-11-28",
+                },
+                body: Bun.file(path.join(privateDirectory, asset.name)),
+                signal: AbortSignal.timeout(15 * 60_000),
+              },
+            )
+            if (!upload.ok)
+              throw new Error(
+                `Asset upload ${asset.name} returned HTTP ${upload.status}; existing assets were not replaced`,
+              )
+            assertPublicInventory([asset], [(await upload.json()) as ReleaseAsset])
+          }),
         )
-        if (!upload.ok)
-          throw new Error(
-            `Asset upload ${asset.name} returned HTTP ${upload.status}; existing assets were not replaced`,
-          )
-        assertPublicInventory([asset], [(await upload.json()) as ReleaseAsset])
       }
     }
     const uploaded = await api<Release>(PUBLIC_REPOSITORY, `releases/${release.id}`)
@@ -393,6 +409,12 @@ async function main() {
       const latest = await api<Release>(PUBLIC_REPOSITORY, "releases/latest")
       if (uploaded.draft || latest.id !== release.id) {
         await api(PUBLIC_REPOSITORY, `releases/${release.id}`, "PATCH", { draft: false, make_latest: "true" })
+      }
+      // Main tracks the last fully published release. Fast-forward only — a
+      // non-fast-forward means unrelated public history, which must not be
+      // overwritten here either.
+      if (head !== publicSource) {
+        git(["push", `https://github.com/${PUBLIC_REPOSITORY}.git`, `${publicSource}:refs/heads/main`], publicToken)
       }
     }
     if (verifyOnly && uploaded.draft) throw new Error("Public release is still a draft")

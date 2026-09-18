@@ -78,7 +78,7 @@ describe("release support", () => {
     }
   })
   test("public inventory compares all metadata and rejects ambiguous assets", () => {
-    const asset: ReleaseAsset = { name: "forge.zip", size: 2, digest: `sha256:${digest("ok")}`, state: "uploaded" }
+    const asset: ReleaseAsset = { id: 1, name: "forge.zip", size: 2, digest: `sha256:${digest("ok")}`, state: "uploaded" }
     expect(() => assertPublicInventory([asset], [{ ...asset }])).not.toThrow()
     for (const actual of [
       [],
@@ -161,7 +161,8 @@ async function fixture() {
   for (const name of [...contents.keys()]) {
     if (name !== "RELEASE_SIGNING_KEY.asc") contents.set(`${name}.asc`, "signature")
   }
-  const assets: ReleaseAsset[] = [...contents].map(([name, value]) => ({
+  const assets: ReleaseAsset[] = [...contents].map(([name, value], index) => ({
+    id: index + 1,
     name,
     size: Buffer.byteLength(value),
     digest: `sha256:${digest(value)}`,

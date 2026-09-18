@@ -16,7 +16,7 @@ import {
   useTabs,
   useWslServers,
 } from "@turenlabs/app"
-import type { UpdaterState } from "@turenlabs/app/updater"
+import type { UpdaterSnapshot } from "@turenlabs/app/updater"
 import { mountLaunchScreen } from "@turenlabs/app/launch"
 import * as Sentry from "@sentry/solid"
 import type { AsyncStorage } from "@solid-primitives/storage"
@@ -67,8 +67,8 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 
 void initI18n()
 
-const [updaterState, setUpdaterState] = createSignal<UpdaterState>({ status: "disabled" })
-void window.api.updater.subscribe(setUpdaterState)
+const [updaterSnapshot, setUpdaterSnapshot] = createSignal<UpdaterSnapshot>({ state: { status: "disabled" }, lag: 0 })
+void window.api.updater.subscribe(setUpdaterSnapshot)
 
 const deepLinkEvent = "forge:deep-link"
 
@@ -225,9 +225,11 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
     storage,
 
     updater: {
-      state: updaterState,
+      state: () => updaterSnapshot().state,
+      lag: () => updaterSnapshot().lag,
       check: () => window.api.updater.check(),
       install: () => window.api.updater.install(),
+      setLag: (lag: number) => window.api.updater.setLag(lag),
     },
 
     exportDebugLogs: () => window.api.exportDebugLogs(),

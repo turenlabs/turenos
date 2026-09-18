@@ -156,6 +156,12 @@ const SettingsGeneralContent: Component<{
 
   const updater = useUpdaterAction()
 
+  const updateTrackOptions = createMemo(() => [
+    { value: 0, label: language.t("settings.updates.track.option.latest") },
+    { value: 1, label: language.t("settings.updates.track.option.behindOne") },
+    { value: 2, label: language.t("settings.updates.track.option.behindTwo") },
+  ])
+
   const desktop = createMemo(() => platform.platform === "desktop")
 
   const themeOptions = createMemo<ThemeOption[]>(() => theme.ids().map((id) => ({ id, name: theme.name(id) })))
@@ -1112,6 +1118,25 @@ const SettingsGeneralContent: Component<{
             />
           </div>
         </SettingsRowV2>
+
+        <Show when={platform.updater}>
+          <SettingsRowV2
+            title={language.t("settings.updates.row.track.title")}
+            description={language.t("settings.updates.row.track.description")}
+          >
+            <SelectV2
+              appearance="inline"
+              data-action="settings-update-track"
+              options={updateTrackOptions()}
+              placement="bottom-end"
+              gutter={6}
+              current={updateTrackOptions().find((option) => option.value === platform.updater?.lag())}
+              value={(option) => String(option.value)}
+              label={(option) => option.label}
+              onSelect={(option) => option && void platform.updater?.setLag(option.value)}
+            />
+          </SettingsRowV2>
+        </Show>
 
         <SettingsRowV2
           title={language.t("settings.updates.row.check.title")}

@@ -1,5 +1,4 @@
 import { describe, expect } from "bun:test"
-import { $ } from "bun"
 import fs from "fs/promises"
 import path from "path"
 import { Effect, Exit } from "effect"
@@ -7,7 +6,7 @@ import * as TestConsole from "effect/testing/TestConsole"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Git } from "@turenlabs/core/git"
 import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
-import { branch, commit, gitRemote } from "./fixture/git"
+import { branch, commit, gitRemote, runGit } from "./fixture/git"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 
@@ -72,12 +71,12 @@ function read(file: string) {
 }
 
 async function initRepo(directory: string) {
-  await $`git init`.cwd(directory).quiet()
-  await $`git config core.fsmonitor false`.cwd(directory).quiet()
-  await $`git config commit.gpgsign false`.cwd(directory).quiet()
-  await $`git config user.email test@forge.test`.cwd(directory).quiet()
-  await $`git config user.name Test`.cwd(directory).quiet()
-  await $`git commit --allow-empty -m root`.cwd(directory).quiet()
+  await runGit(directory, "init")
+  await runGit(directory, "config", "core.fsmonitor", "false")
+  await runGit(directory, "config", "commit.gpgsign", "false")
+  await runGit(directory, "config", "user.email", "test@forge.test")
+  await runGit(directory, "config", "user.name", "Test")
+  await runGit(directory, "commit", "--allow-empty", "-m", "root")
 }
 
 describe("Git worktrees", () => {
@@ -166,8 +165,8 @@ describe("Git trees", () => {
         await fs.mkdir(path.join(root.path, "scope"))
         await fs.writeFile(path.join(root.path, "scope", "tracked.txt"), "one\n")
         await fs.writeFile(path.join(root.path, "outside.txt"), "outside\n")
-        await $`git add .`.cwd(root.path).quiet()
-        await $`git commit -m initial`.cwd(root.path).quiet()
+        await runGit(root.path, "add", ".")
+        await runGit(root.path, "commit", "-m", "initial")
       })
       const git = yield* Git.Service
       const source = yield* git.repo.discover(AbsolutePath.make(root.path))
@@ -220,8 +219,8 @@ describe("Git index", () => {
         await initRepo(project)
         await fs.writeFile(path.join(project, ".gitignore"), "build/\n")
         await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
-        await $`git add .`.cwd(project).quiet()
-        await $`git commit -qm tracked`.cwd(project).quiet()
+        await runGit(project, "add", ".")
+        await runGit(project, "commit", "-qm", "tracked")
       })
       const git = yield* Git.Service
       const source = yield* git.repo.discover(AbsolutePath.make(project))
@@ -234,7 +233,7 @@ describe("Git index", () => {
       // A failed ignore check once staged ignored build output; reproduce it by
       // injecting stale entries straight into the shadow index.
       yield* Effect.promise(async () => {
-        const blob = await $`git rev-parse HEAD:tracked.txt`.cwd(project).text()
+        const { stdout: blob } = await runGit(project, "rev-parse", "HEAD:tracked.txt")
         const entries = Array.from(
           { length: Git.BULK_REBUILD_THRESHOLD + 1 },
           (_, index) => `100644 ${blob.trim()}\tbuild/stale-${index}.txt`,
@@ -259,8 +258,8 @@ describe("Git index", () => {
 
       const lines = yield* TestConsole.logLines
       expect(lines.some((line) => String(line).includes("refresh bulk rebuild"))).toBe(true)
-      const files = yield* Effect.promise(() =>
-        $`git --git-dir ${repository.gitDirectory} --work-tree ${repository.worktree} ls-files`.cwd(project).text(),
+      const { stdout: files } = yield* Effect.promise(() =>
+        runGit(project, "--git-dir", repository.gitDirectory, "--work-tree", repository.worktree, "ls-files"),
       )
       expect(files.split("\n").filter(Boolean)).toEqual([".gitignore", "tracked.txt"])
     }),
@@ -278,8 +277,8 @@ describe("Git index", () => {
         await initRepo(project)
         await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
         await fs.writeFile(path.join(project, "untracked.txt"), "new\n")
-        await $`git add tracked.txt`.cwd(project).quiet()
-        await $`git commit -qm tracked`.cwd(project).quiet()
+        await runGit(project, "add", "tracked.txt")
+        await runGit(project, "commit", "-qm", "tracked")
       })
       const git = yield* Git.Service
       const source = yield* git.repo.discover(AbsolutePath.make(project))
@@ -300,8 +299,8 @@ describe("Git index", () => {
         .pipe(Effect.exit)
 
       expect(Exit.isFailure(exit)).toBe(true)
-      const files = yield* Effect.promise(() =>
-        $`git --git-dir ${repository.gitDirectory} --work-tree ${repository.worktree} ls-files`.cwd(project).text(),
+      const { stdout: files } = yield* Effect.promise(() =>
+        runGit(project, "--git-dir", repository.gitDirectory, "--work-tree", repository.worktree, "ls-files"),
       )
       expect(files.split("\n").filter(Boolean)).toEqual(["tracked.txt"])
     }),

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { SshServerConfig, WslServerConfig } from "../../preload/types"
-import type { UpdaterReadyRecord } from "../updater-controller"
+import { UPDATER_MAX_LAG, type UpdaterReadyRecord } from "../updater-controller"
 import {
   DEFAULT_SERVER_URL_KEY,
   FIRST_LAUNCH_ONBOARDING_COMPLETE_KEY,
@@ -27,6 +27,7 @@ const KEY = {
   pinchZoomEnabled: "pinch-zoom-enabled",
   windowIds: "window-ids",
   updaterReady: "updater-ready",
+  updaterLag: "updater-lag",
 } as const
 
 export type WindowGeometry = {
@@ -281,6 +282,8 @@ export function createDesktopProductStorage(options: Options) {
       await ready
       await removeRaw(owner, KEY.updaterReady)
     },
+    getUpdaterLag: (owner: Owner) => read(owner, KEY.updaterLag, isUpdaterLag),
+    setUpdaterLag: (owner: Owner, value: number) => write(owner, KEY.updaterLag, value),
     async getWindowLastActiveUrl(owner: Owner, id: string, legacy: { readable: boolean; value: string | null }) {
       await ready
       if (legacy.readable) {
@@ -392,6 +395,10 @@ function isSshServers(value: unknown): value is SshServerConfig[] {
 
 function isUpdaterReady(value: unknown): value is UpdaterReadyRecord {
   return typeof value === "object" && value !== null && "version" in value && typeof value.version === "string"
+}
+
+function isUpdaterLag(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= UPDATER_MAX_LAG
 }
 
 function normalizeWindowGeometry(value: unknown): WindowGeometry | undefined {

@@ -1,12 +1,36 @@
-import { app, dialog } from "electron"
+import { app, dialog, net } from "electron"
 import pkg from "electron-updater"
 import { UPDATER_ENABLED } from "./constants"
+import { releaseTag, type GitHubRelease } from "./updater-feed"
 import { createUpdaterController, type UpdaterReadyRecord } from "./updater-controller"
 import { getLogger } from "./logging"
 import type { DesktopProductStorage } from "./storage/product"
 import { setAppQuitting } from "./windows"
 
 const { autoUpdater } = pkg
+
+const RELEASES = "https://github.com/turenlabs/turenos/releases"
+const RELEASES_API = "https://api.github.com/repos/turenlabs/turenos/releases"
+
+/**
+ * Picks the update feed for a lag preference. Lag 0 keeps the default GitHub
+ * provider (`releases/latest`); lag > 0 resolves the tag that far back in the
+ * release list and pins a generic provider at that tag's own feed assets
+ * (`releases/download/<tag>/latest-*.yml` is uploaded with every release).
+ */
+async function updateFeed(lag: number) {
+  if (lag <= 0) return { provider: "github" as const, owner: "turenlabs", repo: "turenos" }
+  // net.fetch goes through Chromium's stack so corporate proxies are honored,
+  // matching how electron-updater itself reaches GitHub.
+  const response = await net.fetch(`${RELEASES_API}?per_page=10`, {
+    headers: { accept: "application/vnd.github+json", "user-agent": "turenos-updater" },
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!response.ok) throw new Error(`Could not list TurenOS releases (HTTP ${response.status})`)
+  const tag = releaseTag((await response.json()) as GitHubRelease[], lag)
+  if (!tag) throw new Error("No published TurenOS releases found")
+  return { provider: "generic" as const, url: `${RELEASES}/download/${tag}/` }
+}
 
 export function setupAutoUpdater(stop: () => Promise<void>, storage: DesktopProductStorage) {
   const logger = getLogger()
@@ -28,7 +52,10 @@ export function setupAutoUpdater(stop: () => Promise<void>, storage: DesktopProd
     enabled: UPDATER_ENABLED,
     currentVersion: app.getVersion(),
     backend: {
-      checkForUpdates: () => autoUpdater.checkForUpdates(),
+      checkForUpdates: async (lag) => {
+        autoUpdater.setFeedURL(await updateFeed(lag))
+        return autoUpdater.checkForUpdates()
+      },
       downloadUpdate: () => autoUpdater.downloadUpdate(),
       quitAndInstall: () => {
         // quitAndInstall closes all windows before emitting before-quit, so
@@ -48,6 +75,10 @@ export function setupAutoUpdater(stop: () => Promise<void>, storage: DesktopProd
       get: () => storage.getUpdaterReady(owner),
       set: (value: UpdaterReadyRecord) => storage.setUpdaterReady(owner, value),
       clear: () => storage.clearUpdaterReady(owner),
+    },
+    preference: {
+      get: () => storage.getUpdaterLag(owner),
+      set: (value: number) => storage.setUpdaterLag(owner, value),
     },
     stop,
     log: (message, data) => logger.log(message, data),

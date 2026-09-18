@@ -10,8 +10,16 @@ export type UpdaterState =
   | { status: "installing"; version: string }
   | { status: "error"; message: string }
 
+export type UpdaterSnapshot = {
+  state: UpdaterState
+  /** Releases behind latest the updater tracks: 0 = latest, 1 = n-1, 2 = n-2 */
+  lag: number
+}
+
 export type UpdaterPlatform = {
   state: Accessor<UpdaterState>
+  lag: Accessor<number>
   check(): Promise<UpdaterState>
   install(): Promise<void>
+  setLag(lag: number): Promise<void>
 }

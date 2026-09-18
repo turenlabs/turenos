@@ -21,8 +21,8 @@ const release = (tag: string, options: { draft?: boolean; prerelease?: boolean }
 
 describe("release publication decisions", () => {
   test("fills only missing draft assets and refuses replacements or a published partial release", () => {
-    const first = { name: "one.zip", size: 1, digest: `sha256:${"a".repeat(64)}`, state: "uploaded" }
-    const second = { ...first, name: "two.zip" }
+    const first = { id: 1, name: "one.zip", size: 1, digest: `sha256:${"a".repeat(64)}`, state: "uploaded" }
+    const second = { ...first, id: 2, name: "two.zip" }
     expect(missingReleaseAssets([first, second], { draft: true, assets: [first] })).toEqual([second])
     expect(missingReleaseAssets([first, second], { draft: false, assets: [first, second] })).toEqual([])
     // An operator publishes between the initial plan and the next upload: stop,
@@ -32,6 +32,11 @@ describe("release publication decisions", () => {
       missingReleaseAssets([first], { draft: true, assets: [{ ...first, digest: `sha256:${"b".repeat(64)}` }] }),
     ).toThrow()
     expect(() => missingReleaseAssets([first], { draft: true, assets: [first, second] })).toThrow()
+    // A 'starter' record is an upload that never finalized server-side: it
+    // counts as missing so the stuck record can be removed and re-uploaded.
+    expect(
+      missingReleaseAssets([first, second], { draft: true, assets: [first, { ...second, state: "starter" }] }),
+    ).toEqual([second])
   })
   test("never moves latest behind a newer stable release, even when that release is not marked latest", () => {
     expect(() => assertNotDowngrade("1.0.11", [release("v1.0.12")])).toThrow("Refusing")

@@ -28,13 +28,15 @@ env:
 jobs:
   release_context:
     name: Validate release targets
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
       contents: read
+      checks: read
     outputs:
       sha: ${{ steps.context.outputs.sha }}
       version: ${{ steps.context.outputs.version }}
+      ci_green: ${{ steps.ci.outputs.green }}
     steps:
       - name: Checkout trusted workflow revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,10 +58,29 @@ jobs:
           args=(--preflight --version "$RELEASE_VERSION")
           if [ "$PUBLISH_EXISTING" = true ]; then args+=(--publish-existing); fi
           bun script/release-distribute.ts "${args[@]}"
+      - name: Check whether the release commit already passed CI
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.context.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # The release script dispatches only after the version-bump commit's
+          # test+typecheck runs are green, so a green result here makes the
+          # in-workflow test gate redundant. Anything ambiguous (missing,
+          # in-progress, failed, or mixed conclusions) reruns the gate.
+          conclusions=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/check-runs?per_page=100" \
+            --jq '[.check_runs[] | select(.name=="test" or .name=="typecheck") | .conclusion] | unique')
+          echo "conclusions for $RELEASE_SHA: $conclusions"
+          if [ "$conclusions" = '["success"]' ]; then
+            echo "green=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "green=false" >> "$GITHUB_OUTPUT"
+          fi
 
   tests:
     needs: release_context
-    if: ${{ !inputs.publish_existing }}
+    if: ${{ !inputs.publish_existing && needs.release_context.outputs.ci_green != 'true' }}
     uses: ./.github/workflows/test.yml
     permissions:
       contents: read
@@ -67,7 +88,10 @@ jobs:
 
   preflight:
     needs: [release_context, tests]
-    runs-on: ubuntu-24.04
+    # A skipped tests job means the release commit's CI was already green (or
+    # this is --publish-existing); only failure or cancellation blocks.
+    if: ${{ always() && !cancelled() && needs.release_context.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.tests.result) }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       sha: ${{ steps.version.outputs.sha }}
       version: ${{ steps.version.outputs.version }}
@@ -200,23 +224,45 @@ jobs:
 
   build-runtime:
     needs: preflight
+    # An explicit if is required: a skipped tests job poisons the implicit
+    # success() check transitively, even through a successful preflight.
+    if: ${{ always() && needs.preflight.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:
         settings:
           - host: ubuntu-24.04
+            runner: blacksmith-8vcpu-ubuntu-2404
             artifact: runtime-linux-x64
           - host: ubuntu-24.04-arm
+            runner: blacksmith-8vcpu-ubuntu-2404-arm
             artifact: runtime-linux-arm64
           - host: macos-15-intel
+            runner: blacksmith-12vcpu-macos-15
             artifact: runtime-darwin-unsigned-x64
+            target: x86_64-apple-darwin
+            build_flags: --skip-install --platform
+            install_flags: --os=darwin --cpu="*"
           - host: macos-15
+            runner: blacksmith-6vcpu-macos-15
             artifact: runtime-darwin-unsigned-arm64
           - host: windows-2025
+            runner: blacksmith-8vcpu-windows-2025
             artifact: runtime-windows-unsigned-x64
+          # Blacksmith has no Windows ARM runner; arm64 is cross-compiled on
+          # x64. runs_artifacts skips steps that would execute the binary
+          # (Windows x64 cannot run arm64). install_flags gives the frozen
+          # workspace install all-arch .node variants, so build.ts can keep
+          # --skip-install instead of re-resolving the tree (which trips
+          # tree-sitter-powershell's node-gyp script on Windows).
           - host: windows-11-arm
+            runner: blacksmith-8vcpu-windows-2025
             artifact: runtime-windows-unsigned-arm64
-    runs-on: ${{ matrix.settings.host }}
+            target: aarch64-pc-windows-msvc
+            build_flags: --skip-install --platform
+            install_flags: --os=win32 --cpu="*"
+            runs_artifacts: false
+    runs-on: ${{ matrix.settings.runner }}
     defaults:
       run:
         shell: bash
@@ -228,12 +274,15 @@ jobs:
 
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
+        with:
+          install-flags: ${{ matrix.settings.install_flags }}
 
       - name: Build Desktop runtime targets
         env:
           FORGE_CHANNEL: prod
           FORGE_VERSION: ${{ needs.preflight.outputs.version }}
-        run: bun --cwd packages/forge script/build.ts --skip-install --platform
+          RUST_TARGET: ${{ matrix.settings.target }}
+        run: bun --cwd packages/forge script/build.ts ${{ matrix.settings.build_flags || '--skip-install --platform' }}
 
       - name: Verify bundled Vigil runtimes on Linux
         if: runner.os == 'Linux'
@@ -255,6 +304,10 @@ jobs:
             jq -e '.model_loaded == true and .fallback_used == false' vigil-result.json
           done
 
+      - name: Install Rosetta for x64 artifact verification
+        if: matrix.settings.host == 'macos-15-intel'
+        run: softwareupdate --install-rosetta --agree-to-license
+
       - name: Verify bundled Vigil runtimes on macOS
         if: runner.os == 'macOS'
         run: |
@@ -269,7 +322,7 @@ jobs:
           done
 
       - name: Verify bundled Vigil runtimes on Windows
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.settings.runs_artifacts != false
         shell: pwsh
         run: |
           Get-ChildItem packages/forge/dist -Directory -Filter "forge-windows-*" | ForEach-Object {
@@ -321,7 +374,8 @@ jobs:
 
   sign-runtime-macos:
     needs: [preflight, build-runtime]
-    runs-on: macos-15
+    if: ${{ always() && needs.preflight.result == 'success' && needs.build-runtime.result == 'success' }}
+    runs-on: blacksmith-6vcpu-macos-15
     steps:
       - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -404,7 +458,8 @@ jobs:
 
   sign-runtime-windows:
     needs: [preflight, build-runtime]
-    runs-on: windows-2025
+    if: ${{ always() && needs.preflight.result == 'success' && needs.build-runtime.result == 'success' }}
+    runs-on: blacksmith-4vcpu-windows-2025
     env:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -477,35 +532,46 @@ jobs:
 
   build-desktop:
     needs: preflight
+    if: ${{ always() && needs.preflight.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:
         settings:
           - host: macos-15-intel
+            runner: blacksmith-12vcpu-macos-15
             target: x86_64-apple-darwin
             platform_flag: --mac --x64
-            install_flags: --os=darwin --cpu=x64
+            install_flags: --os=darwin --cpu="*"
           - host: macos-15
+            runner: blacksmith-12vcpu-macos-15
             target: aarch64-apple-darwin
             platform_flag: --mac --arm64
             install_flags: --os=darwin --cpu=arm64
           - host: windows-2025
+            runner: blacksmith-8vcpu-windows-2025
             target: x86_64-pc-windows-msvc
             platform_flag: --win --x64
             install_flags: ""
+          # Cross-built on x64: --cpu="*" keeps x64 build tools runnable on the
+          # host while arm64 prebuilds ship in the app. runs_artifacts skips
+          # steps that execute the arm64 output.
           - host: windows-11-arm
+            runner: blacksmith-8vcpu-windows-2025
             target: aarch64-pc-windows-msvc
             platform_flag: --win --arm64
-            install_flags: --os=win32 --cpu=arm64
+            install_flags: --os=win32 --cpu="*"
+            runs_artifacts: false
           - host: ubuntu-24.04
+            runner: blacksmith-8vcpu-ubuntu-2404
             target: x86_64-unknown-linux-gnu
             platform_flag: --linux --x64
             install_flags: --os=linux --cpu=x64
           - host: ubuntu-24.04-arm
+            runner: blacksmith-8vcpu-ubuntu-2404-arm
             target: aarch64-unknown-linux-gnu
             platform_flag: --linux --arm64
             install_flags: --os=linux --cpu=arm64
-    runs-on: ${{ matrix.settings.host }}
+    runs-on: ${{ matrix.settings.runner }}
     env:
       FORGE_CHANNEL: prod
       FORGE_VERSION: ${{ needs.preflight.outputs.version }}
@@ -566,7 +632,12 @@ jobs:
         working-directory: packages/desktop
         run: bun ./scripts/prepare.ts
 
+      - name: Install Rosetta for x64 artifact verification
+        if: matrix.settings.host == 'macos-15-intel'
+        run: softwareupdate --install-rosetta --agree-to-license
+
       - name: Verify staged sidecar version
+        if: matrix.settings.runs_artifacts != false
         shell: bash
         working-directory: packages/desktop
         run: |
@@ -592,6 +663,7 @@ jobs:
           VITE_SENTRY_RELEASE: desktop@${{ needs.preflight.outputs.version }}
 
       - name: Verify Whiteboard native backend and renderer assets
+        if: matrix.settings.runs_artifacts != false
         working-directory: packages/desktop
         timeout-minutes: 3
         run: bun ./scripts/verify-whiteboard-artifact.ts
@@ -762,7 +834,8 @@ jobs:
 
   publish:
     needs: [preflight, build-runtime, sign-runtime-macos, sign-runtime-windows, build-desktop]
-    runs-on: ubuntu-24.04
+    if: ${{ always() && needs.preflight.result == 'success' && needs.build-runtime.result == 'success' && needs.sign-runtime-macos.result == 'success' && needs.sign-runtime-windows.result == 'success' && needs.build-desktop.result == 'success' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -937,18 +1010,71 @@ jobs:
           else
             echo "Resuming existing draft v${VERSION} at ${RELEASE_SHA}"
           fi
-          gh release upload "v${VERSION}" release-assets/* --repo "$GH_REPO" --clobber
-          verify_dir=$(mktemp -d)
-          gh release download "v${VERSION}" --repo "$GH_REPO" --dir "$verify_dir"
-          bun packages/desktop/scripts/update-artifacts.ts "$verify_dir" "$VERSION"
-          (
-            cd "$verify_dir"
-            sha256sum -c SHA256SUMS
-            for signature in *.asc; do
-              if [ "$signature" = RELEASE_SIGNING_KEY.asc ]; then continue; fi
-              gpg --batch --verify "$signature" "${signature%.asc}"
+          # The releases/tags endpoint does not resolve draft releases (a draft
+          # has no git tag yet), so look up the numeric release id once via
+          # `gh release view`, which resolves drafts by tag_name.
+          release_id=$(gh release view "v${VERSION}" --repo "$GH_REPO" \
+            --json databaseId --jq .databaseId)
+          test -n "$release_id"
+          # Upload one asset at a time: a transient failure retries only that
+          # file, already-uploaded assets are skipped on rerun, and
+          # half-written 'starter' records (bytes landed but the server-side
+          # save never finalized) are removed so the name can be re-uploaded.
+          # Never delete 'uploaded' assets or use --clobber: dropping a good
+          # asset before its replacement exists is unrecoverable mid-release.
+          for pass in 1 2 3 4 5; do
+            mapfile -t rows < <(gh api "repos/$GH_REPO/releases/$release_id" \
+              --jq '.assets[] | "\(.name)\t\(.state)\t\(.id)"')
+            declare -A state=()
+            for row in ${rows[@]+"${rows[@]}"}; do
+              IFS=$'\t' read -r asset_name asset_state asset_id <<< "$row"
+              if [ "$asset_state" = "starter" ]; then
+                gh api -X DELETE "repos/$GH_REPO/releases/assets/$asset_id"
+              else
+                state["$asset_name"]="$asset_state"
+              fi
             done
-          )
+            pending=()
+            for file in release-assets/*; do
+              name=$(basename "$file")
+              if [ "${state[$name]:-}" != "uploaded" ]; then pending+=("$file"); fi
+            done
+            failed=0
+            if [ ${#pending[@]} -gt 0 ]; then
+              printf '%s\0' "${pending[@]}" | xargs -0 -P 4 -I{} \
+                gh release upload "v${VERSION}" {} --repo "$GH_REPO" || failed=1
+            fi
+            if [ "$failed" = "0" ]; then break; fi
+            if [ "$pass" = "5" ]; then
+              echo "Asset upload did not converge after $pass passes" >&2
+              exit 1
+            fi
+            sleep $((pass * 15))
+          done
+          # Verify remote assets by API digest instead of re-downloading ~4 GB.
+          # GitHub's stored sha256 must match the signed SHA256SUMS, which
+          # proves the remote bytes equal the local copies that were just
+          # signed and verified above — so feed checks run on release-assets/.
+          verify_dir=$(mktemp -d)
+          gh api "repos/$GH_REPO/releases/$release_id" \
+            --jq '.assets[] | "\(.name)\t\(.state)\t\(.digest)"' > "$verify_dir/assets.tsv"
+          declare -A remote=()
+          while IFS=$'\t' read -r name state digest; do
+            remote["$name"]="$state $digest"
+          done < "$verify_dir/assets.tsv"
+          for file in release-assets/*; do
+            name=$(basename "$file")
+            entry=${remote[$name]:-}
+            if [ -z "$entry" ]; then echo "Missing release asset: $name" >&2; exit 1; fi
+            if [ "${entry%% *}" != "uploaded" ]; then
+              echo "Unfinalized release asset: $name ($entry)" >&2; exit 1
+            fi
+            sum=$(awk -v f="$name" '$2 == f { print $1 }' release-assets/SHA256SUMS)
+            if [ -n "$sum" ] && [ "$entry" != "uploaded sha256:$sum" ]; then
+              echo "Release asset digest mismatch: $name" >&2; exit 1
+            fi
+          done
+          bun packages/desktop/scripts/update-artifacts.ts release-assets "$VERSION"
           gh release edit "v${VERSION}" --repo "$GH_REPO" --draft=false
 
       - name: Remove release signing key
@@ -959,7 +1085,7 @@ jobs:
     name: Publish public release and Homebrew
     needs: [release_context, publish]
     if: ${{ always() && !cancelled() && needs.release_context.result == 'success' && (inputs.publish_existing || needs.publish.result == 'success') }}
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 60
     permissions:
       contents: read

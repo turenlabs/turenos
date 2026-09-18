@@ -47,6 +47,7 @@ TurenOS is not a sandbox. Agents can execute commands and modify files with your
 Engineering documentation lives in [docs/](docs/README.md). Start with:
 
 - [Claude Code provider](docs/claude-code.md) — using a local `claude auth login` subscription instead of an API key.
+- [Local models](docs/local-models.md) — running Bonsai 2 locally and connecting its OpenAI-compatible endpoint.
 - [Architecture](docs/architecture.md) — package boundaries, runtime topology, and durable data flows.
 - [Systems and subsystems](docs/systems.md) — responsibilities, ownership, and failure behavior across TurenOS.
 - [Branding and compatibility](docs/branding.md) — why some `forge` identifiers remain stable.

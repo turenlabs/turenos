@@ -161,7 +161,11 @@ if (singleFlag && process.env.RUST_TARGET && !requestedTarget) {
 }
 
 const targets = platformFlag
-  ? allTargets.filter((item) => item.os === process.platform && item.arch === process.arch)
+  ? allTargets.filter(
+      (item) =>
+        item.os === (requestedTarget?.os ?? process.platform) &&
+        item.arch === (requestedTarget?.arch ?? process.arch),
+    )
   : singleFlag
     ? allTargets.filter((item) => {
         if (requestedTarget) {

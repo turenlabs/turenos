@@ -217,8 +217,6 @@ export function SessionHeader() {
   const v2ActionsState = createMemo<SessionHeaderV2ActionsState>(() => ({
     statusVisible: status(),
     statusLabel: language.t("status.popover.trigger"),
-    projectName: name(),
-    projectDirectory: projectDirectory(),
   }))
 
   const selectApp = (app: OpenApp) => {
@@ -438,27 +436,14 @@ export function SessionHeader() {
 type SessionHeaderV2ActionsState = {
   statusVisible: boolean
   statusLabel: string
-  projectName: string
-  projectDirectory: string
 }
 
 function SessionHeaderV2Actions(props: { state: SessionHeaderV2ActionsState }) {
-  const language = useLanguage()
-
   return (
-    <div class="flex items-center gap-2">
-      <div
-        class="flex items-center gap-1.5 min-w-0 max-w-36 sm:max-w-48 h-6 px-2 rounded-md bg-v2-background-bg-layer-01 text-v2-text-text-muted"
-        title={props.state.projectDirectory}
-      >
-        <Icon name="folder" size="small" class="shrink-0" />
-        <span class="text-11-medium truncate">{props.state.projectName}</span>
-      </div>
-      <Show when={props.state.statusVisible}>
-        <Tooltip placement="bottom" value={props.state.statusLabel}>
-          <StatusPopoverV2 />
-        </Tooltip>
-      </Show>
-    </div>
+    <Show when={props.state.statusVisible}>
+      <Tooltip placement="bottom" value={props.state.statusLabel}>
+        <StatusPopoverV2 />
+      </Tooltip>
+    </Show>
   )
 }

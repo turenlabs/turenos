@@ -23,6 +23,7 @@ the reference when prose and code appear together.
 
 - [Claude Code](./claude-code.md): driving a local Claude Code subscription session.
 - [Muse Code](./muse-code.md): using the signed-in local Muse CLI with host-routed tools.
+- [Local models](./local-models.md): running Bonsai 2 with its supported local runtime and connecting the loopback API.
 - [Claude Code tool routing](./claude-code-tool-routing.md): routing `claude -p` tools through
   TurenOS policy and settlement boundaries.
 - [Secure storage](./secure-storage.md): encrypting credentials and sensitive files with the

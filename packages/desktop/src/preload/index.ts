@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron"
 import type { ElectronAPI, ProfilerAPI, SshServersEvent, WslServersEvent } from "./types"
-import type { UpdaterState } from "@turenlabs/app/updater"
+import type { UpdaterSnapshot } from "@turenlabs/app/updater"
 import type { ProfilerStatus } from "@turenlabs/app/profiler"
 
 /**
@@ -27,12 +27,12 @@ const profiler: ProfilerAPI | undefined = PROFILER_ENABLED
     }
   : undefined
 
-const updaterCallbacks = new Set<(state: UpdaterState) => void>()
-let updaterState: UpdaterState | undefined
+const updaterCallbacks = new Set<(snapshot: UpdaterSnapshot) => void>()
+let updaterSnapshot: UpdaterSnapshot | undefined
 let updaterSubscription: Promise<void> | undefined
-const updaterHandler = (_: unknown, state: UpdaterState) => {
-  updaterState = state
-  updaterCallbacks.forEach((callback) => callback(state))
+const updaterHandler = (_: unknown, snapshot: UpdaterSnapshot) => {
+  updaterSnapshot = snapshot
+  updaterCallbacks.forEach((callback) => callback(snapshot))
 }
 
 const api: ElectronAPI = {
@@ -84,7 +84,7 @@ const api: ElectronAPI = {
   updater: {
     subscribe: async (cb) => {
       updaterCallbacks.add(cb)
-      if (updaterState) cb(updaterState)
+      if (updaterSnapshot) cb(updaterSnapshot)
       if (!updaterSubscription) {
         ipcRenderer.on("updater-state", updaterHandler)
         updaterSubscription = ipcRenderer.invoke("updater-subscribe")
@@ -100,6 +100,7 @@ const api: ElectronAPI = {
     },
     check: () => ipcRenderer.invoke("updater-check"),
     install: () => ipcRenderer.invoke("updater-install"),
+    setLag: (lag) => ipcRenderer.invoke("updater-set-lag", lag),
   },
   consumeInitialDeepLinks: () => ipcRenderer.invoke("consume-initial-deep-links"),
   getDefaultServerUrl: () => ipcRenderer.invoke("get-default-server-url"),

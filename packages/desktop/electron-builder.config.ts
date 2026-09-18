@@ -351,6 +351,11 @@ const artifactArch = process.env.RUST_TARGET?.startsWith("x86_64")
 
 const getBase = (appId: string): Configuration => ({
   artifactName: `turenos-desktop-\${os}-${artifactArch}.\${ext}`,
+  // Every shipped native module has per-arch prebuilds (installed via
+  // --cpu="*" on cross builds); the only module without one — optional
+  // msgpackr-extract on win32-arm64 — falls back to JS. Rebuilding would
+  // need an ARM64 MSVC toolset on the x64 cross-build runner.
+  npmRebuild: false,
   afterPack: verifyPackage,
   publish: [
     {
@@ -444,6 +449,25 @@ const getBase = (appId: string): Configuration => ({
   mac: {
     category: "public.app-category.developer-tools",
     icon: `resources/icons/icon.icns`,
+    // Resource trees that ship only wasm/js/json data (no Mach-O), so the
+    // hardened-runtime sign pass would otherwise spend a codesign spawn per
+    // file for no benefit. Native payloads (vigil, forge-cli, native/) and
+    // app.asar.unpacked stay signed. If a listed dir ever gains a Mach-O,
+    // notarization fails visibly rather than shipping unsigned code.
+    signIgnore: [
+      "decompiler/",
+      "yara/",
+      "binary-tools/",
+      "static-analysis/",
+      "forensic-tools/",
+      "email-security/",
+      "email-authenticate/",
+      "wasm-inspect/",
+      "protocol-inspect/",
+      "debug-symbols/",
+      "binwalk-scan/",
+      ...wasmToolLeaves,
+    ].map((name) => `/Resources/${name}`),
     hardenedRuntime: true,
     gatekeeperAssess: false,
     extendInfo: {

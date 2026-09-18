@@ -8,7 +8,7 @@ import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Global } from "@turenlabs/core/global"
 import { Repository } from "@turenlabs/core/repository"
 import { RepositoryCache } from "@turenlabs/core/repository-cache"
-import { git, gitRemote } from "./fixture/git"
+import { gitRemote, runGit } from "./fixture/git"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 
@@ -54,7 +54,7 @@ describe("RepositoryCache", () => {
         const cache = yield* RepositoryCache.Service
         const initial = yield* cache.ensure({ reference: fixture.reference })
         yield* Effect.promise(async () => {
-          await git(initial.localPath, "config", "remote.origin.url", "https://github.com/other/repo.git")
+          await runGit(initial.localPath, "config", "remote.origin.url", "https://github.com/other/repo.git")
           await fs.writeFile(path.join(initial.localPath, "stale.txt"), "stale")
         })
 

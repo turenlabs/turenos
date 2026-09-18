@@ -266,6 +266,47 @@ describe("Desktop product Storage", () => {
     expect(await storage.getWindowLastActiveUrl("two", "two", { readable: false, value: null })).toBe("/two")
   })
 
+  // Contract: the updater track preference round-trips through Storage as a
+  // single global value (it is not partitioned by owner), and defaults to
+  // undefined — latest — when never set.
+  test("round-trips the updater track preference", async () => {
+    const app = await setup()
+    const storage = createDesktopProductStorage({
+      remote: app.state.api,
+      userDataPath: app.root,
+      legacy: () => ({ store: {} }),
+      oldLayoutEligible: () => false,
+    })
+    await storage.ready()
+
+    expect(await storage.getUpdaterLag("main")).toBeUndefined()
+    for (const lag of [0, 1, 2]) {
+      await storage.setUpdaterLag("main", lag)
+      expect(await storage.getUpdaterLag("main")).toBe(lag)
+    }
+  })
+
+  // Contract: a stored lag that is not an integer in the supported range
+  // fails closed on read — the raw value is preserved untouched so a
+  // misbehaving writer can never silently pin the user to a bad track.
+  test.each(["3", "-1", "1.5", '"1"', "not-json"])(
+    "rejects a malformed updater-lag value %s without rewriting it",
+    async (value) => {
+      const app = await setup()
+      const storage = createDesktopProductStorage({
+        remote: app.state.api,
+        userDataPath: app.root,
+        legacy: () => ({ store: {} }),
+        oldLayoutEligible: () => false,
+      })
+      await storage.ready()
+      await app.state.api.set("desktop/store/product-state-v1", "updater-lag", value)
+
+      await expect(storage.getUpdaterLag("main")).rejects.toThrow("Invalid Desktop product Storage value")
+      expect(await app.state.api.get("desktop/store/product-state-v1", "updater-lag")).toMatchObject({ value })
+    },
+  )
+
   test("fails closed and preserves malformed Product Storage values", async () => {
     const app = await setup()
     const storage = createDesktopProductStorage({

@@ -145,9 +145,9 @@ export function registerIpcHandlers(deps: Deps) {
     const id = event.sender.id
     updaterSubscriptions.set(
       id,
-      deps.updater.subscribe((state) => {
+      deps.updater.subscribe((snapshot) => {
         if (event.sender.isDestroyed()) return updaterSubscriptions.delete(id)
-        event.sender.send("updater-state", state)
+        event.sender.send("updater-state", snapshot)
       }),
     )
     event.sender.once("destroyed", () => updaterSubscriptions.delete(id))
@@ -155,6 +155,7 @@ export function registerIpcHandlers(deps: Deps) {
   ipcMain.handle("updater-unsubscribe", (event) => updaterSubscriptions.delete(event.sender.id))
   ipcMain.handle("updater-check", () => deps.updater.check())
   ipcMain.handle("updater-install", () => deps.updater.install())
+  ipcMain.handle("updater-set-lag", (_event: IpcMainInvokeEvent, lag: number) => deps.updater.setLag(lag))
   ipcMain.handle("set-background-color", (_event: IpcMainInvokeEvent, color: string) => deps.setBackgroundColor(color))
   ipcMain.handle("export-debug-logs", () => deps.exportDebugLogs())
   ipcMain.handle("security-proxy", async (event, value: unknown) => {

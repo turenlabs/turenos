@@ -18,7 +18,7 @@ export const MIRROR_EXCLUSIONS = [
   "verify-defect-fixes.sh",
 ] as const
 
-export type ReleaseAsset = { name: string; size: number; digest?: string | null; state?: string }
+export type ReleaseAsset = { id: number; name: string; size: number; digest?: string | null; state?: string }
 export type ReleaseManifest = {
   version: string
   commit: string

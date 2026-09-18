@@ -1,7 +1,7 @@
 import type { DesktopMenuAction } from "@turenlabs/app/desktop-menu"
 import type { WslServersPlatform } from "@turenlabs/app/wsl/types"
 import type { SshServersPlatform } from "@turenlabs/app/ssh/types"
-import type { UpdaterState } from "@turenlabs/app/updater"
+import type { UpdaterSnapshot, UpdaterState } from "@turenlabs/app/updater"
 import type { ProfilerPlatform } from "@turenlabs/app/profiler"
 import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
 export type {
@@ -43,9 +43,10 @@ export type SshServersAPI = SshServersPlatform
 /** Dev builds only; absent from the bridge in beta and prod builds. */
 export type ProfilerAPI = ProfilerPlatform
 export type UpdaterAPI = {
-  subscribe: (cb: (state: UpdaterState) => void) => Promise<() => void>
+  subscribe: (cb: (snapshot: UpdaterSnapshot) => void) => Promise<() => void>
   check: () => Promise<UpdaterState>
   install: () => Promise<void>
+  setLag: (lag: number) => Promise<void>
 }
 
 export type LinuxDisplayBackend = "wayland" | "auto"
