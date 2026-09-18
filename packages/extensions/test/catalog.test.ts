@@ -520,7 +520,21 @@ describe("ExtensionCatalog", () => {
       id: "automox-local",
       authentication: "key",
       localOnly: true,
-      deployment: { type: "local", command: "uvx", platforms: ["darwin", "linux", "win32"] },
+      deployment: {
+        type: "managed",
+        package: "automox-mcp",
+        version: "2.2.9",
+        cutoff: "2026-07-22T01:44:15Z",
+        command: "automox-mcp",
+        args: [],
+        platforms: ["darwin", "linux", "win32"],
+        environment: {
+          AUTOMOX_ORG_ID: { configuration: "organizationId" },
+          AUTOMOX_MCP_READ_ONLY: "true",
+          AUTOMOX_MCP_SANITIZE_RESPONSES: "true",
+          AUTOMOX_MCP_SKIP_DOTENV: "1",
+        },
+      },
       tools: { write: [] },
     })
     if (contribution?.type !== "mcp") throw new Error("Automox MCP contribution is missing")
@@ -638,5 +652,133 @@ describe("ExtensionCatalog", () => {
         }),
       ),
     ).toThrow("absolute URL path")
+  })
+
+  const officialManaged = (deployment: object, contribution: object = {}) =>
+    remoteManifest({
+      id: "turenlabs/acme",
+      trust: "official",
+      contributions: [
+        remoteContribution({
+          configuration: [{ id: "region", label: "Region", required: true }],
+          deployment: {
+            type: "managed",
+            package: "acme-mcp",
+            version: "1.2.3",
+            cutoff: "2026-01-01T00:00:00Z",
+            command: "acme-mcp",
+            args: [],
+            platforms: ["darwin", "linux", "win32"],
+            ...deployment,
+          },
+          ...contribution,
+        }),
+      ],
+    })
+
+  test("rejects unsafe managed MCP package deployments", () => {
+    expect(() => ExtensionManifestPolicy.validateManifestPolicy(officialManaged({}))).not.toThrow()
+    expect(() =>
+      ExtensionManifestPolicy.validateManifestPolicy(
+        remoteManifest({
+          contributions: [
+            remoteContribution({
+              deployment: {
+                type: "managed",
+                package: "acme-mcp",
+                version: "1.2.3",
+                cutoff: "2026-01-01T00:00:00Z",
+                command: "acme-mcp",
+                args: [],
+                platforms: ["linux"],
+              },
+            }),
+          ],
+        }),
+      ),
+    ).toThrow("cannot execute a local MCP command")
+    for (const [deployment, message] of [
+      [{ package: "../evil" }, "Invalid managed MCP package name"],
+      [{ package: "bad name" }, "Invalid managed MCP package name"],
+      [{ version: "latest" }, "exact pinned release"],
+      [{ version: "^1.2.3" }, "exact pinned release"],
+      [{ cutoff: "soon" }, "valid ISO timestamp"],
+      [{ command: " acme-mcp" }, "Invalid managed MCP executable"],
+      [{ args: ["--flag "] }, "Invalid managed MCP argument"],
+      [{ platforms: [] }, "at least one platform"],
+      [{ environment: { lower: "x" } }, "Invalid managed MCP environment name"],
+      [{ environment: { ACME_REGION: { configuration: "missing" } } }, "undeclared configuration"],
+      [{ environment: { ACME_TOKEN: { secret: "MISSING" } } }, "undeclared secret"],
+      [{ environment: { ACME_FLAG: " true" } }, "Invalid managed MCP environment value"],
+    ] as const) {
+      expect(() => ExtensionManifestPolicy.validateManifestPolicy(officialManaged(deployment))).toThrow(message)
+    }
+    expect(() =>
+      ExtensionManifestPolicy.validateManifestPolicy(
+        officialManaged({ environment: { ACME_REGION: { configuration: "region" } } }),
+      ),
+    ).not.toThrow()
+    expect(() =>
+      ExtensionManifestPolicy.validateManifestPolicy(
+        officialManaged({}, {
+          configuration: [{ id: "region", label: "Region", required: true, default: "other", options: ["us", "eu"] }],
+        }),
+      ),
+    ).toThrow("must be one of its options")
+  })
+
+  test("declares and enforces audited data endpoints", () => {
+    for (const manifest of ExtensionCatalog.manifests) {
+      for (const contribution of manifest.contributions) {
+        if (contribution.type !== "data") continue
+        expect(Object.keys(contribution.endpoints).length).toBeGreaterThan(0)
+      }
+    }
+    expect(ExtensionCatalog.dataEndpoint("security:kev")).toBe(
+      "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json",
+    )
+    expect(ExtensionCatalog.dataEndpoint("security:hibp", "passwords")).toBe(
+      "https://api.pwnedpasswords.com/range",
+    )
+    expect(() => ExtensionCatalog.dataEndpoint("security:hibp")).toThrow("address one by name")
+    expect(() => ExtensionCatalog.dataEndpoint("security:kev", "missing")).toThrow("not declared")
+
+    const dataManifest = (endpoints: object) =>
+      decode({
+        schemaVersion: 1,
+        id: "turenlabs/feed",
+        name: "Feed",
+        description: "A reviewed feed",
+        version: "1.0.0",
+        publisher: "Turen Labs",
+        trust: "official",
+        contributions: [
+          {
+            type: "data",
+            id: "feed",
+            name: "Feed",
+            description: "A reviewed feed",
+            instructions: "Preserve attribution.",
+            adapter: "security:feed",
+            secrets: [],
+            defaultEnabled: false,
+            endpoints,
+            tools: { allow: ["feed_lookup"], write: [] },
+          },
+        ],
+      })
+    expect(() =>
+      ExtensionManifestPolicy.validateManifestPolicy(dataManifest({ feed: "https://feed.example/api" })),
+    ).not.toThrow()
+    for (const [endpoints, message] of [
+      [{}, "at least one endpoint"],
+      [{ "Bad Name": "https://feed.example" }, "Invalid data endpoint name"],
+      [{ feed: "http://feed.example" }, "credential-free HTTPS"],
+      [{ feed: "https://user:pass@feed.example" }, "credential-free HTTPS"],
+      [{ feed: "https://127.0.0.1/feed" }, "public host"],
+      [{ feed: "https://169.254.169.254/feed" }, "public host"],
+    ] as const) {
+      expect(() => ExtensionManifestPolicy.validateManifestPolicy(dataManifest(endpoints))).toThrow(message)
+    }
   })
 })

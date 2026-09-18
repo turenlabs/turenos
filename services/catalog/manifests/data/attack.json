@@ -17,6 +17,7 @@
     "secrets": [],
     "defaultEnabled": false,
     "group": "security-knowledge",
+    "endpoints": { "feed": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/v19.2/enterprise-attack/enterprise-attack.json" },
     "tools": { "allow": ["attack_lookup", "attack_search"], "write": [] }
   }],
   "versions": [{ "version": "1.0.0", "published": "2026-08-25" }]

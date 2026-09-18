@@ -3,12 +3,17 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { CallToolResultSchema, type Tool } from "@modelcontextprotocol/sdk/types.js"
 import { InstallationVersion } from "@turenlabs/core/installation/version"
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import { ProviderConnectionPolicy } from "@/provider/connection-policy"
 import { classifyAddress } from "@/util/ip-address"
 import type { Integration } from "../registry"
 import { ToolError } from "../types"
 
-const ENDPOINT = "https://mcp.linear.app/mcp"
+const linearContribution = ExtensionCatalog.contribution("security:linear")
+if (linearContribution?.type !== "mcp" || linearContribution.deployment.type !== "hosted") {
+  throw new Error("Missing hosted MCP deployment for adapter: security:linear")
+}
+const ENDPOINT = linearContribution.deployment.url
 const TIMEOUT_MS = 30_000
 const IDLE_MS = 60_000
 const MAX_LIST_PAGES = 100

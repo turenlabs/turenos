@@ -1,8 +1,9 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchJson, HttpError } from "../../util/http"
 
-const API = "https://api.scorecard.dev"
+const API = ExtensionCatalog.dataEndpoint("security:scorecard")
 const CACHE_TTL_MS = 3_600_000
 const MAX_CHECKS = 20
 const ATTRIBUTION = "OpenSSF Scorecard (CDLA-Permissive-2.0)"

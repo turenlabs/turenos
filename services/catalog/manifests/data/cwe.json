@@ -17,6 +17,7 @@
     "secrets": [],
     "defaultEnabled": false,
     "group": "vulnerability-intelligence",
+    "endpoints": { "api": "https://cwe-api.mitre.org/api/v1" },
     "tools": { "allow": ["cwe_lookup", "cwe_relationships"], "write": [] }
   }],
   "versions": [{ "version": "1.0.0", "published": "2026-08-25" }]

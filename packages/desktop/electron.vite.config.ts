@@ -12,7 +12,6 @@ const channel = (() => {
   return "dev"
 })()
 
-const nodePtyPkg = `@lydell/node-pty-${process.platform}-${process.arch}`
 const binaryAssetNames = new Set(["goblin", "stng-core", "libpcap", "static-unpack", "monodis"])
 const emailSecurityAsset = "email-security"
 const emailAuthenticateAsset = "email-authenticate"
@@ -86,14 +85,30 @@ const require = __cjs_mod__.createRequire(import.meta.url);
 `,
         },
       },
-      externalizeDeps: { include: [nodePtyPkg], exclude: ["@turenlabs/schema", "@turenlabs/protocol"] },
+      externalizeDeps: { exclude: ["@turenlabs/schema", "@turenlabs/protocol"] },
     },
     plugins: [
       {
-        name: "forge:node-pty-narrower",
+        // The packaged arch can differ from the build host arch (x64 macOS and
+        // arm64 Windows are cross-built), so the platform package must be
+        // picked at app runtime, not bundle time.
+        name: "forge:node-pty-runtime",
         enforce: "pre",
         resolveId(s) {
-          if (s === "@lydell/node-pty") return nodePtyPkg
+          if (s === "@lydell/node-pty") return "\0forge:node-pty"
+        },
+        load(id) {
+          if (id !== "\0forge:node-pty") return
+          return [
+            'import { createRequire } from "node:module"',
+            "const pty = createRequire(import.meta.url)(`@lydell/node-pty-${process.platform}-${process.arch}`)",
+            "export const spawn = pty.spawn",
+            "export const fork = pty.fork",
+            "export const createTerminal = pty.createTerminal",
+            "export const open = pty.open",
+            "export const native = pty.native",
+            "export default pty",
+          ].join("\n")
         },
       },
       {

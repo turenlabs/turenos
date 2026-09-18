@@ -11,6 +11,7 @@
     "type": "data", "id": "datadog-malicious", "name": "Datadog Malicious Artifacts",
     "description": "Check AI skills and IDE extensions against Datadog's human-triaged dataset",
     "adapter": "security:datadog-malicious", "secrets": [],
+    "endpoints": { "feed": "https://raw.githubusercontent.com" },
     "tools": { "allow": ["datadog_malicious_artifact_lookup"], "write": [] }, "defaultEnabled": false,
     "instructions": "Use exact artifact names, preserve Datadog attribution, and never fetch or execute listed package archives."
   }],

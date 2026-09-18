@@ -1,8 +1,9 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchJson, HttpError } from "../../util/http"
 
-const ENDPOINT = "https://api.tweetfeed.live"
+const ENDPOINT = ExtensionCatalog.dataEndpoint("security:tweetfeed")
 const PATH = "/v1/ioc"
 const CACHE_TTL_MS = 3_600_000
 const MAX_IOC_LENGTH = 2_048

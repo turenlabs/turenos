@@ -19,15 +19,35 @@
         { "id": "FALCON_CLIENT_ID", "label": "Falcon API client ID", "required": true },
         { "id": "FALCON_CLIENT_SECRET", "label": "Falcon API client secret", "required": true }
       ],
-      "configuration": [{ "id": "baseUrl", "label": "Falcon cloud API URL (US-1 default)", "required": false }],
+      "configuration": [
+        {
+          "id": "baseUrl",
+          "label": "Falcon cloud API URL (US-1 default)",
+          "required": false,
+          "default": "https://api.crowdstrike.com",
+          "options": [
+            "https://api.crowdstrike.com",
+            "https://api.us-2.crowdstrike.com",
+            "https://api.eu-1.crowdstrike.com",
+            "https://api.laggar.gcw.crowdstrike.com"
+          ]
+        }
+      ],
       "defaultEnabled": false,
       "authentication": "key",
       "upstreamPolicy": "static",
       "localOnly": true,
       "deployment": {
-        "type": "local",
-        "command": "uvx",
-        "platforms": ["darwin", "linux", "win32"]
+        "type": "managed",
+        "package": "falcon-mcp",
+        "version": "0.16.1",
+        "cutoff": "2026-08-26T00:00:00Z",
+        "command": "falcon-mcp",
+        "args": ["--read-only"],
+        "platforms": ["darwin", "linux", "win32"],
+        "environment": {
+          "FALCON_BASE_URL": { "configuration": "baseUrl" }
+        }
       },
       "tools": {
         "allow": [

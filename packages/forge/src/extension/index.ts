@@ -386,7 +386,7 @@ const updateMcp = Effect.fn("Extension.updateMcp")(function* (
         yield* observeCurrent("failed", `${id} requires an audited credential adapter`)
         return
       }
-      if (McpPackageRuntime.managedPackage(id)) {
+      if (McpPackageRuntime.managedPackage(contribution)) {
         yield* observeCurrent("connecting", "Downloading and starting the pinned MCP package")
       }
       const entry = yield* McpIntegration.configuration(id, configuration, secrets)

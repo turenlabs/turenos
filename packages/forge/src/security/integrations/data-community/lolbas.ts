@@ -1,8 +1,10 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchJson, HttpError } from "../../util/http"
 
-const FEED_URL = "https://lolbas-project.github.io/api/lolbas.json"
+const FEED_URL = ExtensionCatalog.dataEndpoint("security:lolbas", "feed")
+const SITE_URL = ExtensionCatalog.dataEndpoint("security:lolbas", "site")
 const CACHE_TTL_MS = 24 * 3_600_000
 const DEFAULT_LIMIT = 10
 const MAX_RESULTS = 20
@@ -87,9 +89,9 @@ function entryName(record: JsonObject) {
 
 function sourceUrl(record: JsonObject) {
   const explicit = text(record, "URL", "Url", "url", "Link", "link")
-  if (explicit?.startsWith("https://lolbas-project.github.io/")) return explicit
+  if (explicit?.startsWith(SITE_URL)) return explicit
   const stem = (entryName(record) ?? "").replace(/\.[^.]+$/, "")
-  return `https://lolbas-project.github.io/lolbas/Binaries/${encodeURIComponent(stem)}/`
+  return `${SITE_URL}lolbas/Binaries/${encodeURIComponent(stem)}/`
 }
 
 function unique(values: (string | undefined)[], max: number) {

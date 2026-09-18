@@ -17,6 +17,7 @@
     "secrets": [],
     "defaultEnabled": false,
     "group": "supply-chain",
+    "endpoints": { "api": "https://api.scorecard.dev" },
     "tools": { "allow": ["scorecard_lookup"], "write": [] }
   }],
   "versions": [{ "version": "1.0.0", "published": "2026-08-25" }]

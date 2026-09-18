@@ -11,6 +11,7 @@
     "type": "data", "id": "tweetfeed", "name": "TweetFeed",
     "description": "Look up community-reported IOCs in TweetFeed's CC0 rolling feed",
     "adapter": "security:tweetfeed", "secrets": [],
+    "endpoints": { "api": "https://api.tweetfeed.live" },
     "tools": { "allow": ["tweetfeed_lookup"], "write": [] }, "defaultEnabled": false,
     "instructions": "Use TweetFeed as unvetted watchlist context. Preserve provenance, treat not-found as unknown, and corroborate matches before action."
   }],

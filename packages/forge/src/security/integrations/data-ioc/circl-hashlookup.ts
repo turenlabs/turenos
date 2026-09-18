@@ -1,8 +1,9 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchJson, HttpError } from "../../util/http"
 
-const ENDPOINT = "https://hashlookup.circl.lu"
+const ENDPOINT = ExtensionCatalog.dataEndpoint("security:circl-hashlookup")
 const SOURCE = "CIRCL hashlookup (CC BY 4.0, hashlookup.circl.lu)"
 const CACHE_TTL_MS = 3_600_000
 const HEX_RE = /^[0-9a-f]+$/i

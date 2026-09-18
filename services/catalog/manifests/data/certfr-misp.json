@@ -11,6 +11,7 @@
     "type": "data", "id": "certfr-misp", "name": "CERT-FR MISP",
     "description": "Search and inspect TLP:CLEAR threat events from CERT-FR and ANSSI",
     "adapter": "security:certfr-misp", "secrets": [],
+    "endpoints": { "api": "https://misp.cert.ssi.gouv.fr" },
     "tools": { "allow": ["certfr_misp_search", "certfr_misp_event"], "write": [] }, "defaultEnabled": false,
     "instructions": "Preserve CERT-FR/ANSSI attribution, TLP/PAP markings, and timestamps. Never dereference returned indicators."
   }],

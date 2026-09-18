@@ -21,6 +21,7 @@
           "required": false
         }
       ],
+      "endpoints": { "mcp": "https://mcp.exa.ai/mcp" },
       "tools": {
         "allow": ["websearch"],
         "write": []

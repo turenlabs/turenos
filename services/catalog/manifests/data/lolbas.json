@@ -17,6 +17,10 @@
     "secrets": [],
     "defaultEnabled": false,
     "group": "security-knowledge",
+    "endpoints": {
+      "feed": "https://lolbas-project.github.io/api/lolbas.json",
+      "site": "https://lolbas-project.github.io/"
+    },
     "tools": { "allow": ["lolbas_lookup", "lolbas_search"], "write": [] }
   }],
   "versions": [{ "version": "1.0.0", "published": "2026-08-25" }]

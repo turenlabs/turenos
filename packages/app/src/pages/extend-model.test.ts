@@ -39,6 +39,7 @@ const data = item("osv", {
   instructions: "Use OSV for vulnerability research.",
   adapter: "security:osv",
   secrets: [],
+  endpoints: { api: "https://api.osv.dev/v1" },
   tools: { allow: [], write: [] },
   defaultEnabled: true,
 })

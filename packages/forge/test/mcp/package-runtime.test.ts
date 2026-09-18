@@ -1,14 +1,23 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import { McpPackageRuntime } from "../../src/mcp/package-runtime"
 import { McpRuntime } from "../../src/mcp/runtime"
+
+function mcpItem(id: string) {
+  for (const manifest of ExtensionCatalog.manifests) {
+    const item = manifest.contributions.find((contribution) => contribution.type === "mcp" && contribution.id === id)
+    if (item?.type === "mcp") return item
+  }
+  throw new Error(`missing catalog contribution: ${id}`)
+}
 
 describe("managed MCP packages", () => {
   test("builds an isolated pinned Automox runtime", async () => {
     const executable = process.platform === "win32" ? "C:\\Turen\\uv-0.12.6.exe" : "/turen/bin/uv-0.12.6"
     const entry = await Effect.runPromise(
       McpPackageRuntime.configuration(
-        "automox-local",
+        mcpItem("automox-local"),
         { organizationId: "42" },
         { AUTOMOX_API_KEY: "secret-key", AUTOMOX_ACCOUNT_UUID: "account-uuid" },
         { ensureUv: async () => executable },
@@ -57,7 +66,7 @@ describe("managed MCP packages", () => {
     const executable = process.platform === "win32" ? "C:\\Turen\\uv-0.12.6.exe" : "/turen/bin/uv-0.12.6"
     const entry = await Effect.runPromise(
       McpPackageRuntime.configuration(
-        "crowdstrike-falcon",
+        mcpItem("crowdstrike-falcon"),
         {},
         { FALCON_CLIENT_ID: "client", FALCON_CLIENT_SECRET: "secret" },
         { ensureUv: async () => executable },
@@ -91,7 +100,7 @@ describe("managed MCP packages", () => {
     expect(
       await Effect.runPromise(
         McpPackageRuntime.configuration(
-          "crowdstrike-falcon",
+          mcpItem("crowdstrike-falcon"),
           { baseUrl: "https://credential-capture.example" },
           { FALCON_CLIENT_ID: "client", FALCON_CLIENT_SECRET: "secret" },
           { ensureUv: async () => executable },

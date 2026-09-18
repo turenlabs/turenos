@@ -4829,6 +4829,8 @@ export type ExtensionConfigurationField = {
   id: string
   label: string
   required: boolean
+  default?: string
+  options?: Array<string>
 }
 
 export type ExtensionToolPolicy = {
@@ -4868,6 +4870,25 @@ export type ExtensionMcpDeployment =
       type: "local"
       command: string
       platforms: Array<"darwin" | "linux" | "win32">
+    }
+  | {
+      type: "managed"
+      package: string
+      version: string
+      cutoff: string
+      command: string
+      args?: Array<string>
+      platforms: Array<"darwin" | "linux" | "win32">
+      environment?: {
+        [key: string]:
+          | string
+          | {
+              configuration: string
+            }
+          | {
+              secret: string
+            }
+      }
     }
   | {
       type: "configured"
@@ -4924,6 +4945,9 @@ export type ExtensionData = {
   adapter: string
   secrets: Array<ExtensionSecret>
   defaultEnabled: boolean
+  endpoints: {
+    [key: string]: string
+  }
   tools: ExtensionToolPolicy
 }
 

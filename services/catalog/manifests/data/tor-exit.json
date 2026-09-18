@@ -11,6 +11,7 @@
     "type": "data", "id": "tor-exit", "name": "Tor Exit Nodes",
     "description": "Classify IPv4 addresses against Tor's official near-real-time exit list",
     "adapter": "security:tor-exit", "secrets": [],
+    "endpoints": { "api": "https://check.torproject.org" },
     "tools": { "allow": ["tor_exit_lookup"], "write": [] }, "defaultEnabled": false,
     "instructions": "Treat Tor exit status as anonymity context, not malicious reputation or attribution. Never block solely from this classification."
   }],

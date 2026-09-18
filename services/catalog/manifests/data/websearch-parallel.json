@@ -21,6 +21,7 @@
           "required": false
         }
       ],
+      "endpoints": { "mcp": "https://search.parallel.ai/mcp" },
       "tools": {
         "allow": ["websearch"],
         "write": []

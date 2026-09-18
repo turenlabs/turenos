@@ -8,9 +8,12 @@ artifacts back into this directory.
 
 ## Layout
 
-- `manifests/data/` — read-only data sources on audited `security:<id>` adapters
+- `manifests/data/` — read-only data sources on audited `security:<id>` (and
+  `websearch:<id>`) adapters; each declares its fetch origins in `endpoints`,
+  resolved at runtime via `ExtensionCatalog.dataEndpoint(...)`
 - `manifests/skills/` — prompt-only skills and fixed-profile subagents (`skill:<id>`)
-- `manifests/mcp/` — hosted, customer-url, and local MCP definitions (`mcp:<id>`)
+- `manifests/mcp/` — hosted, customer-url, managed-package, and local MCP
+  definitions (`mcp:<id>`)
 - `manifests/tools/` — packaged WASM tool entries
 - `docs/` — feed license notes and the skill quality rubric
 
@@ -31,11 +34,21 @@ artifacts back into this directory.
 
 - Manifest IDs are stable `publisher/name` strings; contribution adapters are
   globally unique.
-- Data contributions keep `tools.write` empty and name concrete tools only.
+- Data contributions keep `tools.write` empty, name concrete tools only, and
+  declare their audited fetch origins in `endpoints` — the manifest is the
+  single source of truth for where data comes from; runtime adapters never
+  hardcode origins.
 - Skills carry bounded inline `source.content` (no secrets, commands,
   configuration, or tool policies) and meet `docs/skill-quality.md`.
 - MCP contributions declare deployment, authentication, explicit tool
   allowlists, and any secrets/configuration up front. Wildcard policies are
   prohibited.
-- New adapter IDs require a separately reviewed runtime in `packages/forge`;
-  a manifest never grants authority by itself.
+- `managed` deployments carry the full package recipe in the manifest —
+  pinned `package`/`version`, `cutoff` freshness timestamp, `command`,
+  `args`, `platforms`, and `environment` bindings to declared
+  configuration/secrets. The generic uv-managed runner in
+  `packages/forge/src/mcp/package-runtime.ts` executes them; no per-package
+  runtime code is needed. Managed deployments are official-trust only.
+- New adapter IDs and non-managed `local` deployments require a separately
+  reviewed runtime in `packages/forge`; a manifest never grants authority by
+  itself.

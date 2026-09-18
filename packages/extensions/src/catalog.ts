@@ -20,6 +20,27 @@ export function contribution(adapter: string) {
   return forAdapter(adapter)?.contributions.find((item) => item.adapter === adapter)
 }
 
+export function dataEndpoints(adapter: string) {
+  const item = contribution(adapter)
+  if (item?.type !== "data") throw new Error(`Missing data contribution for adapter: ${adapter}`)
+  return item.endpoints
+}
+
+export function dataEndpoint(adapter: string, name?: string) {
+  const endpoints = dataEndpoints(adapter)
+  if (name !== undefined) {
+    const url = endpoints[name]
+    if (!url) throw new Error(`Data endpoint "${name}" is not declared for adapter: ${adapter}`)
+    return url
+  }
+  const urls = Object.values(endpoints)
+  const url = urls[0]
+  if (urls.length !== 1 || !url) {
+    throw new Error(`Adapter ${adapter} declares ${urls.length} endpoints; address one by name`)
+  }
+  return url
+}
+
 export const writeToolActions = manifests.flatMap((manifest) =>
   manifest.contributions.flatMap((item) => {
     if (!("tools" in item)) return []

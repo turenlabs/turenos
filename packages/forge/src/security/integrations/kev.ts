@@ -1,3 +1,4 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../registry"
 import { ToolError, type IntegrationContext } from "../types"
 import { HttpError, fetchJson } from "../util/http"
@@ -11,7 +12,7 @@ import { HttpError, fetchJson } from "../util/http"
  * Data is CC0.
  */
 
-const KEV_FEED_URL = "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json"
+const KEV_FEED_URL = ExtensionCatalog.dataEndpoint("security:kev")
 const FEED_TTL_MS = 24 * 3_600_000
 const CVE_PATTERN = /^CVE-\d{4}-\d{4,}$/
 const MAX_CVE_IDS = 100

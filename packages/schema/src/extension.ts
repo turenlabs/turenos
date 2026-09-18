@@ -61,6 +61,8 @@ export const ConfigurationField = Schema.Struct({
   id: ConfigurationID,
   label: Schema.String,
   required: Schema.Boolean,
+  default: optional(Schema.String),
+  options: optional(Schema.Array(Schema.String)),
 }).annotate({ identifier: "Extension.ConfigurationField" })
 export type ConfigurationField = typeof ConfigurationField.Type
 
@@ -83,9 +85,17 @@ export type Tool = typeof Tool.Type
 export const Data = Schema.Struct({
   type: Schema.Literal("data"),
   ...Common,
+  endpoints: Schema.Record(Schema.String, Schema.String),
   tools: ToolPolicy,
 }).annotate({ identifier: "Extension.Data" })
 export type Data = typeof Data.Type
+
+export const ManagedEnvironmentValue = Schema.Union([
+  Schema.String,
+  Schema.Struct({ configuration: ConfigurationID }),
+  Schema.Struct({ secret: SecretID }),
+])
+export type ManagedEnvironmentValue = typeof ManagedEnvironmentValue.Type
 
 export const McpDeployment = Schema.Union([
   Schema.Struct({
@@ -98,6 +108,16 @@ export const McpDeployment = Schema.Union([
     type: Schema.Literal("local"),
     command: Schema.String,
     platforms: Schema.Array(Schema.Literals(["darwin", "linux", "win32"])),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("managed"),
+    package: Schema.String,
+    version: Schema.String,
+    cutoff: Schema.String,
+    command: Schema.String,
+    args: optional(Schema.Array(Schema.String)),
+    platforms: Schema.Array(Schema.Literals(["darwin", "linux", "win32"])),
+    environment: optional(Schema.Record(Schema.String, ManagedEnvironmentValue)),
   }),
   Schema.Struct({ type: Schema.Literal("configured") }),
 ])

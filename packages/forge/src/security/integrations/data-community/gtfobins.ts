@@ -1,8 +1,9 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchJson, HttpError } from "../../util/http"
 
-const FEED_URL = "https://gtfobins.org/api.json"
+const FEED_URL = ExtensionCatalog.dataEndpoint("security:gtfobins")
 const CACHE_TTL_MS = 24 * 3_600_000
 const DEFAULT_LIMIT = 10
 const MAX_RESULTS = 20

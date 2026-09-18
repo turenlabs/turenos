@@ -23,7 +23,7 @@ bun test           # catalog policy and validation tests
 manifests/
   data/     read-only cybersecurity data sources (security:<id> adapters)
   skills/   prompt-only skills and fixed-profile subagents (skill:<id>)
-  mcp/      hosted, customer-URL, and local MCP server definitions (mcp:<id>)
+  mcp/      hosted, customer-URL, managed-package, and local MCP definitions (mcp:<id>)
   tools/    packaged WASM security tools (tool adapters)
 docs/
   feed-licenses.md   data feed rights and exclusions
@@ -31,6 +31,15 @@ docs/
 ```
 
 Each manifest is one JSON file holding a single extension whose contributions share one type.
+
+`manifests/mcp/` deployment variants:
+
+- `hosted` — a fixed vendor HTTPS endpoint; TurenOS connects remotely.
+- `customer-url` — the user supplies their instance base URL; the manifest pins the path suffix.
+- `managed` — a pinned local package (`package`, `version`, `cutoff`, `command`, `args`, `platforms`, `environment`) run by the audited uv-managed runtime in `packages/forge/src/mcp/package-runtime.ts`. The manifest is the single source of truth for what executes; official trust only.
+- `local` — an executable the user already installed (for example the 1Password desktop app's bundled `1password-mcp`); TurenOS discovers it, never downloads it.
+
+`manifests/tools/` entries bind packaged WASM/binary security tools to their audited `security:<id>` adapters in `packages/forge/src/security`.
 
 ## Current Sources
 
@@ -123,6 +132,7 @@ Free tiers restricted to personal, internal, nonprofit, or noncommercial use are
       "instructions": "Preserve attribution and corroborate results before action.",
       "adapter": "security:example",
       "secrets": [],
+      "endpoints": { "api": "https://api.example.com/v1" },
       "defaultEnabled": false,
       "group": "threat-intelligence",
       "tools": {
@@ -143,8 +153,9 @@ Free tiers restricted to personal, internal, nonprofit, or noncommercial use are
 Required invariants:
 
 - IDs are stable and use the `publisher/name` form.
-- Each manifest contains only `data` contributions or only `skill` contributions.
+- Each manifest's contributions share one type: `data`, `skill`, `mcp`, or `tool`.
 - Adapter IDs are globally unique and must match an audited Turen runtime adapter.
+- Data contributions declare their audited origins in `endpoints` (named credential-free HTTPS URLs on public hosts). The adapter resolves them through `ExtensionCatalog.dataEndpoint(...)` — fetch origins are never hardcoded in runtime code.
 - Tool names are concrete; wildcard tool policies are prohibited.
 - `tools.write` must remain empty for Data sources.
 - Skill sources contain bounded prompt text only. They cannot declare secrets, commands, configuration, or tool authority.
@@ -172,3 +183,10 @@ Catalog metadata is not runtime authority. A data manifest may select only a sep
 4. List non-authoritative tool requirements so the UI can disclose expected capabilities.
 5. Review the entry against `docs/skill-quality.md`, then run `bun run generate` in `packages/extensions`.
 6. Installs are scanned by Vigil; reviewed manifests are allowlisted by digest in `packages/forge/src/skill/vigil.ts`.
+
+## Adding A Managed MCP Package
+
+1. Vendor audit the package and record the exact `version` pin and a `cutoff` timestamp that bounds its transitive dependencies.
+2. Declare the `managed` deployment with `command`, `args`, `platforms`, and `environment` bindings that reference declared `configuration` fields or `secrets` only.
+3. Keep the tool allowlist explicit and read-only where the package supports it (for example `--read-only`).
+4. Run `bun run generate` in `packages/extensions`; `validate.ts` enforces official trust, exact pins, safe declarations, and reference integrity.

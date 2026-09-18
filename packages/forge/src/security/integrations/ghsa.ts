@@ -1,3 +1,4 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../registry"
 import { ToolError, type IntegrationContext, type Severity, type VulnRecord } from "../types"
 import { fetchJson, HttpError } from "../util/http"
@@ -17,7 +18,7 @@ import { fetchJson, HttpError } from "../util/http"
  * Advisory data is CC-BY 4.0; every result carries the attribution string.
  */
 
-const API = "https://api.github.com/advisories"
+const API = ExtensionCatalog.dataEndpoint("security:ghsa")
 const CACHE_TTL_MS = 3_600_000 // ~1h, per CONVENTIONS.md for per-query APIs
 const MAX_ADVISORIES = 30
 const ATTRIBUTION = "GitHub Advisory Database (CC-BY 4.0)"

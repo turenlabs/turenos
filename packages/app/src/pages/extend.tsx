@@ -118,7 +118,8 @@ const extensionMcpDeployment = (item: ExtensionItem) => {
   const deployment = extensionMcps(item)[0]?.deployment
   if (!deployment) return undefined
   if (deployment.type === "customer-url") return "Customer endpoint"
-  return deployment.type === "hosted" ? "Hosted" : "Local"
+  if (deployment.type === "hosted") return "Hosted"
+  return deployment.type === "managed" ? "Managed package" : "Local"
 }
 
 const extensionConfiguration = (item: ExtensionItem) => [

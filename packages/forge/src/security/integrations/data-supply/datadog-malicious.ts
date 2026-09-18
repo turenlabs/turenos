@@ -1,8 +1,9 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchJson, HttpError } from "../../util/http"
 
-const ENDPOINT = "https://raw.githubusercontent.com"
+const ENDPOINT = ExtensionCatalog.dataEndpoint("security:datadog-malicious")
 const PATH_PREFIX = "/DataDog/malicious-software-packages-dataset/main/samples/"
 const CACHE_TTL_MS = 6 * 3_600_000
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024

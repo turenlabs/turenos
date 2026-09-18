@@ -14,6 +14,10 @@
       "description": "Check breached passwords and breach metadata",
       "adapter": "security:hibp",
       "secrets": [],
+      "endpoints": {
+        "breaches": "https://haveibeenpwned.com/api/v3",
+        "passwords": "https://api.pwnedpasswords.com/range"
+      },
       "tools": {
         "allow": [
           "hibp_password_pwned",

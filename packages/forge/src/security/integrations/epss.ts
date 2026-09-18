@@ -1,3 +1,4 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../registry"
 import { ToolError } from "../types"
 import { HttpError, fetchJson } from "../util/http"
@@ -11,7 +12,7 @@ import { HttpError, fetchJson } from "../util/http"
  * FIRST.org is included as `source`.
  */
 
-const EPSS_API_URL = "https://api.first.org/data/v1/epss"
+const EPSS_API_URL = ExtensionCatalog.dataEndpoint("security:epss")
 const ATTRIBUTION = "EPSS by FIRST.org"
 const QUERY_TTL_MS = 3_600_000
 const CVE_PATTERN = /^CVE-\d{4}-\d{4,}$/

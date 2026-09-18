@@ -17,6 +17,7 @@
     "secrets": [],
     "defaultEnabled": false,
     "group": "security-knowledge",
+    "endpoints": { "feed": "https://gtfobins.org/api.json" },
     "tools": { "allow": ["gtfobins_lookup", "gtfobins_search"], "write": [] }
   }],
   "versions": [{ "version": "1.0.0", "published": "2026-08-25" }]

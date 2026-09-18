@@ -1,3 +1,4 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../registry"
 import { ToolError, type IntegrationContext } from "../types"
 import { fetchJson, HttpError } from "../util/http"
@@ -14,7 +15,7 @@ import { fetchJson, HttpError } from "../util/http"
  * NVD ToS requires the notice below on every result.
  */
 
-const API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+const API = ExtensionCatalog.dataEndpoint("security:nvd")
 const CACHE_TTL_MS = 3_600_000 // ~1h, per CONVENTIONS.md for per-query APIs
 const NOTICE = "This product uses the NVD API but is not endorsed or certified by the NVD."
 

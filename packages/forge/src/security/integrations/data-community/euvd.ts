@@ -1,8 +1,9 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchJson, HttpError } from "../../util/http"
 
-const API = "https://euvdservices.enisa.europa.eu/api"
+const API = ExtensionCatalog.dataEndpoint("security:euvd")
 const CACHE_TTL_MS = 3_600_000
 const DEFAULT_RECENT = 10
 const MAX_RESULTS = 20

@@ -1,10 +1,11 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchJson, HttpError } from "../../util/http"
 
 /** MITRE CWE REST API. */
 
-const API = "https://cwe-api.mitre.org/api/v1"
+const API = ExtensionCatalog.dataEndpoint("security:cwe")
 const FIXED_ENDPOINT = { id: "cwe", endpoint: API, pathPrefix: "/api/v1/" }
 const SOURCE = "MITRE Common Weakness Enumeration (CWE)"
 const QUERY_TTL_MS = 3_600_000

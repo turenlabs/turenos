@@ -17,6 +17,7 @@
     "secrets": [],
     "defaultEnabled": false,
     "group": "threat-intelligence",
+    "endpoints": { "api": "https://hashlookup.circl.lu" },
     "tools": { "allow": ["circl_hashlookup"], "write": [] }
   }],
   "versions": [{ "version": "1.0.0", "published": "2026-08-25" }]

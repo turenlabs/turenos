@@ -50,6 +50,12 @@ export function validateManifestPolicy(manifest: Extension.Manifest) {
           throw new Error(`Duplicate configuration field in ${manifest.id}: ${field.id}`)
         }
         configuration.add(field.id)
+        if (field.options && field.options.length === 0) {
+          throw new Error(`Configuration options must not be empty in ${manifest.id}: ${field.id}`)
+        }
+        if (field.default !== undefined && field.options && !field.options.includes(field.default)) {
+          throw new Error(`Configuration default must be one of its options in ${manifest.id}: ${field.id}`)
+        }
       }
     }
 
@@ -77,6 +83,9 @@ export function validateManifestPolicy(manifest: Extension.Manifest) {
         throw new Error(
           `${manifest.trust} extension ${manifest.id} cannot select a privileged ${contribution.type} adapter`,
         )
+      }
+      if (contribution.type === "data") {
+        validateDataEndpoints(manifest, contribution)
       }
       continue
     }
@@ -118,9 +127,12 @@ export function validateManifestPolicy(manifest: Extension.Manifest) {
     ) {
       throw new Error(`Customer MCP path must be an absolute URL path in ${manifest.id}`)
     }
+    if (contribution.deployment.type === "managed") {
+      validateManagedDeployment(manifest, contribution)
+    }
 
     if (manifest.trust === "official") continue
-    if (contribution.deployment.type === "local") {
+    if (contribution.deployment.type === "local" || contribution.deployment.type === "managed") {
       throw new Error(`${manifest.trust} extension ${manifest.id} cannot execute a local MCP command`)
     }
     if (contribution.adapter !== `mcp:${contribution.id}`) {
@@ -233,6 +245,51 @@ function validateMcpConnection(manifest: Extension.Manifest, contribution: Exten
   }
 }
 
+const managedPackagePattern = /^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$/
+const environmentNamePattern = /^[A-Z][A-Z0-9_]*$/
+
+function validateManagedDeployment(manifest: Extension.Manifest, contribution: Extension.Mcp) {
+  if (contribution.deployment.type !== "managed") return
+  const deployment = contribution.deployment
+  if (!managedPackagePattern.test(deployment.package)) {
+    throw new Error(`Invalid managed MCP package name in ${manifest.id}: ${deployment.package}`)
+  }
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(deployment.version)) {
+    throw new Error(`Managed MCP version must be an exact pinned release in ${manifest.id}: ${deployment.version}`)
+  }
+  if (Number.isNaN(Date.parse(deployment.cutoff))) {
+    throw new Error(`Managed MCP cutoff must be a valid ISO timestamp in ${manifest.id}: ${deployment.cutoff}`)
+  }
+  if (!deployment.command || deployment.command.trim() !== deployment.command || deployment.command.includes("\0")) {
+    throw new Error(`Invalid managed MCP executable declaration in ${manifest.id}`)
+  }
+  for (const arg of deployment.args ?? []) {
+    if (!arg || arg.trim() !== arg || arg.includes("\0")) {
+      throw new Error(`Invalid managed MCP argument in ${manifest.id}`)
+    }
+  }
+  if (deployment.platforms.length === 0) {
+    throw new Error(`Managed MCP must declare at least one platform in ${manifest.id}`)
+  }
+
+  const configuration = new Set((contribution.configuration ?? []).map((field) => String(field.id)))
+  const secrets = new Set(contribution.secrets.map((secret) => String(secret.id)))
+  for (const [name, value] of Object.entries(deployment.environment ?? {})) {
+    if (!environmentNamePattern.test(name)) {
+      throw new Error(`Invalid managed MCP environment name in ${manifest.id}: ${name}`)
+    }
+    if (typeof value === "string" && (value.includes("\0") || value.trim() !== value)) {
+      throw new Error(`Invalid managed MCP environment value in ${manifest.id}: ${name}`)
+    }
+    if (typeof value === "object" && "configuration" in value && !configuration.has(String(value.configuration))) {
+      throw new Error(`Managed MCP environment references undeclared configuration in ${manifest.id}: ${name}`)
+    }
+    if (typeof value === "object" && "secret" in value && !secrets.has(String(value.secret))) {
+      throw new Error(`Managed MCP environment references undeclared secret in ${manifest.id}: ${name}`)
+    }
+  }
+}
+
 function validateToolPolicy(
   manifest: Extension.Manifest,
   contribution: Extension.Tool | Extension.Data | Extension.Mcp,
@@ -305,10 +362,29 @@ export function validateCatalogPolicy(manifests: ReadonlyArray<Extension.Manifes
 }
 
 function validateHostedUrl(id: Extension.ID, value: string) {
+  validatePublicHttpsUrl(id, value, "Hosted MCP URL")
+}
+
+const endpointNamePattern = /^[a-z][a-z0-9]*$/
+
+function validateDataEndpoints(manifest: Extension.Manifest, contribution: Extension.Data) {
+  const entries = Object.entries(contribution.endpoints)
+  if (entries.length === 0) {
+    throw new Error(`Data contribution must declare at least one endpoint in ${manifest.id}`)
+  }
+  for (const [name, value] of entries) {
+    if (!endpointNamePattern.test(name)) {
+      throw new Error(`Invalid data endpoint name in ${manifest.id}: ${name}`)
+    }
+    validatePublicHttpsUrl(manifest.id, value, `Data endpoint "${name}"`)
+  }
+}
+
+function validatePublicHttpsUrl(id: Extension.ID, value: string, kind: string) {
   const url = new URL(value)
   const hostname = url.hostname.toLowerCase()
   if (url.protocol !== "https:" || url.username || url.password) {
-    throw new Error(`Hosted MCP URL must use credential-free HTTPS in ${id}`)
+    throw new Error(`${kind} must use credential-free HTTPS in ${id}`)
   }
   if (
     hostname === "localhost" ||
@@ -323,6 +399,6 @@ function validateHostedUrl(id: Extension.ID, value: string) {
     /^172\.(?:1[6-9]|2\d|3[01])\./.test(hostname) ||
     hostname.startsWith("169.254.")
   ) {
-    throw new Error(`Hosted MCP URL must use a public host in ${id}`)
+    throw new Error(`${kind} must use a public host in ${id}`)
   }
 }

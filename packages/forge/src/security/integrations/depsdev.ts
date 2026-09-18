@@ -1,3 +1,4 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../registry"
 import { ToolError, type IntegrationContext } from "../types"
 import { HttpError, fetchJson } from "../util/http"
@@ -10,7 +11,7 @@ import { HttpError, fetchJson } from "../util/http"
  * Per-query API: responses are cached ~1h on disk (ctx.cacheDir).
  */
 
-const API_BASE = "https://api.deps.dev/v3"
+const API_BASE = ExtensionCatalog.dataEndpoint("security:depsdev")
 const QUERY_TTL_MS = 3_600_000
 const SYSTEMS = ["npm", "pypi", "go", "maven", "cargo", "nuget"] as const
 const MAX_LINKS = 10

@@ -1,8 +1,9 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchJson, HttpError } from "../../util/http"
 
-const ENDPOINT = "https://misp.cert.ssi.gouv.fr"
+const ENDPOINT = ExtensionCatalog.dataEndpoint("security:certfr-misp")
 const FEED_PATH = "/feed-misp"
 const MANIFEST_URL = `${ENDPOINT}${FEED_PATH}/manifest.json`
 const FIXED_ENDPOINT = { id: "certfr-misp", endpoint: ENDPOINT, pathPrefix: FEED_PATH }

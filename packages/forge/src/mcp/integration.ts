@@ -137,7 +137,10 @@ export const isManagedAlias = (id: string) => id === "forge-security" || definit
 
 export function isSupportedPlatform(id: ID, platform = process.platform) {
   const deployment = contribution(id).item.deployment
-  return deployment.type !== "local" || deployment.platforms.includes(platform as "darwin" | "linux" | "win32")
+  return (
+    (deployment.type !== "local" && deployment.type !== "managed") ||
+    deployment.platforms.includes(platform as "darwin" | "linux" | "win32")
+  )
 }
 
 export async function selectOnePasswordCommand(input: {
@@ -207,7 +210,9 @@ export const configuration = Effect.fn("McpIntegration.configuration")(function*
     const endpoint = resolveCustomerEndpoint(settings.endpoint, deployment)
     return endpoint ? remoteConfiguration(id, endpoint, true, settings, secrets) : undefined
   }
-  if (McpPackageRuntime.managedPackage(id)) return yield* McpPackageRuntime.configuration(id, settings, secrets)
+  if (McpPackageRuntime.managedPackage(contribution(id).item)) {
+    return yield* McpPackageRuntime.configuration(contribution(id).item, settings, secrets)
+  }
   if (id !== "onepassword") return undefined
   const command = yield* resolveOnePasswordCommand()
   if (!command) return undefined
@@ -220,7 +225,9 @@ export const configuration = Effect.fn("McpIntegration.configuration")(function*
 
 export function persistedConfiguration(id: ID, entry: McpConfig.Info, enabled: boolean): McpConfig.Info {
   if (entry.type === "remote") return { ...entry, enabled }
-  if (McpPackageRuntime.managedPackage(id)) return McpPackageRuntime.persisted(id, entry, enabled)
+  if (McpPackageRuntime.managedPackage(contribution(id).item)) {
+    return McpPackageRuntime.persisted(contribution(id).item, entry, enabled)
+  }
   if (id !== "onepassword") throw new TypeError(`${id} does not support a local MCP configuration`)
   return { type: "local", command: [entry.command[0] ?? "1password-mcp"], enabled }
 }
@@ -230,7 +237,9 @@ export function matches(id: ID, entry: McpConfig.Info | undefined, onePasswordCo
   if (!entry) return true
   const deployment = contribution(id).item.deployment
   if (deployment.type === "hosted" || deployment.type === "customer-url") return true
-  if (McpPackageRuntime.managedPackage(id)) return McpPackageRuntime.matches(id, entry)
+  if (McpPackageRuntime.managedPackage(contribution(id).item)) {
+    return McpPackageRuntime.matches(contribution(id).item, entry)
+  }
   if (id !== "onepassword" || entry.type !== "local") return false
   if (!onePasswordCommand) return false
   return entry.command[0] === "1password-mcp" || entry.command[0] === onePasswordCommand
@@ -257,7 +266,9 @@ export function ownsConfiguration(id: ID, entry: McpConfig.Info | undefined) {
       )
     )
   }
-  if (McpPackageRuntime.managedPackage(id)) return McpPackageRuntime.owns(id, entry)
+  if (McpPackageRuntime.managedPackage(contribution(id).item)) {
+    return McpPackageRuntime.owns(contribution(id).item, entry)
+  }
   if (id !== "onepassword" || entry.type !== "local" || entry.command.length !== 1) return false
   if (!Object.keys(entry).every((key) => key === "type" || key === "command" || key === "enabled")) return false
   const command = entry.command[0]

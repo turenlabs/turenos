@@ -1,3 +1,4 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../registry"
 import { ToolError, type IntegrationContext, type Severity, type VulnRecord } from "../types"
 import { fetchJson, HttpError } from "../util/http"
@@ -15,7 +16,7 @@ import { fetchJson, HttpError } from "../util/http"
  * the 50KB serialization limit.
  */
 
-const API = "https://api.osv.dev/v1"
+const API = ExtensionCatalog.dataEndpoint("security:osv")
 const CACHE_TTL_MS = 3_600_000 // ~1h, per CONVENTIONS.md for per-query APIs
 const MAX_RECORDS = 50
 const MAX_BATCH_QUERIES = 100

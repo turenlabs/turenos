@@ -1,15 +1,16 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchJson, HttpError } from "../../util/http"
 
 /** MITRE D3FEND versioned JSON-LD ontology. */
 
-const VERSION = "1.5.0"
-const ONTOLOGY_URL = `https://d3fend.mitre.org/ontologies/d3fend/${VERSION}/d3fend.json`
+const ONTOLOGY_URL = ExtensionCatalog.dataEndpoint("security:d3fend")
+const VERSION = ONTOLOGY_URL.match(/d3fend\/([\d.]+)\/d3fend\.json$/)?.[1] ?? "unknown"
 const FIXED_ENDPOINT = {
   id: "d3fend",
   endpoint: ONTOLOGY_URL,
-  pathPrefix: `/ontologies/d3fend/${VERSION}/`,
+  pathPrefix: new URL(ONTOLOGY_URL).pathname.replace(/[^/]+$/, ""),
 }
 const SOURCE = "MITRE D3FEND"
 const ONTOLOGY_TTL_MS = 24 * 3_600_000

@@ -17,6 +17,7 @@
     "secrets": [],
     "defaultEnabled": false,
     "group": "security-knowledge",
+    "endpoints": { "feed": "https://d3fend.mitre.org/ontologies/d3fend/1.5.0/d3fend.json" },
     "tools": { "allow": ["d3fend_lookup", "d3fend_search"], "write": [] }
   }],
   "versions": [{ "version": "1.0.0", "published": "2026-08-25" }]

@@ -1,6 +1,7 @@
 import path from "node:path"
 import { Effect } from "effect"
 import { Global } from "@turenlabs/core/global"
+import { Extension } from "@turenlabs/schema"
 import { McpConfig } from "./config"
 import { McpRuntime } from "./runtime"
 import { ensureUvBinary } from "./uv-runtime"
@@ -12,54 +13,76 @@ type Recipe = {
   readonly cutoff: string
   readonly args: readonly string[]
   readonly secrets: readonly { readonly name: string; readonly secret: string }[]
-  readonly environment: (settings: Readonly<Record<string, string>>) => Readonly<Record<string, string>> | undefined
+  readonly environment: (
+    settings: Readonly<Record<string, string>>,
+    secrets: Readonly<Record<string, string | undefined>>,
+  ) => Readonly<Record<string, string>> | undefined
 }
 
-const recipes: Readonly<Record<string, Recipe>> = {
-  "automox-local": {
-    package: "automox-mcp",
-    version: "2.2.9",
-    command: "automox-mcp",
-    cutoff: "2026-07-22T01:44:15Z",
-    args: [],
-    secrets: [
-      { name: "AUTOMOX_API_KEY", secret: "AUTOMOX_API_KEY" },
-      { name: "AUTOMOX_ACCOUNT_UUID", secret: "AUTOMOX_ACCOUNT_UUID" },
-    ],
-    environment: (settings) => ({
-      AUTOMOX_ORG_ID: settings.organizationId,
-      AUTOMOX_MCP_READ_ONLY: "true",
-      AUTOMOX_MCP_SANITIZE_RESPONSES: "true",
-      AUTOMOX_MCP_SKIP_DOTENV: "1",
-    }),
-  },
-  "crowdstrike-falcon": {
-    package: "falcon-mcp",
-    version: "0.16.1",
-    command: "falcon-mcp",
-    cutoff: "2026-08-26T00:00:00Z",
-    args: ["--read-only"],
-    secrets: [
-      { name: "FALCON_CLIENT_ID", secret: "FALCON_CLIENT_ID" },
-      { name: "FALCON_CLIENT_SECRET", secret: "FALCON_CLIENT_SECRET" },
-    ],
-    environment: (settings) => falconEnvironment(settings.baseUrl),
-  },
+/**
+ * The managed-package recipe is declared by the extension manifest itself:
+ * `deployment.type: "managed"` carries the pinned package, version, dependency
+ * cutoff, entry command, and environment template. Catalog policy
+ * (packages/extensions/src/validate.ts) restricts managed deployments to
+ * official manifests with exact pins, so the manifest is the single source of
+ * truth for what executes.
+ */
+function recipeFor(item: Extension.Mcp): Recipe | undefined {
+  const deployment = item.deployment
+  if (deployment.type !== "managed") return undefined
+  return {
+    package: deployment.package,
+    version: deployment.version,
+    command: deployment.command,
+    cutoff: deployment.cutoff,
+    args: deployment.args ?? [],
+    secrets: item.secrets.map((secret) => ({ name: String(secret.id), secret: String(secret.id) })),
+    environment: (settings, secrets) => resolveEnvironment(item, deployment, settings, secrets),
+  }
 }
 
-export function managedPackage(id: string) {
-  return Object.hasOwn(recipes, id)
+function resolveEnvironment(
+  item: Extension.Mcp,
+  deployment: Extract<Extension.McpDeployment, { type: "managed" }>,
+  settings: Readonly<Record<string, string>>,
+  secrets: Readonly<Record<string, string | undefined>>,
+): Readonly<Record<string, string>> | undefined {
+  const fields = new Map((item.configuration ?? []).map((field) => [String(field.id), field]))
+  const environment: Record<string, string> = {}
+  for (const [name, source] of Object.entries(deployment.environment ?? {})) {
+    if (typeof source === "string") {
+      environment[name] = source
+      continue
+    }
+    if ("configuration" in source) {
+      const field = fields.get(String(source.configuration))
+      if (!field) return undefined
+      const value = settings[String(field.id)] ?? field.default
+      if (value === undefined) continue
+      if (field.options && !field.options.includes(value)) return undefined
+      environment[name] = value
+      continue
+    }
+    const secret = secrets[String(source.secret)]
+    if (secret === undefined) return undefined
+    environment[name] = secret
+  }
+  return environment
+}
+
+export function managedPackage(item: Extension.Mcp) {
+  return item.deployment.type === "managed"
 }
 
 export const configuration = Effect.fn("McpPackageRuntime.configuration")(function* (
-  id: string,
+  item: Extension.Mcp,
   settings: Readonly<Record<string, string>>,
   secrets: Readonly<Record<string, string | undefined>>,
   dependencies?: { readonly ensureUv?: () => Promise<string | undefined> },
 ) {
-  const recipe = recipes[id]
+  const recipe = recipeFor(item)
   if (!recipe) return undefined
-  const environment = recipe.environment(settings)
+  const environment = recipe.environment(settings, secrets)
   if (!environment) return undefined
   const executable = yield* Effect.promise(() => (dependencies?.ensureUv ?? ensureUvBinary)())
   if (!executable) return undefined
@@ -96,23 +119,8 @@ function packageEnvironment(): Readonly<Record<string, string>> {
   return { PATH: path.join(systemRoot, "System32"), SYSTEMROOT: systemRoot }
 }
 
-function falconEnvironment(value: string | undefined) {
-  const baseUrl = value || "https://api.crowdstrike.com"
-  if (
-    !new Set([
-      "https://api.crowdstrike.com",
-      "https://api.us-2.crowdstrike.com",
-      "https://api.eu-1.crowdstrike.com",
-      "https://api.laggar.gcw.crowdstrike.com",
-    ]).has(baseUrl)
-  ) {
-    return undefined
-  }
-  return { FALCON_BASE_URL: baseUrl }
-}
-
-export function owns(id: string, entry: McpConfig.Info | undefined) {
-  const recipe = recipes[id]
+export function owns(item: Extension.Mcp, entry: McpConfig.Info | undefined) {
+  const recipe = recipeFor(item)
   if (!recipe || !entry) return Boolean(recipe && !entry)
   if (entry.type !== "local" || entry.timeout !== 120_000) return false
   if (
@@ -124,13 +132,15 @@ export function owns(id: string, entry: McpConfig.Info | undefined) {
   return entry.command.length === expected.length && entry.command.every((value, index) => value === expected[index])
 }
 
-export function matches(id: string, entry: McpConfig.Info | undefined) {
-  if (!owns(id, entry) || !entry || entry.type !== "local") return owns(id, entry)
+export function matches(item: Extension.Mcp, entry: McpConfig.Info | undefined) {
+  if (!owns(item, entry) || !entry || entry.type !== "local") return owns(item, entry)
   return true
 }
 
-export function persisted(id: string, entry: McpConfig.Info, enabled: boolean): McpConfig.Info {
-  if (!managedPackage(id) || entry.type !== "local") throw new TypeError(`${id} is not a managed package MCP`)
+export function persisted(item: Extension.Mcp, entry: McpConfig.Info, enabled: boolean): McpConfig.Info {
+  if (!managedPackage(item) || entry.type !== "local") {
+    throw new TypeError(`${item.id} is not a managed package MCP`)
+  }
   return { type: "local", command: entry.command, enabled, timeout: entry.timeout }
 }
 

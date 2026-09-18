@@ -14,6 +14,7 @@
       "description": "Fetch FIRST.org exploit-probability scores for CVEs",
       "adapter": "security:epss",
       "secrets": [],
+      "endpoints": { "api": "https://api.first.org/data/v1/epss" },
       "tools": {
         "allow": [
           "epss_score"

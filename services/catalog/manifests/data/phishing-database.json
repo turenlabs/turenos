@@ -11,6 +11,7 @@
     "type": "data", "id": "phishing-database", "name": "Phishing.Database",
     "description": "Check domains against an actively retested open phishing feed",
     "adapter": "security:phishing-database", "secrets": [],
+    "endpoints": { "feed": "https://raw.githubusercontent.com" },
     "tools": { "allow": ["phishing_database_lookup"], "write": [] }, "defaultEnabled": false,
     "instructions": "Parse targets locally and never contact them. Treat a match as community-maintained context and not-found as unknown."
   }],

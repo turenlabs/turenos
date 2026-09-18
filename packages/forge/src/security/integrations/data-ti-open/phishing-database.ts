@@ -1,8 +1,9 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchText, HttpError } from "../../util/http"
 
-const ENDPOINT = "https://raw.githubusercontent.com"
+const ENDPOINT = ExtensionCatalog.dataEndpoint("security:phishing-database")
 const PATH = "/Phishing-Database/Phishing.Database/master/phishing-domains-ACTIVE.txt"
 const CACHE_TTL_MS = 6 * 3_600_000
 const DOMAIN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/

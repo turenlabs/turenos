@@ -25,9 +25,19 @@
       "upstreamPolicy": "static",
       "localOnly": true,
       "deployment": {
-        "type": "local",
-        "command": "uvx",
-        "platforms": ["darwin", "linux", "win32"]
+        "type": "managed",
+        "package": "automox-mcp",
+        "version": "2.2.9",
+        "cutoff": "2026-07-22T01:44:15Z",
+        "command": "automox-mcp",
+        "args": [],
+        "platforms": ["darwin", "linux", "win32"],
+        "environment": {
+          "AUTOMOX_ORG_ID": { "configuration": "organizationId" },
+          "AUTOMOX_MCP_READ_ONLY": "true",
+          "AUTOMOX_MCP_SANITIZE_RESPONSES": "true",
+          "AUTOMOX_MCP_SKIP_DOTENV": "1"
+        }
       },
       "tools": {
         "allow": [

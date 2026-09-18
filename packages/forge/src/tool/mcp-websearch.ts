@@ -1,8 +1,9 @@
 import { Duration, Effect, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { ExtensionCatalog } from "@turenlabs/extensions"
 
-export const EXA_URL = "https://mcp.exa.ai/mcp"
-export const PARALLEL_URL = "https://search.parallel.ai/mcp"
+export const EXA_URL = ExtensionCatalog.dataEndpoint("websearch:exa")
+export const PARALLEL_URL = ExtensionCatalog.dataEndpoint("websearch:parallel")
 
 export function exaUrl(apiKey: string | undefined) {
   if (!apiKey) return EXA_URL

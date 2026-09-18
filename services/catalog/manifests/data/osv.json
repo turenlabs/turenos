@@ -14,6 +14,7 @@
       "description": "Query OSV vulnerabilities and OpenSSF malicious-package intelligence",
       "adapter": "security:osv",
       "secrets": [],
+      "endpoints": { "api": "https://api.osv.dev/v1" },
       "tools": {
         "allow": [
           "osv_query_package",

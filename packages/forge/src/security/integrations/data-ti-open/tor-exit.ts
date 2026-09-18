@@ -1,9 +1,10 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import { isIP } from "node:net"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchText, HttpError } from "../../util/http"
 
-const ENDPOINT = "https://check.torproject.org"
+const ENDPOINT = ExtensionCatalog.dataEndpoint("security:tor-exit")
 const PATH = "/torbulkexitlist"
 const CACHE_TTL_MS = 10 * 60_000
 

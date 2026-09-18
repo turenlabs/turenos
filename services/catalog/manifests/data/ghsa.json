@@ -20,6 +20,7 @@
           "required": false
         }
       ],
+      "endpoints": { "api": "https://api.github.com/advisories" },
       "tools": {
         "allow": [
           "ghsa_lookup"

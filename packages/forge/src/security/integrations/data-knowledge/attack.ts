@@ -1,15 +1,16 @@
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
 import { fetchJson, HttpError } from "../../util/http"
 
 /** MITRE ATT&CK Enterprise STIX data, synchronized from MITRE's official repository. */
 
-const VERSION = "19.2"
-const BUNDLE_URL = `https://raw.githubusercontent.com/mitre-attack/attack-stix-data/v${VERSION}/enterprise-attack/enterprise-attack.json`
+const BUNDLE_URL = ExtensionCatalog.dataEndpoint("security:attack")
+const VERSION = BUNDLE_URL.match(/attack-stix-data\/v([\d.]+)\//)?.[1] ?? "unknown"
 const FIXED_ENDPOINT = {
   id: "attack",
   endpoint: BUNDLE_URL,
-  pathPrefix: `/mitre-attack/attack-stix-data/v${VERSION}/enterprise-attack/`,
+  pathPrefix: new URL(BUNDLE_URL).pathname.replace(/[^/]+$/, ""),
 }
 const SOURCE = `MITRE ATT&CK Enterprise v${VERSION} (STIX 2.1)`
 const BUNDLE_TTL_MS = 24 * 3_600_000

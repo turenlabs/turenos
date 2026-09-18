@@ -14,6 +14,7 @@
       "description": "Check CVEs against the Known Exploited Vulnerabilities catalog",
       "adapter": "security:kev",
       "secrets": [],
+      "endpoints": { "feed": "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json" },
       "tools": {
         "allow": [
           "kev_check",
