@@ -1,7 +1,13 @@
 {
   "name": "turen-goblin-wasm",
   "type": "module",
+  "description": "Bounded Goblin binary inspection WebAssembly wrapper for Turen",
   "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenlabs/turenos"
+  },
   "files": [
     "turen_goblin_wasm_bg.wasm",
     "turen_goblin_wasm.js",
