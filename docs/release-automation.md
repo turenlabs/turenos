@@ -114,7 +114,6 @@ one public parent, a non-force atomic main/tag push, and exactly these exclusion
 .forge/.gitignore
 .forge/themes/.gitignore
 packages/codemode/.perf/parse-check.ts
-packages/forge/script/build-node.ts
 script/turen-dev-replace
 verify-defect-fixes.sh
 ```
