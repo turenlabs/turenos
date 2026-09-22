@@ -35,7 +35,7 @@ await writeFile(
       },
       files: ["dist/"],
       license: "MIT",
-      repository: "git+ssh://git@github.com/turenio/turen.git",
+      repository: "git+ssh://git@github.com/turenlabs/turenos.git",
     },
     null,
     2,

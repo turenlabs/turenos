@@ -23,7 +23,7 @@ await writeFile(
     main: "dist/turen_email_authenticate_wasm.js",
     types: "dist/turen_email_authenticate_wasm.d.ts",
     license: "Apache-2.0 OR MIT",
-    repository: "git+ssh://git@github.com/turenio/turen.git",
+    repository: "git+ssh://git@github.com/turenlabs/turenos.git",
     files: ["dist/", "LICENSE", "NOTICE", "README.md", "SOURCE.json", "SHA256SUMS"],
     exports: {
       ".": {

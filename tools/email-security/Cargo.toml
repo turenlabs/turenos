@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Bounded RFC 5322 and MIME email security analysis for TurenOS"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/turenio/wasm-tools"
+repository = "https://github.com/turenlabs/turenos"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

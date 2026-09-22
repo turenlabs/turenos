@@ -19,7 +19,7 @@ await writeFile(
       main: "dist/ghidra_decompiler.js",
       files: ["dist/"],
       license: "Apache-2.0",
-      repository: "git+ssh://git@github.com/turenio/turen.git",
+      repository: "git+ssh://git@github.com/turenlabs/turenos.git",
     },
     null,
     2,

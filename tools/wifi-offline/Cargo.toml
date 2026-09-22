@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 description = "Offline 802.11 capture summary for Turen"
-repository = "https://github.com/turenio/wasm-tools"
+repository = "https://github.com/turenlabs/turenos"
 license = "MIT"
 
 [lib]

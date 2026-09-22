@@ -39,7 +39,7 @@ await writeFile(
       exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js", default: "./dist/index.js" } },
       files: ["dist/", "upx-5.2.0-source.tar.gz"],
       license: "GPL-2.0-or-later",
-      repository: "git+ssh://git@github.com/turenio/turen.git",
+      repository: "git+ssh://git@github.com/turenlabs/turenos.git",
     },
     null,
     2,

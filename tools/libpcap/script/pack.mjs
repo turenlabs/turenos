@@ -32,7 +32,7 @@ await writeFile(
       exports: { ".": { types: "./dist/index.d.ts", import: "./dist/libpcap.mjs", default: "./dist/libpcap.mjs" } },
       files: ["dist/"],
       license: "BSD-3-Clause",
-      repository: "git+ssh://git@github.com/turenio/turen.git",
+      repository: "git+ssh://git@github.com/turenlabs/turenos.git",
     },
     null,
     2,

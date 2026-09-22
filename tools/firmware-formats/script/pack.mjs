@@ -40,7 +40,7 @@ await writeFile(
       },
       files: ["dist/", "LICENSE", "NOTICE", "README.md", "SOURCE.json", "SHA256SUMS"],
       license: "Apache-2.0 OR MIT",
-      repository: "git+ssh://git@github.com/turenio/turen.git",
+      repository: "git+ssh://git@github.com/turenlabs/turenos.git",
     },
     null,
     2,

@@ -3,7 +3,7 @@ name = "turen-email-authenticate-wasm"
 version = "0.1.0"
 edition = "2024"
 description = "Offline, bounded email authentication evidence for Turen agents"
-repository = "https://github.com/turenio/wasm-tools"
+repository = "https://github.com/turenlabs/turenos"
 license = "Apache-2.0 OR MIT"
 
 [lib]

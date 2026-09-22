@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/turenio/wasm-tools.git"
+    "url": "git+ssh://git@github.com/turenlabs/turenos.git"
   },
   "keywords": [
     "ghidra",

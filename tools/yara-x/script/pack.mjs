@@ -34,7 +34,7 @@ await writeFile(
       },
       files: ["dist/"],
       license: "BSD-3-Clause",
-      repository: "git+ssh://git@github.com/turenio/turen.git",
+      repository: "git+ssh://git@github.com/turenlabs/turenos.git",
     },
     null,
     2,

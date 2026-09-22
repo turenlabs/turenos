@@ -23,7 +23,7 @@ await writeFile(
     main: "dist/turen_debug_symbols_wasm.js",
     types: "dist/turen_debug_symbols_wasm.d.ts",
     license: "MIT OR Apache-2.0",
-    repository: "git+ssh://git@github.com/turenio/turen.git",
+    repository: "git+ssh://git@github.com/turenlabs/turenos.git",
     files: ["dist/", "LICENSE", "NOTICE", "README.md", "SOURCE.json", "SHA256SUMS"],
     exports: {
       ".": {

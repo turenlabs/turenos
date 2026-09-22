@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 description = "Bounded compression and encoding transform WebAssembly module for Turen"
-repository = "https://github.com/turenio/wasm-tools"
+repository = "https://github.com/turenlabs/turenos"
 license = "Apache-2.0 OR MIT"
 
 [lib]

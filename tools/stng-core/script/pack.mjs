@@ -29,7 +29,7 @@ await writeFile(
       exports: { ".": { types: "./dist/turen_stng_core_wasm.d.ts", import: "./dist/turen_stng_core_wasm.js", default: "./dist/turen_stng_core_wasm.js" } },
       files: ["dist/"],
       license: "Apache-2.0",
-      repository: "git+ssh://git@github.com/turenio/turen.git",
+      repository: "git+ssh://git@github.com/turenlabs/turenos.git",
     },
     null,
     2,
