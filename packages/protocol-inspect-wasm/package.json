@@ -17,5 +17,5 @@
     "dist/"
   ],
   "license": "MIT",
-  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+  "repository": "git+ssh://git@github.com/turenlabs/turenos.git"
 }
