@@ -1,5 +1,5 @@
 {
-  "rust": null,
-  "wasmPack": null,
-  "run": null
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "run": "35738217886"
 }
