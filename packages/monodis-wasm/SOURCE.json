@@ -1,5 +1,6 @@
 {
   "upstream": "https://github.com/mono/mono",
   "commit": "0f53e9e151d92944cacab3e24ac359410c606df6",
-  "emscripten": "6.0.8"
+  "emscripten": "6.0.8",
+  "run": "35766295954"
 }
