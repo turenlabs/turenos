@@ -105,6 +105,64 @@ describe("OpenAIPlugin", () => {
     }),
   )
 
+  it.effect("offers the Sol and Luna fallbacks through the Responses route", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const aisdk = yield* AISDK.Service
+      yield* addPlugin()
+
+      const sol = required(yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("gpt-6-sol")))
+      expect(sol).toMatchObject({
+        name: "GPT-6 Sol",
+        api: { id: "gpt-6-sol", type: "aisdk", package: "@ai-sdk/openai" },
+        limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+        status: "active",
+        enabled: true,
+      })
+      expect(sol.cost).toEqual([
+        { input: 2, output: 10, cache: { read: 0.2, write: 2.5 } },
+        { tier: { type: "context", size: 272_000 }, input: 4, output: 15, cache: { read: 0.4, write: 5 } },
+      ])
+
+      const luna = required(yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("gpt-6-luna")))
+      expect(luna).toMatchObject({
+        name: "GPT-6 Luna",
+        api: { id: "gpt-6-luna", type: "aisdk", package: "@ai-sdk/openai" },
+        limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+        status: "active",
+        enabled: true,
+      })
+      expect(luna.cost).toEqual([
+        { input: 0.1, output: 0.5, cache: { read: 0.01, write: 0.125 } },
+        { tier: { type: "context", size: 272_000 }, input: 0.2, output: 0.75, cache: { read: 0.02, write: 0.25 } },
+      ])
+
+      for (const model of [sol, luna]) {
+        expect(model.variants.map((variant) => [variant.id, variant.body.reasoningEffort])).toEqual([
+          ["low", "low"],
+          ["medium", "medium"],
+          ["high", "high"],
+          ["xhigh", "xhigh"],
+          ["max", "max"],
+        ])
+        const calls: string[] = []
+        yield* aisdk.runLanguage({ model, sdk: fakeSelectorSdk(calls), options: {} })
+        expect(calls).toEqual([`responses:${model.api.id}`])
+        const resolved = yield* SessionRunnerModel.fromCatalogModelWithAISDK(
+          model,
+          Credential.Key.make({ type: "key", key: "test-key" }),
+        )
+        const prepared = yield* LLMClient.prepare(LLM.request({ model: resolved, prompt: "Hello" }))
+        expect(resolved.route.id).toBe("openai-responses")
+        expect(prepared.body).toMatchObject({
+          model: model.api.id,
+          store: false,
+          include: ["reasoning.encrypted_content"],
+        })
+      }
+    }),
+  )
+
   it.effect("preserves upstream Astra metadata and explicit request options", () =>
     Effect.gen(function* () {
       const catalog = yield* Catalog.Service
