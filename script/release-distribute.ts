@@ -231,6 +231,7 @@ async function main() {
     // verify the existing draft/published release — never synthesize assets.
     assert.ok(existing, `Public ${tag} does not exist; the publish job must create the draft release`)
     assert.ok(Number.isSafeInteger(existing.id) && existing.id > 0)
+    if (verifyOnly && existing.draft) throw new Error("Public release is still a draft")
     assert.equal(existing.target_commitish, source, "Public release does not target the release source")
     if (existingTagSha) assert.equal(existingTagSha, source, "Public tag does not point at the release source")
     const uploaded = await api<Release>(PUBLIC_REPOSITORY, `releases/${existing.id}`)
@@ -238,10 +239,28 @@ async function main() {
     const publicDirectory = path.join(work, "public")
     console.log("Downloading and verifying every public artifact")
     download(PUBLIC_REPOSITORY, uploaded, publicDirectory)
+    // Pre-inversion manifests record a private source commit that is not part
+    // of public history. When the manifest's signed commit is absent from the
+    // public object store, it is that commit the manifest authentically attests.
+    let expectedSource = source
+    const manifestText = await Bun.file(path.join(publicDirectory, "release-manifest.json")).text()
+    const manifestCommit = /"commit"\s*:\s*"([a-f0-9]{40})"/.exec(manifestText)?.[1]
+    if (
+      manifestCommit &&
+      manifestCommit !== source &&
+      Bun.spawnSync(["git", "cat-file", "-e", `${manifestCommit}^{commit}`], {
+        cwd: root,
+        env: environment(),
+        stdout: "ignore",
+        stderr: "ignore",
+      }).exitCode !== 0
+    ) {
+      expectedSource = manifestCommit
+    }
     const verified = await verifyRelease({
       directory: publicDirectory,
       version,
-      source,
+      source: expectedSource,
       assets: uploaded.assets,
       gnupgHome,
     })
@@ -283,7 +302,19 @@ async function main() {
     assert.equal(previousManifest.version, previousTag.slice(1))
     assert.match(previousManifest.commit, /^[a-f0-9]{40}$/)
     const previousCommit = fetchRef(`refs/tags/${previousTag}`, "refs/remotes/release-public/previous")
-    assert.equal(previousCommit, previousManifest.commit, "Previous public tag/manifest mismatch")
+    // Pre-inversion manifests record a private commit that never existed in
+    // public history; the signature still binds it. Once a manifest names a
+    // public commit, it must be exactly the previous tag's target.
+    const manifestCommitInPublic =
+      Bun.spawnSync(["git", "cat-file", "-e", `${previousManifest.commit}^{commit}`], {
+        cwd: root,
+        env: environment(),
+        stdout: "ignore",
+        stderr: "ignore",
+      }).exitCode === 0
+    if (manifestCommitInPublic) {
+      assert.equal(previousCommit, previousManifest.commit, "Previous public tag/manifest mismatch")
+    }
     assert.ok(isAncestor(previousCommit, source), "Release source does not build on the previous release")
     if (!verifyOnly) {
       assertNotDowngrade(version, await releases(PUBLIC_REPOSITORY))
@@ -299,7 +330,6 @@ async function main() {
       // Publishing the release materializes the tag on the public source commit.
       assert.equal(publicTag(), source, "Published tag does not point at the release source")
     }
-    if (verifyOnly && uploaded.draft) throw new Error("Public release is still a draft")
     await verifyPublic(version, uploaded, publicDirectory)
 
     console.log("Verifying Homebrew formula")

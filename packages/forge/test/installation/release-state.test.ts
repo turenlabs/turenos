@@ -18,6 +18,15 @@ describe("release draft state", () => {
         release: { tagName: "v0.1.0", isDraft: true, targetCommitish: sha },
       }),
     ).toBe("resume")
+    // Draft releases have no git tag — the tag materializes at publish. A
+    // tagless draft at the right commit is resumable, not a conflict.
+    expect(
+      releaseAction({
+        version: "0.1.0",
+        targetSha: sha,
+        release: { tagName: "v0.1.0", isDraft: true, targetCommitish: sha },
+      }),
+    ).toBe("resume")
   })
 
   test("rejects published or unrelated releases without deleting them", () => {

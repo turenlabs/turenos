@@ -46,7 +46,7 @@ jobs:
           persist-credentials: false
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
-      - name: Validate private source and publishing access
+      - name: Validate release source and publishing access
         id: context
         env:
           PRIVATE_GH_TOKEN: ${{ github.token }}
