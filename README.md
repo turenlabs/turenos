@@ -90,7 +90,7 @@ bun run generate        # rewrite src/generated.ts
 bun run check           # verify generated output is current
 ```
 
-Normal builds do not need WASM toolchains — `packages/*-wasm` artifacts are checked in. Pushes to `dev` that change `tools/<target>` trigger the self-hosted `build-<target>` workflow, which rebuilds and opens a PR updating the packaged artifact. PRs touching only `tools/`, `services/`, or `docs/` skip the app test matrix; PR checks still validate every `packages/*-wasm` checksum manifest and the generated extension catalog.
+Normal builds do not need WASM toolchains — `packages/*-wasm` artifacts are checked in. Pushes to `main` that change `tools/<target>` trigger the `build-<target>` workflow on GitHub-hosted runners, which rebuilds and opens a PR updating the packaged artifact. PRs touching only `tools/`, `services/`, or `docs/` skip the app test matrix; PR checks still validate every `packages/*-wasm` checksum manifest and the generated extension catalog.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the pinned-runner fallback, build commands, and checks.
 

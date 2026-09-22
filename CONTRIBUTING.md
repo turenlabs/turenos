@@ -55,9 +55,9 @@ Three areas with different toolchains and CI paths:
   `SHA256SUMS` manifest.
 - `tools/` — the bounded WebAssembly tool targets (formerly `wasm-tools`).
   Follow `tools/AGENTS.md`. Rebuild a target locally with
-  `bun run build:wasm <target>`; on `dev` pushes the self-hosted
-  `.github/workflows/build-<target>.yml` rebuilds and opens a PR updating
-  `packages/<target>-wasm`.
+  `bun run build:wasm <target>`; on `main` pushes,
+  `.github/workflows/build-<target>.yml` rebuilds on GitHub-hosted
+  runners and opens a PR updating `packages/<target>-wasm`.
 - `services/catalog` — the canonical Turen Catalog: the built-in data, skill,
   MCP, and tool manifests under `manifests/`. They compile into
   `packages/extensions` via `bun run generate`; see `services/catalog/README.md`.
@@ -66,7 +66,7 @@ Read the nearest `AGENTS.md` before editing a package. Run focused tests and `bu
 
 ## Pull requests
 
-- Branch from `dev` and use a short branch name.
+- Branch from `main` and use a short branch name.
 - Use conventional commit and PR titles such as `feat:`, `fix:`, `docs:`, or `chore:`.
 - Explain the security boundary, data flow, and failure behavior for security-sensitive changes.
 - Include a reproducible verification note and screenshots for visible UI changes.
