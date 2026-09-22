@@ -2,8 +2,10 @@
   "upstream": "https://github.com/VirusTotal/yara-x",
   "version": "1.19.0",
   "commit": "fe40349ea12c5ccb89aae9f304b979c4fb410f66",
-  "rust": "1.93.0",
-  "wasmPack": "0.14.0",
-  "patches": ["bounded-results.patch"],
-  "run": "32678777247"
+  "rust": "1.94.0",
+  "wasmPack": "0.15.0",
+  "patches": [
+    "bounded-results.patch"
+  ],
+  "run": "35765714386"
 }
