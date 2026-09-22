@@ -3,7 +3,7 @@
   "version": "1.9.0-turen.1",
   "private": true,
   "type": "module",
-  "description": "TurenOS portable bounded stng-core WebAssembly string extractor",
+  "description": "Turen portable bounded stng-core WebAssembly string extractor",
   "main": "dist/turen_stng_core_wasm.js",
   "types": "dist/turen_stng_core_wasm.d.ts",
   "exports": {
@@ -17,5 +17,5 @@
     "dist/"
   ],
   "license": "Apache-2.0",
-  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+  "repository": "git+ssh://git@github.com/turenio/turen.git"
 }

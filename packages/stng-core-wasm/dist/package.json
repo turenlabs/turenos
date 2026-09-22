@@ -1,7 +1,13 @@
 {
   "name": "turen-stng-core-wasm",
   "type": "module",
+  "description": "Portable bounded stng-core string extraction WebAssembly module for Turen",
   "version": "0.1.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenio/wasm-tools"
+  },
   "files": [
     "turen_stng_core_wasm_bg.wasm",
     "turen_stng_core_wasm.js",
