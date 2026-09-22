@@ -650,7 +650,7 @@ fn collect_findings(class: &ClassFile, max_entries: usize, truncated: &mut bool)
                 if is_reflection(&owner, &name) {
                     push(Finding {
                         kind: "reflection",
-                        detail: label,
+                        detail: label.clone(),
                         cp_index: Some(index16),
                         member_index: None,
                     });
@@ -658,7 +658,7 @@ fn collect_findings(class: &ClassFile, max_entries: usize, truncated: &mut bool)
                 if is_unsafe(&owner) {
                     push(Finding {
                         kind: "unsafe_usage",
-                        detail: label,
+                        detail: label.clone(),
                         cp_index: Some(index16),
                         member_index: None,
                     });
@@ -666,7 +666,7 @@ fn collect_findings(class: &ClassFile, max_entries: usize, truncated: &mut bool)
                 if is_define_class(&owner, &name) {
                     push(Finding {
                         kind: "class_loader_define",
-                        detail: label,
+                        detail: label.clone(),
                         cp_index: Some(index16),
                         member_index: None,
                     });
@@ -674,7 +674,7 @@ fn collect_findings(class: &ClassFile, max_entries: usize, truncated: &mut bool)
                 if is_process_spawn(&owner, &name) {
                     push(Finding {
                         kind: "process_spawn",
-                        detail: label,
+                        detail: label.clone(),
                         cp_index: Some(index16),
                         member_index: None,
                     });
@@ -682,7 +682,7 @@ fn collect_findings(class: &ClassFile, max_entries: usize, truncated: &mut bool)
                 if is_serialization_call(&owner, &name) {
                     push(Finding {
                         kind: "serialization_call",
-                        detail: label,
+                        detail: label.clone(),
                         cp_index: Some(index16),
                         member_index: None,
                     });

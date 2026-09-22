@@ -373,9 +373,7 @@ pub(crate) fn disassemble_code(
         let opcode = code[pc];
         let (mnemonic, oper) = OPCODES[opcode as usize];
         if mnemonic.is_empty() {
-            warn(format!(
-                "unknown opcode 0x{opcode:02x} at offset {pc}; disassembly stopped"
-            ));
+            warn!("unknown opcode 0x{opcode:02x} at offset {pc}; disassembly stopped");
             break;
         }
         // Fixed-width operands bounds-checked up front.
@@ -389,9 +387,7 @@ pub(crate) fn disassemble_code(
             Oper::TableSwitch | Oper::LookupSwitch | Oper::Wide => usize::MAX,
         };
         if operand_len != usize::MAX && code.len() - pc - 1 < operand_len {
-            warn(format!(
-                "truncated operand for {mnemonic} at offset {pc}; disassembly stopped"
-            ));
+            warn!("truncated operand for {mnemonic} at offset {pc}; disassembly stopped");
             break;
         }
         let operand_at = pc + 1;
@@ -465,26 +461,20 @@ pub(crate) fn disassemble_code(
             Oper::Wide => {
                 // wide <opcode> <u2 index>: 3 operand bytes minimum.
                 if code.len() - operand_at < 3 {
-                    warn(format!(
-                        "truncated wide prefix at offset {pc}; disassembly stopped"
-                    ));
+                    warn!("truncated wide prefix at offset {pc}; disassembly stopped");
                     break;
                 }
                 let widened = code[operand_at];
                 let (wide_mnemonic, _) = OPCODES[widened as usize];
                 let index = be_u16(code, operand_at + 1);
                 if wide_mnemonic.is_empty() {
-                    warn(format!(
-                        "wide applied to unknown opcode 0x{widened:02x} at offset {pc}; disassembly stopped"
-                    ));
+                    warn!("wide applied to unknown opcode 0x{widened:02x} at offset {pc}; disassembly stopped");
                     break;
                 }
                 if widened == 0x84 {
                     // wide iinc: u2 index + s2 const = 5 operand bytes.
                     if code.len() - operand_at < 5 {
-                        warn(format!(
-                            "truncated wide iinc at offset {pc}; disassembly stopped"
-                        ));
+                        warn!("truncated wide iinc at offset {pc}; disassembly stopped");
                         break;
                     }
                     let constant = be_i16(code, operand_at + 3);
@@ -498,9 +488,7 @@ pub(crate) fn disassemble_code(
             Oper::TableSwitch => {
                 let body = operand_at + (4 - (operand_at % 4)) % 4;
                 if code.len() < body + 12 {
-                    warn(format!(
-                        "truncated tableswitch at offset {pc}; disassembly stopped"
-                    ));
+                    warn!("truncated tableswitch at offset {pc}; disassembly stopped");
                     break;
                 }
                 let default = be_i32(code, body);
@@ -509,9 +497,7 @@ pub(crate) fn disassemble_code(
                 let count = (high as i64 - low as i64 + 1).max(0);
                 let bytes_needed = 12i64 + count.saturating_mul(4);
                 if ((code.len() - body) as i64) < bytes_needed {
-                    warn(format!(
-                        "malformed tableswitch at offset {pc} (low={low} high={high}); disassembly stopped"
-                    ));
+                    warn!("malformed tableswitch at offset {pc} (low={low} high={high}); disassembly stopped");
                     break;
                 }
                 lines.push(Line {
@@ -547,17 +533,13 @@ pub(crate) fn disassemble_code(
             Oper::LookupSwitch => {
                 let body = operand_at + (4 - (operand_at % 4)) % 4;
                 if code.len() < body + 8 {
-                    warn(format!(
-                        "truncated lookupswitch at offset {pc}; disassembly stopped"
-                    ));
+                    warn!("truncated lookupswitch at offset {pc}; disassembly stopped");
                     break;
                 }
                 let default = be_i32(code, body);
                 let pairs = be_i32(code, body + 4);
                 if pairs < 0 || (code.len() - body - 8) / 8 < pairs as usize {
-                    warn(format!(
-                        "malformed lookupswitch at offset {pc} (pairs={pairs}); disassembly stopped"
-                    ));
+                    warn!("malformed lookupswitch at offset {pc} (pairs={pairs}); disassembly stopped");
                     break;
                 }
                 lines.push(Line {

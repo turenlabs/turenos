@@ -12,7 +12,6 @@ struct StatsOptions {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct TopByte {
     byte: u8,
     count: u64,
@@ -20,7 +19,6 @@ struct TopByte {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct LineEndings {
     lf: u64,
     crlf: u64,
@@ -28,7 +26,6 @@ struct LineEndings {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct LongestRun {
     byte: u8,
     offset: usize,
@@ -36,7 +33,6 @@ struct LongestRun {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct StringCounts {
     min_length: usize,
     ascii_count: u64,
@@ -44,7 +40,6 @@ struct StringCounts {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct Report {
     schema_version: u32,
     length: usize,
@@ -162,12 +157,6 @@ fn longest_run(bytes: &[u8]) -> Option<LongestRun> {
         index = end;
     }
     best
-}
-
-/// Bytes that may appear inside an embedded ASCII string: printable plus
-/// horizontal tab. CR/LF terminate a string.
-fn is_string_byte(b: u8) -> bool {
-    (0x20..=0x7e).contains(&b) || b == 0x09
 }
 
 /// Bytes that may appear inside an embedded ASCII string: printable plus
