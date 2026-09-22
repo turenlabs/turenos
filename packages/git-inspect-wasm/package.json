@@ -17,5 +17,5 @@
     "dist/"
   ],
   "license": "Apache-2.0 OR MIT",
-  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+  "repository": "git+ssh://git@github.com/turenio/turen.git"
 }
