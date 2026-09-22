@@ -45,7 +45,8 @@ export function msi_inspect(bytes: Uint8Array, options_json: string): string;
  *
  * Options: `stream` (required) — a stream name as reported in the
  * `streams[].name` field of `msi_inspect`, or a raw CFB entry path such as
- * `[5]SummaryInformation` as listed in `cfb.entries[].path`; `maxBytes`
+ * the `SummaryInformation` metadata stream (its name begins with a
+ * U+0005 byte) as listed in `cfb.entries[].path`; `maxBytes`
  * (optional) requests a bounded preview of at most that many bytes, always
  * clamped to the ~3 MiB serialized-content ceiling. Streams declared larger
  * than 8 MiB are never read (`stream_too_large`).
