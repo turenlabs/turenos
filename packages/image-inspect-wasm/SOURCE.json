@@ -30,5 +30,7 @@
     "inflateBytes": 262144,
     "pixelDimension": 4096,
     "pixelSamples": 4000000
-  }
+  },
+  "sourceCommit": "a39285cff88ea6590fe39e4a23622d7c2343aa51",
+  "workflowRun": "35738264540"
 }
