@@ -2,7 +2,7 @@ name: Build YARA-X WASM
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, main]
     paths:
       - ".github/workflows/build-yara-x.yml"
       - "tools/yara-x/**"
@@ -23,7 +23,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 45
     steps:
       - name: Checkout Turen build repository

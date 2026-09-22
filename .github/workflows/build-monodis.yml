@@ -2,7 +2,7 @@ name: Build monodis WASM
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, main]
     paths:
       - ".github/workflows/build-monodis.yml"
       - "tools/monodis/**"
@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 45
     defaults:
       run:

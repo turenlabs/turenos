@@ -2,7 +2,7 @@ name: Build installer-inspect WASM
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, main]
     paths:
       - "tools/installer-inspect/**"
       - ".github/workflows/build-installer-inspect.yml"
@@ -22,7 +22,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 30
     steps:
       - name: Checkout

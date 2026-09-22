@@ -3,10 +3,10 @@ name: typecheck
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, main]
     paths-ignore: ["tools/**", "services/**", "docs/**"]
   pull_request:
-    branches: [dev]
+    branches: [dev, main]
     paths-ignore: ["tools/**", "services/**", "docs/**"]
   workflow_dispatch:
 
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   typecheck:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'blacksmith-4vcpu-ubuntu-2404' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

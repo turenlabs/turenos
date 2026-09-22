@@ -2,7 +2,7 @@ name: Build stng-core WASM
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, main]
     paths:
       - ".github/workflows/build-stng-core.yml"
       - "tools/stng-core/**"
@@ -23,7 +23,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 30
     steps:
       - name: Checkout Turen build repository

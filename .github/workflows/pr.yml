@@ -19,7 +19,7 @@ env:
 jobs:
   lint:
     name: lint
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 5
     steps:
       - name: Checkout repository
