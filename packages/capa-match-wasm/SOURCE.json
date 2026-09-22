@@ -80,5 +80,7 @@
     "aggregateEvidence": 4096,
     "rulesBlobDecodedBytes": 16777216,
     "workerWallSeconds": 60
-  }
+  },
+  "sourceCommit": "a39285cff88ea6590fe39e4a23622d7c2343aa51",
+  "workflowRun": "35738221487"
 }
