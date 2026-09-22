@@ -2,9 +2,8 @@ name: Build Ghidra decompiler WASM
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
     paths:
-      - ".github/workflows/build-ghidra-decompiler.yml"
       - "tools/ghidra-decompiler/**"
   workflow_dispatch:
 
@@ -19,7 +18,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 45
     defaults:
       run:

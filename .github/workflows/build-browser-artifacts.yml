@@ -2,9 +2,8 @@ name: Build browser-artifacts WASM
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
     paths:
-      - ".github/workflows/build-browser-artifacts.yml"
       - "tools/browser-artifacts/**"
   workflow_dispatch:
 
@@ -23,7 +22,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 30
     steps:
       - name: Checkout Turen build repository

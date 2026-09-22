@@ -2,9 +2,8 @@ name: Build unicode-audit WASM
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
     paths:
-      - ".github/workflows/build-unicode-audit.yml"
       - "tools/unicode-audit/**"
   workflow_dispatch:
 
@@ -23,7 +22,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 30
     steps:
       - name: Checkout Turen build repository

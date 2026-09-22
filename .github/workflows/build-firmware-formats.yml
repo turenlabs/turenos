@@ -2,10 +2,9 @@ name: Build firmware-formats WASM
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
     paths:
       - "tools/firmware-formats/**"
-      - ".github/workflows/build-firmware-formats.yml"
   workflow_dispatch:
 
 concurrency:
@@ -23,7 +22,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 30
     steps:
       - name: Checkout

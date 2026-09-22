@@ -2,10 +2,9 @@ name: Build email-security WASM
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
     paths:
       - "tools/email-security/**"
-      - ".github/workflows/build-email-security.yml"
   workflow_dispatch:
 
 concurrency:
@@ -23,7 +22,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - name: Checkout
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
