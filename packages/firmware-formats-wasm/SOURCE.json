@@ -21,7 +21,7 @@
   "wasmBindgen": true,
   "runtimeDependencies": [
     "serde_json 1.0.145",
-    "serde 1.0.x",
+    "serde 1.0.229",
     "wasm-bindgen 0.2.108"
   ],
   "network": false,
@@ -37,5 +37,7 @@
     "transformBytes": 134217728,
     "dtbNodes": 65536,
     "dtbDepth": 256
-  }
+  },
+  "sourceCommit": "8c99fda31917e43bfc082553e9d2d2c63eb1e5c1",
+  "workflowRun": "35765714582"
 }
