@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -6,6 +6,19 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(scriptDirectory, "..")
 const source = path.resolve(process.argv[2] ?? path.join(root, "pkg"))
 const target = path.resolve(process.argv[3] ?? path.join(root, "artifact"))
+
+// source-106/ and SOURCE-106.json are vendored provenance payloads produced by
+// script/import-security-wasm.ts; preserve them across the pack wipe.
+const preserved = ["source-106", "SOURCE-106.json"]
+const stash = path.join(root, "artifact-preserved")
+await rm(stash, { recursive: true, force: true })
+for (const entry of preserved) {
+  const full = path.join(target, entry)
+  if (await stat(full).then(() => true, () => false)) {
+    await mkdir(path.dirname(path.join(stash, entry)), { recursive: true })
+    await cp(full, path.join(stash, entry), { recursive: true })
+  }
+}
 
 await rm(target, { recursive: true, force: true })
 await mkdir(path.join(target, "dist"), { recursive: true })
@@ -51,6 +64,13 @@ await writeFile(
     2,
   )}\n`,
 )
+for (const entry of preserved) {
+  const stashed = path.join(stash, entry)
+  if (await stat(stashed).then(() => true, () => false)) {
+    await cp(stashed, path.join(target, entry), { recursive: true })
+  }
+}
+await rm(stash, { recursive: true, force: true })
 const names = (await filesUnder(target)).filter((file) => file !== "SHA256SUMS")
 const hashes = await Promise.all(
   names.map(async (name) => {

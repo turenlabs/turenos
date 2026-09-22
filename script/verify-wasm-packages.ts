@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { existsSync } from "node:fs"
 import { readdir, readFile } from "node:fs/promises"
 import path from "node:path"
 
@@ -12,6 +13,10 @@ const failures: string[] = []
 for (const entry of await readdir(packagesDir, { withFileTypes: true })) {
   if (!entry.isDirectory() || !entry.name.endsWith("-wasm")) continue
   const dir = path.join(packagesDir, entry.name)
+  if (!existsSync(path.join(dir, "package.json"))) {
+    failures.push(`${entry.name}: no package.json (workspace dependency missing)`)
+    continue
+  }
   const manifests = (await readdir(dir)).filter((f) => f.startsWith("SHA256SUMS"))
   if (!manifests.length) {
     failures.push(`${entry.name}: no SHA256SUMS manifest`)

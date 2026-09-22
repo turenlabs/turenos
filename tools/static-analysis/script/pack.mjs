@@ -1,12 +1,23 @@
 import { createHash } from "node:crypto"
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises"
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 const source = path.resolve(process.argv[2] ?? "")
 const target = path.resolve(process.argv[3] ?? "")
 const license = path.resolve(process.argv[4] ?? path.join(path.dirname(source), "../LICENSE"))
 
-await rm(target, { recursive: true, force: true })
+// Overlay pack: replace only the extension payload and preserve the checked-in
+// base runtime (package.json, dist/turen_static_analysis_wasm.*, source-106).
+const overlay = [
+  "dist/extensions",
+  "LICENSE-EXTENSIONS",
+  "LICENSE-DIE",
+  "THIRD-PARTY-106.txt",
+  "NOTICE-EXTENSIONS",
+  "EXTENSION.json",
+  "SOURCE-EXTENSIONS.json",
+]
+for (const entry of overlay) await rm(path.join(target, entry), { recursive: true, force: true })
 await mkdir(path.join(target, "dist/extensions"), { recursive: true })
 await cp(source, path.join(target, "dist/extensions"), { recursive: true })
 await rm(path.join(target, "dist/extensions/.gitignore"), { force: true })
@@ -51,11 +62,16 @@ await writeFile(
   )}\n`,
 )
 
-const files = await listFiles(target)
+const files = (
+  await Promise.all(
+    overlay.map(async (entry) => {
+      const full = path.join(target, entry)
+      return (await stat(full)).isDirectory() ? listFiles(full) : [full]
+    }),
+  )
+).flat()
 const checksums = await Promise.all(
-  files
-    .filter((file) => path.basename(file) !== "SHA256SUMS.extensions")
-    .map(async (file) => `${createHash("sha256").update(await readFile(file)).digest("hex")}  ${path.relative(target, file)}`),
+  files.map(async (file) => `${createHash("sha256").update(await readFile(file)).digest("hex")}  ${path.relative(target, file)}`),
 )
 await writeFile(path.join(target, "SHA256SUMS.extensions"), `${checksums.sort().join("\n")}\n`)
 

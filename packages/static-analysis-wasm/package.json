@@ -1,0 +1,21 @@
+{
+  "name": "@turenlabs/static-analysis-wasm",
+  "version": "0.1.0-turen.1",
+  "private": true,
+  "type": "module",
+  "description": "Turen-packaged bounded static analysis WebAssembly operations",
+  "main": "dist/turen_static_analysis_wasm.js",
+  "types": "dist/turen_static_analysis_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/turen_static_analysis_wasm.d.ts",
+      "import": "./dist/turen_static_analysis_wasm.js",
+      "default": "./dist/turen_static_analysis_wasm.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "license": "MIT",
+  "repository": "git+ssh://git@github.com/turenlabs/turenos.git"
+}
