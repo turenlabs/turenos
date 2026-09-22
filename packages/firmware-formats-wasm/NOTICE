@@ -11,7 +11,7 @@ specifications; no upstream application code is included.
 Built from the following permissively licensed crates.io dependencies:
 
 - serde_json 1.0.145 (MIT OR Apache-2.0) — JSON envelopes and serialization
-- serde 1.0.x (MIT OR Apache-2.0) — serde_json data model
+- serde 1.0.229 (MIT OR Apache-2.0) — serde_json data model
 - wasm-bindgen 0.2.108 (MIT OR Apache-2.0) — JavaScript bindings
 
 Notable transitive crates: itoa, memchr, ryu, serde_core (MIT OR
