@@ -24,6 +24,7 @@ await writeFile(
       type: "module",
       files: ["dist/", "LICENSE", "NOTICE", "README.md", "SOURCE.json", "SHA256SUMS"],
       exports: "./dist/turen_wasm_inspect_wasm.js",
+      license: "MIT OR Apache-2.0",
     },
     null,
     2,
