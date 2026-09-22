@@ -3,7 +3,7 @@
   "version": "1.10.6-turen.1",
   "private": true,
   "type": "module",
-  "description": "TurenOS-packaged official libpcap offline WebAssembly reader",
+  "description": "Turen-packaged official libpcap offline WebAssembly reader",
   "main": "dist/libpcap.mjs",
   "types": "dist/index.d.ts",
   "exports": {
@@ -17,5 +17,5 @@
     "dist/"
   ],
   "license": "BSD-3-Clause",
-  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+  "repository": "git+ssh://git@github.com/turenio/turen.git"
 }
