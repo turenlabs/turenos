@@ -9,14 +9,7 @@ export const PRIVATE_REPOSITORY = "turenio/turen"
 export const PUBLIC_REPOSITORY = "turenlabs/turenos"
 export const HOMEBREW_REPOSITORY = "turenlabs/homebrew-turenos"
 export const RELEASE_FINGERPRINT = "4A4B11E5E42582D722479A23FCADF0D9BC66D36C"
-export const MIRROR_EXCLUSIONS = [
-  ".forge/.gitignore",
-  ".forge/themes/.gitignore",
-  "packages/codemode/.perf/parse-check.ts",
-  "packages/forge/script/build-node.ts",
-  "script/turen-dev-replace",
-  "verify-defect-fixes.sh",
-] as const
+
 
 export type ReleaseAsset = { id: number; name: string; size: number; digest?: string | null; state?: string }
 export type ReleaseManifest = {
@@ -73,14 +66,6 @@ export function releaseTagVersion(tag: string): string | undefined {
 
 export function compareReleaseVersions(left: string, right: string): number {
   return semver.compare(validateVersion(left), validateVersion(right))
-}
-
-export function assertMirrorDiff(value: string): void {
-  assert.deepEqual(
-    value.replace(/\n$/, "").split("\n").sort(),
-    MIRROR_EXCLUSIONS.map((name) => `D\t${name}`).sort(),
-    "Mirror must differ by exactly the six excluded deletions",
-  )
 }
 
 export function assertPublicInventory(expected: readonly ReleaseAsset[], actual: readonly ReleaseAsset[]): void {

@@ -8,9 +8,7 @@ import {
   PRIVATE_REPOSITORY,
   PUBLIC_REPOSITORY,
   HOMEBREW_REPOSITORY,
-  MIRROR_EXCLUSIONS,
   RELEASE_FINGERPRINT,
-  assertMirrorDiff,
   assertPublicInventory,
   updateHomebrewFormula,
   validateVersion,
@@ -27,6 +25,7 @@ type Release = {
   tag_name: string
   draft: boolean
   prerelease: boolean
+  target_commitish: string
   assets: ReleaseAsset[]
 }
 type Repository = { full_name: string; private: boolean; default_branch: string }
@@ -53,40 +52,7 @@ export function previousRelease(version: string, releases: readonly Release[]) {
     .toSorted((left, right) => compareReleaseVersions(right.tag_name.slice(1), left.tag_name.slice(1)))[0]
 }
 
-export function createPublicMirror(
-  input: { source: string; parent: string; version: string; index: string },
-  git: (args: string[], env?: Record<string, string>) => string,
-) {
-  validateVersion(input.version)
-  assert.match(input.source, /^[a-f0-9]{40}$/)
-  assert.match(input.parent, /^[a-f0-9]{40}$/)
-  const index = { GIT_INDEX_FILE: input.index }
-  git(["read-tree", input.source], index)
-  git(["update-index", "--force-remove", ...MIRROR_EXCLUSIONS], index)
-  const tree = git(["write-tree"], index)
-  assertMirrorDiff(git(["diff", "--name-status", input.source, tree]))
-  const commit = git(["commit-tree", tree, "-p", input.parent, "-m", `chore: release ${input.version}`])
-  assert.equal(git(["show", "-s", "--format=%P", commit]), input.parent)
-  return commit
-}
 
-export function missingReleaseAssets(expected: readonly ReleaseAsset[], release: Pick<Release, "draft" | "assets">) {
-  assertPublicInventory(expected, expected)
-  if (!release.draft) {
-    assertPublicInventory(expected, release.assets)
-    return []
-  }
-  // 'starter' records are uploads whose bytes arrived but were never finalized
-  // server-side. They are stale, not present — the upload loop removes them
-  // before re-uploading the name. 'uploaded' assets are never deleted.
-  const uploaded = release.assets.filter((asset) => asset.state === "uploaded")
-  const present = new Set(uploaded.map((asset) => asset.name))
-  assertPublicInventory(
-    expected.filter((asset) => present.has(asset.name)),
-    uploaded,
-  )
-  return expected.filter((asset) => !present.has(asset.name))
-}
 
 async function main() {
   const args = parseArgs({
@@ -112,7 +78,6 @@ async function main() {
       PRIVATE_REPOSITORY,
       "Publishing must run in the private GitHub repository",
     )
-    assert.equal(process.env.GITHUB_REF, "refs/heads/dev", "Publishing must run from dev")
     if (!publicToken?.startsWith("github_pat_"))
       throw new Error("Configure PUBLIC_RELEASE_TOKEN with a dedicated fine-grained token")
   }
@@ -153,6 +118,13 @@ async function main() {
     return result.stdout.toString().trim()
   }
   const git = (args: string[], token?: string, extra?: Record<string, string>) => run(["git", ...args], token, extra)
+  const isAncestor = (commit: string, descendant: string) =>
+    Bun.spawnSync(["git", "merge-base", "--is-ancestor", commit, descendant], {
+      cwd: root,
+      env: environment(),
+      stdout: "ignore",
+      stderr: "ignore",
+    }).exitCode === 0
   const api = async <T>(repository: string, endpoint: string, method = "GET", body?: unknown): Promise<T> => {
     if (verifyOnly && method !== "GET") throw new Error("Verify-only mode forbids remote mutations")
     const token = repository === PRIVATE_REPOSITORY ? privateToken : publicToken
@@ -184,14 +156,15 @@ async function main() {
     const info = await api<Repository>(repository, "")
     assert.equal(info.full_name, repository)
     assert.equal(info.private, isPrivate)
-    assert.equal(info.default_branch, isPrivate ? "dev" : "main")
+    if (!isPrivate) assert.equal(info.default_branch, "main")
     if (!isPrivate && !verifyOnly) {
       const ref = `refs/remotes/release-access/${repository.replace("/", "-")}`
       const remote = `https://github.com/${repository}.git`
       git(["fetch", "--no-tags", remote, `+refs/heads/main:${ref}`], publicToken)
-      // Probe write authentication with the target's own existing commit, never private history.
+      // Probe write authentication with the target's own existing commit.
       git(["push", "--dry-run", remote, `${ref}:refs/heads/main`], publicToken)
     }
+    return info
   }
   const download = (repository: string, release: Release, directory: string) => {
     assert.equal(release.tag_name, tag)
@@ -210,30 +183,37 @@ async function main() {
     if (!remote) return undefined
     return fetchRef(`refs/tags/${tag}`, "refs/remotes/release-public/target")
   }
-  await validateRepository(PRIVATE_REPOSITORY, true)
+  const privateInfo = await validateRepository(PRIVATE_REPOSITORY, true)
   await validateRepository(PUBLIC_REPOSITORY, false)
   await validateRepository(HOMEBREW_REPOSITORY, false)
-  if (!args.preflight || args["publish-existing"]) {
-    git(
-      [
-        "fetch",
-        "--no-tags",
-        `https://github.com/${PRIVATE_REPOSITORY}.git`,
-        `refs/tags/${tag}:refs/remotes/release-private/target`,
-      ],
-      privateToken,
+  if (!verifyOnly)
+    assert.equal(
+      process.env.GITHUB_REF,
+      `refs/heads/${privateInfo.default_branch}`,
+      "Publishing must run from the private default branch",
     )
-  }
+
+  // The public repository owns release history. The release source is the
+  // public main commit whose VERSION matches, or an already-created release
+  // target/tag for --publish-existing and verification.
+  const head = fetchRef("refs/heads/main", "refs/remotes/release-public/main")
+  const published = await releases(PUBLIC_REPOSITORY)
+  const existing = published.find((release) => release.tag_name === tag)
+  const existingTagSha = publicTag()
   const source =
     args.source ??
-    git([
-      "rev-parse",
-      args["publish-existing"] || !args.preflight ? "refs/remotes/release-private/target^{commit}" : "HEAD",
-    ])
+    existingTagSha ??
+    existing?.target_commitish ??
+    (() => {
+      if (args["publish-existing"]) throw new Error(`--publish-existing requires an existing ${tag} release`)
+      return head
+    })()
   assert.match(source, /^[a-f0-9]{40}$/)
-  assert.equal(git(["show", `${source}:VERSION`]), version, "Release tag/source VERSION does not match")
-  if (!args.preflight)
-    assert.equal(git(["rev-parse", "refs/remotes/release-private/target^{commit}"]), source, "Private tag moved")
+  if (existing && !existing.draft && !args["publish-existing"] && !verifyOnly)
+    throw new Error(`${tag} is already published; use --publish-existing to verify it`)
+  assert.equal(git(["show", `${source}:VERSION`]), version, "Release source VERSION does not match")
+  assert.ok(isAncestor(source, head), "Release source is not an ancestor of public main")
+  if (!verifyOnly) assertNotDowngrade(version, published)
   if (args.preflight) {
     if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `sha=${source}\nversion=${version}\n`)
     console.log(`Release targets and source validated for ${version}`)
@@ -246,25 +226,31 @@ async function main() {
   const gnupgHome = path.join(gpgRoot, "gnupg")
   try {
     await mkdir(gnupgHome, { mode: 0o700 })
-    const privateRelease = (await releases(PRIVATE_REPOSITORY)).find((release) => release.tag_name === tag)
-    assert.ok(
-      privateRelease && !privateRelease.draft && !privateRelease.prerelease,
-      "Private release must be published and stable",
-    )
-    console.log(`Downloading and verifying private ${tag}`)
-    const privateDirectory = path.join(work, "private")
-    download(PRIVATE_REPOSITORY, privateRelease, privateDirectory)
+
+    // The publish job owns release creation and asset uploads. Here we only
+    // verify the existing draft/published release — never synthesize assets.
+    assert.ok(existing, `Public ${tag} does not exist; the publish job must create the draft release`)
+    assert.ok(Number.isSafeInteger(existing.id) && existing.id > 0)
+    assert.equal(existing.target_commitish, source, "Public release does not target the release source")
+    if (existingTagSha) assert.equal(existingTagSha, source, "Public tag does not point at the release source")
+    const uploaded = await api<Release>(PUBLIC_REPOSITORY, `releases/${existing.id}`)
+    assert.equal(uploaded.tag_name, tag)
+    const publicDirectory = path.join(work, "public")
+    console.log("Downloading and verifying every public artifact")
+    download(PUBLIC_REPOSITORY, uploaded, publicDirectory)
     const verified = await verifyRelease({
-      directory: privateDirectory,
+      directory: publicDirectory,
       version,
       source,
-      assets: privateRelease.assets,
+      assets: uploaded.assets,
       gnupgHome,
     })
-    await verifyUpdateArtifacts(privateDirectory, version)
+    await verifyUpdateArtifacts(publicDirectory, version)
 
-    const published = await releases(PUBLIC_REPOSITORY)
-    if (!verifyOnly) assertNotDowngrade(version, published)
+    // Chain of custody: the previous public release's signed manifest must name
+    // the previous public tag's commit, and that commit must be an ancestor of
+    // this release's source on public main. The current release's verified key
+    // (fingerprint-pinned above) authenticates the previous manifest.
     const previous = previousRelease(version, published)
     assert.ok(previous, "Public release history must be bootstrapped manually before automated publication")
     const previousTag = previous.tag_name
@@ -291,131 +277,27 @@ async function main() {
     const previousManifest = await verifySignedManifest({
       file: path.join(previousDirectory, "release-manifest.json"),
       signature: path.join(previousDirectory, "release-manifest.json.asc"),
-      keyFile: path.join(privateDirectory, "RELEASE_SIGNING_KEY.asc"),
+      keyFile: path.join(publicDirectory, "RELEASE_SIGNING_KEY.asc"),
       gnupgHome,
     })
     assert.equal(previousManifest.version, previousTag.slice(1))
     assert.match(previousManifest.commit, /^[a-f0-9]{40}$/)
-    assert.equal(
-      git(["rev-parse", `${previousTag}^{commit}`]),
-      previousManifest.commit,
-      "Previous private tag/manifest mismatch",
-    )
-    const parent = fetchRef(`refs/tags/${previousTag}`, "refs/remotes/release-public/previous")
-    assertMirrorDiff(git(["diff", "--name-status", previousManifest.commit, parent]))
-    const head = fetchRef("refs/heads/main", "refs/remotes/release-public/main")
-    const existingTag = publicTag()
-    const existing = published.find((release) => release.tag_name === tag)
-    let publicSource: string
-    if (existingTag) {
-      assertMirrorDiff(git(["diff", "--name-status", source, existingTag]))
-      assert.equal(git(["show", "-s", "--format=%P", existingTag]), parent, "Public release has unexpected ancestry")
-      // Main either still sits on the previous release (a prior run pushed the
-      // tag but died before publishing) or already advanced to this tag.
-      if (!verifyOnly)
-        assert.ok(
-          head === parent || head === existingTag,
-          "Public main has unrelated changes; refusing to overwrite",
-        )
-      publicSource = existingTag
-    } else {
-      assert.ok(!existing, "A release exists without its public tag")
-      assert.ok(!verifyOnly, "Public release does not exist yet")
-      assert.equal(head, parent, "Public main has unrelated changes; refusing to overwrite")
-      git(["merge-base", "--is-ancestor", previousManifest.commit, source])
-      publicSource = createPublicMirror(
-        { source, parent, version, index: path.join(work, "mirror.index") },
-        (args, env) => git(args, undefined, env),
-      )
-      const ref = `refs/release-public/${tag}`
-      git(["update-ref", ref, publicSource])
-      console.log("Publishing sanitized source with public-only ancestry")
-      // Only the tag is pushed here. Main advances after the release is fully
-      // published, so a run that dies mid-upload leaves a resumable orphan tag
-      // instead of moving main ahead of the last published release — which
-      // would fail this guard on every subsequent version.
-      git(["push", `https://github.com/${PUBLIC_REPOSITORY}.git`, `${ref}:refs/tags/${tag}`], publicToken)
-    }
-    assert.equal(publicTag(), publicSource, "Public tag changed during publication")
-
-    const release =
-      existing ??
-      (await api<Release>(PUBLIC_REPOSITORY, "releases", "POST", {
-        tag_name: tag,
-        target_commitish: publicSource,
-        draft: true,
-        name: `TurenOS ${version}`,
-        body: `Signed TurenOS Desktop and CLI release for macOS, Windows, and Linux.\n\n[Source changes](https://github.com/${PUBLIC_REPOSITORY}/compare/${previousTag}...${tag})\n\nSee SHA256SUMS, release-manifest.json, and detached signatures below.\n\nSigning key: \`${RELEASE_FINGERPRINT}\`.`,
-      }))
-    assert.ok(Number.isSafeInteger(release.id) && release.id > 0)
-    assert.equal(release.tag_name, tag)
-    if (release.draft && !verifyOnly) {
-      console.log("Uploading missing verified artifacts without replacing existing assets")
-      while (true) {
-        const current = await api<Release>(PUBLIC_REPOSITORY, `releases/${release.id}`)
-        assert.equal(current.tag_name, tag, "Release tag changed during upload")
-        const pending = missingReleaseAssets(privateRelease.assets, current)
-        if (pending.length === 0) break
-        await Promise.all(
-          pending.slice(0, 4).map(async (asset) => {
-            // A 'starter' record is an upload whose bytes arrived but never
-            // finalized; it blocks the name until removed. Only 'starter'
-            // records are deleted — never 'uploaded' assets, even if another
-            // operator publishes the draft during a long upload.
-            const stuck = current.assets.find(
-              (entry) => entry.name === asset.name && entry.state === "starter",
-            )
-            if (stuck) await api(PUBLIC_REPOSITORY, `releases/assets/${stuck.id}`, "DELETE")
-            const upload = await fetch(
-              `https://uploads.github.com/repos/${PUBLIC_REPOSITORY}/releases/${release.id}/assets?name=${encodeURIComponent(asset.name)}`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${publicToken}`,
-                  "Content-Type": "application/octet-stream",
-                  "Content-Length": String(asset.size),
-                  "X-GitHub-Api-Version": "2022-11-28",
-                },
-                body: Bun.file(path.join(privateDirectory, asset.name)),
-                signal: AbortSignal.timeout(15 * 60_000),
-              },
-            )
-            if (!upload.ok)
-              throw new Error(
-                `Asset upload ${asset.name} returned HTTP ${upload.status}; existing assets were not replaced`,
-              )
-            assertPublicInventory([asset], [(await upload.json()) as ReleaseAsset])
-          }),
-        )
-      }
-    }
-    const uploaded = await api<Release>(PUBLIC_REPOSITORY, `releases/${release.id}`)
-    assertPublicInventory(privateRelease.assets, uploaded.assets)
-    const publicDirectory = path.join(work, "public")
-    console.log("Re-downloading and verifying every public artifact")
-    download(PUBLIC_REPOSITORY, uploaded, publicDirectory)
-    const publicVerified = await verifyRelease({
-      directory: publicDirectory,
-      version,
-      source,
-      assets: uploaded.assets,
-      gnupgHome,
-    })
-    assert.deepEqual(publicVerified.hashes, verified.hashes)
-    await verifyUpdateArtifacts(publicDirectory, version)
+    const previousCommit = fetchRef(`refs/tags/${previousTag}`, "refs/remotes/release-public/previous")
+    assert.equal(previousCommit, previousManifest.commit, "Previous public tag/manifest mismatch")
+    assert.ok(isAncestor(previousCommit, source), "Release source does not build on the previous release")
     if (!verifyOnly) {
       assertNotDowngrade(version, await releases(PUBLIC_REPOSITORY))
-      assert.equal(publicTag(), publicSource)
       const latest = await api<Release>(PUBLIC_REPOSITORY, "releases/latest")
-      if (uploaded.draft || latest.id !== release.id) {
-        await api(PUBLIC_REPOSITORY, `releases/${release.id}`, "PATCH", { draft: false, make_latest: "true" })
+      if (uploaded.draft || latest.id !== existing.id) {
+        await api(PUBLIC_REPOSITORY, `releases/${existing.id}`, "PATCH", {
+          draft: false,
+          make_latest: "true",
+          name: `TurenOS ${version}`,
+          body: `Signed TurenOS Desktop and CLI release for macOS, Windows, and Linux.\n\n[Source changes](https://github.com/${PUBLIC_REPOSITORY}/compare/${previousTag}...${tag})\n\nSee SHA256SUMS, release-manifest.json, and detached signatures below.\n\nSigning key: \`${RELEASE_FINGERPRINT}\`.`,
+        })
       }
-      // Main tracks the last fully published release. Fast-forward only — a
-      // non-fast-forward means unrelated public history, which must not be
-      // overwritten here either.
-      if (head !== publicSource) {
-        git(["push", `https://github.com/${PUBLIC_REPOSITORY}.git`, `${publicSource}:refs/heads/main`], publicToken)
-      }
+      // Publishing the release materializes the tag on the public source commit.
+      assert.equal(publicTag(), source, "Published tag does not point at the release source")
     }
     if (verifyOnly && uploaded.draft) throw new Error("Public release is still a draft")
     await verifyPublic(version, uploaded, publicDirectory)
@@ -437,7 +319,7 @@ async function main() {
     }
     const current = await api<Contents>(HOMEBREW_REPOSITORY, "contents/Formula/turenos.rb?ref=main")
     assert.equal(Buffer.from(current.content, "base64").toString("utf8"), after)
-    const summary = `## TurenOS ${version}\n\n- [Public release](https://github.com/${PUBLIC_REPOSITORY}/releases/tag/${tag})\n- Private source: \`${source}\`\n- Public source: \`${publicSource}\`\n- ${verified.files.length} verified assets (${verified.bytes} bytes)\n- Six anonymous update feeds and payload probes verified\n- [Homebrew formula](https://github.com/${HOMEBREW_REPOSITORY}/blob/main/Formula/turenos.rb) verified\n`
+    const summary = `## TurenOS ${version}\n\n- [Public release](https://github.com/${PUBLIC_REPOSITORY}/releases/tag/${tag})\n- Source: \`${source}\` (public main)\n- ${verified.files.length} verified assets (${verified.bytes} bytes)\n- Six anonymous update feeds and payload probes verified\n- [Homebrew formula](https://github.com/${HOMEBREW_REPOSITORY}/blob/main/Formula/turenos.rb) verified\n`
     if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, summary)
     console.log(`${verifyOnly ? "Verified" : "Published"} ${tag}: public release, update feeds, and Homebrew are ready`)
   } finally {

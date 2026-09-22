@@ -65,11 +65,11 @@ jobs:
           RELEASE_SHA: ${{ steps.context.outputs.sha }}
         run: |
           set -euo pipefail
-          # The release script dispatches only after the version-bump commit's
-          # test+typecheck runs are green, so a green result here makes the
-          # in-workflow test gate redundant. Anything ambiguous (missing,
-          # in-progress, failed, or mixed conclusions) reruns the gate.
-          conclusions=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/check-runs?per_page=100" \
+          # The release source is a public main commit, whose test+typecheck
+          # runs gate every merge. Anything ambiguous (missing, in-progress,
+          # failed, or mixed conclusions) blocks the release — public CI is the
+          # test authority; this workflow does not rerun the suite.
+          conclusions=$(gh api "repos/turenlabs/turenos/commits/$RELEASE_SHA/check-runs?per_page=100" \
             --jq '[.check_runs[] | select(.name=="test" or .name=="typecheck") | .conclusion] | unique')
           echo "conclusions for $RELEASE_SHA: $conclusions"
           if [ "$conclusions" = '["success"]' ]; then
@@ -78,19 +78,11 @@ jobs:
             echo "green=false" >> "$GITHUB_OUTPUT"
           fi
 
-  tests:
-    needs: release_context
-    if: ${{ !inputs.publish_existing && needs.release_context.outputs.ci_green != 'true' }}
-    uses: ./.github/workflows/test.yml
-    permissions:
-      contents: read
-      checks: write
-
   preflight:
-    needs: [release_context, tests]
-    # A skipped tests job means the release commit's CI was already green (or
-    # this is --publish-existing); only failure or cancellation blocks.
-    if: ${{ always() && !cancelled() && needs.release_context.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.tests.result) }}
+    needs: release_context
+    # --publish-existing verifies and finishes an existing public release without
+    # rebuilding: skipping preflight cascades the build/sign/publish jobs off.
+    if: ${{ always() && !cancelled() && !inputs.publish_existing && needs.release_context.result == 'success' && needs.release_context.outputs.ci_green == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       sha: ${{ steps.version.outputs.sha }}
@@ -99,7 +91,8 @@ jobs:
       - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          repository: turenlabs/turenos
+          ref: ${{ needs.release_context.outputs.sha }}
           fetch-depth: 0
 
       - name: Setup Bun
@@ -109,13 +102,13 @@ jobs:
         env:
           FORGE_CHANNEL: prod
           FORGE_VERSION: ${{ inputs.version }}
-          GH_REPO: ${{ github.repository }}
+          GH_REPO: turenlabs/turenos
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           canonical=$(tr -d '[:space:]' < VERSION)
-          if [ "${{ github.ref }}" != "refs/heads/dev" ]; then
-            echo "Release workflow must run from dev" >&2
+          if [ "${{ github.ref }}" != "refs/heads/${{ github.event.repository.default_branch }}" ]; then
+            echo "Release workflow must run from the private default branch" >&2
             exit 1
           fi
           if [ "$FORGE_VERSION" != "$canonical" ]; then
@@ -141,7 +134,7 @@ jobs:
         env:
           FORGE_CHANNEL: prod
           FORGE_VERSION: ${{ inputs.version }}
-          GH_REPO: ${{ github.repository }}
+          GH_REPO: turenlabs/turenos
         run: bun script/version.ts
 
       - name: Validate signing configuration
@@ -270,6 +263,7 @@ jobs:
       - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: turenlabs/turenos
           ref: ${{ needs.preflight.outputs.sha }}
 
       - name: Setup Bun
@@ -380,6 +374,7 @@ jobs:
       - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: turenlabs/turenos
           ref: ${{ needs.preflight.outputs.sha }}
 
       - name: Import macOS signing certificate
@@ -472,6 +467,7 @@ jobs:
       - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: turenlabs/turenos
           ref: ${{ needs.preflight.outputs.sha }}
 
       - name: Download unsigned Windows runtime binaries
@@ -587,6 +583,7 @@ jobs:
       - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: turenlabs/turenos
           ref: ${{ needs.preflight.outputs.sha }}
 
       - name: Import macOS signing certificate
@@ -840,6 +837,7 @@ jobs:
       - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: turenlabs/turenos
           ref: ${{ needs.preflight.outputs.sha }}
           fetch-depth: 0
 
@@ -977,13 +975,13 @@ jobs:
 
       - name: Create, upload, and verify draft release
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
+          GH_REPO: turenlabs/turenos
           VERSION: ${{ needs.preflight.outputs.version }}
           RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
         run: |
           set -euo pipefail
-          git fetch origin dev --tags
+          git fetch origin --tags
           tag_sha=$(git rev-parse --verify --quiet "v${VERSION}^{commit}" 2>/dev/null || true)
           release_json=$(gh release view "v${VERSION}" --repo "$GH_REPO" \
             --json tagName,isDraft,targetCommitish 2>/dev/null || true)
@@ -1075,7 +1073,8 @@ jobs:
             fi
           done
           bun packages/desktop/scripts/update-artifacts.ts release-assets "$VERSION"
-          gh release edit "v${VERSION}" --repo "$GH_REPO" --draft=false
+          # The draft stays unpublished until the distribute job re-downloads,
+          # re-verifies, and publishes it.
 
       - name: Remove release signing key
         if: always()
@@ -1099,7 +1098,7 @@ jobs:
           persist-credentials: false
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
-      - name: Verify, mirror, publish, and update Homebrew
+      - name: Verify, publish, and update Homebrew
         env:
           PRIVATE_GH_TOKEN: ${{ github.token }}
           PUBLIC_RELEASE_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}

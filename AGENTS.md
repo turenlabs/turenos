@@ -8,10 +8,10 @@
 ## Releases
 
 - Use the committed orchestration in `docs/release-automation.md`. Do not recreate manual artifact-copy or public-mirror procedures from old session notes.
-- Prepare and merge the version change with normal CI first. From clean, synchronized `main`, run `./script/release <version>`; GitHub Actions builds/signs privately, verifies and publishes the public release, then updates Homebrew.
-- If the private release already exists, use `./script/release <version> --publish-existing`. Never rebuild/re-sign a published version or overwrite published assets.
+- `turenlabs/turenos` `main` is the canonical source; `turenio/turen` only builds that source privately to sign and publish. Prepare and merge the version change with normal CI on `main` first, then run `./script/release <version>`; GitHub Actions builds/signs privately, verifies and publishes the public release, then updates Homebrew.
+- If the public release already exists (draft or published), use `./script/release <version> --publish-existing`. Never rebuild/re-sign a published version or overwrite published assets.
 - Keep build/signing credentials in `turenio/turen`. `PUBLIC_RELEASE_TOKEN` is a dedicated fine-grained token for `turenlabs/turenos` and `turenlabs/homebrew-turenos`; never upload a developer's general-purpose local login token.
-- Preserve the pinned signing identity, exact source exclusions, public-only Git ancestry, non-force pushes, draft verification, and downgrade/concurrency guards.
+- Preserve the pinned signing identity, the public-only release chain (signed manifest names the public commit, previous tag ancestor of source), non-force pushes, draft verification, and downgrade/concurrency guards.
 - A release is complete only after the workflow's public release, anonymous update-feed checks, and Homebrew verification succeed. Prefer quiet periodic status checks over streaming workflow logs.
 
 ## Dev Builds

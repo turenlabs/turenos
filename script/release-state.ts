@@ -23,8 +23,10 @@ export function releaseAction(input: {
   if (input.release.targetCommitish !== input.targetSha) {
     throw new Error(`Draft ${expectedTag} targets ${input.release.targetCommitish}; expected ${input.targetSha}`)
   }
-  if (input.tagSha !== input.targetSha) {
-    throw new Error(`Tag ${expectedTag} resolves to ${input.tagSha ?? "no commit"}; expected ${input.targetSha}`)
+  // Draft releases have no git tag; the tag materializes at publish. Only a
+  // real tag resolving to a different commit is a conflict.
+  if (input.tagSha && input.tagSha !== input.targetSha) {
+    throw new Error(`Tag ${expectedTag} resolves to ${input.tagSha}; expected ${input.targetSha}`)
   }
   return "resume" as const
 }

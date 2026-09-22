@@ -8,38 +8,19 @@ if [ "$#" -gt 2 ] || { [ -n "$MODE" ] && [ "$MODE" != --publish-existing ]; }; t
   echo "Usage: ./script/release <version> [--publish-existing]" >&2
   exit 1
 fi
-ROOT=$(git rev-parse --show-toplevel)
-cd "$ROOT"
 
-if [ "$(git branch --show-current)" != "dev" ]; then
-  echo "Releases must be dispatched from the dev branch" >&2
-  exit 1
+# The release source is turenlabs/turenos main; the workflow validates the
+# requested version against it. A matching local VERSION file is only a sanity
+# check — never a requirement, since this script may run from any checkout.
+if [ -f VERSION ]; then
+  canonical=$(tr -d '[:space:]' < VERSION)
+  if [ "$MODE" != --publish-existing ] && [ "$VERSION" != "$canonical" ]; then
+    echo "Warning: requested $VERSION does not match this checkout's VERSION ($canonical)" >&2
+    echo "The workflow will fail unless public main carries $VERSION." >&2
+  fi
 fi
 
-if [ -n "$(git status --porcelain)" ]; then
-  echo "Releases require a clean worktree" >&2
-  exit 1
-fi
-
-git fetch origin dev --tags
-if [ "$MODE" != --publish-existing ]; then
-  FORGE_VERSION="$VERSION" bun script/release-check.ts
-else
-  bun -e 'import { validateVersion } from "./packages/script/src/release"; validateVersion(process.argv[1])' "$VERSION"
-fi
-if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/dev)" ]; then
-  echo "Local dev must exactly match origin/dev" >&2
-  exit 1
-fi
-
-bun run version:check
-
-REPO=${GH_REPO:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}
-if [ "$REPO" != turenio/turen ]; then
-  echo "Releases must be dispatched in turenio/turen" >&2
-  exit 1
-fi
-args=(--repo "$REPO" --ref dev -f version="$VERSION")
+args=(--repo turenio/turen -f version="$VERSION")
 if [ "$MODE" = --publish-existing ]; then args+=(-f publish_existing=true); fi
 gh workflow run release.yml "${args[@]}"
-echo "GitHub Actions now owns the complete release, public verification, and Homebrew update."
+echo "GitHub Actions now owns the complete release: it builds the public main source privately, signs, publishes the public release, verifies, and updates Homebrew."

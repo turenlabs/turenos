@@ -4,9 +4,7 @@ import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import {
-  assertMirrorDiff,
   assertPublicInventory,
-  MIRROR_EXCLUSIONS,
   updateHomebrewFormula,
   validateVersion,
   verifyRelease,
@@ -60,21 +58,6 @@ describe("release support", () => {
       "999999999999999999.0.1",
     ]) {
       expect(() => validateVersion(value)).toThrow()
-    }
-  })
-  test("mirror diff allows exactly six deletions, in either order", () => {
-    const diff = MIRROR_EXCLUSIONS.map((name) => `D\t${name}`).join("\n")
-    expect(() => assertMirrorDiff(`${diff}\n`)).not.toThrow()
-    expect(() => assertMirrorDiff(diff.split("\n").reverse().join("\n"))).not.toThrow()
-    for (const value of [
-      "",
-      diff.replace("D\t", "M\t"),
-      `${diff}\nD\tother`,
-      diff.split("\n").slice(1).join("\n"),
-      `${diff}\n${diff}`,
-      `${diff}\n\n`,
-    ]) {
-      expect(() => assertMirrorDiff(value)).toThrow()
     }
   })
   test("public inventory compares all metadata and rejects ambiguous assets", () => {
