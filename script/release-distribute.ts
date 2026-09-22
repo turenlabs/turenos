@@ -240,21 +240,14 @@ async function main() {
     console.log("Downloading and verifying every public artifact")
     download(PUBLIC_REPOSITORY, uploaded, publicDirectory)
     // Pre-inversion manifests record a private source commit that is not part
-    // of public history. When the manifest's signed commit is absent from the
-    // public object store, it is that commit the manifest authentically attests.
+    // of public history. When the manifest's signed commit is absent from
+    // public main's history, it is that commit the manifest authentically
+    // attests. The job runs in the private checkout, so existence must be
+    // tested by reachability from the fetched public ref, not cat-file.
     let expectedSource = source
     const manifestText = await Bun.file(path.join(publicDirectory, "release-manifest.json")).text()
     const manifestCommit = /"commit"\s*:\s*"([a-f0-9]{40})"/.exec(manifestText)?.[1]
-    if (
-      manifestCommit &&
-      manifestCommit !== source &&
-      Bun.spawnSync(["git", "cat-file", "-e", `${manifestCommit}^{commit}`], {
-        cwd: root,
-        env: environment(),
-        stdout: "ignore",
-        stderr: "ignore",
-      }).exitCode !== 0
-    ) {
+    if (manifestCommit && manifestCommit !== source && !isAncestor(manifestCommit, head)) {
       expectedSource = manifestCommit
     }
     const verified = await verifyRelease({
@@ -303,16 +296,12 @@ async function main() {
     assert.match(previousManifest.commit, /^[a-f0-9]{40}$/)
     const previousCommit = fetchRef(`refs/tags/${previousTag}`, "refs/remotes/release-public/previous")
     // Pre-inversion manifests record a private commit that never existed in
-    // public history; the signature still binds it. Once a manifest names a
-    // public commit, it must be exactly the previous tag's target.
-    const manifestCommitInPublic =
-      Bun.spawnSync(["git", "cat-file", "-e", `${previousManifest.commit}^{commit}`], {
-        cwd: root,
-        env: environment(),
-        stdout: "ignore",
-        stderr: "ignore",
-      }).exitCode === 0
-    if (manifestCommitInPublic) {
+    // public history; the signature still binds it. Reachability from public
+    // main is the membership test — private SHAs exist in this checkout's
+    // object store but are not ancestors of the fetched public ref. Once a
+    // manifest names a public commit, it must be exactly the previous tag's
+    // target.
+    if (isAncestor(previousManifest.commit, head)) {
       assert.equal(previousCommit, previousManifest.commit, "Previous public tag/manifest mismatch")
     }
     assert.ok(isAncestor(previousCommit, source), "Release source does not build on the previous release")
