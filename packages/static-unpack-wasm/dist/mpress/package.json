@@ -1,7 +1,13 @@
 {
   "name": "turen-mpress-wasm",
   "type": "module",
+  "description": "Bounded MPRESS PE32 reconstruction WebAssembly module for Turen",
   "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenlabs/turenos"
+  },
   "files": [
     "turen_mpress_wasm_bg.wasm",
     "turen_mpress_wasm.js",

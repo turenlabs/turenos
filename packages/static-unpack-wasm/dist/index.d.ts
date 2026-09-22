@@ -9,14 +9,7 @@ export interface UnpackMetadata {
 }
 
 export interface StaticUnpack {
-  probe(bytes: Uint8Array): {
-    detected: boolean
-    packer?: "upx" | "mpress"
-    version?: string
-    method?: string
-    supported: boolean
-    error?: string
-  }
+  probe(bytes: Uint8Array): { detected: boolean; packer?: "upx" | "mpress"; version?: string; method?: string; supported: boolean; error?: string }
   unpackUpx(bytes: Uint8Array): Promise<{ bytes: Uint8Array; metadata: UnpackMetadata }>
   unpackMpress(bytes: Uint8Array): { bytes: Uint8Array; metadata: UnpackMetadata }
 }
