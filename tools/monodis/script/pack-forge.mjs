@@ -26,8 +26,8 @@ await writeFile(
   )}\n`,
 )
 await cp(path.join(root, "NOTICE"), path.join(target, "NOTICE"))
-await cp(path.join(root, "upstream/mono/LICENSE"), path.join(target, "LICENSE-MONO"))
-await cp(path.join(root, "upstream/mono/PATENTS.TXT"), path.join(target, "PATENTS-MONO"))
+await cp(path.join(root, "upstream/LICENSE"), path.join(target, "LICENSE-MONO"))
+await cp(path.join(root, "upstream/PATENTS.TXT"), path.join(target, "PATENTS-MONO"))
 await writeFile(
   path.join(target, "SOURCE.json"),
   `${JSON.stringify(
