@@ -1,0 +1,1 @@
+Overlay this artifact onto an existing @turenlabs/static-analysis-wasm workspace package. Keep its legacy dist runtime and package.json unchanged. The extension requires a 256 MiB WASM memory maximum and a fresh timeout-bounded host worker. See LICENSE-DIE and THIRD-PARTY-106.txt for upstream notices.
