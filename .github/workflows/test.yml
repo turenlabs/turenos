@@ -6,7 +6,7 @@ on:
     branches: [main, "release-*"]
     paths-ignore: ["tools/**", "services/**", "docs/**"]
   pull_request:
-    paths-ignore: ["tools/**", "services/**", "docs/**"]
+    paths-ignore: ["tools/**", "services/**", "docs/**", "packages/*-wasm/**"]
   merge_group:
   workflow_dispatch:
   workflow_call:
