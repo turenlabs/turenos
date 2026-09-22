@@ -38,6 +38,38 @@ const OPENAI_MODELS = [
     ],
   },
   {
+    id: "gpt-6-sol",
+    name: "GPT-6 Sol",
+    fallback: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+    cost: [
+      { input: 2, output: 10, cache: { read: 0.2, write: 2.5 } },
+      {
+        tier: { type: "context" as const, size: 272_000 },
+        input: 4,
+        output: 15,
+        cache: { read: 0.4, write: 5 },
+      },
+    ],
+  },
+  {
+    id: "gpt-6-luna",
+    name: "GPT-6 Luna",
+    fallback: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+    cost: [
+      { input: 0.1, output: 0.5, cache: { read: 0.01, write: 0.125 } },
+      {
+        tier: { type: "context" as const, size: 272_000 },
+        input: 0.2,
+        output: 0.75,
+        cache: { read: 0.02, write: 0.25 },
+      },
+    ],
+  },
+  {
     id: "daybreak-blue-latest",
     name: "Daybreak Blue",
     limit: { context: 1_050_000, input: 922_000, output: 128_000 },
@@ -208,7 +240,7 @@ export const OpenAIPlugin = define({
           }
         })
         for (const definition of OPENAI_MODELS) {
-          // Let models.dev supply Astra's metadata as soon as its direct OpenAI entry lands.
+          // Let models.dev supply each model's metadata as soon as its direct OpenAI entry lands.
           if (definition.fallback && evt.model.get(OPENAI_PROVIDER_ID, ModelV2.ID.make(definition.id))) continue
           evt.model.update(OPENAI_PROVIDER_ID, ModelV2.ID.make(definition.id), (model) => {
             model.name = definition.name
@@ -230,10 +262,12 @@ export const OpenAIPlugin = define({
             model.limit = definition.limit
           })
         }
-        evt.model.update(OPENAI_PROVIDER_ID, ModelV2.ID.make("gpt-6-astra"), (model) => {
-          // Stateless turns need the encrypted reasoning to continue without discarding it.
-          model.request.body.include ??= ["reasoning.encrypted_content"]
-        })
+        for (const id of ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]) {
+          evt.model.update(OPENAI_PROVIDER_ID, ModelV2.ID.make(id), (model) => {
+            // Stateless turns need the encrypted reasoning to continue without discarding it.
+            model.request.body.include ??= ["reasoning.encrypted_content"]
+          })
+        }
         for (const item of evt.provider.list()) {
           if (item.provider.api.type !== "aisdk") continue
           if (item.provider.api.package !== "@ai-sdk/openai") continue

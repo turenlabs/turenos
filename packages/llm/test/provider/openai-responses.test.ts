@@ -762,7 +762,7 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
-  for (const id of ["gpt-5.2", "gpt-6-astra"]) {
+  for (const id of ["gpt-5.2", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]) {
     it.effect(`requests encrypted reasoning by default for ${id}`, () =>
       Effect.gen(function* () {
         // The native OpenAI facade configures reasoning models stateless (store: false) with
@@ -788,12 +788,12 @@ describe("OpenAI Responses route", () => {
           LLM.request({
             model: OpenAI.configure({ baseURL: "https://api.openai.test/v1/", apiKey: "test" }).responses(id),
             prompt: "hi",
-            providerOptions: { openai: { include: [], reasoningEffort: id === "gpt-6-astra" ? "max" : "high" } },
+            providerOptions: { openai: { include: [], reasoningEffort: id.startsWith("gpt-6") ? "max" : "high" } },
           }),
         )
 
         expect(prepared.body.include).toBeUndefined()
-        expect(prepared.body.reasoning?.effort).toBe(id === "gpt-6-astra" ? "max" : "high")
+        expect(prepared.body.reasoning?.effort).toBe(id.startsWith("gpt-6") ? "max" : "high")
       }),
     )
   }

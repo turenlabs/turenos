@@ -83,7 +83,7 @@ export const openAIDefaultOptions = (
 ): ProviderOptions | undefined =>
   mergeProviderOptions(
     openAIProviderOptions({ store: false }),
-    modelID.toLowerCase() === "gpt-6-astra"
+    modelID.toLowerCase().startsWith("gpt-6")
       ? openAIProviderOptions({
           reasoningEffort: "medium",
           reasoningSummary: "auto",
