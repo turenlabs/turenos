@@ -1,0 +1,11 @@
+{
+  "target": "@turenlabs/static-analysis-wasm",
+  "format": "overlay",
+  "runtime": "dist/extensions/turen_static_analysis_wasm.js",
+  "memoryMaximumBytes": 268435456,
+  "preserve": [
+    "package.json",
+    "dist/turen_static_analysis_wasm.js",
+    "dist/turen_static_analysis_wasm_bg.wasm"
+  ]
+}

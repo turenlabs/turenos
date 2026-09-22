@@ -1,2 +1,0 @@
-This package contains Turen's bounded static-analysis WebAssembly operations.
-It vendors infer, goblin, iced-x86, zip, tar, cfb, quick-xml, kamadak-exif, x509-parser, plist, tlsh2, and related crates.
