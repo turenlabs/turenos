@@ -341,22 +341,22 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@tufjs/canonical-json` | `2.0.0` | MIT | [source](git+https://github.com/theupdateframework/tuf-js.git) |
 | `@tufjs/models` | `4.1.0` | MIT | [source](git+https://github.com/theupdateframework/tuf-js.git) |
 | `@turenlabs/binwalk-scan-wasm` | `0.1.0` | MIT OR Apache-2.0 | Not declared |
-| `@turenlabs/debug-symbols-wasm` | `0.1.0` | MIT OR Apache-2.0 | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/email-authenticate-wasm` | `0.1.0` | Apache-2.0 OR MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/email-security-wasm` | `0.1.0-turen.1` | Apache-2.0 OR MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/ghidra-decompiler-wasm` | `0.1.0` | Apache-2.0 | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/goblin-wasm` | `0.10.6-turen.1` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/libpcap-wasm` | `1.10.6-turen.1` | BSD-3-Clause | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/monodis-wasm` | `0.1.0` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/protocol-inspect-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/rebuild-timeline-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/static-analysis-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/static-unpack-wasm` | `5.2.0-turen.1` | GPL-2.0-or-later | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/stng-core-wasm` | `1.9.0-turen.1` | Apache-2.0 | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/wasm-inspect-wasm` | `0.1.0` | MIT OR Apache-2.0 | Not declared |
-| `@turenlabs/wifi-offline-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/windows-artifacts-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
-| `@turenlabs/yara-x-wasm` | `1.19.0-turen.1` | BSD-3-Clause | [source](git+ssh://git@github.com/turenio/wasm-tools.git) |
+| `@turenlabs/debug-symbols-wasm` | `0.1.0` | MIT OR Apache-2.0 | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/email-authenticate-wasm` | `0.1.0` | Apache-2.0 OR MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/email-security-wasm` | `0.1.0-turen.1` | Apache-2.0 OR MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/ghidra-decompiler-wasm` | `0.1.0` | Apache-2.0 | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/goblin-wasm` | `0.10.6-turen.1` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/libpcap-wasm` | `1.10.6-turen.1` | BSD-3-Clause | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/monodis-wasm` | `0.1.0` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/protocol-inspect-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/rebuild-timeline-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/static-analysis-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/static-unpack-wasm` | `5.2.0-turen.1` | GPL-2.0-or-later | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/stng-core-wasm` | `1.9.0-turen.1` | Apache-2.0 | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/wasm-inspect-wasm` | `0.1.0` | MIT OR Apache-2.0 | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/wifi-offline-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/windows-artifacts-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/yara-x-wasm` | `1.19.0-turen.1` | BSD-3-Clause | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
 | `@types/d3` | `7.4.3` | MIT | [source](https://github.com/DefinitelyTyped/DefinitelyTyped.git) |
 | `@types/d3-array` | `3.2.2` | MIT | [source](https://github.com/DefinitelyTyped/DefinitelyTyped.git) |
 | `@types/d3-axis` | `3.0.6` | MIT | [source](https://github.com/DefinitelyTyped/DefinitelyTyped.git) |

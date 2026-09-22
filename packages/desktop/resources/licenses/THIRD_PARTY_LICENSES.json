@@ -2790,7 +2790,7 @@
       "name": "@turenlabs/debug-symbols-wasm",
       "version": "0.1.0",
       "license": "MIT OR Apache-2.0",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2800,7 +2800,7 @@
       "name": "@turenlabs/email-authenticate-wasm",
       "version": "0.1.0",
       "license": "Apache-2.0 OR MIT",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2810,7 +2810,7 @@
       "name": "@turenlabs/email-security-wasm",
       "version": "0.1.0-turen.1",
       "license": "Apache-2.0 OR MIT",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2820,7 +2820,7 @@
       "name": "@turenlabs/ghidra-decompiler-wasm",
       "version": "0.1.0",
       "license": "Apache-2.0",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2830,7 +2830,7 @@
       "name": "@turenlabs/goblin-wasm",
       "version": "0.10.6-turen.1",
       "license": "MIT",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2840,7 +2840,7 @@
       "name": "@turenlabs/libpcap-wasm",
       "version": "1.10.6-turen.1",
       "license": "BSD-3-Clause",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2850,7 +2850,7 @@
       "name": "@turenlabs/monodis-wasm",
       "version": "0.1.0",
       "license": "MIT",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "NOTICE"
       ]
@@ -2859,7 +2859,7 @@
       "name": "@turenlabs/protocol-inspect-wasm",
       "version": "0.1.0-turen.1",
       "license": "MIT",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2869,7 +2869,7 @@
       "name": "@turenlabs/rebuild-timeline-wasm",
       "version": "0.1.0-turen.1",
       "license": "MIT",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2879,7 +2879,7 @@
       "name": "@turenlabs/static-analysis-wasm",
       "version": "0.1.0-turen.1",
       "license": "MIT",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2889,7 +2889,7 @@
       "name": "@turenlabs/static-unpack-wasm",
       "version": "5.2.0-turen.1",
       "license": "GPL-2.0-or-later",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "COPYING",
         "NOTICE"
@@ -2899,7 +2899,7 @@
       "name": "@turenlabs/stng-core-wasm",
       "version": "1.9.0-turen.1",
       "license": "Apache-2.0",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2909,6 +2909,7 @@
       "name": "@turenlabs/wasm-inspect-wasm",
       "version": "0.1.0",
       "license": "MIT OR Apache-2.0",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2918,7 +2919,7 @@
       "name": "@turenlabs/wifi-offline-wasm",
       "version": "0.1.0-turen.1",
       "license": "MIT",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2928,7 +2929,7 @@
       "name": "@turenlabs/windows-artifacts-wasm",
       "version": "0.1.0-turen.1",
       "license": "MIT",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"
@@ -2938,7 +2939,7 @@
       "name": "@turenlabs/yara-x-wasm",
       "version": "1.19.0-turen.1",
       "license": "BSD-3-Clause",
-      "source": "git+ssh://git@github.com/turenio/wasm-tools.git",
+      "source": "git+ssh://git@github.com/turenlabs/turenos.git",
       "licenseFiles": [
         "LICENSE",
         "NOTICE"

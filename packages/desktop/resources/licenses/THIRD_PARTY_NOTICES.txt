@@ -20593,7 +20593,7 @@ the Apache-2.0 or MIT license at the user's option.
 --------------------------------------------------------------------------------
 @turenlabs/debug-symbols-wasm@0.1.0
 License: MIT OR Apache-2.0
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 Copyright (c) Turen Labs
@@ -20611,7 +20611,7 @@ the locked dependency closure.
 --------------------------------------------------------------------------------
 @turenlabs/email-authenticate-wasm@0.1.0
 License: Apache-2.0 OR MIT
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 Copyright (C) 2020 Stalwart Labs LLC
@@ -20637,7 +20637,7 @@ error.
 --------------------------------------------------------------------------------
 @turenlabs/email-security-wasm@0.1.0-turen.1
 License: Apache-2.0 OR MIT
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 Copyright (C) 2020 Stalwart Labs LLC
@@ -20665,7 +20665,7 @@ Licensed under the Apache License, Version 2.0 or the MIT license, at your optio
 --------------------------------------------------------------------------------
 @turenlabs/ghidra-decompiler-wasm@0.1.0
 License: Apache-2.0
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 Apache License
@@ -20887,7 +20887,7 @@ Turen. It incorporates work from the ghidra-decompiler fork by Maurice Lam.
 --------------------------------------------------------------------------------
 @turenlabs/goblin-wasm@0.10.6-turen.1
 License: MIT
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 The MIT License (MIT)
@@ -20919,7 +20919,7 @@ Turen added a bounded WebAssembly inspection wrapper.
 --------------------------------------------------------------------------------
 @turenlabs/libpcap-wasm@1.10.6-turen.1
 License: BSD-3-Clause
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 License: BSD
@@ -20950,7 +20950,7 @@ Retain all acknowledgements and notices in the accompanying LICENSE.
 --------------------------------------------------------------------------------
 @turenlabs/monodis-wasm@0.1.0
 License: MIT
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- NOTICE ---
 Mono monodis
@@ -20981,7 +20981,7 @@ module.
 --------------------------------------------------------------------------------
 @turenlabs/protocol-inspect-wasm@0.1.0-turen.1
 License: MIT
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 MIT License
@@ -21012,7 +21012,7 @@ This package contains Turen's bounded offline protocol-inspection WebAssembly op
 --------------------------------------------------------------------------------
 @turenlabs/rebuild-timeline-wasm@0.1.0-turen.1
 License: MIT
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 MIT License
@@ -21044,7 +21044,7 @@ It vendors the bodyfile crate and merges artifact JSON events.
 --------------------------------------------------------------------------------
 @turenlabs/static-analysis-wasm@0.1.0-turen.1
 License: MIT
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 MIT License
@@ -21076,7 +21076,7 @@ It vendors infer, goblin, iced-x86, zip, tar, cfb, quick-xml, kamadak-exif, x509
 --------------------------------------------------------------------------------
 @turenlabs/static-unpack-wasm@5.2.0-turen.1
 License: GPL-2.0-or-later
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- COPYING ---
 GNU GENERAL PUBLIC LICENSE
@@ -21426,7 +21426,7 @@ The MPRESS analysis-grade reconstructor is derived from MIT-licensed RetDec algo
 --------------------------------------------------------------------------------
 @turenlabs/stng-core-wasm@1.9.0-turen.1
 License: Apache-2.0
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 Apache License
@@ -21638,6 +21638,7 @@ Turen removed host, cache, Rizin, CLI and parallel boundaries and added aggregat
 --------------------------------------------------------------------------------
 @turenlabs/wasm-inspect-wasm@0.1.0
 License: MIT OR Apache-2.0
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 Copyright (c) 2026 Turen Labs
@@ -21657,7 +21658,7 @@ generated artifact.
 --------------------------------------------------------------------------------
 @turenlabs/wifi-offline-wasm@0.1.0-turen.1
 License: MIT
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 MIT License
@@ -21689,7 +21690,7 @@ It vendors pcap-file, ieee80211, and radiotap.
 --------------------------------------------------------------------------------
 @turenlabs/windows-artifacts-wasm@0.1.0-turen.1
 License: MIT
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 MIT License
@@ -21721,7 +21722,7 @@ It vendors prefetch-core, evtx, mft, amcache-core, lnk-core, jumplist_parser, an
 --------------------------------------------------------------------------------
 @turenlabs/yara-x-wasm@1.19.0-turen.1
 License: BSD-3-Clause
-Source: git+ssh://git@github.com/turenio/wasm-tools.git
+Source: git+ssh://git@github.com/turenlabs/turenos.git
 
 --- LICENSE ---
 Copyright (c) 2024. The YARA-X Authors. All Rights Reserved.

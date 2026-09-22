@@ -25,6 +25,7 @@ await writeFile(
       files: ["dist/", "LICENSE", "NOTICE", "README.md", "SOURCE.json", "SHA256SUMS"],
       exports: "./dist/turen_wasm_inspect_wasm.js",
       license: "MIT OR Apache-2.0",
+      repository: "git+ssh://git@github.com/turenlabs/turenos.git",
     },
     null,
     2,
