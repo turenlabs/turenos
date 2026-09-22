@@ -5,8 +5,9 @@
   "upstreamCrateSha256": "0b3a9080c1fb8190e232df37a10aa1b3d6b08be084e537069913f025e0ce86c5",
   "ammoniaVersion": "4.1.4",
   "ammoniaCrateSha256": "dc6d763210e2eb7670d1a5183a08bebefa3f97db2a738a684f2ce00bd49f681d",
-  "sourceCommit": "5796d22ed7a5de0a1032d60d7a7178e88da2738f",
-  "rust": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "sourceCommit": "a39285cff88ea6590fe39e4a23622d7c2343aa51",
+  "workflowRun": "35738247314",
+  "rust": "1.97.1",
   "wasmPack": "0.15.0",
   "features": [
     "full_encoding",
@@ -26,10 +27,7 @@
     "iocs": 2048,
     "valueBytes": 65536,
     "bodyBytes": 4194304,
-    "htmlBytes": 2097152
-  },
-  "repository": "https://github.com/turenio/wasm-tools",
-  "sourceRevision": "5796d22ed7a5de0a1032d60d7a7178e88da2738f",
-  "localModifications": "source-106 contains the complete modified crate and locked dependencies",
-  "rustFlags": ""
+    "htmlBytes": 2097152,
+    "extractedAttachmentBytes": 8388608
+  }
 }
