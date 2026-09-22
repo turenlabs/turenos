@@ -3,7 +3,7 @@
   "version": "0.1.0-turen.1",
   "private": true,
   "type": "module",
-  "description": "Offline 802.11 capture summary for TurenOS",
+  "description": "Offline 802.11 capture summary for Turen",
   "main": "dist/turen_wifi_offline_wasm.js",
   "types": "dist/turen_wifi_offline_wasm.d.ts",
   "exports": {
@@ -17,5 +17,5 @@
     "dist/"
   ],
   "license": "MIT",
-  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+  "repository": "git+ssh://git@github.com/turenio/turen.git"
 }
