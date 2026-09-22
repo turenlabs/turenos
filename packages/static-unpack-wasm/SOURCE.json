@@ -12,8 +12,8 @@
     "license": "MIT",
     "scope": "analysis-grade PE32 LZMAT/LZMA reconstruction"
   },
-  "emscripten": "4.0.10",
-  "rust": "1.93.0",
-  "wasmPack": "0.14.0",
-  "run": "32745587933"
+  "emscripten": "6.0.8",
+  "rust": "1.94.0",
+  "wasmPack": "0.15.0",
+  "run": "35738313715"
 }

@@ -3,7 +3,7 @@
   "version": "5.2.0-turen.1",
   "private": true,
   "type": "module",
-  "description": "TurenOS bundled static UPX and MPRESS WebAssembly unpackers",
+  "description": "Turen bundled static UPX and MPRESS WebAssembly unpackers",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -18,5 +18,5 @@
     "upx-5.2.0-source.tar.gz"
   ],
   "license": "GPL-2.0-or-later",
-  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+  "repository": "git+ssh://git@github.com/turenio/turen.git"
 }
