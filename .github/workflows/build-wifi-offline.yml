@@ -2,9 +2,8 @@ name: Build wifi offline WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-wifi-offline.yml"
       - "tools/wifi-offline/**"
   workflow_dispatch:
 

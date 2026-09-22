@@ -2,10 +2,9 @@ name: Build email authentication WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
       - "tools/email-authenticate/**"
-      - ".github/workflows/build-email-authenticate.yml"
   workflow_dispatch:
 
 concurrency:

@@ -2,9 +2,8 @@ name: Build unicode-audit WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-unicode-audit.yml"
       - "tools/unicode-audit/**"
   workflow_dispatch:
 

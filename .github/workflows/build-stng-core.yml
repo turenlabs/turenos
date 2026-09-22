@@ -2,9 +2,8 @@ name: Build stng-core WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-stng-core.yml"
       - "tools/stng-core/**"
   workflow_dispatch:
 

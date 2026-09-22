@@ -2,9 +2,8 @@ name: Build protocol inspection WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-protocol-inspect.yml"
       - "tools/protocol-inspect/**"
   workflow_dispatch:
 

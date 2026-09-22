@@ -2,9 +2,8 @@ name: Build JSON query WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-json-query.yml"
       - "tools/json-query/**"
   workflow_dispatch:
 

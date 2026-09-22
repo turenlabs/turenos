@@ -2,9 +2,8 @@ name: Build apk-dex WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-apk-dex.yml"
       - "tools/apk-dex/**"
   workflow_dispatch:
 

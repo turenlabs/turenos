@@ -2,9 +2,8 @@ name: Build Goblin WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-goblin.yml"
       - "tools/goblin/**"
   workflow_dispatch:
 

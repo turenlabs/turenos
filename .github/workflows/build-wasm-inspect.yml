@@ -2,9 +2,8 @@ name: Build wasm-inspect WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-wasm-inspect.yml"
       - "tools/wasm-inspect/**"
   workflow_dispatch:
 

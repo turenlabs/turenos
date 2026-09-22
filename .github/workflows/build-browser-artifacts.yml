@@ -2,9 +2,8 @@ name: Build browser-artifacts WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-browser-artifacts.yml"
       - "tools/browser-artifacts/**"
   workflow_dispatch:
 

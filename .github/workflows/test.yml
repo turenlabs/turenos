@@ -3,7 +3,7 @@ name: test
 
 on:
   push:
-    branches: [dev, main, "release-*"]
+    branches: [main, "release-*"]
     paths-ignore: ["tools/**", "services/**", "docs/**"]
   pull_request:
     paths-ignore: ["tools/**", "services/**", "docs/**"]

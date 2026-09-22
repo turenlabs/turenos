@@ -2,9 +2,8 @@ name: Build rtf-inspect WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-rtf-inspect.yml"
       - "tools/rtf-inspect/**"
   workflow_dispatch:
 

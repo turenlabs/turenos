@@ -2,9 +2,8 @@ name: Build java-inspect WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-java-inspect.yml"
       - "tools/java-inspect/**"
   workflow_dispatch:
 

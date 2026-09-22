@@ -2,10 +2,9 @@ name: Build firmware-formats WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
       - "tools/firmware-formats/**"
-      - ".github/workflows/build-firmware-formats.yml"
   workflow_dispatch:
 
 concurrency:

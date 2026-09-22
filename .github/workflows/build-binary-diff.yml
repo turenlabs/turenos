@@ -2,9 +2,8 @@ name: Build binary-diff WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-binary-diff.yml"
       - "tools/binary-diff/**"
   workflow_dispatch:
 

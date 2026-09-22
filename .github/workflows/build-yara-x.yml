@@ -2,9 +2,8 @@ name: Build YARA-X WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-yara-x.yml"
       - "tools/yara-x/**"
   workflow_dispatch:
 

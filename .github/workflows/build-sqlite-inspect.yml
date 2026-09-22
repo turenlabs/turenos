@@ -2,9 +2,8 @@ name: Build sqlite-inspect WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-sqlite-inspect.yml"
       - "tools/sqlite-inspect/**"
   workflow_dispatch:
 

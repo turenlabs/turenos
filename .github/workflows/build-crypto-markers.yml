@@ -2,9 +2,8 @@ name: Build Crypto Markers WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-crypto-markers.yml"
       - "tools/crypto-markers/**"
   workflow_dispatch:
 

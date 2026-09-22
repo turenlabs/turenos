@@ -2,10 +2,9 @@ name: Build codec WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
       - "tools/codec/**"
-      - ".github/workflows/build-codec.yml"
   workflow_dispatch:
 
 concurrency:

@@ -2,9 +2,8 @@ name: Build code-signing WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-code-signing.yml"
       - "tools/code-signing/**"
   workflow_dispatch:
 

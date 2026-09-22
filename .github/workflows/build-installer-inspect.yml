@@ -2,10 +2,9 @@ name: Build installer-inspect WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
       - "tools/installer-inspect/**"
-      - ".github/workflows/build-installer-inspect.yml"
   workflow_dispatch:
 
 concurrency:

@@ -2,10 +2,9 @@ name: Build squashfs WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
       - "tools/squashfs/**"
-      - ".github/workflows/build-squashfs.yml"
   workflow_dispatch:
 
 concurrency:

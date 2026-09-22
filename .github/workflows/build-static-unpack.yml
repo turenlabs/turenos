@@ -2,9 +2,8 @@ name: Build static unpack WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-static-unpack.yml"
       - "tools/static-unpack/**"
   workflow_dispatch:
 

@@ -2,10 +2,9 @@ name: Build debug symbols WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
       - "tools/debug-symbols/**"
-      - ".github/workflows/build-debug-symbols.yml"
   workflow_dispatch:
 
 concurrency:

@@ -2,9 +2,8 @@ name: Build minidump WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-minidump.yml"
       - "tools/minidump/**"
   workflow_dispatch:
 

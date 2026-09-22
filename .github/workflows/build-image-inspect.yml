@@ -2,9 +2,8 @@ name: Build image-inspect WASM
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
-      - ".github/workflows/build-image-inspect.yml"
       - "tools/image-inspect/**"
   workflow_dispatch:
 
