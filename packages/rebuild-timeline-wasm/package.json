@@ -3,7 +3,7 @@
   "version": "0.1.0-turen.1",
   "private": true,
   "type": "module",
-  "description": "Bounded forensic timeline rebuild for TurenOS",
+  "description": "Bounded forensic timeline rebuild for Turen",
   "main": "dist/turen_rebuild_timeline_wasm.js",
   "types": "dist/turen_rebuild_timeline_wasm.d.ts",
   "exports": {
@@ -17,5 +17,5 @@
     "dist/"
   ],
   "license": "MIT",
-  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+  "repository": "git+ssh://git@github.com/turenlabs/turenos.git"
 }
