@@ -28,6 +28,8 @@ the reference when prose and code appear together.
   TurenOS policy and settlement boundaries.
 - [Secure storage](./secure-storage.md): encrypting credentials and sensitive files with the
   OS-protected Secret Vault.
+- [Release guide](./release-guide.md): the operator checklist for cutting a release —
+  version bump, dispatch, verification, and recovery.
 - [Release signing](./release-signing.md): native platform signatures, certificate handoff, and
   detached release verification.
 - [Automated releases](./release-automation.md): one-dispatch private builds, verified public

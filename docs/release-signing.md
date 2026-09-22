@@ -1,8 +1,8 @@
 # Release signing
 
-TurenOS releases are built from the exact `dev` commit selected by the manual
-GitHub `release` workflow. The workflow fails before building when a signing
-input is absent or malformed.
+TurenOS releases are built from the public `turenlabs/turenos` `main` commit
+whose `VERSION` matches the requested release. The workflow fails before
+building when a signing input is absent or malformed.
 
 The workflow now owns public publication and Homebrew updates too. Use the
 [automated release runbook](./release-automation.md) for dispatch, the dedicated
@@ -74,8 +74,8 @@ Desktop produces signed x64 and arm64 bundles for macOS and Windows, plus x64
 and arm64 AppImage, deb, and rpm bundles for Linux. Standalone runtimes include
 macOS, Windows, Linux glibc, and Linux musl variants.
 
-Run the workflow only from a clean, synchronized `dev` branch after updating
-the root `VERSION` file:
+Run the workflow only after the version bump has merged to public `main` with
+green CI — see [release-guide.md](./release-guide.md):
 
 ```bash
 gh workflow run release.yml --ref dev -f version="$(tr -d '[:space:]' < VERSION)"
