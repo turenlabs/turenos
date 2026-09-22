@@ -6,7 +6,7 @@
   "license": "Apache-2.0 OR MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/turenio/wasm-tools"
+    "url": "https://github.com/turenlabs/turenos"
   },
   "files": [
     "turen_browser_artifacts_wasm_bg.wasm",
