@@ -3,7 +3,7 @@
   "version": "0.1.0-turen.1",
   "private": true,
   "type": "module",
-  "description": "Windows forensic artifact parser for TurenOS",
+  "description": "Windows forensic artifact parser for Turen",
   "main": "dist/turen_windows_artifacts_wasm.js",
   "types": "dist/turen_windows_artifacts_wasm.d.ts",
   "exports": {
@@ -17,5 +17,5 @@
     "dist/"
   ],
   "license": "MIT",
-  "repository": "git+ssh://git@github.com/turenio/wasm-tools.git"
+  "repository": "git+ssh://git@github.com/turenlabs/turenos.git"
 }
