@@ -5,6 +5,7 @@ import { useDialog } from "@turenlabs/ui/context/dialog"
 import { ButtonV2 } from "@turenlabs/ui/v2/button-v2"
 import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitleGroup } from "@turenlabs/ui/v2/dialog-v2"
 import { Icon } from "@turenlabs/ui/v2/icon"
+import { Switch } from "@turenlabs/ui/v2/switch-v2"
 import { ServerConnection } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
 import { useSettingsDialog } from "@/components/settings-dialog"
@@ -19,6 +20,7 @@ import {
   directOAuthConnect,
   extensionSortOptions,
   extensionStatusFilters,
+  extensionWriteTools,
   filterExtensionItems,
   sortExtensionItems,
   type ExtensionCategory,
@@ -607,6 +609,11 @@ function ExtensionConfigDialog(props: {
   const skill = () => extensionSkills(props.item)[0]
   const customerUrl = () => mcps().find((mcp) => mcp.deployment.type === "customer-url")
   const configuration = () => extensionConfiguration(props.item)
+  const writeTools = () => extensionWriteTools(props.item)
+  const writeToolsEnabled = () => {
+    const draft = props.secrets()[`${props.item.manifest.id}:writeTools`]
+    return draft === undefined ? props.item.configurationSet.writeTools === true : draft === "enabled"
+  }
   const declaredSecrets = () => extensionSecrets(props.item)
   const homepage = () => catalogHomepage(props.item.manifest.homepage)
   const action = () => extensionAction(props.item, props.secrets())
@@ -754,6 +761,33 @@ function ExtensionConfigDialog(props: {
             </section>
           </Show>
 
+          <Show when={props.item.mutable && writeTools().length > 0}>
+            <section
+              data-component="extension-write-tools"
+              class="flex items-center justify-between gap-3 rounded-[8px] bg-v2-background-bg-layer-01 px-3 py-2.5 [box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-muted)]"
+            >
+              <div class="min-w-0">
+                <h3 class="text-[12px] [font-weight:650]">Allow write tools</h3>
+                <p class="mt-0.5 text-[10px] text-v2-text-text-muted">
+                  {writeToolsEnabled()
+                    ? `${writeTools().length} tools that change or run things are available. Each call still asks for approval.`
+                    : `Read-only. ${writeTools().length} tools that change or run things are hidden from agents.`}
+                </p>
+              </div>
+              <Switch
+                checked={writeToolsEnabled()}
+                onChange={(checked) =>
+                  props.updateSecret(props.item.manifest.id, "writeTools", checked ? "enabled" : "")
+                }
+                hideLabel
+                aria-label="Allow write tools"
+                data-action="extension-write-tools"
+              >
+                Allow write tools
+              </Switch>
+            </section>
+          </Show>
+
           <Show when={mcpTools().length > 0}>
             <details
               data-component="extension-capabilities"
@@ -773,8 +807,12 @@ function ExtensionConfigDialog(props: {
                       <span
                         title={tool}
                         class="rounded-[6px] bg-v2-background-bg-layer-02 px-2 py-1 text-[10px] text-v2-text-text-muted"
+                        classList={{ "opacity-50": writeTools().includes(tool) && !writeToolsEnabled() }}
                       >
                         {capabilityLabel(tool)}
+                        <Show when={writeTools().includes(tool)}>
+                          <span class="ml-1 text-v2-state-fg-warning">write</span>
+                        </Show>
                       </span>
                     )}
                   </For>

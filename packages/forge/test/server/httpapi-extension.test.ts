@@ -386,6 +386,39 @@ describe("Extension HttpApi", () => {
     }),
   )
 
+  it.instance("stores the write-tool opt-in only for MCP extensions that declare write tools", () =>
+    Effect.gen(function* () {
+      const tmp = yield* TestInstance
+      const handler = HttpApiApp.webHandler()
+      const patch = (id: string, writeTools: string) =>
+        request(handler, `/extension/${encodeURIComponent(id)}`, tmp.directory, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: false, configuration: { writeTools } }),
+        })
+      const tenable = (response: Response) =>
+        json<Array<{ manifest: { id: string }; configurationSet: Record<string, boolean> }>>(response).pipe(
+          Effect.map((items) => items.find((item) => item.manifest.id === "turenlabs/tenable")),
+        )
+
+      // Tenable, not Datadog: disabling an extension here marks its MCP runtime disabled process-wide.
+      const enabled = yield* patch("turenlabs/tenable", "enabled")
+      expect(enabled.status).toBe(200)
+      expect((yield* tenable(enabled))?.configurationSet.writeTools).toBe(true)
+
+      const cleared = yield* patch("turenlabs/tenable", "")
+      expect(cleared.status).toBe(200)
+      expect((yield* tenable(cleared))?.configurationSet.writeTools).toBeUndefined()
+
+      const invalid = yield* patch("turenlabs/tenable", "all")
+      expect(invalid.status).toBe(400)
+      expect(yield* Effect.promise(() => invalid.text())).toContain("Write tool access must be enabled or cleared")
+
+      const readOnly = yield* patch("turenlabs/sentry", "enabled")
+      expect(readOnly.status).toBe(400)
+      expect(yield* Effect.promise(() => readOnly.text())).toContain("Undeclared configuration: writeTools")
+    }),
+  )
+
   it.instance(
     "ignores workspace skill files outside the managed Extension catalog",
     () =>

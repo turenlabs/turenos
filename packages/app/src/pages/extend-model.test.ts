@@ -7,6 +7,7 @@ import {
   extensionCategoryLabel,
   dataForgeExtension,
   directOAuthConnect,
+  extensionWriteTools,
   filterExtensionItems,
   sortExtensionItems,
 } from "./extend-model"
@@ -333,6 +334,31 @@ describe("filterExtensionItems", () => {
       missingRequired: false,
       payload: { enabled: true, configuration: { endpoint: "https://mcp.internal.example" } },
     })
+  })
+
+  test("sends the write-tool opt-in only for MCP extensions that declare write tools", () => {
+    const base = mcp.manifest.contributions[0]
+    if (base.type !== "mcp") throw new Error("Expected MCP fixture")
+    const writable: ExtensionItem = {
+      ...mcp,
+      manifest: {
+        ...mcp.manifest,
+        contributions: [
+          { ...base, tools: { allow: ["notion-search", "notion-update-page"], write: ["notion-update-page"] } },
+        ],
+      },
+    }
+    expect(extensionWriteTools(writable)).toEqual(["notion-update-page"])
+    expect(extensionAction(writable, { "turenlabs/notion:writeTools": "enabled" })?.payload).toEqual({
+      enabled: true,
+      configuration: { writeTools: "enabled" },
+    })
+    expect(extensionAction(writable, { "turenlabs/notion:writeTools": "" })?.payload).toEqual({
+      enabled: true,
+      configuration: { writeTools: "" },
+    })
+    expect(extensionWriteTools(mcp)).toEqual([])
+    expect(extensionAction(mcp, { "turenlabs/notion:writeTools": "enabled" })?.payload).toEqual({ enabled: false })
   })
 
   test("installs hosted MCP manifests", () => {

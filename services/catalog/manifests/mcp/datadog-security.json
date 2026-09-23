@@ -12,12 +12,16 @@
       "type": "mcp",
       "id": "datadog-security",
       "name": "Datadog Security & Incident Response",
-      "description": "Investigate Datadog security and observability data; inspect, validate, manage, and run workflows with approval for changes",
+      "description": "Investigate Datadog security and observability data and inspect or validate workflows; changing or running workflows needs Allow write tools",
       "adapter": "mcp:datadog-security",
       "secrets": [],
       "defaultEnabled": false,
       "upstreamPolicy": "static",
-      "deployment": { "type": "customer-url", "path": "/v1/mcp?toolsets=core,security,workflows", "privateNetwork": false },
+      "deployment": {
+        "type": "customer-url",
+        "path": "/v1/mcp?toolsets=core,security,workflows",
+        "privateNetwork": false
+      },
       "authentication": "oauth",
       "localOnly": true,
       "mcpContext": { "maxLoadedTools": 10, "unloadAfterIdleTurns": 3 },
@@ -65,7 +69,7 @@
           "cancel_datadog_workflow_instance"
         ]
       },
-      "instructions": "Enter the regional Datadog MCP server origin. The connector is disabled by default. Read-only use needs only Datadog read permissions; to opt into workflow changes or runs, grant Workflows Write or Workflows Run respectively and approve each TurenOS write-tool call. Inspect and validate a workflow before changing it; review its inputs and downstream actions before running it. Publishing enables automatic triggers, and deletion is permanent. Security signal, finding, and detection-rule mutation tools are not enabled."
+      "instructions": "Enter the regional Datadog MCP server origin. The connector is disabled by default. Read-only use needs only Datadog read permissions; to change or run workflows, also grant Workflows Write or Workflows Run respectively. Inspect and validate a workflow before changing it; review its inputs and downstream actions before running it. Publishing enables automatic triggers, and deletion is permanent. Security signal, finding, and detection-rule mutation tools are not enabled."
     }
   ]
 }

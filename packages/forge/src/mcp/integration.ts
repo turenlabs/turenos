@@ -78,8 +78,23 @@ export const contribution = (id: ID) => {
   return extension
 }
 
-export function allowsTool(id: ID, name: string) {
-  return contribution(id).item.tools.allow.includes(name)
+export function allowsTool(id: ID, name: string, configuration: Readonly<Record<string, string>> = {}) {
+  const tools = contribution(id).item.tools
+  if (!tools.allow.includes(name)) return false
+  // Write tools are opt-in so a connector enabled for reading can never mutate upstream state.
+  return configuration.writeTools === "enabled" || !tools.write.includes(name)
+}
+
+export function writeToolsInstructions(id: ID, configuration: Readonly<Record<string, string>>) {
+  const extension = contribution(id)
+  const writes = extension.item.tools.write.join(", ")
+  if (!writes) return undefined
+  if (configuration.writeTools === "enabled") {
+    return `Write tools (${writes}) are turned on; each call still requires the user's approval.`
+  }
+  // Name the hidden tools and the exact user action so the agent can explain the path to write
+  // access instead of searching for tools it will never see. Only the user can grant it.
+  return `Write tools (${writes}) are turned off by the user, so they cannot be called or found with tool search, and you cannot turn them on. If a request needs one, tell the user to open Extensions, select ${extension.manifest.name}, turn on Allow write tools, and save, then ask again.`
 }
 
 export function requiresConfirmation(id: ID | string) {
