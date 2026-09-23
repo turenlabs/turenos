@@ -330,6 +330,15 @@ describe("managed MCP integrations", () => {
     ).toBeUndefined()
   })
 
+  test("enables Datadog security and workflow toolsets at the pinned endpoint", () => {
+    const contribution = ExtensionCatalog.get("turenlabs/datadog-security")?.contributions[0]
+    expect(contribution?.type).toBe("mcp")
+    if (contribution?.type !== "mcp" || contribution.deployment.type !== "customer-url") return
+    expect(
+      McpIntegration.resolveCustomerEndpoint("https://mcp.datadoghq.com/?toolsets=all", contribution.deployment),
+    ).toBe("https://mcp.datadoghq.com/v1/mcp?toolsets=core,security,workflows")
+  })
+
   test("pins customer MCP DNS and prohibits trust-zone changes and redirects", async () => {
     const requests: string[] = []
     const dependencies = {
