@@ -24,6 +24,7 @@ export interface Interface {
   readonly disposeDirectory: (directory: string) => Effect.Effect<void>
   readonly disposeAll: () => Effect.Effect<void>
   readonly disposeAllExcept: (directory: string) => Effect.Effect<void>
+  readonly invalidateStates: () => Effect.Effect<void>
   readonly provide: <A, E, R>(input: LoadInput, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
 }
 
@@ -211,6 +212,23 @@ const layer: Layer.Layer<Service, never, Project.Service | InstanceBootstrap.Ser
       return yield* disposeAllOnce(FSUtil.resolve(directory))
     })
 
+    // Invalidates every per-instance state cache while keeping the loaded
+    // InstanceContext: service state rebuilds lazily with fresh config, unlike
+    // disposeAll which also re-runs bootstrap and emits server.instance.disposed.
+    const invalidateStates = Effect.fn("InstanceStore.invalidateStates")(function* () {
+      yield* Effect.logInfo("invalidating instance states")
+      yield* Effect.forEach(
+        [...cache.values()],
+        (entry) =>
+          Effect.gen(function* () {
+            const exit = yield* Deferred.await(entry.deferred).pipe(Effect.exit)
+            if (Exit.isFailure(exit)) return
+            yield* Effect.promise(() => runDisposers(exit.value.directory))
+          }),
+        { concurrency: "unbounded", discard: true },
+      )
+    })
+
     const provide = <A, E, R>(input: LoadInput, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
       load(input).pipe(Effect.flatMap((ctx) => effect.pipe(Effect.provideService(InstanceRef, ctx))))
 
@@ -223,6 +241,7 @@ const layer: Layer.Layer<Service, never, Project.Service | InstanceBootstrap.Ser
       disposeDirectory,
       disposeAll,
       disposeAllExcept,
+      invalidateStates,
       provide,
     })
   }),

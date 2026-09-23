@@ -106,6 +106,7 @@ export type Event =
   | EventWorktreeFailed
   | EventServerConnected
   | EventGlobalDisposed
+  | EventConfigUpdated
   | EventServerInstanceDisposed
 
 export type QuestionReplied = {
@@ -1764,6 +1765,13 @@ export type GlobalEvent = {
           [key: string]: unknown
         }
       }
+    | {
+        id: string
+        type: "config.updated"
+        properties: {
+          [key: string]: unknown
+        }
+      }
     | EventServerInstanceDisposed
     | SyncEventSessionCreated
     | SyncEventSessionUpdated
@@ -3392,6 +3400,7 @@ export type V2Event =
   | WorktreeFailed
   | ServerConnected
   | GlobalDisposed
+  | ConfigUpdated
 
 export type V2EventStream = string
 
@@ -7578,6 +7587,23 @@ export type GlobalDisposed = {
   }
 }
 
+export type ConfigUpdated = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "config.updated"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    [key: string]: unknown
+  }
+}
+
 export type QuestionV2Request = {
   id: string
   sessionID: string
@@ -9091,6 +9117,14 @@ export type EventServerConnected = {
 export type EventGlobalDisposed = {
   id: string
   type: "global.disposed"
+  properties: {
+    [key: string]: unknown
+  }
+}
+
+export type EventConfigUpdated = {
+  id: string
+  type: "config.updated"
   properties: {
     [key: string]: unknown
   }

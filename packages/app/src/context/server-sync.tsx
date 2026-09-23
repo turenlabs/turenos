@@ -360,6 +360,27 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
     return promise
   }
 
+  function refreshConfigSlices(directory: string) {
+    const key = directoryKey(directory)
+    const child = children.children[key]
+    if (!child) return
+    const setStore = child[1]
+    void queryClient
+      .fetchQuery(queryOptionsApi.agents(key))
+      .then((agents) => setStore("agent", agents))
+      .catch(() => {})
+    const sdk = sdkFor(directory)
+    void sdk.config
+      .get()
+      .then((x) => setStore("config", reconcile(x.data ?? {}, { merge: false })))
+      .catch(() => {})
+    void sdk.command
+      .list()
+      .then((x) => setStore("command", x.data ?? []))
+      .catch(() => {})
+    void queryClient.invalidateQueries({ queryKey: queryOptionsApi.lsp(key).queryKey })
+  }
+
   const unsub = serverSDK.event.listen((e) => {
     const directory = e.name
     const key = directoryKey(directory)
@@ -380,6 +401,18 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
     homeSessions.refresh(event.type)
 
     if (directory === "global") {
+      // A config write already invalidated the server's per-instance state, so
+      // only the config-derived slices need refreshing — a re-bootstrap would
+      // flicker every project and cancel nothing the server already preserved.
+      if (event.type === "config.updated") {
+        void configQuery.refetch()
+        void refreshProviders()
+        for (const child of Object.keys(children.children)) {
+          if (!children.active(child)) continue
+          refreshConfigSlices(child)
+        }
+        return
+      }
       applyGlobalEvent({
         event,
         project: globalStore.project,
@@ -522,9 +555,10 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
   const updateConfigMutation = useMutation(() => ({
     mutationFn: (config: Config) => serverSDK.client.global.config.update({ config }),
     onSuccess: async () => {
-      // Bootstrap only refreshes projects; settings read this independent config query.
+      // Settings read this independent config query; bootstrap only refetches
+      // the project list, which config cannot change. Per-directory
+      // config-derived state refreshes on the `config.updated` event.
       await configQuery.refetch()
-      bootstrap.refetch()
       // Configuration changes can affect provider visibility across every directory.
       void refreshProviders()
     },
