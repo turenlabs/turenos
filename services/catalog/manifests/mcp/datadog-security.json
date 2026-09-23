@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "turenlabs/datadog-security",
   "name": "Datadog Security & Incident Response",
-  "description": "Investigate Datadog incidents, logs, monitors, traces, and security findings through the regional hosted MCP service",
+  "description": "Investigate Datadog security signals and detection rules, and inspect, build, or run workflows through the regional hosted MCP service",
   "version": "1.0.0",
   "publisher": "Turen Labs",
   "trust": "official",
@@ -12,12 +12,12 @@
       "type": "mcp",
       "id": "datadog-security",
       "name": "Datadog Security & Incident Response",
-      "description": "Read Datadog incidents, security signals and findings, logs, monitors, traces, and spans",
+      "description": "Investigate Datadog security and observability data; inspect, validate, manage, and run workflows with approval for changes",
       "adapter": "mcp:datadog-security",
       "secrets": [],
       "defaultEnabled": false,
       "upstreamPolicy": "static",
-      "deployment": { "type": "customer-url", "path": "/v1/mcp", "privateNetwork": false },
+      "deployment": { "type": "customer-url", "path": "/v1/mcp?toolsets=core,security,workflows", "privateNetwork": false },
       "authentication": "oauth",
       "localOnly": true,
       "mcpContext": { "maxLoadedTools": 10, "unloadAfterIdleTurns": 3 },
@@ -29,15 +29,43 @@
           "search_datadog_monitors",
           "get_datadog_trace",
           "search_datadog_spans",
+          "get_datadog_security_signals_schema",
           "search_datadog_security_signals",
           "analyze_datadog_security_signals",
           "get_datadog_security_signal",
-          "security_findings_schema",
-          "search_datadog_security_findings"
+          "get_datadog_security_findings_schema",
+          "analyze_datadog_security_findings",
+          "search_datadog_security_findings",
+          "get_datadog_security_detection_rules_schema",
+          "get_datadog_security_detection_rules",
+          "list_datadog_workflows",
+          "get_datadog_workflow",
+          "search_datadog_workflow_actions",
+          "get_datadog_workflow_action",
+          "get_datadog_workflow_spec_schema",
+          "validate_datadog_workflow",
+          "list_datadog_workflow_instances",
+          "get_datadog_workflow_instance",
+          "get_datadog_workflow_step_data",
+          "create_datadog_workflow",
+          "update_datadog_workflow",
+          "publish_datadog_workflow",
+          "unpublish_datadog_workflow",
+          "delete_datadog_workflow",
+          "execute_datadog_workflow",
+          "cancel_datadog_workflow_instance"
         ],
-        "write": []
+        "write": [
+          "create_datadog_workflow",
+          "update_datadog_workflow",
+          "publish_datadog_workflow",
+          "unpublish_datadog_workflow",
+          "delete_datadog_workflow",
+          "execute_datadog_workflow",
+          "cancel_datadog_workflow_instance"
+        ]
       },
-      "instructions": "Enter the Datadog MCP base URL for the organization region, then authorize a least-privilege read-only account. Do not enable mutation, workflow, notebook, monitor, case, or security remediation tools."
+      "instructions": "Enter the regional Datadog MCP server origin. The connector is disabled by default. Read-only use needs only Datadog read permissions; to opt into workflow changes or runs, grant Workflows Write or Workflows Run respectively and approve each TurenOS write-tool call. Inspect and validate a workflow before changing it; review its inputs and downstream actions before running it. Publishing enables automatic triggers, and deletion is permanent. Security signal, finding, and detection-rule mutation tools are not enabled."
     }
   ]
 }
