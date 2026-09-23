@@ -4,7 +4,13 @@ import type { SshServerConfig } from "../../preload/types"
 import { checkHealth } from "../server"
 import type { CredentialVault } from "../secret-key"
 import { pollSshHealth } from "./startup"
-import { FORGE_REMOTE_SHIM, FORGE_REMOTE_SHIM_PATH, parseRemoteState, remoteInstallMissing } from "./shim"
+import {
+  FORGE_REMOTE_SHIM,
+  FORGE_REMOTE_SHIM_PATH,
+  parseRemoteState,
+  remoteEnsureScript,
+  remoteInstallMissing,
+} from "./shim"
 import {
   closeMaster,
   ensureMaster,
@@ -132,19 +138,15 @@ async function ensureRemote(
   target: SshTarget,
   deps: SshConnectionDeps,
 ) {
-  const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
-  const env = [
-    `FORGE_REMOTE_CORS=${quote(deps.corsOrigins().join(" "))}`,
-    `FORGE_SECRET_VAULT_KEY_ID=${quote(deps.credentialVault.keyID)}`,
-    `FORGE_SECRET_VAULT_KEY=${quote(Buffer.from(deps.credentialVault.key).toString("base64"))}`,
-  ].join(" ")
-  const result = await runRemote(
-    binary,
-    controlDir,
-    target,
-    `${env} sh ${FORGE_REMOTE_SHIM_PATH} ensure`,
-    { timeoutMs: 90_000, signal: deps.signal },
-  ).catch((error) => ({ code: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) }))
+  const result = await runRemote(binary, controlDir, target, "sh -s", {
+    timeoutMs: 90_000,
+    input: remoteEnsureScript({
+      corsOrigins: deps.corsOrigins(),
+      keyID: deps.credentialVault.keyID,
+      key: deps.credentialVault.key,
+    }),
+    signal: deps.signal,
+  }).catch((error) => ({ code: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) }))
   if (result.code !== 0 && remoteInstallMissing(result.stderr + result.stdout)) {
     throw new ForgeRemoteMissingError()
   }

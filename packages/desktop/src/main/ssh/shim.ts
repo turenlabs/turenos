@@ -8,6 +8,25 @@
  */
 export const FORGE_REMOTE_SHIM_PATH = "$HOME/.forge/bin/forge-remote"
 
+/**
+ * The `ensure` invocation, fed to the remote shell on stdin instead of being
+ * passed as the ssh command argument. An argument would put the vault key in
+ * argv on both machines, where `ps` can read it for the life of the call. It
+ * also avoids the `VAR=value cmd` prefix form, which a csh-family login shell
+ * cannot parse.
+ */
+export function remoteEnsureScript(input: { corsOrigins: string[]; keyID: string; key: Uint8Array }) {
+  const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
+  return [
+    `FORGE_REMOTE_CORS=${quote(input.corsOrigins.join(" "))}`,
+    `FORGE_SECRET_VAULT_KEY_ID=${quote(input.keyID)}`,
+    `FORGE_SECRET_VAULT_KEY=${quote(Buffer.from(input.key).toString("base64"))}`,
+    "export FORGE_REMOTE_CORS FORGE_SECRET_VAULT_KEY_ID FORGE_SECRET_VAULT_KEY",
+    `exec sh "${FORGE_REMOTE_SHIM_PATH}" ensure`,
+    "",
+  ].join("\n")
+}
+
 export const FORGE_REMOTE_SHIM = `#!/bin/sh
 set -u
 FORGE_BIN="$HOME/.forge/bin/forge"
@@ -50,15 +69,13 @@ case "\${1:-ensure}" in
     cors_args=""
     for origin in \${FORGE_REMOTE_CORS:-}; do cors_args="$cors_args --cors $origin"; done
     : > "$LOGFILE"
-    env \\
-      FORGE_SERVER_USERNAME=forge \\
-      FORGE_SERVER_PASSWORD="$pass" \\
-      FORGE_CLIENT=desktop \\
-      FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER=true \\
-      XDG_STATE_HOME="$HOME/.local/state" \\
-      \${FORGE_SECRET_VAULT_KEY_ID:+FORGE_SECRET_VAULT_KEY_ID="$FORGE_SECRET_VAULT_KEY_ID"} \\
-      \${FORGE_SECRET_VAULT_KEY:+FORGE_SECRET_VAULT_KEY="$FORGE_SECRET_VAULT_KEY"} \\
-      nohup "$FORGE_BIN" --print-logs --log-level \${FORGE_REMOTE_LOG_LEVEL:-WARN} serve --hostname 127.0.0.1 --port 0 $cors_args >>"$LOGFILE" 2>&1 &
+    FORGE_SERVER_USERNAME=forge
+    FORGE_SERVER_PASSWORD="$pass"
+    FORGE_CLIENT=desktop
+    FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER=true
+    XDG_STATE_HOME="$HOME/.local/state"
+    export FORGE_SERVER_USERNAME FORGE_SERVER_PASSWORD FORGE_CLIENT FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER XDG_STATE_HOME
+    nohup "$FORGE_BIN" --print-logs --log-level \${FORGE_REMOTE_LOG_LEVEL:-WARN} serve --hostname 127.0.0.1 --port 0 $cors_args >>"$LOGFILE" 2>&1 &
     echo $! > "$PIDFILE"
     chmod 600 "$PIDFILE"
     i=0

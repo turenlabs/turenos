@@ -18,8 +18,9 @@ user-facing product. Both use one shared server implementation:
   Electron utility process. It does not launch `forge serve` for its local backend or require a
   separately installed CLI.
 - For SSH and managed WSL backends, Desktop starts the native executable with `forge serve`.
-  The SSH path manages the remote server and connects through a tunnel. Operators can also use
-  `forge serve` for a separately managed headless server.
+  The SSH path manages the remote server and connects through a tunnel; see
+  [SSH remote servers](./ssh-remote.md). Operators can also use `forge serve` for a separately
+  managed headless server.
 - The local sidecar and headless server compose the `packages/forge` server with the services in
   `@turenlabs/core`; they are not separate session engines.
 

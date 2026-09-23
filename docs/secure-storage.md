@@ -29,18 +29,20 @@ The wrapped key record contains only a format version, a non-secret key ID, and 
 never written to the database, app config, renderer storage, command-line arguments, or native sidecar environment.
 
 The desktop sidecar receives the raw key in the utility-process `start` message and installs it with
-`SecretVault.configure` before the server layer graph builds. The WSL sidecar receives the key through its startup input.
+`SecretVault.configure` before the server layer graph builds. The WSL sidecar receives the key through
+its startup input, and the SSH remote receives it on stdin as a short script piped to `sh -s` (see
+[SSH remote servers](./ssh-remote.md)); neither path places it in a command line.
 Its temporary bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`, `FORGE_SECRET_VAULT_KEY`) are deleted when the
 Secret Vault layer initializes and before normal child tools are started. Headless server startup reads the same two
 variables; without them, non-test startup fails instead of falling back to an ephemeral or plaintext mode.
 
 ## On-Disk Locations
 
-| Artifact                | Location                                                                  | Contents                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Wrapped application key | `forge.settings` (electron-store) in Electron `userData`                  | `credential-secret-key` record: `{version, keyID, wrappedKey}`; `wrappedKey` is safeStorage ciphertext |
-| Sealed secret values    | `storage_state` table in the channel SQLite database                      | `forge-secret:v1:...` envelopes addressed by scope and logical key                                   |
-| Legacy MCP auth file    | `mcp-auth.json` in `Global.Path.data` (staged as `mcp-auth.json.migrating`) | Plaintext predecessor of the sealed MCP auth row; migrated and removed                             |
+| Artifact                | Location                                                                    | Contents                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Wrapped application key | `forge.settings` (electron-store) in Electron `userData`                    | `credential-secret-key` record: `{version, keyID, wrappedKey}`; `wrappedKey` is safeStorage ciphertext |
+| Sealed secret values    | `storage_state` table in the channel SQLite database                        | `forge-secret:v1:...` envelopes addressed by scope and logical key                                     |
+| Legacy MCP auth file    | `mcp-auth.json` in `Global.Path.data` (staged as `mcp-auth.json.migrating`) | Plaintext predecessor of the sealed MCP auth row; migrated and removed                                 |
 
 Concrete roots:
 
