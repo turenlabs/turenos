@@ -5,7 +5,10 @@ import { LocationServiceMap } from "@turenlabs/core/location-services"
 import { EventV2 } from "@turenlabs/core/event"
 import { SessionReviewer } from "@turenlabs/core/session/reviewer"
 import { Installation } from "@/installation"
-import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
+import {
+  disposeAllInstancesAndEmitGlobalDisposed,
+  invalidateInstanceStatesAndEmitConfigUpdated,
+} from "@/server/global-lifecycle"
 import { InstallationVersion } from "@turenlabs/core/installation/version"
 import { PermissionChecks } from "@turenlabs/core/permission-checks"
 import { Effect, Layer, Option, Queue, RcMap, Schema } from "effect"
@@ -107,7 +110,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
         ? yield* reviewer.value.withConfigTransition(update, { invalidate: true })
         : yield* update
       if (result.changed) {
-        bridge.fork(disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true }))
+        bridge.fork(invalidateInstanceStatesAndEmitConfigUpdated({ swallowErrors: true }))
       }
       return result.info
     })

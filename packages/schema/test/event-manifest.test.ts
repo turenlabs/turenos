@@ -11,7 +11,7 @@ import { Whiteboard } from "../src/whiteboard"
 describe("public event manifest", () => {
   test("owns the complete public event surface", () => {
     expect(EventManifest.ServerDefinitions.length).toBe(75)
-    expect(EventManifest.Definitions.length).toBe(101)
+    expect(EventManifest.Definitions.length).toBe(102)
     expect(SessionV1.Event.Definitions).toEqual([
       SessionV1.Event.Created,
       SessionV1.Event.Updated,
@@ -24,7 +24,7 @@ describe("public event manifest", () => {
       SessionV1.Event.Diff,
       SessionV1.Event.Error,
     ])
-    expect(EventManifest.Latest.size).toBe(101)
+    expect(EventManifest.Latest.size).toBe(102)
     expect(EventManifest.Durable.size).toBe(47)
   })
 

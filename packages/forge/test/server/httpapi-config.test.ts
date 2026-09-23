@@ -1,6 +1,7 @@
 import { afterEach, describe, expect } from "bun:test"
 import path from "path"
 import { Server } from "../../src/server/server"
+import { GlobalBus, type GlobalEvent } from "../../src/bus/global"
 import { Effect, Fiber } from "effect"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, tmpdir } from "../fixture/fixture"
@@ -61,6 +62,54 @@ describe("config HttpApi", () => {
         formatter: false,
         lsp: false,
       })
+    }),
+  )
+
+  it.live(
+    "global config update refreshes instance state without disposing instances",
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirEffect({ config: { formatter: false, lsp: false } })
+      const headers = { "content-type": "application/json", "x-forge-directory": tmp.path }
+
+      // Load the instance so the update has per-directory state to refresh.
+      const loaded = yield* Effect.promise(() => Promise.resolve(app().request("/path", { headers })))
+      expect(loaded.status).toBe(200)
+
+      const events: GlobalEvent[] = []
+      const onEvent = (event: GlobalEvent) => events.push(event)
+      GlobalBus.on("event", onEvent)
+      const updated = yield* waitGlobalBusEvent({
+        message: "timed out waiting for config.updated",
+        predicate: (event) => event.payload.type === "config.updated",
+      }).pipe(Effect.forkScoped({ startImmediately: true }))
+
+      const response = yield* Effect.promise(() =>
+        Promise.resolve(
+          app().request("/global/config", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ agent: { build: { model: "test-provider/test-model" } } }),
+          }),
+        ),
+      )
+      expect(response.status).toBe(200)
+      yield* Fiber.join(updated)
+      GlobalBus.off("event", onEvent)
+
+      const scoped = events.filter((event) => event.directory === tmp.path || event.directory === "global")
+      expect(scoped.some((event) => event.payload.type === "server.instance.disposed")).toBe(false)
+      expect(scoped.some((event) => event.payload.type === "global.disposed")).toBe(false)
+
+      const merged = yield* Effect.promise(() =>
+        Promise.resolve(app().request("/config", { headers })).then((r) => r.json()),
+      )
+      expect(merged).toMatchObject({ agent: { build: { model: "test-provider/test-model" } } })
+
+      const agents = (yield* Effect.promise(() =>
+        Promise.resolve(app().request("/agent", { headers })).then((r) => r.json()),
+      )) as Array<{ name: string; model?: { providerID: string; modelID: string } }>
+      const build = agents.find((agent) => agent.name === "build")
+      expect(build?.model).toMatchObject({ providerID: "test-provider", modelID: "test-model" })
     }),
   )
 

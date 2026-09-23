@@ -20,6 +20,7 @@ describe("public event manifest", () => {
     expect(EventManifest.Latest.has("plugin.trust.required")).toBe(true)
     expect(EventManifest.Latest.has("server.connected")).toBe(true)
     expect(EventManifest.Latest.has("global.disposed")).toBe(true)
+    expect(EventManifest.Latest.has("config.updated")).toBe(true)
   })
 
   test("contains only the current step settlement versions", () => {
