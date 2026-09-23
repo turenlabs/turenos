@@ -90,7 +90,7 @@ export function writeToolsInstructions(id: ID, configuration: Readonly<Record<st
   const writes = extension.item.tools.write.join(", ")
   if (!writes) return undefined
   if (configuration.writeTools === "enabled") {
-    return `Write tools (${writes}) are turned on; each call still requires the user's approval.`
+    return `Write tools (${writes}) are turned on. They ask the user for approval by default, but the user may have allowed them without a prompt.`
   }
   // Name the hidden tools and the exact user action so the agent can explain the path to write
   // access instead of searching for tools it will never see. Only the user can grant it.

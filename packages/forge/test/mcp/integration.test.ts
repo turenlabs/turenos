@@ -695,7 +695,7 @@ describe("managed MCP integrations", () => {
     expect(hidden).toContain("turned off by the user")
     expect(hidden).toContain("select Datadog Security & Incident Response, turn on Allow write tools")
     expect(McpIntegration.writeToolsInstructions("datadog-security", { writeTools: "enabled" })).toContain(
-      "are turned on; each call still requires the user's approval",
+      "are turned on. They ask the user for approval by default",
     )
     expect(McpIntegration.writeToolsInstructions("sentry", {})).toBeUndefined()
   })

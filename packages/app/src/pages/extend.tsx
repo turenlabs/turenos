@@ -770,7 +770,7 @@ function ExtensionConfigDialog(props: {
                 <h3 class="text-[12px] [font-weight:650]">Allow write tools</h3>
                 <p class="mt-0.5 text-[10px] text-v2-text-text-muted">
                   {writeToolsEnabled()
-                    ? `${writeTools().length} tools that change or run things are available. Each call still asks for approval.`
+                    ? `${writeTools().length} tools that change or run things are available. They ask for approval unless you've allowed them.`
                     : `Read-only. ${writeTools().length} tools that change or run things are hidden from agents.`}
                 </p>
               </div>
