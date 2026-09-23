@@ -8,8 +8,28 @@
  */
 export const FORGE_REMOTE_SHIM_PATH = "$HOME/.forge/bin/forge-remote"
 
+/**
+ * The `ensure` invocation, fed to the remote shell on stdin instead of being
+ * passed as the ssh command argument. An argument would put the vault key in
+ * argv on both machines, where `ps` can read it for the life of the call. It
+ * also avoids the `VAR=value cmd` prefix form, which a csh-family login shell
+ * cannot parse.
+ */
+export function remoteEnsureScript(input: { corsOrigins: string[]; keyID: string; key: Uint8Array }) {
+  const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
+  return [
+    `FORGE_REMOTE_CORS=${quote(input.corsOrigins.join(" "))}`,
+    `FORGE_SECRET_VAULT_KEY_ID=${quote(input.keyID)}`,
+    `FORGE_SECRET_VAULT_KEY=${quote(Buffer.from(input.key).toString("base64"))}`,
+    "export FORGE_REMOTE_CORS FORGE_SECRET_VAULT_KEY_ID FORGE_SECRET_VAULT_KEY",
+    `exec sh "${FORGE_REMOTE_SHIM_PATH}" ensure`,
+    "",
+  ].join("\n")
+}
+
 export const FORGE_REMOTE_SHIM = `#!/bin/sh
 set -u
+umask 077
 FORGE_BIN="$HOME/.forge/bin/forge"
 RUN_DIR="$HOME/.forge/run"
 PIDFILE="$RUN_DIR/server.pid"
@@ -44,21 +64,22 @@ case "\${1:-ensure}" in
       echo "FORGE_REMOTE_ERROR forge is not installed" >&2
       exit 3
     fi
-    mkdir -p "$RUN_DIR" && chmod 700 "$RUN_DIR"
+    mkdir -p "$RUN_DIR" && chmod 700 "$RUN_DIR" || exit 1
     pass=$(od -An -tx1 -N16 /dev/urandom 2>/dev/null | tr -d ' \\n')
-    [ -n "$pass" ] || pass="$(date +%s)-$$-$(hostname 2>/dev/null || echo forge)"
+    case "$pass" in
+      ''|*[!0-9a-f]*) echo "FORGE_REMOTE_ERROR secure password generation failed" >&2; exit 1 ;;
+    esac
+    [ "\${#pass}" -eq 32 ] || { echo "FORGE_REMOTE_ERROR secure password generation failed" >&2; exit 1; }
     cors_args=""
     for origin in \${FORGE_REMOTE_CORS:-}; do cors_args="$cors_args --cors $origin"; done
     : > "$LOGFILE"
-    env \\
-      FORGE_SERVER_USERNAME=forge \\
-      FORGE_SERVER_PASSWORD="$pass" \\
-      FORGE_CLIENT=desktop \\
-      FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER=true \\
-      XDG_STATE_HOME="$HOME/.local/state" \\
-      \${FORGE_SECRET_VAULT_KEY_ID:+FORGE_SECRET_VAULT_KEY_ID="$FORGE_SECRET_VAULT_KEY_ID"} \\
-      \${FORGE_SECRET_VAULT_KEY:+FORGE_SECRET_VAULT_KEY="$FORGE_SECRET_VAULT_KEY"} \\
-      nohup "$FORGE_BIN" --print-logs --log-level \${FORGE_REMOTE_LOG_LEVEL:-WARN} serve --hostname 127.0.0.1 --port 0 $cors_args >>"$LOGFILE" 2>&1 &
+    FORGE_SERVER_USERNAME=forge
+    FORGE_SERVER_PASSWORD="$pass"
+    FORGE_CLIENT=desktop
+    FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER=true
+    XDG_STATE_HOME="$HOME/.local/state"
+    export FORGE_SERVER_USERNAME FORGE_SERVER_PASSWORD FORGE_CLIENT FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER XDG_STATE_HOME
+    nohup "$FORGE_BIN" --print-logs --log-level \${FORGE_REMOTE_LOG_LEVEL:-WARN} serve --hostname 127.0.0.1 --port 0 $cors_args >>"$LOGFILE" 2>&1 &
     echo $! > "$PIDFILE"
     chmod 600 "$PIDFILE"
     i=0
@@ -169,11 +190,7 @@ export function parseRemoteState(output: string): ForgeRemoteState | null {
     const parsed = JSON.parse(line.slice("FORGE_REMOTE ".length)) as unknown
     if (typeof parsed !== "object" || parsed === null) return null
     const record = parsed as Record<string, unknown>
-    if (
-      typeof record.port !== "number" ||
-      typeof record.username !== "string" ||
-      typeof record.password !== "string"
-    ) {
+    if (typeof record.port !== "number" || typeof record.username !== "string" || typeof record.password !== "string") {
       return null
     }
     return { port: record.port, username: record.username, password: record.password }

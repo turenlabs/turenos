@@ -4,7 +4,7 @@ import { createHash } from "node:crypto"
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { FORGE_REMOTE_SHIM, parseRemoteState, remoteInstallMissing } from "./shim"
+import { FORGE_REMOTE_SHIM, parseRemoteState, remoteEnsureScript, remoteInstallMissing } from "./shim"
 
 // These run the actual POSIX shim against a fake forge binary, so `ensure`'s
 // pidfile/port/authfile contract and its idempotent reattach are exercised the
@@ -32,13 +32,14 @@ afterEach(() => {
   }
 })
 
-function run(homeDir: string, command: string, env: Record<string, string> = {}) {
+function exec(homeDir: string, args: string[], opts: { env?: Record<string, string>; input?: string } = {}) {
   const script = join(homeDir, ".forge", "bin", "forge-remote")
   writeFileSync(script, FORGE_REMOTE_SHIM)
   chmodSync(script, 0o755)
   try {
-    const stdout = execFileSync("sh", [script, ...command.split(" ")], {
-      env: { HOME: homeDir, PATH: "/usr/bin:/bin", ...env },
+    const stdout = execFileSync("sh", args, {
+      input: opts.input,
+      env: { HOME: homeDir, PATH: "/usr/bin:/bin", ...opts.env },
       encoding: "utf8",
     })
     return { code: 0, stdout, stderr: "" }
@@ -46,6 +47,15 @@ function run(homeDir: string, command: string, env: Record<string, string> = {})
     const err = error as { status?: number; stdout?: string; stderr?: string }
     return { code: err.status ?? 1, stdout: err.stdout ?? "", stderr: err.stderr ?? "" }
   }
+}
+
+function run(homeDir: string, command: string, env: Record<string, string> = {}) {
+  return exec(homeDir, [join(homeDir, ".forge", "bin", "forge-remote"), ...command.split(" ")], { env })
+}
+
+/** Runs `remoteEnsureScript` the way ssh does: piped to `sh -s` on stdin. */
+function runEnsureScript(homeDir: string, script: string) {
+  return exec(homeDir, ["-s"], { input: script })
 }
 
 function installFakeForge(homeDir: string) {
@@ -56,11 +66,31 @@ function installFakeForge(homeDir: string) {
       'if [ "$1" = "--version" ]; then echo "9.9.9"; exit 0; fi',
       // `serve` mode: print the listening line the shim greps, then stay alive.
       'echo "forge server listening on http://127.0.0.1:4321"',
-      "printf '%s\\n' \"$@\" > \"$HOME/.forge/run/invocation\"",
+      'printf \'%s\\n\' "$@" > "$HOME/.forge/run/invocation"',
       "exec sleep 600",
     ].join("\n"),
   )
   chmodSync(join(homeDir, ".forge", "bin", "forge"), 0o755)
+}
+
+/** Fake forge that records the environment it was started with. */
+function installEnvRecordingForge(homeDir: string) {
+  writeFileSync(
+    join(homeDir, ".forge", "bin", "forge"),
+    [
+      "#!/bin/sh",
+      'if [ "$1" = "--version" ]; then echo "9.9.9"; exit 0; fi',
+      'echo "forge server listening on http://127.0.0.1:4321"',
+      'printf \'%s\\n\' "$FORGE_SECRET_VAULT_KEY_ID" "$FORGE_SECRET_VAULT_KEY" "$FORGE_REMOTE_CORS" "$*" \\',
+      '  > "$HOME/.forge/run/recorded"',
+      "exec sleep 600",
+    ].join("\n"),
+  )
+  chmodSync(join(homeDir, ".forge", "bin", "forge"), 0o755)
+}
+
+function recorded(homeDir: string) {
+  return readFileSync(join(homeDir, ".forge", "run", "recorded"), "utf8").split("\n")
 }
 
 describe("forge-remote shim", () => {
@@ -99,9 +129,12 @@ describe("forge-remote shim", () => {
 
     // state files are not world-readable
     expect(statSync(join(dir, ".forge", "run", "server.auth")).mode & 0o777).toBe(0o600)
+    expect(statSync(join(dir, ".forge", "run", "server.log")).mode & 0o777).toBe(0o600)
 
     // CORS origins reach the daemon's args (fake forge logs one arg per line)
-    const args = readFileSync(join(dir, ".forge", "run", "invocation"), "utf8").trim().split("\n")
+    const args = readFileSync(join(dir, ".forge", "run", "invocation"), "utf8")
+      .trim()
+      .split("\n")
     const corsAt = args.indexOf("--cors")
     expect(args.slice(corsAt)).toEqual(["--cors", "http://localhost:5173", "--cors", "https://app.example"])
     expect(args.slice(0, corsAt)).toEqual([
@@ -130,6 +163,21 @@ describe("forge-remote shim", () => {
     expect(run(dir, "status").code).toBe(1)
     expect(existsSync(join(dir, ".forge", "run", "server.pid"))).toBe(false)
   })
+
+  for (const output of ["", "abcd", "z".repeat(32)]) {
+    test(`ensure fails closed when random password output is ${JSON.stringify(output)}`, () => {
+      const dir = home()
+      installFakeForge(dir)
+      const bin = join(dir, ".forge", "bin")
+      writeFileSync(join(bin, "od"), `#!/bin/sh\nprintf '%s' '${output}'\n`)
+      chmodSync(join(bin, "od"), 0o755)
+      const result = run(dir, "ensure", { PATH: `${bin}:/usr/bin:/bin` })
+      expect(result.code).toBe(1)
+      expect(result.stderr).toContain("secure password generation failed")
+      expect(existsSync(join(dir, ".forge", "run", "server.pid"))).toBe(false)
+      expect(existsSync(join(dir, ".forge", "run", "server.auth"))).toBe(false)
+    })
+  }
 
   test("ensure respawns when the pidfile is stale", () => {
     const dir = home()
@@ -242,3 +290,55 @@ function releaseFixtures(version: string, opts: { corrupt?: boolean } = {}) {
   chmodSync(join(dir, "curl"), 0o755)
   return dir
 }
+
+describe("remoteEnsureScript", () => {
+  // The vault key must never reach argv: it would be readable via `ps` on both
+  // the desktop and the remote for the life of the call.
+  const key = new Uint8Array(32).fill(7)
+
+  test("delivers cors origins and the vault key over stdin", () => {
+    const dir = home()
+    installEnvRecordingForge(dir)
+
+    const result = runEnsureScript(
+      dir,
+      remoteEnsureScript({
+        corsOrigins: ["http://localhost:5173", "https://app.example"],
+        keyID: "11111111-2222-3333-4444-555555555555",
+        key,
+      }),
+    )
+
+    expect(result.code).toBe(0)
+    expect(parseRemoteState(result.stdout)?.port).toBe(4321)
+    const fields = recorded(dir)
+    expect(fields[0]).toBe("11111111-2222-3333-4444-555555555555")
+    expect(fields[1]).toBe(Buffer.from(key).toString("base64"))
+    expect(fields[2]).toBe("http://localhost:5173 https://app.example")
+    expect(fields[3]).toContain("--cors http://localhost:5173 --cors https://app.example")
+  })
+
+  // connectSshRemote's auto-install branch keys off this exact exit status, so
+  // it has to survive `exec` through the piped script.
+  test("propagates the missing-forge sentinel and exit code through the pipe", () => {
+    const dir = home()
+
+    const result = runEnsureScript(dir, remoteEnsureScript({ corsOrigins: [], keyID: "id", key }))
+
+    expect(result.code).toBe(3)
+    expect(remoteInstallMissing(result.stderr)).toBe(true)
+  })
+
+  test("quotes values so a single quote cannot escape into the remote shell", () => {
+    const dir = home()
+    installEnvRecordingForge(dir)
+
+    const hostile = "http://x'; touch \"$HOME/pwned\"; echo '"
+    const result = runEnsureScript(dir, remoteEnsureScript({ corsOrigins: [hostile], keyID: "id'with'quotes", key }))
+
+    expect(result.code).toBe(0)
+    expect(existsSync(join(dir, "pwned"))).toBe(false)
+    expect(recorded(dir)[0]).toBe("id'with'quotes")
+    expect(recorded(dir)[2]).toBe(hostile)
+  })
+})

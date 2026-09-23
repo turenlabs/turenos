@@ -26,6 +26,8 @@ the reference when prose and code appear together.
 - [Local models](./local-models.md): running Bonsai 2 with its supported local runtime and connecting the loopback API.
 - [Claude Code tool routing](./claude-code-tool-routing.md): routing `claude -p` tools through
   TurenOS policy and settlement boundaries.
+- [SSH remote servers](./ssh-remote.md): driving the system `ssh` client to install, supervise,
+  and tunnel a remote TurenOS backend from Desktop.
 - [Secure storage](./secure-storage.md): encrypting credentials and sensitive files with the
   OS-protected Secret Vault.
 - [Release guide](./release-guide.md): the operator checklist for cutting a release —

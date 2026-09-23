@@ -38,6 +38,17 @@ function same(a: string | null, b: string) {
   expect(a).toBe(b)
 }
 
+function withTestHome(home: string, run: () => void) {
+  const previous = process.env.FORGE_TEST_HOME
+  process.env.FORGE_TEST_HOME = home
+  try {
+    run()
+  } finally {
+    if (previous === undefined) delete process.env.FORGE_TEST_HOME
+    else process.env.FORGE_TEST_HOME = previous
+  }
+}
+
 describe("util.which", () => {
   test("returns null when command is missing", () => {
     expect(which("opencode-missing-command-for-test")).toBeNull()
@@ -85,6 +96,33 @@ describe("util.which", () => {
     await fs.writeFile(file, "@echo off\r\n")
 
     expect(which("pathext", { PATH: bin, PATHEXT: ".CMD" })).toBe(file)
+  })
+
+  test("finds a command from the user's ~/.local/bin fallback", async () => {
+    if (process.platform === "win32") return
+
+    await using tmp = await tmpdir()
+    const home = path.join(tmp.path, "home")
+    const bin = path.join(home, ".local", "bin")
+    await fs.mkdir(bin, { recursive: true })
+    const file = await cmd(bin, "user-local-tool")
+
+    withTestHome(home, () => same(which("user-local-tool", env(path.join(tmp.path, "empty"))), file))
+  })
+
+  test("prefers PATH over the user's ~/.local/bin fallback", async () => {
+    if (process.platform === "win32") return
+
+    await using tmp = await tmpdir()
+    const home = path.join(tmp.path, "home")
+    const local = path.join(home, ".local", "bin")
+    const onpath = path.join(tmp.path, "onpath")
+    await fs.mkdir(local, { recursive: true })
+    await fs.mkdir(onpath)
+    const preferred = await cmd(onpath, "shadowed-tool")
+    await cmd(local, "shadowed-tool")
+
+    withTestHome(home, () => same(which("shadowed-tool", env(onpath)), preferred))
   })
 
   test("uses Windows Path casing fallback", async () => {
