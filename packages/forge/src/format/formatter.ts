@@ -190,16 +190,17 @@ export const ruff: Info = {
   name: "ruff",
   extensions: [".py", ".pyi"],
   async enabled(context) {
-    if (!which("ruff")) return false
+    const match = which("ruff")
+    if (!match) return false
     const configs = ["pyproject.toml", "ruff.toml", ".ruff.toml"]
     for (const config of configs) {
       const found = await Filesystem.findUp(config, context.directory, context.worktree)
       if (found.length > 0) {
         if (config === "pyproject.toml") {
           const content = await Filesystem.readText(found[0])
-          if (content.includes("[tool.ruff]")) return ["ruff", "format", "$FILE"]
+          if (content.includes("[tool.ruff]")) return [match, "format", "$FILE"]
         } else {
-          return ["ruff", "format", "$FILE"]
+          return [match, "format", "$FILE"]
         }
       }
     }
@@ -208,7 +209,7 @@ export const ruff: Info = {
       const found = await Filesystem.findUp(dep, context.directory, context.worktree)
       if (found.length > 0) {
         const content = await Filesystem.readText(found[0])
-        if (content.includes("ruff")) return ["ruff", "format", "$FILE"]
+        if (content.includes("ruff")) return [match, "format", "$FILE"]
       }
     }
     return false
@@ -290,9 +291,10 @@ export const ocamlformat: Info = {
   name: "ocamlformat",
   extensions: [".ml", ".mli"],
   async enabled(context) {
-    if (!which("ocamlformat")) return false
+    const match = which("ocamlformat")
+    if (!match) return false
     const items = await Filesystem.findUp(".ocamlformat", context.directory, context.worktree)
-    if (items.length > 0) return ["ocamlformat", "-i", "$FILE"]
+    if (items.length > 0) return [match, "-i", "$FILE"]
     return false
   },
 }

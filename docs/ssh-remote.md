@@ -54,9 +54,9 @@ the operator.
 | Transport security | Encrypted, with host-key identity, by construction.                                               | `normalizeServerUrl` turns a bare `host:port` into `http://`, so Basic credentials and all session traffic cross the network in cleartext unless the operator fronts it with TLS. |
 | Credentials        | Minted per start on the remote, kept memory-only on the desktop, re-read on every connect.        | `username`/`password` are persisted with the connection in the renderer's `server.v3` store.                                                                                      |
 | Authentication     | Reuses existing SSH keys, agent, 2FA, and `known_hosts`. No new secret to distribute.             | A shared password the operator invents and distributes.                                                                                                                           |
-| Setup              | Name a host you can already `ssh` into. forge is installed, version-matched, and started for you. | Install forge on the host, pick a port, open it through the firewall, invent and distribute a password, and arrange TLS.                                                          |
+| Setup              | Name a host you can already `ssh` into. forge is installed if missing and started for you; version mismatches are reported for explicit update. | Install forge on the host, pick a port, open it through the firewall, invent and distribute a password, and arrange TLS.                                                          |
 | Lifecycle          | Installs, version-checks, daemonizes, health-checks, and auto-reconnects.                         | Someone else runs, updates, and supervises the server.                                                                                                                            |
-| Per-request cost   | One authenticated connection, multiplexed, `ControlPersist=10m` — auth is paid once.              | A fresh TCP connection per client, no shared auth state.                                                                                                                          |
+| Per-request cost   | One authenticated connection, multiplexed, `ControlPersist=10m` — auth is paid once.              | HTTP clients may reuse connections; no SSH authentication or tunnel overhead.                                                                                                                          |
 
 The honest trade is throughput. Tunneling is not faster than talking to a port directly: traffic is
 encrypted, crosses an extra process hop on both ends, and is subject to the SSH channel's own flow
@@ -378,15 +378,18 @@ single-quote escaped, so a quote in an origin cannot break out into the remote s
 assignments as a `VAR=value cmd` prefix would also have required a POSIX login shell; piping works
 under csh-family shells too.
 
-Env delivery still means the key is present in the remote server process's own environment, which is
-inherent to the headless contract — `forge serve` reads those two variables and nothing else. It is
-readable there by that user and by root on the remote, as it is for any headless deployment.
+The key enters the remote server through its startup environment. The vault removes both variables
+from `process.env` when it initializes, limiting subsequent child-process inheritance. This does not
+protect the key from the remote account or root: connecting trusts that host with the desktop vault
+key, and clearing environment variables is not a guarantee of erasing the initial process environment.
 
 ## Security properties
 
 - The remote listener binds `127.0.0.1` with a kernel-assigned port and is reachable only through
-  the SSH forward; its state files are 0600 under a 0700 directory.
-- Every request still carries HTTP Basic auth with a per-start 16-byte random password.
+  the SSH forward from the desktop. Other processes on the remote can reach loopback too, so
+  authentication remains required; its state files are 0600 under a 0700 directory.
+- Every request still carries HTTP Basic auth with a per-start 16-byte random password. Startup
+  fails if secure password generation fails; new state and log files use a private umask.
 - CORS is restricted to the renderer origins the desktop actually uses.
 - Destination arguments cannot inject ssh options; the destination is always the final argv element.
 - Host keys are never silently accepted — the user confirms a new key with the fingerprint in view,

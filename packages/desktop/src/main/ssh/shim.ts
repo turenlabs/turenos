@@ -29,6 +29,7 @@ export function remoteEnsureScript(input: { corsOrigins: string[]; keyID: string
 
 export const FORGE_REMOTE_SHIM = `#!/bin/sh
 set -u
+umask 077
 FORGE_BIN="$HOME/.forge/bin/forge"
 RUN_DIR="$HOME/.forge/run"
 PIDFILE="$RUN_DIR/server.pid"
@@ -63,9 +64,12 @@ case "\${1:-ensure}" in
       echo "FORGE_REMOTE_ERROR forge is not installed" >&2
       exit 3
     fi
-    mkdir -p "$RUN_DIR" && chmod 700 "$RUN_DIR"
+    mkdir -p "$RUN_DIR" && chmod 700 "$RUN_DIR" || exit 1
     pass=$(od -An -tx1 -N16 /dev/urandom 2>/dev/null | tr -d ' \\n')
-    [ -n "$pass" ] || pass="$(date +%s)-$$-$(hostname 2>/dev/null || echo forge)"
+    case "$pass" in
+      ''|*[!0-9a-f]*) echo "FORGE_REMOTE_ERROR secure password generation failed" >&2; exit 1 ;;
+    esac
+    [ "\${#pass}" -eq 32 ] || { echo "FORGE_REMOTE_ERROR secure password generation failed" >&2; exit 1; }
     cors_args=""
     for origin in \${FORGE_REMOTE_CORS:-}; do cors_args="$cors_args --cors $origin"; done
     : > "$LOGFILE"
@@ -186,11 +190,7 @@ export function parseRemoteState(output: string): ForgeRemoteState | null {
     const parsed = JSON.parse(line.slice("FORGE_REMOTE ".length)) as unknown
     if (typeof parsed !== "object" || parsed === null) return null
     const record = parsed as Record<string, unknown>
-    if (
-      typeof record.port !== "number" ||
-      typeof record.username !== "string" ||
-      typeof record.password !== "string"
-    ) {
+    if (typeof record.port !== "number" || typeof record.username !== "string" || typeof record.password !== "string") {
       return null
     }
     return { port: record.port, username: record.username, password: record.password }
