@@ -8,8 +8,9 @@ or server layers knows the connection is remote.
 
 This is a Desktop-only feature that needs an `ssh` client on the desktop machine; the code carries
 `win32` branches (`ssh.exe`, a `%TEMP%` control directory, hidden windows) alongside the POSIX path.
-It requires no agent, no daemon, and no inbound port on the remote: all traffic rides one
-authenticated outbound SSH connection.
+The remote needs an SSH server and a POSIX shell; the managed installer supports Linux and macOS
+remote binaries. Native Windows remote startup is not implemented by this shim. The desktop starts
+a Forge server on remote loopback without requiring an additional network-facing application port.
 
 Implementation lives in [`packages/desktop/src/main/ssh`](../packages/desktop/src/main/ssh) with
 the UI in [`packages/app/src/ssh`](../packages/app/src/ssh).
@@ -292,8 +293,11 @@ instance entirely and builds a client against the given base URL with
 [`ServerAuth.headers`](../packages/server/src/auth.ts):
 
 ```sh
-forge run --attach "http://127.0.0.1:$(cat ~/.forge/run/server.port)" \
-  -u forge -p "$(cat ~/.forge/run/server.auth)" "hello"
+(
+  FORGE_SERVER_PASSWORD="$(cat ~/.forge/run/server.auth)"
+  export FORGE_SERVER_PASSWORD
+  forge run --attach "http://127.0.0.1:$(cat ~/.forge/run/server.port)" -u forge "hello"
+)
 ```
 
 Under `--attach`, `--dir` is interpreted as a path _on the server_, not locally. A client sharing the
@@ -302,6 +306,14 @@ host's filesystem is the normal case here; see
 
 Because it is one process over one SQLite database, a local client and the desktop (through its
 tunnel) observe the same Sessions live.
+
+The example uses an environment variable to keep the password out of command arguments. The
+remote account and administrators remain trusted. This illustrates CLI attachment, not automatic
+`turen-tui` discovery.
+
+A remote-owned vault with independent startup and access from multiple desktops is not implemented
+yet. A second desktop with a different vault key cannot independently restart and unlock the
+existing vault; do not replace the key or delete stored secrets to work around a mismatch.
 
 Four constraints shape any client built on this:
 
@@ -399,6 +411,16 @@ key, and clearing environment variables is not a guarantee of erasing the initia
 - Renderer IPC arrives through `TrustedIpc` and is validated before use.
 
 ## Operating notes
+
+- Directory browsing lists the current folder first and requests child listings only when expanded.
+  The first expansion of an uncached folder waits for a server response.
+- On non-Windows hosts, tool lookup checks `PATH`, the managed tool bin directory, `~/.local/bin`,
+  then `~/bin`. Existing PATH matches take precedence. User-bin tools must be executable; Ruff and
+  OCamlformat launch the resolved path even when the directory is absent from PATH. This lookup
+  does not modify PATH for arbitrary child commands. Windows lookup is unchanged.
+- `secure password generation failed` means startup could not obtain 16 random bytes as a valid
+  32-character hex password. Check `/dev/urandom` access and the `od`/`tr` utilities on the remote;
+  there is no predictable-password fallback. Startup also stops if it cannot secure the run directory.
 
 - `ssh -V` availability is surfaced as `state.runtime`; without an ssh client nothing else is
   attempted.
