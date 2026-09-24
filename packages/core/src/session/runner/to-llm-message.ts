@@ -128,45 +128,35 @@ const assistant = (message: SessionMessage.Assistant, model: Model) => {
   const sameModel =
     String(message.model.providerID) === String(model.provider) && String(message.model.id) === String(model.id)
   const reuseProviderMetadata = sameModel && message.error === undefined
-  const content = message.content.flatMap((item): ContentPart[] => {
-    if (item.type === "text") return [{ type: "text", text: item.text }]
-    if (item.type === "reasoning")
-      return sameModel
-        ? [
-            {
-              type: "reasoning",
-              text: item.text,
-              providerMetadata: reuseProviderMetadata ? item.providerMetadata : undefined,
-            },
-          ]
-        : item.text.length > 0
-          ? [{ type: "text", text: item.text }]
-          : []
-    const call = toolCall(item, reuseProviderMetadata ? item.provider?.metadata : undefined)
-    if (item.provider?.executed !== true) return [call]
-    const result = toolResult(
-      item,
-      reuseProviderMetadata ? (item.provider.resultMetadata ?? item.provider.metadata) : undefined,
-    )
-    return result ? [call, result] : [call]
-  })
-  const meaningful = content.filter((part) => {
-    if (part.type === "text") return part.text !== ""
-    if (part.type !== "reasoning") return true
-    return part.text !== "" || (part.providerMetadata !== undefined && Object.keys(part.providerMetadata).length > 0)
-  })
-  const results = message.content.reduce<Message[]>((output, item) => {
-    if (item.type !== "tool" || item.provider?.executed === true) return output
+  const content: ContentPart[] = []
+  const results: Message[] = []
+  for (const item of message.content) {
+    if (item.type === "text") {
+      if (item.text !== "") content.push({ type: "text", text: item.text })
+      continue
+    }
+    if (item.type === "reasoning") {
+      if (sameModel) {
+        const providerMetadata = reuseProviderMetadata ? item.providerMetadata : undefined
+        if (item.text !== "" || (providerMetadata !== undefined && Object.keys(providerMetadata).length > 0))
+          content.push({ type: "reasoning", text: item.text, providerMetadata })
+        continue
+      }
+      if (item.text !== "") content.push({ type: "text", text: item.text })
+      continue
+    }
+    content.push(toolCall(item, reuseProviderMetadata ? item.provider?.metadata : undefined))
     const result = toolResult(
       item,
       reuseProviderMetadata ? (item.provider?.resultMetadata ?? item.provider?.metadata) : undefined,
     )
-    if (result !== undefined) output.push(Message.tool(result))
-    return output
-  }, [])
-  if (meaningful.length === 0) return results
+    if (result === undefined) continue
+    if (item.provider?.executed === true) content.push(result)
+    else results.push(Message.tool(result))
+  }
+  if (content.length === 0) return results
   return [
-    Message.make({ id: message.id, role: "assistant", content: meaningful, metadata: message.metadata }),
+    Message.make({ id: message.id, role: "assistant", content, metadata: message.metadata }),
     ...results,
   ]
 }
