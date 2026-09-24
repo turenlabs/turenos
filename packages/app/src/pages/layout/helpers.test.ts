@@ -18,6 +18,7 @@ import {
   homeProjectDirectories,
   homeSessionServerStatus,
   latestRootSession,
+  sessionLocationName,
   toggleHomeProjectSelection,
 } from "./helpers"
 import { pathKey } from "@/utils/path-key"
@@ -271,6 +272,33 @@ describe("layout workspace helpers", () => {
     expect(displayName({ worktree: "/tmp/app" })).toBe("app")
     expect(displayName({ worktree: "/tmp/app", name: "My App" })).toBe("My App")
     expect(displayName({ worktree: "/" })).toBe("/")
+  })
+
+  test("names a session after its sandbox, and after the project in the worktree", () => {
+    const project = {
+      worktree: "/repos/alpha_project",
+      name: "Alpha",
+      sandboxes: [
+        "/repos/weekly_health_check",
+        "/worktrees/alpha/brave-fox",
+        "/repos/alpha_project/.worktrees/calm-owl",
+      ],
+    }
+    expect(sessionLocationName({ directory: "/repos/alpha_project" }, project)).toBe("Alpha")
+    expect(sessionLocationName({ directory: "/repos/alpha_project/" }, project)).toBe("Alpha")
+    expect(sessionLocationName({ directory: "/repos/alpha_project/packages/app" }, project)).toBe("Alpha")
+    expect(sessionLocationName({ directory: "/repos/weekly_health_check" }, project)).toBe("weekly_health_check")
+    expect(sessionLocationName({ directory: "/repos/weekly_health_check/src" }, project)).toBe("weekly_health_check")
+    expect(sessionLocationName({ directory: "/repos/weekly_health_check_old" }, project)).toBe("Alpha")
+    expect(sessionLocationName({ directory: "/worktrees/alpha/brave-fox" }, project)).toBe("brave-fox")
+    expect(sessionLocationName({ directory: "/repos/alpha_project/.worktrees/calm-owl/src" }, project)).toBe("calm-owl")
+    expect(
+      sessionLocationName(
+        { directory: "C:\\repos\\beta\\" },
+        { worktree: "C:/repos/alpha", sandboxes: ["C:\\repos\\beta"] },
+      ),
+    ).toBe("beta")
+    expect(sessionLocationName({ directory: "/tmp/loose" })).toBe("loose")
   })
 
   test("scopes home project selection by server", () => {
