@@ -136,10 +136,16 @@ export function projectForSession<T extends { id?: string; worktree: string; san
 ) {
   const direct = byID.get(session.projectID)
   if (direct) return direct
-  const directory = pathKey(session.directory)
+  return projectForDirectory(session.directory, projects)
+}
+
+export function projectForDirectory<T extends { worktree: string; sandboxes?: string[] }>(
+  directory: string,
+  projects: T[],
+) {
+  const key = pathKey(directory)
   return projects.find(
-    (project) =>
-      pathKey(project.worktree) === directory || project.sandboxes?.some((sandbox) => pathKey(sandbox) === directory),
+    (project) => pathKey(project.worktree) === key || project.sandboxes?.some((sandbox) => pathKey(sandbox) === key),
   )
 }
 
