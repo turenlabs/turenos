@@ -402,6 +402,7 @@ export function DraftTabItem(props: {
         data-slot="tab-link"
         data-titlebar-tab-link
         href={props.href}
+        title={props.location ? `${props.title} | ${props.location}` : props.title}
         draggable={false}
         onDragStart={(event) => {
           event.preventDefault()

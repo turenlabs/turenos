@@ -206,7 +206,10 @@ export function startForgeScene(options: ForgeSceneOptions): ForgeScene {
     renderer.setSize(w, h, false)
   }
   window.addEventListener("pointermove", onPointer, { passive: true })
-  window.addEventListener("resize", onResize)
+  // Observe the host rather than the window: an inline logo can mount before
+  // its layout settles (0×0) and would otherwise stay blank until a window resize.
+  const resize = new ResizeObserver(onResize)
+  resize.observe(host)
   onResize()
 
   const started = performance.now()
@@ -220,13 +223,16 @@ export function startForgeScene(options: ForgeSceneOptions): ForgeScene {
     dispose: () => {
       cancelAnimationFrame(raf)
       window.removeEventListener("pointermove", onPointer)
-      window.removeEventListener("resize", onResize)
+      resize.disconnect()
       geo.dispose()
       eGeo.dispose()
       mat.dispose()
       eMat.dispose()
       tex.dispose()
       renderer.dispose()
+      // dispose() alone keeps the WebGL context alive; Chromium caps live contexts
+      // and evicts the oldest, which blanks later logos after repeated remounts.
+      renderer.forceContextLoss()
     },
   }
 

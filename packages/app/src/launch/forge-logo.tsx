@@ -23,6 +23,13 @@ export function ForgeLogo(props: { class?: string }) {
   }
 
   onMount(() => {
+    // A lost context (GPU reset or eviction) leaves a blank canvas; show the static artwork instead.
+    canvas.addEventListener("webglcontextlost", () => {
+      const lost = forge
+      forge = undefined
+      lost?.dispose()
+      setFailed(true)
+    })
     try {
       forge = startForgeScene({
         host,
@@ -35,7 +42,11 @@ export function ForgeLogo(props: { class?: string }) {
       setFailed(true)
     }
   })
-  onCleanup(() => forge?.dispose())
+  onCleanup(() => {
+    const current = forge
+    forge = undefined
+    current?.dispose()
+  })
 
   return (
     <div

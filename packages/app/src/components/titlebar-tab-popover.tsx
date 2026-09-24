@@ -2,8 +2,8 @@ import { HoverCard as Kobalte } from "@kobalte/core/hover-card"
 import { createSignal, Show, type JSXElement } from "solid-js"
 import "./titlebar-tab-popover.css"
 
-// Initial hover delay before the preview appears, per design.
-const OPEN_DELAY = 2_000
+// Initial hover delay before the preview appears.
+const OPEN_DELAY = 600
 // Mouse-out delay: begin closing immediately (a brief exit animation plays).
 const CLOSE_DELAY = 0
 // After a preview closes, hovering a neighbouring tab within this window skips
