@@ -363,13 +363,19 @@ export interface Interface {
    * Promote the oldest queued tasks of one root while it has free active slots.
    * Returns the child Session IDs the caller must wake.
    */
-  readonly promote: (rootSessionID: SessionSchema.ID) => Effect.Effect<ReadonlyArray<SessionSchema.ID>>
+  readonly promote: (
+    rootSessionID: SessionSchema.ID,
+    activeLimit?: number,
+  ) => Effect.Effect<ReadonlyArray<SessionSchema.ID>>
   /**
    * Process-global promotion driver. Promotes every root with queued work, then
    * parks until a task changes locally or another connection commits, forever.
    * The owner of Session execution forks it and supplies the wake.
    */
-  readonly runPromotion: (wake: (sessionID: SessionSchema.ID) => Effect.Effect<void>) => Effect.Effect<never>
+  readonly runPromotion: (
+    wake: (sessionID: SessionSchema.ID) => Effect.Effect<void>,
+    activeLimit: (rootSessionID: SessionSchema.ID) => Effect.Effect<number>,
+  ) => Effect.Effect<never>
   /**
    * Re-admit a queued advisory for every board note still marked pending after a
    * crash and mark it delivered. Runs during layer construction; admit-only, so
@@ -1967,13 +1973,17 @@ const layer = Layer.effect(
       )
     })
 
-    const promote = Effect.fn("SessionTask.promote")(function* (rootSessionID: SessionSchema.ID) {
+    const promote = Effect.fn("SessionTask.promote")(function* (
+      rootSessionID: SessionSchema.ID,
+      activeLimit?: number,
+    ) {
       // Collected outside the guarded pass so children already started still
       // get woken when a later promotion in the same pass fails.
       const woken: SessionSchema.ID[] = []
       yield* Effect.gen(function* () {
         if (removalLeases.has(rootSessionID) || rootCancellationLeases.has(rootSessionID)) return
-        const maximum = rootLimits.get(rootSessionID) ?? DEFAULT_ACTIVE_PER_ROOT
+        const maximum = resolveActiveLimit(activeLimit ?? rootLimits.get(rootSessionID))
+        rootLimits.set(rootSessionID, maximum)
         while ((yield* countActive(rootSessionID)) < maximum) {
           const orchestrators = (yield* countStatus(rootSessionID, active, true)) < orchestratorLimit(maximum)
           const row = yield* primary
@@ -2003,7 +2013,7 @@ const layer = Layer.effect(
       return woken
     })
 
-    const runPromotion: Interface["runPromotion"] = (wake) =>
+    const runPromotion: Interface["runPromotion"] = (wake, activeLimit) =>
       Effect.forever(
         Effect.gen(function* () {
           // Capture both change tokens before reading, as `wait` does, so a
@@ -2018,7 +2028,11 @@ const layer = Layer.effect(
             .pipe(Effect.orDie)
           yield* Effect.forEach(
             queuedRoots,
-            (row) => promote(row.rootSessionID).pipe(Effect.flatMap((ids) => Effect.forEach(ids, wake))),
+            (row) =>
+              activeLimit(row.rootSessionID).pipe(
+                Effect.flatMap((limit) => promote(row.rootSessionID, limit)),
+                Effect.flatMap((ids) => Effect.forEach(ids, wake)),
+              ),
             { discard: true },
           )
           yield* Effect.race(Deferred.await(localChange), awaitExternalChange(version))
@@ -2876,6 +2890,8 @@ function operationToolName(kind: Operation["kind"], actor: Actor) {
 function spawnPersistenceViolation(
   input: Pick<SpawnInput, "actor" | "agent" | "model" | "description" | "prompt" | "authority" | "wave">,
 ) {
+  if (input.actor.item !== undefined && input.actor.item >= MAX_SPAWN_BATCH)
+    return `Subagent batch item index must be less than ${MAX_SPAWN_BATCH}`
   if (input.description.length > MAX_DESCRIPTION_LENGTH)
     return `Subagent description exceeds ${MAX_DESCRIPTION_LENGTH} characters`
   if (input.wave !== undefined && (input.wave.length === 0 || input.wave.length > MAX_WAVE_NAME_LENGTH))

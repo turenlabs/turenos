@@ -6,9 +6,8 @@ import type {
 import { Swarm } from "@turenlabs/schema/swarm"
 import type { ThinkingState } from "@turenlabs/ui/thinking"
 
-// `queued` (admitted, waiting for a concurrency slot) and `wave` are widened here until the
-// generated client catches up; both stay compatible once it does.
-export type SessionTaskStatus = GeneratedSessionTaskStatus | "queued"
+// The task list summary omits wave, but live task events carry it for grouping in the dock.
+export type SessionTaskStatus = GeneratedSessionTaskStatus
 export type SessionTaskInfo = Omit<SessionTaskSummary, "status"> & { status: SessionTaskStatus; wave?: string }
 
 export type SessionSwarmProgress = {

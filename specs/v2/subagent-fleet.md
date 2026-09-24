@@ -8,7 +8,7 @@ Built: `queued` admission and FIFO promotion, `MAX_DEPTH` two behind the `orches
 - Promotion has one driver: `SessionTaskV2.runPromotion`, a scoped fiber owned by `SessionExecutionLocal`. Every settle and cancel publishes a task event, so it covers freed slots as well as restart and external commits.
 - Orchestrators hold at most `floor(limit / 2)` active slots (`orchestratorLimit`). Without that cap, orchestrators waiting on queued workers could fill every slot and deadlock the root. Promotion skips queued orchestrators past the cap. An `orchestrate` spawn fails when the limit leaves no orchestrator slot.
 - A queued worker whose orchestrator is no longer running is cancelled at promotion rather than started.
-- The promotion ceiling is the limit carried by the root's latest spawn or send, held in memory. After restart the default applies until the next admission.
+- The process-global promotion driver resolves `subagents.max_concurrent` from the root Session's Location for every promotion pass, including after restart.
 - `Actor.item` persists as `actor_item` with `-1` for single-operation calls, so the widened actor uniqueness indexes never see distinct NULLs.
 
 ## Goal
@@ -34,12 +34,9 @@ queued -> running    (resumed-task promotion)
 
 ## Promotion
 
-`SessionTaskV2.promote(rootSessionID)` promotes the oldest queued tasks in `time.created, id` order while `countActive(rootSessionID)` is below the configured limit, and returns the child Session IDs to wake. Promotion runs under `roots.withLock(rootSessionID)` so it serializes with spawn, send, interrupt, and settle exactly like the limit check it replaces. The service stays global and returns identities; the caller that owns `SessionExecutionControl` performs the wakes.
+`SessionTaskV2.promote(rootSessionID, activeLimit?)` promotes the oldest eligible queued tasks in `time.created, id` order while `countActive(rootSessionID)` is below the configured limit, and returns the child Session IDs to wake. Promotion runs under `roots.withLock(rootSessionID)` so it serializes with spawn, send, interrupt, and settle. The service stays global and returns identities; the caller that owns `SessionExecutionControl` performs the wakes.
 
-Drivers, in order of coverage:
-
-1. **Inline on freed slots.** Every transition that removes a task from the active set — `settleRun`/`settle` terminal transitions and interrupt/cancel completions — runs a promotion pass before returning. The drain settlement path in `SessionExecutionLocal` wakes promoted children alongside the existing parent settle advisory; tool-driven interrupt paths wake them through `control` the same way `spawn` does today.
-2. **A process-global promotion fiber.** `SessionExecutionLocal` runs a scoped fiber that awaits the task-changed signal and the `PRAGMA data_version` external-change poll — the same dual wake `wait` already uses — and promotes any root with queued tasks and free capacity. This covers process restart, writes committed by another process, and the zero-active backlog case where no terminal transition exists to trigger inline promotion.
+One process-global promotion fiber, owned by `SessionExecutionLocal`, watches the task-changed signal and SQLite's `PRAGMA data_version` external-change poll — the same dual wake used by `wait`. For each queued root it resolves `subagents.max_concurrent` from that root Session's Location, then promotes and wakes eligible children. This covers local slot changes, process restart, writes committed by another process, and a queued backlog that has no active task to settle.
 
 `MAX_TASKS_PER_ROOT` (10,000) bounds non-terminal tasks per root; `spawn` beyond it fails with `QueueLimitError` as an ordinary `ToolFailure`. `subagents.max_concurrent` keeps its meaning — the promotion ceiling — and `resolveActiveLimit` still clamps it to `MAX_ACTIVE_PER_ROOT`.
 
@@ -77,7 +74,7 @@ A retried batch re-executes per item: applied operations return their recorded t
 - Subagent guidance replaces "a further spawn fails until one settles" with queued-admission semantics, teaches orchestrators the wave and batch workflow, and makes "avoid nested delegation" conditional on the absent `orchestrate` grant rather than universal.
 - `spawn_agent`'s description shifts from "returns after its prompt is durably admitted" to "returns after the task is durably admitted"; `queued` is a normal, model-visible status.
 - `SessionEvent.Task.Updated` already carries the complete task; `queued` and `wave` reach clients without new event types. Queue depth is presentable as first-class UI state.
-- `@swarm` stays at `Swarm.MAX_SIZE = 50`. Its workers now queue-and-promote instead of hitting the active-limit failure; fleet-scale fan-out goes through orchestrators, not `@swarm`.
+- `@swarm` accepts up to `Swarm.MAX_SIZE = 2,000`; up to `Swarm.DIRECT_SIZE = 50` dispatches directly, and larger requests render a two-level orchestrator plan. All admissions queue-and-promote instead of failing at the active limit.
 
 ## Rate Limits
 

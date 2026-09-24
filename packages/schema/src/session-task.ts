@@ -39,8 +39,8 @@ export const REQUEST_HASH_LENGTH = 64
  * `DEFAULT_ACTIVE_PER_ROOT` is the normal ceiling. `MAX_ACTIVE_PER_ROOT` is a
  * hard cap that configuration cannot raise:
  * every concurrent child is a whole model session with its own provider stream
- * and tool subprocesses, and depth is capped at one, so this bounds a root at
- * fifty-one live sessions rather than an unbounded fan-out. `MIN_ACTIVE_PER_ROOT`
+ * and tool subprocesses, and the task graph is capped at two levels, so this
+ * bounds a root at fifty-one live sessions rather than an unbounded fan-out. `MIN_ACTIVE_PER_ROOT`
  * is one because zero would advertise subagent tools that can never succeed;
  * denying the `spawn_agent` permission is how delegation gets turned off.
  */
@@ -126,7 +126,7 @@ export const Actor = Schema.Struct({
   assistantMessageID: SessionMessage.ID,
   toolCallID: bounded(MAX_TOOL_CALL_ID_LENGTH),
   /** Element index when one batch tool call admits several operations. */
-  item: NonNegativeInt.pipe(Schema.check(Schema.isLessThan(MAX_SPAWN_BATCH)), optional),
+  item: NonNegativeInt.pipe(optional),
 }).annotate({ identifier: "SessionTask.Actor" })
 
 export interface Authority extends Schema.Schema.Type<typeof Authority> {}

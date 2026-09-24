@@ -507,20 +507,26 @@ const layer = Layer.effect(
               if ((input.task_id === undefined) === (input.wave === undefined))
                 return yield* new ToolFailure({ message: `${interruptName} requires exactly one of task_id or wave` })
               if (input.wave !== undefined) {
-                const targets = yield* tasks.list({
-                  parentSessionID: context.sessionID,
-                  wave: input.wave,
-                  statuses: ["queued", "starting", "running"],
-                })
+                // Keep item identities tied to the full, stable wave order so
+                // retrying after some cancellations committed cannot assign an
+                // existing actor item to a different task.
+                const targets = (yield* tasks.list({ parentSessionID: context.sessionID, wave: input.wave })).flatMap(
+                  (task, index) =>
+                    task.status === "queued" || task.status === "starting" || task.status === "running"
+                      ? [{ task, index }]
+                      : [],
+                )
                 const batch = targets.slice(0, SessionTaskV2.MAX_SPAWN_BATCH)
                 if (batch.length === 0) return { tasks: [], interrupted: 0, remaining: 0 }
                 yield* assertPermission(
                   interruptName,
-                  batch.map((task) => task.id),
+                  batch.map((item) => item.task.id),
                   context,
                 )
-                const prepared = yield* Effect.forEach(batch, (task, index) =>
-                  tasks.interrupt({ actor: actor(context, index), taskID: task.id }).pipe(Effect.mapError(taskFailure)),
+                const prepared = yield* Effect.forEach(batch, (item) =>
+                  tasks
+                    .interrupt({ actor: actor(context, item.index), taskID: item.task.id })
+                    .pipe(Effect.mapError(taskFailure)),
                 )
                 const pending = prepared.filter((item) => item.operation.status === "pending")
                 yield* Effect.forEach([...new Set(pending.flatMap((item) => item.sessions))], stopSession, {

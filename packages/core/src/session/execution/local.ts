@@ -56,6 +56,18 @@ const layer = Layer.effect(
         return Option.isSome(config)
           ? Reflection.reflectionSettings(yield* config.value.entries())
           : { enabled: undefined, interval: undefined }
+        }).pipe(Effect.provide(locations.get(session.location)))
+    })
+    const promotionLimit = Effect.fn("SessionExecutionLocal.promotionLimit")(function* (
+      rootSessionID: SessionSchema.ID,
+    ) {
+      const session = yield* store.get(rootSessionID)
+      if (!session) return SessionTaskV2.DEFAULT_ACTIVE_PER_ROOT
+      return yield* Effect.gen(function* () {
+        const config = yield* Effect.serviceOption(Config.Service)
+        return Option.isSome(config)
+          ? SessionTaskV2.resolveActiveLimit(Config.latest(yield* config.value.entries(), "subagents")?.max_concurrent)
+          : SessionTaskV2.DEFAULT_ACTIVE_PER_ROOT
       }).pipe(Effect.provide(locations.get(session.location)))
     })
     let wakeAdvisory: (sessionID: SessionSchema.ID) => Effect.Effect<void> = () => Effect.void
@@ -312,7 +324,9 @@ const layer = Layer.effect(
     yield* wakePendingShellInputs()
     // Queued subagents start here: settle, cancel, restart, and commits from
     // another process all free slots without a caller that could wake the child.
-    yield* tasks.runPromotion(coordinator.wake).pipe(Effect.forkIn(scope, { startImmediately: true }), Effect.asVoid)
+    yield* tasks
+      .runPromotion(coordinator.wake, promotionLimit)
+      .pipe(Effect.forkIn(scope, { startImmediately: true }), Effect.asVoid)
 
     return SessionExecution.Service.of({
       active: coordinator.active,

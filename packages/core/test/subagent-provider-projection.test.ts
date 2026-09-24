@@ -50,6 +50,22 @@ const it = testEffect(
         hasChildren: (parentSessionID) =>
           Effect.sync(() => listedTasks.some((task) => task.parentSessionID === parentSessionID)),
         list: () => Effect.sync(() => listedTasks),
+        counts: (input) =>
+          Effect.sync(() => {
+            const children = listedTasks.filter(
+              (task) =>
+                task.parentSessionID === input.parentSessionID &&
+                (input.wave === undefined || task.wave === input.wave) &&
+                (input.statuses === undefined || input.statuses.includes(task.status)),
+            )
+            return {
+              queued: children.filter((task) => task.status === "queued").length,
+              active: children.filter((task) => task.status === "starting" || task.status === "running").length,
+              terminal: children.filter((task) =>
+                ["completed", "failed", "cancelled", "interrupted"].includes(task.status),
+              ).length,
+            }
+          }),
         // Mirrors the durable query's contract: every active child first, then
         // the newest terminal ones up to the limit, returned in creation order
         // and flagged when anything was left out.
@@ -85,23 +101,27 @@ const decodeProjectedSchema = Schema.decodeUnknownSync(ProjectedSchema)
 
 const expectedShapes = {
   spawn_agent: {
-    properties: ["agent", "commands", "description", "model", "prompt", "write_roots"],
+    properties: ["agent", "commands", "description", "model", "orchestrate", "prompt", "wave", "write_roots"],
     required: ["agent", "description", "prompt"],
+  },
+  spawn_agents: {
+    properties: ["items", "wave"],
+    required: ["items"],
   },
   send_agent: {
     properties: ["prompt", "task_id"],
     required: ["prompt", "task_id"],
   },
   wait_agents: {
-    properties: ["task_ids", "timeout_ms"],
-    required: ["task_ids"],
+    properties: ["task_ids", "timeout_ms", "wave"],
+    required: [],
   },
   interrupt_agent: {
-    properties: ["task_id"],
-    required: ["task_id"],
+    properties: ["task_id", "wave"],
+    required: [],
   },
   list_agents: {
-    properties: [],
+    properties: ["status", "wave"],
     required: [],
   },
   peek_agent: {
@@ -325,7 +345,7 @@ describe("subagent provider projection", () => {
 
       expect(
         [openaiBody, anthropicBody, googleBody, compatibleBody, kimiBody, bedrockBody, azureBody, openrouterBody].every(
-          (body) => JSON.stringify(body).includes("Avoid nested delegation"),
+          (body) => JSON.stringify(body).includes("otherwise avoid nested delegation"),
         ),
       ).toBe(true)
       expect(kimi.route.id).toBe("anthropic-messages")
