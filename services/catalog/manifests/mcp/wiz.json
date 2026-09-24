@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/wiz",
+  "name": "Wiz",
+  "description": "Query the Wiz Security Graph for cloud security posture, issues, vulnerabilities, threats, and detections through Wiz's hosted MCP server",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://www.wiz.io/blog/introducing-wiz-mcp",
+  "contributions": [
+    {
+      "type": "mcp",
+      "id": "wiz",
+      "name": "Wiz",
+      "description": "Read Wiz cloud resources, findings, issues, vulnerabilities, threats, and detections plus Wiz agent analyses",
+      "adapter": "mcp:wiz",
+      "secrets": [],
+      "defaultEnabled": false,
+      "upstreamPolicy": "static",
+      "deployment": { "type": "hosted", "url": "https://mcp.app.wiz.io/" },
+      "authentication": "oauth",
+      "localOnly": true,
+      "mcpContext": { "maxLoadedTools": 6, "unloadAfterIdleTurns": 3 },
+      "tools": {
+        "allow": [
+          "list_cloud_resources",
+          "list_findings",
+          "list_vulnerability_findings",
+          "list_issues",
+          "list_threats",
+          "list_malware_findings",
+          "list_detections",
+          "get_green_agent_analysis",
+          "get_secops_agent_analysis"
+        ],
+        "write": []
+      },
+      "instructions": "Scope Wiz queries to the resources and projects under investigation. All exposed tools are read-only inventory, findings, and AI analysis lookups; no write tools are enabled."
+    }
+  ]
+}

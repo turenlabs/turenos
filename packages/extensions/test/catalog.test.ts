@@ -34,6 +34,7 @@ const expected = [
   "turenlabs/github-security",
   "turenlabs/gitlab-devsecops",
   "turenlabs/gitleaks",
+  "turenlabs/google-secops",
   "turenlabs/grafana-cloud-security",
   "turenlabs/grype",
   "turenlabs/gtfobins",
@@ -76,6 +77,7 @@ const expected = [
   "turenlabs/vulnerability-analyst",
   "turenlabs/websearch-exa",
   "turenlabs/websearch-parallel",
+  "turenlabs/wiz",
   "turenlabs/yolk",
 ]
 
