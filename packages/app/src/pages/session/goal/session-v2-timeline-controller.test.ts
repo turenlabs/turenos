@@ -514,6 +514,31 @@ describe("V2 timeline live reconciliation", () => {
     ).toEqual([1])
   })
 
+  test("reconciles interleaved parts independently and keeps deltas past the snapshot", () => {
+    const deltas = [
+      { sequence: 1, messageID: "msg", partID: "text", field: "text" as const, delta: "Hel" },
+      { sequence: 2, messageID: "msg", partID: "reasoning", field: "text" as const, delta: "A" },
+      { sequence: 3, messageID: "msg", partID: "text", field: "text" as const, delta: "lo" },
+      { sequence: 4, messageID: "msg", partID: "reasoning", field: "text" as const, delta: "B" },
+      { sequence: 5, messageID: "msg", partID: "text", field: "text" as const, delta: "!" },
+    ]
+
+    expect(
+      sessionV2DeltasForProjection({
+        deltas,
+        through: 4,
+        snapshotText: new Map([
+          ["msg\0text", "Hello"],
+          ["msg\0reasoning", "A"],
+        ]),
+        deltaBases: new Map([
+          ["msg\0text", ""],
+          ["msg\0reasoning", ""],
+        ]),
+      }).map((delta) => delta.sequence),
+    ).toEqual([2, 4, 5])
+  })
+
   test("does not reload context for high-frequency stream fragments", () => {
     expect(sessionEventNeedsTranscriptSnapshot("session.next.text.delta")).toBe(false)
     expect(sessionEventNeedsTranscriptSnapshot("session.next.reasoning.delta")).toBe(false)
