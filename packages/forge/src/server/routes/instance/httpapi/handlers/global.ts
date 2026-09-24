@@ -11,7 +11,7 @@ import {
 } from "@/server/global-lifecycle"
 import { InstallationVersion } from "@turenlabs/core/installation/version"
 import { PermissionChecks } from "@turenlabs/core/permission-checks"
-import { Effect, Layer, Option, Queue, RcMap, Schema } from "effect"
+import { Cause, Effect, Layer, Option, Queue, RcMap, Schema } from "effect"
 import * as Stream from "effect/Stream"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
@@ -38,16 +38,31 @@ function parseBody(body: string) {
   }
 }
 
+// A stalled subscriber must fail and reconnect, not accumulate the whole event
+// stream in process memory — the unbounded callback queue here was a heap-growth
+// vector. Matches EventV2.allBounded semantics: drop the offer, then fail the
+// stream with SubscriberOverflowError so the client resyncs on reconnect.
+const subscriberCapacity = 256
+
 function eventResponse() {
   return Effect.gen(function* () {
     yield* Effect.logInfo("global event connected")
-    const events = Stream.callback<GlobalBusEvent>((queue) => {
-      const handler = (event: GlobalBusEvent) => Queue.offerUnsafe(queue, event)
-      return Effect.acquireRelease(
-        Effect.sync(() => GlobalBus.on("event", handler)),
-        () => Effect.sync(() => GlobalBus.off("event", handler)),
-      )
-    })
+    const events = Stream.callback<GlobalBusEvent, EventV2.SubscriberOverflowError>(
+      (queue) => {
+        const handler = (event: GlobalBusEvent) => {
+          if (Queue.offerUnsafe(queue, event)) return
+          Queue.failCauseUnsafe(
+            queue,
+            Cause.fail(new EventV2.SubscriberOverflowError({ capacity: subscriberCapacity })),
+          )
+        }
+        return Effect.acquireRelease(
+          Effect.sync(() => GlobalBus.on("event", handler)),
+          () => Effect.sync(() => GlobalBus.off("event", handler)),
+        )
+      },
+      { bufferSize: subscriberCapacity, strategy: "dropping" },
+    )
     const heartbeat = Stream.tick("10 seconds").pipe(
       Stream.drop(1),
       Stream.map(() => ({ payload: { id: EventV2.ID.create(), type: "server.heartbeat", properties: {} } })),
