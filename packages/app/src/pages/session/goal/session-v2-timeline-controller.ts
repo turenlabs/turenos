@@ -164,27 +164,29 @@ export function sessionV2DeltasForProjection(input: {
   snapshotText: ReadonlyMap<string, string>
   deltaBases: ReadonlyMap<string, string | undefined>
 }) {
-  const covered = input.deltas
-    .filter((delta) => delta.sequence <= input.through)
-    .reduce((groups, delta) => {
-      const key = `${delta.messageID}\0${delta.partID}`
-      groups.set(key, [...(groups.get(key) ?? []), delta.delta])
-      return groups
-    }, new Map<string, string[]>())
-  return input.deltas.filter((delta) => {
-    if (delta.sequence > input.through) return true
+  const grouped = new Map<string, string[]>()
+  input.deltas.forEach((delta) => {
+    if (!(delta.sequence <= input.through)) return
     const key = `${delta.messageID}\0${delta.partID}`
+    const chunks = grouped.get(key)
+    if (chunks) chunks.push(delta.delta)
+    else grouped.set(key, [delta.delta])
+  })
+  const retained = new Set<string>()
+  grouped.forEach((chunks, key) => {
     const snapshot = input.snapshotText.get(key)
-    const value = covered.get(key)?.join("")
     const base = input.deltaBases.get(key)
-    return (
+    if (
       snapshot === undefined ||
-      value === undefined ||
       !input.deltaBases.has(key) ||
       base === undefined ||
-      !snapshot.startsWith(base + value)
+      !snapshot.startsWith(base + chunks.join(""))
     )
+      retained.add(key)
   })
+  return input.deltas.filter(
+    (delta) => !(delta.sequence <= input.through) || retained.has(`${delta.messageID}\0${delta.partID}`),
+  )
 }
 
 /** High-frequency stream fragments are applied from the live delta channel, not reloaded as context. */
