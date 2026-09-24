@@ -685,8 +685,9 @@ function ExtensionConfigDialog(props: {
 
           <Show when={props.item.manifest.id === "turenlabs/crowdstrike-falcon"}>
             <section class="rounded-[8px] bg-v2-background-bg-layer-01 px-3 py-2.5 text-[11px] leading-[1.45] text-v2-text-text-muted [box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-muted)]">
-              TurenOS downloads checksum-verified uv 0.12.6, starts pinned falcon-mcp 0.16.1, and always passes the
-              vendor --read-only control.
+              TurenOS downloads checksum-verified uv 0.12.6, starts pinned falcon-mcp 0.19.0, and always passes the
+              vendor --read-only control. NGSIEM search needs NGSIEM:read and NGSIEM:write; the latter is used to stop
+              timed-out searches.
             </section>
           </Show>
 

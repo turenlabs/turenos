@@ -674,6 +674,9 @@ describe("managed MCP integrations", () => {
     expect(McpIntegration.allowsTool("notion", "notion-search")).toBe(true)
     expect(McpIntegration.allowsTool("notion", "notion-update-page")).toBe(true)
     expect(McpIntegration.allowsTool("notion", "notion-delete-workspace")).toBe(false)
+
+    expect(McpIntegration.allowsTool("crowdstrike-falcon", "falcon_search_ngsiem")).toBe(true)
+    expect(McpIntegration.allowsTool("crowdstrike-falcon", "falcon_create_case")).toBe(false)
   })
 
   test("removes untrusted descriptions and schema annotations from community MCP tools", () => {
