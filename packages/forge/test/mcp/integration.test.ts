@@ -674,6 +674,9 @@ describe("managed MCP integrations", () => {
     expect(McpIntegration.allowsTool("notion", "notion-search")).toBe(true)
     expect(McpIntegration.allowsTool("notion", "notion-update-page", { writeTools: "enabled" })).toBe(true)
     expect(McpIntegration.allowsTool("notion", "notion-delete-workspace", { writeTools: "enabled" })).toBe(false)
+
+    expect(McpIntegration.allowsTool("crowdstrike-falcon", "falcon_search_ngsiem")).toBe(true)
+    expect(McpIntegration.allowsTool("crowdstrike-falcon", "falcon_create_case")).toBe(false)
   })
 
   test("hides declared write tools until the user opts in", () => {

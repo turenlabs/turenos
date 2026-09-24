@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "turenlabs/crowdstrike-falcon",
   "name": "CrowdStrike Falcon",
-  "description": "Investigate Falcon detections, hosts, intelligence, cloud risks, and Spotlight vulnerabilities through the vendor MCP server",
+  "description": "Investigate Falcon detections, hosts, intelligence, cloud risks, Spotlight vulnerabilities, and NGSIEM event data through the vendor MCP server",
   "version": "1.0.0",
   "publisher": "Turen Labs",
   "trust": "official",
@@ -12,8 +12,8 @@
       "type": "mcp",
       "id": "crowdstrike-falcon",
       "name": "CrowdStrike Falcon",
-      "description": "Read CrowdStrike Falcon detections, hosts, intelligence, cloud posture, and vulnerabilities",
-      "instructions": "Enter least-privilege Falcon API credentials. TurenOS downloads the pinned package and starts it with the vendor read-only control.",
+      "description": "Read CrowdStrike Falcon detections, hosts, intelligence, cloud posture, vulnerabilities, and NGSIEM event data",
+      "instructions": "Enter least-privilege Falcon API credentials. NGSIEM search requires the CrowdStrike NGSIEM:read and NGSIEM:write scopes; the vendor server uses NGSIEM:write to stop timed-out search jobs. TurenOS downloads the pinned package and starts it with the vendor read-only control. Use falcon_search_ngsiem with a valid CQL query and explicit start time; the CQL guide is available as falcon://ngsiem/search/cql-guide.",
       "adapter": "mcp:crowdstrike-falcon",
       "secrets": [
         { "id": "FALCON_CLIENT_ID", "label": "Falcon API client ID", "required": true },
@@ -40,8 +40,8 @@
       "deployment": {
         "type": "managed",
         "package": "falcon-mcp",
-        "version": "0.16.1",
-        "cutoff": "2026-08-26T00:00:00Z",
+        "version": "0.19.0",
+        "cutoff": "2026-09-01T17:25:08.325094Z",
         "command": "falcon-mcp",
         "args": ["--read-only"],
         "platforms": ["darwin", "linux", "win32"],
@@ -60,7 +60,8 @@
           "falcon_search_indicators",
           "falcon_search_reports",
           "falcon_get_mitre_report",
-          "falcon_search_vulnerabilities"
+          "falcon_search_vulnerabilities",
+          "falcon_search_ngsiem"
         ],
         "write": []
       }
