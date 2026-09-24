@@ -11,6 +11,7 @@ import {
   formatSessionTaskDuration,
   sessionTaskActive,
   sessionTaskElapsedSeconds,
+  sessionTaskRunning,
   sessionTaskStatusLabel,
   sessionTaskThinkingProfiles,
   type SessionTaskInfo,
@@ -38,7 +39,8 @@ export function SessionSubagentDock(props: SessionSubagentViewProps & { variant?
       return task ? [task] : []
     }),
   )
-  const active = createMemo(() => tasks().filter(sessionTaskActive).length)
+  const active = createMemo(() => tasks().filter(sessionTaskRunning).length)
+  const queued = createMemo(() => tasks().filter((task) => task.status === "queued").length)
   const failed = createMemo(() => tasks().filter((task) => task.status === "failed").length)
   const shown = createMemo(
     () =>
@@ -58,6 +60,7 @@ export function SessionSubagentDock(props: SessionSubagentViewProps & { variant?
             attach="bottom"
             data-component="session-subagent-dock"
             data-active-count={active()}
+            data-queued-count={queued()}
             data-failed-count={failed()}
             data-rule={failed() > 0 ? "error" : active() > 0 ? "info" : "muted"}
           >
@@ -75,6 +78,10 @@ export function SessionSubagentDock(props: SessionSubagentViewProps & { variant?
                 <span class="shrink-0 text-13-medium text-text-strong">{language.t("session.subagents.title")}</span>
                 <span class="min-w-0 flex-1 truncate text-12-regular text-text-weak" aria-live="polite">
                   {language.t("session.subagents.summary", { active: active(), total: tasks().length })}
+                  <Show when={queued() > 0}>
+                    {" · "}
+                    {language.t("session.subagents.queued", { count: queued() })}
+                  </Show>
                 </span>
               </button>
               <Show when={props.controller.owner()}>
@@ -125,6 +132,7 @@ export function SessionSubagentDock(props: SessionSubagentViewProps & { variant?
           swarm={props.swarm}
           tasks={tasks}
           active={active}
+          queued={queued}
           failed={failed}
           profiles={profiles}
           onOpenSession={props.onOpenSession}
@@ -141,6 +149,7 @@ function SessionSubagentPanel(props: {
   swarm?: () => SessionSwarmProgress | undefined
   tasks: () => SessionTaskInfo[]
   active: () => number
+  queued: () => number
   failed: () => number
   profiles: () => Record<string, ThinkingState>
   onOpenSession: (sessionID: string) => void
@@ -154,6 +163,7 @@ function SessionSubagentPanel(props: {
     <section
       data-component="session-subagent-panel"
       data-active-count={props.active()}
+      data-queued-count={props.queued()}
       data-failed-count={props.failed()}
       class="flex h-full min-h-0 flex-col overflow-hidden rounded-surface border border-v2-border-border-muted bg-v2-background-bg-base"
     >
@@ -166,6 +176,10 @@ function SessionSubagentPanel(props: {
             <div class="truncate text-13-medium text-text-strong">{language.t("session.subagents.title")}</div>
             <div class="truncate text-11-regular text-text-weak" aria-live="polite">
               {language.t("session.subagents.summary", { active: props.active(), total: props.tasks().length })}
+              <Show when={props.queued() > 0}>
+                {" · "}
+                {language.t("session.subagents.queued", { count: props.queued() })}
+              </Show>
             </div>
           </div>
         </div>
@@ -175,6 +189,12 @@ function SessionSubagentPanel(props: {
             <dt>Active</dt>
             <dd class="text-11-medium text-text-strong">{props.active()}</dd>
           </div>
+          <Show when={props.queued() > 0}>
+            <div class="flex items-baseline gap-1 border-l border-border-weak-base px-3">
+              <dt>Queued</dt>
+              <dd class="text-11-medium text-text-strong">{props.queued()}</dd>
+            </div>
+          </Show>
           <div class="flex items-baseline gap-1 border-l border-border-weak-base px-3">
             <dt>Completed</dt>
             <dd class="text-11-medium text-text-strong">{completed()}</dd>
@@ -325,6 +345,7 @@ function SessionSubagentRow(props: {
   const [now, setNow] = createSignal(Date.now())
   const task = props.task
   const active = createMemo(() => sessionTaskActive(task()))
+  const running = createMemo(() => sessionTaskRunning(task()))
   const evidence = createMemo(() => task().error ?? task().result)
   const evidenceLabel = createMemo(() =>
     task().error ? language.t("session.subagents.errorEvidence") : language.t("session.subagents.resultEvidence"),
@@ -360,7 +381,7 @@ function SessionSubagentRow(props: {
         when={props.panel}
         fallback={
           <div class="flex min-w-0 items-start gap-2">
-            <Show when={active()}>
+            <Show when={running()}>
               <Thinking state={props.profile()} size={20} aria-hidden="true" class="mt-0.5 shrink-0" />
             </Show>
             <div class="min-w-0 flex-1">
@@ -400,6 +421,16 @@ function SessionSubagentRow(props: {
                       : "session.subagents.relationship.root",
                   )}
                 </span>
+                <Show when={task().wave}>
+                  {(wave) => (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span data-slot="session-subagent-wave" class="max-w-32 truncate">
+                        {wave()}
+                      </span>
+                    </>
+                  )}
+                </Show>
                 <span aria-hidden="true">·</span>
                 <span data-slot="session-subagent-elapsed">
                   {language.t("session.subagents.elapsed", { elapsed: elapsed() })}
@@ -431,7 +462,7 @@ function SessionSubagentRow(props: {
             class="flex min-w-0 items-start gap-2 sm:col-span-2 xl:col-span-1"
             style={{ "padding-left": `${Math.min(task().depth, 2) * 0.75}rem` }}
           >
-            <Show when={active()}>
+            <Show when={running()}>
               <Thinking state={props.profile()} size={20} aria-hidden="true" class="shrink-0" />
             </Show>
             <span data-slot="session-subagent-description" class="min-w-0 break-words text-12-medium text-text-strong">
@@ -448,6 +479,16 @@ function SessionSubagentRow(props: {
                 task().parentTaskID ? "session.subagents.relationship.child" : "session.subagents.relationship.root",
               )}
             </span>
+            <Show when={task().wave}>
+              {(wave) => (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span data-slot="session-subagent-wave" class="truncate">
+                    {wave()}
+                  </span>
+                </>
+              )}
+            </Show>
           </div>
           <span data-slot="session-subagent-model" class="min-w-0 truncate text-11-regular text-text-weak">
             {task().model?.id ?? "—"}
@@ -458,7 +499,7 @@ function SessionSubagentRow(props: {
           <StatusIndicatorV2
             data-slot="session-subagent-status"
             tone={
-              active()
+              running()
                 ? "info"
                 : task().status === "completed"
                   ? "success"

@@ -1,9 +1,15 @@
-import type { SessionTaskStatus, SessionTaskSummary, SwarmRoomEntry } from "@turenlabs/sdk/v2/client"
+import type {
+  SessionTaskStatus as GeneratedSessionTaskStatus,
+  SessionTaskSummary,
+  SwarmRoomEntry,
+} from "@turenlabs/sdk/v2/client"
 import { Swarm } from "@turenlabs/schema/swarm"
 import type { ThinkingState } from "@turenlabs/ui/thinking"
 
-export type SessionTaskInfo = SessionTaskSummary
-export type { SessionTaskStatus }
+// `queued` (admitted, waiting for a concurrency slot) and `wave` are widened here until the
+// generated client catches up; both stay compatible once it does.
+export type SessionTaskStatus = GeneratedSessionTaskStatus | "queued"
+export type SessionTaskInfo = Omit<SessionTaskSummary, "status"> & { status: SessionTaskStatus; wave?: string }
 
 export type SessionSwarmProgress = {
   status: Swarm.Invocation["status"]
@@ -11,6 +17,7 @@ export type SessionSwarmProgress = {
   requested: number | string | undefined
   explicitCount: boolean
   admitted: number
+  queued: number
   running: number
   completed: number
   failed: number
@@ -48,6 +55,7 @@ export function sessionSwarmProgress(
     requested: invocation.status === "ready" ? invocation.count : invocation.requestedCount,
     explicitCount: invocation.status === "ready" && invocation.explicitCount,
     admitted: tasks.filter((task) => task.status === "starting").length,
+    queued: tasks.filter((task) => task.status === "queued").length,
     running: tasks.filter((task) => task.status === "running").length,
     completed: tasks.filter((task) => task.status === "completed").length,
     failed: tasks.filter((task) => task.status === "failed").length,
@@ -56,7 +64,7 @@ export function sessionSwarmProgress(
     lanes: [
       ...new Set(
         tasks
-          .filter(sessionTaskActive)
+          .filter(sessionTaskRunning)
           .map((task) => task.description.trim())
           .filter(Boolean),
       ),
@@ -141,8 +149,8 @@ export function sessionTaskElapsedSeconds(task: SessionTaskInfo, now: number) {
   // rather than letting it propagate into the formatter.
   const start = finite(task.time.started) ?? finite(task.time.created)
   if (start === undefined) return 0
-  const running = task.status === "starting" || task.status === "running"
-  const end = finite(task.time.completed) ?? (running ? finite(now) : finite(task.time.updated)) ?? finite(now)
+  const end =
+    finite(task.time.completed) ?? (sessionTaskRunning(task) ? finite(now) : finite(task.time.updated)) ?? finite(now)
   if (end === undefined) return 0
   return Math.max(0, Math.floor((end - start) / 1_000))
 }
@@ -159,6 +167,7 @@ export function formatSessionTaskDuration(seconds: number) {
 }
 
 export function sessionTaskStatusLabel(status: SessionTaskStatus) {
+  if (status === "queued") return "session.subagents.status.queued" as const
   if (status === "starting") return "session.subagents.status.starting" as const
   if (status === "running") return "session.subagents.status.running" as const
   if (status === "completed") return "session.subagents.status.completed" as const
@@ -167,6 +176,12 @@ export function sessionTaskStatusLabel(status: SessionTaskStatus) {
   return "session.subagents.status.interrupted" as const
 }
 
+/** Non-terminal: still reconciled and cancellable, including tasks queued for a slot. */
 export function sessionTaskActive(task: SessionTaskInfo) {
+  return task.status === "queued" || sessionTaskRunning(task)
+}
+
+/** Holding a concurrency slot; a queued task is neither running nor terminal. */
+export function sessionTaskRunning(task: SessionTaskInfo) {
   return task.status === "starting" || task.status === "running"
 }

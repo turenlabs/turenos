@@ -1,5 +1,16 @@
 # Subagent Fleets
 
+## Implementation Status
+
+Built: `queued` admission and FIFO promotion, `MAX_DEPTH` two behind the `orchestrate` grant, waves, `spawn_agents` batch actors, and `@swarm` above fifty workers rendered as orchestrators. Deviations from the design below:
+
+- `send` to a terminal task at capacity still fails with `ActiveLimitError`; only `spawn` queues. The `terminal -> queued` and `queued -> running` transitions are not implemented.
+- Promotion has one driver: `SessionTaskV2.runPromotion`, a scoped fiber owned by `SessionExecutionLocal`. Every settle and cancel publishes a task event, so it covers freed slots as well as restart and external commits.
+- Orchestrators hold at most `floor(limit / 2)` active slots (`orchestratorLimit`). Without that cap, orchestrators waiting on queued workers could fill every slot and deadlock the root. Promotion skips queued orchestrators past the cap. An `orchestrate` spawn fails when the limit leaves no orchestrator slot.
+- A queued worker whose orchestrator is no longer running is cancelled at promotion rather than started.
+- The promotion ceiling is the limit carried by the root's latest spawn or send, held in memory. After restart the default applies until the next admission.
+- `Actor.item` persists as `actor_item` with `-1` for single-operation calls, so the widened actor uniqueness indexes never see distinct NULLs.
+
 ## Goal
 
 A single orchestrating agent must be able to admit, order, and reconcile more than a thousand durable subagent tasks without spending a provider turn per admission and without a capacity failure ever losing work. "1k+ subagents" is an admission target, not a concurrency target: every active child is a whole Session with its own provider stream and tool subprocesses, so the active pool stays bounded by `subagents.max_concurrent` while the admitted backlog sits in a durable queue.
