@@ -34,6 +34,7 @@ import { McpCatalog } from "./catalog"
 import { McpReaper } from "./reaper"
 import { McpEvent } from "@turenlabs/schema/mcp-event"
 import { McpBrowser } from "./browser"
+import { McpBroker } from "./broker"
 import { SERVER_KEY } from "@/security/settings"
 import { SecurityStorage } from "@/security/storage"
 import { Scanner } from "@/security/util/scanner"
@@ -1104,8 +1105,14 @@ const layer = (allowUnmanaged: boolean) =>
 
       const instructions = Effect.fn("MCP.instructions")(function* () {
         const s = yield* InstanceState.get(state)
+        const securityEnabled =
+          s.status[SERVER_KEY]?.status === "connected" ? yield* enabledSecurity() : new Set<string>()
         return Object.entries(s.status).flatMap(([name, status]) => {
           if (status.status !== "connected") return []
+          if (name === SERVER_KEY) {
+            const declared = McpBroker.securityInstructions(securityEnabled)
+            return declared ? [{ name, instructions: declared, tools: [] }] : []
+          }
           const definition = McpIntegration.definition(name)
           const declared = definition
             ? McpIntegration.contribution(definition.id).manifest.trust === "community"
