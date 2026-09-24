@@ -11,6 +11,17 @@
   },
   "main": "./out/main/index.js",
   "scripts": {
+    "typecheck": "tsgo -b",
+    "predev": "bun ./scripts/predev.ts",
+    "dev": "electron-vite dev",
+    "prebuild": "bun ./scripts/prebuild.ts",
+    "build": "electron-vite build && bun ./scripts/verify-decompile-artifact.ts && bun ./scripts/verify-yara-artifact.ts && bun ./scripts/verify-email-security-artifact.ts && bun ./scripts/verify-wasm-inspect-artifact.ts && bun ./scripts/verify-protocol-inspect-artifact.ts && bun ./scripts/verify-debug-symbols-artifact.ts && bun ./scripts/verify-binwalk-scan-artifact.ts && bun ./scripts/verify-security-extensions-artifact.ts && bun ./scripts/verify-whiteboard-artifact.ts",
+    "preview": "electron-vite preview",
+    "package": "bun run build && electron-builder --config electron-builder.config.ts",
+    "package:dev": "bun run build && electron-builder --mac dir --config electron-builder.config.ts",
+    "package:mac": "bun run build && electron-builder --mac --config electron-builder.config.ts",
+    "package:win": "bun run build && electron-builder --win --config electron-builder.config.ts",
+    "package:linux": "bun run build && electron-builder --linux --config electron-builder.config.ts",
     "test": "bun test"
   },
   "dependencies": {
@@ -83,6 +94,5 @@
     "typescript": "~5.6.2",
     "vite": "catalog:",
     "zod-openapi": "5.4.6"
-  },
-  "desktopName": "com.turenlabs.forge.dev.desktop"
+  }
 }
