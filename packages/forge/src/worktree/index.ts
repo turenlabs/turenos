@@ -155,6 +155,9 @@ const layer: Layer.Layer<
       function* (args: string[], opts?: { cwd?: string }) {
         const result = yield* appProcess.run(
           ChildProcess.make("git", args, { cwd: opts?.cwd, extendEnv: true, stdin: "ignore" }),
+          // Bound wedged spawns — a git child that never exits otherwise hangs
+          // the request handler forever.
+          { timeout: "1 minute" },
         )
         return {
           code: result.exitCode,
