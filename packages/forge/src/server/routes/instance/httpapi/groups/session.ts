@@ -226,7 +226,14 @@ export const SessionApi = HttpApi.make("session")
           params: { sessionID: SessionID },
           query: WorkspaceRoutingQuery,
           success: described(Schema.Boolean, "Successfully deleted session"),
-          error: [HttpApiError.BadRequest, HttpApiError.InternalServerError, ApiNotFoundError, InvalidRequestError],
+          error: [
+            HttpApiError.BadRequest,
+            HttpApiError.InternalServerError,
+            ApiNotFoundError,
+            ConflictError,
+            InvalidRequestError,
+            ServiceUnavailableError,
+          ],
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "session.delete",

@@ -12,6 +12,7 @@ import { InstallationVersion } from "@turenlabs/core/installation/version"
 import { Database } from "@turenlabs/core/database/database"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
+import { Loop } from "@turenlabs/core/loop"
 import { McpBroker } from "@/mcp/broker"
 
 import { NotFoundError } from "@/storage/storage"
@@ -528,7 +529,12 @@ export type Patch = Omit<Partial<Info>, "time" | "summary" | "revert" | "permiss
 const layer: Layer.Layer<
   Service,
   never,
-  BackgroundJob.Service | RuntimeFlags.Service | Database.Service | EventV2Bridge.Service | SessionTaskV2.Service
+  | BackgroundJob.Service
+  | RuntimeFlags.Service
+  | Database.Service
+  | EventV2Bridge.Service
+  | SessionTaskV2.Service
+  | Loop.Service
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -538,6 +544,7 @@ const layer: Layer.Layer<
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const tasks = yield* SessionTaskV2.Service
+    const loops = yield* Loop.Service
 
     const assertLegacyMutation = (sessionID: SessionID) => tasks.authorizeMutation({ sessionID }).pipe(Effect.orDie)
 
@@ -657,6 +664,10 @@ const layer: Layer.Layer<
     ) => Effect.Effect<void, NotFound> = Effect.fnUntraced(function* (sessionID, cleanup) {
       const session = yield* get(sessionID)
       try {
+        // A bound Loop run keeps executing and heartbeating against removed
+        // storage, and stale-run reclaim would recreate the Session — cancel
+        // it so the scheduler settles the run instead.
+        yield* loops.cancelRunForSession(sessionID)
         // `remove` needs to work in all cases, such as broken sessions that
         // run cleanup without instance state.
         const hasInstance = yield* InstanceState.directory.pipe(
@@ -723,6 +734,10 @@ const layer: Layer.Layer<
 
     const removeCoordinated: Interface["removeCoordinated"] = Effect.fnUntraced(function* (input) {
       yield* assertLegacyMutation(input.sessionID)
+      // A bound Loop run keeps executing and heartbeating against removed
+      // storage, and stale-run reclaim would recreate the Session — cancel it
+      // so the scheduler settles the run instead.
+      yield* loops.cancelRunForSession(input.sessionID)
       yield* tasks
         .coordinateRootRemoval({
           rootSessionID: input.sessionID,
@@ -1163,7 +1178,7 @@ function listByProject(
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [BackgroundJob.node, RuntimeFlags.node, Database.node, EventV2Bridge.node, SessionTaskV2.node],
+  deps: [BackgroundJob.node, RuntimeFlags.node, Database.node, EventV2Bridge.node, SessionTaskV2.node, Loop.node],
 })
 
 export * as Session from "./session"
