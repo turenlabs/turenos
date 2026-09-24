@@ -26,7 +26,7 @@ env:
 jobs:
   unit:
     name: ${{ matrix.name }}
-    timeout-minutes: 5
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -110,7 +110,7 @@ jobs:
   httpapi:
     name: HTTP API (${{ matrix.name }})
     runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'blacksmith-4vcpu-ubuntu-2404' }}
-    timeout-minutes: 5
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:

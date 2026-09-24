@@ -45,9 +45,11 @@ const domains = [
 describe("i18n parity", () => {
   test("non-English locales have every English key", async () => {
     for (const domain of domains) {
-      const source = await dictionary(domain.source)
-      for (const locale of domain.locales) {
-        const target = await dictionary(domain.target(locale))
+      const [source, ...targets] = await Promise.all(
+        [domain.source, ...domain.locales.map(domain.target)].map(dictionary),
+      )
+      for (const [index, target] of targets.entries()) {
+        const locale = domain.locales[index]
         const missing = Object.keys(source).filter((key) => !Object.hasOwn(target, key))
         const extra = Object.keys(target).filter((key) => !Object.hasOwn(source, key))
         expect({ domain: domain.name, locale, missing, extra }).toEqual({
@@ -62,9 +64,11 @@ describe("i18n parity", () => {
 
   test("non-English locales preserve English placeholders", async () => {
     for (const domain of domains) {
-      const source = await dictionary(domain.source)
-      for (const locale of domain.locales) {
-        const target = await dictionary(domain.target(locale))
+      const [source, ...targets] = await Promise.all(
+        [domain.source, ...domain.locales.map(domain.target)].map(dictionary),
+      )
+      for (const [index, target] of targets.entries()) {
+        const locale = domain.locales[index]
         const mismatched = Object.keys(source).filter(
           (key) => Object.hasOwn(target, key) && placeholders(source[key]).join() !== placeholders(target[key]).join(),
         )
