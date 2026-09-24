@@ -696,6 +696,13 @@ describe("SessionProjector", () => {
         timestamp: DateTime.makeUnsafe(2),
         text: "committed while summarizing",
       })
+      const laterRetainedID = SessionMessage.ID.create()
+      yield* events.publish(SessionEvent.Synthetic, {
+        sessionID,
+        messageID: laterRetainedID,
+        timestamp: DateTime.makeUnsafe(2),
+        text: "also committed while summarizing",
+      })
       if (!summarized.durable) throw new Error("expected a durable synthetic event")
       const compactionID = SessionMessage.ID.create()
       yield* events.publish(SessionEvent.Compaction.Started, {
@@ -714,13 +721,16 @@ describe("SessionProjector", () => {
         throughSeq: summarized.durable.seq,
       })
 
-      expect((yield* SessionHistory.load(db, sessionID)).map((message) => message.type)).toEqual([
-        "compaction",
-        "synthetic",
-      ])
-      expect((yield* SessionHistory.load(db, sessionID))[1]).toMatchObject({
+      const history = yield* SessionHistory.load(db, sessionID)
+      expect(history.map((message) => message.id)).toEqual([compactionID, retainedID, laterRetainedID])
+      expect(history.map((message) => message.type)).toEqual(["compaction", "synthetic", "synthetic"])
+      expect(history[1]).toMatchObject({
         type: "synthetic",
         text: "committed while summarizing",
+      })
+      expect(history[2]).toMatchObject({
+        type: "synthetic",
+        text: "also committed while summarizing",
       })
       const sessions = yield* SessionV2.Service
       const firstPage = yield* sessions.messages({ sessionID, limit: 1, order: "asc" })
