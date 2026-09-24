@@ -18,6 +18,7 @@ import {
   homeProjectDirectories,
   homeSessionServerStatus,
   latestRootSession,
+  projectForDirectory,
   sessionLocationName,
   toggleHomeProjectSelection,
 } from "./helpers"
@@ -299,6 +300,21 @@ describe("layout workspace helpers", () => {
       ),
     ).toBe("beta")
     expect(sessionLocationName({ directory: "/tmp/loose" })).toBe("loose")
+  })
+
+  test("finds a draft's project by worktree or sandbox directory", () => {
+    const alpha = { worktree: "/repos/alpha_project", name: "Alpha", sandboxes: ["/repos/weekly_health_check"] }
+    const beta = { worktree: "/repos/beta" }
+    const projects = [alpha, beta]
+    expect(projectForDirectory("/repos/alpha_project/", projects)).toBe(alpha)
+    expect(projectForDirectory("/repos/weekly_health_check", projects)).toBe(alpha)
+    expect(projectForDirectory("/repos/beta", projects)).toBe(beta)
+    expect(projectForDirectory("/repos/gamma", projects)).toBeUndefined()
+    // Draft tab label: sandbox name for a clone, project name for the worktree, basename when unknown.
+    const label = (directory: string) => sessionLocationName({ directory }, projectForDirectory(directory, projects))
+    expect(label("/repos/weekly_health_check")).toBe("weekly_health_check")
+    expect(label("/repos/alpha_project")).toBe("Alpha")
+    expect(label("/Users/me/Desktop/scratch")).toBe("scratch")
   })
 
   test("scopes home project selection by server", () => {

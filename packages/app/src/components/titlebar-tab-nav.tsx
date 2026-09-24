@@ -363,6 +363,7 @@ export function DraftTabItem(props: {
   ref?: Ref<HTMLDivElement>
   href: string
   title: string
+  location?: string
   active?: boolean
   onNavigate: () => void
   onClose: () => void
@@ -430,6 +431,16 @@ export function DraftTabItem(props: {
         >
           {props.title}
         </span>
+        <Show when={props.location}>
+          {(name) => (
+            <span
+              data-slot="tab-project"
+              class="min-w-0 shrink overflow-hidden text-clip whitespace-nowrap text-v2-text-text-faint"
+            >
+              | {name()}
+            </span>
+          )}
+        </Show>
       </a>
       <div data-slot="tab-close" class="group-hover:bg-[var(--tab-bg)] group-data-[active=true]:bg-[var(--tab-bg)]">
         <IconButtonV2

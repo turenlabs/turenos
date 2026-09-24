@@ -47,7 +47,6 @@ export const dict = {
 
   "command.session.new": "New session",
   "command.tab.new": "New tab",
-  "tab.desktop": "Desktop",
   "tab.groups.new": "Add tab to new group",
   "tab.groups.add": "Add tab to group",
   "tab.groups.move": "Move tab to group",

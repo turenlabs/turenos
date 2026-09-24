@@ -44,7 +44,6 @@ export const dict = {
   "command.language.set": "Użyj języka: {{language}}",
   "command.session.new": "Nowa sesja",
   "command.tab.new": "Nowa karta",
-  "tab.desktop": "Pulpit",
   "command.file.open": "Otwórz plik",
   "command.tab.close": "Zamknij kartę",
   "command.tab.reopenClosed": "Otwórz ponownie zamkniętą kartę",

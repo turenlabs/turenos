@@ -44,7 +44,6 @@ export const dict = {
   "command.language.set": "言語を使用: {{language}}",
   "command.session.new": "新しいセッション",
   "command.tab.new": "新しいタブ",
-  "tab.desktop": "デスクトップ",
   "command.file.open": "ファイルを開く",
   "command.tab.close": "タブを閉じる",
   "command.tab.reopenClosed": "閉じたタブを再度開く",
