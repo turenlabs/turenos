@@ -3,7 +3,7 @@ export * as SessionTaskV2 from "./task"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
 import { SessionTask } from "@turenlabs/schema/session-task"
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm"
-import { Context, DateTime, Deferred, Effect, Layer, Schema } from "effect"
+import { Cause, Context, DateTime, Deferred, Effect, Layer, Schema } from "effect"
 import { createHash } from "node:crypto"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
@@ -53,7 +53,10 @@ export const REQUEST_HASH_LENGTH = SessionTask.REQUEST_HASH_LENGTH
 export const RESULT_TRUNCATED_SUFFIX = "\n[result truncated]"
 export const MAX_LIST_PAGE_LIMIT = 101
 
-export const MAX_DEPTH = 1
+export const MAX_DEPTH = SessionTask.MAX_DEPTH
+export const MAX_TASKS_PER_ROOT = SessionTask.MAX_TASKS_PER_ROOT
+export const MAX_WAVE_NAME_LENGTH = SessionTask.MAX_WAVE_NAME_LENGTH
+export const MAX_SPAWN_BATCH = SessionTask.MAX_SPAWN_BATCH
 export const MIN_ACTIVE_PER_ROOT = SessionTask.MIN_ACTIVE_PER_ROOT
 export const DEFAULT_ACTIVE_PER_ROOT = SessionTask.DEFAULT_ACTIVE_PER_ROOT
 export const MAX_ACTIVE_PER_ROOT = SessionTask.MAX_ACTIVE_PER_ROOT
@@ -72,6 +75,16 @@ export const MAX_ACTIVE_PER_ROOT = SessionTask.MAX_ACTIVE_PER_ROOT
 export function resolveActiveLimit(value?: number) {
   if (value === undefined || !Number.isFinite(value)) return DEFAULT_ACTIVE_PER_ROOT
   return Math.min(Math.max(Math.trunc(value), MIN_ACTIVE_PER_ROOT), MAX_ACTIVE_PER_ROOT)
+}
+
+/**
+ * Slots running orchestrators may hold out of an active limit. An orchestrator
+ * mostly waits on its own workers, and those workers draw from the same root
+ * pool, so orchestrators filling every slot would deadlock the graph. Capping
+ * them at half keeps at least half the pool for workers.
+ */
+export function orchestratorLimit(activeLimit: number) {
+  return Math.floor(activeLimit / 2)
 }
 
 const EXTERNAL_CHANGE_POLL_MS = 250
@@ -157,6 +170,16 @@ export class SwarmLimitError extends Schema.TaggedErrorClass<SwarmLimitError>()(
   admitted: NonNegativeInt,
 }) {}
 
+export class QueueLimitError extends Schema.TaggedErrorClass<QueueLimitError>()("SessionTask.QueueLimitError", {
+  rootSessionID: SessionSchema.ID,
+  maximum: Schema.Int,
+}) {}
+
+export class OrchestrateError extends Schema.TaggedErrorClass<OrchestrateError>()("SessionTask.OrchestrateError", {
+  sessionID: SessionSchema.ID,
+  message: Schema.String,
+}) {}
+
 export class OwnedSessionError extends Schema.TaggedErrorClass<OwnedSessionError>()("SessionTask.OwnedSessionError", {
   sessionID: SessionSchema.ID,
   taskID: ID,
@@ -179,6 +202,8 @@ export type Error =
   | DepthLimitError
   | ActiveLimitError
   | SwarmLimitError
+  | QueueLimitError
+  | OrchestrateError
   | OwnedSessionError
 
 export type SpawnInput = {
@@ -190,6 +215,8 @@ export type SpawnInput = {
   readonly prompt: Prompt
   readonly description: string
   readonly authority: Authority
+  /** Optional fleet tag scoped to the parent Session; see {@link MAX_WAVE_NAME_LENGTH}. */
+  readonly wave?: string
   /** Configured concurrent-subagent limit; clamped by {@link resolveActiveLimit}. */
   readonly activeLimit?: number
 }
@@ -215,12 +242,32 @@ export type Prepared = {
   readonly wake: boolean
 }
 
+export type ListInput = {
+  readonly rootSessionID?: SessionSchema.ID
+  readonly parentSessionID?: SessionSchema.ID
+  readonly wave?: string
+  readonly statuses?: ReadonlyArray<Status>
+}
+
+export type Counts = {
+  readonly queued: number
+  readonly active: number
+  readonly terminal: number
+}
+
 export interface Interface {
   readonly spawn: (
     input: SpawnInput,
   ) => Effect.Effect<
     Prepared,
-    NotFoundError | ConflictError | InvalidStateError | DepthLimitError | ActiveLimitError | SwarmLimitError
+    | NotFoundError
+    | ConflictError
+    | InvalidStateError
+    | DepthLimitError
+    | ActiveLimitError
+    | SwarmLimitError
+    | QueueLimitError
+    | OrchestrateError
   >
   readonly send: (
     input: SendInput,
@@ -266,10 +313,9 @@ export interface Interface {
   readonly get: (taskID: ID) => Effect.Effect<Info | undefined>
   readonly getMany: (taskIDs: ReadonlyArray<ID>) => Effect.Effect<ReadonlyArray<Info>>
   readonly owner: (sessionID: SessionSchema.ID) => Effect.Effect<Info | undefined>
-  readonly list: (input: {
-    readonly rootSessionID?: SessionSchema.ID
-    readonly parentSessionID?: SessionSchema.ID
-  }) => Effect.Effect<ReadonlyArray<Info>>
+  readonly list: (input: ListInput) => Effect.Effect<ReadonlyArray<Info>>
+  /** Status counts for the tasks {@link list} would return, without loading them. */
+  readonly counts: (input: ListInput) => Effect.Effect<Counts>
   readonly hasChildren: (parentSessionID: SessionSchema.ID) => Effect.Effect<boolean>
   readonly listDirectBounded: (
     parentSessionID: SessionSchema.ID,
@@ -314,6 +360,17 @@ export interface Interface {
   >
   readonly reconcile: () => Effect.Effect<void, NotFoundError | ConflictError | ActiveLimitError>
   /**
+   * Promote the oldest queued tasks of one root while it has free active slots.
+   * Returns the child Session IDs the caller must wake.
+   */
+  readonly promote: (rootSessionID: SessionSchema.ID) => Effect.Effect<ReadonlyArray<SessionSchema.ID>>
+  /**
+   * Process-global promotion driver. Promotes every root with queued work, then
+   * parks until a task changes locally or another connection commits, forever.
+   * The owner of Session execution forks it and supplies the wake.
+   */
+  readonly runPromotion: (wake: (sessionID: SessionSchema.ID) => Effect.Effect<void>) => Effect.Effect<never>
+  /**
    * Re-admit a queued advisory for every board note still marked pending after a
    * crash and mark it delivered. Runs during layer construction; admit-only, so
    * the durable inputs promote on each parent's next drain.
@@ -328,6 +385,8 @@ export class Service extends Context.Service<Service, Interface>()("@forge/v2/Se
 
 const terminal = new Set<Status>(["completed", "failed", "cancelled", "interrupted"])
 const active = ["starting", "running"] satisfies ReadonlyArray<Status>
+const unfinished = ["queued", "starting", "running"] satisfies ReadonlyArray<Status>
+const cancellable = new Set<Status>([...unfinished, "interrupted"])
 
 const layer = Layer.effect(
   Service,
@@ -343,6 +402,11 @@ const layer = Layer.effect(
     const removalLeases = new Map<SessionSchema.ID, symbol>()
     const rootCancellationLeases = new Map<SessionSchema.ID, symbol>()
     const cancellationLeases = new Map<ID, symbol>()
+    // Configuration is location scoped and this service is global, so the
+    // promotion driver cannot read `subagents.max_concurrent` itself. It uses
+    // the limit the root's latest spawn or send carried; after a restart the
+    // default applies until the next admission records the configured value.
+    const rootLimits = new Map<SessionSchema.ID, number>()
     let taskChanged = Deferred.makeUnsafe<void>()
 
     const signalTaskChanged = Effect.fn("SessionTask.signalTaskChanged")(function* () {
@@ -350,6 +414,20 @@ const layer = Layer.effect(
       taskChanged = Deferred.makeUnsafe<void>()
       yield* Deferred.succeed(changed, undefined)
     })
+
+    // Local projectors signal without polling. SQLite's connection-local
+    // change token covers commits made by another connection or process.
+    const dataVersion = primary.get<{ data_version: number }>(sql`PRAGMA data_version`).pipe(
+      Effect.orDie,
+      Effect.map((row) => row?.data_version ?? 0),
+    )
+    const awaitExternalChange = (version: number): Effect.Effect<void> =>
+      Effect.sleep(`${EXTERNAL_CHANGE_POLL_MS} millis`).pipe(
+        Effect.andThen(dataVersion),
+        Effect.flatMap((current) =>
+          current === version ? Effect.suspend(() => awaitExternalChange(version)) : Effect.void,
+        ),
+      )
 
     const assertRootAvailable = (rootSessionID: SessionSchema.ID) =>
       removalLeases.has(rootSessionID)
@@ -428,6 +506,7 @@ const layer = Layer.effect(
             eq(SessionTaskOperationTable.actor_session_id, actor.sessionID),
             eq(SessionTaskOperationTable.actor_assistant_message_id, actor.assistantMessageID),
             eq(SessionTaskOperationTable.actor_tool_call_id, actor.toolCallID),
+            eq(SessionTaskOperationTable.actor_item, actor.item ?? -1),
           ),
         )
         .get()
@@ -441,6 +520,7 @@ const layer = Layer.effect(
             eq(SessionTaskActorClaimTable.actor_session_id, actor.sessionID),
             eq(SessionTaskActorClaimTable.actor_assistant_message_id, actor.assistantMessageID),
             eq(SessionTaskActorClaimTable.actor_tool_call_id, actor.toolCallID),
+            eq(SessionTaskActorClaimTable.actor_item, actor.item ?? -1),
           ),
         )
         .get()
@@ -540,7 +620,8 @@ const layer = Layer.effect(
         if (
           message.type === "assistant" &&
           message.content.some(
-            (item) => item.type === "tool" && item.id === actor.toolCallID && item.name === operationToolName(kind),
+            (item) =>
+              item.type === "tool" && item.id === actor.toolCallID && item.name === operationToolName(kind, actor),
           )
         )
           return
@@ -668,6 +749,41 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)).length
     })
 
+    const countStatus = Effect.fn("SessionTask.countStatus")(function* (
+      rootSessionID: SessionSchema.ID,
+      statuses: ReadonlyArray<Status>,
+      orchestrate?: boolean,
+    ) {
+      const row = yield* primary
+        .select({ count: sql<number>`count(*)` })
+        .from(SessionTaskTable)
+        .where(
+          and(
+            eq(SessionTaskTable.root_session_id, rootSessionID),
+            inArray(SessionTaskTable.status, statuses),
+            orchestrate === undefined ? undefined : eq(SessionTaskTable.orchestrate, orchestrate),
+          ),
+        )
+        .get()
+        .pipe(Effect.orDie)
+      return row?.count ?? 0
+    })
+
+    /**
+     * Whether a new or queued task may take an active slot now. Orchestrators
+     * are additionally held to {@link orchestratorLimit} so they can never
+     * occupy every slot their own workers need.
+     */
+    const hasSlot = Effect.fn("SessionTask.hasSlot")(function* (
+      rootSessionID: SessionSchema.ID,
+      maximum: number,
+      orchestrate: boolean,
+    ) {
+      if ((yield* countActive(rootSessionID)) >= maximum) return false
+      if (!orchestrate) return true
+      return (yield* countStatus(rootSessionID, active, true)) < orchestratorLimit(maximum)
+    })
+
     const swarmBudget = Effect.fn("SessionTask.swarmBudget")(function* (parentSessionID: SessionSchema.ID) {
       const input = yield* primary
         .select({ prompt: SessionInputTable.prompt, promotedSeq: SessionInputTable.promoted_seq })
@@ -715,7 +831,7 @@ const layer = Layer.effect(
           status: task.status,
           message: "Cancelled subagents cannot be resumed",
         })
-      if (task.status === "starting")
+      if (task.status === "starting" || task.status === "queued")
         return yield* new InvalidStateError({
           taskID: task.id,
           status: task.status,
@@ -723,6 +839,7 @@ const layer = Layer.effect(
         })
       if (task.status !== "running") {
         const maximum = resolveActiveLimit(activeLimit)
+        rootLimits.set(task.rootSessionID, maximum)
         const count = yield* countActive(task.rootSessionID)
         if (count >= maximum)
           return yield* new ActiveLimitError({
@@ -810,9 +927,18 @@ const layer = Layer.effect(
     })
 
     const descendants = Effect.fn("SessionTask.descendants")(function* (task: Info) {
-      // MAX_DEPTH is one, so a task cannot have descendants. Keep cancellation
-      // bounded by the selected task instead of scanning unbounded root history.
-      return [task]
+      // MAX_DEPTH is two, so only an orchestrator has children and they cannot
+      // have their own: one indexed level is the whole subtree. Workers come
+      // first so an orchestrator never outlives the work it is waiting on.
+      if (task.depth >= MAX_DEPTH) return [task]
+      const children = (yield* primary
+        .select()
+        .from(SessionTaskTable)
+        .where(eq(SessionTaskTable.parent_task_id, task.id))
+        .orderBy(asc(SessionTaskTable.time_created), asc(SessionTaskTable.id))
+        .all()
+        .pipe(Effect.orDie)).map(taskFromRow)
+      return [...children, task]
     })
 
     const cancelTree = Effect.fn("SessionTask.cancelTree")(function* (task: Info, status: "cancelled" | "interrupted") {
@@ -855,15 +981,27 @@ const layer = Layer.effect(
               resource: input.actor.toolCallID,
               message: violation,
             })
-          const requestHash = digest([
-            "spawn",
-            input.actor,
-            input.agent,
-            input.model,
-            input.prompt,
-            input.description,
-            input.authority,
-          ])
+          // The owning task is read before hashing because a nested child's
+          // durable authority accumulates its ancestors' permission sets, and
+          // the projection verifies the hash against that durable authority.
+          const parentTask = yield* owner(input.actor.sessionID)
+          // Field order matches `taskFromRow`: the request hash is a JSON digest.
+          const authority = Authority.make({
+            parentPermissions: input.authority.parentPermissions,
+            ancestorPermissionSets: parentTask
+              ? [
+                  ...parentTask.authority.ancestorPermissionSets,
+                  parentTask.authority.parentPermissions,
+                  parentTask.authority.hardPermissions,
+                ]
+              : input.authority.ancestorPermissionSets,
+            childPermissions: input.authority.childPermissions,
+            hardPermissions: input.authority.hardPermissions,
+            writeRoots: input.authority.writeRoots,
+            commands: input.authority.commands,
+            ...(input.authority.orchestrate === true ? { orchestrate: true as const } : {}),
+          })
+          const requestHash = spawnRequestHash({ ...input, authority })
           const existing = yield* operationByActor(input.actor)
           if (existing) {
             yield* assertRequest(existing, requestHash)
@@ -875,6 +1013,8 @@ const layer = Layer.effect(
             if (existing.status !== "pending") return yield* currentForOperation(existing, requestHash)
             const task = yield* get(existing.taskID)
             if (!task) return yield* new NotFoundError({ taskID: existing.taskID })
+            // A queued spawn is admitted and owned by promotion; a retry only reports it.
+            if (task.status === "queued") return { task, operation: existing, wake: false } satisfies Prepared
             return yield* Effect.gen(function* () {
               yield* assertRootAvailable(task.rootSessionID)
               return yield* resumeSpawn(task, existing)
@@ -887,9 +1027,18 @@ const layer = Layer.effect(
               resource: input.actor.sessionID,
               message: "Subagent parent Session does not exist",
             })
-          const parentTask = yield* owner(parent.id)
           const depth = parentTask ? parentTask.depth + 1 : 1
           if (depth > MAX_DEPTH) return yield* new DepthLimitError({ parentSessionID: parent.id, maximum: MAX_DEPTH })
+          if (parentTask && parentTask.authority.orchestrate !== true)
+            return yield* new OrchestrateError({
+              sessionID: parent.id,
+              message: "This subagent was not granted orchestrate, so it cannot spawn workers of its own",
+            })
+          if (authority.orchestrate === true && depth >= MAX_DEPTH)
+            return yield* new OrchestrateError({
+              sessionID: parent.id,
+              message: "Workers of an orchestrator cannot be granted orchestrate",
+            })
           if (parentTask && parentTask.status !== "running")
             return yield* new InvalidStateError({
               taskID: parentTask.id,
@@ -910,8 +1059,19 @@ const layer = Layer.effect(
                 })
             }
             const maximum = resolveActiveLimit(input.activeLimit)
-            const count = yield* countActive(rootSessionID)
-            if (count >= maximum) return yield* new ActiveLimitError({ rootSessionID, maximum, active: count })
+            rootLimits.set(rootSessionID, maximum)
+            if (authority.orchestrate === true && orchestratorLimit(maximum) === 0)
+              return yield* new OrchestrateError({
+                sessionID: parent.id,
+                message: `A concurrency limit of ${maximum} leaves no slot for an orchestrator beside its workers`,
+              })
+            if ((yield* countStatus(rootSessionID, unfinished)) >= MAX_TASKS_PER_ROOT)
+              return yield* new QueueLimitError({ rootSessionID, maximum: MAX_TASKS_PER_ROOT })
+            // Capacity never fails a spawn: it queues. A spawn also queues behind
+            // existing queued work so a fresh admission cannot jump the FIFO.
+            const queued =
+              (yield* countStatus(rootSessionID, ["queued"])) > 0 ||
+              !(yield* hasSlot(rootSessionID, maximum, authority.orchestrate === true))
             const now = yield* DateTime.now
             const task = Info.make({
               id: input.id ?? ID.create(),
@@ -924,19 +1084,11 @@ const layer = Layer.effect(
               model: input.model,
               prompt: input.prompt,
               description: input.description,
+              wave: input.wave,
               depth,
-              status: "starting",
+              status: queued ? "queued" : "starting",
               revision: 0,
-              authority: Authority.make({
-                ...input.authority,
-                ancestorPermissionSets: parentTask
-                  ? [
-                      ...parentTask.authority.ancestorPermissionSets,
-                      parentTask.authority.parentPermissions,
-                      parentTask.authority.hardPermissions,
-                    ]
-                  : input.authority.ancestorPermissionSets,
-              }),
+              authority,
               time: { created: now, updated: now },
             })
             const operation = Operation.make({
@@ -951,8 +1103,9 @@ const layer = Layer.effect(
               status: "pending",
               time: { created: now, updated: now },
             })
-            yield* publishTask(task, operation)
-            return yield* resumeSpawn(task, operation)
+            const published = yield* publishTask(task, operation)
+            if (queued) return { task: published, operation, wake: false } satisfies Prepared
+            return yield* resumeSpawn(published, operation)
           }).pipe(roots.withLock(rootSessionID))
         }),
       ).pipe(actorOperations.withLock(key))
@@ -1006,7 +1159,7 @@ const layer = Layer.effect(
                 status: current.status,
                 message: "Cancelled subagents cannot be resumed",
               })
-            if (current.status === "starting")
+            if (current.status === "starting" || current.status === "queued")
               return yield* new InvalidStateError({
                 taskID: current.id,
                 status: current.status,
@@ -1218,11 +1371,12 @@ const layer = Layer.effect(
                   })
                 const current = yield* get(task.id)
                 if (!current) return yield* new NotFoundError({ taskID: task.id })
-                const cancelled =
-                  current.status === "starting" || current.status === "running" || current.status === "interrupted"
-                    ? yield* update(current, "cancelled")
-                    : current
-                return { task: cancelled, sessions: prepared.sessions }
+                yield* Effect.forEach(
+                  yield* descendants(current),
+                  (item) => (cancellable.has(item.status) ? update(item, "cancelled") : Effect.void),
+                  { concurrency: 1, discard: true },
+                )
+                return { task: (yield* get(task.id))!, sessions: prepared.sessions }
               }).pipe(roots.withLock(task.rootSessionID)),
             ),
             Effect.ensuring(release),
@@ -1249,7 +1403,7 @@ const layer = Layer.effect(
         .where(
           and(
             eq(SessionTaskTable.root_session_id, rootSessionID),
-            inArray(SessionTaskTable.status, ["starting", "running", "interrupted"]),
+            inArray(SessionTaskTable.status, [...cancellable]),
           ),
         )
         .orderBy(asc(SessionTaskTable.depth), asc(SessionTaskTable.time_created))
@@ -1342,28 +1496,31 @@ const layer = Layer.effect(
       }).pipe(roots.withLock(task.rootSessionID))
     })
 
-    const list = Effect.fn("SessionTask.list")(function* (input: {
-      readonly rootSessionID?: SessionSchema.ID
-      readonly parentSessionID?: SessionSchema.ID
-    }) {
-      const where =
-        input.rootSessionID && input.parentSessionID
-          ? and(
-              eq(SessionTaskTable.root_session_id, input.rootSessionID),
-              eq(SessionTaskTable.parent_session_id, input.parentSessionID),
-            )
-          : input.rootSessionID
-            ? eq(SessionTaskTable.root_session_id, input.rootSessionID)
-            : input.parentSessionID
-              ? eq(SessionTaskTable.parent_session_id, input.parentSessionID)
-              : undefined
+    const list = Effect.fn("SessionTask.list")(function* (input: ListInput) {
       return (yield* primary
         .select()
         .from(SessionTaskTable)
-        .where(where)
+        .where(listWhere(input))
         .orderBy(asc(SessionTaskTable.time_created), asc(SessionTaskTable.id))
         .all()
         .pipe(Effect.orDie)).map(taskFromRow)
+    })
+
+    const counts = Effect.fn("SessionTask.counts")(function* (input: ListInput) {
+      const rows = yield* primary
+        .select({ status: SessionTaskTable.status, count: sql<number>`count(*)` })
+        .from(SessionTaskTable)
+        .where(listWhere(input))
+        .groupBy(SessionTaskTable.status)
+        .all()
+        .pipe(Effect.orDie)
+      const sum = (match: (status: Status) => boolean) =>
+        rows.filter((row) => match(row.status)).reduce((total, row) => total + row.count, 0)
+      return {
+        queued: sum((status) => status === "queued"),
+        active: sum(isActive),
+        terminal: sum((status) => terminal.has(status)),
+      } satisfies Counts
     })
 
     const hasChildren = Effect.fn("SessionTask.hasChildren")(function* (parentSessionID: SessionSchema.ID) {
@@ -1519,19 +1676,6 @@ const layer = Layer.effect(
         if (missingTask) return yield* new NotFoundError({ taskID: missingTask })
         return tasks
       })
-      // Local projectors signal without polling. SQLite's connection-local
-      // change token covers commits made by another connection or process.
-      const dataVersion = primary.get<{ data_version: number }>(sql`PRAGMA data_version`).pipe(
-        Effect.orDie,
-        Effect.map((row) => row?.data_version ?? 0),
-      )
-      const awaitExternalChange = (version: number): Effect.Effect<void> =>
-        Effect.sleep(`${EXTERNAL_CHANGE_POLL_MS} millis`).pipe(
-          Effect.andThen(dataVersion),
-          Effect.flatMap((current) =>
-            current === version ? Effect.suspend(() => awaitExternalChange(version)) : Effect.void,
-          ),
-        )
       const awaitTerminal = (): Effect.Effect<Info[], NotFoundError> =>
         Effect.gen(function* () {
           // Capture both change tokens before reading. A transition racing the
@@ -1776,6 +1920,117 @@ const layer = Layer.effect(
       }).pipe(roots.withLock(task.rootSessionID))
     })
 
+    const pendingSpawn = Effect.fn("SessionTask.pendingSpawn")(function* (taskID: ID) {
+      const row = yield* primary
+        .select()
+        .from(SessionTaskOperationTable)
+        .where(
+          and(
+            eq(SessionTaskOperationTable.task_id, taskID),
+            eq(SessionTaskOperationTable.kind, "spawn"),
+            eq(SessionTaskOperationTable.status, "pending"),
+          ),
+        )
+        .get()
+        .pipe(Effect.orDie)
+      return row ? operationFromRow(row) : undefined
+    })
+
+    /**
+     * Claims one queued task as `queued -> starting` before any side effect,
+     * then runs the ordinary spawn startup. Returns the child Session to wake.
+     */
+    const promoteOne = Effect.fn("SessionTask.promoteOne")(function* (task: Info) {
+      const operation = yield* pendingSpawn(task.id)
+      const parentTask = task.parentTaskID ? yield* get(task.parentTaskID) : undefined
+      // An orchestrator that finished or stopped has nobody left to report to.
+      if (!operation || (parentTask !== undefined && parentTask.status !== "running")) {
+        const reason = operation
+          ? "Owning orchestrator finished before this queued subagent started."
+          : "Queued subagent lost its spawn operation."
+        yield* update(task, "cancelled", { error: reason })
+        if (operation) yield* completeOperation(operation, "failed", reason)
+        return undefined
+      }
+      const starting = yield* update(task, "starting")
+      return yield* resumeSpawn(starting, operation).pipe(
+        Effect.map((prepared) => prepared.task.childSessionID),
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            const message = `Queued subagent failed to start: ${error.message}`.slice(0, MAX_ERROR_LENGTH)
+            const current = yield* get(task.id)
+            if (current && !terminal.has(current.status)) yield* update(current, "failed", { error: message })
+            yield* completeOperation(operation, "failed", message)
+            return undefined
+          }),
+        ),
+      )
+    })
+
+    const promote = Effect.fn("SessionTask.promote")(function* (rootSessionID: SessionSchema.ID) {
+      // Collected outside the guarded pass so children already started still
+      // get woken when a later promotion in the same pass fails.
+      const woken: SessionSchema.ID[] = []
+      yield* Effect.gen(function* () {
+        if (removalLeases.has(rootSessionID) || rootCancellationLeases.has(rootSessionID)) return
+        const maximum = rootLimits.get(rootSessionID) ?? DEFAULT_ACTIVE_PER_ROOT
+        while ((yield* countActive(rootSessionID)) < maximum) {
+          const orchestrators = (yield* countStatus(rootSessionID, active, true)) < orchestratorLimit(maximum)
+          const row = yield* primary
+            .select()
+            .from(SessionTaskTable)
+            .where(
+              and(
+                eq(SessionTaskTable.root_session_id, rootSessionID),
+                eq(SessionTaskTable.status, "queued"),
+                orchestrators ? undefined : eq(SessionTaskTable.orchestrate, false),
+              ),
+            )
+            .orderBy(asc(SessionTaskTable.time_created), asc(SessionTaskTable.id))
+            .limit(1)
+            .get()
+            .pipe(Effect.orDie)
+          if (!row) return
+          const child = yield* promoteOne(taskFromRow(row))
+          if (child) woken.push(child)
+        }
+      }).pipe(
+        roots.withLock(rootSessionID),
+        Effect.catchCause((cause) =>
+          Effect.logError("Failed to promote queued subagents", cause).pipe(Effect.annotateLogs({ rootSessionID })),
+        ),
+      )
+      return woken
+    })
+
+    const runPromotion: Interface["runPromotion"] = (wake) =>
+      Effect.forever(
+        Effect.gen(function* () {
+          // Capture both change tokens before reading, as `wait` does, so a
+          // queued admission racing this pass wakes the next one.
+          const localChange = taskChanged
+          const version = yield* dataVersion
+          const queuedRoots = yield* primary
+            .selectDistinct({ rootSessionID: SessionTaskTable.root_session_id })
+            .from(SessionTaskTable)
+            .where(eq(SessionTaskTable.status, "queued"))
+            .all()
+            .pipe(Effect.orDie)
+          yield* Effect.forEach(
+            queuedRoots,
+            (row) => promote(row.rootSessionID).pipe(Effect.flatMap((ids) => Effect.forEach(ids, wake))),
+            { discard: true },
+          )
+          yield* Effect.race(Deferred.await(localChange), awaitExternalChange(version))
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.failCause(cause)
+              : Effect.logError("Subagent promotion pass failed", cause).pipe(Effect.andThen(Effect.sleep("1 second"))),
+          ),
+        ),
+      )
+
     const reconcile = Effect.fn("SessionTask.reconcile")(function* () {
       const pending = (yield* primary
         .select()
@@ -1794,6 +2049,8 @@ const layer = Layer.effect(
           yield* resumeInterrupt(operation).pipe(roots.withLock(task.rootSessionID))
           continue
         }
+        // A queued spawn never began side effects; promotion re-drives it.
+        if (operation.kind === "spawn" && task.status === "queued") continue
         yield* Effect.gen(function* () {
           const current = yield* get(operation.taskID)
           const now = yield* DateTime.now
@@ -1891,6 +2148,7 @@ const layer = Layer.effect(
       getMany,
       owner,
       list,
+      counts,
       hasChildren,
       listDirectBounded,
       listAggregateIDs,
@@ -1919,6 +2177,8 @@ const layer = Layer.effect(
       authorizeRelocation,
       settleRun,
       reconcile,
+      promote,
+      runPromotion,
       deliverPendingParentNotifications,
     })
 
@@ -2042,8 +2302,10 @@ const projectTask = Effect.fn("SessionTask.projectTask")(function* (
   const violation = taskPersistenceViolation(task)
   if (violation) return yield* Effect.die(new ProjectionConflict(task.id, violation))
   if (!existing) {
-    if (task.revision !== 0 || task.status !== "starting")
-      return yield* Effect.die(new ProjectionConflict(task.id, "New task must begin at revision 0 in starting state"))
+    if (task.revision !== 0 || (task.status !== "starting" && task.status !== "queued"))
+      return yield* Effect.die(
+        new ProjectionConflict(task.id, "New task must begin at revision 0 in starting or queued state"),
+      )
     if (
       !operation ||
       operation.kind !== "spawn" ||
@@ -2065,13 +2327,18 @@ const projectTask = Effect.fn("SessionTask.projectTask")(function* (
     // policy is enforced under the root lock in `spawn`/`send`, where the
     // configured value is known; enforcing it again here would make lowering
     // `subagents.max_concurrent` retroactively reject history recorded under a
-    // higher limit.
-    const activeCount = (yield* db
-      .select({ id: SessionTaskTable.id })
-      .from(SessionTaskTable)
-      .where(and(eq(SessionTaskTable.root_session_id, task.rootSessionID), inArray(SessionTaskTable.status, active)))
-      .all()
-      .pipe(Effect.orDie)).length
+    // higher limit. A queued task holds no slot.
+    const activeCount =
+      task.status === "queued"
+        ? 0
+        : (yield* db
+            .select({ id: SessionTaskTable.id })
+            .from(SessionTaskTable)
+            .where(
+              and(eq(SessionTaskTable.root_session_id, task.rootSessionID), inArray(SessionTaskTable.status, active)),
+            )
+            .all()
+            .pipe(Effect.orDie)).length
     if (activeCount >= MAX_ACTIVE_PER_ROOT)
       return yield* Effect.die(
         new ActiveLimitError({ rootSessionID: task.rootSessionID, maximum: MAX_ACTIVE_PER_ROOT, active: activeCount }),
@@ -2109,7 +2376,11 @@ const projectTask = Effect.fn("SessionTask.projectTask")(function* (
     yield* validateTaskPlacement(
       db,
       task,
-      previous.status === "starting" && terminal.has(task.status) ? "optional" : "required",
+      // A queued task has no child Session yet; neither does a starting task
+      // that settles before its startup created one.
+      previous.status === "queued" || (previous.status === "starting" && terminal.has(task.status))
+        ? "optional"
+        : "required",
     )
     const updated = yield* db
       .update(SessionTaskTable)
@@ -2218,6 +2489,7 @@ const projectOperation = Effect.fn("SessionTask.projectOperation")(function* (
           eq(SessionTaskActorClaimTable.actor_session_id, operation.actor.sessionID),
           eq(SessionTaskActorClaimTable.actor_assistant_message_id, operation.actor.assistantMessageID),
           eq(SessionTaskActorClaimTable.actor_tool_call_id, operation.actor.toolCallID),
+          eq(SessionTaskActorClaimTable.actor_item, operation.actor.item ?? -1),
         ),
       )
       .get()
@@ -2233,6 +2505,7 @@ const projectOperation = Effect.fn("SessionTask.projectOperation")(function* (
         actor_session_id: operation.actor.sessionID,
         actor_assistant_message_id: operation.actor.assistantMessageID,
         actor_tool_call_id: operation.actor.toolCallID,
+        actor_item: operation.actor.item ?? -1,
         operation_id: operation.id,
         task_id: operation.taskID,
         kind: operation.kind,
@@ -2251,6 +2524,7 @@ const projectOperation = Effect.fn("SessionTask.projectOperation")(function* (
     previous.actor.sessionID !== operation.actor.sessionID ||
     previous.actor.assistantMessageID !== operation.actor.assistantMessageID ||
     previous.actor.toolCallID !== operation.actor.toolCallID ||
+    previous.actor.item !== operation.actor.item ||
     previous.kind !== operation.kind ||
     previous.requestHash !== operation.requestHash ||
     previous.messageID !== operation.messageID ||
@@ -2412,12 +2686,15 @@ const assertRecordedActor = Effect.fn("SessionTask.assertRecordedActor")(functio
   if (
     message.type === "assistant" &&
     message.content.some(
-      (item) => item.type === "tool" && item.id === actor.toolCallID && item.name === operationToolName(kind),
+      (item) => item.type === "tool" && item.id === actor.toolCallID && item.name === operationToolName(kind, actor),
     )
   )
     return
   return yield* Effect.die(
-    new ProjectionConflict(actor.toolCallID, `Task actor tool call is not recorded as ${operationToolName(kind)}`),
+    new ProjectionConflict(
+      actor.toolCallID,
+      `Task actor tool call is not recorded as ${operationToolName(kind, actor)}`,
+    ),
   )
 })
 
@@ -2428,11 +2705,7 @@ function taskFromRow(row: typeof SessionTaskTable.$inferSelect): Info {
     parentSessionID: SessionSchema.ID.make(row.parent_session_id),
     childSessionID: SessionSchema.ID.make(row.child_session_id),
     parentTaskID: row.parent_task_id ? ID.make(row.parent_task_id) : undefined,
-    actor: Actor.make({
-      sessionID: SessionSchema.ID.make(row.actor_session_id),
-      assistantMessageID: SessionMessage.ID.make(row.actor_assistant_message_id),
-      toolCallID: row.actor_tool_call_id,
-    }),
+    actor: actorFromRow(row),
     agent: AgentV2.ID.make(row.agent.slice(0, MAX_AGENT_ID_LENGTH)),
     model: row.model
       ? ModelV2.Ref.make({
@@ -2445,6 +2718,7 @@ function taskFromRow(row: typeof SessionTaskTable.$inferSelect): Info {
       : undefined,
     prompt: Prompt.make(row.prompt),
     description: row.description,
+    wave: row.wave ?? undefined,
     depth: row.depth,
     status: row.status,
     revision: row.revision,
@@ -2455,6 +2729,8 @@ function taskFromRow(row: typeof SessionTaskTable.$inferSelect): Info {
       hardPermissions: row.hard_permissions,
       writeRoots: row.write_roots.map((root) => AbsolutePath.make(root)),
       commands: row.commands,
+      // Absent rather than false keeps request hashes of pre-fleet tasks stable.
+      ...(row.orchestrate ? { orchestrate: true as const } : {}),
     }),
     result: row.result ?? undefined,
     error: row.error ?? undefined,
@@ -2477,10 +2753,12 @@ function taskRow(task: Info): typeof SessionTaskTable.$inferInsert {
     actor_session_id: task.actor.sessionID,
     actor_assistant_message_id: task.actor.assistantMessageID,
     actor_tool_call_id: task.actor.toolCallID,
+    actor_item: task.actor.item ?? -1,
     agent: task.agent,
     model: task.model,
     prompt: task.prompt,
     description: task.description,
+    wave: task.wave ?? null,
     depth: task.depth,
     status: task.status,
     revision: task.revision,
@@ -2490,6 +2768,7 @@ function taskRow(task: Info): typeof SessionTaskTable.$inferInsert {
     hard_permissions: [...task.authority.hardPermissions],
     write_roots: [...task.authority.writeRoots],
     commands: [...task.authority.commands],
+    orchestrate: task.authority.orchestrate === true,
     result: task.result ?? null,
     error: task.error ?? null,
     time_created: DateTime.toEpochMillis(task.time.created),
@@ -2504,11 +2783,7 @@ function operationFromRow(row: typeof SessionTaskOperationTable.$inferSelect): O
     id: OperationID.make(row.id),
     taskID: ID.make(row.task_id),
     rootSessionID: SessionSchema.ID.make(row.root_session_id),
-    actor: Actor.make({
-      sessionID: SessionSchema.ID.make(row.actor_session_id),
-      assistantMessageID: SessionMessage.ID.make(row.actor_assistant_message_id),
-      toolCallID: row.actor_tool_call_id,
-    }),
+    actor: actorFromRow(row),
     kind: row.kind,
     requestHash: row.request_hash,
     messageID: row.message_id ? SessionMessage.ID.make(row.message_id) : undefined,
@@ -2531,6 +2806,7 @@ function operationRow(operation: Operation): typeof SessionTaskOperationTable.$i
     actor_session_id: operation.actor.sessionID,
     actor_assistant_message_id: operation.actor.assistantMessageID,
     actor_tool_call_id: operation.actor.toolCallID,
+    actor_item: operation.actor.item ?? -1,
     kind: operation.kind,
     request_hash: operation.requestHash,
     message_id: operation.messageID,
@@ -2552,16 +2828,19 @@ function sameIdentity(previous: Info, next: Info) {
     previous.actor.sessionID === next.actor.sessionID &&
     previous.actor.assistantMessageID === next.actor.assistantMessageID &&
     previous.actor.toolCallID === next.actor.toolCallID &&
+    previous.actor.item === next.actor.item &&
     previous.agent === next.agent &&
     digest(previous.model) === digest(next.model) &&
     digest(previous.prompt) === digest(next.prompt) &&
     previous.description === next.description &&
+    previous.wave === next.wave &&
     previous.depth === next.depth &&
     digest(previous.authority) === digest(next.authority)
   )
 }
 
 function allowedTransition(previous: Status, next: Status) {
+  if (previous === "queued") return next === "starting" || next === "cancelled" || next === "interrupted"
   if (previous === "starting") return next === "running" || terminal.has(next)
   if (previous === "running") return next === "running" || terminal.has(next)
   if (previous === "cancelled") return false
@@ -2569,20 +2848,38 @@ function allowedTransition(previous: Status, next: Status) {
 }
 
 function actorKey(actor: Actor) {
-  return `${actor.sessionID}\0${actor.assistantMessageID}\0${actor.toolCallID}`
+  return `${actor.sessionID}\0${actor.assistantMessageID}\0${actor.toolCallID}\0${actor.item ?? -1}`
 }
 
-function operationToolName(kind: Operation["kind"]) {
-  if (kind === "spawn") return "spawn_agent"
+function actorFromRow(row: {
+  readonly actor_session_id: string
+  readonly actor_assistant_message_id: string
+  readonly actor_tool_call_id: string
+  readonly actor_item: number
+}) {
+  return Actor.make({
+    sessionID: SessionSchema.ID.make(row.actor_session_id),
+    assistantMessageID: SessionMessage.ID.make(row.actor_assistant_message_id),
+    toolCallID: row.actor_tool_call_id,
+    ...(row.actor_item >= 0 ? { item: row.actor_item } : {}),
+  })
+}
+
+function operationToolName(kind: Operation["kind"], actor: Actor) {
+  // A batch element spawns through `spawn_agents`; batched send and interrupt
+  // operations keep their single-operation tool names.
+  if (kind === "spawn") return actor.item === undefined ? "spawn_agent" : "spawn_agents"
   if (kind === "send") return "send_agent"
   return "interrupt_agent"
 }
 
 function spawnPersistenceViolation(
-  input: Pick<SpawnInput, "actor" | "agent" | "model" | "description" | "prompt" | "authority">,
+  input: Pick<SpawnInput, "actor" | "agent" | "model" | "description" | "prompt" | "authority" | "wave">,
 ) {
   if (input.description.length > MAX_DESCRIPTION_LENGTH)
     return `Subagent description exceeds ${MAX_DESCRIPTION_LENGTH} characters`
+  if (input.wave !== undefined && (input.wave.length === 0 || input.wave.length > MAX_WAVE_NAME_LENGTH))
+    return `Subagent wave must be 1 to ${MAX_WAVE_NAME_LENGTH} characters`
   if (input.agent.length > MAX_AGENT_ID_LENGTH)
     return `Subagent agent identity exceeds ${MAX_AGENT_ID_LENGTH} characters`
   if (input.model?.id && input.model.id.length > MAX_MODEL_ID_LENGTH)
@@ -2625,8 +2922,20 @@ function digest(input: unknown) {
     .digest("hex")
 }
 
-function spawnRequestHash(task: Info) {
-  return digest(["spawn", task.actor, task.agent, task.model, task.prompt, task.description, task.authority])
+function spawnRequestHash(
+  task: Pick<Info, "actor" | "agent" | "model" | "prompt" | "description" | "authority" | "wave">,
+) {
+  // The wave joins the hash only when present so pre-fleet request hashes still verify.
+  return digest([
+    "spawn",
+    task.actor,
+    task.agent,
+    task.model,
+    task.prompt,
+    task.description,
+    task.authority,
+    ...(task.wave === undefined ? [] : [task.wave]),
+  ])
 }
 
 function operationRequestHash(operation: Operation) {
@@ -2640,6 +2949,15 @@ function operationRequestHash(operation: Operation) {
 
 function isActive(status: Status): status is (typeof active)[number] {
   return status === "starting" || status === "running"
+}
+
+function listWhere(input: ListInput) {
+  return and(
+    input.rootSessionID === undefined ? undefined : eq(SessionTaskTable.root_session_id, input.rootSessionID),
+    input.parentSessionID === undefined ? undefined : eq(SessionTaskTable.parent_session_id, input.parentSessionID),
+    input.wave === undefined ? undefined : eq(SessionTaskTable.wave, input.wave),
+    input.statuses?.length ? inArray(SessionTaskTable.status, input.statuses) : undefined,
+  )
 }
 
 function mapProjection(resource: string) {

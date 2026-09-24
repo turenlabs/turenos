@@ -1911,7 +1911,7 @@ export type SessionsTaskListOutput = {
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
     readonly description: string
     readonly depth: number
-    readonly status: "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    readonly status: "queued" | "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
     readonly revision: number
     readonly result?: string | null
     readonly error?: string | null
@@ -1932,7 +1932,7 @@ export type SessionsTaskListOutput = {
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
     readonly description: string
     readonly depth: number
-    readonly status: "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    readonly status: "queued" | "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
     readonly revision: number
     readonly result?: string | null
     readonly error?: string | null
@@ -1964,7 +1964,7 @@ export type SessionsTaskGetOutput = {
     readonly prompt: { readonly text: string }
     readonly description: string
     readonly depth: number
-    readonly status: "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    readonly status: "queued" | "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
     readonly revision: number
     readonly authority: {
       readonly parentPermissions: ReadonlyArray<{
@@ -2018,7 +2018,7 @@ export type SessionsTaskCancelOutput = {
     readonly prompt: { readonly text: string }
     readonly description: string
     readonly depth: number
-    readonly status: "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    readonly status: "queued" | "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
     readonly revision: number
     readonly authority: {
       readonly parentPermissions: ReadonlyArray<{
@@ -3492,6 +3492,7 @@ export type SessionsHistoryOutput = {
               readonly sessionID: string
               readonly assistantMessageID: string
               readonly toolCallID: string
+              readonly item?: number
             }
             readonly agent: string
             readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
@@ -3543,8 +3544,9 @@ export type SessionsHistoryOutput = {
               }>
             }
             readonly description: string
+            readonly wave?: string
             readonly depth: number
-            readonly status: "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+            readonly status: "queued" | "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
             readonly revision: number
             readonly authority: {
               readonly parentPermissions: ReadonlyArray<{
@@ -3571,6 +3573,7 @@ export type SessionsHistoryOutput = {
               }>
               readonly writeRoots: ReadonlyArray<string>
               readonly commands: ReadonlyArray<string>
+              readonly orchestrate?: true
             }
             readonly result?: string
             readonly error?: string
@@ -3589,6 +3592,7 @@ export type SessionsHistoryOutput = {
               readonly sessionID: string
               readonly assistantMessageID: string
               readonly toolCallID: string
+              readonly item?: number
             }
             readonly kind: "spawn" | "send" | "interrupt"
             readonly requestHash: string
@@ -3664,6 +3668,7 @@ export type SessionsHistoryOutput = {
               readonly sessionID: string
               readonly assistantMessageID: string
               readonly toolCallID: string
+              readonly item?: number
             }
             readonly kind: "spawn" | "send" | "interrupt"
             readonly requestHash: string
@@ -4590,6 +4595,7 @@ export type SessionsEventsOutput =
             readonly sessionID: string
             readonly assistantMessageID: string
             readonly toolCallID: string
+            readonly item?: number
           }
           readonly agent: string
           readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string }
@@ -4641,8 +4647,9 @@ export type SessionsEventsOutput =
             }>
           }
           readonly description: string
+          readonly wave?: string
           readonly depth: number
-          readonly status: "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+          readonly status: "queued" | "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
           readonly revision: number
           readonly authority: {
             readonly parentPermissions: ReadonlyArray<{
@@ -4669,6 +4676,7 @@ export type SessionsEventsOutput =
             }>
             readonly writeRoots: ReadonlyArray<string>
             readonly commands: ReadonlyArray<string>
+            readonly orchestrate?: true
           }
           readonly result?: string
           readonly error?: string
@@ -4687,6 +4695,7 @@ export type SessionsEventsOutput =
             readonly sessionID: string
             readonly assistantMessageID: string
             readonly toolCallID: string
+            readonly item?: number
           }
           readonly kind: "spawn" | "send" | "interrupt"
           readonly requestHash: string
@@ -4762,6 +4771,7 @@ export type SessionsEventsOutput =
             readonly sessionID: string
             readonly assistantMessageID: string
             readonly toolCallID: string
+            readonly item?: number
           }
           readonly kind: "spawn" | "send" | "interrupt"
           readonly requestHash: string

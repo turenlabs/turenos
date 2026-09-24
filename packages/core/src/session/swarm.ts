@@ -77,6 +77,8 @@ function render(invocation: Swarm.Invocation) {
       "</swarm-request>",
     ].join("\n")
 
+  if (invocation.count > Swarm.DIRECT_SIZE) return renderFleet(invocation)
+
   return [
     `<swarm-request status="ready" workers="${invocation.count}" budget="${
       invocation.explicitCount ? "explicit" : "default"
@@ -91,6 +93,31 @@ function render(invocation: Swarm.Invocation) {
     "Keep doing non-overlapping coordinator work after dispatch and read room updates at safe boundaries. Parked workers stay live in the room — deliberate in the open before deciding: post kind \"question\" entries addressed to specific lanes (to: the lane key) to resolve contradictions, gaps, and cross-lane interactions, and let members reply to each other's findings. When the swarm has its answer, post room_post kind \"decision\" with it BEFORE waiting — parked workers receive the decision and settle, and wait_agents returns early with parked true when they are still waiting on you. Then use one bounded final wait_agents barrier containing every task ID and reconcile the complete reports with the room.",
     "If workers fail, time out, are interrupted, or contradict one another, continue with a partial synthesis and name every incomplete or disputed lane. Never hide uncertainty or treat agreement as proof.",
     "Return one evidence-backed ranked synthesis. Distinguish verified local behavior from external claims, mark marketing and benchmark caveats, and state coverage gaps.",
+    "</swarm-request>",
+  ].join("\n")
+}
+
+/**
+ * A swarm above {@link Swarm.DIRECT_SIZE} is two levels: the leader cannot hold
+ * a thousand reports in context, so it dispatches orchestrators that each own
+ * one slice of workers and return one synthesized report.
+ */
+function renderFleet(invocation: Swarm.Ready) {
+  const orchestrators = Math.ceil(invocation.count / Swarm.DIRECT_SIZE)
+  const share = Math.ceil(invocation.count / orchestrators)
+  return [
+    `<swarm-request status="ready" workers="${invocation.count}" orchestrators="${orchestrators}" budget="${
+      invocation.explicitCount ? "explicit" : "default"
+    }">`,
+    `Objective: ${escapeXml(invocation.objective)}`,
+    `This is a fleet swarm of up to ${invocation.count} workers, run as two levels through durable subagents. Do not create another execution loop.`,
+    `1. Partition the objective into ${orchestrators} disjoint slices that can each be researched or executed independently, with at most ${share} workers per slice. Call room_read, then post the slice plan with room_post kind "plan" (one lane per slice, pass the head as base_revision).`,
+    `2. Dispatch one orchestrator per slice in a single spawn_agents call with wave "orchestrators" and orchestrate: true on every item. Each orchestrator's prompt names its lane, its slice, its worker budget of ${share}, and the exact report shape you need back. Concurrency is capped; excess spawns queue and start automatically, so queued is normal.`,
+    `3. Tell each orchestrator to: claim its lane; split its slice into at most ${share} bounded, non-overlapping worker assignments; dispatch them with one spawn_agents call under one wave; tell its workers to finish and report without parking in the room; wait on that wave; then return one evidence-backed synthesis of its slice that names every failed or incomplete worker. Orchestrators post slice status to the room; workers post only material findings.`,
+    "4. Research and comparison work is read-only: omit write_roots and commands. Grant write roots or exact commands only when the user explicitly asks the swarm to implement, slices own disjoint changes, and each grant is required. Never expand the current Session's authority.",
+    '5. Keep doing coordinator work while the fleet runs. Use list_agents with wave "orchestrators" for counts instead of polling individual tasks. When every slice has reported, use one wait_agents barrier with wave "orchestrators" and reconcile the slice reports with the room.',
+    "If slices fail, time out, or contradict one another, continue with a partial synthesis and name every incomplete or disputed slice. Never hide uncertainty or treat agreement as proof.",
+    "Return one evidence-backed ranked synthesis across slices. Distinguish verified local behavior from external claims and state coverage gaps.",
     "</swarm-request>",
   ].join("\n")
 }

@@ -48,6 +48,20 @@ export const MIN_ACTIVE_PER_ROOT = 1
 export const DEFAULT_ACTIVE_PER_ROOT = 50
 export const MAX_ACTIVE_PER_ROOT = 50
 
+/**
+ * Fleet bounds. "Thousands of subagents" is an admission target, not a
+ * concurrency target: the active pool stays bounded by the limits above while
+ * the admitted backlog waits durably as `queued` tasks.
+ *
+ * `MAX_TASKS_PER_ROOT` bounds non-terminal tasks (queued plus active) for one
+ * root graph. `MAX_DEPTH` is two, but a depth-one task may spawn only when its
+ * authority carries the `orchestrate` grant recorded at spawn time.
+ */
+export const MAX_TASKS_PER_ROOT = 10_000
+export const MAX_DEPTH = 2
+export const MAX_WAVE_NAME_LENGTH = 64
+export const MAX_SPAWN_BATCH = 256
+
 const bounded = (maximum: number) => Schema.String.pipe(Schema.check(Schema.isMaxLength(maximum)))
 const Ruleset = Permission.Ruleset.pipe(Schema.check(Schema.isMaxLength(MAX_PERMISSION_RULES)))
 const TaskPrompt = Prompt
@@ -76,6 +90,7 @@ export const OperationID = Schema.String.check(Schema.isStartsWith("tso_")).pipe
 export type OperationID = typeof OperationID.Type
 
 export const Status = Schema.Literals([
+  "queued",
   "starting",
   "running",
   "completed",
@@ -110,6 +125,8 @@ export const Actor = Schema.Struct({
   sessionID: SessionID,
   assistantMessageID: SessionMessage.ID,
   toolCallID: bounded(MAX_TOOL_CALL_ID_LENGTH),
+  /** Element index when one batch tool call admits several operations. */
+  item: NonNegativeInt.pipe(Schema.check(Schema.isLessThan(MAX_SPAWN_BATCH)), optional),
 }).annotate({ identifier: "SessionTask.Actor" })
 
 export interface Authority extends Schema.Schema.Type<typeof Authority> {}
@@ -122,6 +139,8 @@ export const Authority = Schema.Struct({
     Schema.check(Schema.isMaxLength(MAX_WRITE_ROOTS)),
   ),
   commands: Schema.Array(bounded(MAX_COMMAND_LENGTH)).pipe(Schema.check(Schema.isMaxLength(MAX_COMMANDS))),
+  /** Grants a depth-one task authority to spawn its own workers. Absent means false. */
+  orchestrate: Schema.Literal(true).pipe(optional),
 }).annotate({ identifier: "SessionTask.Authority" })
 
 export interface Time extends Schema.Schema.Type<typeof Time> {}
@@ -144,6 +163,7 @@ export const Info = Schema.Struct({
   model: TaskModelRef.pipe(optional),
   prompt: TaskPrompt,
   description: bounded(MAX_DESCRIPTION_LENGTH),
+  wave: bounded(MAX_WAVE_NAME_LENGTH).pipe(optional),
   depth: NonNegativeInt,
   status: Status,
   revision: NonNegativeInt,

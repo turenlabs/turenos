@@ -135,7 +135,7 @@ const setup = Effect.fnUntraced(function* (suffix: string) {
 const actor = Effect.fnUntraced(function* (
   sessionID: SessionSchema.ID,
   suffix: string,
-  tool: "spawn_agent" | "send_agent" | "interrupt_agent" = "spawn_agent",
+  tool: "spawn_agent" | "spawn_agents" | "send_agent" | "interrupt_agent" = "spawn_agent",
 ) {
   const assistantMessageID = SessionMessage.ID.make(`msg_task_actor_${suffix}`)
   const events = yield* EventV2.Service
@@ -1024,7 +1024,7 @@ describe("SessionTaskV2", () => {
     }),
   )
 
-  it.effect("enforces the default active-child limit and depth one", () =>
+  it.effect("queues beyond the default active-child limit and requires orchestrate to nest", () =>
     Effect.gen(function* () {
       const parentSessionID = yield* setup("limits")
       const tasks = yield* SessionTaskV2.Service
@@ -1036,27 +1036,21 @@ describe("SessionTaskV2", () => {
           ),
         { concurrency: "unbounded" },
       )
-      const next = yield* tasks
-        .spawn(spawnInput(yield* actor(parentSessionID, "limit_next"), "limit_next"))
-        .pipe(Effect.flip)
-      expect(next).toMatchObject({
-        _tag: "SessionTask.ActiveLimitError",
-        rootSessionID: parentSessionID,
-        maximum: SessionTaskV2.DEFAULT_ACTIVE_PER_ROOT,
-        active: SessionTaskV2.DEFAULT_ACTIVE_PER_ROOT,
-      })
+      const next = yield* tasks.spawn(spawnInput(yield* actor(parentSessionID, "limit_next"), "limit_next"))
+      expect(next.wake).toBe(false)
+      expect(next.task.status).toBe("queued")
+      expect(next.operation.status).toBe("pending")
 
       const childActor = yield* actor(created[0]!.task.childSessionID, "nested")
       const nested = yield* tasks.spawn(spawnInput(childActor, "nested")).pipe(Effect.flip)
       expect(nested).toMatchObject({
-        _tag: "SessionTask.DepthLimitError",
-        parentSessionID: created[0]!.task.childSessionID,
-        maximum: 1,
+        _tag: "SessionTask.OrchestrateError",
+        sessionID: created[0]!.task.childSessionID,
       })
     }),
   )
 
-  it.effect("enforces the configured active limit instead of the historical constant", () =>
+  it.effect("queues at the configured active limit instead of the historical constant", () =>
     Effect.gen(function* () {
       const parentSessionID = yield* setup("configured_limit")
       const tasks = yield* SessionTaskV2.Service
@@ -1071,15 +1065,9 @@ describe("SessionTaskV2", () => {
       // The configured ceiling is two, so the third child proves the limit is
       // read rather than hardcoded.
       expect(
-        yield* tasks
-          .spawn(spawnInput(yield* actor(parentSessionID, "configured_third"), "configured_third", 2))
-          .pipe(Effect.flip),
-      ).toMatchObject({
-        _tag: "SessionTask.ActiveLimitError",
-        rootSessionID: parentSessionID,
-        maximum: 2,
-        active: 2,
-      })
+        (yield* tasks.spawn(spawnInput(yield* actor(parentSessionID, "configured_third"), "configured_third", 2)))
+          .task.status,
+      ).toBe("queued")
     }),
   )
 
@@ -2334,6 +2322,175 @@ describe("SessionTaskV2", () => {
         wake: false,
       })
       expect(yield* tasks.list({ rootSessionID: parentSessionID })).toHaveLength(1)
+    }),
+  )
+})
+
+describe("SessionTaskV2 fleets", () => {
+  const orchestrating = SessionTaskV2.Authority.make({ ...authority, orchestrate: true })
+  const cancel = (tasks: SessionTaskV2.Interface, sessionID: SessionSchema.ID, taskID: SessionTaskV2.ID) =>
+    tasks.cancelWithInterrupt({ sessionID, taskID, interrupt: () => Effect.void })
+
+  it.effect("promotes queued spawns in FIFO order as slots free", () =>
+    Effect.gen(function* () {
+      const parentSessionID = yield* setup("fleet_fifo")
+      const tasks = yield* SessionTaskV2.Service
+      const spawned = yield* Effect.forEach(
+        [0, 1, 2, 3],
+        (index) =>
+          actor(parentSessionID, `fleet_fifo_${index}`).pipe(
+            Effect.flatMap((value) => tasks.spawn(spawnInput(value, `fleet_fifo_${index}`, 2))),
+          ),
+        { concurrency: 1 },
+      )
+      expect(spawned.map((item) => item.task.status)).toEqual(["running", "running", "queued", "queued"])
+      expect(spawned.map((item) => item.wake)).toEqual([true, true, false, false])
+      expect(yield* tasks.promote(parentSessionID)).toEqual([])
+
+      yield* cancel(tasks, parentSessionID, spawned[0]!.task.id)
+      expect(yield* tasks.promote(parentSessionID)).toEqual([spawned[2]!.task.childSessionID])
+      expect(yield* tasks.get(spawned[2]!.task.id)).toMatchObject({ status: "running" })
+      expect(yield* tasks.get(spawned[3]!.task.id)).toMatchObject({ status: "queued" })
+      expect(yield* tasks.counts({ parentSessionID })).toEqual({ queued: 1, active: 2, terminal: 1 })
+    }),
+  )
+
+  it.effect("keeps queued spawns through recovery and cancels them with the root", () =>
+    Effect.gen(function* () {
+      const parentSessionID = yield* setup("fleet_recovery")
+      const tasks = yield* SessionTaskV2.Service
+      yield* tasks.spawn(spawnInput(yield* actor(parentSessionID, "fleet_recovery_0"), "fleet_recovery_0", 1))
+      const queued = yield* tasks.spawn(
+        spawnInput(yield* actor(parentSessionID, "fleet_recovery_1"), "fleet_recovery_1", 1),
+      )
+      yield* tasks.reconcile()
+      expect(yield* tasks.get(queued.task.id)).toMatchObject({ status: "queued" })
+      const { db } = yield* Database.Service
+      const operation = yield* db
+        .select()
+        .from(SessionTaskOperationTable)
+        .where(eq(SessionTaskOperationTable.id, queued.operation.id))
+        .get()
+        .pipe(Effect.orDie)
+      expect(operation?.status).toBe("pending")
+
+      yield* tasks.cancelRootWithInterrupt({ rootSessionID: parentSessionID, interrupt: () => Effect.void })
+      expect(yield* tasks.get(queued.task.id)).toMatchObject({ status: "cancelled" })
+    }),
+  )
+
+  it.effect("lets an orchestrator spawn narrowed workers and cancels them with it", () =>
+    Effect.gen(function* () {
+      const parentSessionID = yield* setup("fleet_orchestrate")
+      const tasks = yield* SessionTaskV2.Service
+      const orchestrator = yield* tasks.spawn({
+        ...spawnInput(yield* actor(parentSessionID, "fleet_orchestrate"), "fleet_orchestrate", 4),
+        authority: orchestrating,
+      })
+      expect(orchestrator.task.authority.orchestrate).toBe(true)
+
+      const childSessionID = orchestrator.task.childSessionID
+      const worker = yield* tasks.spawn({
+        ...spawnInput(yield* actor(childSessionID, "fleet_worker"), "fleet_worker", 4),
+        wave: "slice",
+      })
+      expect(worker.task).toMatchObject({ depth: 2, parentTaskID: orchestrator.task.id, wave: "slice" })
+      expect(worker.task.authority.ancestorPermissionSets).toEqual([
+        authority.parentPermissions,
+        authority.hardPermissions,
+      ])
+      expect(yield* tasks.list({ parentSessionID: childSessionID, wave: "slice" })).toHaveLength(1)
+      expect(yield* tasks.list({ parentSessionID: childSessionID, wave: "other" })).toHaveLength(0)
+
+      expect(
+        yield* tasks
+          .spawn({
+            ...spawnInput(yield* actor(childSessionID, "fleet_nested_orchestrate"), "fleet_nested_orchestrate", 4),
+            authority: orchestrating,
+          })
+          .pipe(Effect.flip),
+      ).toMatchObject({ _tag: "SessionTask.OrchestrateError" })
+      expect(
+        yield* tasks
+          .spawn(spawnInput(yield* actor(worker.task.childSessionID, "fleet_depth"), "fleet_depth", 4))
+          .pipe(Effect.flip),
+      ).toMatchObject({ _tag: "SessionTask.DepthLimitError", maximum: 2 })
+
+      yield* cancel(tasks, parentSessionID, orchestrator.task.id)
+      expect(yield* tasks.get(worker.task.id)).toMatchObject({ status: "cancelled" })
+      expect(yield* tasks.get(orchestrator.task.id)).toMatchObject({ status: "cancelled" })
+    }),
+  )
+
+  it.effect("holds orchestrators to half the slots and promotes workers past them", () =>
+    Effect.gen(function* () {
+      const parentSessionID = yield* setup("fleet_quota")
+      const tasks = yield* SessionTaskV2.Service
+      const orchestrators = yield* Effect.forEach(
+        [0, 1, 2],
+        (index) =>
+          actor(parentSessionID, `fleet_quota_${index}`).pipe(
+            Effect.flatMap((value) =>
+              tasks.spawn({
+                ...spawnInput(value, `fleet_quota_${index}`, 4),
+                authority: orchestrating,
+              }),
+            ),
+          ),
+        { concurrency: 1 },
+      )
+      expect(orchestrators.map((item) => item.task.status)).toEqual(["running", "running", "queued"])
+      // FIFO admission queues the worker behind the blocked orchestrator...
+      const worker = yield* tasks.spawn(spawnInput(yield* actor(parentSessionID, "fleet_quota_w"), "fleet_quota_w", 4))
+      expect(worker.task.status).toBe("queued")
+      // ...and promotion skips the orchestrator that has no quota left.
+      expect(yield* tasks.promote(parentSessionID)).toEqual([worker.task.childSessionID])
+      expect(yield* tasks.get(orchestrators[2]!.task.id)).toMatchObject({ status: "queued" })
+
+      const tooSmall = yield* setup("fleet_quota_small")
+      expect(
+        yield* tasks
+          .spawn({
+            ...spawnInput(yield* actor(tooSmall, "fleet_quota_small"), "fleet_quota_small", 1),
+            authority: orchestrating,
+          })
+          .pipe(Effect.flip),
+      ).toMatchObject({ _tag: "SessionTask.OrchestrateError" })
+    }),
+  )
+
+  it.effect("admits one durable operation per batch item and reconciles item retries", () =>
+    Effect.gen(function* () {
+      const parentSessionID = yield* setup("fleet_batch")
+      const tasks = yield* SessionTaskV2.Service
+      const base = yield* actor(parentSessionID, "fleet_batch", "spawn_agents")
+      const items = yield* Effect.forEach(
+        [0, 1, 2],
+        (item) =>
+          tasks.spawn({
+            ...spawnInput(SessionTaskV2.Actor.make({ ...base, item }), `fleet_batch_${item}`, 2),
+            wave: "batch",
+          }),
+        { concurrency: 1 },
+      )
+      expect(new Set(items.map((item) => item.task.id)).size).toBe(3)
+      expect(items.map((item) => item.task.status)).toEqual(["running", "running", "queued"])
+
+      const retried = yield* tasks.spawn({
+        ...spawnInput(SessionTaskV2.Actor.make({ ...base, item: 2 }), "fleet_batch_2", 2),
+        wave: "batch",
+      })
+      expect(retried.task.id).toBe(items[2]!.task.id)
+      expect(retried.wake).toBe(false)
+      expect(yield* tasks.counts({ parentSessionID, wave: "batch" })).toEqual({ queued: 1, active: 2, terminal: 0 })
+
+      // An item only verifies against a recorded spawn_agents call.
+      const single = yield* actor(parentSessionID, "fleet_batch_single")
+      expect(
+        yield* tasks
+          .spawn(spawnInput(SessionTaskV2.Actor.make({ ...single, item: 0 }), "fleet_batch_single", 2))
+          .pipe(Effect.flip),
+      ).toMatchObject({ _tag: "SessionTask.ConflictError" })
     }),
   )
 })

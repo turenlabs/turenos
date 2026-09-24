@@ -310,6 +310,9 @@ const layer = Layer.effect(
       Effect.asVoid,
     )
     yield* wakePendingShellInputs()
+    // Queued subagents start here: settle, cancel, restart, and commits from
+    // another process all free slots without a caller that could wake the child.
+    yield* tasks.runPromotion(coordinator.wake).pipe(Effect.forkIn(scope, { startImmediately: true }), Effect.asVoid)
 
     return SessionExecution.Service.of({
       active: coordinator.active,
