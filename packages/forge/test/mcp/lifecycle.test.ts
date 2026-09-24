@@ -366,6 +366,57 @@ it.instance("instructions() never copies raw upstream tool names into model cont
   }),
 )
 
+it.instance("tells the agent which write tools are off and how the user enables them", () =>
+  Effect.gen(function* () {
+    const server = yield* lifecycleServer({ capabilities: { tools: {} } })
+    server.state.tools = [
+      { name: "lookup_workflow", inputSchema: { type: "object", properties: {} } },
+      { name: "run_workflow", inputSchema: { type: "object", properties: {} } },
+    ]
+    const mcp = yield* MCP.Service
+    yield* mcp.add("write-fixture", remote(server.url))
+    const fixture = new Extension.Manifest({
+      schemaVersion: 1,
+      id: Extension.ID.make("turenlabs", "write-fixture"),
+      name: "Write fixture",
+      description: "Write fixture",
+      version: "1.0.0",
+      publisher: "Turen Labs",
+      trust: "official",
+      contributions: [
+        {
+          type: "mcp",
+          id: Extension.ContributionID.make("write-fixture"),
+          name: "Write fixture",
+          description: "Write fixture",
+          instructions: "Look up workflows before running them.",
+          adapter: "mcp:write-fixture",
+          secrets: [],
+          defaultEnabled: false,
+          upstreamPolicy: "static",
+          deployment: { type: "hosted", url: server.url },
+          authentication: "none",
+          localOnly: true,
+          tools: { allow: ["lookup_workflow", "run_workflow"], write: ["run_workflow"] },
+        },
+      ],
+    })
+    McpIntegration.sync([...ExtensionCatalog.manifests, fixture])
+    try {
+      // tools() re-syncs definitions from the extension runtime, which cannot hold a write-capable
+      // fixture; McpIntegration.allowsTool covers the filter itself.
+      const [instructions] = yield* mcp.instructions()
+      expect(instructions?.instructions).toStartWith(
+        "Look up workflows before running them. Write tools (run_workflow)",
+      )
+      expect(instructions?.instructions).toContain("turned off by the user")
+      expect(instructions?.instructions).toContain("select Write fixture, turn on Allow write tools")
+    } finally {
+      McpIntegration.sync(ExtensionCatalog.manifests)
+    }
+  }),
+)
+
 it.instance("follows cursors when listing tools, prompts, resources, and templates", () =>
   Effect.gen(function* () {
     const server = yield* lifecycleServer()

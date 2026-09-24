@@ -301,6 +301,8 @@ export function extensionAction(item: ExtensionItem, drafts: Readonly<Record<str
   ) {
     configuration.endpoint = endpoint
   }
+  const writeTools = drafts[`${item.manifest.id}:writeTools`]
+  if (extensionWriteTools(item).length > 0 && writeTools !== undefined) configuration.writeTools = writeTools
   const hasDraft = Object.keys(secrets).length > 0 || Object.keys(configuration).length > 0
   const recovering = item.status === "needs-auth" || item.status === "needs-config"
   const enabled = recovering || hasDraft ? true : !item.enabled
@@ -324,6 +326,18 @@ export function extensionAction(item: ExtensionItem, drafts: Readonly<Record<str
     ...(blocked ? { blocked: true } : {}),
     label: recovering ? "Connect" : hasDraft ? "Save" : item.enabled ? "Disable" : "Enable",
   }
+}
+
+export function extensionWriteTools(item: ExtensionItem) {
+  return [
+    ...new Set(
+      item.manifest.contributions.flatMap((contribution) =>
+        contribution.type === "mcp" && contribution.adapter === `mcp:${contribution.id}`
+          ? contribution.tools.write
+          : [],
+      ),
+    ),
+  ]
 }
 
 export function directOAuthConnect(item: ExtensionItem) {

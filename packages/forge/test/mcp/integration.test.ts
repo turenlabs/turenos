@@ -672,8 +672,32 @@ describe("managed MCP integrations", () => {
     expect(McpIntegration.allowsTool("onepassword", "read_secret")).toBe(false)
 
     expect(McpIntegration.allowsTool("notion", "notion-search")).toBe(true)
-    expect(McpIntegration.allowsTool("notion", "notion-update-page")).toBe(true)
-    expect(McpIntegration.allowsTool("notion", "notion-delete-workspace")).toBe(false)
+    expect(McpIntegration.allowsTool("notion", "notion-update-page", { writeTools: "enabled" })).toBe(true)
+    expect(McpIntegration.allowsTool("notion", "notion-delete-workspace", { writeTools: "enabled" })).toBe(false)
+  })
+
+  test("hides declared write tools until the user opts in", () => {
+    const tools = McpIntegration.contribution("datadog-security").item.tools
+    const reads = tools.allow.filter((tool) => !tools.write.includes(tool))
+    expect(tools.write.length).toBeGreaterThan(0)
+    for (const tool of reads) expect(McpIntegration.allowsTool("datadog-security", tool)).toBe(true)
+    for (const tool of tools.write) {
+      expect(McpIntegration.allowsTool("datadog-security", tool)).toBe(false)
+      expect(McpIntegration.allowsTool("datadog-security", tool, { writeTools: "" })).toBe(false)
+      expect(McpIntegration.allowsTool("datadog-security", tool, { writeTools: "enabled" })).toBe(true)
+    }
+    expect(McpIntegration.allowsTool("notion", "notion-update-page")).toBe(false)
+  })
+
+  test("tells the agent whether write tools are available and how the user enables them", () => {
+    const hidden = McpIntegration.writeToolsInstructions("datadog-security", {})
+    expect(hidden).toContain("execute_datadog_workflow")
+    expect(hidden).toContain("turned off by the user")
+    expect(hidden).toContain("select Datadog Security & Incident Response, turn on Allow write tools")
+    expect(McpIntegration.writeToolsInstructions("datadog-security", { writeTools: "enabled" })).toContain(
+      "are turned on. They ask the user for approval by default",
+    )
+    expect(McpIntegration.writeToolsInstructions("sentry", {})).toBeUndefined()
   })
 
   test("removes untrusted descriptions and schema annotations from community MCP tools", () => {
