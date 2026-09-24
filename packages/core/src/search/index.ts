@@ -183,13 +183,17 @@ function bm25Weighted(ix: LexIndex, qterms: Map<string, number>, idfPower = 1): 
 /** Max-pool doc scores to file level, keeping the argmax doc for anchoring. */
 function bestPerFile(ix: LexIndex, scores: Float64Array): Map<string, { score: number; doc: number }> {
   const out = new Map<string, { score: number; doc: number }>()
+  let max = 0
   for (let i = 0; i < scores.length; i++) {
     if (!ix.alive[i] || scores[i]! <= 0) continue
     const file = ix.docs[i]!.file
+    const score = scores[i]!
     const cur = out.get(file)
-    if (!cur || cur.score < scores[i]!) out.set(file, { score: scores[i]!, doc: i })
+    if (!cur || cur.score < score) {
+      out.set(file, { score, doc: i })
+      if (score > max) max = score
+    }
   }
-  const max = Math.max(0, ...[...out.values()].map((v) => v.score))
   if (max > 0) for (const v of out.values()) v.score /= max
   return out
 }
