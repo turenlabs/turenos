@@ -70,6 +70,13 @@ let params: { id?: string } = {}
 let search: { draftId?: string } = {}
 let selected = "/repo/worktree-a"
 let variant: string | undefined
+let newLayoutDesigns = false
+let automationsEnabled = false
+const navigations: string[] = []
+const loops: Array<{ id: string; name: string; status: string; directory: string }> = []
+const loopRuns: Array<{ id: string; loopID: string; status: string }> = []
+const pausedLoops: string[] = []
+const cancelledLoopRuns: string[] = []
 let createSessionGate: Promise<void> | undefined
 let createWorktreeGate: Promise<void> | undefined
 let v2CommandGate: Promise<void> | undefined
@@ -137,6 +144,31 @@ const clientFor = (directory: string) => {
   }
   return {
     v2: {
+      loop: {
+        list: async () => ({
+          data: {
+            data: loops.map((item) => ({
+              id: item.id,
+              name: item.name,
+              status: item.status,
+              location: { directory: item.directory },
+            })),
+          },
+        }),
+        pause: async ({ loopID }: { loopID: string }) => {
+          pausedLoops.push(loopID)
+          return { data: { data: {} } }
+        },
+        run: {
+          list: async ({ loopID }: { loopID: string }) => ({
+            data: { data: loopRuns.filter((run) => run.loopID === loopID) },
+          }),
+          cancel: async ({ loopID, runID }: { loopID: string; runID: string }) => {
+            cancelledLoopRuns.push(`${loopID}/${runID}`)
+            return { data: { data: {} } }
+          },
+        },
+      },
       session: {
         create,
         active: async () => ({ data: { data: {} as Record<string, boolean> } }),
@@ -302,7 +334,9 @@ beforeAll(async () => {
   const dialogContext = await import("@turenlabs/ui/context/dialog")
 
   mock.module("@solidjs/router", () => ({
-    useNavigate: () => () => undefined,
+    useNavigate: () => (path: string) => {
+      navigations.push(path)
+    },
     useParams: () => params,
     useLocation: () => ({}),
     useSearchParams: () => [search, () => undefined],
@@ -405,7 +439,15 @@ beforeAll(async () => {
   }))
 
   mock.module("@/context/settings", () => ({
-    useSettings: () => ({ general: { newLayoutDesigns: () => false } }),
+    useSettings: () => ({
+      general: {
+        newLayoutDesigns: () => newLayoutDesigns,
+        automationsEnabled: () => automationsEnabled,
+        setAutomationsEnabled: (value: boolean) => {
+          automationsEnabled = value
+        },
+      },
+    }),
   }))
 
   mock.module("@/context/sdk", () => ({
@@ -509,6 +551,13 @@ beforeEach(() => {
   activationStarts.length = 0
   params = {}
   search = {}
+  newLayoutDesigns = false
+  automationsEnabled = false
+  navigations.length = 0
+  loops.length = 0
+  loopRuns.length = 0
+  pausedLoops.length = 0
+  cancelledLoopRuns.length = 0
   sentShell.length = 0
   syncedDirectories.length = 0
   selected = "/repo/worktree-a"
@@ -1794,6 +1843,66 @@ describe("prompt submit worktree selection", () => {
 
     expect(v2PromptPayloads).toHaveLength(1)
     expect(v2PromptPayloads[0]).toMatchObject({ sessionID: "session-1", delivery: "steer" })
+  })
+})
+
+describe("/loop commands", () => {
+  const submitText = async (text: string) => {
+    newLayoutDesigns = true
+    promptValue[0] = { type: "text", content: text, start: 0, end: text.length }
+    await newDraftControls().handleSubmit(submitEvent())
+  }
+
+  test("bare /loop opens the Automations surface and enables it", async () => {
+    await submitText("/loop")
+    expect(automationsEnabled).toBe(true)
+    expect(navigations).toEqual([`/automations?directory=${encodeURIComponent("/repo/main")}`])
+  })
+
+  test("/loop list opens the Automations surface", async () => {
+    await submitText("/loop list")
+    expect(navigations).toEqual([`/automations?directory=${encodeURIComponent("/repo/main")}`])
+  })
+
+  test("/loop stop pauses the project's only active loop and cancels its in-flight run", async () => {
+    loops.push(
+      { id: "lop_1", name: "Loop: ping", status: "active", directory: "/repo/main" },
+      { id: "lop_2", name: "Loop: paused", status: "paused", directory: "/repo/main" },
+      { id: "lop_3", name: "Loop: elsewhere", status: "active", directory: "/repo/other" },
+    )
+    loopRuns.push(
+      { id: "run_1", loopID: "lop_1", status: "running" },
+      { id: "run_2", loopID: "lop_1", status: "succeeded" },
+    )
+    await submitText("/loop stop")
+    expect(pausedLoops).toEqual(["lop_1"])
+    expect(cancelledLoopRuns).toEqual(["lop_1/run_1"])
+    expect(toasts.at(-1)?.title).toBe("Loop stopped")
+    expect(navigations).toEqual([])
+  })
+
+  test("/loop stop reports when nothing is running", async () => {
+    loops.push({ id: "lop_1", name: "Loop: paused", status: "paused", directory: "/repo/main" })
+    await submitText("/loop stop")
+    expect(pausedLoops).toEqual([])
+    expect(toasts.at(-1)?.title).toBe("No active loops")
+  })
+
+  test("/loop stop with several active loops sends the user to Automations to choose", async () => {
+    loops.push(
+      { id: "lop_1", name: "Loop: one", status: "active", directory: "/repo/main" },
+      { id: "lop_2", name: "Loop: two", status: "active", directory: "/repo/main" },
+    )
+    await submitText("/loop stop")
+    expect(pausedLoops).toEqual([])
+    expect(toasts.at(-1)?.title).toBe("Multiple loops are running")
+    expect(navigations).toEqual([`/automations?directory=${encodeURIComponent("/repo/main")}`])
+  })
+
+  test("an invalid /loop argument still shows usage", async () => {
+    await submitText("/loop 5")
+    expect(toasts.at(-1)?.title).toBe("Could not start loop")
+    expect(navigations).toEqual([])
   })
 })
 

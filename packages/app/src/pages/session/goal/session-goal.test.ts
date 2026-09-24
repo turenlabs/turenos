@@ -4,9 +4,7 @@ import {
   clearSessionGoalSnapshot,
   formatSessionGoalDuration,
   parseSessionGoalCommand,
-  parseSessionLoopCommand,
   resolveSessionGoalSubmission,
-  resolveSessionLoopSubmission,
   sessionGoalSubmissionMutation,
   sessionGoalElapsedSeconds,
   sessionGoalObjectiveError,
@@ -94,48 +92,5 @@ describe("session goal hydration races", () => {
     const current = goal({ revision: 3 })
     expect(clearSessionGoalSnapshot(current, { goalID: current.id, revision: 2 })).toBe(current)
     expect(clearSessionGoalSnapshot(current, { goalID: current.id, revision: 3 })).toBeUndefined()
-  })
-})
-
-describe("parseSessionLoopCommand", () => {
-  test("recognizes /loop with objective", () => {
-    expect(parseSessionLoopCommand("/loop Ship the feature")).toEqual({
-      type: "set",
-      objective: "Ship the feature",
-    })
-    expect(parseSessionLoopCommand(" /LOOP Complete the migration ")).toEqual({
-      type: "set",
-      objective: "Complete the migration",
-    })
-  })
-
-  test("handles multiline objectives in loop commands", () => {
-    expect(parseSessionLoopCommand("/loop Ship the slice\nand keep tests green")).toEqual({
-      type: "set",
-      objective: "Ship the slice\nand keep tests green",
-    })
-  })
-
-  test("rejects incomplete /loop commands", () => {
-    expect(parseSessionLoopCommand("/loop")).toBeUndefined()
-    expect(parseSessionLoopCommand("/loop  ")).toBeUndefined()
-    expect(parseSessionLoopCommand("/loops Ship it")).toBeUndefined()
-  })
-})
-
-describe("resolveSessionLoopSubmission", () => {
-  test("treats /loop commands as loop starts", () => {
-    expect(resolveSessionLoopSubmission("/loop Fix the bug", false)).toEqual({
-      type: "set",
-      objective: "Fix the bug",
-    })
-  })
-
-  test("treats plain text as objective only in loop mode", () => {
-    expect(resolveSessionLoopSubmission("Fix the bug", false)).toBeUndefined()
-    expect(resolveSessionLoopSubmission("Fix the bug", true)).toEqual({
-      type: "set",
-      objective: "Fix the bug",
-    })
   })
 })

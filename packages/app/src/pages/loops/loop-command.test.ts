@@ -24,7 +24,15 @@ describe("parseLoopCommand", () => {
     })
     expect(parseLoopCommand("/loop 5 find bugs").type).toBe("invalid")
     expect(parseLoopCommand("/loop 5m").type).toBe("invalid")
+    expect(parseLoopCommand("/loop stop now").type).toBe("invalid")
     expect(parseLoopCommand("explain /loop 5m").type).toBe("none")
+  })
+
+  test("parses loop management commands", () => {
+    expect(parseLoopCommand("/loop")).toEqual({ type: "manage" })
+    expect(parseLoopCommand("/loop ")).toEqual({ type: "manage" })
+    expect(parseLoopCommand("/loop list")).toEqual({ type: "manage" })
+    expect(parseLoopCommand("/loop stop")).toEqual({ type: "stop" })
   })
 })
 
