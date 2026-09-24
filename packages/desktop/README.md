@@ -14,16 +14,12 @@ bun dev
 
 ## Build
 
-This package has no `build` or `package` scripts. Stage the sidecar, build the
-JS assets, then bundle them as an application; the result is in `dist/`.
+Run the `build` script to build the app's JS assets, then `package` to
+bundle the assets as an application. The resulting app will be in `dist/`.
 
 ```bash
-bun ./scripts/prebuild.ts
-bunx electron-vite build
-bunx electron-builder --config electron-builder.config.ts --publish never
+bun run build && bun run package
 ```
-
-For an unsigned local dev app, see "Dev Builds" in the root `AGENTS.md`.
 
 ## Beta Rebuild And Restart
 
