@@ -198,9 +198,14 @@ export function startForgeScene(options: ForgeSceneOptions): ForgeScene {
     mouse.x = (e.clientX / window.innerWidth - 0.5) * 2
     mouse.y = (e.clientY / window.innerHeight - 0.5) * 2
   }
+  const size = { w: 0, h: 0 }
   const onResize = () => {
     const w = host.clientWidth || 1
     const h = host.clientHeight || 1
+    // setSize reallocates the drawing buffer, so skip the observer's initial no-op callback.
+    if (w === size.w && h === size.h) return
+    size.w = w
+    size.h = h
     camera.aspect = w / h
     camera.updateProjectionMatrix()
     renderer.setSize(w, h, false)
@@ -232,7 +237,7 @@ export function startForgeScene(options: ForgeSceneOptions): ForgeScene {
       renderer.dispose()
       // dispose() alone keeps the WebGL context alive; Chromium caps live contexts
       // and evicts the oldest, which blanks later logos after repeated remounts.
-      renderer.forceContextLoss()
+      if (!renderer.getContext().isContextLost()) renderer.forceContextLoss()
     },
   }
 
@@ -300,10 +305,13 @@ export function mountLaunchScreen(): LaunchScreen {
   const dismiss = () => {
     if (dismissed) return
     dismissed = true
-    forge.dispose()
     host.style.transition = `opacity ${FADE_MS}ms ease`
     host.style.opacity = "0"
-    setTimeout(() => host.remove(), FADE_MS + 50)
+    // Dispose after the fade: releasing the context clears the canvas immediately.
+    setTimeout(() => {
+      forge.dispose()
+      host.remove()
+    }, FADE_MS + 50)
   }
   forge.onSettled = () => {
     if (released) dismiss()
