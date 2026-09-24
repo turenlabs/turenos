@@ -38,6 +38,7 @@ import { SessionInput } from "@turenlabs/core/session/input"
 import { Prompt } from "@turenlabs/core/session/prompt"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
 import { SessionTaskActorClaimTable, SessionTaskTable } from "@turenlabs/core/session/task.sql"
+import { Loop } from "@turenlabs/core/loop"
 import {
   MessageTable,
   SessionInputTable,
@@ -69,6 +70,7 @@ const appLayer = AppNodeBuilder.build(
     Database.node,
     EventV2.node,
     SessionTaskV2.node,
+    Loop.node,
     Ripgrep.node,
   ]),
   [[InstanceStore.bootstrapNode, noopBootstrapLayer]],
@@ -2481,6 +2483,74 @@ describe("session HttpApi", () => {
         ).toHaveLength(1)
       }),
     { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
+    "cancels the bound loop run when its session is deleted",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const headers = { "x-forge-directory": test.directory }
+        const loops = yield* Loop.Service
+        const database = yield* Database.Service
+        const loop = yield* loops.create({
+          name: "delete bound session",
+          prompt: "do work",
+          intervalSeconds: 3600,
+          location: { directory: test.directory },
+        })
+        const run = yield* loops.runNow({ id: loop.id, owner: "test" })
+        const bound = yield* createSession({ title: "loop run session" })
+        yield* loops.recordRunSession({ id: run.id, owner: "test", sessionID: bound.id })
+        yield* loops.startRun({ id: run.id, owner: "test", sessionID: bound.id })
+
+        const removed = yield* requestJson<boolean>(pathFor(SessionPaths.remove, { sessionID: bound.id }), {
+          method: "DELETE",
+          headers,
+        })
+        expect(removed).toBe(true)
+        expect(yield* loops.getRun({ id: run.id })).toMatchObject({ status: "cancelled" })
+        expect(
+          yield* database.db.select().from(SessionTable).where(eq(SessionTable.id, bound.id)).all().pipe(Effect.orDie),
+        ).toEqual([])
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
+    "interrupts a running root drain while deleting the session",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const headers = { "x-forge-directory": test.directory, "content-type": "application/json" }
+        const session = yield* createSession({ title: "delete running session" })
+        const started = yield* request(`/api/session/${session.id}/shell`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ id: "msg_http_shell_delete", command: "sleep 60", timeout: 120_000 }),
+        })
+        expect(started.status).toBe(200)
+        yield* pollWithTimeout(
+          requestJson<{ data: Record<string, unknown> }>("/api/session/active", { headers }).pipe(
+            Effect.map(({ data }) => (data[session.id] ? true : undefined)),
+          ),
+          "V2 shell session never became active",
+          "5 seconds",
+        )
+
+        const removed = yield* requestJson<boolean>(pathFor(SessionPaths.remove, { sessionID: session.id }), {
+          method: "DELETE",
+          headers,
+        })
+        expect(removed).toBe(true)
+
+        const active = yield* requestJson<{ data: Record<string, unknown> }>("/api/session/active", { headers })
+        expect(active.data[session.id]).toBeUndefined()
+        const missing = yield* request(`/api/session/${session.id}`, { headers })
+        expect(missing.status).toBe(404)
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+    30_000,
   )
 
   it.instance(
