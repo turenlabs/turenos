@@ -43,6 +43,8 @@ const domains = [
 ] as const
 
 describe("i18n parity", () => {
+  // These sweeps load dozens of locale modules; slow filesystems (Windows CI)
+  // need far more than the default 5s test timeout.
   test("non-English locales have every English key", async () => {
     for (const domain of domains) {
       const [source, ...targets] = await Promise.all(
@@ -60,7 +62,7 @@ describe("i18n parity", () => {
         })
       }
     }
-  })
+  }, 30_000)
 
   test("non-English locales preserve English placeholders", async () => {
     for (const domain of domains) {
@@ -75,18 +77,19 @@ describe("i18n parity", () => {
         expect({ domain: domain.name, locale, mismatched }).toEqual({ domain: domain.name, locale, mismatched: [] })
       }
     }
-  })
+  }, 30_000)
 
   test("non-English locales translate targeted unseen session keys", async () => {
-    const source = await dictionary("./en.ts")
-    for (const locale of appLocales) {
-      const target = await dictionary(`./${locale}.ts`)
+    const [source, ...targets] = await Promise.all(
+      ["./en.ts", ...appLocales.map((locale) => `./${locale}.ts`)].map(dictionary),
+    )
+    for (const [index, target] of targets.entries()) {
       for (const key of ["command.session.previous.unseen", "command.session.next.unseen"]) {
-        expect(target[key]).toBeDefined()
-        expect(target[key]).not.toBe(source[key])
+        expect(target[key], appLocales[index]).toBeDefined()
+        expect(target[key], appLocales[index]).not.toBe(source[key])
       }
     }
-  })
+  }, 30_000)
 
   test("changed-file summary keys preserve rendered English copy and localize complete phrases", async () => {
     const source = await dictionary("../../../ui/src/i18n/en.ts")
@@ -94,14 +97,14 @@ describe("i18n parity", () => {
     expect(source["ui.sessionTurn.diffs.changed.other"].replace("{{count}}", "2")).toBe("2 Changed files")
     expect(source["ui.sessionTurn.diffs.changed"]).toBeUndefined()
 
-    for (const locale of appLocales) {
-      const target = await dictionary(`../../../ui/src/i18n/${locale}.ts`)
+    const targets = await Promise.all(appLocales.map((locale) => dictionary(`../../../ui/src/i18n/${locale}.ts`)))
+    for (const target of targets) {
       for (const key of ["ui.sessionTurn.diffs.changed.one", "ui.sessionTurn.diffs.changed.other"]) {
         expect(target[key].trim()).not.toBe("")
         expect(placeholders(target[key])).toEqual(["count"])
       }
     }
-  })
+  }, 30_000)
 })
 
 async function dictionary(file: string) {
