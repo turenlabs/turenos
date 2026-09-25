@@ -510,8 +510,9 @@ describe("SessionRunnerModel", () => {
       })
 
       const resolved = yield* SessionRunnerModel.resolve(session, catalog)
+      // The shared fixture caps output at 20 tokens; Anthropic needs max_tokens above the budget.
       const prepared = yield* LLMClient.prepare<Record<string, unknown>>(
-        LLM.request({ model: resolved, prompt: "Hello" }),
+        LLM.request({ model: resolved, prompt: "Hello", generation: { maxTokens: 32_000 } }),
       )
 
       expect(resolved.route.defaults.http?.body).toEqual({ custom_extension: { enabled: true } })
@@ -519,6 +520,38 @@ describe("SessionRunnerModel", () => {
         anthropic: { thinking: { type: "enabled", budget_tokens: 12000 } },
       })
       expect(prepared.body).toMatchObject({ thinking: { type: "enabled", budget_tokens: 12000 } })
+    }),
+  )
+
+  // Compaction and titles cap output far below a budget-based variant; that used to send an
+  // invalid budget_tokens >= max_tokens request that Anthropic rejects.
+  it.effect("drops a selected thinking budget on calls whose output cap cannot hold it", () =>
+    Effect.gen(function* () {
+      const catalog = model({ type: "aisdk", package: "@ai-sdk/anthropic", url: "https://anthropic.example/v1" }, [
+        {
+          id: ModelV2.VariantID.make("high"),
+          headers: {},
+          body: { thinking: { type: "enabled", budgetTokens: 16_000 } },
+        },
+      ])
+      const session = SessionV2.Info.make({
+        id: SessionV2.ID.make("ses_anthropic_budget"),
+        projectID: ProjectV2.ID.global,
+        title: "test",
+        model: { id: catalog.id, providerID: catalog.providerID, variant: ModelV2.VariantID.make("high") },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+        location: { directory: AbsolutePath.make("/project") },
+      })
+
+      const resolved = yield* SessionRunnerModel.resolve(session, catalog)
+      const prepared = yield* LLMClient.prepare<Record<string, unknown>>(
+        LLM.request({ model: resolved, prompt: "Summarise", generation: { maxTokens: 4_096 } }),
+      )
+
+      expect(prepared.body.max_tokens).toBe(4_096)
+      expect(prepared.body.thinking).toBeUndefined()
     }),
   )
 
