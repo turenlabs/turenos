@@ -30,6 +30,10 @@ bun test --cwd packages/core test/tool-subagent-self-improvement.test.ts
 ## Limits
 
 - The regression evidence is whatever the adjudicating agent supplies; TurenOS does not run the regression check itself.
+- Nothing requires a different agent or a person to adjudicate. Under the default permissions (the default agent allows
+  everything, and _Enforce permission checks_ is off, so `ask` resolves to `allow`), one agent can propose, pass, and
+  apply a change to its own definition without a prompt. Deny `apply_agent_improvement` or turn on enforcement to
+  require review.
 - Applying replaces the whole definition file; there is no merge with edits made after the baseline was taken.
 - In a Lobby session with the default `workspace` profile, `apply_agent_improvement` is denied (see [Lobby](./lobby.md)).
 

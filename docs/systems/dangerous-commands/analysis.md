@@ -72,8 +72,10 @@ rather than an argument list. It is the same two shell lists:
 ash  bash  csh  dash  fish  ksh  mksh  sh  tcsh  zsh  cmd  powershell  pwsh
 ```
 
-Both derive from `POSIX_SHELL` and `WINDOWS_SHELL` in `packages/core/src/shell-safety.ts`, so a new shell name added
-there reaches the wrapper scan, the refusal set, and `nested()` together.
+Both derive from `POSIX_SHELL` and `WINDOWS_SHELL` in `packages/core/src/shell-safety.ts`. A new POSIX shell added there
+also reaches `nested()`, which builds its bash set from `POSIX_SHELL`. Two lists are separate: `nested()` hard-codes
+`powershell`, `pwsh`, and `cmd`, and its `xargs` branch only descends into `bash`, `dash`, `sh`, `zsh`, `powershell`,
+and `pwsh`, so `xargs fish -c …` or `xargs ksh -c …` is not inspected.
 
 So `env -P /bin sh -c 'rm -rf "$HOME"'` and `sudo --user root sh -c 'rm -rf "$HOME"'` are refused as
 `target: "dynamic evaluator input"`.
@@ -155,5 +157,6 @@ drive-relative Windows paths such as `C:..`, Windows components with a trailing 
 away), absolute paths with a trailing separator or an embedded `.` component, multi-component relative paths, and every
 target that survives the earlier checks but is not a direct child of the working directory, `os.tmpdir()`, or `/tmp`.
 
-Single-quoted bash targets are exempt from wildcard, home, and variable interpretation, because the shell will not expand
-them either: `rm -rf '*'` and `rm -rf '~'` refer to files literally named `*` and `~` and are allowed.
+Quoted bash targets, single or double, are exempt from the wildcard and home checks, because the shell will not expand
+`*` or `~` inside quotes: `rm -rf '*'` and `rm -rf "~"` refer to files literally named `*` and `~` and are allowed. Only
+single-quoted targets also skip the variable check, since `$` still expands inside double quotes.

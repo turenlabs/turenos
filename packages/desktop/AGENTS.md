@@ -1,7 +1,7 @@
 # Desktop package notes
 
 - Renderer process should only call `window.api` from `src/preload`.
-- Main process should register IPC handlers in `src/main/ipc.ts`.
+- Main process IPC handlers go through `TrustedIpc` (`src/main/trusted-ipc.ts`): general handlers in `src/main/ipc.ts`, feature handlers beside their feature (`src/main/ssh/ipc.ts`, `src/main/wsl/ipc.ts`).
 
 ## Dev builds
 

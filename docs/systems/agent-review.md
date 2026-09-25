@@ -7,8 +7,8 @@ documentation, tests, and low-risk refactors skip it. This is an advisory, promp
 review service. The intent contract is admitted durably as part of the ordinary child prompt, but there is no dedicated
 structured or revision-bound intent record, drift score, review UI, or automatic feedback-to-patch conversion.
 
-For the nonblocking delegation and incremental board protocol used by those
-subagents, see [Durable Subagent Workstreams](./subagent-workstreams.md).
+For the nonblocking delegation and swarm-room protocol used by those
+subagents, see [durable subagent workstreams](./subagent-workstreams.md).
 
 ## Design
 
@@ -51,7 +51,7 @@ most one adversarial-review task for a parent task and do not automatically revi
 trace a direct dependency needed to prove or refute a finding, but it must not expand the assignment into a
 repository-wide audit.
 
-## Review Bundle
+## Review bundle
 
 An adversarial-review assignment should contain:
 
@@ -84,7 +84,7 @@ Passing only file paths is often insufficient for a large or concurrently edited
 reliably attribute pre-existing code to the current change. If changed regions or a bounded diff are unavailable, the
 reviewer states that attribution is limited and does not widen the review beyond the supplied change surface.
 
-## Writer Check
+## Writer check
 
 Before handoff, the stock built-in `worker` is prompted to:
 
@@ -98,7 +98,7 @@ Before handoff, the stock built-in `worker` is prompted to:
 Under its stock permissions, the worker cannot run shell commands or delegate. Exact verification remains a separate
 qualification task.
 
-## Reviewer Check
+## Reviewer check
 
 The stock built-in `adversarial-review` agent is read-only and evidence-first. It:
 
@@ -116,7 +116,7 @@ The stock built-in `adversarial-review` agent is read-only and evidence-first. I
 Style, best-practice, and design preferences are omitted unless they have a concrete behavioral consequence. If no
 defect is confirmed, the reviewer says so and identifies the boundaries it inspected.
 
-## Default Authority
+## Default authority
 
 Prompt guidance does not replace tool authority. With the stock built-in definitions and a review task spawned without
 write roots:
@@ -138,7 +138,7 @@ to a review or automatically invalidate it after another write. A later edit can
 this workflow does not automatically review repairs again, so the parent must establish final confidence through its own
 inspection and bounded qualification.
 
-## Quality Gate
+## Quality gate
 
 In-agent review and the [quality gate](./quality-gate/README.md) are complementary but separate.
 
@@ -154,7 +154,7 @@ In-agent review and the [quality gate](./quality-gate/README.md) are complementa
 The ratchet remains quiet and cheap enough to run after every write. Semantic review remains outside the mutation
 settlement path because it needs intent, repository context, and model judgment.
 
-## Research Boundary
+## Research boundary
 
 This workflow borrows prompt-level ideas from [From Code Review to Code Critique: Intent, Drift, and Spotlight for
 AI-Generated Diffs at Scale](https://arxiv.org/abs/2607.29516): keep intent separate from the implementation narrative,

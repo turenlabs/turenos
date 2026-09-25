@@ -14,7 +14,8 @@ artifacts back into this directory.
 - `manifests/skills/` — prompt-only skills and fixed-profile subagents (`skill:<id>`)
 - `manifests/mcp/` — hosted, customer-url, managed-package, and local MCP
   definitions (`mcp:<id>`)
-- `manifests/tools/` — packaged WASM tool entries
+- `manifests/tools/` — security scanner integrations (`security:<id>` adapters
+  that run declared host `commands`) and the built-in Yolk integration
 - Feed license notes and the skill quality rubric live in `docs/systems/developer-catalog-runtime/`.
 
 ## Workflow
@@ -47,8 +48,9 @@ artifacts back into this directory.
   cancels, or deletes anything upstream in `tools.write`, even when its name
   passes the validator's mutating-name check (`execute_*`, `publish_*`,
   `cancel_*`, and `run_*` do). Managed MCP contributions hide `tools.write`
-  until the user turns on Allow write tools, and their calls default to asking
-  for approval. A tool missing from `tools.write` is exposed read-only with no
+  until the user turns on Allow write tools, and their calls are configured as
+  `ask` (which prompts only while Enforce permission checks is on; it is off by
+  default, and `ask` then resolves to `allow`). A tool missing from `tools.write` is exposed read-only with no
   prompt. Any new adapter or contribution type that can write must keep the
   same opt-in default and must not grant write access from the manifest alone.
 - `managed` deployments carry the full package recipe in the manifest —

@@ -26,8 +26,13 @@ most restrictive effect wins: `deny` beats `ask` beats `allow`.
 
 Choosing "Allow always" — the reply is `always` — writes a row into the SQLite `permission` table scoped to the current
 project, and those rows are replayed as `effect: "allow"` rules. Because bash saves the exact command string, a saved
-bash grant matches only that exact command again. Saved grants can only upgrade an `ask` to an `allow`; a configured
-`deny` is checked first and is never overridable.
+bash grant normally matches only that exact command again. Saved rules are still evaluated with `Wildcard.match`, so a
+saved command that contains `*` or `?` also matches other commands that fit that pattern. Saved grants can only upgrade
+an `ask` to an `allow`; a configured `deny` is checked first and is never overridable.
+
+A delegated subagent task can narrow this further. When the task is given exact command grants, every `bash` call must
+match one of them exactly and run with `workdir` `.`; otherwise it is denied before the rules are evaluated. A task
+with write roots denies `edit` and `external_directory` targets outside those roots in the same way.
 
 Two things are worth stating plainly because they change what "protected" means in practice:
 
@@ -61,4 +66,5 @@ home-directory command arguments before enforcing scope" does the same for `cat 
 
 The scan is lexical. It sees literal absolute paths and home-relative paths in the command text, not paths assembled at
 run time, read from files, or reached through relative `..` traversal. With the default ruleset `external_directory` is
-`ask`, so while permission checks are not enforced these arguments resolve to `allow`.
+`ask`, except for the tool-output truncation directory and TurenOS's temporary directory (`Global.Path.tmp`), which are
+allowed. While permission checks are not enforced, the `ask` resolves to `allow` anyway.

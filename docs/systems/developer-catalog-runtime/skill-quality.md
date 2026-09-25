@@ -17,9 +17,9 @@ Catalog skills must be operational procedures, not role descriptions. Score ever
 | 1     | Work is numerically bounded and uncertainty or confidence is explicit. |
 | 1     | Every declared tool requirement is named verbatim in backticks.        |
 
-The rubric is deliberately structural so it can be checked without a model call. Sections and list items have minimum substance thresholds, so headings, one-word checklists, and padded filler cannot pass by themselves. Passing is necessary, not sufficient. Human review must still reject prompts that promise tools the runtime profile cannot use, duplicate another skill, or optimize wording only to satisfy the parser.
+The rubric is structural so a reviewer can score it by reading, without a model call; the repository has no automated scorer, so the score is recorded in review. A heading with no substance, a one-word checklist, or padded filler earns no point. Passing is necessary, not sufficient: review must still reject prompts that promise tools the runtime profile cannot use, duplicate another skill, or are worded only to earn points.
 
-## Review Scenarios
+## Review scenarios
 
 Before publication, reviewers should exercise each skill against:
 

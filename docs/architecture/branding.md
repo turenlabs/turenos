@@ -18,9 +18,9 @@ headless server operation, remote hosts over SSH, managed WSL backends, and back
 Desktop starts its local server directly in an Electron utility process; users do not need to install
 the CLI separately to use the local TurenOS application.
 
-The current executable still exposes broader commands, including agent runs, provider management,
-sessions, and upgrades. This policy defines the intended product roles; it does not claim those
-commands have been removed. Preserving `forge` and `forge-cli` for compatibility does not make the
+The executable also exposes broader commands, including agent runs, provider management,
+sessions, and upgrades. These commands remain supported entry points; this policy defines the
+intended product roles. Preserving `forge` and `forge-cli` for compatibility does not make the
 full existing command surface a parallel product direction. Command removal or renaming requires a
 separate implementation and compatibility review.
 
@@ -47,20 +47,20 @@ Keep a compatibility identifier exactly as it is when it is code, a command, a p
 variable, a package or namespace name, a URL, a serialized format, a protocol field, or a historical
 finding. Put these values in code formatting when writing about them so the distinction is clear.
 
-| Surface                    | Retain exactly                                                                                                                    | Why                                                                                                                                         |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| CLI and executable         | `forge`, `forge-cli`                                                                                                              | Existing scripts, installed binaries, shell completion, and process discovery use these names.                                              |
-| Packages and paths         | `forge`, `@turenlabs/forge`, `packages/forge`                                                                                     | Package resolution, imports, repository layout, and source links depend on them.                                                            |
-| Runtime namespaces         | `@forge/*`, `mcp__forge__*`, `ForgeEvent`, `ForgeHttpApi`                                                                         | Service tags, MCP routing, generated types, and API composition are serialized or imported identities.                                      |
-| Configuration              | `forge.json`, `forge.jsonc`, `.forge/`                                                                                            | Existing projects and user configuration resolve these paths.                                                                               |
-| Environment                | `FORGE_*`                                                                                                                         | Environment variable names are part of the CLI/server contract. Never invent a replacement prefix.                                          |
-| Local data                 | `forge.db`, `forge-dev.db`, `forge-local.db`, `~/.local/share/forge`, `~/Library/Caches/forge`                                    | Renaming storage paths can orphan databases, caches, credentials, or user state.                                                            |
-| Secret envelope            | `forge-secret:v1`                                                                                                                 | The prefix is authenticated serialized data and is parsed by the vault.                                                                     |
-| Protocol seams             | `x-forge-ticket`, `x-forge-workspace`, `ForgeHttpApi`                                                                             | Wire clients and middleware compare these exact values.                                                                                     |
-| Provider attribution       | `X-Title: Forge`, `X-Source` (two values, see below), `X-BILLING-INVOKE-ORIGIN: Forge`, `X-Cerebras-3rd-Party-Integration: Forge` | These identify registered provider integrations, not the Desktop display name; change them only with provider-specific registration review. |
-| Source and repository URLs | `https://github.com/turenlabs/forge` and URLs containing `/forge/`                                                                | URLs are technical links and external references, not display copy.                                                                         |
-| Application identity       | `com.turenlabs.forge`, `com.turenlabs.forge.dev`, `com.turenlabs.forge.beta`                                                      | Bundle IDs and OS data/keychain locations are durable identity.                                                                             |
-| Historical evidence        | An original Forge name in a dated finding, measurement, or compatibility record                                                   | Changing evidence makes the historical statement inaccurate.                                                                                |
+| Surface                  | Retain exactly                                                                                                                    | Why                                                                                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI and executable       | `forge`, `forge-cli`                                                                                                              | Existing scripts, installed binaries, shell completion, and process discovery use these names.                                              |
+| Packages and paths       | `forge`, `@turenlabs/forge`, `packages/forge`                                                                                     | Package resolution, imports, repository layout, and source links depend on them.                                                            |
+| Runtime namespaces       | `@forge/*`, `mcp__forge__*`, `ForgeEvent`, `ForgeHttpApi`                                                                         | Service tags, MCP routing, generated types, and API composition are serialized or imported identities.                                      |
+| Configuration            | `forge.json`, `forge.jsonc`, `.forge/`                                                                                            | Existing projects and user configuration resolve these paths.                                                                               |
+| Environment              | `FORGE_*`                                                                                                                         | Environment variable names are part of the CLI/server contract. Never invent a replacement prefix.                                          |
+| Local data               | `forge.db`, `forge-dev.db`, `forge-local.db`, `~/.local/share/forge`, `~/.cache/forge`                                            | Renaming storage paths can orphan databases, caches, credentials, or user state.                                                            |
+| Secret envelope          | `forge-secret:v1`                                                                                                                 | The prefix is authenticated serialized data and is parsed by the vault.                                                                     |
+| Protocol seams           | `x-forge-ticket`, `x-forge-workspace`, `ForgeHttpApi`                                                                             | Wire clients and middleware compare these exact values.                                                                                     |
+| Provider attribution     | `X-Title: Forge`, `X-Source` (two values, see below), `X-BILLING-INVOKE-ORIGIN: Forge`, `X-Cerebras-3rd-Party-Integration: Forge` | These identify registered provider integrations, not the Desktop display name; change them only with provider-specific registration review. |
+| Schema and external URLs | The config `$schema` value `https://github.com/turenlabs/forge/config.json` and other URLs containing `/forge/`                   | URLs are technical links and external references, not display copy.                                                                         |
+| Application identity     | `com.turenlabs.forge`, `com.turenlabs.forge.dev`, `com.turenlabs.forge.beta`                                                      | Bundle IDs and OS data/keychain locations are durable identity.                                                                             |
+| Historical evidence      | An original Forge name in a dated finding, measurement, or compatibility record                                                   | Changing evidence makes the historical statement inaccurate.                                                                                |
 
 LLM Gateway currently receives two different `X-Source` values. The Session V2 provider plugin sends `X-Source: Forge`
 ([`packages/core/src/plugin/provider/llmgateway.ts`](../../packages/core/src/plugin/provider/llmgateway.ts), pinned by
@@ -76,11 +76,11 @@ unless a separately reviewed migration explicitly changes the contract.
 
 | Avoid in new product prose  | Use instead                                                                                   | Preserve when it is the subject                                     |
 | --------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `# Forge Quality Gate`      | `# TurenOS Quality Gate`                                                                      | The filename or path `.forge-quality-gate-probe.ts`                 |
+| `# Forge quality gate`      | `# TurenOS quality gate`                                                                      | The filename or path `.forge-quality-gate-probe.ts`                 |
 | `Forge's session runner`    | `TurenOS's session runner`                                                                    | The symbol or service tag `@forge/v2/SessionExecution`              |
 | `The Forge desktop app`     | `The TurenOS desktop app`                                                                     | `packages/desktop` source references and `com.turenlabs.forge*` IDs |
 | `Forge tools are available` | `TurenOS tools are available`                                                                 | The MCP namespace `mcp__forge__*`                                   |
-| `Turen cache directory`     | `TurenOS cache directory`                                                                     | A literal path such as `~/Library/Caches/forge`                     |
+| `Turen cache directory`     | `TurenOS cache directory`                                                                     | A literal path such as `~/.cache/forge`                             |
 | `Forge package`             | `TurenOS package` when discussing the product; `@turenlabs/forge` when discussing the package | `@turenlabs/forge` and `packages/forge`                             |
 | `Turen's server`            | `TurenOS's server`                                                                            | `Turen Labs` as the company name                                    |
 
@@ -108,7 +108,7 @@ current product name. The main seams are:
    vocabulary at the time of observation. Correct a historical record only when the correction is
    explicitly about its accuracy; do not rewrite it solely for visual consistency.
 
-The rebrand changes the visible product vocabulary around these seams. It does not change their
+TurenOS naming applies to the visible product vocabulary around these seams. It does not change their
 meaning, lookup behavior, serialization, or storage location.
 
 ## Documentation checklist

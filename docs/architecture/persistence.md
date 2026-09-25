@@ -24,8 +24,9 @@ flowchart TB
 ```
 
 Core's path selection keeps channel-specific database names for compatibility. `Flag.FORGE_DB`
-can select an in-memory or absolute path; packaged channels use `forge.db`, while other channels
-use a sanitized channel suffix. See [`packages/core/src/database/database.ts`](../../packages/core/src/database/database.ts)
+can select an in-memory or absolute path, and a relative value resolves under the data directory; the `latest`, `beta`, and `prod` channels use `forge.db`, and
+every other channel (including a packaged dev build) uses `forge-<channel>.db` unless
+`FORGE_DISABLE_CHANNEL_DB` is set. See [`packages/core/src/database/database.ts`](../../packages/core/src/database/database.ts)
 and [`packages/core/src/global.ts`](../../packages/core/src/global.ts). Do not infer a new path from the
 TurenOS display name.
 
@@ -33,11 +34,11 @@ Large or bounded tool results have a second storage path. `ToolOutputStore` keep
 inline, and writes oversized text under the data directory when it exceeds the configured line or
 byte limits. The model receives a head/tail preview and a path to the full output. This is a bound,
 not a sandbox: the shell tool still has host-user authority, as documented in
-[`dangerous-commands.md`](../systems/dangerous-commands/README.md).
+[Dangerous commands](../systems/dangerous-commands/README.md).
 
 Credentials and other small sensitive values use `SecretVault`, which derives a scope-bound key and
 seals an authenticated AES-256-GCM envelope. The `forge-secret:v1` format and the vault environment
-names are compatibility identifiers and must not be renamed. See [`secure-storage.md`](../systems/secure-storage.md)
+names are compatibility identifiers and must not be renamed. See [Secure storage](../systems/secure-storage.md)
 and [`packages/core/src/secret-vault.ts`](../../packages/core/src/secret-vault.ts).
 
 Retention rewrites derived message and tool settlement copies but does not rewrite the append-only

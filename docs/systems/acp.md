@@ -23,12 +23,18 @@ configuration.
 
 ## Configuration
 
-| Option       | Default        | Meaning                                                                                   |
-| ------------ | -------------- | ----------------------------------------------------------------------------------------- |
-| `--cwd`      | current dir    | Accepted but not used; each ACP session uses the `cwd` in its own request.                |
-| `--hostname` | `127.0.0.1`    | Listener for the embedded server.                                                         |
-| `--port`     | `0` (any free) | Listener port.                                                                            |
-| `--insecure` | `false`        | Allow a non-loopback hostname without `FORGE_SERVER_PASSWORD`; otherwise startup refuses. |
+| Option          | Default                                                             | Meaning                                                                                   |
+| --------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `--cwd`         | current dir                                                         | Accepted but not used; each ACP session uses the `cwd` in its own request.                |
+| `--hostname`    | `server.hostname`, else `0.0.0.0` when mDNS is on, else `127.0.0.1` | Listener for the embedded server.                                                         |
+| `--port`        | `server.port`, else `0` (any free)                                  | Listener port.                                                                            |
+| `--mdns`        | `server.mdns`, else `false`                                         | Advertise the server over mDNS.                                                           |
+| `--mdns-domain` | `server.mdnsDomain`, else `forge.local`                             | mDNS domain name.                                                                         |
+| `--cors`        | none                                                                | Extra CORS origins, added to `server.cors`.                                               |
+| `--insecure`    | `false`                                                             | Allow a non-loopback hostname without `FORGE_SERVER_PASSWORD`; otherwise startup refuses. |
+
+The `server.*` defaults come from the global [configuration](./configuration.md); a flag given on the command line
+always wins.
 
 Like `forge serve`, the process needs `FORGE_SECRET_VAULT_KEY_ID` and `FORGE_SECRET_VAULT_KEY` outside tests; see
 [Secure storage](./secure-storage.md). Models, agents, and permissions come from the normal
@@ -44,8 +50,9 @@ bun test test/acp test/cli/acp
 ## Limits
 
 - Editor-supplied MCP servers fail session creation with `McpServersUnsupportedError`.
-- Authentication is TurenOS's own login; `authenticate` accepts only `forge-login`.
-- The embedded server listens only while the editor keeps stdin open; closing stdin ends the process.
+- `authenticate` only checks that the method is `forge-login` and returns success; it performs no login itself. With
+  the `terminal-auth` capability the editor is pointed at `forge auth login`.
+- The command handler returns when stdin ends, so the editor controls the process lifetime by closing stdin.
 
 ## Source
 

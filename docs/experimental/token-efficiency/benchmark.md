@@ -19,10 +19,10 @@ where noted below.
 # See the plan and the cost estimate without spending anything
 bun run packages/core/test/benchmark/token-efficiency/run.ts --dry-run
 
-# Full suite, 1 repetition (the reported results were produced by this)
+# Full suite, 1 repetition (produced the reported Claude Code and Codex rows)
 bun run packages/core/test/benchmark/token-efficiency/run.ts --yes
 
-# Piecemeal
+# Piecemeal (the reported TurenOS row is a --harness turen-claude-code run)
 bun run packages/core/test/benchmark/token-efficiency/run.ts \
   --harness turen-claude-code,claude-code --task trivial,edit --yes
 
@@ -41,15 +41,6 @@ per-run number.
 - `claude` on PATH and logged in (`claude auth status`)
 - `codex` on PATH and logged in
 - For the `turen-openai` arm only: `OPENAI_API_KEY` in the environment
-
-### Committing results
-
-`.gitignore` line 41 is a bare `core` pattern (intended for crash dumps) which
-also matches the `packages/core` directory, so **every new file under
-`packages/core/` is silently gitignored**. Existing tracked files are
-unaffected. To commit anything here you need `git add -f`, or the pattern needs
-anchoring to `/core`. This is a pre-existing repo-wide issue, not specific to
-this benchmark.
 
 ## Design
 
@@ -122,7 +113,7 @@ hold the underlying model fixed:
 - `openai-codex`: **codex** vs **turen-openai** — same intent on the OpenAI
   side.
 
-The recorded run used Haiku 4.5 on the Anthropic side; on the Codex
+The recorded runs used Haiku 4.5 on the Anthropic side; on the Codex
 side the benchmark account was restricted to `gpt-5.6-sol` (every mini-tier id
 was rejected with "not supported when using Codex with a ChatGPT account"), with
 reasoning effort pinned to `low` rather than inherited from

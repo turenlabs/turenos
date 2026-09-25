@@ -61,4 +61,4 @@ Native chronological system messages are route/model-specific. Anthropic Message
 
 Routes lower tool-call and tool-result messages into provider-native shapes. Streaming providers should emit `tool-input-delta` events while arguments arrive, then a final `tool-call` event with parsed input.
 
-Hosted (provider-defined) tools: surface the model's call and the provider's result as `tool-call` and `tool-result` events with `providerExecuted: true`, and lower hosted tool definitions into the provider-native shape. Which hosted tools each route accepts, and how callers continue after them, is in `docs/systems/model-provider-layer/llm-tool-dispatch.md`.
+Hosted (provider-defined) tools: surface the model's call and the provider's result as `tool-call` and `tool-result` events with `providerExecuted: true`, and when adding hosted-tool definitions, lower them into the provider-native shape (no route does yet; `lowerTool` sends every `request.tools` entry as a function tool). Which hosted tool results each route parses, and how callers continue after them, is in `docs/systems/model-provider-layer/llm-tool-dispatch.md`.

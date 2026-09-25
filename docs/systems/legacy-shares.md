@@ -33,6 +33,8 @@ bun test --cwd packages/forge test/share/share-next.test.ts
 
 - There is no way to create a new share.
 - A session marked shared with no local share record cannot be revoked from TurenOS.
+- Deleting a session that is marked shared revokes its share first and fails with a `500` if the revocation fails. So
+  without `FORGE_LEGACY_SHARE_ENDPOINT`, a legacy-shared session cannot be deleted.
 - The record does not say which backend created a share, so revocation depends on the operator pointing the endpoint
   at the right one.
 
@@ -41,4 +43,5 @@ bun test --cwd packages/forge test/share/share-next.test.ts
 - [`packages/forge/src/share/share-next.ts`](../../packages/forge/src/share/share-next.ts)
 - [`packages/forge/src/share/session.ts`](../../packages/forge/src/share/session.ts)
 - [`packages/core/src/share/sql.ts`](../../packages/core/src/share/sql.ts)
+- [`packages/forge/src/server/routes/instance/httpapi/handlers/session.ts`](../../packages/forge/src/server/routes/instance/httpapi/handlers/session.ts)
 - Tests: [`packages/forge/test/share/share-next.test.ts`](../../packages/forge/test/share/share-next.test.ts)

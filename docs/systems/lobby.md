@@ -40,7 +40,7 @@ allow.
 
 ## Configuration
 
-Settings > General holds the Lobby beta switch and, once it is on, the Lobby API URL (`lobbyAPIURL`, empty by default).
+Settings > Developer, a page that only dev-channel builds show, holds the Lobby beta switch and, once it is on, the Lobby API URL (`lobbyAPIURL`, empty by default).
 This user's guest display name defaults to `TurenOS guest`. During development, `http://127.0.0.1:8787` and
 `http://localhost:8787` are proxied through the Vite dev server under `/turen-lobby`.
 

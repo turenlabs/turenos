@@ -22,7 +22,7 @@ boundaries and [Branding](docs/architecture/branding.md) for retained compatibil
 TurenOS should make a useful security workflow available without spending the first hour wiring tools together:
 
 - repository and dependency reconnaissance;
-- Batou-powered code and application security analysis;
+- [Batou](docs/systems/batou.md)-powered code and application security analysis;
 - secret, SAST, dependency, and supply-chain checks behind one agent workflow;
 - evidence-preserving findings with file, line, command, and artifact provenance;
 - review and remediation loops that can prove a fix rather than merely suggest one;
@@ -37,7 +37,7 @@ The first milestone is a stable, continuously mergeable TurenOS distribution. Se
 - deep links (`forge://`), config (`forge.json`), and data paths (`.forge`) — retained as load-bearing compatibility identifiers for existing installs;
 - MCP, LSP, permission, session, and tool infrastructure inherited from [OpenCode](https://github.com/anomalyco/opencode);
 - signed TurenOS Desktop builds for macOS, Linux, and Windows;
-- a bundled `forge` utility for backend operations, with managed SSH and WSL server support;
+- a bundled `forge` utility (shipped in Desktop as the `forge-cli` binary) for backend operations, with managed SSH and WSL server support;
 - cross-platform release packaging and upstream compatibility tracking.
 
 TurenOS is not a sandbox. Agents can execute commands and modify files with your user privileges. Read [SECURITY.md](SECURITY.md) before using it on untrusted repositories.
@@ -62,8 +62,10 @@ Engineering documentation lives in [docs/](docs/README.md). Start with:
 This repository is the TurenOS monorepo. Three areas ship together:
 
 - **`packages/`** — TurenOS itself: a Bun + Turbo workspace covering the agent runtime, server, renderer, Electron host, SDKs, and the checked-in `packages/*-wasm` artifacts the runtime consumes.
-- **`tools/`** — the built-in WebAssembly security tools (formerly `wasm-tools`). Each `tools/<target>` is a self-contained, reproducible bounded-WASM build with pinned upstreams and provenance. See [tools/README.md](tools/README.md) and [tools/AGENTS.md](tools/AGENTS.md).
+- **`tools/`** — the built-in WebAssembly security tools. Each `tools/<target>` is a self-contained, reproducible bounded-WASM build with pinned upstreams and provenance. See [tools/README.md](tools/README.md) and [tools/AGENTS.md](tools/AGENTS.md).
 - **`services/catalog/`** — the canonical built-in extension catalog: data sources, skills, MCP server definitions, and tool manifests under `manifests/`. They compile into `packages/extensions` at build time; there is no remote catalog. See [services/catalog/README.md](services/catalog/README.md).
+
+`command-guard/` sits beside them as a standalone command-risk CLI for scripts and CI hooks. It is versioned on its own and TurenOS does not use it at runtime.
 
 ## Develop
 
@@ -90,7 +92,7 @@ bun run generate        # rewrite src/generated.ts
 bun run check           # verify generated output is current
 ```
 
-Normal builds do not need WASM toolchains — `packages/*-wasm` artifacts are checked in. Pushes to `main` that change `tools/<target>` trigger the `build-<target>` workflow on GitHub-hosted runners, which rebuilds and opens a PR updating the packaged artifact. PRs touching only `tools/`, `services/`, or `docs/` skip the app test matrix; PR checks still validate every `packages/*-wasm` checksum manifest and the generated extension catalog.
+Normal builds do not need WASM toolchains — `packages/*-wasm` artifacts are checked in. Pushes to `main` that change `tools/<target>` trigger the `build-<target>` workflow on GitHub-hosted runners, which rebuilds and opens a PR updating the packaged artifact; that workflow verifies the new checksums, and every other PR runs `bun run verify:wasm` in the `pr` workflow. PRs touching only `tools/`, `services/`, or `docs/` skip the `test` workflow, which is also where the generated extension catalog is checked, so run `bun run check` in `packages/extensions` yourself after a catalog-only change.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the pinned-runner fallback, build commands, and checks.
 
@@ -105,9 +107,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the pinned-runner fallback, build com
 - `packages/extensions` — the compiled extension catalog consumed by the server (`src/generated.ts` is generated; do not edit).
 - `packages/*-wasm` — checked-in, checksum-verified WASM tool packages produced from `tools/`.
 - `tools/` — WASM tool sources and build recipes; CI packs output into `packages/*-wasm`.
-- `services/catalog` — catalog manifest sources and authoring docs.
+- `services/catalog` — catalog manifest sources; the authoring guide is in [docs/](docs/systems/developer-catalog-runtime/authoring.md).
+- `command-guard` — standalone command-risk CLI; not part of the TurenOS runtime.
 
-All TurenOS-owned workspace packages use the `@turenlabs/*` scope. Upstream provider IDs and durable migration keys remain unchanged where compatibility requires them. See [branding and compatibility](docs/architecture/branding.md) before changing a `forge` identifier.
+Every TurenOS-owned workspace package uses the `@turenlabs/*` scope; the private root `package.json` is named `forge`. Upstream provider IDs and durable migration keys remain unchanged where compatibility requires them. See [branding and compatibility](docs/architecture/branding.md) before changing a `forge` identifier.
 
 ## Hard fork provenance
 

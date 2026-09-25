@@ -10,7 +10,7 @@ This is a Desktop-only feature that needs an `ssh` client on the desktop machine
 `win32` branches (`ssh.exe`, a `%TEMP%` control directory, hidden windows) alongside the POSIX path.
 The remote needs an SSH server and a POSIX shell; the managed installer supports Linux and macOS
 remote binaries. Native Windows remote startup is not implemented by this shim. The desktop starts
-a Forge server on remote loopback without requiring an additional network-facing application port.
+a TurenOS server (`forge serve`) on remote loopback without requiring an additional network-facing application port.
 
 Implementation lives in [`packages/desktop/src/main/ssh`](../../../packages/desktop/src/main/ssh) with
 the UI in [`packages/app/src/ssh`](../../../packages/app/src/ssh).
@@ -113,8 +113,10 @@ State flows one way: the controller mutates its `SshServersState` and emits it, 
 [`SshServersProvider`](../../../packages/app/src/ssh/context.tsx) writes it straight into the query cache,
 so the settings list, the add dialog, and the prompt host all read one snapshot.
 
-At most one long-running _job_ (host probe or forge install) runs at a time; starting a new one
-aborts the previous through its `AbortController`.
+The state tracks one long-running _job_ (host probe or forge install) at a time. Starting a new job
+replaces the one shown in state and aborts the previous job's `AbortController`, but the probe and
+install runners never pass that signal to their ssh commands, so the earlier job's remote work runs
+to completion.
 
 ## Attaching from the remote host
 
@@ -128,12 +130,16 @@ the connection.
 
 ## Operating notes
 
+The first two notes apply to every server; they matter most on remote hosts, where a slow link makes
+directory listings visible and a non-interactive SSH login often leaves user bin directories off `PATH`.
+
 - Directory browsing lists the current folder first and requests child listings only when expanded.
   The first expansion of an uncached folder waits for a server response.
-- On non-Windows hosts, tool lookup checks `PATH`, the managed tool bin directory, `~/.local/bin`,
-  then `~/bin`. Existing PATH matches take precedence. User-bin tools must be executable; Ruff and
-  OCamlformat launch the resolved path even when the directory is absent from PATH. This lookup
-  does not modify PATH for arbitrary child commands. Windows lookup is unchanged.
+- On non-Windows hosts, executable lookup (`packages/core/src/util/which.ts`, used for providers,
+  ripgrep, the shell, [formatters](../../systems/formatters.md), and language servers) checks `PATH`,
+  the managed tool bin directory, `~/.local/bin`, then `~/bin`. Existing PATH matches take
+  precedence. Formatters such as Ruff and OCamlformat launch the resolved path even when its
+  directory is absent from PATH. The lookup does not modify PATH for arbitrary child commands.
 - `secure password generation failed` means startup could not obtain 16 random bytes as a valid
   32-character hex password. Check `/dev/urandom` access and the `od`/`tr` utilities on the remote;
   there is no predictable-password fallback. Startup also stops if it cannot secure the run directory.

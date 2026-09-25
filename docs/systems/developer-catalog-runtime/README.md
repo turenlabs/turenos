@@ -1,16 +1,17 @@
 # Developer catalog runtime
 
-The Developer Catalog is built into the monorepo. `services/catalog/manifests/` holds the canonical manifests
-(data sources, skills, MCP servers, tools); `packages/extensions` compiles them into `src/generated.ts` at
-build time, and the server returns catalog items plus installed runtime state from `GET /api/extension`.
-There is no remote catalog endpoint.
+The built-in extension catalog, shown on the **Extend** page, is built into the monorepo. `services/catalog/manifests/`
+holds the canonical manifests (data sources, skills, MCP servers, tools); `packages/extensions` compiles them into
+`src/generated.ts` at build time, and the server returns catalog items plus installed runtime state from
+`GET /extension` (the `extension.list` endpoint). There is no remote catalog endpoint. Renderer logs for the catalog
+use the `[developer-catalog]` tag.
 
-## Dynamic Installation
+## Dynamic installation
 
 For catalog entries with no packaged runtime requirement — prompt-only skills and generic hosted MCPs — the
 renderer submits the catalog manifest with `Extension.Update`. The server validates and stores that manifest
-beside the extension's desired state, then rehydrates it on restart. Skill content is scanned by Vigil at
-install; reviewed manifests are recognized by digest in `packages/forge/src/skill/vigil.ts`.
+beside the extension's desired state, then rehydrates it on restart. A submitted skill manifest is scanned by Vigil
+first; see [Skill scanning](#skill-scanning-vigil).
 
 Installed manifests participate in the same MCP lifecycle, endpoint qualification, reviewed tool allowlist, lazy
 `mcp_search`/`mcp_load` broker limits, and result redaction as other built-in MCP integrations.
@@ -18,7 +19,20 @@ Installed manifests participate in the same MCP lifecycle, endpoint qualificatio
 Native tools and local MCP processes still require their audited adapters and packaged artifacts in the same
 TurenOS release; a manifest alone cannot install binaries or supply runtime code.
 
-## Read Path
+## Skill scanning (Vigil)
+
+Vigil is a malicious-prompt classifier that ships inside TurenOS: `packages/vigil-runtime` holds per-platform archives of
+the Vigil binary, model, and ONNX Runtime, extracted at build time, so nothing is downloaded when it runs. When a skill
+manifest is submitted for installation, `Vigil.scanManifest` classifies it and returns a label, a malicious probability,
+and the threshold.
+
+- A `malicious` label blocks the install unless the manifest's digest is on the reviewed list.
+- If the scanner is unavailable on the platform or the scan fails, the install is rejected. Vigil fails closed.
+- The reviewed list is `reviewedSkillDigests` in `packages/forge/src/skill/vigil.ts`: the SHA-256 of
+  `JSON.stringify(manifest)` for each reviewed catalog skill. Any edit to a catalog skill manifest changes its digest, so
+  refresh that list by hand when you change one; no script or test does it for you.
+
+## Read path
 
 The renderer emits these `[developer-catalog]` phases with one catalog-load `operationID`:
 
@@ -28,7 +42,7 @@ The renderer emits these `[developer-catalog]` phases with one catalog-load `ope
 
 Catalog traces contain counts and elapsed time. They never contain credentials or extension configuration values.
 
-## Update Path
+## Update path
 
 Every renderer action creates an `operationID` and sends it as transient `Extension.Update.operationID`.
 It is not persisted in desired extension state.
@@ -51,7 +65,7 @@ The server uses the same `operationID` in these structured messages:
 
 Search both renderer and sidecar logs for the same `operationID` to reconstruct one click.
 
-## State Machine
+## State machine
 
 `Enable` and `Connect` are separate commands:
 
@@ -67,7 +81,7 @@ Desired-state revisions fence observations. A background task from an older revi
 card state. Fiber interruption caused by disable, reconfiguration, or instance disposal is cancellation, not a
 user-visible failure.
 
-## Runtime Ownership
+## Runtime ownership
 
 Extension HTTP requests never own MCP connection or OAuth work. Each directory's MCP `InstanceState` owns a keyed
 `FiberMap`; the HTTP handler enqueues `extension:<manifest-id>` and returns. The worker survives the request, duplicate
@@ -80,10 +94,6 @@ tool registries refresh instead of remaining permanently empty.
 MCP toggles must not call project-wide instance disposal. Disable revokes and aborts managed network access
 process-wide, resets only the current MCP state, and lets sibling location resources close through their normal
 lifecycle.
-
-At desktop startup, Home hydrates session directories incrementally and cancels remaining hydration when route restore
-unmounts it. Global server readiness waits only for project identity; config, provider, and path queries are independent
-and must not delay restored-tab navigation.
 
 ## Troubleshooting
 

@@ -28,7 +28,8 @@ Project is optional. When it is left blank, the Automation runs from the selecte
 
 Two slash commands create a recurring prompt without opening the builder. Both take an interval of
 `<integer><s|m|h|d>` of at least 60 seconds, reject prompts with attachments, and turn on the Automations surface if it
-was off.
+was off. The composer recognizes them only in normal mode and only while the new layout designs setting
+(`settings.general.newLayoutDesigns`) is on; otherwise the text is sent as an ordinary prompt.
 
 ```text
 /automation 30m Check CI and summarize actionable failures
@@ -40,11 +41,11 @@ was off.
 - `/automation <interval> <prompt>` creates a one-step Automation named after the prompt.
 - `/loop <interval> <prompt>` asks for confirmation, then creates a loop named `Loop: <prompt>` in the current project
   that runs with the composer's current agent, model, and variant.
-- `/loop stop` pauses the project's only active loop and cancels its in-flight run. When several loops are active it
-  opens Automations to choose one; when none is, it says so.
+- `/loop stop` pauses the project's only active Automation, whether or not `/loop` created it, and cancels its
+  in-flight run. When several are active it opens Automations to choose one; when none is, it says so.
 - `/loop` or `/loop list` opens Automations for the current project.
 
-Automation and loop runs are sessions with the origin `automation`; loop run IDs start with `ses_loop_`. The Home
+Automation and loop runs are sessions with the origin `automation`; their Session IDs are `ses_loop_<run ID>`. The Home
 session library keeps them out of **All**, which shows only sessions you started, and groups them under the **Loops**
 filter.
 
@@ -79,9 +80,9 @@ An Automation fires on exactly one trigger: an interval, a cron schedule, or a s
 
 Cron fire times follow the Automation's IANA timezone (for example `America/New_York`); the default is `UTC`. Editing an Automation accepts at most one of a new interval, a new cron expression, or a new event trigger, and clears the previous schedule.
 
-**File-change triggers** watch the Automation's own directory on its selected server: each of 1 to 20 relative glob patterns (at most 256 characters each, never absolute and never escaping the directory, e.g. `src/**/*.ts`) is matched against files changed under that directory, and files outside it are ignored. Rapid changes coalesce: after the last matching change, the Automation waits out its debounce (`debounceMs`, default 1000 ms, 0 to 60000 ms) before firing once.
+**File-change triggers** watch the Automation's own directory on its selected server: each of 1 to 20 relative glob patterns (at most 256 characters each, never absolute and never escaping the directory, e.g. `src/**/*.ts`) is matched against files changed under that directory, and files outside it are ignored. The matcher supports `*`, `?`, and `**` path segments. The validator also accepts characters such as `{}`, `[]`, and `!`, but the matcher treats them as literal characters, not brace, class, or negation syntax. Rapid changes coalesce: after the last matching change, the Automation waits out its debounce (`debounceMs`, default 1000 ms, 0 to 60000 ms) before firing once.
 
-**Session-end triggers** fire when a session on the selected server in the Automation's directory ends. Optional filters narrow which endings count: `outcomes` (`success` and/or `failure`), a `sessionID`, and/or an `agent`. Omitted filters match anything, and the scheduler's own Automation runs never fire it.
+**Session-end triggers** fire each time a Session step on the selected server in the Automation's directory ends (`success`) or fails (`failure`), not once when the whole Session finishes. Optional filters narrow which events count: `outcomes` (`success` and/or `failure`), a `sessionID`, and/or an `agent`. Omitted filters match anything, and the scheduler's own Automation runs never fire it. An `agent` filter also passes when the Session has no recorded agent, and a Session whose directory cannot be resolved matches every session-end Automation regardless of directory.
 
 Event Automations have no ticking schedule: they stay active with no next run time until a matching event fires. If an event arrives while an earlier occurrence is still running, it is recorded as `skipped`, exactly like an overlapping interval tick. Events are delivered by the scheduler on the selected server — there is no network trigger source.
 
@@ -104,14 +105,14 @@ Every completed step persists an immutable output containing display text, stric
 
 The selected project path is available as `trigger.payload.repository` and `trigger.payload.directory`. Future event triggers can add more fields under the same `trigger.payload` namespace without changing workflow expressions.
 
-This follows the same product pattern as Hermes Automation Blueprints while keeping creation, editing, execution, and delivery inside TurenOS.
-
 ## Step conditions
 
 A step may carry two flow-control fields:
 
 - `when`: an optional condition string. Bindings in it are resolved first, and the step is skipped when the result is blank or falsy: `""`, `false`, `0`, `no`, `off`, `skip`, `null`, or `undefined` (case-insensitive). Omit it to always run. At most 2000 characters.
-- `on_failure`: exactly `stop` or `continue`. `stop` fails the run at that step; `continue` records the error on the step and runs the next one. Omit it to stop. There is no `skip` policy — overlapping occurrences are what get recorded as `skipped`.
+- `on_failure`: exactly `stop` or `continue`. `stop` fails the run at that step; `continue` records the error on the step and runs the next one. Omit it to stop. There is no `skip` policy — overlapping occurrences are what get recorded as `skipped`. A `when` condition that fails to evaluate is handled the same way as a failed step.
+
+The agent tools spell the failure policy `on_failure`; the stored workflow and the `/api/loop` payloads spell it `onFailure`. They are the same field. The builder has no controls for `when` or the failure policy, but it keeps both when it saves a step, so set them through an agent or the API.
 
 ## Execution
 
@@ -146,7 +147,7 @@ Automation definitions and runs are stored in SQLite. Existing installations ret
 - Cron expression: five fields, at most 120 characters.
 - Maximum workflow steps: 12.
 - Maximum active Automations: 50 overall, and 10 per project directory.
-- Maximum lifetime: seven days from creation.
+- Maximum lifetime: seven days from creation. An expiry can be set earlier but never extended past that. When it passes, the Automation's status becomes `expired`: it stops firing, and edits are rejected with "Loop has expired". To keep the workflow running, create a new Automation from it.
 - Overlap policy: skip.
 
 ## Server selection

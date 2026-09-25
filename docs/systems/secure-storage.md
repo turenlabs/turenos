@@ -26,13 +26,14 @@ macOS Keychain / Windows DPAPI / Linux Secret Service or KWallet
 ```
 
 The wrapped key record contains only a format version, a non-secret key ID, and `safeStorage` ciphertext. The raw key is
-never written to the database, app config, renderer storage, command-line arguments, or native sidecar environment.
+never written to the database, app config, renderer storage, or any command line. Native `forge serve` backends (WSL,
+SSH, and headless) do receive it in their startup environment, as described next.
 
 The desktop sidecar receives the raw key in the utility-process `start` message and installs it with
-`SecretVault.configure` before the server layer graph builds. The WSL sidecar receives the key through
-its startup input, and the SSH remote receives it on stdin as a short script piped to `sh -s` (see
-[SSH remote servers](../operations/ssh-remote/README.md)); neither path places it in a command line.
-Its temporary bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`, `FORGE_SECRET_VAULT_KEY`) are deleted when the
+`SecretVault.configure` before the server layer graph builds. The WSL and SSH backends receive it as
+`export` lines in a startup script piped over stdin (see [WSL backends](../operations/wsl.md) and
+[SSH remote servers](../operations/ssh-remote/README.md)), so it reaches the native server's environment without
+appearing in a command line. These bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`, `FORGE_SECRET_VAULT_KEY`) are deleted when the
 Secret Vault layer initializes and before normal child tools are started. Headless server startup reads the same two
 variables; without them, non-test startup fails instead of falling back to an ephemeral or plaintext mode.
 
@@ -59,9 +60,10 @@ Concrete roots:
   `forge-<channel>.db` unless `FORGE_DISABLE_CHANNEL_DB` is set; `FORGE_DB` overrides the path entirely. The database,
   WAL, and SHM files are chmod `0600` where the platform supports it.
 
-Electron derives the OS keychain item from `app.getName()` as `"<name> Safe Storage"` — "Forge Safe Storage" in the
-macOS Keychain. The internal app name deliberately stays `Forge` after the TurenOS rename so the existing Keychain item
-keeps decrypting the wrapped key; changing it requires a credential migration.
+Electron derives the OS keychain item from `app.getName()` as `"<name> Safe Storage"`: "Forge Safe Storage" for the
+prod channel, "Forge Beta Safe Storage" for beta, and "Forge Dev Safe Storage" for dev and unpackaged builds. The
+internal app names deliberately keep `Forge` after the TurenOS rename so the existing Keychain item keeps decrypting the
+wrapped key; changing them requires a credential migration.
 
 ## Platform behavior
 
@@ -201,8 +203,9 @@ Repository startup migrations follow this sequence:
 Never treat arbitrary non-envelope text as a valid legacy secret. Validation must happen before sealing so corrupt data is
 not converted into apparently valid ciphertext.
 
-`auth.json` and `mcp-auth.json` are atomically moved to unique staging paths before cleanup. A staged file is deleted only
-when its exact contents are represented in encrypted storage. Conflicts or changed files are retained.
+`auth.json` is atomically moved to a unique staging path (`auth.json.migrating-<pid>-<uuid>`) and `mcp-auth.json` to the
+fixed `mcp-auth.json.migrating` before cleanup. A staged file is deleted only when its exact contents are represented in
+encrypted storage. Conflicts or changed files are retained.
 
 SQLite uses `PRAGMA secure_delete = ON`, but migration cannot guarantee forensic erasure from SSD wear leveling,
 copy-on-write snapshots, external backups, or previously copied files. High-value credentials should be rotated when prior

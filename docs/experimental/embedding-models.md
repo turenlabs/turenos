@@ -1,6 +1,6 @@
 # Embedding model benchmark
 
-Status: benchmark, results recorded 2026-09-03.
+Status: benchmark, as of 2026-09-03 (the date the results were recorded).
 
 Compares small embedding models against the BM25-style baseline for memory and code retrieval, to decide whether an
 embedding layer earns its place. Run the commands from `packages/plugin`.
@@ -14,8 +14,10 @@ not committed; set the environment variables for the candidates you want to
 run:
 
 The production-facing `packages/plugin/src/potion.ts` loader is dependency-free and downloads
-only the pinned Potion safetensors and tokenizer artifacts when Core semantic
-memory is enabled. The Python dependencies below are benchmark-only.
+only the pinned Potion safetensors and tokenizer artifacts. Core loads it in two places: semantic memory
+(`packages/core/src/memory/semantic.ts`) when `semantic_memory` is enabled, and `code_search` query expansion
+(`packages/core/src/search/index.ts`, cached under `code-search-embeddings`) on every query regardless of that
+setting. The Python dependencies below are benchmark-only.
 
 ```sh
 MINILM_MODEL=/path/to/model_int8.onnx \
@@ -39,7 +41,7 @@ Candidate model files and formats:
 - [snowflake-arctic-embed-s INT8](https://huggingface.co/Snowflake/snowflake-arctic-embed-s/tree/main/onnx), approximately 34 MB, 384 dimensions
 - [snowflake-arctic-embed-xs INT8/FP16](https://huggingface.co/Snowflake/snowflake-arctic-embed-xs/tree/main/onnx), approximately 23/45.3 MB, 384 dimensions
 - [mxbai-embed-xsmall-v1 INT8](https://huggingface.co/mixedbread-ai/mxbai-embed-xsmall-v1/tree/main/onnx), approximately 24.4 MB, 384 dimensions
-- [potion-base-8M](https://huggingface.co/minishlab/potion-base-8M), approximately 30 MB deployed, static 256 dimensions
+- [potion-base-8M](https://huggingface.co/minishlab/potion-base-8M), about 31 MB for the [pinned model and tokenizer](https://huggingface.co/api/models/minishlab/potion-base-8M/revision/bf8b056651a2c21b8d2565580b8569da283cab23?blobs=true), static 256 dimensions ([pinned configuration](https://huggingface.co/minishlab/potion-base-8M/blob/bf8b056651a2c21b8d2565580b8569da283cab23/config.json))
 - [potion-code-16M-v2](https://huggingface.co/minishlab/potion-code-16M-v2), approximately 32 MB deployed, static 256 dimensions
 - [pubmedbert-base-embeddings-8M](https://huggingface.co/NeuML/pubmedbert-base-embeddings-8M), approximately 31 MB deployed, static 256 dimensions
 - [ogma-small](https://huggingface.co/axiotic/ogma-small), approximately 37 MB with ONNX weights and tokenizer, 256 dimensions; CC-BY-NC-4.0

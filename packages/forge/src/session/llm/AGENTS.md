@@ -5,12 +5,14 @@
 - `ai-sdk.ts` converts AI SDK `fullStream` parts into `@turenlabs/llm` `LLMEvent`s. This is the default runtime path.
 - `native-request.ts` converts the normalized session input into a native `@turenlabs/llm` `LLMRequest`. It does not execute requests.
 - `native-runtime.ts` is the opt-in native runtime adapter. It decides whether a selected model is supported, builds the native request, bridges session tools into native executable tools, and delegates transport to `LLMClient` / `RequestExecutor`.
+- `claude-code-direct.ts` is the always-on path for Claude Code and Muse Code models. It lowers the request with `native-request.ts`, routes it to the CLI bridge through `LLMClient`, and dispatches CLI tool calls with `ToolRuntime.dispatch` over a private MCP namespace.
 
-The runtime-selection flow and its diagram are in `docs/systems/model-provider-layer/README.md` at the repository root.
+The three runtimes are described in the "Legacy Forge session processor" section of `docs/systems/model-provider-layer/README.md`; its diagram covers Session V2 only.
 
 ## Seams
 
-- `../llm.ts` imports `LLMClient` from `@turenlabs/llm/route`; native execution is the only path that calls it directly.
+- `../llm.ts` imports `LLMClient` from `@turenlabs/llm/route` and passes it to the native and CLI-direct paths; the AI SDK path never calls it.
+- `../llm.ts` selects `LLMClaudeCodeDirect` from `./llm/claude-code-direct` before any other runtime when the provider is Claude Code or Muse Code; those models reject connection policies.
 - `../llm.ts` imports `LLMAISDK` from `./llm/ai-sdk`; the AI SDK path still calls `streamText(...)` locally, then adapts `result.fullStream` into shared `LLMEvent`s.
 - `../llm.ts` imports `LLMNativeRuntime` from `./llm/native-runtime`; this is the runtime-selection seam. Unsupported native requests return a reason and fall back to AI SDK.
 - `native-runtime.ts` imports `LLMNative` from `./native-request`; this keeps request lowering separate from transport and tool execution.

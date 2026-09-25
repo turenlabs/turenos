@@ -12,6 +12,3 @@ there, not here.
   generation fails fast.
 - `src/catalog.ts` builds the lookup maps (`get`, `byAdapter`,
   `writeToolActions`) over the generated manifests.
-- Catalog skills are installed by manifest submission and scanned by Vigil;
-  content changes require regenerating `reviewedSkillDigests` in
-  `packages/forge/src/skill/vigil.ts` (see `services/catalog/AGENTS.md`).

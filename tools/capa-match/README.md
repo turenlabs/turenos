@@ -3,8 +3,9 @@
 Bounded static-subset capa capability matcher for Turen agent tools,
 compiled to WebAssembly with wasm-bindgen. The module embeds a compiled
 form of the [mandiant/capa-rules](https://github.com/mandiant/capa-rules)
-ruleset at commit `805f9eaccfb6a4e1ddffc809d71d1e2b5ccc15e5` (~1,050
-rules) and evaluates it over caller-supplied bytes.
+ruleset at commit `805f9eaccfb6a4e1ddffc809d71d1e2b5ccc15e5` (about 1,050
+rules; `capa_ruleset` reports the exact `rule_count`) and evaluates it over
+caller-supplied bytes.
 
 The module is deterministic and offline: no filesystem, network,
 subprocess, environment, or clock access. Malformed or hostile input
@@ -46,16 +47,16 @@ Every operation returns a JSON `String` beginning with
 `{"schema_version":1,"error":"<code>","message":"<detail>"}` as the same
 string — the boundary never throws.
 
-| Function | Signature | Result |
-| --- | --- | --- |
-| `capa_match` | `(input, options) -> JSON` | Match the embedded ruleset: `capabilities` sorted by namespace/name with `hits`, `lib`, `degraded`, `unsupported`, `attack`/`mbc`, and bounded `evidence`; plus `capability_count`, `skipped_count`/`skipped_by_reason`, `unsupported_features`, `scan_truncated`, `budget_exhausted`, `truncated`, `warnings`, `input`/`features`/`ruleset` summaries |
-| `capa_features` | `(input, options) -> JSON` | The extracted `FeatureSet`: `formats`/`os`/`arch`, `sections` (name/offset/size/entropy), `libraries`, `imports`, `exports`, `api_features`/`import_features` samples, `strings` stats with a bounded distinct-value sample, `embedded_pe` offsets, `forwarded_export`, `warnings`, `truncated` |
-| `capa_ruleset` | `(options) -> JSON` | Ruleset metadata: `commit`, `imported`, `rule_count`/`lib_count`/`degraded_count`/`evaluable_count`/`skipped_count`, `skipped_by_reason`, `namespaces`, `unsupported_feature_kinds`, `exact_byte_patterns`, `parse_errors` |
+| Function        | Signature                  | Result                                                                                                                                                                                                                                                                                                                                                 |
+| --------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `capa_match`    | `(input, options) -> JSON` | Match the embedded ruleset: `capabilities` sorted by namespace/name with `hits`, `lib`, `degraded`, `unsupported`, `attack`/`mbc`, and bounded `evidence`; plus `capability_count`, `skipped_count`/`skipped_by_reason`, `unsupported_features`, `scan_truncated`, `budget_exhausted`, `truncated`, `warnings`, `input`/`features`/`ruleset` summaries |
+| `capa_features` | `(input, options) -> JSON` | The extracted `FeatureSet`: `formats`/`os`/`arch`, `sections` (name/offset/size/entropy), `libraries`, `imports`, `exports`, `api_features`/`import_features` samples, `strings` stats with a bounded distinct-value sample, `embedded_pe` offsets, `forwarded_export`, `warnings`, `truncated`                                                        |
+| `capa_ruleset`  | `(options) -> JSON`        | Ruleset metadata: `commit`, `imported`, `rule_count`/`lib_count`/`degraded_count`/`evaluable_count`/`skipped_count`, `skipped_by_reason`, `namespaces`, `unsupported_feature_kinds`, `exact_byte_patterns`, `parse_errors`                                                                                                                             |
 
 ## Options
 
 ```json
-{"maxResults": 4096, "includeEvidence": true, "includeSkipped": false, "includeLib": false}
+{ "maxResults": 4096, "includeEvidence": true, "includeSkipped": false, "includeLib": false }
 ```
 
 - `maxResults` (1–4096): caps the emitted `capabilities` list;
@@ -73,15 +74,15 @@ string — the boundary never throws.
 
 ## Hard limits
 
-| Bound | Value |
-| --- | --- |
-| Input bytes | 32 MiB (`input_too_large`) |
-| Options JSON | 4 KiB (`options_too_large`) |
-| JSON report output | 4 MiB (`output_too_large`) |
-| Matched rules emitted | 4,096 (`results_truncated`) |
-| Evidence per rule | 32 entries × 8 locations (`evidence_truncated`) |
-| Aggregate evidence | 4,096 entries |
-| Decoded rules blob | 16 MiB (`ruleset_decode_failed`) |
+| Bound                 | Value                                           |
+| --------------------- | ----------------------------------------------- |
+| Input bytes           | 32 MiB (`input_too_large`)                      |
+| Options JSON          | 4 KiB (`options_too_large`)                     |
+| JSON report output    | 4 MiB (`output_too_large`)                      |
+| Matched rules emitted | 4,096 (`results_truncated`)                     |
+| Evidence per rule     | 32 entries × 8 locations (`evidence_truncated`) |
+| Aggregate evidence    | 4,096 entries                                   |
+| Decoded rules blob    | 16 MiB (`ruleset_decode_failed`)                |
 
 Limits apply before allocation or serialization. Consumers run each
 call in a fresh worker; the embedded ruleset is decoded and compiled per

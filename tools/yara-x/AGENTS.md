@@ -12,5 +12,5 @@ Rules for `tools/yara-x`, on top of the shared rules in `tools/AGENTS.md`.
 - Initialize WebAssembly from explicit bytes and explicitly free compiler,
   rules, and scanner objects in tests and consumers.
 
-The self-hosted workflow is the authoritative YARA-X build and must verify the
-normal scanner API plus the pre-serialization result bounds.
+`.github/workflows/build-yara-x.yml` is the authoritative YARA-X build (GitHub-hosted in `turenlabs/turenos`,
+self-hosted elsewhere) and must verify the normal scanner API plus the pre-serialization result bounds.

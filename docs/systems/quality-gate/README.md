@@ -1,4 +1,4 @@
-# TurenOS quality gate
+# Quality gate
 
 TurenOS's quality gate is a deterministic check inside the agent tool loop. It looks only at code the agent is changing
 and adds an advisory when a patch introduces a strong signal of unfinished or unnecessarily complex code.
@@ -15,7 +15,7 @@ Quality ratchet: complete or remove the new placeholder implementation.
 Edits below the threshold receive no note. The user sees no additional workflow, TurenOS makes no additional model call, and the
 turn spends no additional output tokens on the gate.
 
-## Why It Exists
+## Why it exists
 
 Coding agents tend to extend the same implementation repeatedly. A locally reasonable branch, wrapper, or placeholder
 can become structural debt after several feature turns. Correctness tests often continue to pass while the code becomes
@@ -31,7 +31,7 @@ The gate targets a narrow set of high-signal mutations:
 It does not attempt to grade general code quality or redesign working code. Existing complexity is outside its scope;
 the ratchet responds only to the current mutation.
 
-## Loop Integration
+## Loop integration
 
 The built-in `complexity-ratchet` plugin registers one Location-scoped `tool.execute.after` callback. The callback runs
 at the normal tool settlement boundary after successful `edit`, `write`, and `apply_patch` calls.
@@ -58,54 +58,38 @@ handoff when the relevant specialist and subagent tools are available. It uses t
 changed regions or a bounded diff, and the stock read-only adversarial reviewer; it is not part of the per-tool
 quality-ratchet settlement path.
 
-### Claude Code `-p`
+### Claude Code provider
 
-Claude Code normally executes tools inside the `claude -p` subprocess, which would bypass TurenOS's settlement boundary.
-TurenOS prevents that path:
-
-- all native Claude tools and ambient settings are disabled;
-- the current turn's policy-filtered TurenOS tool definitions are exposed through a private turn-scoped loopback MCP
-  server;
-- each MCP call settles through the same captured `ToolRegistry` generation used by other providers;
-- duplicate MCP envelopes from Claude's output stream are suppressed in favor of TurenOS's canonical tool lifecycle;
-- the annotated result is returned to Claude inside the same `-p` run before its next model turn.
-
-When the runner disables tools entirely, such as at the configured maximum step, the transport exposes no TurenOS MCP
-server and Claude's native tools remain disabled.
-
-See [Claude Code tool routing](../../providers/claude-code/tool-routing.md) for the capability, isolation, retry, lifecycle, teardown,
-and verification details.
-
-Source:
-
-- [`packages/core/src/plugin/complexity-ratchet.ts`](../../../packages/core/src/plugin/complexity-ratchet.ts)
-- [`packages/core/src/plugin/internal.ts`](../../../packages/core/src/plugin/internal.ts)
-- [`packages/core/src/session/runner/claude-code-mcp.ts`](../../../packages/core/src/session/runner/claude-code-mcp.ts)
-- [`packages/core/src/tool/interceptor.ts`](../../../packages/core/src/tool/interceptor.ts)
+The gate also applies when the Claude Code CLI is the model provider (TurenOS runs it in non-interactive `-p` mode):
+TurenOS disables Claude's native tools and routes its mutations back through the same `ToolRegistry` settlement
+boundary, so they are scored like any other edit. See [Claude Code tool routing](../../providers/claude-code/tool-routing.md).
 
 ## Scoring
 
 The advisory threshold is **8 points**.
 
-| Signal                                                              |               Score |
-| ------------------------------------------------------------------- | ------------------: |
-| At least one executable placeholder                                 |                   8 |
-| Empty named function or method                                      | 3 each, capped at 9 |
-| At least eight normalized duplicate additions                       |                   8 |
-| Net growth of at least 40 nonblank lines                            |                   2 |
-| One added run of at least 40 nonblank lines                         |                   2 |
-| At least six net new branch lines                                   |                   3 |
-| At least ten net new branch lines                                   |        3 additional |
-| Branch density of at least 15%, with at least four net new branches |                   2 |
+| Signal                                                                                    |               Score |
+| ----------------------------------------------------------------------------------------- | ------------------: |
+| At least one executable placeholder                                                       |                   8 |
+| Empty named function or method                                                            | 3 each, capped at 9 |
+| At least eight normalized duplicate additions                                             |                   8 |
+| Net growth of at least 40 nonblank lines                                                  |                   2 |
+| One added run of at least 40 nonblank lines                                               |                   2 |
+| At least six net new branch lines                                                         |                   3 |
+| At least ten net new branch lines                                                         |        3 additional |
+| Branch density of at least 15%, with at least four net new branches and eight added lines |                   2 |
 
 The size signals cannot reach the threshold by themselves. A large branch-free data table, generated declaration, or
 straight-line implementation therefore remains silent.
+
+Branch density divides the gross number of added branch lines by the added nonblank lines; removed branches count only
+toward the net-growth condition.
 
 Branch markers include common imperative and pattern-matching constructs such as `if`, `case`, `catch`, `match`,
 `when`, loops, `&&`, and `||`. This is deliberately a cross-language lexical signal, not a claim to calculate precise
 cyclomatic complexity.
 
-## Lexical Filtering
+## Lexical filtering
 
 Before branch and placeholder markers are counted, a bounded lexer blanks common comments, quoted strings, template
 strings, Python triple-quoted text, and block comments while preserving line structure. This prevents documentation
@@ -118,7 +102,7 @@ export const help = "if authentication fails, sign in again"
 The lexer is not a parser. It exists only to remove obvious lexical noise at low cost. When the gate cannot make a
 confident assessment, silence is preferred over a warning.
 
-## Tool Behavior
+## Tool behavior
 
 ### `edit`
 
@@ -137,20 +121,21 @@ A newly created file is scored as an addition. An overwrite has no before image 
 checks only unequivocal post-state signals such as executable placeholders and several empty implementations. It does
 not infer growth, duplication, or branch deltas for overwrites.
 
-## Cost Controls
+## Cost controls
 
 - Analysis is synchronous and local; it performs no I/O and makes no model call.
 - A change larger than 32,000 UTF-16 characters is skipped.
 - Replacement multiplication is capped at 1,000.
-- Generated, vendored, distribution, coverage, fixture, snapshot, and migration paths are ignored.
+- Generated (`generated/`, `gen/`), vendored, distribution, `build/`, coverage, fixture, snapshot, and migration paths
+  are ignored.
 - Documentation, data, lock, source-map, and minified file extensions are ignored.
-- Failed and denied tool calls receive no quality note because the settlement boundary does not append notes to errors.
+- Failed and denied tool calls receive no quality note because the ratchet's observer returns early for them. The
+  registry itself would append a note to an error result.
 - At most one quality note is appended to a tool result.
-- Claude Code mutation routing starts one authenticated loopback MCP server only for a turn that has routed tools.
 
 These choices favor predictable latency and low interruption over exhaustive detection.
 
-## Calibration Harness
+## Calibration harness
 
 The threshold is exercised against a curated fixture corpus rather than selected only by intuition. The current corpus
 contains 21 labeled changes across TypeScript, Python, Go, Rust, Java, and C:
@@ -184,7 +169,7 @@ bun run test test/plugin/complexity-ratchet.test.ts
 bun run typecheck
 ```
 
-## Live Testing
+## Live testing
 
 The safest end-to-end check uses a disposable file and the real mutation tool. Create an obvious placeholder:
 
@@ -223,8 +208,8 @@ observe the note, restore it in the next tool call, and verify the original beha
 - It does not understand symbols, call graphs, types, macros, or runtime reachability.
 - It may miss complexity spread across several individually small edits.
 - Changes above the size bound are skipped rather than sampled.
-- A partially successful `apply_patch` that ends in an error can leave earlier mutations behind, but after-hook notes are
-  not model-visible on error settlements. The normal patch error still reports which operations were applied.
+- A partially successful `apply_patch` that ends in an error can leave earlier mutations behind, but the ratchet emits
+  no note when `apply_patch` ends in an error. The normal patch error still reports which operations were applied.
 - An intentional concrete placeholder may be flagged. Abstract Python methods marked with nearby `@abstractmethod` are
   exempted, but framework-specific extension conventions are not modeled.
 

@@ -61,9 +61,16 @@ once and retries `ensure`. Install has two ordered strategies:
 If neither applies, the error names the manual fallback (`curl -fsSL …/install | bash`).
 
 The same install path is exposed as an explicit action: settings show the remote's detected forge
-path and version against the desktop version, and **Install/Update** runs `installForge`, re-probes,
+path and version against the desktop version, and **Install TurenOS** or **Update TurenOS** runs `installForge`, re-probes,
 asserts via `expectSshForgeVersion` that the remote now reports the expected version — failing
-loudly if it does not — and restarts the server.
+loudly if it does not — and then reconnects with `startServer`.
+
+The reconnect does not restart the remote process. `startServer` only closes and rebuilds the local
+tunnel, and the shim's `ensure` finds the still-running `forge serve` and reattaches to it. Replacing
+`~/.forge/bin/forge` does not affect that process, so the previous version keeps serving until the
+server stops. To run the new version after an update, choose **Stop remote server** from the
+server's menu, then **Reconnect**: the stop runs `forge-remote stop`, and the next `ensure` starts
+the installed binary.
 
 ## Runtime state and recovery
 
@@ -81,9 +88,11 @@ or restart during an in-flight connect closes the late connection instead of ado
 
 `stopRemote` kills the remote server (`forge-remote stop`) and closes the master; the server stays
 configured and can be started again. `removeServer` drops it from storage and clears cached probes
-and version checks, and passes `reachable: false` so removal _never_ re-authenticates — a removal
-must not pop a password prompt. When the master is already alive the stop still runs over it;
-otherwise the daemonized remote is left running and will be reattached (or stopped) on re-add.
+and version checks, and passes `reachable: false` so removal never opens a new master and never
+prompts. The `forge-remote stop` command still runs: over the master when it is alive, otherwise as
+a direct `BatchMode=yes` ssh connection, which succeeds for key or agent authentication. Only when
+that non-interactive connection fails (for example, a password-only host with no live master) is
+the daemonized remote left running, to be reattached or stopped on re-add.
 
 Because `ensure` is idempotent and the remote is daemonized with `nohup`, quitting the desktop does
 not kill the remote server. The next launch auto-connects every persisted server and reattaches.

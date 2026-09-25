@@ -20,7 +20,7 @@ test("example", async () => {
 ### Options
 
 - `git?: boolean` - Initialize a git repo with a root commit
-- `config?: Partial<Config.Info>` - Write an `forge.json` config file
+- `config?: Partial<ConfigV1.Info>` - Write a `forge.json` config file
 - `init?: (dir: string) => Promise<T>` - Custom setup function, returns value accessible as `tmp.extra`
 - `dispose?: (dir: string) => Promise<T>` - Custom cleanup function
 
@@ -133,14 +133,16 @@ const failingAccountLayer = Layer.mock(Account.Service, {
 
 ```ts
 // Antipattern — race
-yield * prompt.shell({ command: "sleep 30" }).pipe(Effect.forkChild)
-yield * Effect.sleep(50)
-yield * prompt.cancel(chat.id)
+Effect.gen(function* () {
+  yield* prompt.shell({ command: "sleep 30" }).pipe(Effect.forkChild)
+  yield* Effect.sleep(50)
+  yield* prompt.cancel(chat.id)
+})
 
 // Fix — wait for a published readiness signal
-yield * prompt.shell({ command: "sleep 30" }).pipe(Effect.forkChild)
-yield *
-  pollWithTimeout(
+Effect.gen(function* () {
+  yield* prompt.shell({ command: "sleep 30" }).pipe(Effect.forkChild)
+  yield* pollWithTimeout(
     Effect.gen(function* () {
       const sessionStatus = yield* SessionStatus.Service
       const s = yield* sessionStatus.get(chat.id)
@@ -148,5 +150,6 @@ yield *
     }),
     "session never became busy",
   )
-yield * prompt.cancel(chat.id)
+  yield* prompt.cancel(chat.id)
+})
 ```

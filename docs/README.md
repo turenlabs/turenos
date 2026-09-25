@@ -6,7 +6,7 @@ grouped by section: whole-system [architecture](./architecture/README.md), indiv
 model [providers](./providers/README.md), [operations](./operations/README.md), [development](./development/README.md) guides,
 and [experimental](./experimental/README.md) work.
 
-The rebrand changes product-facing prose to TurenOS. Technical identifiers remain exact: do not rename `FORGE_*`,
+Prose names the product TurenOS. Technical identifiers keep their exact spelling: do not rename `FORGE_*`,
 `.forge` paths, `forge` commands, package or namespace identifiers containing `forge`, URLs, serialized values, or
 materially accurate historical findings. The [Branding](./architecture/branding.md) page is the reference when prose
 and code appear together.
@@ -15,6 +15,13 @@ and code appear together.
 
 - [Architecture](./architecture/README.md): package and process topology, runtime and data-flow graphs, Location and
   trust boundaries, generated artifacts, and operational constraints.
+  - [Runtime flow](./architecture/runtime-flow.md): how a request travels from the Desktop through the sidecar server
+    into Session execution, and how events flow back to clients.
+  - [Locations](./architecture/locations.md): the global and Location-scoped service graphs, and what a Location
+    identifies.
+  - [Persistence](./architecture/persistence.md): the SQLite database, its reader pool, and other local data.
+  - [Trust boundaries](./architecture/trust-boundaries.md): the boundaries untrusted input passes before it can cause a
+    side effect, and the outbound network calls TurenOS makes on its own.
 - [Branding](./architecture/branding.md): TurenOS naming policy, Turen Labs company naming, and retained Forge
   compatibility seams.
 - The Desktop's interactive [`/home/system-map`](../packages/app/src/pages/system-map.tsx) view: source-linked traces
@@ -26,19 +33,19 @@ The [systems catalog](./systems/README.md) lists every system and subsystem with
 outputs, ownership, failure behavior, and implementation links. These systems have their own pages:
 
 - Agents and sessions
-  - [Durable subagent workstreams](./systems/subagent-workstreams.md): nonblocking V2 delegation, shared-board
+  - [Durable subagent workstreams](./systems/subagent-workstreams.md): nonblocking V2 delegation, swarm-room
     updates, delivery/recovery semantics, tool availability, and verification.
   - [Swarm orchestration](./systems/swarm.md): `@swarm` investigations with a bounded worker budget, planning and
     authority rules, and evidence-based synthesis.
   - [Session whiteboard](./systems/whiteboard.md): the shared Excalidraw board per session, its merge rules, agent
     tools, and limits.
-  - [Memory](./systems/memory.md): durable project memory, native agent tools, SQLite storage, and optional local
-    Potion hybrid retrieval.
+  - [Memory](./systems/memory.md): durable project memory, native agent tools, SQLite storage, and optional semantic
+    retrieval that blends keyword search with a small local embedding model (Potion).
   - [Automations](./systems/automations/README.md): durable in-app workflows, reusable blueprints, ordered Agent and
     Skill steps, and TurenOS delivery, including interval/cron schedules, per-step `when`/`onFailure` conditions, and
     local file-change/session-end event triggers. [Automations internals](./systems/automations/internals.md) covers
-    the scheduler, lease model, SQLite persistence, and local HTTP surface; event triggers fire via core-local
-    `fireEvent`, and there is no `fireEvent` HTTP endpoint.
+    the scheduler, lease model, SQLite persistence, and local HTTP surface; event triggers fire in-process through
+    `Loop.fireEvent`, which has no HTTP endpoint.
   - [Quality gate](./systems/quality-gate/README.md): TurenOS quality-gate architecture and operation.
   - [In-agent code review](./systems/agent-review.md): intent-aware worker checks, risk-ranked adversarial review,
     authority boundaries, and research limits.
@@ -49,6 +56,9 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   - [Lobby](./systems/lobby.md): the beta shared-room surface where local agents answer through capability-limited
     sessions.
 - Tools and shell
+  - [Tool registry](./systems/tool-registry.md): how Session V2 registers, materializes, defers, intercepts, and settles
+    tool calls, with a table of the built-in tools.
+  - [Web tools](./systems/web-tools.md): the `websearch` and `webfetch` agent tools, their search backends, and limits.
   - [CodeMode](./systems/codemode/README.md): bounded JavaScript execution over host-supplied tools, with API, discovery, and execution references.
   - [Shell tool routing](./systems/shell-tool-routing.md): specialized discovery/search/mutation tools and the
     deterministic routing benchmark.
@@ -67,6 +77,9 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   - [Secure storage](./systems/secure-storage.md): encrypting credentials and sensitive files with the OS-protected
     Secret Vault.
   - [Legacy session shares](./systems/legacy-shares.md): revoking public share links created by older builds.
+  - [Batou write scanning](./systems/batou.md): the opt-in SAST scanner that can block agent file writes.
+  - [Intel feeds](./systems/intel-feeds.md): the vulnerability and security-news feeds every server polls for the Home
+    Intel tab, and how to turn them off.
 - Models and providers
   - [Model and provider layer](./systems/model-provider-layer/README.md): how Session V2 resolves an `@turenlabs/llm`
     route, and how the legacy Forge processor selects its AI SDK or native adapter.
@@ -94,6 +107,7 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 
 - [SSH remote servers](./operations/ssh-remote/README.md): driving the system `ssh` client to install, supervise, and tunnel a
   remote TurenOS backend from Desktop.
+- [WSL backends](./operations/wsl.md): running the Desktop's backend inside a WSL distro on Windows.
 - [Releases](./operations/releases/README.md): the operator checklist for cutting a release (version bump, dispatch,
   verification, and recovery), with [automated releases](./operations/releases/automation.md) and
   [release signing](./operations/releases/signing.md).
@@ -162,18 +176,23 @@ These READMEs are short entry points into their area; their long-form documentat
   `tools/<target>/`, and HTML prototypes in `mockups/`.
 - **The systems catalog is the index of systems.** Every system page has a row in the
   [catalog](./systems/README.md) that links it. A new system adds its row in the same change.
-- **Source-grounded.** System pages end with a `## Source` list of the files that implement them. Those links are
-  checked, so a renamed or deleted source file shows up as a broken link instead of a silently stale page.
+- **Source-grounded.** System pages end with a `## Source` list of the files that implement them. Linked and
+  backticked repository paths are both checked, so a renamed or deleted source file shows up as an error instead of a
+  silently stale page. A clean check proves structure, not truth: behavior claims are verified against the code when a
+  page is written or audited.
 - **One topic per page.** Each page covers one topic and one kind of content: explanation, how-to, or reference.
   Past about 300 lines a page gets a review: if it bundles several topics it becomes a folder whose `README.md` is the
   main page and links focused sibling pages, as `architecture/`, `operations/ssh-remote/` and
   `systems/dangerous-commands/` do. Long reference pages such as the systems catalog stay whole.
-- **Names.** Prose says TurenOS; technical identifiers keep their exact `forge` spelling. See
-  [Branding](./architecture/branding.md).
-- **Checks.** After any docs change, run `bun .agents/skills/turen-documentation/scripts/check.ts docs`. To move or rename
+- **Names.** Prose says TurenOS; technical identifiers keep their exact `forge` spelling. Titles and headings use
+  sentence case. See [Branding](./architecture/branding.md).
+- **Checks.** After any docs change, run `bun .agents/skills/turen-documentation/scripts/check.ts docs` (add `--coverage` to
+  list packages no page mentions). To move or rename
   pages, use `bun .agents/skills/turen-documentation/scripts/move.ts <moves-file>`, which rewrites every link the move
   would break.
 
 The complete method, including where a new page goes, page conventions, and templates, is
-[`.agents/skills/turen-documentation/SKILL.md`](../.agents/skills/turen-documentation/SKILL.md). Coding agents load it as
-a skill; people can read it directly.
+[`.agents/skills/turen-documentation/SKILL.md`](../.agents/skills/turen-documentation/SKILL.md), with an audit method in
+its [practices](../.agents/skills/turen-documentation/references/practices.md#auditing-for-confusion). It is written for
+people and coding agents alike; an agent uses it by reading the file, since not every agent discovers `.agents/skills/`
+on its own.

@@ -32,8 +32,8 @@ Because it is one process over one SQLite database, a local client and the deskt
 tunnel) observe the same Sessions live.
 
 The example uses an environment variable to keep the password out of command arguments. The
-remote account and administrators remain trusted. This illustrates CLI attachment, not automatic
-`turen-tui` discovery.
+remote account and administrators remain trusted. No client discovers a desktop-managed server on
+its own; a host-side client must read the port and password as shown.
 
 A remote-owned vault with independent startup and access from multiple desktops is not implemented
 yet. A second desktop with a different vault key cannot independently restart and unlock the

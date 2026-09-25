@@ -1,7 +1,7 @@
-# Security Browser and Proxy
+# Security browser and proxy
 
-Each Desktop session has one shared Security Browser and a manual Proxy
-workspace, shown in the session's **Browser** panel. The browser's case is a
+Each Desktop session has one shared Security Browser and Proxy workspace, shown in the session's **Browser** panel. A
+person drives it from the panel, and the session's agent can drive it through the [agent tools](#agent-tools). The browser's case is a
 named, durable container for captured traffic and rules. Creating it does not
 start an AI scan or require a model.
 
@@ -24,6 +24,28 @@ start an AI scan or require a model.
 6. Compare saved responses as text or hex, add case notes, preview literal rules,
    and export masked history summaries.
 
+## Agent tools
+
+The session's agent can drive the same browser and case through nine tools
+(`packages/core/src/tool/security-proxy.ts`). A `deny` rule on a tool's name (resource `*`) keeps it out of the agent's
+tool list. The tools don't request permission per call, so an `ask` rule adds no prompt.
+All nine are deferred: they are not in the agent's initial tool list, and the agent loads them with `tool_load` before
+its first call.
+
+| Tool                | What it does                                                                                             |
+| ------------------- | -------------------------------------------------------------------------------------------------------- |
+| `browser_start`     | Opens the session's Security Browser, optionally at a URL, and returns the case and a snapshot.          |
+| `browser_navigate`  | Navigates the open browser; bare hosts use `https`.                                                      |
+| `browser_status`    | Reads the browser status and any paused requests.                                                        |
+| `browser_intercept` | Turns request/response interception on or off; turning it off settles held traffic.                      |
+| `browser_decide`    | Decides one paused request: read, reveal, extend, forward with edits, or drop. Decisions are single-use. |
+| `browser_history`   | Lists the latest captured flows, masked.                                                                 |
+| `browser_flow`      | Inspects one flow, masked unless reveal is requested explicitly.                                         |
+| `browser_replay`    | Sends a captured request once, with optional edits to method, URL, headers, body, or cookies.            |
+| `browser_stop`      | Closes the browser and clears its live profile; saved case history stays.                                |
+
+`browser_decide` and `browser_replay` send real traffic to the target. Starting the browser runs no scan and no model.
+
 ## Boundaries
 
 - Case data is owner-scoped by canonical local directory and optional workspace
@@ -45,8 +67,8 @@ start an AI scan or require a model.
 
 ## Limits
 
-This implementation covers the core manual HTTP(S) workflow, not every capability
-in the planning whiteboard. It currently has one target view per case; popup
+This implementation covers the core HTTP(S) interception and replay workflow. It currently has one target view per
+case; popup
 OAuth, browser tabs, downloads, WebSocket frame editing, client certificates,
 custom certificate exceptions, linked scan evidence, and curl export are not
 provided. There is no built-in HTTP authentication credential prompt; explicit

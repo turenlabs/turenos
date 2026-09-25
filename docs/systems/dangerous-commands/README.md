@@ -12,11 +12,15 @@ After this destructive-command check, a separate `ShellToolRouting` policy rejec
 and mutations that belong in `grep`, `glob`, `edit`, or `apply_patch`. That policy improves tool selection; it does not
 expand the recursive-delete safety model described here. See [Shell tool routing](../shell-tool-routing.md).
 
+The repository also contains `command-guard/`, a standalone command-risk CLI for scripts, agent harnesses, and CI hooks.
+It is a separate package: TurenOS's shell tools do not call it, and nothing on this page depends on it.
+
 ## Scope
 
 The implementation lives in `packages/core/src/shell-safety.ts` and has two callers: the V2 `bash` tool in
-`packages/core/src/tool/bash.ts` and the V1 `shell` tool in `packages/forge/src/tool/shell.ts`. Both call it the same way
-and at the same point. It models exactly one operation:
+`packages/core/src/tool/bash.ts` and the V1 `shell` tool in `packages/forge/src/tool/shell.ts`. Both call it at the same
+point, before permission, through different entry points: V2 calls `ShellSafety.inspect`, while V1 calls
+`ShellSafety.parse` and `ShellSafety.inspectParsed` (and `inspect` only for `cmd`). It models exactly one operation:
 
 ```ts
 export type Violation = {
@@ -121,14 +125,18 @@ recursive-delete guard.** The allow rule, the command sets, and the depth limit 
 
 Two `forge.json` keys are relevant to the surrounding behaviour:
 
-| Key           | Type                                    | Default                                               |
-| ------------- | --------------------------------------- | ----------------------------------------------------- |
-| `shell`       | string                                  | `/bin/sh` on POSIX; `COMSPEC` or `cmd.exe` on Windows |
-| `permissions` | array of `{ action, resource, effect }` | absent; unmatched actions fall back to `ask`          |
+| Key           | Type                                    | Default                                                                                                                                                                                                        |
+| ------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shell`       | string                                  | `/bin/sh` on POSIX; `COMSPEC` or `cmd.exe` on Windows                                                                                                                                                          |
+| `permissions` | array of `{ action, resource, effect }` | absent; the default agent's built-in rules start with allow-all, so `bash` is allowed and only the built-in `ask` rules apply, which resolve to `allow` while _Enforce permission checks_ is off (the default) |
 
 `shell` is documented as "Default shell to use for terminal and shell tool execution". It matters here only because
 `ShellSafety.kind` derives the grammar from it: setting it to `pwsh` selects PowerShell analysis, setting it to `cmd.exe`
 selects the `cmd` path, and setting it to anything else selects bash analysis.
+
+Older configuration files use the v1 `permission` object (keyed by tool) instead. Session V2 migrates it into
+`permissions` when it reads the file, and the legacy `shell` tool reads it directly; see
+[Configuration](../configuration.md).
 
 `permissions` is documented as "Ordered tool permission rules applied to agent tool use". `effect` is one of `"allow"`,
 `"deny"`, or `"ask"`. The top-level ruleset is appended to every agent's rules, and a per-agent `permissions` array under
@@ -160,7 +168,7 @@ Deny rules on `bash` are matched against the literal command string. They are us
 string matching, not command analysis: a denied command reached through a wrapper, an alias, or an interpreter will not
 match the pattern.
 
-## Protected Filesystem Paths
+## Protected filesystem paths
 
 `packages/core/src/filesystem/protected.ts` is sometimes assumed to be part of this protection. It is not. It is a table
 of OS-privacy-protected locations — the macOS TCC categories under the home directory and `~/Library`, the darwin root
@@ -220,8 +228,8 @@ hazardous in the tool description and are not blocked.
 
 ## Tests
 
-`packages/core/test/shell-safety.test.ts` is the specification in practice: a table of 131 commands that must be blocked
-and 23 that must be allowed (as of 2026-09-25), each run through `ShellSafety.inspect` with `cwd` set to
+`packages/core/test/shell-safety.test.ts` is the specification in practice: a table of commands that must be blocked
+and a table that must be allowed, each run through `ShellSafety.inspect` with `cwd` set to
 `/workspace/project`, plus five targeted cases for ancestor detection with a `..`-prefixed directory name, a `cmd`
 control-body delete against a Windows `cwd`, the first unsafe target in two multi-target `cmd` deletes, and Windows
 trailing-space normalization, and one assertion that `PROCESS_SAFETY_GUIDANCE` still says what it is supposed to say. Add a case to the appropriate table when changing behaviour; the tables are the reason the evasion

@@ -8,8 +8,9 @@ start.
 ## Record a profile
 
 1. Run a dev-channel Desktop, for example `bun --cwd packages/desktop dev`, or a packaged dev-channel build.
-2. Open **Settings > General > Profiler** and choose **Record CPU profile**.
-3. Reproduce the slow behavior, then stop the recording. A run that is left armed stops itself after 10 minutes
+2. Open **Settings > Developer**, and in the **Profiler** section turn on the **Record CPU profile** toggle. The
+   Developer page exists only in dev-channel builds.
+3. Reproduce the slow behavior, then turn the toggle off to stop the recording. A run that is left armed stops itself after 10 minutes
    (`AUTO_STOP_MS`).
 4. Open the resulting `sidecar.cpuprofile` in Chrome DevTools (Performance panel) or any `.cpuprofile` viewer.
 

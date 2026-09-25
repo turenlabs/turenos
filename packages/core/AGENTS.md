@@ -1,6 +1,12 @@
 # Core package
 
 - Follow `src/tool/AGENTS.md` when working on built-in tools in `src/tool/`.
+- Put a new module's self-reexport (`export * as Foo from "./foo"`) on its first line. Existing files vary; match the file you are editing.
+
+## Database
+
+- Drizzle schema lives in `src/**/*.sql.ts`; Core owns and applies the migrations in `src/database/migration/`.
+- After changing a schema, run `bun run migration --name <name>` from `packages/core` to add the migration and regenerate `src/database/migration.gen.ts` and `src/database/schema.gen.ts`. Never edit those two generated files by hand.
 
 ## V2 Session Core
 

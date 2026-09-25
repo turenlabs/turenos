@@ -4,7 +4,7 @@ Status: prototype, as of 2026-09-25 (not enabled in TurenOS).
 
 This repository contains an isolated prototype inspired by [Zero-Mem: Zero-Token Memory Operations for LLM Agents](https://arxiv.org/abs/2607.29377). It is not enabled in TurenOS and does not replace the native memory service. It treats memory as provenance-preserving evidence selection rather than LLM-generated summaries; the raw trace remains the source of record.
 
-Native TurenOS memory now has a separate, optional Potion hybrid path controlled
+Native TurenOS memory has a separate, optional Potion hybrid path controlled
 by `semantic_memory.enabled`. That path keeps SQLite/FTS5 authoritative and is
 not the same implementation as this Zero-Mem prototype. The prototype remains
 useful for graph, hierarchy, closure, and benchmark experiments without
@@ -26,7 +26,7 @@ Graph hops are capped and trace retention is bounded by default so an untrusted 
 
 `packages/plugin/src/zero-mem-plugin.ts` provides an optional legacy-plugin adapter. It bootstraps the correctly scoped project drawers through the public SDK, refreshes that snapshot before search, ingests text events, and registers a separate `zero_mem_search` tool that requests `memory.read`. Completed tool output is opt-in because raw observations may contain secrets. For non-Git directories, the host must pass the native bound `projectKey`; the public plugin API cannot discover TurenOS's filesystem-identity binding on its own. It intentionally does not replace `memory_search`, the `Memory.Service`, the HTTP API, or Settings.
 
-The current memory list API has a 200-drawer room limit and no pagination. The adapter fails closed for a room at that limit instead of silently indexing a partial snapshot; a production adapter should add pagination at the host seam.
+The public memory list endpoint (`packages/protocol/src/groups/memory.ts`) takes only wing and room filters and returns at most 200 drawers. Core's `Memory.Service` list accepts `limit` and `offset` (`packages/core/src/memory/index.ts`), but the protocol and SDK do not expose them. The adapter fails closed for a room at that limit instead of silently indexing a partial snapshot; a production adapter needs that pagination exposed at the host seam.
 
 ## Usage
 

@@ -80,7 +80,7 @@ Then add or update the system's row in `docs/systems/README.md`:
    ```
    Expected: <what you should see>.
 
-## Verify
+## Verification
 
 - <Command or check that proves it worked.>
 

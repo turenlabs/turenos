@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 // Checks a docs/ tree against the TurenOS documentation method: the section table and rules in ../SKILL.md
-// plus the naming, link, anchor, orphan and index rules in ../references/practices.md.
+// plus the naming, link, anchor, orphan, index and source-path rules in ../references/practices.md.
 // Exits 1 when any error is found. Read-only.
 //
-// usage: bun .agents/skills/turen-documentation/scripts/check.ts [docs-dir]
+// usage: bun .agents/skills/turen-documentation/scripts/check.ts [docs-dir] [--coverage]
+//   --coverage  also lists workspace packages that no docs page mentions (candidate blind spots)
 
 import path from "node:path"
 import { existsSync, readFileSync, statSync } from "node:fs"
@@ -17,10 +18,19 @@ const PROTOTYPE = /\.(html?|js|css|excalidraw|tldraw|drawio)$/i
 const IMAGE = /\.(png|jpe?g|gif|svg|webp)$/i
 const MAX_LINES = 300
 const LONG_PAGE_MARKER = "<!-- long-page: reference -->"
+// The marker must sit near the top, where a reader deciding whether to split the page sees it.
+const MARKER_LINES = 12
 const LINK =
   /!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|^\s*\[[^\]]+\]:\s*<?(\S+?)>?(?:\s|$)|(?:href|src)="([^"]+)"/gm
+// Backticked paths from these repository roots are claims about the tree and must exist.
+const REPO_PATH = /^(packages|specs|script|services|tools|mockups|docs|command-guard|patches|\.github|\.agents)\//
+const STATUS = /^Status: (prototype|benchmark|adopted|abandoned), as of \d{4}-\d{2}-\d{2}\b/m
+// Capitalized function words are the reliable sign of a Title Case heading; product names never need them.
+const SMALL_WORDS = new Set("A An And As At By For From In Into Of On Or The To Vs With Without".split(" "))
 
-const docs = path.resolve(process.argv[2] ?? "docs")
+const args = process.argv.slice(2)
+const coverage = args.includes("--coverage")
+const docs = path.resolve(args.find((arg) => !arg.startsWith("--")) ?? "docs")
 if (!existsSync(docs)) {
   console.error(`no docs directory at ${docs}`)
   process.exit(2)
@@ -38,12 +48,15 @@ const pages = new Map(
   ),
 )
 
+const root = repositoryRoot()
 const findings = [
   ...layoutFindings(),
   ...files.flatMap(fileFindings),
   ...[...pages].flatMap(([file, text]) => contentFindings(file, text)),
+  ...[...pages].flatMap(([file, text]) => sourcePathFindings(file, text)),
   ...linkFindings(),
   ...catalogFindings(),
+  ...folderIndexFindings(),
   ...strayDocsFindings(),
   ...inboundFindings(),
 ]
@@ -51,8 +64,14 @@ const errors = findings.filter((finding) => finding.level === "error")
 const warnings = findings.filter((finding) => finding.level === "warning")
 errors.forEach((finding) => console.log(`ERROR   ${finding.message}`))
 warnings.forEach((finding) => console.log(`WARNING ${finding.message}`))
+if (coverage) coverageNotes().forEach((line) => console.log(`NOTE    ${line}`))
 console.log(`${pages.size} pages checked: ${errors.length} errors, ${warnings.length} warnings`)
 process.exit(errors.length > 0 ? 1 : 0)
+
+function repositoryRoot() {
+  const found = Bun.spawnSync(["git", "-C", docs, "rev-parse", "--show-toplevel"], { stdout: "pipe", stderr: "pipe" })
+  return found.exitCode === 0 ? found.stdout.toString().trim() : undefined
+}
 
 // Git's view of the tree (tracked plus new, unignored files), so generated output such as the ignored
 // docs/icon-reference.html is never reported. Outside a repository, every file counts.
@@ -162,17 +181,125 @@ function contentFindings(file: string, text: string): Finding[] {
       ? [warning(`${file}: system page has no "## Source" section citing its implementation`)]
       : []),
     // Past MAX_LINES a page gets a review: one topic stays (reference pages opt out with the marker), several split.
-    ...(text.split("\n").length > MAX_LINES && !text.includes(LONG_PAGE_MARKER)
+    ...(text.split("\n").length > MAX_LINES &&
+    !text.split("\n").slice(0, MARKER_LINES).join("\n").includes(LONG_PAGE_MARKER)
       ? [
           warning(
-            `${file}: ${text.split("\n").length} lines. If it covers several topics, split it along its ## sections (move.ts, then split.ts); if it is one reference topic, add ${LONG_PAGE_MARKER}`,
+            `${file}: ${text.split("\n").length} lines. If it covers several topics, split it along its ## sections (move.ts, then split.ts); if it is one reference topic, add ${LONG_PAGE_MARKER} in its first ${MARKER_LINES} lines`,
           ),
         ]
       : []),
-    ...(parts[0] === "experimental" && !readme && !/^\W*status\W/im.test(text.split("\n").slice(0, 12).join("\n"))
-      ? [warning(`${file}: no "Status:" line near the top`)]
+    ...(parts[0] === "experimental" && !readme && !STATUS.test(text.split("\n").slice(0, 12).join("\n"))
+      ? [warning(`${file}: no "Status: <prototype|benchmark|adopted|abandoned>, as of YYYY-MM-DD" line near the top`)]
       : []),
+    ...[...prose.matchAll(/^#{1,4}\s+(.+?)\s*#*\s*$/gm)]
+      .filter((match) => titleCase(match[1] ?? ""))
+      .map((match) => warning(`${file}: heading "${match[1]}" is Title Case; use sentence case`)),
+    ...linkTextFindings(file, stripCode(text, true)),
   ]
+}
+
+// "Create An Automation" and "Existing Plaintext Migration" are Title Case; "Claude Code tool routing" and
+// "MCP credentials" are not. Code spans and tokens that don't start with a letter are ignored.
+function titleCase(heading: string) {
+  const words = heading
+    .replace(/`[^`]*`/g, "")
+    .split(/\s+/)
+    .filter((word) => /^[A-Za-z]/.test(word))
+  if (words.slice(1).some((word) => SMALL_WORDS.has(word))) return true
+  return words.length >= 3 && words.every((word) => /^[A-Z]/.test(word))
+}
+
+// After a page moves into a folder, links keep text such as `secure-storage.md` while the target becomes
+// secure-storage/README.md. Link text that names a Markdown file must name the file it points to.
+function linkTextFindings(file: string, prose: string): Finding[] {
+  return [...prose.matchAll(/\[`?([\w./-]+\.mdx?)`?\]\(([^)\s#]+)(#[^)]*)?\)/g)].flatMap((match) => {
+    const named = (match[1] ?? "").split("/")
+    const target = (match[2] ?? "").split("/")
+    // A README is named by its folder, so `quality-gate/README.md` must point into quality-gate/.
+    const folderDiffers =
+      named.at(-1) === "README.md" && named.length > 1 && target.length > 1 && named.at(-2) !== target.at(-2)
+    return named.at(-1) === target.at(-1) && !folderDiffers
+      ? []
+      : [warning(`${file}: link text \`${match[1]}\` does not match its target ${match[2]}`)]
+  })
+}
+
+// Backticked repository paths ("see `packages/core/src/memory/index.ts`") are claims about the tree. Links are checked
+// by linkFindings; this catches the inline mentions a rename leaves behind. Placeholders and globs are skipped.
+function sourcePathFindings(file: string, text: string): Finding[] {
+  if (root === undefined) return []
+  return stripCode(text, true)
+    .split("\n")
+    .flatMap((line, number) =>
+      [...line.matchAll(/`([^`\s]+)`/g)].flatMap((match) => {
+        const token = (match[1] ?? "")
+          .replace(/[),.;:]+$/, "")
+          .replace(/#.*$/, "")
+          .replace(/:\d+(-\d+)?$/, "")
+        if (!REPO_PATH.test(token) || /[<>*{}$]|\.\.\./.test(token)) return []
+        return existsSync(path.join(root, token))
+          ? []
+          : [error(`${file}:${number + 1}: \`${token}\` does not exist in the repository`)]
+      }),
+    )
+}
+
+// A folder's README.md is its main page and must link every sibling page and subfolder, or they are only reachable
+// through deep links. The systems catalog is covered by catalogFindings.
+function folderIndexFindings(): Finding[] {
+  const readmes = files.filter(
+    (file) => file.endsWith("README.md") && file !== "README.md" && file !== "systems/README.md",
+  )
+  return readmes.flatMap((readme) => {
+    const folder = path.posix.dirname(readme)
+    const text = pages.get(readme) ?? ""
+    const children = [
+      ...new Set(
+        files
+          .filter((file) => file.startsWith(`${folder}/`) && file !== readme)
+          .map((file) => file.slice(folder.length + 1).split("/")[0] ?? "")
+          .filter((entry) => isPage(entry) || (!entry.includes(".") && files.includes(`${folder}/${entry}/README.md`))),
+      ),
+    ]
+    return children
+      .filter((entry) => !linksTo(text, entry.endsWith(".md") ? entry : `${entry}/`))
+      .map((entry) => warning(`${readme} does not link ${entry}`))
+  })
+}
+
+// Workspace packages and top-level code areas that no page names. Each is a candidate blind spot to review, not an
+// error: some packages are documented by their own README on purpose.
+function coverageNotes() {
+  if (root === undefined) return []
+  const corpus = [...pages.values()].join("\n")
+  const manifest: unknown = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"))
+  const declared =
+    typeof manifest === "object" && manifest !== null && "workspaces" in manifest ? manifest.workspaces : undefined
+  // `workspaces` is either a list of globs or an object whose `packages` holds them.
+  const globs = (
+    Array.isArray(declared)
+      ? declared
+      : typeof declared === "object" && declared !== null && "packages" in declared && Array.isArray(declared.packages)
+        ? declared.packages
+        : []
+  ).filter((glob): glob is string => typeof glob === "string")
+  const areas = [
+    ...new Set(
+      globs.flatMap((glob) =>
+        [...new Bun.Glob(`${glob.replace(/\/+$/, "")}/package.json`).scanSync({ cwd: root })].map((file) =>
+          path.posix.dirname(file.split(path.sep).join("/")),
+        ),
+      ),
+    ),
+  ].filter((area) => !area.endsWith("-wasm") && !area.includes("node_modules/"))
+  return areas
+    .toSorted((left, right) => left.localeCompare(right))
+    .filter((area) => {
+      const name = path.posix.basename(area)
+      return !corpus.includes(`${area}/`) && !corpus.includes(`${area}\``) && !corpus.includes(`@turenlabs/${name}`)
+    })
+    .map((area) => `no docs page mentions ${area}`)
 }
 
 function linkFindings(): Finding[] {
@@ -199,9 +326,7 @@ function linkFindings(): Finding[] {
 // Documentation is centralized: a `docs/` folder anywhere else in the repository is a second tree. Vendored upstream
 // code keeps its own docs.
 function strayDocsFindings(): Finding[] {
-  const listed = Bun.spawnSync(["git", "-C", docs, "rev-parse", "--show-toplevel"], { stdout: "pipe", stderr: "pipe" })
-  if (listed.exitCode !== 0) return []
-  const root = listed.stdout.toString().trim()
+  if (root === undefined) return []
   const tracked = Bun.spawnSync(
     ["git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "*/docs/*"],
     {
@@ -220,14 +345,10 @@ function strayDocsFindings(): Finding[] {
 }
 
 // Markdown outside docs/ (READMEs, AGENTS.md, CONTRIBUTING.md, skills) points into it. A page renamed without move.ts
-// breaks those pointers silently, so resolve every one: links relative to their file, bare mentions from the root.
+// breaks those pointers silently, so resolve every one. A Markdown link resolves relative to its file, as GitHub does;
+// a bare or backticked mention may also name a path from the repository root.
 function inboundFindings(): Finding[] {
-  const rootCheck = Bun.spawnSync(["git", "-C", docs, "rev-parse", "--show-toplevel"], {
-    stdout: "pipe",
-    stderr: "pipe",
-  })
-  if (rootCheck.exitCode !== 0) return []
-  const root = rootCheck.stdout.toString().trim()
+  if (root === undefined) return []
   const home = path.relative(root, docs).split(path.sep).join("/")
   const listed = Bun.spawnSync(["git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "*.md"], {
     stdout: "pipe",
@@ -241,7 +362,7 @@ function inboundFindings(): Finding[] {
       (file) =>
         file.length > 0 && !file.startsWith(`${home}/`) && !/(^|\/)(vendor|node_modules)\/|^\.forge\//.test(file),
     )
-  const pattern = new RegExp(`(?<![\\w./-])((?:\\.\\./)*)${home}/([A-Za-z0-9_./-]*[A-Za-z0-9_/-])(#[a-z0-9-]+)?`, "g")
+  const pattern = new RegExp(`(?<![\\w./-])((?:\\.\\.?/)*)${home}/([A-Za-z0-9_./-]*[A-Za-z0-9_/-])(#[a-z0-9_-]+)?`, "g")
   return sources.flatMap((source) =>
     // Fenced blocks hold examples, not pointers; inline code stays, since AGENTS.md cites paths that way.
     stripCode(readFileSync(path.join(root, source), "utf8"), true)
@@ -251,11 +372,21 @@ function inboundFindings(): Finding[] {
           const prefix = match[1] ?? ""
           const rest = match[2] ?? ""
           const anchor = (match[3] ?? "").slice(1)
+          const linked = /\]\(\s*<?$/.test(line.slice(0, match.index))
           const fromFile = path.resolve(root, path.dirname(source), `${prefix}${home}`, rest)
           const fromRoot = path.resolve(root, home, rest)
-          const target = existsSync(fromFile) ? fromFile : prefix === "" && existsSync(fromRoot) ? fromRoot : undefined
+          const target = existsSync(fromFile)
+            ? fromFile
+            : !linked && prefix === "" && existsSync(fromRoot)
+              ? fromRoot
+              : undefined
           const where = `${source}:${number + 1}`
-          if (target === undefined) return [error(`${where}: points to ${home}/${rest}, which does not exist`)]
+          if (target === undefined)
+            return [
+              error(
+                `${where}: points to ${prefix}${home}/${rest}, which does not exist${linked ? " relative to this file" : ""}`,
+              ),
+            ]
           const page = statSync(target).isDirectory() ? path.join(target, "README.md") : target
           if (anchor && isPage(page) && existsSync(page) && !anchors(readFileSync(page, "utf8")).has(anchor)) {
             return [error(`${where}: points to ${home}/${rest}#${anchor}, which has no such heading`)]
@@ -290,7 +421,8 @@ function resolveLink(file: string, target: string): { page?: string; finding?: F
   if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith("//")) return {}
   if (target.startsWith("/")) return { finding: warning(`${file}: site-root link can't be checked offline: ${target}`) }
   const hash = target.indexOf("#")
-  const linkPath = decodeURIComponent(hash === -1 ? target : target.slice(0, hash))
+  const linkPath = decode(hash === -1 ? target : target.slice(0, hash))
+  if (linkPath === undefined) return { finding: error(`${file}: malformed percent-encoding in link: ${target}`) }
   const anchor = hash === -1 ? "" : target.slice(hash + 1).toLowerCase()
   const absolute = linkPath ? path.resolve(path.dirname(path.join(docs, file)), linkPath) : path.join(docs, file)
   if (!existsSync(absolute)) return { finding: error(`${file}: broken link: ${target}`) }
@@ -303,6 +435,15 @@ function resolveLink(file: string, target: string): { page?: string; finding?: F
     return { page: inside ? page : undefined, finding: error(`${file}: broken anchor: ${target}`) }
   }
   return { page: inside ? page : undefined }
+}
+
+function decode(link: string) {
+  // decodeURIComponent throws on a stray %, which would otherwise abort the whole run.
+  try {
+    return decodeURIComponent(link)
+  } catch {
+    return undefined
+  }
 }
 
 function walk(start: string, edges: Map<string, string[]>) {
@@ -328,7 +469,8 @@ function targets(prose: string) {
 // GitHub heading slugs, with -1, -2 suffixes for repeated headings, plus explicit id/name anchors.
 function anchors(text: string) {
   const counts = new Map<string, number>()
-  const slugs = [...stripCode(text).matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$/gm)].map((match) => {
+  // Inline code stays: GitHub keeps its text in the slug, so "### `Tool.make`" is #toolmake.
+  const slugs = [...stripCode(text, true).matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$/gm)].map((match) => {
     const slug = (match[1] ?? "")
       .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
       .replaceAll("`", "")

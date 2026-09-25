@@ -1,9 +1,8 @@
 # TurenOS WASM tools
 
-Reproducible WebAssembly builds used by TurenOS agent tools. This directory is
-the former `turenio/wasm-tools` repository, imported into this monorepo.
-Each target builds into its checked-in workspace package at
-`packages/<target>-wasm`.
+Reproducible WebAssembly builds used by TurenOS agent tools. Each target builds
+into its checked-in workspace package at `packages/<target>-wasm`. The list
+below is the complete inventory of `tools/` targets.
 
 Each target owns its source, build scripts, tests, licenses, and provenance:
 
@@ -94,7 +93,7 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   forensics — header, schema, b-tree stats, rows, freelist, and heuristic
   deleted-record carving.
 - [`tools/capa-match`](capa-match): static-subset capa capability
-  matcher — 1,054 embedded Mandiant rules, string/byte/import/section/format
+  matcher — about 1,050 embedded Mandiant rules, string/byte/import/section/format
   features; non-file-scope rules report unsupported, never fabricate.
 - [`tools/rtf-inspect`](rtf-inspect): RTF structure, embedded-object
   (\objdata/OLE) extraction metadata, exploit-document audit flags, and

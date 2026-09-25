@@ -13,8 +13,8 @@ In-repo Session V2 integration:
 The legacy Forge session processor has a separate integration:
 
 - `packages/forge/src/session/llm.ts` decides whether a legacy request uses AI SDK or this package's opt-in native route runtime.
-- `packages/forge/src/session/llm/native-request.ts` is the lowering adapter from opencode's session/AI SDK-shaped data into this package's `LLMRequest` model.
-- `packages/forge/src/session/llm/native-runtime.ts` is the execution adapter that calls raw `LLMClient.stream(request)` and bridges one provider turn of opencode tool calls through this package's typed dispatcher.
+- `packages/forge/src/session/llm/native-request.ts` is the lowering adapter from the legacy session's AI SDK-shaped data into this package's `LLMRequest` model.
+- `packages/forge/src/session/llm/native-runtime.ts` is the execution adapter that calls raw `LLMClient.stream(request)` and bridges one provider turn of legacy session tool calls through this package's typed dispatcher.
 - `packages/forge/src/session/llm/ai-sdk.ts` keeps the default AI SDK path compatible by converting AI SDK stream parts into this package's shared `LLMEvent`s.
 
 ## Request flow
@@ -60,7 +60,7 @@ packages/llm/src/
     executor.ts             RequestExecutor service + transport error mapping
     protocol.ts             Protocol type + Protocol.make
     endpoint.ts             Endpoint type + Endpoint.path
-    auth.ts                 Auth type + Auth.bearer / Auth.apiKeyHeader / Auth.passthrough
+    auth.ts                 Auth type + Auth.bearer / Auth.header / Auth.passthrough
     auth-options.ts         ProviderAuthOption shape, AuthOptions.bearer, AtLeastOne helper
     framing.ts              Framing type + Framing.sse
     transport/              transport implementations

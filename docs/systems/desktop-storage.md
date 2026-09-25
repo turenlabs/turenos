@@ -1,6 +1,8 @@
 # Desktop storage
 
-The Desktop keeps its settings and window state in the local server's storage rather than in files beside the app. On
+The Desktop keeps its settings and window state in the local server's storage rather than in files beside the app. The
+one exception is the wrapped credential key, which stays in the `forge.settings` electron-store file (see
+[Secure storage](./secure-storage.md#on-disk-locations)). On
 first use it imports each older local store exactly once: the Electron `electron-store` files and, beneath them, the
 stores left by the earlier Tauri-based desktop app. An import is recorded with a migration receipt on the server, so a
 later edit to the old files is never re-imported.

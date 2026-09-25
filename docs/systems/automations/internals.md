@@ -28,7 +28,7 @@ Run history exposes `claimed`, `running`, `succeeded`, `failed`, `cancelled`, `s
 
 ## Event and API boundaries
 
-File-change triggers match bounded relative globs under the Automation's directory and debounce rapid matches. Session-end triggers filter outcome, Session ID, and agent; Automation-created Sessions do not trigger them. Both call `Loop.fireEvent` locally, which applies the same overlap rule as scheduled runs. There is no HTTP endpoint for firing an event.
+File-change triggers match bounded relative globs under the Automation's directory and debounce rapid matches. Session-end triggers subscribe to `SessionEvent.Step.Ended` and `SessionEvent.Step.Failed`, so they fire at the end of every Session step, and filter outcome, Session ID, and agent; Automation-created Sessions do not trigger them. Both call `Loop.fireEvent` locally, which applies the same overlap rule as scheduled runs. There is no HTTP endpoint for firing an event.
 
 Automation metadata is listed from the selected server's process-global SQLite index. Listing does not open project directories; the run's Location is resolved when execution begins. The [Protocol Loop group](../../../packages/protocol/src/groups/loop.ts) defines the `/api/loop` create, list, get, edit, pause, resume, delete, run, history, and cancellation endpoints and their current payload schemas.
 

@@ -2,8 +2,28 @@
 
 Core Session V2 resolves a catalog model to an `@turenlabs/llm` route and streams
 one provider turn through `LLMClient`. The legacy Forge session processor has a
-separate AI SDK default with an experimental native adapter; that flag does not
-select the V2 runtime.
+separate runtime selection: a CLI-direct path for Claude Code and Muse Code
+models, an AI SDK default, and an experimental native adapter. The native flag
+does not select the V2 runtime.
+
+## Model catalog
+
+Both runtimes read the model catalog from [models.dev](https://models.dev)
+through `ModelsDev.Service` (`packages/core/src/models-dev.ts`), which contacts
+that external service.
+
+- The catalog is `<source>/api.json`, where the source is `FORGE_MODELS_URL` or
+  `https://models.dev`. It is cached as `models.json` in the TurenOS cache
+  directory, or `models-<hash>.json` for a custom source.
+- When the service starts, it refreshes the cache unless the file is less than
+  5 minutes old, then refreshes again every 60 minutes. Each fetch times out
+  after 10 seconds and retries transient failures twice; a cross-process lock
+  keeps concurrent processes from racing on the cache file.
+- Reads use `FORGE_MODELS_PATH` when set, otherwise the cache file, then a
+  snapshot bundled into the build. A failed fetch keeps the cached or last
+  good catalog rather than emptying it.
+- `FORGE_DISABLE_MODELS_FETCH` turns off both the startup and hourly fetches;
+  with no cache or snapshot the catalog is empty.
 
 ## Session V2
 
@@ -27,11 +47,23 @@ See [LLM package architecture](./llm-package.md) for route construction and
 
 ## Legacy Forge session processor
 
-`packages/forge/src/session/llm.ts` uses AI SDK by default. Its optional native
-adapter lowers each eligible request into an `LLMRequest` and streams it through
-`LLMClient`; unsupported requests fall back to AI SDK. Both paths produce
-`LLMEvent`s for the legacy session processor. Tool execution remains
-session-owned.
+`packages/forge/src/session/llm.ts` picks one of three runtimes per request:
+
+1. **CLI direct.** Claude Code and Muse Code models always go through
+   `LLMClaudeCodeDirect.stream` (`packages/forge/src/session/llm/claude-code-direct.ts`).
+   It lowers the request to an `LLMRequest` routed to the local CLI bridge,
+   exposes session tools to the CLI through a private MCP namespace, and
+   dispatches their calls with `ToolRuntime.dispatch`. These models reject a
+   connection policy.
+2. **Native.** When enabled, the native adapter lowers each eligible request
+   into an `LLMRequest` and streams it through `LLMClient`; unsupported
+   requests fall back to AI SDK.
+3. **AI SDK.** The default for every other model.
+
+All three produce `LLMEvent`s for the legacy session processor. Tool execution
+remains session-owned. The CLIs themselves are covered in
+[Claude Code](../../providers/claude-code/README.md) and
+[Muse Code](../../providers/muse-code.md).
 
 ## Configuration
 
@@ -52,8 +84,10 @@ a connection policy use AI SDK.
 - [`packages/core/src/session/runner/model.ts`](../../../packages/core/src/session/runner/model.ts)
 - [`packages/core/src/session/runner/aisdk-bridge.ts`](../../../packages/core/src/session/runner/aisdk-bridge.ts)
 - [`packages/forge/src/session/llm.ts`](../../../packages/forge/src/session/llm.ts)
+- [`packages/forge/src/session/llm/claude-code-direct.ts`](../../../packages/forge/src/session/llm/claude-code-direct.ts)
 - [`packages/forge/src/session/llm/native-runtime.ts`](../../../packages/forge/src/session/llm/native-runtime.ts)
 - [`packages/forge/src/session/llm/native-request.ts`](../../../packages/forge/src/session/llm/native-request.ts)
 - [`packages/forge/src/effect/runtime-flags.ts`](../../../packages/forge/src/effect/runtime-flags.ts)
+- [`packages/core/src/models-dev.ts`](../../../packages/core/src/models-dev.ts)
 - Contracts: [`specs/v2/provider-model.md`](../../../specs/v2/provider-model.md),
   [`specs/v2/provider-policy.md`](../../../specs/v2/provider-policy.md)

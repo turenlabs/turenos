@@ -5,6 +5,9 @@ it to execute native tools would bypass TurenOS's permissions, interceptors, dur
 turn-specific tool policy. TurenOS instead treats the current provider turn's `ToolRegistry.Materialization` as a
 capability and exposes it to Claude through a private MCP server.
 
+This page is about routing a provider's tool calls into TurenOS. [Shell tool routing](../../systems/shell-tool-routing.md)
+is unrelated: it redirects shell commands to specialized workspace tools.
+
 ```text
 Session runner
   |
@@ -28,7 +31,7 @@ materialization whose definitions were advertised for that provider turn. This p
 registration-generation checks, agent permissions, interceptor ordering, canonical `ToolOutput`, and managed output
 paths.
 
-## CLI Isolation
+## CLI isolation
 
 TurenOS launches Claude Code with these controls:
 
@@ -55,7 +58,7 @@ so the private MCP request cannot be diverted through a configured proxy.
 When TurenOS disables tools for a turn, such as after the maximum agent step, it does not register or configure an MCP
 server. Claude still receives `--tools ""`, so the no-tools policy remains effective.
 
-## Capability Boundary
+## Capability boundary
 
 Each MCP endpoint:
 
@@ -68,15 +71,15 @@ Each MCP endpoint:
 
 The same loopback capability exposes an authenticated HTTP hook endpoint. After two consecutive single-tool
 exploration batches, it injects a bounded reminder to broaden the search, batch independent calls, and use available
-subagents for disjoint work. It never approves, denies, rewrites, or executes a tool. Legacy Claude Code uses the same
-state machine through an in-process Agent SDK `PostToolBatch` callback. Reminders are capped at two per provider turn
-so a resistant model cannot rapidly flood its context.
+subagents for disjoint work. It never approves, denies, rewrites, or executes a tool. Only this V2 bridge sends the
+reminder; the legacy Claude Code path in `packages/forge` has no `PostToolBatch` hook. Reminders are capped at two per
+provider turn so a resistant model cannot rapidly flood its context.
 
 The system prompt, MCP configuration, and TurenOS hook settings are written to a private temporary directory with
 restrictive file modes and removed when the process scope closes. Cancelling a turn terminates the Claude process
 group so descendants are not left detached.
 
-## Tool Lifecycle
+## Tool lifecycle
 
 An authenticated MCP call is converted back into the normal TurenOS tool lifecycle:
 
@@ -96,7 +99,7 @@ The `ToolRegistry` remains the authority for durable execution reconciliation.
 Provider-executed tool envelopes from non-TurenOS sources are normalized to TurenOS's canonical tool names, but they remain
 marked `providerExecuted` and are never settled a second time by TurenOS.
 
-## Design Constraints
+## Design constraints
 
 The bridge depends on several boundaries that are easy to miss:
 
@@ -112,7 +115,7 @@ The bridge depends on several boundaries that are easy to miss:
   accounting checkpoint, which cannot settle while the CLI blocks on the response. It is therefore deferred rather than
   withheld — the runner forks its settlement onto the same goal fiber set the native path uses, awaits it after the
   checkpoint, and answers the CLI inline with an acknowledgement that says the commit happens at turn end. Withholding
-  it instead, as the bridge originally did, leaves a goal permanently active because nothing can ever complete it.
+  it would leave a goal permanently active, because nothing could ever complete it.
 - The CLI echoes MCP calls in its stream. Those envelopes are observations, not a second execution request or a second
   durable lifecycle.
 - Scope teardown must account for active HTTP calls and subprocess descendants, not only close the listening socket and

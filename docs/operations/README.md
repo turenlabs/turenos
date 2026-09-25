@@ -5,6 +5,7 @@ Procedures for running and shipping TurenOS: where the backend runs and how rele
 
 - [SSH remote servers](./ssh-remote/README.md): driving the system `ssh` client to install, supervise, and tunnel a remote
   TurenOS backend from Desktop.
+- [WSL backends](./wsl.md): installing `forge` into a WSL distro and running the Desktop's backend there on Windows.
 - [Releases](./releases/README.md): the operator checklist for cutting a release (version bump, dispatch,
   verification, and recovery).
   - [Automated releases](./releases/automation.md): one-dispatch private builds, verified public publication, Homebrew

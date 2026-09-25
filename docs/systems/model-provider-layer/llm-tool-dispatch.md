@@ -57,16 +57,19 @@ The dispatcher:
 
 Handler dependencies (services, permissions, plugin hooks, abort handling) are closed over by the consumer at tool-construction time. Build the tools record inside an `Effect.gen` once and reuse it across many dispatches.
 
-Errors must be expressed as `ToolFailure`. The runtime catches it and emits a `tool-error` event, then a `tool-result` of `type: "error"`, so the model can self-correct on the next step. Anything that is not a `ToolFailure` is treated as a defect and fails the stream. Three recoverable error paths produce `tool-error` events:
+Errors must be expressed as `ToolFailure`. The runtime catches it and emits a `tool-error` event, then a `tool-result` of `type: "error"`, so the model can self-correct on the next step. `dispatch` has no error channel, so anything that is not a `ToolFailure` is a defect that propagates to the caller of `dispatch`. These recoverable paths produce `tool-error` events:
 
 - The model called an unknown tool name.
+- The named tool has no `execute` handler.
 - Input failed the `parameters` Schema.
 - The handler returned a `ToolFailure`.
+- The handler's return value failed the `success` Schema.
+- The tool's projected output is itself an error result.
 
-Provider-defined / hosted tools (Anthropic `web_search` / `code_execution` / `web_fetch`, OpenAI Responses `web_search_call` / `file_search_call` / `code_interpreter_call` / `mcp_call` / `local_shell_call` / `image_generation_call` / `computer_use_call`) pass through the runtime untouched:
+Provider-defined / hosted tools (Anthropic `web_search` / `code_execution` / `web_fetch`, OpenAI Responses output items `web_search_call` / `web_search_preview_call` / `file_search_call` / `code_interpreter_call` / `mcp_call` / `local_shell_call` / `image_generation_call` / `computer_call`) pass through the runtime untouched:
 
 - Routes surface the model's call as a `tool-call` event with `providerExecuted: true`, and the provider's result as a matching `tool-result` event with `providerExecuted: true`.
 - Callers detect `providerExecuted` on `tool-call` and **skip local dispatch** — no handler is invoked and no `tool-error` is raised for "unknown tool". The provider already executed it.
 - Callers that continue should retain both events in explicit history when the protocol requires it. Anthropic encodes them back as `server_tool_use` + `web_search_tool_result` (or `code_execution_tool_result` / `web_fetch_tool_result`) blocks; OpenAI Responses callers typically use `previous_response_id` instead of resending hosted-tool items.
 
-Add provider-defined tools to `request.tools` (no runtime entry needed). The matching route must know how to lower the tool definition into the provider-native shape; right now Anthropic accepts `web_search` / `code_execution` / `web_fetch` and OpenAI Responses accepts the hosted tool names listed above.
+Routes do not yet lower provider-defined tool definitions: both the Anthropic Messages and OpenAI Responses routes send every `request.tools` entry as a custom function tool (`lowerTool` in `packages/llm/src/protocols/`). Hosted-tool calls and results are parsed when a provider returns them, as described above, but a caller cannot request a hosted tool through `request.tools` today.

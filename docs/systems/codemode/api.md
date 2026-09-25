@@ -15,6 +15,8 @@ const tool = Tool.make({
 })
 ```
 
+This is CodeMode's own `Tool.make` from `@turenlabs/codemode`. Core's built-in tools use a different `Tool.make` (`input`, `output`, `execute`), and `@turenlabs/llm` has another (`parameters`, `success`, `execute`); import from the package you are building for.
+
 `input` and `output` each accept a validating Effect Schema or a render-only JSON Schema document (the natural shape for adapter-provided tools whose schemas arrive as JSON Schema, e.g. MCP definitions). Effect Schema input is decoded before `run` is invoked, and `run` returns the encoded representation of an Effect Schema `output`, which CodeMode decodes and copies before exposing it to the program. JSON Schemas only shape the model-visible signature; values pass through unvalidated (they still cross the plain-data boundary).
 
 `output` is optional. Without it the tool's signature advertises `Promise<unknown>` and the host result is exposed as-is.
@@ -107,7 +109,7 @@ const api = OpenAPI.fromSpec({
   },
 })
 
-const runtime = CodeMode.make({ tools: { opencode: api.tools } })
+const runtime = CodeMode.make({ tools: { turenos: api.tools } })
 const result = await Effect.runPromise(runtime.execute(code).pipe(Effect.provide(FetchHttpClient.layer)))
 ```
 

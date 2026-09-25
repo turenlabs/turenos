@@ -43,36 +43,45 @@ Each manifest is one JSON file holding a single extension whose contributions sh
       "secrets": [],
       "endpoints": { "api": "https://api.example.com/v1" },
       "defaultEnabled": false,
-      "group": "threat-intelligence",
       "tools": {
         "allow": ["example_lookup"],
         "write": []
       }
     }
-  ],
-  "versions": [
-    {
-      "version": "1.0.0",
-      "published": "2026-08-25"
-    }
   ]
 }
 ```
 
-Required invariants:
+`Extension.Manifest` in `packages/schema/src/extension.ts` defines the accepted fields. Decoding drops any field it
+doesn't define, so `group` is honored only on `tool` contributions, and a manifest-level `versions` array is not part of
+the contract.
 
-- IDs are stable and use the `publisher/name` form.
-- Each manifest's contributions share one type: `data`, `skill`, `mcp`, or `tool`.
-- Adapter IDs are globally unique and must match an audited Turen runtime adapter.
-- Data contributions declare their audited origins in `endpoints` (named credential-free HTTPS URLs on public hosts). The adapter resolves them through `ExtensionCatalog.dataEndpoint(...)` — fetch origins are never hardcoded in runtime code.
-- Tool names are concrete; wildcard tool policies are prohibited.
-- `tools.write` must remain empty for Data sources.
-- Skill sources contain bounded prompt text only. They cannot declare secrets, commands, configuration, or tool authority.
-- Subagents may select only a host-defined read-only profile and a bounded turn allowance.
-- Secrets are declared explicitly and stored by Turen's secret vault, never in catalog state.
-- Homepages must use credential-free HTTPS URLs.
-- Version history is append-only and includes a publication date for the current version.
-- Every skill must meet the review rubric in the [skill quality benchmark](./skill-quality.md).
+Enforced when the catalog is generated (`packages/extensions/src/validate.ts`, `packages/extensions/script/generate.ts`,
+and the schema):
+
+- IDs use the lowercase `publisher/name` form, and only the `turenlabs/` namespace may declare `official` trust.
+- A manifest with more than one contribution may hold only generic MCP contributions, so every other manifest has one
+  `data`, `skill`, `mcp`, or `tool` contribution.
+- Extension IDs and adapter IDs are unique across the catalog.
+- Data contributions declare at least one audited origin in `endpoints`: lowercase names mapped to credential-free
+  HTTPS URLs on public hosts. The adapter resolves them through `ExtensionCatalog.dataEndpoint(...)`, so fetch origins
+  are not hardcoded in runtime code.
+- `tools.write` is empty for data contributions. For every type, write tools must also appear in `tools.allow`, and an
+  allowed tool whose name looks mutating (`create`, `delete`, `update`, `write`, and similar) must be declared in
+  `tools.write`.
+- Skills use a `skill:<id>` adapter and declare no secrets. Non-official skills must embed `catalog` prompt content.
+- Subagents select a `read`, `data`, or `binary` profile and at most 50 steps.
+- A secret ID is declared by only one extension. Secrets are stored in the TurenOS secret vault, never in catalog state.
+
+Review conventions that no validator checks:
+
+- IDs stay stable once published.
+- Adapters match an audited TurenOS runtime adapter. For `security:` tool and data adapters, the registry in
+  `packages/forge/src/security/registry.ts` does fail at load when the manifest is missing or its `commands` or
+  `tools.allow` don't match the adapter.
+- Tool names are concrete; don't use wildcard tool policies.
+- Homepages use credential-free HTTPS URLs.
+- Every skill meets the review rubric in the [skill quality benchmark](./skill-quality.md).
 
 ## MCP deployment variants
 
@@ -83,7 +92,7 @@ Required invariants:
 - `managed` — a pinned local package (`package`, `version`, `cutoff`, `command`, `args`, `platforms`, `environment`) run by the audited uv-managed runtime in `packages/forge/src/mcp/package-runtime.ts`. The manifest is the single source of truth for what executes; official trust only.
 - `local` — an executable the user already installed (for example the 1Password desktop app's bundled `1password-mcp`); TurenOS discovers it, never downloads it.
 
-`services/catalog/manifests/tools/` entries bind packaged WASM/binary security tools to their audited `security:<id>` adapters in `packages/forge/src/security`.
+`services/catalog/manifests/tools/` entries bind security scanners to their audited `security:<id>` adapters in `packages/forge/src/security`. A tool manifest's `commands` must match the adapter's `executables`, and its `tools.allow` must match the adapter's tool names; the registry refuses to load otherwise (see [Security MCP integration conventions](../../development/security-integrations.md)). The user installs the scanner executables; only Batou is downloaded by TurenOS.
 
 ## Adding a source
 
@@ -93,7 +102,7 @@ Required invariants:
 4. Add or update adapter and catalog tests.
 5. Run `bun run generate` in `packages/extensions` and commit `packages/extensions/src/generated.ts`.
 
-Catalog metadata is not runtime authority. A data manifest may select only a separately reviewed `security:<id>` adapter; it cannot grant network, process, filesystem, or credential privileges on its own.
+Catalog metadata is not runtime authority. A data manifest may select only a separately reviewed `security:<id>` or `websearch:<id>` adapter; it cannot grant network, process, filesystem, or credential privileges on its own.
 
 ## Adding a skill or subagent
 

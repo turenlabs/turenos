@@ -1,15 +1,16 @@
-# CodeMode Design and Status
+# CodeMode design and status
 
-This is the living design and status document for `@turenlabs/codemode` and its existing V2 TurenOS adapter.
-It records current behavior, intentional boundaries, durable rationale, and material remaining work.
+This is the living design and status document for `@turenlabs/codemode` and its TurenOS adapter in
+`packages/forge/src/tool/code-mode.ts`. It records current behavior, intentional boundaries, durable rationale, and
+material remaining work.
 
 Completed implementation history, branch names, test counts, and closed findings belong in git, not here. Remove
 completed work instead of preserving checked-off chronology.
 
-Detailed package API documentation lives in [README.md](./README.md). OpenAPI-specific follow-ups live in
-[src/openapi/TODO.md](./src/openapi/TODO.md).
+Detailed API documentation lives in [docs/systems/codemode](../../docs/systems/codemode/README.md). OpenAPI-specific
+follow-ups live in [src/openapi/TODO.md](./src/openapi/TODO.md).
 
-## How CodeMode Works
+## How CodeMode works
 
 ### Purpose
 
@@ -83,37 +84,23 @@ data, tool failures, limits, timeouts, and execution failures.
 Files and other attachment content stay outside the interpreter. A host may collect them while child tools execute and
 attach them to the outer result, but the program receives only the structured tool output.
 
-### V2 TurenOS adapter
+### TurenOS adapter
 
-This section describes the `v2` branch integration. On `dev`, CodeMode is integrated through
-`packages/forge/src/tool/code-mode.ts`, where nested MCP calls run the `tool.execute.before` and
-`tool.execute.after` plugin hooks.
+The legacy session runtime registers CodeMode as the `execute` tool through `packages/forge/src/tool/registry.ts` when
+the `experimentalCodeMode` runtime flag is on, which it is by default. Session V2 (`packages/core`) does not register it.
 
-CodeMode is integrated into V2 through `packages/core/src/tool/registry.ts` and
-`packages/core/src/tool/execute.ts`:
+- The tool tree holds the connected MCP tools visible under the agent and session permissions, grouped by server. While
+  CodeMode is on, `packages/forge/src/session/tools.ts` stops offering those MCP tools to the model directly. Existing
+  output schemas are preserved in generated signatures. Built-in tools are not ambient globals inside CodeMode.
+- Each nested call runs the `tool.execute.before` and `tool.execute.after` plugin hooks and a permission `ask` for the
+  MCP tool, then redacts stored credentials from the result.
+- Each nested result is truncated to 2,000 lines or 50 KiB before it enters the interpreter. Image and PDF parts are
+  collected host-side, up to 32 files and 10 MiB, and attached to the outer result.
+- Nested call statuses are published as `execute` metadata for clients.
+- The adapter sets a 120-second timeout, 32 tool calls, and 256 KiB of program output. User cancellation interrupts
+  the outer invocation and its supervised children, and the outer result is bounded like other tool output.
 
-- Core has one canonical `Tool` representation. Location-scoped producers register direct or deferred tools through
-  `Tools.Service`.
-- Each model step snapshots effective registrations, applies catalog visibility filtering, and exposes direct tools
-  normally.
-- When visible deferred tools exist, Core reserves and materializes one `execute` tool. Grouped deferred tools become
-  CodeMode namespaces instead of flattened model-facing names.
-- Each nested call checks that its captured registration is still current before dispatching it.
-- Authorization and side-effect ordering remain responsibilities of the leaf tool. Catalog visibility is not execution
-  authorization.
-- Structured child output enters the interpreter. File parts are collected host-side and attached to the outer result.
-- Nested call statuses are returned as final `execute` metadata for clients.
-- `execute` is the one model-facing tool invocation. Nested calls reuse its invocation context and do not independently
-  run registry hooks or model-output bounding; this keeps complete intermediate structured values available for
-  in-program filtering. The outer `execute` settlement is the single model-output bounding boundary.
-- Core supplies no CodeMode timeout or tool-call limit. User cancellation interrupts the outer invocation and its
-  supervised children; the outer settlement applies Core's normal output-retention policy.
-
-MCP tools use this canonical path: they register as grouped tools and are deferred while CodeMode is enabled. Existing
-output schemas are preserved in generated signatures. Direct Core tools remain direct and are not ambient globals
-inside CodeMode.
-
-## Intentionally Unsupported
+## Intentionally unsupported
 
 These are product boundaries rather than DSL backlog:
 
@@ -127,22 +114,22 @@ These are product boundaries rather than DSL backlog:
 The OpenAPI adapter may gain more transports and encodings, but it must continue skipping operations it cannot
 represent accurately rather than guessing semantics.
 
-## Decisions and Rationale
+## Decisions and rationale
 
-| Decision                                                 | Rationale                                                                                                                                                                                                                |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Keep an owned tree-walking interpreter.                  | The product need is bounded tool orchestration, not arbitrary JavaScript. Owning the language surface keeps authority and behavior explicit.                                                                             |
-| Treat schemas as the model-facing interface.             | Signatures drive correct calls; Effect Schema also provides the runtime validation boundary, while JSON Schema supports adapter interoperability.                                                                        |
-| Keep authority host-owned.                               | CodeMode can only confine programs to supplied tools. The host chooses those tools, and each tool enforces its own authorization and side-effect policy.                                                                 |
-| Use progressive catalog disclosure plus search.          | Large tool sets should not consume the prompt, but every namespace must remain discoverable and speculative search calls should remain valid.                                                                            |
-| Start tool promises eagerly and supervise them.          | This preserves normal call-time parallelism while giving each call run-once settlement and interruption safety.                                                                                                          |
-| Keep files outside the sandbox value space.              | Models should compose structured data without routing binary payloads through generated code or context.                                                                                                                 |
-| Treat `execute` as the model-facing invocation boundary. | Nested calls are implementation details of one orchestration program. Reusing the outer context and bounding only the final result preserves complete intermediate data without inventing durable child-call identities. |
-| Return expected failures as data.                        | Models need actionable diagnostics without exposing private host causes; host interruption and defects must still propagate correctly.                                                                                   |
-| Leave execution-limit defaults to hosts.                 | Appropriate budgets depend on the surrounding product and its own cancellation, retention, and output-bounding policies.                                                                                                 |
-| Skip unsupported OpenAPI operations.                     | Incorrect parameter encoding, authentication, or transport behavior is worse than a precise `skipped` reason.                                                                                                            |
+| Decision                                                 | Rationale                                                                                                                                                |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keep an owned tree-walking interpreter.                  | The product need is bounded tool orchestration, not arbitrary JavaScript. Owning the language surface keeps authority and behavior explicit.             |
+| Treat schemas as the model-facing interface.             | Signatures drive correct calls; Effect Schema also provides the runtime validation boundary, while JSON Schema supports adapter interoperability.        |
+| Keep authority host-owned.                               | CodeMode can only confine programs to supplied tools. The host chooses those tools, and each tool enforces its own authorization and side-effect policy. |
+| Use progressive catalog disclosure plus search.          | Large tool sets should not consume the prompt, but every namespace must remain discoverable and speculative search calls should remain valid.            |
+| Start tool promises eagerly and supervise them.          | This preserves normal call-time parallelism while giving each call run-once settlement and interruption safety.                                          |
+| Keep files outside the sandbox value space.              | Models should compose structured data without routing binary payloads through generated code or context.                                                 |
+| Treat `execute` as the model-facing invocation boundary. | Nested calls are implementation details of one orchestration program. They reuse the outer context instead of inventing durable child-call identities.   |
+| Return expected failures as data.                        | Models need actionable diagnostics without exposing private host causes; host interruption and defects must still propagate correctly.                   |
+| Leave execution-limit defaults to hosts.                 | Appropriate budgets depend on the surrounding product and its own cancellation, retention, and output-bounding policies.                                 |
+| Skip unsupported OpenAPI operations.                     | Incorrect parameter encoding, authentication, or transport behavior is worse than a precise `skipped` reason.                                            |
 
-## Remaining Work
+## Remaining work
 
 Keep only material unresolved work here. Small isolated defects should be GitHub issues; adapter-only work belongs in
 the adapter TODO. Delete entries when completed.
@@ -174,3 +161,15 @@ current omissions to implement, not intentional product boundaries.
       host streams to cross the sandbox boundary.
 - [ ] Define one consistent policy for tool path segments named `__proto__`, `constructor`, or `prototype`. They must
       either be safely callable, rejected before catalog generation, or use one documented escaping rule.
+
+### Unimplemented design ideas
+
+Ideas that are not built and not committed to. Hosts collect media outside the sandbox today, and programs have no
+`fetch` or other host capability globals.
+
+- A captured user-visible output channel named `output` (`output.text`, `output.file`, `output.image`), distinct from
+  the program return value: `return` stays the structured result for the model, while `output.*` describes artifacts
+  the host may render after execution. It would stay host-neutral and let applications decide delivery.
+- Opt-in host capabilities such as `fetch`, `crypto`, filesystem handles, or network clients, unavailable unless a host
+  deliberately provides them. A `fetch` capability would carry policy controls: allowed origins, methods, headers,
+  response size, timeout, and whether response bodies may be returned, emitted, or only summarized through a tool.

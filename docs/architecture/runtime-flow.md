@@ -38,7 +38,8 @@ sidecar is therefore a supervisor and transport host, not a second session engin
 
 The server has two API families:
 
-- `@turenlabs/server` defines the standard `server.*` groups used by the generated Client API.
+- `@turenlabs/protocol` defines the standard `server.*` groups used by the generated Client API
+  (`HttpApi.make("server")` in `packages/protocol/src/api.ts`), and `@turenlabs/server` implements them.
 - `packages/forge` adds the product's root, instance, event, PTY, sync, security, and
   compatibility routes and supplies concrete handlers.
 
@@ -64,8 +65,16 @@ Session V2 separates durable admission from model execution. The normative contr
 6. Local tool calls are durably claimed before execution, pass the permission and interceptor
    boundary, and settle through the Tool Registry. After all calls settle, the runner reloads
    history and decides whether to continue.
-7. A queued input is promoted at the next safe provider-turn boundary. Steers take precedence over
-   queued inputs. User input can therefore join an active drain without waiting for idle.
+7. Admitted inputs become visible user messages at the next safe provider-turn boundary, so user
+   input can join an active drain without waiting for idle. Delivery decides how
+   (`packages/core/src/session/input.ts`):
+   - **Steer** (the default for prompts): every pending steer is promoted at the boundary, and steers
+     always go before queued inputs.
+   - **Queue**: one queued user input is promoted per boundary, after in-flight tool calls settle, and
+     continuation is re-evaluated before the next.
+   - **Machine advisories** (board posts, settle notices, child advisories, shell-job completions):
+     queued like user input, but a consecutive run of them (up to 32, `MAX_QUEUE_PROMOTE_BATCH`) is
+     promoted as one batch, stopping at the next user input, so a settling swarm costs one provider turn.
 
 ```mermaid
 flowchart LR

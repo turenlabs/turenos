@@ -4,9 +4,10 @@ The `turenio/turen` release workflow builds, signs, and publishes from the
 canonical `turenlabs/turenos` `main` source. It runs privately and publishes the
 verified assets to the public repository.
 
-1. Validate the committed version on public `main`, repository identities, and
-   publishing access.
-2. Require the release commit's public `test`/`typecheck` checks to be green.
+1. Resolve the release source (public `main` HEAD at dispatch, or an existing
+   draft's target commit), check that its `VERSION` equals the requested
+   version, and validate repository identities and publishing access.
+2. Require the release source's public `test`/`typecheck` checks to be green.
 3. Check out `turenlabs/turenos` at the release commit, build every platform on
    private runners, and sign/notarize with private credentials.
 4. Create a public **draft** release and upload all signed assets to it.
@@ -17,8 +18,11 @@ verified assets to the public repository.
 7. Publish the stable public release and verify anonymous downloads.
 8. Update and read back `turenlabs/homebrew-turenos/Formula/turenos.rb`.
 
-The workflow is successful only after public publication and Homebrew verification succeed.
-It writes release/source links and the verified artifact count to the Actions job summary.
+A failure in any step from build onward fails the run. The CI gate in step 2 does not: when the
+source's `test`/`typecheck` checks are missing, pending, or failed, the build, publish, and
+distribute jobs are skipped and the run still ends green with nothing published. Confirm that the
+distribute job ran before treating a run as a release. It writes release/source links and the
+verified artifact count to the Actions job summary.
 
 ## Normal release
 
@@ -27,7 +31,7 @@ Review and merge product changes, the root `VERSION`, all entries in
 public `main` first. The release command intentionally does not commit a dirty
 worktree, bump versions, merge unreviewed changes, or bypass branch protection.
 
-Once the version-bump commit is on public `main` with green CI:
+Once the version-bump commit is on public `main` and `main` HEAD has green CI:
 
 ```sh
 ./script/release 1.0.12
@@ -88,9 +92,10 @@ Recovery verifies remote state rather than trusting a local checkpoint:
 
 - A draft release is reused only when it targets the release source commit. The publish
   job's upload loop resumes incomplete uploads without replacing finished assets.
-- Different, incomplete, or unexpected draft assets cause failure rather than deletion;
-  investigate and remove a bad asset manually only while the release is still a draft,
-  then retry.
+- Different, incomplete, or unexpected draft assets cause failure rather than deletion.
+  `--publish-existing` never uploads, so it cannot repair a draft with a missing or bad
+  asset. While the release is still a draft, delete the whole draft and dispatch a normal
+  release to rebuild it.
 - An already-published public release is downloaded and verified, never overwritten.
 - A missing Homebrew update can be completed after public publication.
 - An already-correct Homebrew formula is left unchanged.
@@ -116,8 +121,10 @@ history. The release source must be an ancestor of public `main`, its `VERSION` 
 match the requested version, and the previous release's signed manifest must name the
 previous public tag's commit.
 
-Unrelated edits on public `main` never block a release — the release source is the
-version-bump commit, wherever `main` has since advanced. Moved tags, unexpected draft
+Without an existing draft or tag, the release source is public `main` HEAD at dispatch, not the
+version-bump commit. Commits merged after the bump are built into the release, a later commit
+that changes `VERSION` fails the version check, and red or pending CI on HEAD skips the build.
+Moved tags, unexpected draft
 targets, extra assets, malformed filenames, invalid signatures, missing formats, and
 mismatched hashes stop publication. Do not force-push around these checks.
 

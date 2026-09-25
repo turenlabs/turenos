@@ -37,6 +37,10 @@ const missing = [...moved.keys()].filter(
   (heading) => !blocks.some((block) => block.level === 2 && block.heading === heading),
 )
 if (missing.length > 0) throw new Error(`no "## " section named: ${missing.join(", ")}`)
+// GitHub reassigns -1/-2 suffixes after a split; refuse ambiguous anchors rather than silently breaking links.
+const bases = blocks.filter((block) => block.heading).map((block) => headingSlugs([block.heading])[0] ?? "")
+const duplicate = bases.find((slug, index) => bases.indexOf(slug) !== index)
+if (duplicate) throw new Error(`duplicate heading slug ${duplicate}: rename duplicate headings before splitting`)
 groups.forEach((group) => {
   if (existsSync(path.join(folder, group.file))) throw new Error(`target already exists: ${group.file}`)
 })
@@ -82,7 +86,7 @@ await Promise.all(
     Bun.write(path.join(folder, entry.group.file), relink(entry.text, path.join(folder, entry.group.file))),
   ),
 )
-const others = (git(root, "ls-files", "*.md") ?? "")
+const others = (git(root, "ls-files", "--cached", "--others", "--exclude-standard", "*.md") ?? "")
   .split("\n")
   .filter((file) => file.length > 0)
   .map((file) => path.join(root, file))
@@ -118,9 +122,15 @@ function renderGroup(group: Group) {
 }
 
 // Points links at whichever file holds their anchor now: `page#a` from elsewhere, and `#a` within the split pages.
+// Fenced blocks are examples, not links, so they stay as written.
 function relink(text: string, file: string) {
   const self = path.resolve(file)
-  return text.replace(LINK, (whole, prefix: string, target: string) => {
+  const lines = text.split("\n")
+  return lines.map((line, index) => (insideFence(lines, index) ? line : relinkLine(line, file, self))).join("\n")
+}
+
+function relinkLine(line: string, file: string, self: string) {
+  return line.replace(LINK, (whole, prefix: string, target: string) => {
     if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return whole
     const hash = target.indexOf("#")
     if (hash === -1) return whole
@@ -136,6 +146,12 @@ function relink(text: string, file: string) {
     const relative = path.relative(path.dirname(file), holder).split(path.sep).join("/")
     return `${prefix}${relative.startsWith("../") ? relative : `./${relative}`}#${anchor}`
   })
+}
+
+// A line is inside a fence when an odd number of fence markers precede it; the markers count as inside.
+function insideFence(lines: string[], index: number) {
+  const markers = lines.slice(0, index + 1).filter((line) => /^\s*(```|~~~)/.test(line)).length
+  return markers % 2 === 1 || /^\s*(```|~~~)/.test(lines[index] ?? "")
 }
 
 function splitBlocks(text: string) {

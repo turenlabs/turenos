@@ -9,14 +9,14 @@ is stored in TurenOS. Discovery checks installation only; login and model access
 are verified when the first request runs. Restart or refresh the provider list
 after installing the CLI.
 
-## Supported Build
+## Supported build
 
-The initial bridge is qualified for **Muse Code 1.0.3 (1.0.3-R2198.1)**. Other
+The bridge is qualified for **Muse Code 1.0.3 (1.0.3-R2198.1)**. Other
 builds fail before a model turn starts. This is an intentional safety boundary:
 Muse currently exposes native-tool exclusions rather than an MCP-only allowlist.
 A new build must pass the real-CLI isolation test before it is enabled.
 
-## Tool Routing
+## Tool routing
 
 TurenOS replays its transcript on each provider turn. Muse receives a private
 temporary workspace and settings, not the actual project directory or the user's

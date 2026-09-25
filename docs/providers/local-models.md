@@ -1,8 +1,32 @@
 # Local models
 
 TurenOS can use a model served on this machine through any OpenAI-compatible endpoint, configured as a custom provider
-in `forge.json`. The model server is run and secured by you; TurenOS only sends requests to it. This page covers the
-Bonsai 2 path. Its statements about third-party checkpoints and runtimes were checked on 2026-09-18 and may drift.
+in `forge.json`, and it discovers local Ollama and llama.cpp servers on its own. The model server is run and secured by
+you; TurenOS only sends requests to it. This page covers background discovery and the Bonsai 2 path. Its statements
+about third-party checkpoints and runtimes were checked on 2026-09-18 and may drift.
+
+## Background discovery
+
+Two built-in provider plugins, `packages/core/src/plugin/provider/ollama.ts` and
+`packages/core/src/plugin/provider/llama-cpp.ts`, probe loopback servers when the provider catalog loads, then keep
+polling every 10 seconds while it stays loaded. They run without any configuration.
+
+| Provider ID | Default endpoint         | Override                                                     | Requests                       |
+| ----------- | ------------------------ | ------------------------------------------------------------ | ------------------------------ |
+| `ollama`    | `http://127.0.0.1:11434` | a configured `ollama` provider endpoint, `OLLAMA_HOST`       | `GET /api/tags`                |
+| `llama-cpp` | `http://127.0.0.1:8080`  | a configured `llama-cpp` provider endpoint, `LLAMA_CPP_HOST` | `GET /v1/models`, `GET /props` |
+
+Each probe times out after 750 ms and refuses redirects. The endpoint host must be `localhost`, `127.0.0.1`, or `::1`
+over HTTP(S) without credentials in the URL; any other value disables that plugin rather than dialing a remote host. A
+reachable server registers the provider with its listed models (text-only, tools enabled, zero cost, 32,768-token
+context unless llama.cpp's `/props` reports `n_ctx`, 8,192-token output). A server with no models still registers with
+an empty list. When a later poll sees a different model list or no answer, the catalog reloads, so a stopped server
+drops out of the list.
+
+The OpenCode provider plugin makes one further background request, but only when an OpenCode Console connection
+exists: at catalog load and after each connection change it fetches `/api/config` from the connection's server
+(`https://console.opencode.ai` by default) with the stored token and registers the providers it returns
+(`packages/core/src/plugin/provider/opencode.ts`).
 
 ## Bonsai 2
 
@@ -108,6 +132,11 @@ configuration form accepted by TurenOS; the model reference is
 Restart or refresh the provider list after changing the config. The server must
 be running before TurenOS sends a request. The `--alias bonsai-2-27b` flag keeps
 the model ID stable even though the downloaded GGUF filename may change.
+
+Because the demo server listens on llama.cpp's default port, background
+discovery also lists it as `llama-cpp/bonsai-2-27b`, with text-only input and
+the context `/props` reports (32,768 tokens when it reports none). Use the `bonsai-local` model above to keep the
+image input and limits declared in the config.
 
 ## If vLLM is required
 

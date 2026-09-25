@@ -2,7 +2,8 @@
 
 TurenOS agent tools use WebAssembly for deterministic, bounded byte processing. Programs
 that need host networking, packet capture, process debugging, a JVM, or broad
-filesystem authority belong behind typed native or service integrations.
+filesystem authority belong behind typed native or service integrations. The
+complete list of `tools/` targets is in [`tools/README.md`](../../../tools/README.md).
 
 ## Shipped
 
@@ -22,14 +23,25 @@ catalog covering common filesystems, boot containers, device trees, and raw
 compression streams. It does not extract, decompress, recurse, or execute
 input, and unknown stream lengths remain explicitly unknown.
 
-The 1.0.6 extension adds ARM64 decoding, selected-function control flow, VBA
-source extraction, .NET methods/raw IL, bounded archive formats, and a reviewed
-DIE signature subset. Its workflow artifact overlays `dist/extensions` without
-replacing the agent's legacy static-analysis runtime. Email attachment byte
+The static-analysis extension artifact provides ARM64 decoding, selected-function
+control flow, VBA source extraction, .NET methods/raw IL, bounded archive formats,
+and a reviewed DIE signature subset. Its workflow artifact overlays `dist/extensions`
+without replacing the base static-analysis runtime. Email attachment byte
 extraction is a separate bounded export in `tools/email-security`; TCP stream
-reconstruction is implemented in the host agent over its existing libpcap runtime.
+reconstruction is implemented in the host agent over the libpcap runtime.
 
-Three forensic agent tools replace the earlier one-crate-per-function wrappers:
+Four more shipped targets supply parsing and matching runtimes:
+
+- `tools/yara-x`: the official YARA-X Rust WebAssembly API, patched with
+  pre-serialization aggregate result limits.
+- `tools/goblin`: bounded PE, ELF, Mach-O, TE, COFF, and Unix archive metadata
+  inspection built from Goblin.
+- `tools/libpcap`: tcpdump-group libpcap configured for bounded memory-backed
+  offline PCAP and PCAPNG reading only.
+- `tools/wasm-inspect`: static validation and section inspection for
+  WebAssembly modules and components; inspected bytes are never instantiated.
+
+Three forensic agent tools each cover a family of artifacts:
 
 - `tools/wifi-offline` summarizes an 802.11 PCAP or radiotap capture.
 - `tools/windows-artifacts` parses Prefetch, EVTX, MFT, Amcache, LNK, jump
@@ -63,10 +75,10 @@ here.
 
 ## Planned replacements
 
-| Capability       | Implementation                  | Boundary                                                                   |
-| ---------------- | ------------------------------- | -------------------------------------------------------------------------- |
-| Broader archives | Minimal libarchive read build   | Keep `list_archive` / `extract_archive_entry`; never extract paths to disk |
-| Packer database  | Reviewed declarative DIE subset | Replace marker matching; do not bundle Qt                                  |
+| Capability       | Implementation                                                                 | Boundary                                                                   |
+| ---------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| Broader archives | Minimal libarchive read build                                                  | Keep `list_archive` / `extract_archive_entry`; never extract paths to disk |
+| Packer database  | Broader reviewed declarative DIE subset (eight PE-section families ship today) | Replace the remaining literal-marker matching; do not bundle Qt            |
 
 Full 7-Zip is not used because its LGPL and restricted RAR components do not
 fit a permissive WASM artifact.
@@ -149,7 +161,7 @@ constraints. TShark/Wireshark is GPLv2. tcpdump and OpenBSD `nc` are
 permissively licensed, but their live socket and capture authority still makes
 native execution the correct boundary.
 
-## Required Limits
+## Required limits
 
 Static tools use these default hard ceilings unless a narrower tool-specific
 limit applies:
@@ -168,7 +180,7 @@ first and fetch one entry at a time. Recursion is host-controlled with hashing,
 deduplication, aggregate expansion limits, and a fresh worker for each input.
 No WASM target executes analyzed machine code.
 
-## Primary Sources
+## Primary sources
 
 - YARA-X: <https://github.com/VirusTotal/yara-x>
 - Binwalk: <https://github.com/ReFirmLabs/binwalk>

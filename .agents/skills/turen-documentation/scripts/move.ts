@@ -53,7 +53,7 @@ const inboundEdits = await Promise.all(
 const edits = [...docsEdits, ...inboundEdits].filter((edit) => edit.count > 0)
 const broken = docsEdits.flatMap((edit) => edit.dead.map((target) => `${path.relative(root, edit.file)}: ${target}`))
 const manual = [...moves.keys()].flatMap((from) =>
-  (git(root, "grep", "-n", "-F", path.relative(root, from), "--", ".", ":!*.md", ":!docs/") ?? "")
+  (git(root, "grep", "--untracked", "-n", "-F", path.relative(root, from), "--", ".", ":!*.md", ":!docs/") ?? "")
     .split("\n")
     .filter((line) => line.length > 0)
     .map((line) => line.slice(0, 160)),
@@ -136,13 +136,21 @@ function rewriteDocsPage(text: string, file: string) {
     (current, [from, to]) => current.replaceAll(`[\`${from}\`](${to})`, `[\`${to}\`](${to})`),
     linked,
   )
-  // Backticked repo paths of moved files, as in [`docs/memory.md`](...), name the new location.
+  // Backticked repo paths of moved files, as in [`docs/memory.md`](...), name the new location. Fenced examples stay.
   const mentions = [...moves].map(
     ([from, to]) => [`\`${path.relative(root, from)}\``, `\`${path.relative(root, to)}\``] as const,
   )
-  const mentioned = mentions.reduce((current, [from, to]) => current.replaceAll(from, to), relabeled)
-  const mentionCount = mentions.reduce((sum, [from]) => sum + relabeled.split(from).length - 1, 0)
-  return { text: mentioned, count: counter.links + mentionCount, dead }
+  const mentionCount = { value: 0 }
+  const mentioned = outsideCode(
+    relabeled,
+    (chunk) =>
+      mentions.reduce((current, [from, to]) => {
+        mentionCount.value += current.split(from).length - 1
+        return current.replaceAll(from, to)
+      }, chunk),
+    true,
+  )
+  return { text: mentioned, count: counter.links + mentionCount.value, dead }
 }
 
 function rewriteInbound(text: string, file: string) {
@@ -214,7 +222,8 @@ async function markdownUnder(folder: string) {
 }
 
 function outsideMarkdown() {
-  const listed = git(root, "ls-files", "*.md")
+  // Tracked and new, unignored files, so pages added in the same change are rewritten too.
+  const listed = git(root, "ls-files", "--cached", "--others", "--exclude-standard", "*.md")
   if (listed === undefined) return []
   return listed
     .split("\n")

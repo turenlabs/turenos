@@ -1,7 +1,8 @@
 # Session whiteboard
 
-Whiteboard is a primary session dock tab. Terminal remains available under More.
-The editor is Excalidraw, embedded locally and loaded only after opening a board.
+Each Session has one shared Excalidraw board that people and agents edit together. Edits merge per element, and a
+stale edit fails instead of overwriting newer work. The board is a primary tab in the session dock (Terminal is under
+**More**); the editor is embedded locally and loads only when a board is opened.
 
 ## Collaboration
 
@@ -21,7 +22,7 @@ or navigation. If browser storage is unavailable, an explicit warning advises
 exporting a local copy before leaving. Camera position and local selection are not
 broadcast as shared document state.
 
-## Agent Tools
+## Agent tools
 
 - `whiteboard_read`: reads the board and revision, optionally selected element IDs.
   Image data is summarized rather than included as base64 in model context.
@@ -32,7 +33,7 @@ broadcast as shared document state.
 Tools default to the top-level session's board so delegated agents work on the
 human-visible canvas. Explicit session targets remain permission-checked.
 
-## Local Assets And Limits
+## Local assets and limits
 
 No Excalidraw room server or cloud storage is used. Fonts and their notices ship
 with the application, and the upstream font CDN fallback is removed in both dev
@@ -40,7 +41,8 @@ and production builds. Hosted library browsing, external embeds, and AI generati
 are disabled. Local drawing, image import, and file export remain available.
 
 Boards are bounded to 5,000 elements including tombstones, 4 MiB serialized scene
-data, and 16 MiB of raster file data with a 4 MiB per-file limit. PNG, JPEG, GIF,
+data, and 16 MiB of raster file data across at most 5,000 files, with a 4 MiB
+per-file limit. PNG, JPEG, GIF,
 and WebP data URLs are supported; SVG and remote image URLs are not accepted.
 
 ## Source

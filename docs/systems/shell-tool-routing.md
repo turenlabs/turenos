@@ -4,6 +4,9 @@ TurenOS exposes specialized tools for workspace discovery, content search, and f
 right boundary for tests, builds, Git, package managers, compilers, and other terminal programs. It is not the normal
 boundary for searching or editing the workspace.
 
+This page is about redirecting shell commands to specialized tools. [Claude Code tool routing](../providers/claude-code/tool-routing.md)
+is unrelated: it routes the Claude Code CLI's tool calls through TurenOS's registry.
+
 Model-facing descriptions express that distinction, but prompt text alone is probabilistic. `ShellToolRouting` therefore
 recognizes a deliberately narrow set of high-confidence shell commands that have a specialized equivalent and rejects
 them before shell permission or process execution.
@@ -17,7 +20,7 @@ The implementation is shared by both session stacks:
 This is routing policy, not a sandbox. Read [Dangerous commands](./dangerous-commands/README.md) for the separate recursive-delete
 guard and the authority retained by commands that are allowed to execute.
 
-## Decision Boundary
+## Decision boundary
 
 ```text
 shell command
@@ -38,7 +41,7 @@ shell command
 Routing happens before the shell permission request and before process creation. A rejected command cannot be approved
 through the shell permission dialog because TurenOS has already identified a safer, structured boundary for the operation.
 
-## Routed Commands
+## Routed commands
 
 The current policy recognizes these command families:
 
@@ -64,7 +67,7 @@ The legacy registry does not advertise `edit` and `apply_patch` together. GPT mo
 mutation recommendation to the tool actually visible to that model so it never instructs the agent to call an absent
 tool.
 
-## Commands Left to Bash
+## Commands left to Bash
 
 The classifier intentionally allows cases where the specialized workspace tools are not equivalent:
 
@@ -82,19 +85,24 @@ process-output sinks.
 
 ## Parsing
 
-Bash and PowerShell reuse the tree-sitter parse already produced for shell safety. The router examines command nodes in
-document order, accounts for common wrappers such as `command` and `env`, distinguishes a pipeline consumer from a
-workspace search, and inspects file redirects separately from descriptor duplication.
+Bash and PowerShell commands are parsed with tree-sitter. The legacy shell tool reuses the tree it already produced for
+shell safety (`ShellToolRouting.inspectParsed`); the V2 `bash` tool calls `ShellToolRouting.inspect`, which parses the
+command again. The router examines command nodes in document order, accounts for common wrappers such as `command` and
+`env`, distinguishes a pipeline consumer from a workspace search, and inspects file redirects separately from
+descriptor duplication.
 
 `cmd.exe` uses a smaller lexical classifier because there is no tree-sitter grammar in this runtime. It covers direct
-`rg`, `git grep`, `find`, and simple `echo`/`type` redirects. Complex batch syntax is allowed rather than guessed at.
+`rg`, `git grep`, `find`, `Set-Content`/`Add-Content`/`Out-File`, and simple `echo`/`type` redirects. Complex batch
+syntax is allowed rather than guessed at. The classifier treats `find` as file discovery and routes it to `glob`, even
+though Windows `find` searches text.
 
 Search argument parsing consumes common value-taking options before identifying path operands. This matters for commands
 such as `rg -m 1 error /tmp/build.log`: `1` is the value of `-m`, not a workspace path.
 
-## Model Guidance
+## Model guidance
 
-Runtime enforcement is paired with tool descriptions that make the preferred boundary clear before a mistake occurs:
+Runtime enforcement is paired with tool descriptions that make the preferred boundary clear before a mistake occurs.
+In summary (paraphrased, not the literal descriptions):
 
 ```text
 glob         find workspace files by name or pattern
@@ -104,8 +112,8 @@ apply_patch  coordinate workspace additions, deletions, and updates
 bash         run tests, builds, Git, package managers, compilers, and terminal programs
 ```
 
-The legacy `grep` prompt previously recommended Bash with `rg` for match counting. That exception was removed because it
-taught the model to cross the same boundary the runtime now enforces.
+The `grep` tool's prompt does not suggest Bash with `rg` for any case, including match counting, so the guidance never
+contradicts the runtime routing.
 
 ## Benchmark
 
@@ -127,8 +135,8 @@ The fixture currently covers routed and allowed commands across Bash, PowerShell
 negatives for process pipelines, stderr duplication, external absolute and relative paths, value-taking search options,
 and build-output redirects. It reports exact-class accuracy plus routing precision and recall.
 
-The baseline intentionally models the previous runtime behavior: every command outside the recursive-delete guard was
-allowed to reach Bash. It is useful for measuring deterministic policy coverage, but it is **not** an end-to-end model
+The baseline models a policy that allows every command outside the recursive-delete guard to reach Bash. It is useful
+for measuring deterministic policy coverage, but it is **not** an end-to-end model
 evaluation. A perfect score means the implementation agrees with this reviewed command corpus. It does not establish
 that a provider model will always choose the correct tool, complete the task, or recover in one turn.
 
@@ -156,7 +164,7 @@ tests separately prove that a routed command stops before permission and process
 ## Limits
 
 - The policy recognizes high-confidence command shapes, not arbitrary scripts or interpreters.
-- Apart from the V2 `apply_patch` heredoc described under [Routed Commands](#routed-commands), it does not rewrite
+- Apart from the V2 `apply_patch` heredoc described under [Routed commands](#routed-commands), it does not rewrite
   commands or execute a specialized tool automatically. It returns an actionable error and lets the model make the typed
   retry.
 - It does not replace permissions. Commands that are not routed still proceed through normal Bash permission handling.

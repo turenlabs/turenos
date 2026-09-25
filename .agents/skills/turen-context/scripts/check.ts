@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 // Audits the repository's AGENTS.md files, the instructions coding agents load while developing TurenOS.
 // Checks what a script can prove: load budget per directory chain, references from ancestors, size, stray @mentions,
-// backticked paths and package scripts that don't resolve, broken links, lines repeated across files, and CLAUDE.md
-// files that would stop Claude Code from reading AGENTS.md. Symbols, invariants and gotchas still need a human read.
+// backticked paths and package scripts that don't resolve, broken links, lines repeated across files, lines naming the
+// upstream OpenCode product, and the CLAUDE.md shims Claude Code needs to read AGENTS.md at all. Symbols, invariants and
+// gotchas still need a human read.
 // Exits 1 when any error is found. Read-only.
 //
 // usage: bun .agents/skills/turen-context/scripts/check.ts [repo-root]
@@ -41,13 +42,7 @@ const vendored = instructionFiles.filter((file) => VENDORED.test(file))
 const texts = new Map(graded.map((file) => [file, readFileSync(path.join(root, file), "utf8")]))
 const scripts = packageScripts()
 
-const findings = [
-  ...graded.flatMap(fileFindings),
-  ...duplicateFindings(),
-  ...instructionFiles
-    .filter((file) => path.posix.basename(file) === "CLAUDE.md" && !VENDORED.test(file))
-    .flatMap(shadowFindings),
-]
+const findings = [...graded.flatMap(fileFindings), ...duplicateFindings(), ...claudeFindings()]
 
 console.log(`# AGENTS.md audit: ${graded.length} files under ${root}`)
 if (vendored.length > 0) {
@@ -120,7 +115,25 @@ function fileFindings(file: string): Finding[] {
       .filter((target) => !existsSync(path.resolve(root, path.posix.dirname(file), target.split("#")[0] ?? "")))
       .map((target) => error(file, `broken link: ${target}`)),
     ...emphasisFindings(file, prose),
+    ...upstreamFindings(file, prose),
   ]
+}
+
+// Lines inherited from OpenCode name commands, APIs and hosts that TurenOS never shipped (`opencode dev web`,
+// `opencode.tools.register`). TurenOS spells its own identifiers `forge` or TurenOS, so any OpenCode name needs checking.
+function upstreamFindings(file: string, prose: string): Finding[] {
+  return prose
+    .split("\n")
+    .flatMap((line, number) =>
+      /\bopencode\b/i.test(line)
+        ? [
+            warning(
+              file,
+              `line ${number + 1} names OpenCode, the upstream product; confirm the command, API or path exists in TurenOS or remove the line`,
+            ),
+          ]
+        : [],
+    )
 }
 
 function pathFinding(file: string, raw: string): Finding[] {
@@ -218,16 +231,45 @@ function duplicateFindings(): Finding[] {
     )
 }
 
-// Claude Code reads AGENTS.md only when no CLAUDE.md exists in the launch folder or above it.
-function shadowFindings(claude: string): Finding[] {
-  const folder = path.posix.dirname(claude)
-  const text = readFileSync(path.join(root, claude), "utf8")
-  if (/(^|\s)@AGENTS\.md\b/.test(text)) return []
+// Claude Code reads CLAUDE.md, never AGENTS.md, so the root needs a CLAUDE.md that imports it. Every CLAUDE.md is a
+// one-line shim: rules written only there would reach Claude Code and no other agent.
+function claudeFindings(): Finding[] {
+  const shims = instructionFiles.filter((file) => path.posix.basename(file) === "CLAUDE.md" && !VENDORED.test(file))
   return [
-    error(
-      "",
-      `${claude} stops Claude Code from reading any AGENTS.md for sessions started in or below ${folder === "." ? "the repository root" : `${folder}/`}; add an \`@AGENTS.md\` line to it or remove it`,
-    ),
+    ...(texts.has("AGENTS.md") && !shims.includes("CLAUDE.md")
+      ? [
+          error(
+            "",
+            "no root CLAUDE.md: Claude Code reads CLAUDE.md, not AGENTS.md, so it loads none of these rules. Add a CLAUDE.md containing only `@AGENTS.md`",
+          ),
+        ]
+      : []),
+    ...shims.flatMap((claude) => {
+      const text = readFileSync(path.join(root, claude), "utf8")
+      const sibling = claude === "CLAUDE.md" ? "AGENTS.md" : `${path.posix.dirname(claude)}/AGENTS.md`
+      const extra = text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "" && line !== "@AGENTS.md")
+      return [
+        ...(/^\s*@AGENTS\.md\s*$/m.test(text) && existsSync(path.join(root, sibling))
+          ? []
+          : [
+              error(
+                "",
+                `${claude} does not import a sibling AGENTS.md: Claude Code sessions in ${path.posix.dirname(claude)}/ miss those rules. Make it contain only \`@AGENTS.md\`, next to an AGENTS.md`,
+              ),
+            ]),
+        ...(extra.length > 0
+          ? [
+              warning(
+                "",
+                `${claude} has ${extra.length} lines besides \`@AGENTS.md\`; only Claude Code reads them. Move them into ${sibling}`,
+              ),
+            ]
+          : []),
+      ]
+    }),
   ]
 }
 

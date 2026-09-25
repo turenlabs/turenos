@@ -18,7 +18,7 @@ Documentation must be useful to both people and coding agents.
 - **Date load-bearing claims.** If a fact is likely to drift (versions, measurements, deadlines, owners), say when it was true: "measured 2026-08-02", "as of 1.0.6".
 - **Don't duplicate the code.** Explain _why_ and _how to use_, not what every function does line by line. Link to self-explanatory code instead of paraphrasing it.
 - **Diagrams as text.** Prefer Mermaid or ASCII in fenced blocks over binary images: text renders on GitHub, diffs in review and can be read by agents. If an image is unavoidable, keep its editable source beside it in `docs/assets/`.
-- **Separate channels.** Docs never reference agent instruction files (`AGENTS.md`, `CLAUDE.md`). If a fact matters to both people and agents, it belongs in the docs. Harness instructions stay in the instruction files, with no cross-links.
+- **Separate channels.** Docs may name `AGENTS.md` as a concept but never link an agent instruction file or depend on what one says. If a fact matters to both people and agents, it belongs in the docs; the instruction file keeps the rule and links the page. A fact stated only in an `AGENTS.md` is invisible to people.
 
 ## Verify every claim against the source
 
@@ -26,13 +26,13 @@ Before writing that a function exists, a flag is supported, a command takes an a
 
 Numbers need the same care: limits, defaults, timeouts and counts come from constants in the source (`MAX_OWNER_ACTIVE = 4`), not from another page.
 
-For an audit, check behavioral guarantees separately from API names and links. Follow crash, retry, and side-effect claims through the actual recovery branches; a stable identifier or passing test does not establish idempotency downstream. Read benchmark methods before repeating causal, fairness, or quality claims, and state sample size and estimates beside the numbers. Scan page openings and headings for praise, self-reference, and commentary on the writing; replace those with the behavior or decision readers need.
+Check behavioral guarantees separately from API names and links. Follow crash, retry, and side-effect claims through the actual recovery branches; a stable identifier or passing test does not establish idempotency downstream. Read benchmark methods before repeating causal, fairness, or quality claims, and state sample size and estimates beside the numbers.
 
 ## Names and layout
 
 - File and folder names are kebab-case (`shell-tool-routing.md`), with `README.md` as the only exception. Names starting with `_` or `.` are treated as site-generator files and skipped.
 - `docs/README.md` is the only file at the root of `docs/`. Every other page lives in a section.
-- A subfolder with more than one page has a `README.md`, which in TurenOS is the topic's main page and links its siblings.
+- A subfolder with more than one page has a `README.md`, which in TurenOS is the topic's main page and links every sibling page and subfolder.
 - Every page is reachable by links from `docs/README.md`. An unlinked page is an orphan, so add it to its section's index.
 
 ## Moving or renaming pages
@@ -46,6 +46,22 @@ Docs rot when code moves and nobody searches. When the task is "update the docs"
 1. List what changed: `git diff --name-only <base>...HEAD`, plus renamed or removed symbols, flags, commands and config keys.
 2. Search every docs tree for each old path and name (`rg -n '<old>' docs/ tools/ services/catalog/`). Update each hit, or delete the claim if the thing is gone.
 3. For an audit, re-verify each page's code-level claims against the source and run the checker. Report stale claims with the current reality ("says `--port`, flag is now `--listen`").
+
+## Auditing for confusion
+
+An audit looks for what would mislead a person or an agent: wrong claims, contradictions, blind spots, and unclear wording. The checker proves structure only; every item below needs reading and a search.
+
+1. **Baseline.** Run `check.ts docs --coverage` and the `turen-context` checker. Treat each coverage note as a blind-spot candidate.
+2. **Defaults and toggles, not only constants.** A limit can be right while the page misleads about what a user gets without configuring anything. Find each "falls back to", "defaults to", "asks", "off by default" claim and trace it to the value used at runtime, including stored toggles (the permission `ask` effect resolves to `allow` while _Enforce permission checks_ is off).
+3. **Absolute words.** "manual", "not enabled", "not yet wired", "only", "never", "no agent tool": grep for the registration that would falsify it (`tools.register`, a `node` in `location-services.ts`, a scheduler started in `server.ts`, an exported tool map).
+4. **Every copy of a shared fact.** For each catalog row, compare it with the system's page and sub-pages; for each count, default, name, or policy table, grep `docs/`, the READMEs and every `AGENTS.md`. Two copies that differ are a finding even if one is right. Keep one copy and link it.
+5. **Blind spots.** Anything started when the server boots (schedulers, pollers, background reviewers, downloaded binaries, outbound network calls) needs a page or a catalog row. So does each workspace package and each top-level code folder, and each fact that currently lives only in an `AGENTS.md`.
+6. **Split and move residue.** Link text that still names the old file (the checker flags it), "above/below/see below" that now points into another page, a folder README summary that no longer matches the child page's lead, and notes about one subsystem left inside another subsystem's page.
+7. **Leftover prompts.** Pages written as instructions for one agent run: grep for `You implement`, `(yours)`, `as stubbed`, `do not edit`, `is NOT installed`. Rewrite them as a procedure for any reader.
+8. **Unexplained references.** Internal code names (`source-106`), planning artifacts ("the planning whiteboard"), other products, and names that exist nowhere in the repository. Define them where they first appear or remove them.
+9. **History in evergreen pages.** "now", "previously", "originally", release-by-release notes, and PR numbers belong in commits and release notes.
+
+Report in severity order (incorrect claim, contradiction, blind spot, unclear wording). Each finding gives `file:line`, what the page says, what the source shows with its path, and a one-line fix. Fix after the report is reviewed, not during it.
 
 ## One docs tree, many entry points
 

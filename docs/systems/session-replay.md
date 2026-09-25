@@ -6,9 +6,10 @@ replay search, after which a background backfill fills it in and search results 
 
 ## How it works
 
-1. `GET /api/session/replay` (`session.replay`) calls `SessionV2.replay`. The first call enables the index in
-   `session_replay_meta`, runs one backfill batch inline, and starts the background backfill. Later process starts
-   resume the backfill automatically once the index is enabled.
+1. `GET /api/session/replay` (`session.replay`) calls `SessionV2.replay`. Every call enables the index in
+   `session_replay_meta` (a no-op once enabled), starts the background backfill if it is not running, and runs one
+   backfill batch inline before searching. Later process starts resume the backfill automatically once the index is
+   enabled. A page holds 50 results by default; `limit` accepts at most 200.
 2. The backfill indexes sessions and event text in batches of 64 sessions and 16 events, pausing 100 ms between
    batches. New writes queue in `session_replay_pending_v3`. The index lives in `session_replay_v3` with an FTS5 table,
    `session_replay_fts_v3`; a rebuild moves to a new table suffix instead of dropping the old index on a request path.

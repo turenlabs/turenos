@@ -1,10 +1,11 @@
 # Release signing
 
-TurenOS releases are built from the public `turenlabs/turenos` `main` commit
-whose `VERSION` matches the requested release. The workflow fails before
-building when a signing input is absent or malformed.
+TurenOS releases are built from public `turenlabs/turenos` `main` HEAD at
+dispatch, whose `VERSION` must equal the requested release (see the
+[release guide](./README.md)). The workflow fails before building when a
+signing input is absent or malformed.
 
-The workflow now owns public publication and Homebrew updates too. Use the
+The same workflow publishes the public release and updates Homebrew. Use the
 [automated release runbook](./automation.md) for dispatch, the dedicated
 `PUBLIC_RELEASE_TOKEN`, and recovery without rebuilding.
 
@@ -16,9 +17,12 @@ The workflow now owns public publication and Homebrew updates too. Use the
 | Windows  | Azure Trusted Signing Authenticode signature with RFC 3161 timestamp            | Detached OpenPGP signature    |
 | Linux    | Detached OpenPGP signatures for AppImage, deb, rpm, and runtime archives        | Signed checksums and manifest |
 
-Every published file is covered by `release-manifest.json` and `SHA256SUMS`.
-Each file, the manifest, and the checksum list receives an armored detached
-signature. `RELEASE_SIGNING_KEY.asc` contains the corresponding public key.
+`release-manifest.json` lists every payload and `RELEASE_SIGNING_KEY.asc`.
+`SHA256SUMS` covers the same files plus `release-manifest.json`. Every payload,
+the manifest, and the checksum list receives an armored detached `.asc`
+signature; the signatures themselves are in neither list, and `SHA256SUMS` is
+not in the manifest. `RELEASE_SIGNING_KEY.asc` contains the corresponding
+public key and is not signed.
 
 ## GitHub secrets
 
@@ -29,14 +33,14 @@ keys, passwords, or decoded temporary files.
 
 - `APPLE_CERTIFICATE_APPLICATION_P12`: base64-encoded Developer ID Application `.p12` export.
 - `APPLE_CERTIFICATE_PASSWORD`: password protecting the `.p12`.
-- `APPLE_ID`: Apple account used by the existing agent release pipeline.
+- `APPLE_ID`: Apple account that submits notarization jobs.
 - `APPLE_ID_PASSWORD`: app-specific password for that Apple account.
 - `APPLE_TEAM_ID`: Apple Developer team ID (`5Q9UJQ9MPK`).
 
 The certificate must include its private key and remain valid through the
 release window. The app-specific password must be able to submit notarization
-jobs. TurenOS ships DMG and ZIP bundles, so the agent pipeline's separate
-Developer ID Installer certificate is not required.
+jobs. TurenOS ships DMG and ZIP bundles, so a Developer ID Installer certificate
+is not required.
 
 ### Windows
 
@@ -48,8 +52,9 @@ Developer ID Installer certificate is not required.
 - `AZURE_TRUSTED_SIGNING_ENDPOINT`
 
 Windows signing uses GitHub OIDC and Azure Trusted Signing. Do not create or
-store an Azure client secret. The Azure federated credential must trust this
-repository's `release.yml` workflow on `dev`.
+store an Azure client secret. The Azure federated credential must trust the
+`turenio/turen` `release.yml` workflow on that repository's default branch, the
+only ref the workflow accepts a dispatch from.
 
 ### Release OpenPGP key
 
@@ -94,11 +99,23 @@ verification has passed.
 
 ## Public Desktop updates
 
-Starting with 1.0.5, production Desktop checks public GitHub Releases in
-`turenlabs/turenos` at launch and every ten minutes. Updates download in the
-background; installation requires the user's restart action. Development and
-beta builds do not auto-update. Users on 1.0.4 or earlier must manually install
-1.0.5 once to enable subsequent updates.
+Production Desktop builds check public GitHub Releases in `turenlabs/turenos` at
+launch and every ten minutes. Updates download in the background; installation
+requires the user's restart action.
+
+The **Update channel** setting (Latest, One release behind, Two releases behind)
+changes where the check goes. Latest uses the GitHub provider's
+`releases/latest` feed. Either "behind" option first requests
+`https://api.github.com/repos/turenlabs/turenos/releases?per_page=10`
+anonymously on every check, skips drafts, prereleases, and non-`vX.Y.Z` tags,
+and pins the feed to that tag's own `latest-*.yml` assets. A failed or
+rate-limited listing fails that check, though an update already downloaded
+stays installable. The preference is stored as
+`updater-lag` in Desktop product storage
+([`updater.ts`](../../../packages/desktop/src/main/updater.ts),
+[`updater-feed.ts`](../../../packages/desktop/src/main/updater-feed.ts)). Development and beta builds do not
+auto-update. Builds older than 1.0.5 predate this feed and must install a
+current release manually once.
 
 Build and sign in `turenio/turen`. Its publish job uploads the signed assets
 directly to a public draft release; the distribution job re-downloads and
@@ -136,9 +153,6 @@ download an update, explicitly restart, and verify version, retained user data,
 and sidecar shutdown. Never publish a fake newer stable version to exercise the
 production feed. Windows updates require the `Turen Labs, Inc` signer;
 macOS retains Electron's native signature checks.
-
-The 1.0.5 source baseline also includes the merged chat queue reconciliation
-fix (#84) and delegation/reflection tool-contract fixes (#85).
 
 ## Verifying downloads
 

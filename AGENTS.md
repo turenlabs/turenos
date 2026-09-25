@@ -1,9 +1,9 @@
 - To regenerate the legacy JavaScript SDK, run `./packages/sdk/js/script/build.ts`.
 - After changing the public Protocol or Server `HttpApi`, run `bun run generate` from `packages/client`. Do not edit `packages/client/src/generated` or `packages/client/src/generated-effect` directly.
-- Keep runtime dependencies directed from Schema to Core and Protocol, then from Core and Protocol to Server. Client runtime code may depend on Schema and Protocol but never Core or Server; `sdk-next` composes Client, Core, and Server.
+- Keep the runtime dependency direction: Core and Protocol depend on Schema, and Server depends on Core and Protocol. Core's only Protocol import is `@turenlabs/protocol/proxy-policy`; don't add others. Client runtime code may depend on Schema and Protocol but never Core or Server; `sdk-next` composes Client, Core, and Server.
 - The canonical development branch is `main`. `turenio/turen` consumes it for signing and release only.
 - `tools/` holds the imported wasm-tools bounded WASM tool targets; follow `tools/AGENTS.md` when working there. `.github/workflows/build-<target>.yml` rebuilds and opens a PR updating `packages/<target>-wasm`; locally run `bun run build:wasm <target>` (recipes live in `script/build-wasm.ts`) and `bun run verify:wasm` checks package checksums.
-- `AGENTS.md` files (these instructions) follow `.agents/skills/turen-context/SKILL.md`; run `bun .agents/skills/turen-context/scripts/check.ts` after changing any of them.
+- `AGENTS.md` files (these instructions) and the root `CLAUDE.md`, which only imports this file for Claude Code, follow `.agents/skills/turen-context/SKILL.md`; write rules only in `AGENTS.md`, and run `bun .agents/skills/turen-context/scripts/check.ts` after changing any of them.
 - `docs/` follows the documentation method in `.agents/skills/turen-documentation/SKILL.md`; follow it when adding, editing, or moving docs, and run `bun .agents/skills/turen-documentation/scripts/check.ts docs` before finishing.
 - `services/catalog/manifests` is the canonical built-in extension catalog (data, skills, MCP, tools); follow `services/catalog/AGENTS.md` when editing it. Run `bun run generate` in `packages/extensions` to update `packages/extensions/src/generated.ts`. There is no remote catalog.
 - Shells spawned inside another Electron app inherit `ELECTRON_RUN_AS_NODE=1`, which makes any `electron` binary run as plain Node and exit silently. Prefix Electron launches and `electron-vite dev` with `env -u ELECTRON_RUN_AS_NODE`.
@@ -12,8 +12,8 @@
 
 Packages with their own rules have an `AGENTS.md`; read it before changing that package:
 
-- `packages/core/AGENTS.md`: V2 Session Core rules; `packages/core/src/tool/AGENTS.md` covers built-in tools.
-- `packages/forge/AGENTS.md`: database, extension catalog, module shape, Effect rules, and headless `serve`.
+- `packages/core/AGENTS.md`: V2 Session Core rules and the database schema and migrations; `packages/core/src/tool/AGENTS.md` covers built-in tools.
+- `packages/forge/AGENTS.md`: extension catalog, module shape, Effect rules, and headless `serve`.
 - `packages/llm/AGENTS.md`: the LLM package, with nested files for routes, providers, protocols, and recorded tests.
 - `packages/desktop/AGENTS.md`: Electron IPC boundaries and packaged dev builds.
 - `packages/app/AGENTS.md`, `packages/codemode/AGENTS.md`, `packages/effect-drizzle-sqlite/AGENTS.md`, `packages/extensions/AGENTS.md`, and `packages/schema/AGENTS.md`.
@@ -48,7 +48,7 @@ Examples: `fix(desktop): preserve window state`, `docs: update contributing guid
 - Use Bun APIs when possible, like `Bun.file()`
 - Rely on type inference when possible; avoid explicit type annotations or interfaces unless necessary for exports or clarity
 - Prefer functional array methods (flatMap, filter, map) over for loops; use type guards on filter to maintain type inference downstream
-- In `packages/core/src/config` and `packages/forge/src/config`, follow the existing self-export pattern at the top of the file (for example `export * as ConfigAgent from "./agent"`) when adding a new config module.
+- Modules export their own namespace with a self-reexport (`export * as ConfigAgent from "./agent"`). Where it goes differs by package; follow `packages/core/AGENTS.md` and `packages/forge/AGENTS.md`.
 - In Effect generators, bind services to named variables before calling methods. Do not use nested service yields such as `yield* (yield* Foo.Service).bar()`.
 
 Reduce total variable count by inlining when a value is only used once.
@@ -161,7 +161,7 @@ const table = sqliteTable("session", {
 
 - Avoid mocks as much as possible, you shouldn't be using globalThis.\* at all unless it's the only option.
 - Test actual implementation, do not duplicate logic into tests
-- Tests cannot run from repo root (guard: `do-not-run-tests-from-root`); run from package dirs like `packages/forge`.
+- Tests cannot run from repo root (the root `test` script exits with "do not run tests from root"); run from package dirs like `packages/forge`.
 
 ## Type Checking
 

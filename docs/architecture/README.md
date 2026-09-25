@@ -24,10 +24,9 @@ user-facing product. Both use one shared server implementation:
 - The local sidecar and headless server compose the `packages/forge` server with the services in
   `@turenlabs/core`; they are not separate session engines.
 
-The executable currently retains broader commands such as agent runs, providers, sessions, and
-upgrades. Those commands are real supported entrypoints in the current implementation, but are not
-the intended primary user experience. This role clarification does not remove them or rename any
-compatibility identifiers.
+The executable also exposes broader commands such as agent runs, providers, sessions, and
+upgrades. These commands remain supported entry points, but are not the intended primary user
+experience, and their compatibility identifiers keep their names.
 
 Source: [local process startup](../../packages/desktop/src/main/server.ts),
 [direct server loading](../../packages/desktop/src/main/sidecar.ts),
@@ -35,7 +34,8 @@ Source: [local process startup](../../packages/desktop/src/main/server.ts),
 [WSL server startup](../../packages/desktop/src/main/wsl/sidecar.ts), and
 [current CLI registration](../../packages/forge/src/index.ts).
 
-The browser renderer does not call Core services directly. It uses a generated SDK client contract over
+The browser renderer does not call Core services directly; from `@turenlabs/core` it imports only pure
+`@turenlabs/core/util/*` helpers. It uses a generated SDK client contract over
 HTTP, server-sent events (SSE), and selected WebSocket routes.
 
 ```mermaid
@@ -45,7 +45,7 @@ flowchart LR
     Renderer[TurenOS web UI\npackages/app]
     Operator[Backend operator]
     CLI[forge backend utility\nheadless, SSH, WSL]
-    Sidecar[Local sidecar\nNode process]
+    Sidecar[Local sidecar\nElectron utility process]
     Server[TurenOS server\npackages/forge]
     API[Typed HTTP API\nProtocol and Server]
     Client[Generated client\npackages/client]
@@ -73,8 +73,13 @@ flowchart LR
     Server --> Data
 ```
 
-The arrows in the package graph below mean "has a runtime dependency on". The package manifests
-and the runtime boundary are intentionally separate from source naming compatibility.
+The package graph below follows the workspace entries in each `package.json`. A solid arrow is a
+`dependencies` entry. A dashed arrow is a `devDependencies` entry, or no manifest entry at all, that
+still ships because the build bundles it: Desktop bundles the renderer from `@turenlabs/app` and
+loads the server through the `virtual:forge-server` build alias (`packages/desktop/electron.vite.config.ts`)
+plus the shipped `forge-cli` binary. The graph omits the storage drivers (`effect-drizzle-sqlite`,
+`effect-sqlite-node`), the `*-wasm` packages, and build- or test-only packages (`script`,
+`http-recorder`, `httpapi-codegen`), and dev edges used only by tests or code generation.
 
 ```mermaid
 flowchart TD
@@ -88,33 +93,55 @@ flowchart TD
     LLM["@turenlabs/llm"]
     Extensions["@turenlabs/extensions"]
     Plugin["@turenlabs/plugin"]
+    CodeMode["@turenlabs/codemode"]
     SDK["@turenlabs/sdk-next"]
+    UI["@turenlabs/ui"]
+    SessionUI["@turenlabs/session-ui"]
     App["@turenlabs/app"]
     Desktop["@turenlabs/desktop"]
 
+    Protocol --> Schema
     Core --> Schema
     Core -->|proxy-policy only| Protocol
-    Protocol --> Schema
+    Core --> LLM
+    Core --> Extensions
+    Core --> Plugin
+    Core --> CodeMode
+    LLM --> Schema
+    Extensions --> Schema
+    Plugin --> LegacySDK
     Server --> Core
     Server --> Protocol
     Server --> Schema
     Client --> Schema
     Client --> Protocol
-    Core --> LLM
-    Core --> Extensions
-    Core --> Plugin
-    ProductRuntime --> Core
+    ProductRuntime -.->|devDependency, bundled| Core
     ProductRuntime --> Server
     ProductRuntime --> Protocol
     ProductRuntime --> Schema
     ProductRuntime --> LegacySDK
     ProductRuntime --> LLM
+    ProductRuntime --> Extensions
+    ProductRuntime --> Plugin
+    ProductRuntime --> CodeMode
     SDK --> Client
     SDK --> Core
     SDK --> Server
+    SessionUI --> Core
+    SessionUI --> LegacySDK
+    SessionUI --> UI
+    App --> Client
+    App -->|util helpers only| Core
+    App --> Protocol
+    App --> Schema
     App --> LegacySDK
-    Desktop --> App
-    Desktop --> ProductRuntime
+    App --> SessionUI
+    App --> UI
+    Desktop --> Protocol
+    Desktop --> Schema
+    Desktop -.->|devDependency, bundled| App
+    Desktop -.->|devDependency, bundled| UI
+    Desktop -.->|build-time bundling| ProductRuntime
 ```
 
 ### Package responsibilities
@@ -189,21 +216,21 @@ and [Branding](./branding.md).
 
 ## Operational constraints
 
-| Area              | Current constraint and consequence                                                                                                                                                                             | Source                                                                                                                                                                                                     |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Database          | One primary writer and four readers (`FORGE_DB_READERS`, at most eight). WAL, `synchronous=FULL`, `secure_delete=ON`, foreign keys, query-only readers, and a five-second busy timeout are configured by Core. | [`packages/core/src/database/database.ts`](../../packages/core/src/database/database.ts)                                                                                                                   |
-| Database identity | `FORGE_DB` and channel database names are compatibility behavior. Database files are protected with mode `0600` where supported.                                                                               | [`packages/core/src/database/database.ts`](../../packages/core/src/database/database.ts)                                                                                                                   |
-| Secret storage    | Persistent server startup requires an OS-protected vault key outside tests. There is no plaintext fallback for persistent secrets.                                                                             | [`packages/core/src/secret-vault.ts`](../../packages/core/src/secret-vault.ts), [`secure-storage.md`](../systems/secure-storage.md)                                                                        |
-| Session execution | A Session has one local drain at a time. Same-Session resumes join it; different Sessions may run concurrently. Durable wakeups are advisory and crash continuation is not an implicit provider retry.         | [`packages/core/src/session/run-coordinator.ts`](../../packages/core/src/session/run-coordinator.ts), [`packages/core/src/session/execution/local.ts`](../../packages/core/src/session/execution/local.ts) |
-| Provider turns    | One explicit `llm.stream(request)` call represents one provider turn. History is reloaded before durable continuation.                                                                                         | [`packages/core/src/session/runner/llm.ts`](../../packages/core/src/session/runner/llm.ts)                                                                                                                 |
-| Local tools       | A provider message may settle at most eight local tool calls concurrently. This controls fan-out but does not resolve write-write conflicts between tools.                                                     | [`packages/core/src/session/runner/llm.ts`](../../packages/core/src/session/runner/llm.ts)                                                                                                                 |
-| Tool output       | Default V2 output limits are 2,000 lines and 50 KiB; oversized output is written under `tool-output` and shown as a bounded preview.                                                                           | [`packages/core/src/tool-output-store.ts`](../../packages/core/src/tool-output-store.ts)                                                                                                                   |
-| Retention         | Event authority stays byte-exact. Derived message and tool settlement copies may be previewed by a globally scheduled, bounded retention sweep.                                                                | [`packages/core/src/retention.ts`](../../packages/core/src/retention.ts)                                                                                                                                   |
-| MCP selection     | A Session may load at most 12 MCP tools globally. Each integration's manifest sets its own limit (default 4); selections idle for 3 turns are unloaded.                                                        | [`packages/forge/src/mcp/broker.ts`](../../packages/forge/src/mcp/broker.ts)                                                                                                                               |
-| MCP runtime       | Selectable backends are Docker and local process. Managed package recipes use pinned versions and a managed `uv` executable; secrets are supplied to isolated child environments.                              | [`packages/forge/src/mcp/runtime.ts`](../../packages/forge/src/mcp/runtime.ts), [`packages/forge/src/mcp/package-runtime.ts`](../../packages/forge/src/mcp/package-runtime.ts)                             |
-| HTTP streams      | SSE endpoints use `no-store`, heartbeats, and location-aware filtering. A stalled subscriber remains an operational risk and must be monitored with bounded transport work.                                    | [`packages/forge/src/server/routes/instance/httpapi/handlers/event.ts`](../../packages/forge/src/server/routes/instance/httpapi/handlers/event.ts)                                                         |
-| Desktop lifecycle | The sidecar exits when its Electron parent disappears and gets a bounded orphan-stop window. The desktop owns teardown and does not leave a server process behind on normal parent death.                      | [`packages/desktop/src/main/sidecar.ts`](../../packages/desktop/src/main/sidecar.ts)                                                                                                                       |
-| Generated code    | Public API changes require regeneration from `packages/client`; generated directories are never edited directly.                                                                                               | [`packages/client/script/build.ts`](../../packages/client/script/build.ts)                                                                                                                                 |
+| Area              | Current constraint and consequence                                                                                                                                                                                                                                            | Source                                                                                                                                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Database          | One primary writer and four readers (`FORGE_DB_READERS`, at most eight; an invalid value falls back to four, and `:memory:` uses none). WAL, `synchronous=FULL`, `secure_delete=ON`, foreign keys, query-only readers, and a five-second busy timeout are configured by Core. | [`packages/core/src/database/database.ts`](../../packages/core/src/database/database.ts)                                                                                                                   |
+| Database identity | `FORGE_DB` and channel database names are compatibility behavior. Database files are protected with mode `0600` where supported.                                                                                                                                              | [`packages/core/src/database/database.ts`](../../packages/core/src/database/database.ts)                                                                                                                   |
+| Secret storage    | Persistent server startup requires a valid vault key outside tests: Desktop supplies an OS-protected key, and headless servers set `FORGE_SECRET_VAULT_KEY_ID` and `FORGE_SECRET_VAULT_KEY`. There is no plaintext fallback for persistent secrets.                           | [`packages/core/src/secret-vault.ts`](../../packages/core/src/secret-vault.ts), [`secure-storage.md`](../systems/secure-storage.md)                                                                        |
+| Session execution | A Session has one local drain at a time. Same-Session resumes join it; different Sessions may run concurrently. Durable wakeups are advisory and crash continuation is not an implicit provider retry.                                                                        | [`packages/core/src/session/run-coordinator.ts`](../../packages/core/src/session/run-coordinator.ts), [`packages/core/src/session/execution/local.ts`](../../packages/core/src/session/execution/local.ts) |
+| Provider turns    | One explicit `llm.stream(request)` call represents one provider turn. History is reloaded before durable continuation.                                                                                                                                                        | [`packages/core/src/session/runner/llm.ts`](../../packages/core/src/session/runner/llm.ts)                                                                                                                 |
+| Local tools       | A provider message may settle at most eight local tool calls concurrently. This controls fan-out but does not resolve write-write conflicts between tools.                                                                                                                    | [`packages/core/src/session/runner/llm.ts`](../../packages/core/src/session/runner/llm.ts)                                                                                                                 |
+| Tool output       | Default V2 output limits are 2,000 lines and 50 KiB; oversized output is written under `tool-output` and shown as a bounded preview.                                                                                                                                          | [`packages/core/src/tool-output-store.ts`](../../packages/core/src/tool-output-store.ts)                                                                                                                   |
+| Retention         | Event authority stays byte-exact. Derived message and tool settlement copies may be previewed by a globally scheduled, bounded retention sweep.                                                                                                                               | [`packages/core/src/retention.ts`](../../packages/core/src/retention.ts)                                                                                                                                   |
+| MCP selection     | A Session may load at most 12 MCP tools globally. Each integration's manifest sets its own limit (default 4); selections idle for 3 turns are unloaded.                                                                                                                       | [`packages/forge/src/mcp/broker.ts`](../../packages/forge/src/mcp/broker.ts)                                                                                                                               |
+| MCP runtime       | Selectable backends are Docker and local process. Managed package recipes use pinned versions and a managed `uv` executable; secrets are supplied to isolated child environments.                                                                                             | [`packages/forge/src/mcp/runtime.ts`](../../packages/forge/src/mcp/runtime.ts), [`packages/forge/src/mcp/package-runtime.ts`](../../packages/forge/src/mcp/package-runtime.ts)                             |
+| HTTP streams      | SSE endpoints use `no-store`, heartbeats, and location-aware filtering. A stalled subscriber remains an operational risk and must be monitored with bounded transport work.                                                                                                   | [`packages/forge/src/server/routes/instance/httpapi/handlers/event.ts`](../../packages/forge/src/server/routes/instance/httpapi/handlers/event.ts)                                                         |
+| Desktop lifecycle | The sidecar exits when its Electron parent disappears and gets a bounded orphan-stop window. The desktop owns teardown and does not leave a server process behind on normal parent death.                                                                                     | [`packages/desktop/src/main/sidecar.ts`](../../packages/desktop/src/main/sidecar.ts)                                                                                                                       |
+| Generated code    | Public API changes require regeneration from `packages/client`; generated directories are never edited directly.                                                                                                                                                              | [`packages/client/script/build.ts`](../../packages/client/script/build.ts)                                                                                                                                 |
 
 ## Source map
 

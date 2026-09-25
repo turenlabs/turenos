@@ -1,8 +1,8 @@
-# TurenOS Memory
+# Memory
 
-TurenOS Memory is a local, durable store for project knowledge that should survive individual Sessions. Agents use native TurenOS tools to retrieve and record decisions, facts, observations, preferences, constraints, and diagnosed failure causes. Memory is stored in TurenOS's SQLite database and remains independent of the transcript that produced it.
+TurenOS Memory is a local, durable store for project knowledge that should survive individual Sessions. Agents use native TurenOS tools to retrieve and record durable claims, each stored as one of four kinds: `note`, `fact`, `decision`, or `observation`. Memory is stored in TurenOS's SQLite database and remains independent of the transcript that produced it.
 
-## Origin And Attribution
+## Origin and attribution
 
 TurenOS's **wings, rooms, and drawers** organization is inspired by the original [MemPalace project](https://github.com/MemPalace/mempalace). MemPalace introduced the palace metaphor in which people and projects are wings, topics are rooms, and verbatim source content lives in drawers.
 
@@ -22,7 +22,7 @@ The upstream project and its documentation remain the authoritative source for M
 - [MemPalace on GitHub](https://github.com/MemPalace/mempalace)
 - [The Palace concepts](https://mempalaceofficial.com/concepts/the-palace.html)
 
-## Data Model
+## Data model
 
 ```text
 Wing: project, person, or engagement
@@ -37,7 +37,7 @@ A wing is the visibility boundary. Every drawer stores its `wing_id` directly, a
 Native agent tools do not accept wing IDs from the model. TurenOS derives the project wing from the current `Location`:
 
 - Locations with a stable TurenOS project identity use that identity.
-- Non-Git directories and Git repositories whose identity cannot yet be resolved use a machine-local hash of the directory so unrelated directories do not share the global project wing.
+- Non-Git directories and Git repositories whose identity cannot yet be resolved use a machine-local `local:` hash of the directory so unrelated directories do not share the global project wing. The first key minted for a directory is bound to its filesystem identity (device, inode, and birth time) in the `internal/memory-identity` storage scope, so renaming or moving the directory keeps its wing.
 
 ### Rooms
 
@@ -57,7 +57,7 @@ A drawer stores:
 
 Bodies are stored verbatim. TurenOS does not summarize the only durable copy during ingestion.
 
-## Temporal Claims
+## Temporal claims
 
 Facts and decisions can change. Supersession writes a new drawer and closes the previous drawer's validity window instead of overwriting history:
 
@@ -91,9 +91,9 @@ Queries are tokenized, deduplicated, bounded, and joined with `OR` so partial ov
 
 Lexical retrieval remains the baseline. Exact terms, identifiers, paths, symbols, and known vocabulary work best. Conceptual queries that share few terms with a drawer can opt into the local Potion hybrid path described below.
 
-When `semantic_memory.enabled` is true in the server's global configuration, `memory_search` keeps FTS5 as its fallback and adds a local 256-dimensional Potion embedding index. The model is downloaded lazily into the TurenOS cache, verified against a pinned revision, and never sends memory text off-device. Drawer vectors are derived in-memory state rebuilt from the durable drawers; durable drawers, scope filtering, temporal validity, provenance, and FTS5 remain authoritative. Disable the setting to return to the zero-download lexical path. The cached model is retained for a future re-enable.
+When `semantic_memory.enabled` is true in the Location's configuration, `memory_search` keeps FTS5 as its fallback and adds a local 256-dimensional Potion embedding index. The [pinned model configuration](https://huggingface.co/minishlab/potion-base-8M/blob/bf8b056651a2c21b8d2565580b8569da283cab23/config.json) declares 256 dimensions; TurenOS reads the actual tensor shape at load time. The model is downloaded in the background when a Location opens with the setting enabled, stored in the TurenOS cache, verified against a pinned revision, and never sends memory text off-device. Drawer vectors are derived in-memory state rebuilt from the durable drawers; durable drawers, scope filtering, temporal validity, provenance, and FTS5 remain authoritative. Disable the setting to return to the zero-download lexical path. The cached model is retained for a future re-enable. The loader is `@turenlabs/plugin/potion`; the [embedding model benchmark](../experimental/embedding-models.md) compares it with the lexical baseline and other small models.
 
-## Native Agent Tools
+## Native agent tools
 
 Memory is built into TurenOS; it is not an MCP integration.
 
@@ -104,11 +104,13 @@ Memory is built into TurenOS; it is not an MCP integration.
 | `memory_write`  | `memory.write`  | Write a durable project claim with agent and Session provenance |
 | `memory_forget` | `memory.forget` | Permanently delete one scoped drawer                            |
 
+`memory_forget` is a deferred tool, so an agent loads it before calling it.
+
 The shared System Context instructs agents to search when prior decisions or constraints may matter, and to write only stable information likely to help a later Session. Agents should not store secrets, routine progress, transient state, or facts already maintained in source-controlled documentation.
 
-Default and general agents receive the normal memory capabilities. Read-oriented specialist subagents such as Explore, Worker, Research, and Adversarial Review can search and read but cannot write or forget by default. Hidden utility agents do not receive memory access.
+Default and general agents receive the normal memory capabilities, and so does the hidden `lobby` agent. The Explore, Worker, Research, Adversarial Review, and hidden `harness-reviewer` subagents get `memory.read` only, so they can search and read but not write or forget. Qualification and the tool-less compaction, title, and summary agents get no memory access. The grants are in `packages/core/src/plugin/agent.ts`.
 
-## Automations And Subagents
+## Automations and subagents
 
 Loop occurrences and subagents create ordinary `SessionV2` Sessions and execute through the same location-scoped runner and `ToolRegistry` as interactive Sessions. They therefore use the same project memory tools and permission rules; there is no separate Loop memory database or MCP bridge.
 
@@ -116,9 +118,9 @@ Memory access remains explicit. TurenOS does not currently mine every transcript
 
 ## Settings
 
-Open **Settings -> General -> Memory -> Manage** to inspect and administer memory.
+Open **Settings > AI & Agents > Capabilities > Memory > Manage** to inspect and administer memory.
 
-The **Semantic memory** switch in the same section is off by default. Enabling it downloads approximately 30 MB of the Potion model and uses additional process memory for the derived vector index. The model cache is stored under the TurenOS cache directory and is retained when the switch is disabled. It is a server-owned setting, so the selected TurenOS server controls the model cache and retrieval behavior for its clients.
+The **Semantic memory** switch on the same Capabilities page is off by default. Enabling it downloads about 31 MB: the pinned [model file](https://huggingface.co/api/models/minishlab/potion-base-8M/revision/bf8b056651a2c21b8d2565580b8569da283cab23?blobs=true) is 30,236,760 bytes and the tokenizer is 683,666 bytes. It uses additional process memory for the derived vector index. The model cache is stored under the TurenOS cache directory and is retained when the switch is disabled. The switch writes `semantic_memory` to the selected server's global configuration, so that server controls the model cache for its clients; a project `forge.json` that sets `semantic_memory` overrides the global value for that Location.
 
 The manager supports:
 
@@ -145,7 +147,7 @@ DELETE /api/memory/:drawerID
 
 The generated JavaScript SDK exposes these routes under `client.v2.memory`. The generated Promise and Effect clients expose the group as `memories`.
 
-## SQLite Storage
+## SQLite storage
 
 The relational source of truth consists of:
 
@@ -162,7 +164,7 @@ memory_drawer_fts
 memory_drawer_fts_vocab
 ```
 
-The FTS virtual tables are created idempotently when the Memory layer starts rather than through Drizzle migrations. This ensures fresh and upgraded databases take the same path. `Memory.reindex()` rebuilds the complete index transactionally from `memory_drawer`; no transcript replay is required.
+The FTS virtual tables are created idempotently when the Memory layer starts rather than through Drizzle migrations. This ensures fresh and upgraded databases take the same path. A delete trigger removes a drawer's FTS row whenever the drawer is deleted, including by a cascade, and startup deletes any orphaned FTS rows. `Memory.reindex()` rebuilds the complete index transactionally from `memory_drawer`; no transcript replay is required. It also runs automatically at startup when the drawer and FTS row counts differ.
 
 When semantic memory is enabled, the pinned Potion model is cached under:
 
@@ -174,13 +176,15 @@ The current semantic vectors are process-local derived state. They are rebuilt f
 
 TurenOS configures its database with WAL journaling, full synchronous writes, foreign keys, secure deletion, a busy timeout, and read-only query connections. On non-Windows platforms, TurenOS also applies owner-only `0600` permissions to the database, WAL, and shared-memory files.
 
-The database path is channel-specific unless `FORGE_DB` overrides it:
+The database path is channel-specific unless `FORGE_DB` overrides it or `FORGE_DISABLE_CHANNEL_DB` is `1` or `true`, which selects `forge.db` for every channel:
 
 ```text
 latest, beta, prod -> <TurenOS data directory>/forge.db
 dev                -> <TurenOS data directory>/forge-dev.db
 local              -> <TurenOS data directory>/forge-local.db
 ```
+
+An unpackaged Desktop (a local development run) sets `FORGE_DISABLE_CHANNEL_DB=1` for its server, so it uses `forge.db`, not `forge-dev.db`.
 
 Use SQLite's read-only mode for manual inspection:
 
@@ -199,7 +203,8 @@ Do not edit the FTS tables directly. Use the service operations or rebuild the i
 ## Limits
 
 - Drawer title: 512 characters
-- Drawer body: nominally 256,000 bytes
+- Drawer body: 256,000 characters, measured as JavaScript string length, for HTTP and Settings writes
+- `memory_write` input: the pretty-printed JSON of title, body, path, and symbol must fit in 49,152 UTF-8 bytes (the 50 KiB tool-output limit minus 2,048 bytes of envelope), so the drawer reads back whole
 - Anchor path: 4,096 characters
 - Anchor symbol: 512 characters
 - Searchable query prefix: 32,000 characters; later input is ignored
@@ -207,10 +212,11 @@ Do not edit the FTS tables directly. Use the service operations or rebuild the i
 - Default search results: 10
 - Maximum search results: 200
 - Settings list: latest 200 matching drawers
+- Only ASCII `[A-Za-z0-9_]` terms of two or more characters are indexed, so text in other scripts is not lexically searchable.
 
-The current body check is based on JavaScript string length rather than encoded UTF-8 byte length. Multi-byte text can therefore occupy more bytes than the nominal limit.
+The HTTP and Settings body check is based on JavaScript string length rather than encoded UTF-8 byte length. Multi-byte text written through those paths can therefore occupy more than 256,000 bytes.
 
-## Important Invariants
+## Important invariants
 
 - Drawer and FTS writes, updates, and explicit deletion happen in one SQLite transaction.
 - Drawer IDs are stable, allowing the lexical index to be rebuilt.
@@ -219,17 +225,16 @@ The current body check is based on JavaScript string length rather than encoded 
 - A normal read path cannot search every wing accidentally.
 - FTS is secondary data. `memory_drawer` remains authoritative.
 
-## Known Hardening Work
+## Known hardening work
 
 The current implementation is usable, but the following persistence work remains important before large multi-user deployments:
 
 - Require supersession to close exactly one active predecessor or roll back the replacement.
 - Replace timestamp-only optimistic concurrency with a monotonic revision.
 - Prevent project deletion from cascading through durable memory.
-- Ensure room, wing, and project cascades cannot leave orphaned FTS content.
 - Add a database-level composite constraint for drawer room/wing ownership.
 - Add indexes for management ordering and `superseded_by` cleanup.
-- Enforce the body limit in encoded UTF-8 bytes.
+- Enforce the body limit in encoded UTF-8 bytes on the HTTP and Settings write path.
 - Enforce repository-relative, POSIX-normalized anchors in the shared schema and every administrative/import path.
 - Persist the derived semantic vector index and add explicit model/index status and removal controls.
 - Design durable reconciliation for a process crash after a memory mutation commits but before its tool result settles.
@@ -239,4 +244,5 @@ The current implementation is usable, but the following persistence work remains
 - [`packages/core/src/memory/index.ts`](../../packages/core/src/memory/index.ts)
 - [`packages/core/src/memory/fts.ts`](../../packages/core/src/memory/fts.ts)
 - [`packages/core/src/memory/semantic.ts`](../../packages/core/src/memory/semantic.ts)
+- [`packages/plugin/src/potion.ts`](../../packages/plugin/src/potion.ts)
 - [`packages/core/src/tool/memory.ts`](../../packages/core/src/tool/memory.ts)

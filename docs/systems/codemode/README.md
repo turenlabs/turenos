@@ -31,12 +31,13 @@ const runtime = CodeMode.make({
   },
 })
 
-const result =
-  yield *
-  runtime.execute(`
-  const order = await tools.orders.lookup({ id: "order_42" })
-  return { id: order.id, needsAttention: order.status !== "complete" }
-`)
+const program = Effect.gen(function* () {
+  const result = yield* runtime.execute(`
+    const order = await tools.orders.lookup({ id: "order_42" })
+    return { id: order.id, needsAttention: order.status !== "complete" }
+  `)
+  return result
+})
 ```
 
 `result` is always a `CodeMode.Result`. Program, validation, limit, and tool failures are returned as diagnostics rather than failing the Effect. Host interruption remains interruption.
@@ -76,8 +77,27 @@ A program cannot gain authority through prose or generated code. It can only exe
 
 Applications that need approval or durable consequences should model those above CodeMode and expose only the currently authorized tools.
 
+## In TurenOS
+
+The legacy session runtime (`packages/forge`) exposes CodeMode to agents as a tool named `execute`. It is on by
+default: `FORGE_EXPERIMENTAL_CODE_MODE` falls back to the umbrella `FORGE_EXPERIMENTAL`, which defaults to `true` in
+`RuntimeFlags`. Set `FORGE_EXPERIMENTAL_CODE_MODE=false` (or `FORGE_EXPERIMENTAL=false`) to turn it off. The tool's tree
+contains the connected MCP tools the agent and session permissions allow, grouped by server, and while CodeMode is on
+those MCP tools are not offered to the model directly. Each run is limited to 120 seconds, 32 tool calls, and 256 KiB of
+output, and the tool result is then bounded to 2,000 lines or 50 KiB like other tool output. Session V2 does not
+register it.
+
+Each nested MCP call:
+
+- Runs the `tool.execute.before` and `tool.execute.after` plugin hooks and a permission `ask` for the MCP tool.
+- Has its result truncated to 2,000 lines or 50 KiB before it enters the program; a truncated result becomes
+  `{ truncated, preview, outputPath }`.
+- Has image and PDF content collected host-side as attachments on the outer result, up to 32 files and 10 MiB in total.
+
 ## Source
 
 - [`packages/codemode/src/codemode.ts`](../../../packages/codemode/src/codemode.ts)
 - [`packages/codemode/src/tool-runtime.ts`](../../../packages/codemode/src/tool-runtime.ts)
-- [`packages/codemode/README.md`](../../../packages/codemode/README.md)
+- [`packages/forge/src/tool/code-mode.ts`](../../../packages/forge/src/tool/code-mode.ts)
+- [`packages/forge/src/tool/registry.ts`](../../../packages/forge/src/tool/registry.ts)
+- [`packages/forge/src/effect/runtime-flags.ts`](../../../packages/forge/src/effect/runtime-flags.ts)

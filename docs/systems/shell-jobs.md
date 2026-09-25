@@ -6,15 +6,20 @@ commands return a `job_id` and let the agent continue working.
 
 Set `foreground: true` when the tool call must wait for completion. The existing
 command timeout still applies: two minutes by default, up to ten minutes when
-explicitly requested. Background execution does not disable timeouts.
+explicitly requested. Background execution does not disable timeouts. A
+foreground call fails if the process has not ended within the timeout plus a
+10-second termination grace (`TERMINATION_GRACE_MS`); the error names the job
+so it can still be observed.
 
-Use `shell_job` to inspect work owned by the current session:
+Use `shell_job` to inspect work owned by the current session. It checks the
+`bash` permission action, so a whole-tool `bash` deny also hides it.
 
 - `list`: up to 32 recent job summaries, without captured output.
 - `status`: the current state of one `job_id`.
 - `output`: captured output after completion, bounded to 1 MiB.
 - `wait`: wait for one job, with `timeout_ms` defaulting to 1,000 and capped at
-  600,000. A wait timeout does not cancel the command.
+  600,000. It returns the captured output like `output`. A wait timeout does not
+  cancel the command.
 - `cancel`: request termination of the owned process group. `stopping` means
   teardown has not finished; it does not claim the process has been killed.
 
@@ -25,7 +30,7 @@ the notification. Quick inline results do not send duplicate notifications.
 Command approval, working-directory checks, delegated command grants, and shell
 safety checks all run before job admission. Other sessions cannot read, wait on,
 or cancel the job. There are at most four active jobs per session and 32 per
-runner.
+server process, counted across all sessions.
 
 Repeating the same tool-call identity reconciles the existing job rather than
 executing the command again. Durable records are observations, not instructions
@@ -35,6 +40,5 @@ TurenOS never replays the command or terminates a stored command PID on recovery
 ## Source
 
 - [`packages/core/src/shell-job.ts`](../../packages/core/src/shell-job.ts)
-- [`packages/core/src/background-job.ts`](../../packages/core/src/background-job.ts)
 - [`packages/core/src/tool/shell-job.ts`](../../packages/core/src/tool/shell-job.ts)
 - [`packages/core/src/tool/bash.ts`](../../packages/core/src/tool/bash.ts)

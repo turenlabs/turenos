@@ -4,38 +4,53 @@ The built-in catalog inventory as of 2026-09-25 is defined by the manifests in `
 
 ## Data sources
 
-The catalog contains 23 cybersecurity data sources:
+The catalog contains 23 data sources: 21 cybersecurity sources served by `security:` adapters and two web-search
+sources served by `websearch:` adapters.
 
-- CISA Known Exploited Vulnerabilities
+Cybersecurity sources:
+
+- CISA KEV
 - CIRCL Hashlookup
 - deps.dev
 - ENISA EUVD
-- EPSS by FIRST.org
+- EPSS
 - Exploit-DB
 - CERT-FR MISP
 - Datadog Malicious Artifacts
-- GitHub Security Advisories
+- GitHub Advisories
 - GTFOBins
 - Have I Been Pwned
 - LOLBAS
 - MITRE ATT&CK
 - MITRE CWE
 - MITRE D3FEND
-- NIST NVD
+- NVD
 - OpenSSF Scorecard
 - OSV
 - Phishing.Database
 - Tor Exit Nodes
 - TweetFeed
+
+Web-search sources:
+
 - Exa Web Search
 - Parallel Web Search
 
 Every data source declares its exact agent-facing tool allowlist, and every data source's `tools.write` list is empty.
 Threat-feed rights and exclusions are recorded in [threat intelligence feed rights](./feed-licenses.md).
+Listing a source is not a blanket licence to embed or redistribute its results. Other sources require their own
+review before changing point lookups into bundled data or a cross-customer cache: [OpenSSF Scorecard](https://github.com/ossf/scorecard#scorecard-rest-api)
+licenses REST API results under CDLA-Permissive-2.0; [deps.dev](https://docs.deps.dev/api/v3#data) licenses its
+generated data under CC-BY-4.0 but says upstream aggregate inputs retain their own rights; and
+[HIBP's current terms](https://haveibeenpwned.com/TermsOfUse) restrict third-party benefit and redistribution unless
+the purchased service expressly allows it. Public access, an adapter's code licence, or a read-only tool declaration
+does not settle data rights or service terms for the rest of this catalog. Keep each adapter's existing point-lookup
+behavior and obtain a source-specific rights review before new storage or redistribution.
 
 ## Skills and subagents
 
-The catalog contains eleven downloadable skills:
+The catalog contains ten downloadable skills plus the built-in Customize TurenOS skill, whose `embedded` source ships
+with TurenOS and is not downloaded or scanned by Vigil:
 
 - Secure Code Review
 - Bug Root Cause
@@ -47,7 +62,6 @@ The catalog contains eleven downloadable skills:
 - Technical Security Blog
 - Threat Model Review
 - IaC Config Review
-- Customize TurenOS
 
 It also contains four downloadable subagents:
 
