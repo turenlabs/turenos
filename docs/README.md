@@ -47,7 +47,7 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
     deterministic routing benchmark.
   - [Background shell jobs](./systems/shell-jobs.md): nonblocking commands, session-owned output and cancellation,
     completion delivery, and restart semantics.
-  - [Dangerous commands](./systems/dangerous-commands.md): recursive-delete guards, wrapper resistance, and limits of
+  - [Dangerous commands](./systems/dangerous-commands/README.md): recursive-delete guards, wrapper resistance, and limits of
     shell safety.
   - [Rosetta execution](./systems/rosetta-exec.md): experimental bounded local x86-64 Linux execution through Apple's
     virtualization path.
@@ -76,7 +76,7 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 
 ## Operations
 
-- [SSH remote servers](./operations/ssh-remote.md): driving the system `ssh` client to install, supervise, and tunnel a
+- [SSH remote servers](./operations/ssh-remote/README.md): driving the system `ssh` client to install, supervise, and tunnel a
   remote TurenOS backend from Desktop.
 - [Releases](./operations/releases/README.md): the operator checklist for cutting a release (version bump, dispatch,
   verification, and recovery), with [automated releases](./operations/releases/automation.md) and
@@ -127,6 +127,9 @@ entry points when changing a public boundary:
   [catalog](./systems/README.md) that links it. A new system adds its row in the same change.
 - **Source-grounded.** System pages end with a `## Source` list of the files that implement them. Those links are
   checked, so a renamed or deleted source file shows up as a broken link instead of a silently stale page.
+- **Short pages.** A page covers one topic in about 250 lines at most. A longer topic becomes a folder whose
+  `README.md` is the main page and links focused sibling pages, as `architecture/`, `operations/ssh-remote/` and
+  `systems/dangerous-commands/` do.
 - **Names.** Prose says TurenOS; technical identifiers keep their exact `forge` spelling. See
   [Branding](./architecture/branding.md).
 - **Checks.** After any docs change, run `bun .agents/skills/turen-documentation/scripts/check.ts docs`. To move or rename

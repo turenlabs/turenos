@@ -14,7 +14,7 @@ The implementation is shared by both session stacks:
 - `packages/core/src/tool/bash.ts` applies it to the V2 `bash` tool.
 - `packages/forge/src/tool/shell.ts` applies it to the legacy TurenOS shell tool.
 
-This is routing policy, not a sandbox. Read [Dangerous commands](./dangerous-commands.md) for the separate recursive-delete
+This is routing policy, not a sandbox. Read [Dangerous commands](./dangerous-commands/README.md) for the separate recursive-delete
 guard and the authority retained by commands that are allowed to execute.
 
 ## Decision Boundary

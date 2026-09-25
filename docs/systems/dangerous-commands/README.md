@@ -10,7 +10,7 @@ a guard against an agent's plausible mistake, not a security boundary. Read [Lim
 
 After this destructive-command check, a separate `ShellToolRouting` policy rejects high-confidence workspace searches
 and mutations that belong in `grep`, `glob`, `edit`, or `apply_patch`. That policy improves tool selection; it does not
-expand the recursive-delete safety model described here. See [Shell tool routing](./shell-tool-routing.md).
+expand the recursive-delete safety model described here. See [Shell tool routing](../shell-tool-routing.md).
 
 ## Scope
 
@@ -40,158 +40,10 @@ drivers. `find` with `-delete`, `-exec`, or `-execdir` is refused whatever its s
 it feeds a recursive `rm` or when a `find` appears in the same command, because neither the file set nor the expanded
 argument list is knowable before execution.
 
-## Analysis
+## Command analysis
 
-### Shell detection
-
-`ShellSafety.kind(shell)` takes the shell path, uses its basename, strips a `.exe` suffix, and lowercases it.
-`powershell` and `pwsh` map to `"powershell"`, `cmd` maps to `"cmd"`, and **everything else maps to `"bash"`**. The V2
-bash tool passes the configured `shell`, falling back to `/bin/sh` on POSIX and `process.env.COMSPEC ?? "cmd.exe"` on
-Windows.
-
-### Parsing
-
-bash and PowerShell command strings are parsed with tree-sitter WASM grammars — `tree-sitter-bash` and
-`tree-sitter-powershell` — loaded lazily on first inspection. `inspectRoot` then walks every `command` node in the tree in
-document order, so each command in a pipeline, list, or subshell is judged individually.
-
-`cmd` has no grammar. `ShellSafety.parse` and `ShellSafety.inspectParsed` accept only `"bash" | "powershell"`, and a `cmd`
-string is handled by a hand-written path that splits on unquoted `&`, `|`, `;`, and newlines and lexes each segment with a
-regex. `cmd` analysis is correspondingly weaker than the parsed shells.
-
-Anything the analyser cannot resolve statically is treated as a violation with `reason: "dynamic"` rather than allowed.
-Within its scope the check fails closed.
-
-### Wrappers
-
-A naive "is the first word `rm`" check is defeated by `sudo rm -rf /`. Simply skipping leading words is defeated by
-`sudo -u root rm -rf /`, where `root` is the value of `-u` and not the command. Both problems need the wrapper's own
-option grammar.
-
-`command()` peels wrappers with per-wrapper flag arity. `PREFIX` holds the wrappers for which every leading `-` token can
-simply be skipped:
-
-```
-builtin  busybox  command  nohup  setsid  stdbuf
-```
-
-`exec`, `nice`, `timeout`, and `stdbuf` are matched before `PREFIX` and get bespoke handling, because a subset of their
-flags (`-a`, `-n`, `-k`, `-s`, `--kill-after`, `--signal`, `-e`, `-i`, `-o`) consumes the next token. `sudo` and `doas`
-use `SUDO_VALUE`, the set of sudo options that take a separate argument:
-
-```
--C  -D  -g  -h  -p  -R  -r  -t  -T  -u  --chdir
-```
-
-`env` is handled separately because it can re-lex its own payload: `-S`, `-Sstring`, and `--split-string=` re-tokenize the
-string and re-run the whole peel over the result, so `env -S 'rm -rf /'` and `env --split-string='rm -rf' ~` are seen as
-the deletions they are.
-
-### Interpreters
-
-Peeling is not always safe. If the wrapper's arguments cannot be trusted to locate the interpreter's script argument, the
-analyser refuses rather than guesses. `inspectParts` implements that with three sets. `WRAPPER_SCAN` is the set of first
-tokens that trigger a forward scan:
-
-```
-builtin  busybox  command  doas  env  exec  nice  nohup  setsid  stdbuf  sudo  timeout
-```
-
-`WRAPPED_COMMAND` is what the scan looks for — the commands worth re-inspecting from that point:
-
-```
-bash  cmd  dash  find  ksh  powershell  pwsh  rm  sh  zsh
-```
-
-`INTERPRETER` is the subset that is refused outright when reached through a wrapper, because its payload is a program
-rather than an argument list:
-
-```
-bash  cmd  dash  ksh  powershell  pwsh  sh  zsh
-```
-
-So `env -P /bin sh -c 'rm -rf "$HOME"'` and `sudo --user root sh -c 'rm -rf "$HOME"'` are refused as
-`target: "dynamic evaluator input"`.
-
-Interpreters reached directly are handled by `nested()`, which extracts the payload from `bash -c`, `sh -c`, `eval`,
-`powershell -Command`, `pwsh -Command`, `cmd /c`, `cmd /k`, `Invoke-Expression`/`iex`, and `xargs … sh`, then recursively
-inspects that string. If the payload is not statically knowable — it contains `$`, a backtick, `%VAR%`, `!VAR!`, a
-PowerShell splat, a parenthesised expression, `-EncodedCommand`, or `-Command -` reading from stdin — the command is
-refused instead. An interpreter invoked with no recognizable payload flag at all (`sh script.sh`, or the `sh` at the end
-of a pipeline) is likewise refused, which is why `curl https://example.com/x.sh | sh` is blocked.
-
-Recursion is bounded: `inspectText` refuses at depth greater than 4 with `target: "nested dynamic input"`.
-
-### Directory changes
-
-Every path judgement is relative to one working directory. A command that changes directory first invalidates that
-arithmetic, so the analyser tracks it and refuses any later recursive deletion rather than recomputing.
-
-`CWD_COMMANDS` is the set that sets the flag while walking the parsed tree:
-
-```
-cd  chdir  popd  pushd  push-location  set-location
-```
-
-The same flag is set by `sudo -D` / `sudo --chdir` and by `env -C` / `env --chdir` during wrapper peeling, and by `cd`,
-`chdir`, `popd`, and `pushd` in the `cmd` path. Once set it stays set for the rest of the command string, and a later
-recursive deletion is reported as `target: "target after a directory change"`. `cd .. && rm -rf project` and
-`Set-Location ..; Remove-Item -Recurse -Force project` are both blocked.
-
-### Command-name obfuscation
-
-Command names are normalized before comparison: surrounding quotes are removed, inner `'…'` and `"…"` pairs are unwrapped,
-escape characters are collapsed, the basename is taken, a `.exe` suffix is stripped, and the result is lowercased. Which
-escapes are collapsed depends on the shell — backslash and `^` for the POSIX form, `^` and backtick for the Windows form.
-That makes `r''m`, `s''h`, `/bin/rm`, `r^d`, and `C:\Windows\System32\cmd.exe` resolve to `rm`, `sh`, `rm`, `rd`, and
-`cmd`. PowerShell tokens have their backtick escapes stripped separately, so `Remove-It` + backtick + `em` and
-`-Recur` + backtick + `se` are recognized. A command name that is itself dynamic — a substitution, an expansion, a glob,
-or a brace expression — combined with recursive flags is refused.
-
-### PowerShell parameter values
-
-`targets()` treats any non-flag token as a deletion target. Without knowing which PowerShell parameters take a value, the
-value would be misread as a target: in `Remove-Item -Recurse -Force -ErrorAction $mode ./dist`, `$mode` would look like a
-dynamic target and the safe command would be blocked. `POWERSHELL_VALUE_PARAMETERS` lists the common parameters that
-consume the following token:
-
-```
--credential  -erroraction  -errorvariable  -exclude  -filter  -include  -informationaction
--informationvariable  -outbuffer  -outvariable  -pipelinevariable  -progressaction  -stream
--warningaction  -warningvariable
-```
-
-`POWERSHELL_VALUE_ALIASES` covers their short forms:
-
-```
--ea  -ev  -ia  -iv  -ob  -ov  -pv  -wa  -wv
-```
-
-Abbreviations of at least five characters including the leading hyphen are also accepted when they are an unambiguous
-prefix of exactly one of those parameters, matching PowerShell's own prefix resolution.
-`-LiteralPath` and `-LP` mark their value as literal so a bracketed directory name such as `'[cache]'` is not treated as a
-wildcard.
-
-### Target rules
-
-Once a recursive deletion and its targets are identified, each target is judged by `violation()`. The reasons are:
-
-| `reason`            | Meaning                                                                                 |
-| ------------------- | --------------------------------------------------------------------------------------- |
-| `root`              | A filesystem root: `/`, `//`, `C:\`, `\\server\share`, or a target that resolves to one |
-| `home`              | `~`, `~name`, or a target that resolves to `os.homedir()`                               |
-| `working-directory` | `.`, `~+`, or a target that resolves to the working directory itself                    |
-| `parent-directory`  | Any `..` component, or a target that is an ancestor of the working directory            |
-| `wildcard`          | An unquoted `*`, `?`, `[`, `]`, `{`, or `}` in the target                               |
-| `dynamic`           | Anything that cannot be resolved statically, and anything that is not a direct child    |
-
-`dynamic` is the catch-all and covers substitutions and variables (`$`, backtick, `%VAR%`, `!VAR!`, PowerShell splats),
-drive-relative Windows paths such as `C:..`, Windows components with a trailing space or dot (which the OS normalizes
-away), absolute paths with a trailing separator or an embedded `.` component, multi-component relative paths, and every
-target that survives the earlier checks but is not a direct child of the working directory, `os.tmpdir()`, or `/tmp`.
-
-Single-quoted bash targets are exempt from wildcard, home, and variable interpretation, because the shell will not expand
-them either: `rm -rf '*'` and `rm -rf '~'` refer to files literally named `*` and `~` and are allowed.
+[Command analysis](./analysis.md) details how `ShellSafety` parses a command: shell detection, wrappers, interpreters,
+directory changes, obfuscated command names, PowerShell parameter values, and target rules.
 
 ## Violations
 
@@ -253,59 +105,10 @@ agent, task, and command text can also appear in TurenOS, sidecar, test-runner, 
 
 This is prompt text only. Nothing enforces it; `pkill -f` and `killall` are not blocked.
 
-## The Permission Model
+## The permission model
 
-Deletion safety, specialized-tool routing, and permissions are separate systems that meet only in ordering.
-`ShellSafety` runs first and cannot be overridden. `ShellToolRouting` runs second and redirects high-confidence workspace
-searches and mutations. `PermissionV2` runs last and is entirely user-configurable.
-
-After the safety and routing checks pass, the bash tool may assert permission twice. If the resolved `workdir` is outside
-the active Location, it first asserts `action: "external_directory"` with the resource `<canonical directory>/*`. It
-always asserts the tool's own action:
-
-```
-yield* permission.assert({
-  action: name,
-  resources: [input.command],
-  save: [input.command],
-  metadata: { workdir: target.resource },
-  ...
-})
-```
-
-`resources` and `save` are the raw command string. `PermissionV2.evaluate` finds the **last** rule whose action and
-resource both match under `Wildcard.match`, and falls back to `ask` when nothing matches. Across multiple rulesets the
-most restrictive effect wins: `deny` beats `ask` beats `allow`.
-
-Choosing "Allow always" — the reply is `always` — writes a row into the SQLite `permission` table scoped to the current
-project, and those rows are replayed as `effect: "allow"` rules. Because bash saves the exact command string, a saved
-bash grant matches only that exact command again. Saved grants can only upgrade an `ask` to an `allow`; a configured
-`deny` is checked first and is never overridable.
-
-Two things are worth stating plainly because they change what "protected" means in practice:
-
-- The built-in ruleset for the default agent begins with `{ action: "*", resource: "*", effect: "allow" }`. Out of the
-  box, `bash` is allowed without a prompt.
-- The "Enforce permission checks" toggle — described in the UI as "Require approval for actions configured as Ask.
-  Explicit denies always remain blocked" — is persisted under the storage scope `internal/permissions`, key
-  `enforce_checks`, and **defaults to off**. While it is off, an `ask` outcome silently resolves to `allow`.
-
-Neither of those affects `ShellSafety`. A blanket `allow`, a saved grant for the exact command, and permission checks
-disabled all still leave the recursive-delete block in force, because it runs before `permission.assert` and returns a
-`ToolFailure` rather than a permission request.
-
-The command-argument scan is a different matter. The bash tool tokenizes the command, and for each absolute path outside
-the working directory emits a warning:
-
-```text
-Command argument references external directory <dir>/*. Bash runs with host-user filesystem, process, and network
-authority; this scan is advisory only.
-```
-
-This is advisory in the literal sense. `packages/core/test/tool-bash.test.ts` has "reports external command arguments as
-advisory warnings without enforcing approval", which sets the `external_directory` action to deny, runs
-`cat <path outside the project>`, and asserts that the only permission assertion made is `bash` and that the process ran
-anyway. Only the resolved `workdir` is gated by `external_directory`; command arguments are not.
+[The permission model](./permission-model.md) explains how `ShellSafety`, `ShellToolRouting`, and `PermissionV2` meet
+only in ordering.
 
 ## Configuration
 
@@ -423,13 +226,13 @@ tool. Permission evaluation, the default-off enforcement toggle, and saved grant
 
 Specialized-tool routing has its own reviewed command corpus in `packages/core/test/fixtures/tool-routing.json`, replayed
 by `packages/core/test/shell-tool-routing.test.ts` and measured by
-`packages/core/test/benchmark/tool-routing.ts`. See [Shell tool routing](./shell-tool-routing.md) for scope, benchmark
+`packages/core/test/benchmark/tool-routing.ts`. See [Shell tool routing](../shell-tool-routing.md) for scope, benchmark
 interpretation, and focused commands.
 
 ## Source
 
-- [`packages/core/src/shell-safety.ts`](../../packages/core/src/shell-safety.ts)
-- [`packages/core/src/filesystem/protected.ts`](../../packages/core/src/filesystem/protected.ts)
-- [`packages/core/src/tool/bash.ts`](../../packages/core/src/tool/bash.ts)
-- [`packages/forge/src/tool/shell.ts`](../../packages/forge/src/tool/shell.ts)
-- Tests: [`packages/core/test/shell-safety.test.ts`](../../packages/core/test/shell-safety.test.ts)
+- [`packages/core/src/shell-safety.ts`](../../../packages/core/src/shell-safety.ts)
+- [`packages/core/src/filesystem/protected.ts`](../../../packages/core/src/filesystem/protected.ts)
+- [`packages/core/src/tool/bash.ts`](../../../packages/core/src/tool/bash.ts)
+- [`packages/forge/src/tool/shell.ts`](../../../packages/forge/src/tool/shell.ts)
+- Tests: [`packages/core/test/shell-safety.test.ts`](../../../packages/core/test/shell-safety.test.ts)

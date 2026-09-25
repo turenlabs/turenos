@@ -31,7 +31,7 @@ never written to the database, app config, renderer storage, command-line argume
 The desktop sidecar receives the raw key in the utility-process `start` message and installs it with
 `SecretVault.configure` before the server layer graph builds. The WSL sidecar receives the key through
 its startup input, and the SSH remote receives it on stdin as a short script piped to `sh -s` (see
-[SSH remote servers](../operations/ssh-remote.md)); neither path places it in a command line.
+[SSH remote servers](../operations/ssh-remote/README.md)); neither path places it in a command line.
 Its temporary bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`, `FORGE_SECRET_VAULT_KEY`) are deleted when the
 Secret Vault layer initializes and before normal child tools are started. Headless server startup reads the same two
 variables; without them, non-test startup fails instead of falling back to an ephemeral or plaintext mode.

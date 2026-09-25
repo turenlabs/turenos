@@ -15,6 +15,7 @@ const KEBAB_FOLDER = /^[a-z0-9]+(-[a-z0-9]+)*$/
 const AGENT_FILE = /CLAUDE\.md|CLAUDE\.local\.md|AGENTS\.md|\.claude\/rules/
 const PROTOTYPE = /\.(html?|js|css|excalidraw|tldraw|drawio)$/i
 const IMAGE = /\.(png|jpe?g|gif|svg|webp)$/i
+const MAX_LINES = 300
 const LINK =
   /!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|^\s*\[[^\]]+\]:\s*<?(\S+?)>?(?:\s|$)|(?:href|src)="([^"]+)"/gm
 
@@ -156,6 +157,10 @@ function contentFindings(file: string, text: string): Finding[] {
     ),
     ...(systemPage && !/^## Source( map)?\s*$/m.test(prose)
       ? [warning(`${file}: system page has no "## Source" section citing its implementation`)]
+      : []),
+    // The systems catalog is one index table, so its length is not a monolith.
+    ...(text.split("\n").length > MAX_LINES && file !== "systems/README.md"
+      ? [warning(`${file}: ${text.split("\n").length} lines; split it along its ## sections (move.ts, then split.ts)`)]
       : []),
     ...(parts[0] === "experimental" && !readme && !/^\W*status\W/im.test(text.split("\n").slice(0, 12).join("\n"))
       ? [warning(`${file}: no "Status:" line near the top`)]
