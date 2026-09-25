@@ -1270,29 +1270,8 @@ function sortResultIDs(
   }
   if (limit <= 0) return []
 
-  const reverseRanked: string[] = []
-  let reverseOffset = 0
-  let previous: string | undefined
-  let reverseSorted = true
-  for (const id of scores.keys()) {
-    if (previous !== undefined && compare(previous, id) <= 0) {
-      reverseSorted = false
-      break
-    }
-    if (reverseRanked.length < limit) reverseRanked.push(id)
-    else {
-      reverseRanked[reverseOffset] = id
-      reverseOffset = (reverseOffset + 1) % limit
-    }
-    previous = id
-  }
-  if (reverseSorted) {
-    const ranked =
-      reverseOffset === 0
-        ? reverseRanked
-        : reverseRanked.slice(reverseOffset).concat(reverseRanked.slice(0, reverseOffset))
-    return ranked.reverse()
-  }
+  const reverseRanked = reverseSortedResultIDs(scores.keys(), compare, limit)
+  if (reverseRanked !== undefined) return reverseRanked
 
   // Keep the worst result at the root so each candidate can replace it in O(log K).
   const ranked: string[] = []
@@ -1326,6 +1305,23 @@ function sortResultIDs(
     }
   }
   return ranked.sort(compare)
+}
+
+function reverseSortedResultIDs(ids: Iterable<string>, compare: (a: string, b: string) => number, limit: number) {
+  const ranked: string[] = []
+  let offset = 0
+  let previous: string | undefined
+  for (const id of ids) {
+    if (previous !== undefined && compare(previous, id) <= 0) return undefined
+    if (ranked.length < limit) ranked.push(id)
+    else {
+      ranked[offset] = id
+      offset = (offset + 1) % limit
+    }
+    previous = id
+  }
+  if (offset === 0) return ranked.reverse()
+  return ranked.slice(offset).concat(ranked.slice(0, offset)).reverse()
 }
 
 class ZeroMemStoreImpl implements ZeroMemStore {
