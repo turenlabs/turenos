@@ -83,7 +83,10 @@ prepared `VERSION`:
 ```
 
 The equivalent direct dispatch must name the private repository:
-`gh workflow run release.yml --repo turenio/turen -f version=<prepared-version>`.
+
+```bash
+gh workflow run release.yml --repo turenio/turen -f version="$(tr -d '[:space:]' < VERSION)"
+```
 
 Do not publish a draft until every platform job, signature verification,
 notarization submission, checksum verification, and downloaded-release
@@ -97,8 +100,9 @@ background; installation requires the user's restart action. Development and
 beta builds do not auto-update. Users on 1.0.4 or earlier must manually install
 1.0.5 once to enable subsequent updates.
 
-Build and sign in `turenio/turen`. The distribution job copies the complete private
-release to the public repository without rebuilding or renaming assets.
+Build and sign in `turenio/turen`. Its publish job uploads the signed assets
+directly to a public draft release; the distribution job re-downloads and
+verifies them before publishing, without rebuilding or renaming assets.
 The desktop package embeds the public repository, not a GitHub token.
 
 The private release workflow includes and verifies six architecture-specific
@@ -111,7 +115,7 @@ parallel x64/arm64 builds overwriting one another's metadata:
 | Windows  | `latest-x64.yml`       | `latest-arm64.yml`             |
 | Linux    | `latest-x64-linux.yml` | `latest-arm64-linux-arm64.yml` |
 
-The orchestrator copies **every release asset**, including manifests, blockmaps,
+The publish job uploads **every release asset**, including manifests, blockmaps,
 checksums, and detached signatures. It keeps the public release a draft until the
 complete upload has been downloaded again and verified. For manual diagnosis,
 this verifier remains available against downloaded artifacts:

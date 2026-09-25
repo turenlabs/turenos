@@ -16,8 +16,6 @@ builds and signs that public source.
   **Contents: Read and write** on `turenlabs/turenos` and
   `turenlabs/homebrew-turenos`.
 - Signing secrets (`APPLE_*`, `AZURE_*`, `GPG_*`) are configured in `turenio/turen`.
-- The prepared release version is known; `./script/release` only dispatches
-  and never commits or pushes.
 
 ## 1. Bump the version
 
@@ -72,10 +70,9 @@ equivalent direct dispatch is:
 gh workflow run release.yml --repo turenio/turen -f version="$release_version"
 ```
 
-The workflow validates, builds/signs ~15 platform jobs against the public
-commit, uploads all assets to a public **draft** release, re-downloads and
-verifies everything, enforces the release chain, then publishes and updates
-Homebrew. Expect roughly an hour; desktop builds dominate.
+The workflow validates the public commit, builds and signs platform artifacts,
+uploads them to a public **draft** release, re-downloads and verifies the assets,
+enforces the release chain, then publishes and updates Homebrew.
 
 Monitor with occasional bounded checks — do not stream `gh run watch`:
 

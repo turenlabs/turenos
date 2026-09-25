@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       publish_existing:
-        description: Verify and finish public/Homebrew publication of an already-published private release, without rebuilding
+        description: Verify and finish publication of an existing public draft or release, without rebuilding
         required: false
         default: false
         type: boolean

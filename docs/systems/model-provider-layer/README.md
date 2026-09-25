@@ -27,18 +27,24 @@ See [LLM package architecture](./llm-package.md) for route construction and
 
 ## Legacy Forge session processor
 
-`packages/forge/src/session/llm.ts` uses AI SDK by default. With
-`FORGE_EXPERIMENTAL_NATIVE_LLM=true`, each eligible request is lowered into an
-`LLMRequest` and streamed through `LLMClient`; unsupported requests fall back
-to AI SDK. Both paths produce `LLMEvent`s for the legacy session processor.
-Tool execution remains session-owned.
+`packages/forge/src/session/llm.ts` uses AI SDK by default. Its optional native
+adapter lowers each eligible request into an `LLMRequest` and streams it through
+`LLMClient`; unsupported requests fall back to AI SDK. Both paths produce
+`LLMEvent`s for the legacy session processor. Tool execution remains
+session-owned.
+
+## Configuration
+
+`FORGE_EXPERIMENTAL_NATIVE_LLM=true` enables the legacy native adapter. It is
+off by default, and the umbrella `FORGE_EXPERIMENTAL` flag does not enable it.
+
+## Limits
 
 The native adapter supports `openai` and `anthropic` catalog entries using
 `@ai-sdk/openai`, `@ai-sdk/openai-compatible`, or `@ai-sdk/anthropic` when an API
 key is configured. OpenAI OAuth also works with a provider fetch override.
 Other OAuth setups, missing API keys, unsupported providers, and requests with
-a connection policy use AI SDK. The umbrella `FORGE_EXPERIMENTAL` flag does not
-enable this adapter.
+a connection policy use AI SDK.
 
 ## Source
 
@@ -47,4 +53,5 @@ enable this adapter.
 - [`packages/core/src/session/runner/aisdk-bridge.ts`](../../../packages/core/src/session/runner/aisdk-bridge.ts)
 - [`packages/forge/src/session/llm.ts`](../../../packages/forge/src/session/llm.ts)
 - [`packages/forge/src/session/llm/native-runtime.ts`](../../../packages/forge/src/session/llm/native-runtime.ts)
+- [`packages/forge/src/session/llm/native-request.ts`](../../../packages/forge/src/session/llm/native-request.ts)
 - [`packages/forge/src/effect/runtime-flags.ts`](../../../packages/forge/src/effect/runtime-flags.ts)
