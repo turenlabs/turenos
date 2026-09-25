@@ -24,6 +24,7 @@ const expected = [
   "turenlabs/datadog-malicious",
   "turenlabs/datadog-security",
   "turenlabs/dependency-risk-review",
+  "turenlabs/dependency-upgrade-impact",
   "turenlabs/depsdev",
   "turenlabs/detection-engineering-review",
   "turenlabs/elastic-security",
@@ -149,7 +150,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(15)
+    expect(skills.length).toBe(16)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0
