@@ -4,18 +4,18 @@ Catalog skills must be operational procedures, not role descriptions. Score ever
 
 ## Criteria
 
-| Point | Requirement |
-|---|---|
-| 1 | `Use when` states a positive trigger and a `Do not use` boundary. |
-| 1 | `Inputs` names required evidence and what to do when it is missing. |
-| 1 | `Workflow` contains at least four ordered, domain-specific steps. |
-| 1 | `Evidence rules` separates observations from hypotheses. |
-| 1 | `Output` defines at least four concrete report fields or sections. |
-| 1 | `Stop conditions` defines when to stop, abort, or ask the user. |
-| 1 | `Safety` states authorization scope and prohibited actions. |
-| 1 | `Quality bar` includes at least three testable acceptance checks. |
-| 1 | Work is numerically bounded and uncertainty or confidence is explicit. |
-| 1 | Every declared tool requirement is named verbatim in backticks. |
+| Point | Requirement                                                            |
+| ----- | ---------------------------------------------------------------------- |
+| 1     | `Use when` states a positive trigger and a `Do not use` boundary.      |
+| 1     | `Inputs` names required evidence and what to do when it is missing.    |
+| 1     | `Workflow` contains at least four ordered, domain-specific steps.      |
+| 1     | `Evidence rules` separates observations from hypotheses.               |
+| 1     | `Output` defines at least four concrete report fields or sections.     |
+| 1     | `Stop conditions` defines when to stop, abort, or ask the user.        |
+| 1     | `Safety` states authorization scope and prohibited actions.            |
+| 1     | `Quality bar` includes at least three testable acceptance checks.      |
+| 1     | Work is numerically bounded and uncertainty or confidence is explicit. |
+| 1     | Every declared tool requirement is named verbatim in backticks.        |
 
 The rubric is deliberately structural so it can be checked without a model call. Sections and list items have minimum substance thresholds, so headings, one-word checklists, and padded filler cannot pass by themselves. Passing is necessary, not sufficient. Human review must still reject prompts that promise tools the runtime profile cannot use, duplicate another skill, or optimize wording only to satisfy the parser.
 

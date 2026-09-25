@@ -1,72 +1,50 @@
 # Model and provider layer
 
-TurenOS turns a session's model request into a provider stream through one of two runtimes: the AI SDK path (the default) or the native `@turenlabs/llm` runtime (opt-in). Both converge on the same `LLMEvent` stream consumed by the session processor, so downstream processing doesn't care which one handled a request. The choice is made per request, so one session can route some calls natively and fall back for others.
+Core Session V2 resolves a catalog model to an `@turenlabs/llm` route and streams
+one provider turn through `LLMClient`. The legacy Forge session processor has a
+separate AI SDK default with an experimental native adapter; that flag does not
+select the V2 runtime.
 
-## Runtime selection
+## Session V2
 
-Both runtimes converge on the same `LLMEvent` stream consumed by the session processor. The gate is per-request: a single session can route some calls through native and fall back for others.
+`SessionRunnerModel.resolve` selects an available model, applies provider
+credentials and request settings, and returns a model with an executable route.
+The route can be a native protocol, an AI SDK bridge for a supported catalog
+entry, or a local CLI bridge. `SessionRunner` constructs a canonical
+`LLMRequest`, calls `llm.stream(wireRequest)` for each provider turn, persists
+the resulting events, then owns tool execution and continuation. Provider
+streaming does not delegate to the legacy Forge prompt loop.
 
 ```txt
-                             ╭───────────────────╮
-╭───────────────────────────▶│ session processor │
-│                            ╰─────────┬─────────╯
-│                                      │
-│                                      │
-│                                      │
-│                                      ▼
-│                         ╭─────────────────────────╮
-│                         │ LLM.Service (../llm.ts) │
-│                         ╰────────────┬────────────╯
-│                                      │
-│                                      │
-│                                      │
-│                                      ▼
-│                                ╭───────────╮
-│                              ╭─╯           ╰─╮
-│                              │  native gate  │
-│                              ╰─╮           ╭─╯
-│                                ╰─────┬─────╯
-│                                      │
-│                     ╭────── no ──────┴─────── yes ────────╮
-│                     │                                     │
-│                     ▼                                     ▼
-│       ╭───────────────────────────╮             ╭───────────────────╮
-│       │          AI SDK           │             │ native-runtime.ts │
-│       │ streamText / generateText │             ╰────────┬──────────╯
-│       ╰─────────────┬─────────────╯                      │
-│                     │                                    │
-│                 ╭───╯                                    │
-│                 │                                        │
-│                 ▼                                        ▼
-│     ╭───────────────────────╮             ╭────────────────────────────╮
-│     │       ai-sdk.ts       │             │     native-request.ts      │
-│     │ fullStream → LLMEvent │             │ session input → LLMRequest │
-│     ╰──────────┬────────────╯             ╰──────────────┬─────────────╯
-│                │                                         │
-│                │                                     ╭───╯
-│                │                                     │
-│                ▼                                     ▼
-│       ╭─────────────────╮             ╭─────────────────────────────╮
-╰───────┤ LLMEvent stream │◀────────────┤ LLMClient · RequestExecutor │
-        ╰─────────────────╯             ╰─────────────────────────────╯
+Catalog + credentials → SessionRunnerModel.resolve → Model route
+SessionRunner → LLMRequest → LLMClient.stream → LLMEvent stream
+                                     ↓
+                    SessionRunner persists and settles tools
 ```
 
-`native-runtime.ts` evaluates the gate. For a supported request it lowers the session input into an `LLMRequest` and hands transport to `LLMClient`; otherwise it returns an unsupported reason and `llm.ts` takes the AI SDK path. Tool execution stays session-owned on both paths.
+See [LLM package architecture](./llm-package.md) for route construction and
+[LLM tool dispatch](./llm-tool-dispatch.md) for the package's one-turn contract.
 
-## Configuration
+## Legacy Forge session processor
 
-- `FORGE_EXPERIMENTAL_NATIVE_LLM=true` opts in to the native runtime (default off). The umbrella `FORGE_EXPERIMENTAL` does not enable it, and requests with a connection policy always use AI SDK.
-- Native execution supports the `openai` and `anthropic` providers when their catalog entry uses `@ai-sdk/openai`, `@ai-sdk/openai-compatible`, or `@ai-sdk/anthropic` and an API key is configured. OAuth runs natively only for OpenAI with a provider fetch override.
+`packages/forge/src/session/llm.ts` uses AI SDK by default. With
+`FORGE_EXPERIMENTAL_NATIVE_LLM=true`, each eligible request is lowered into an
+`LLMRequest` and streamed through `LLMClient`; unsupported requests fall back
+to AI SDK. Both paths produce `LLMEvent`s for the legacy session processor.
+Tool execution remains session-owned.
 
-## Limits
-
-- Unsupported providers, other OAuth setups, and missing API keys fall back to AI SDK instead of failing.
-- The `@turenlabs/llm` package's own design (routes, protocols, provider facades, tool dispatch) is documented in [LLM package architecture](./llm-package.md) and [LLM tool dispatch](./llm-tool-dispatch.md).
+The native adapter supports `openai` and `anthropic` catalog entries using
+`@ai-sdk/openai`, `@ai-sdk/openai-compatible`, or `@ai-sdk/anthropic` when an API
+key is configured. OpenAI OAuth also works with a provider fetch override.
+Other OAuth setups, missing API keys, unsupported providers, and requests with
+a connection policy use AI SDK. The umbrella `FORGE_EXPERIMENTAL` flag does not
+enable this adapter.
 
 ## Source
 
+- [`packages/core/src/session/runner/llm.ts`](../../../packages/core/src/session/runner/llm.ts)
+- [`packages/core/src/session/runner/model.ts`](../../../packages/core/src/session/runner/model.ts)
+- [`packages/core/src/session/runner/aisdk-bridge.ts`](../../../packages/core/src/session/runner/aisdk-bridge.ts)
 - [`packages/forge/src/session/llm.ts`](../../../packages/forge/src/session/llm.ts)
 - [`packages/forge/src/session/llm/native-runtime.ts`](../../../packages/forge/src/session/llm/native-runtime.ts)
-- [`packages/forge/src/session/llm/native-request.ts`](../../../packages/forge/src/session/llm/native-request.ts)
-- [`packages/forge/src/session/llm/ai-sdk.ts`](../../../packages/forge/src/session/llm/ai-sdk.ts)
 - [`packages/forge/src/effect/runtime-flags.ts`](../../../packages/forge/src/effect/runtime-flags.ts)

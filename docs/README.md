@@ -59,8 +59,8 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   - [Secure storage](./systems/secure-storage.md): encrypting credentials and sensitive files with the OS-protected
     Secret Vault.
 - Models and providers
-  - [Model and provider layer](./systems/model-provider-layer/README.md): how a session request reaches a provider through
-    the default AI SDK runtime or the opt-in native `@turenlabs/llm` runtime.
+  - [Model and provider layer](./systems/model-provider-layer/README.md): how Session V2 resolves an `@turenlabs/llm`
+    route, and how the legacy Forge processor selects its AI SDK or native adapter.
 - Extensions
   - [Developer catalog runtime](./systems/developer-catalog-runtime/README.md): catalog validation and runtime projection
     rules.
@@ -136,9 +136,10 @@ These READMEs are short entry points into their area; their long-form documentat
   [catalog](./systems/README.md) that links it. A new system adds its row in the same change.
 - **Source-grounded.** System pages end with a `## Source` list of the files that implement them. Those links are
   checked, so a renamed or deleted source file shows up as a broken link instead of a silently stale page.
-- **Short pages.** A page covers one topic in about 250 lines at most. A longer topic becomes a folder whose
-  `README.md` is the main page and links focused sibling pages, as `architecture/`, `operations/ssh-remote/` and
-  `systems/dangerous-commands/` do.
+- **One topic per page.** Each page covers one topic and one kind of content: explanation, how-to, or reference.
+  Past about 300 lines a page gets a review: if it bundles several topics it becomes a folder whose `README.md` is the
+  main page and links focused sibling pages, as `architecture/`, `operations/ssh-remote/` and
+  `systems/dangerous-commands/` do. Long reference pages such as the systems catalog stay whole.
 - **Names.** Prose says TurenOS; technical identifiers keep their exact `forge` spelling. See
   [Branding](./architecture/branding.md).
 - **Checks.** After any docs change, run `bun .agents/skills/turen-documentation/scripts/check.ts docs`. To move or rename

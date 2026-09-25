@@ -75,11 +75,15 @@ and arm64 AppImage, deb, and rpm bundles for Linux. Standalone runtimes include
 macOS, Windows, Linux glibc, and Linux musl variants.
 
 Run the workflow only after the version bump has merged to public `main` with
-green CI — see [release-guide.md](./README.md):
+green CI — see the [release guide](./README.md). From a checkout with the
+prepared `VERSION`:
 
 ```bash
-gh workflow run release.yml --ref dev -f version="$(tr -d '[:space:]' < VERSION)"
+./script/release "$(tr -d '[:space:]' < VERSION)"
 ```
+
+The equivalent direct dispatch must name the private repository:
+`gh workflow run release.yml --repo turenio/turen -f version=<prepared-version>`.
 
 Do not publish a draft until every platform job, signature verification,
 notarization submission, checksum verification, and downloaded-release

@@ -111,7 +111,7 @@ Emscripten 6.0.8 on PATH for the Emscripten targets.
 
 The self-hosted GitHub Actions workflows build each target from its pinned
 toolchain and open a PR updating `packages/<target>-wasm`. They run only for
-trusted pushes to `dev` or explicit dispatches, never pull-request code.
+trusted pushes to `main` or explicit dispatches, never pull-request code.
 
 See each tool's README and provenance files for source and toolchain details.
 

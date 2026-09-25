@@ -49,10 +49,10 @@ with `Error: ...` text. The analyzed assembly is never executed.
 
 ## Deeper Replacements
 
-| Capability | Implementation | Boundary |
-| --- | --- | --- |
-| Broader archives | Minimal libarchive read build | Keep `list_archive` / `extract_archive_entry`; never extract paths to disk |
-| Packer database | Reviewed declarative DIE subset | Replace marker matching; do not bundle Qt |
+| Capability       | Implementation                  | Boundary                                                                   |
+| ---------------- | ------------------------------- | -------------------------------------------------------------------------- |
+| Broader archives | Minimal libarchive read build   | Keep `list_archive` / `extract_archive_entry`; never extract paths to disk |
+| Packer database  | Reviewed declarative DIE subset | Replace marker matching; do not bundle Qt                                  |
 
 Full 7-Zip is not used because its LGPL and restricted RAR components do not
 fit a permissive WASM artifact.
@@ -118,15 +118,15 @@ the pinned Rust/wasm-pack toolchain and the shared byte-in/JSON-out ABI:
 
 ## Native And Service Integrations
 
-| Tool | Decision | Typed operations |
-| --- | --- | --- |
-| OWASP ZAP | Pin the official container by digest and expose it as an isolated service. Bind its API to loopback, require an API key, run non-root, and restrict network reachability to the authorized target. | `zap_baseline_scan`, `zap_active_scan`, `zap_scan_status`, `zap_alerts`, `zap_report` |
-| TShark | Optional native sidecar for offline pcap/pcapng only. Disable plugins, Lua, extcap, and name resolution; use a fresh config directory. | `pcap_summary`, `pcap_fields`, `protocol_hierarchy`, `conversations`, `follow_stream` |
-| dumpcap | Separate narrowly privileged helper only if live capture is added. Never run TShark as root. | `capture_start` with approved interface, required BPF filter, snap length, packet, time, and byte limits |
-| tcpdump | Native fallback when TShark is unavailable, not a WASM target. Prefer writing a bounded pcap for later analysis. | `capture_headers`, `offline_decode` |
-| Nmap | Do not bundle without OEM and legal review of the Nmap Public Source License. A future bring-your-own installation adapter may use unprivileged TCP connect scans only. | `tcp_inventory`, `service_fingerprint`, `scan_status` with controller-built argv and parsed XML |
-| x64dbg | Windows VM service only. The debugger must never attach to TurenOS host processes. Destroy the VM on timeout. | `debug_launch`, `debug_attach`, `breakpoint_set`, `step`, `read_registers`, `read_memory`, `trace_record`, `detach`, `export_trace` |
-| netcat | Do not expose the binary or an arbitrary byte-stream command. Implement a purpose-built outbound socket probe instead. | `tcp_connect`, `banner_read`, `tls_handshake`, and optionally a fixed-payload bounded `udp_exchange` |
+| Tool      | Decision                                                                                                                                                                                           | Typed operations                                                                                                                    |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| OWASP ZAP | Pin the official container by digest and expose it as an isolated service. Bind its API to loopback, require an API key, run non-root, and restrict network reachability to the authorized target. | `zap_baseline_scan`, `zap_active_scan`, `zap_scan_status`, `zap_alerts`, `zap_report`                                               |
+| TShark    | Optional native sidecar for offline pcap/pcapng only. Disable plugins, Lua, extcap, and name resolution; use a fresh config directory.                                                             | `pcap_summary`, `pcap_fields`, `protocol_hierarchy`, `conversations`, `follow_stream`                                               |
+| dumpcap   | Separate narrowly privileged helper only if live capture is added. Never run TShark as root.                                                                                                       | `capture_start` with approved interface, required BPF filter, snap length, packet, time, and byte limits                            |
+| tcpdump   | Native fallback when TShark is unavailable, not a WASM target. Prefer writing a bounded pcap for later analysis.                                                                                   | `capture_headers`, `offline_decode`                                                                                                 |
+| Nmap      | Do not bundle without OEM and legal review of the Nmap Public Source License. A future bring-your-own installation adapter may use unprivileged TCP connect scans only.                            | `tcp_inventory`, `service_fingerprint`, `scan_status` with controller-built argv and parsed XML                                     |
+| x64dbg    | Windows VM service only. The debugger must never attach to TurenOS host processes. Destroy the VM on timeout.                                                                                      | `debug_launch`, `debug_attach`, `breakpoint_set`, `step`, `read_registers`, `read_memory`, `trace_record`, `detach`, `export_trace` |
+| netcat    | Do not expose the binary or an arbitrary byte-stream command. Implement a purpose-built outbound socket probe instead.                                                                             | `tcp_connect`, `banner_read`, `tls_handshake`, and optionally a fixed-payload bounded `udp_exchange`                                |
 
 ZAP is Apache-2.0. x64dbg is a modified GPLv3 work and depends on Windows
 debug APIs, so it is neither a WASM target nor an in-process dependency. Nmap

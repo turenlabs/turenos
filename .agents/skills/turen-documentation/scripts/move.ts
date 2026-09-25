@@ -19,7 +19,8 @@ import path from "node:path"
 import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, statSync } from "node:fs"
 
 const LINK = /(\]\(\s*<?|^\s*\[[^\]]+\]:\s*<?|(?:href|src)=")([^)\s>"]+)/gm
-const INBOUND = /(?<![A-Za-z0-9_.-])((?:\.\.\/)*)docs\/([A-Za-z0-9/_.-]+(?:#[A-Za-z0-9_-]+)?)/g
+// Match a complete relative docs/ path, not a docs/ suffix inside an area path such as tools/foo/docs/.
+const INBOUND = /(?<![A-Za-z0-9_./-])((?:\.\.?\/)*)docs\/([A-Za-z0-9/_.-]+(?:#[A-Za-z0-9_-]+)?)/g
 
 const args = process.argv.slice(2)
 const docsIndex = args.indexOf("--docs")

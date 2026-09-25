@@ -2,9 +2,17 @@
 
 `@turenlabs/llm` (`packages/llm`) is an Effect Schema-first LLM core. The Schema classes in `packages/llm/src/schema/` are the canonical runtime data model. Convenience functions in `packages/llm/src/llm.ts` are thin constructors that return those same Schema class instances; they should improve callsites without creating a second model.
 
-Primary in-repo integration point:
+In-repo Session V2 integration:
 
-- `packages/forge/src/session/llm.ts` is the session-owned orchestration layer that decides whether a request uses AI SDK or this package's native route runtime.
+- `packages/core/src/session/runner/model.ts` resolves catalog models to native,
+  AI SDK bridge, or local CLI routes.
+- `packages/core/src/session/runner/llm.ts` builds each `LLMRequest`, calls
+  `LLMClient.stream` for one provider turn, and owns persistence, tools, and
+  continuation.
+
+The legacy Forge session processor has a separate integration:
+
+- `packages/forge/src/session/llm.ts` decides whether a legacy request uses AI SDK or this package's opt-in native route runtime.
 - `packages/forge/src/session/llm/native-request.ts` is the lowering adapter from opencode's session/AI SDK-shaped data into this package's `LLMRequest` model.
 - `packages/forge/src/session/llm/native-runtime.ts` is the execution adapter that calls raw `LLMClient.stream(request)` and bridges one provider turn of opencode tool calls through this package's typed dispatcher.
 - `packages/forge/src/session/llm/ai-sdk.ts` keeps the default AI SDK path compatible by converting AI SDK stream parts into this package's shared `LLMEvent`s.

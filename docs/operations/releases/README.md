@@ -1,23 +1,23 @@
 # Release guide
 
 Operator checklist for cutting a TurenOS release. For architecture, safeguards,
-and failure semantics see [release-automation.md](./automation.md); for
-credential and certificate policy see [release-signing.md](./signing.md).
+and failure semantics see [automated releases](./automation.md); for
+credential and certificate policy see [release signing](./signing.md).
 
-Releases are dispatched from this private repository (`turenio/turen`), but the
-release source is `turenlabs/turenos` `main`. Public `main` is canonical: it is
-where the version bump lands, where CI gates, and where the release tag is
-created. This repo only builds that public source privately and signs it.
+The release source is `turenlabs/turenos` `main`: the version bump lands there,
+CI gates it, and the release tag names its commit. `./script/release` can run
+from any checkout and dispatches the private `turenio/turen` workflow, which
+builds and signs that public source.
 
 ## Prerequisites
 
 - The changes to ship are merged to public `main` with green `test`/`typecheck`.
-- `PUBLIC_RELEASE_TOKEN` (Actions secret here) is unexpired and has
+- `PUBLIC_RELEASE_TOKEN` (Actions secret in `turenio/turen`) is unexpired and has
   **Contents: Read and write** on `turenlabs/turenos` and
   `turenlabs/homebrew-turenos`.
-- Signing secrets (`APPLE_*`, `AZURE_*`, `GPG_*`) are configured here.
-- Your local checkout is clean and on `dev` — `./script/release` only
-  dispatches; it never commits or pushes.
+- Signing secrets (`APPLE_*`, `AZURE_*`, `GPG_*`) are configured in `turenio/turen`.
+- The prepared release version is known; `./script/release` only dispatches
+  and never commits or pushes.
 
 ## 1. Bump the version
 
@@ -41,14 +41,8 @@ bun install            # refreshes bun.lock workspace versions
 bun --cwd packages/script version:check
 ```
 
-Commit the result to public `main` (direct commit or PR — both work):
-
-```sh
-git commit -am "chore: release 1.0.29"
-git push github main    # or the public remote
-```
-
-Mirror the same bump to private `dev` so the trees stay in parity.
+Commit the result and merge it to public `main` through the normal review and
+CI process. The private repository does not need a source mirror.
 
 ## 2. Wait for CI on the bump commit
 
@@ -64,11 +58,19 @@ release source as the `main` commit whose `VERSION` matches.
 
 ## 3. Dispatch
 
+From a checkout with the prepared `VERSION`, run:
+
 ```sh
-./script/release 1.0.29
+release_version=$(tr -d '[:space:]' < VERSION)
+./script/release "$release_version"
 ```
 
-Equivalent: `gh workflow run release.yml --repo turenio/turen -f version=1.0.29`.
+You can also pass the prepared version explicitly from another checkout. The
+equivalent direct dispatch is:
+
+```sh
+gh workflow run release.yml --repo turenio/turen -f version="$release_version"
+```
 
 The workflow validates, builds/signs ~15 platform jobs against the public
 commit, uploads all assets to a public **draft** release, re-downloads and
@@ -86,9 +88,9 @@ gh run list --repo turenio/turen --workflow release.yml --limit 1
 A complete release means all of:
 
 ```sh
-gh release view v1.0.29 --repo turenlabs/turenos --json isDraft   # draft=false
-gh api repos/turenlabs/turenos/git/refs/tags/v1.0.29 --jq .object.sha  # = the version-bump commit on main
-curl -s https://raw.githubusercontent.com/turenlabs/homebrew-turenos/main/Formula/turenos.rb | grep 1.0.29
+gh release view "v$release_version" --repo turenlabs/turenos --json isDraft   # draft=false
+gh api "repos/turenlabs/turenos/git/refs/tags/v$release_version" --jq .object.sha  # version-bump commit
+curl -s https://raw.githubusercontent.com/turenlabs/homebrew-turenos/main/Formula/turenos.rb | grep "$release_version"
 ```
 
 The workflow itself verifies anonymous downloads, update feeds, and the formula
@@ -96,26 +98,26 @@ read-back; the checks above confirm externally.
 
 ## Recovery
 
-| Symptom | Action |
-| --- | --- |
-| Build/sign job failed before publish | `gh run rerun <id> --failed` — same draft resumes |
-| Publish/verify job failed | **Do not rerun** — reruns reuse the run's original checkout, so a `script/release-distribute.ts` fix won't be picked up. Push the fix to `dev`, then `./script/release <v> --publish-existing` to resume the draft |
-| Draft exists with wrong/corrupt assets | While it is still a draft, delete the bad asset manually, then `--publish-existing`. Never publish a partial draft by hand |
-| `VERSION does not match` | The release commit's `VERSION` must equal the requested version — dispatch against the right commit or fix the bump |
-| Public release already published | `--publish-existing` verifies it; rebuilding/re-signing a published version is rejected — never force it |
-| `Release source is not an ancestor of public main` | The tag/commit isn't on public history — investigate, don't bypass |
-| Homebrew formula stale | `--publish-existing` re-runs the formula update idempotently |
+| Symptom                                            | Action                                                                                                                                                                                                                      |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Build/sign job failed before publish               | `gh run rerun <id> --failed` — same draft resumes                                                                                                                                                                           |
+| Publish/verify job failed                          | **Do not rerun** — reruns reuse the run's original checkout, so a `script/release-distribute.ts` fix won't be picked up. Merge the fix to private `dev`, then `./script/release <v> --publish-existing` to resume the draft |
+| Draft exists with wrong/corrupt assets             | While it is still a draft, delete the bad asset manually, then `--publish-existing`. Never publish a partial draft by hand                                                                                                  |
+| `VERSION does not match`                           | The release commit's `VERSION` must equal the requested version — dispatch against the right commit or fix the bump                                                                                                         |
+| Public release already published                   | `--publish-existing` verifies it; rebuilding/re-signing a published version is rejected — never force it                                                                                                                    |
+| `Release source is not an ancestor of public main` | The tag/commit isn't on public history — investigate, don't bypass                                                                                                                                                          |
+| Homebrew formula stale                             | `--publish-existing` re-runs the formula update idempotently                                                                                                                                                                |
 
 `--publish-existing` skips every build job and runs only the
 verify→publish→Homebrew stage, so it is the cheap resume for any post-build
-failure. See [release-automation.md](./automation.md#recovery-without-rebuilding)
+failure. See [automated releases](./automation.md#recovery-without-rebuilding)
 for the full semantics.
 
 ## Read-only diagnosis
 
 ```sh
 PRIVATE_GH_TOKEN="$(gh auth token)" bun script/release-distribute.ts \
-  --verify-only --version 1.0.29
+  --verify-only --version "$release_version"
 ```
 
 Re-verifies a published release and formula without remote writes. Downloads all
