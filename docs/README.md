@@ -92,6 +92,10 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 Prototypes and benchmarks that explore or measure rather than document shipped behavior. Each page states its status.
 
 - [Zero-Mem prototype](./experimental/zero-mem.md): isolated graph/hierarchy retrieval prototype and benchmark methodology.
+- [Recursive context plugin](./experimental/recursive-context.md): an opt-in plugin that moves tagged long context out of
+  the prompt behind bounded search and read tools.
+- [Embedding model benchmark](./experimental/embedding-models.md): small embedding models against the BM25 baseline for
+  memory, code, and repository retrieval.
 - [Token efficiency](./experimental/token-efficiency.md): measured context-token cost, benchmark method, and remaining
   overhead.
 

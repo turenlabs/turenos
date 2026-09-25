@@ -98,6 +98,9 @@ and must not delay restored-tab navigation.
 
 ## Related pages
 
+- [Authoring catalog entries](./authoring.md): selection policy, manifest contract, MCP deployment variants, and how
+  to add a source, skill, subagent, or managed MCP package.
+- [Catalog contents](./catalog-contents.md): the data sources, skills, and subagents the catalog ships today.
 - [Skill quality benchmark](./skill-quality.md): the review rubric every catalog skill must pass.
 - [Threat intelligence feed rights](./feed-licenses.md): which threat feeds the catalog may admit and how their data is handled.
 
