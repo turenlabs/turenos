@@ -1054,6 +1054,9 @@ export const Model = Schema.Struct({
   headers: Schema.Record(Schema.String, Schema.String),
   release_date: Schema.String,
   variants: optional(Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Any))),
+  // The variant a turn gets when the Session selects none. Absent means no reasoning setting
+  // is sent at all, so the provider's own default applies.
+  defaultVariant: optional(Schema.String),
 }).annotate({ identifier: "Model" })
 export type Model = Types.DeepMutable<Schema.Schema.Type<typeof Model>>
 
@@ -1463,6 +1466,10 @@ function fromCatalogModel(provider: ProviderV2.Info, model: ModelV2.Info): Model
     headers: {},
     release_date: model.time.released > 0 ? new Date(model.time.released).toISOString() : "",
     variants: Object.fromEntries(model.variants.map((variant) => [variant.id, variant.body])),
+    // Mirrors the runner's fallback: an unpublished default is never applied, so never advertise it.
+    defaultVariant: model.variants.some((variant) => variant.id === model.request.variant)
+      ? model.request.variant
+      : undefined,
   }
 }
 

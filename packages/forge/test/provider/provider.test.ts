@@ -1743,6 +1743,27 @@ test("V2 catalog projection preserves models for the public provider list", () =
     },
     variants: { medium: { reasoningEffort: "medium" } },
   })
+  expect(result.models["daybreak-blue-latest"].defaultVariant).toBeUndefined()
+})
+
+test("V2 catalog projection advertises only a published default variant", () => {
+  const providerID = ProviderV2.ID.anthropic
+  const provider = ProviderV2.Info.make({
+    ...ProviderV2.Info.empty(providerID),
+    api: { type: "aisdk", package: "@ai-sdk/anthropic" },
+  })
+  const model = (id: string, request: string) =>
+    ModelV2.Info.make({
+      ...ModelV2.Info.empty(providerID, ModelV2.ID.make(id)),
+      api: { id: ModelV2.ID.make(id), type: "aisdk", package: "@ai-sdk/anthropic" },
+      request: { headers: {}, body: {}, variant: ModelV2.VariantID.make(request) },
+      variants: [{ id: ModelV2.VariantID.make("high"), headers: {}, body: { effort: "high" } }],
+    })
+
+  const result = Provider.fromCatalogProvider(provider, [model("published", "high"), model("unpublished", "max")])
+  expect(result.models.published.defaultVariant).toBe("high")
+  // The runner falls back to sending nothing for an unpublished default; the UI must not claim otherwise.
+  expect(result.models.unpublished.defaultVariant).toBeUndefined()
 })
 
 test("models.dev reasoning options replace generated variants and unsupported options fall back", () => {

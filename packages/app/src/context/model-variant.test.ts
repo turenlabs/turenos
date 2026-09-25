@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   carryModelVariant,
   cycleModelVariant,
+  explicitModelVariant,
   getConfiguredAgentVariant,
   resolveEffectiveModelVariant,
   resolveModelVariant,
@@ -80,6 +81,52 @@ describe("model variant", () => {
     })
 
     expect(value).toBe("high")
+  })
+
+  test("resolves a pinned agent variant as inherited, not explicit", () => {
+    const input = { variants: ["low", "high", "xhigh"], selected: undefined, configured: "xhigh", saved: "high" }
+
+    expect(explicitModelVariant(input)).toBeUndefined()
+    expect(resolveEffectiveModelVariant(input)).toBe("xhigh")
+  })
+
+  test("reports a chosen variant as explicit even when it matches the pinned one", () => {
+    expect(
+      explicitModelVariant({
+        variants: ["low", "high", "xhigh"],
+        selected: "xhigh",
+        configured: "xhigh",
+        saved: undefined,
+      }),
+    ).toBe("xhigh")
+  })
+
+  test("reports a remembered per-model variant as explicit", () => {
+    expect(
+      explicitModelVariant({
+        variants: ["low", "high", "xhigh"],
+        selected: undefined,
+        configured: undefined,
+        saved: "high",
+      }),
+    ).toBe("high")
+  })
+
+  test("reports no explicit variant after switching to default", () => {
+    expect(
+      explicitModelVariant({
+        variants: ["low", "high", "xhigh"],
+        selected: null,
+        configured: undefined,
+        saved: "high",
+      }),
+    ).toBeUndefined()
+  })
+
+  test("ignores a remembered variant the model no longer publishes", () => {
+    expect(
+      explicitModelVariant({ variants: ["low", "high"], selected: undefined, configured: undefined, saved: "max" }),
+    ).toBeUndefined()
   })
 
   test("cycles from configured variant to next", () => {
