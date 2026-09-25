@@ -45,7 +45,7 @@ const domains = [
 describe("i18n parity", () => {
   // These sweeps load dozens of locale modules; slow filesystems (Windows CI)
   // need far more than the default 5s test timeout.
-  test("non-English locales have every English key", { timeout: 30_000 }, async () => {
+  test("non-English locales have every English key", async () => {
     for (const domain of domains) {
       const [source, ...targets] = await Promise.all(
         [domain.source, ...domain.locales.map(domain.target)].map(dictionary),
@@ -62,9 +62,9 @@ describe("i18n parity", () => {
         })
       }
     }
-  })
+  }, 30_000)
 
-  test("non-English locales preserve English placeholders", { timeout: 30_000 }, async () => {
+  test("non-English locales preserve English placeholders", async () => {
     for (const domain of domains) {
       const [source, ...targets] = await Promise.all(
         [domain.source, ...domain.locales.map(domain.target)].map(dictionary),
@@ -77,9 +77,9 @@ describe("i18n parity", () => {
         expect({ domain: domain.name, locale, mismatched }).toEqual({ domain: domain.name, locale, mismatched: [] })
       }
     }
-  })
+  }, 30_000)
 
-  test("non-English locales translate targeted unseen session keys", { timeout: 30_000 }, async () => {
+  test("non-English locales translate targeted unseen session keys", async () => {
     const [source, ...targets] = await Promise.all(
       ["./en.ts", ...appLocales.map((locale) => `./${locale}.ts`)].map(dictionary),
     )
@@ -89,9 +89,9 @@ describe("i18n parity", () => {
         expect(target[key], appLocales[index]).not.toBe(source[key])
       }
     }
-  })
+  }, 30_000)
 
-  test("changed-file summary keys preserve rendered English copy and localize complete phrases", { timeout: 30_000 }, async () => {
+  test("changed-file summary keys preserve rendered English copy and localize complete phrases", async () => {
     const source = await dictionary("../../../ui/src/i18n/en.ts")
     expect(source["ui.sessionTurn.diffs.changed.one"].replace("{{count}}", "1")).toBe("1 Changed file")
     expect(source["ui.sessionTurn.diffs.changed.other"].replace("{{count}}", "2")).toBe("2 Changed files")
@@ -104,7 +104,7 @@ describe("i18n parity", () => {
         expect(placeholders(target[key])).toEqual(["count"])
       }
     }
-  })
+  }, 30_000)
 })
 
 async function dictionary(file: string) {
