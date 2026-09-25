@@ -139,6 +139,38 @@ test("agent operations are counted as session activity", () => {
   })
 })
 
+test("context tool summaries count each category independently", () => {
+  const parts = [
+    tool("read", "read"),
+    tool("glob", "glob"),
+    tool("grep", "grep"),
+    tool("list", "list"),
+    tool("bash", "bash"),
+    tool("coordination-read", "reflection_read"),
+    tool("coordination-agent", "spawn_agent"),
+    tool("write", "write"),
+  ]
+  expect(contextToolSummary(parts.map((item) => item.part))).toEqual({
+    read: 1,
+    search: 2,
+    list: 1,
+    shell: 1,
+    coordination: 2,
+  })
+})
+
+test("context tool summaries skip sparse slots", () => {
+  const parts = new Array<ToolPart>(2)
+  parts[1] = tool("read", "read").part
+  expect(contextToolSummary(parts)).toEqual({
+    read: 1,
+    search: 0,
+    list: 0,
+    shell: 0,
+    coordination: 0,
+  })
+})
+
 test("completed shell results with nonzero exits or timeouts remain visible", () => {
   for (const metadata of [{ structured: { exit: 1 } }, { exit: 2 }, { structured: { timeout: true } }]) {
     const shell = tool("shell", "bash")

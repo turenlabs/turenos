@@ -39,12 +39,26 @@ export function isContextGroupTool(part: Part): part is ToolPart {
 }
 
 export function contextToolSummary(parts: ToolPart[]) {
-  const read = parts.filter((part) => part.tool === "read").length
-  const search = parts.filter((part) => part.tool === "glob" || part.tool === "grep").length
-  const list = parts.filter((part) => part.tool === "list").length
-  const shell = parts.filter((part) => part.tool === "bash").length
-  const coordination = parts.filter((part) => isCoordinationTool(part.tool)).length
-  return { read, search, list, shell, coordination }
+  const summary = { read: 0, search: 0, list: 0, shell: 0, coordination: 0 }
+  parts.forEach((part) => {
+    switch (part.tool) {
+      case "read":
+        summary.read++
+        break
+      case "glob":
+      case "grep":
+        summary.search++
+        break
+      case "list":
+        summary.list++
+        break
+      case "bash":
+        summary.shell++
+        break
+    }
+    if (isCoordinationTool(part.tool)) summary.coordination++
+  })
+  return summary
 }
 
 export type PartRef = {
