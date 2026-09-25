@@ -95,19 +95,27 @@ read-back; the checks above confirm externally.
 
 ## Recovery
 
-| Symptom                                            | Action                                                                                                                                                                                                                      |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Build/sign job failed before publish               | `gh run rerun <id> --failed` — same draft resumes                                                                                                                                                                           |
-| Publish/verify job failed                          | **Do not rerun** — reruns reuse the run's original checkout, so a `script/release-distribute.ts` fix won't be picked up. Merge the fix to private `dev`, then `./script/release <v> --publish-existing` to resume the draft |
-| Draft exists with wrong/corrupt assets             | While it is still a draft, delete the bad asset manually, then `--publish-existing`. Never publish a partial draft by hand                                                                                                  |
-| `VERSION does not match`                           | The release commit's `VERSION` must equal the requested version — dispatch against the right commit or fix the bump                                                                                                         |
-| Public release already published                   | `--publish-existing` verifies it; rebuilding/re-signing a published version is rejected — never force it                                                                                                                    |
-| `Release source is not an ancestor of public main` | The tag/commit isn't on public history — investigate, don't bypass                                                                                                                                                          |
-| Homebrew formula stale                             | `--publish-existing` re-runs the formula update idempotently                                                                                                                                                                |
+| Symptom                                            | Action                                                                                                                                                                                                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Build/sign job failed before publish               | `gh run rerun <id> --failed` — same draft resumes                                                                                                                                                                                                |
+| Publish/verify job failed                          | **Do not rerun** — reruns reuse the run's original checkout, so a `script/release-distribute.ts` fix won't be picked up. Merge the fix to the `turenio/turen` default branch, then `./script/release <v> --publish-existing` to resume the draft |
+| Draft exists with wrong/corrupt assets             | While it is still a draft, delete the bad asset manually, then `--publish-existing`. Never publish a partial draft by hand                                                                                                                       |
+| `VERSION does not match`                           | The release commit's `VERSION` must equal the requested version — dispatch against the right commit or fix the bump                                                                                                                              |
+| Public release already published                   | `--publish-existing` verifies it; rebuilding/re-signing a published version is rejected — never force it                                                                                                                                         |
+| `Release source is not an ancestor of public main` | The tag/commit isn't on public history — investigate, don't bypass                                                                                                                                                                               |
+| Homebrew formula stale                             | `--publish-existing` re-runs the formula update idempotently                                                                                                                                                                                     |
 
 `--publish-existing` skips every build job and runs only the
 verify→publish→Homebrew stage, so it is the cheap resume for any post-build
-failure. See [automated releases](./automation.md#recovery-without-rebuilding)
+failure.
+
+The release workflow and `script/release-distribute.ts` run from the private
+repository's own checkout (`Checkout trusted workflow revision` in
+`.github/workflows/release.yml`), and the workflow refuses any dispatch ref
+other than that repository's default branch. The product source it builds is
+always checked out from `turenlabs/turenos` at the release commit. A fix to the
+orchestrator therefore takes effect only once it is on the private default
+branch. See [automated releases](./automation.md#recovery-without-rebuilding)
 for the full semantics.
 
 ## Read-only diagnosis

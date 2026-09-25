@@ -19,27 +19,23 @@ swift build --package-path packages/rosetta-harness -c release
 codesign --force --sign - --entitlements packages/rosetta-harness/Resources/entitlements.plist packages/rosetta-harness/.build/release/turen-rosetta-harness
 ```
 
-The execution pack is built separately and must provide:
-
-```text
-kernel
-initrd
-```
-
-Build a local pack from a pinned ARM64 kernel and matching modules:
+The execution pack is built separately. Build a local pack from a pinned ARM64 kernel and matching modules:
 
 ```sh
 packages/rosetta-harness/Scripts/build-pack.sh \
   Image busybox virtiofs.ko binfmt_misc.ko dist/rosetta-pack
 ```
 
+The script builds and ad-hoc signs the helper too, and writes `kernel`, `initrd.gz`, `turen-rosetta-harness`, and a
+`SHA256SUMS` file covering all three into the output directory.
+
 Install the execution pack by setting these host-only variables before starting
 TurenOS:
 
 ```text
-TUREN_ROSETTA_HARNESS=/path/to/turen-rosetta-harness
-TUREN_ROSETTA_KERNEL=/path/to/arm64/Image
-TUREN_ROSETTA_INITRD=/path/to/turen-rosetta-initrd.gz
+TUREN_ROSETTA_HARNESS=/path/to/dist/rosetta-pack/turen-rosetta-harness
+TUREN_ROSETTA_KERNEL=/path/to/dist/rosetta-pack/kernel
+TUREN_ROSETTA_INITRD=/path/to/dist/rosetta-pack/initrd.gz
 ```
 
 The `TUREN_*` names are the first-class harness contract even though the host runtime still lives under the

@@ -96,11 +96,10 @@ pretending that the child stopped.
 7. Delegate exact verification to `qualification` with explicit commands.
 8. Use `wait_agents` only when complete terminal reports are needed.
 
-Do not assume that a child has posted merely because its prompt asked for a
-post. Confirm the note in `board_read` or in the parent notification stream.
-Do not confuse a board notification with a terminal report: a board note is an
-incremental observation, while `wait_agents` returns the child's terminal
-result.
+A prompt that asks a child to post does not mean a note exists; only
+`board_read` or the parent notification stream confirms it. A board
+notification is an incremental observation, not a terminal report:
+`wait_agents` returns the child's terminal result.
 
 ## Delivery and Recovery
 
@@ -132,9 +131,9 @@ disables nested spawning but preserves permitted `board_read` and `board_post`
 coordination. A child whose permissions explicitly deny a board tool cannot use
 that tool.
 
-Always treat the current available-tool list as authoritative. Do not call a
-tool that is absent from the list, and do not infer that every specialist has
-the same tools as the parent.
+The available-tool list injected into a Session is authoritative for that
+Session. A tool absent from it cannot be called, and a specialist's tools can
+differ from its parent's.
 
 ## Testing
 

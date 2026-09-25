@@ -1,14 +1,16 @@
 # Security Browser and Proxy
 
-The desktop AppSec page contains a manual Proxy workspace. Creating a case does
-not start an AI scan or require a model. A case is just a named, durable
-container for captured traffic and rules.
+Each Desktop session has one shared Security Browser and a manual Proxy
+workspace, shown in the session's **Browser** panel. The browser's case is a
+named, durable container for captured traffic and rules. Creating it does not
+start an AI scan or require a model.
 
 ## Workflow
 
-1. Open **AppSec** (or **Open Security Browser and Proxy** in the command palette),
-   select a local project, and create a case — or just call `browser_start` from a
-   session.
+1. In a Desktop session, open the **Browser** panel, or run **Open Security
+   Browser and Proxy** from the command palette. The session's case is
+   `browser_<sessionID>`, created when the agent calls `browser_start`; until
+   then the panel waits for it.
 2. Open its Security Browser. The toolbar is trusted local UI; the destination runs in
    a separate sandboxed WebContentsView without a preload or Node access.
 3. Browse with Intercept off to collect History. Reveal a selected flow explicitly

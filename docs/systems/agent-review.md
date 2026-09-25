@@ -88,12 +88,12 @@ reviewer states that attribution is limited and does not widen the review beyond
 
 Before handoff, the stock built-in `worker` is prompted to:
 
-- treats its bounded assignment as the intent contract;
-- judges the implementation from changed code rather than its plan or summary;
-- compares the code with every requested outcome and constraint;
-- corrects omissions and risky unrequested changes that remain inside its granted scope;
-- concentrates on the highest-risk changed regions instead of polishing low-value nits;
-- reports changed files and symbols or regions plus unmet requirements, residual risks, and integration dependencies.
+- treat its bounded assignment as the intent contract;
+- judge the implementation from changed code rather than its plan or summary;
+- compare the code with every requested outcome and constraint;
+- correct omissions and risky unrequested changes that remain inside its granted scope;
+- concentrate on the highest-risk changed regions instead of polishing low-value nits;
+- report changed files and symbols or regions plus unmet requirements, residual risks, and integration dependencies.
 
 Under its stock permissions, the worker cannot run shell commands or delegate. Exact verification remains a separate
 qualification task.

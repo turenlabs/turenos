@@ -47,3 +47,9 @@ To point at a non-standard executable, set it in `forge.json`:
   }
 }
 ```
+
+The configured path is what runs each turn: it is migrated into the provider's request body and applied after the
+provider plugin. Availability is decided separately. The catalog plugin probes the default `claude` on `PATH` with
+`claude auth status --json` (cached for 60 seconds) and enables the provider only when that install is signed in. A
+non-standard executable therefore still needs a signed-in default `claude` on `PATH` for `Claude Code (local)` to
+appear.

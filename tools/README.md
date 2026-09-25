@@ -1,7 +1,7 @@
-# Turen WASM Tools
+# TurenOS WASM tools
 
-Reproducible WebAssembly builds used by Turen agent tools. This directory is
-the former `turenio/wasm-tools` repository, imported into the Forge monorepo.
+Reproducible WebAssembly builds used by TurenOS agent tools. This directory is
+the former `turenio/wasm-tools` repository, imported into this monorepo.
 Each target builds into its checked-in workspace package at
 `packages/<target>-wasm`.
 
@@ -13,6 +13,9 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   patched with pre-serialization aggregate result limits for agent use.
 - [`tools/goblin`](goblin): bounded PE, ELF, Mach-O, TE, COFF, and Unix
   archive metadata inspection built from Goblin.
+- [`tools/debug-symbols`](debug-symbols): bounded object symbols,
+  debug-section inventory, and PDB public symbols with optional Rust, Itanium
+  C++, and MSVC demangling; never resolves source paths or loads a debugger.
 - [`tools/stng-core`](stng-core): portable bounded raw, wide, decoded,
   classified, and XOR string extraction derived from stng.
 - [`tools/libpcap`](libpcap): official tcpdump-group libpcap configured
@@ -22,6 +25,9 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
 - [`tools/email-security`](email-security): bounded RFC 5322/MIME
   parsing, attachment metadata and bounded byte extraction, IOC extraction, and advertised authentication
   failure signals.
+- [`tools/email-authenticate`](email-authenticate): offline DKIM, SPF, and
+  DMARC verification from the vendored `mail-auth` crate against a supplied
+  DNS snapshot; never performs DNS or network lookups.
 - [`tools/wasm-inspect`](wasm-inspect): static validation and section
   inspection for WebAssembly modules and components; inspected bytes are never
   instantiated.

@@ -41,6 +41,7 @@ Filter or narrow `LLMEvent` streams with `LLMEvent.is.*` (camelCase guards, e.g.
 
 ```
 packages/llm/src/
+  index.ts                  package barrel (LLMClient, Auth, Provider, Tool, ToolRuntime, LLM, ...)
   schema/                   canonical Schema model, split by concern
     ids.ts                  branded IDs, literal types, ProviderMetadata
     options.ts              Generation/Provider/Http options, Limits, Model, cache policy
@@ -49,6 +50,10 @@ packages/llm/src/
     errors.ts               error reasons, LLMError, ToolFailure
     index.ts                barrel
   llm.ts                    request constructors and convenience helpers
+  cache-policy.ts           applyCachePolicy: turns LLMRequest.cache into per-part CacheHints before lowering
+  provider.ts               Provider.make advanced structural provider definition helper
+  provider-error.ts         context-overflow detection for provider error messages
+  utils/record.ts           isRecord plain-object guard
   route/
     index.ts                @turenlabs/llm/route advanced barrel
     client.ts               Route.make + LLMClient.prepare/stream/generate
@@ -63,6 +68,7 @@ packages/llm/src/
       http.ts               HttpTransport.httpJson — POST + framing
       websocket.ts          WebSocketTransport.json + WebSocketExecutor service
   protocols/
+    index.ts                protocol namespace barrel
     shared.ts               ProviderShared toolkit used inside protocol impls
     openai-chat.ts          protocol + route (compose OpenAIChat.protocol)
     openai-responses.ts
@@ -73,6 +79,8 @@ packages/llm/src/
     openai-compatible-chat.ts route that reuses OpenAIChat.protocol, no canonical URL
     utils/                  per-protocol helpers (auth, cache, media, tool-stream, ...)
   providers/
+    index.ts                provider facade barrel
+    openai-options.ts       OpenAI provider options, including the Responses `include` field
     openai-compatible.ts    generic compatible helper + family model helpers
     openai-compatible-profile.ts family defaults (deepseek, togetherai, ...)
     azure.ts / amazon-bedrock.ts / cloudflare.ts / github-copilot.ts / google.ts / xai.ts / openai.ts / anthropic.ts / openrouter.ts

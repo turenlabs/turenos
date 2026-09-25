@@ -1,9 +1,13 @@
 # Local models
 
+TurenOS can use a model served on this machine through any OpenAI-compatible endpoint, configured as a custom provider
+in `forge.json`. The model server is run and secured by you; TurenOS only sends requests to it. This page covers the
+Bonsai 2 path. Its statements about third-party checkpoints and runtimes were checked on 2026-09-18 and may drift.
+
 ## Bonsai 2
 
-The [Bonsai-2 collection](https://huggingface.co/collections/prism-ml/bonsai-2)
-currently publishes these checkpoints:
+As of 2026-09-18, the [Bonsai-2 collection](https://huggingface.co/collections/prism-ml/bonsai-2)
+publishes these checkpoints:
 
 - `prism-ml/Ternary-Bonsai-2-27B-gguf` — PrismML's custom `PTQ1_0` and `PQ2_0`
   GGUF files for the PrismML llama.cpp fork.
@@ -12,11 +16,11 @@ currently publishes these checkpoints:
 - `prism-ml/Ternary-Bonsai-2-27B-gguf-dev` — a testing `Q2_0` build that also
   requires the PrismML fork.
 
-These artifacts are not currently vLLM checkpoints. Bonsai uses a Qwen3.8
+These artifacts were not vLLM checkpoints as of that date. Bonsai uses a Qwen3.8
 hybrid-attention architecture, custom ternary weight types, and a Hadamard
-activation transform. Current vLLM Metal GGUF support is limited to dense
+activation transform. At that date vLLM Metal GGUF support was limited to dense
 Qwen/Llama/Mistral-style models and standard `Q8_0`, `Q4_0`, or `Q4_1` tensors;
-hybrid models, custom qtypes, and vision GGUFs are rejected. The MLX artifact's
+hybrid models, custom qtypes, and vision GGUFs were rejected. The MLX artifact's
 `prism_hadamard_qwen35` model type likewise needs its bundled loader. Do not
 serve these files with stock `vllm`, `vllm-gguf-plugin`, or stock llama.cpp:
 loading the testing `Q2_0` file without the activation transform can produce
