@@ -79,6 +79,7 @@ const bootAgents = Effect.fnUntraced(function* () {
 type Harness = {
   readonly requests: LLMRequest[]
   readonly resolvedVariants: (ModelV2.VariantID | undefined)[]
+  readonly resolveOptions: (SessionRunnerModel.ResolveOptions | undefined)[]
   readonly titler: SessionRunnerTitle.Interface
 }
 
@@ -96,6 +97,7 @@ const harness = Effect.fnUntraced(function* (options: {
   const agents = yield* bootAgents()
   const requests: LLMRequest[] = []
   const resolvedVariants: (ModelV2.VariantID | undefined)[] = []
+  const resolveOptions: (SessionRunnerModel.ResolveOptions | undefined)[] = []
   const titler = SessionRunnerTitle.make({
     agents,
     events: yield* EventV2.Service,
@@ -106,8 +108,9 @@ const harness = Effect.fnUntraced(function* (options: {
       },
     },
     models: SessionRunnerModel.Service.of({
-      resolve: (session) => {
+      resolve: (session, _request, options) => {
         resolvedVariants.push(session.model?.variant)
+        resolveOptions.push(options)
         return Effect.succeed({
           model: String(session.model?.id) === String(overrideModel.id) ? overrideModel : model,
           ref: ModelV2.Ref.make({
@@ -120,7 +123,7 @@ const harness = Effect.fnUntraced(function* (options: {
     }),
     store: yield* SessionStore.Service,
   })
-  return { requests, resolvedVariants, titler } satisfies Harness
+  return { requests, resolvedVariants, resolveOptions, titler } satisfies Harness
 })
 
 const seed = Effect.fnUntraced(function* (options: {
@@ -215,7 +218,9 @@ describe("SessionRunnerTitle", () => {
 
   it.effect("does not inherit the primary model's reasoning variant", () =>
     Effect.gen(function* () {
-      const { resolvedVariants, titler } = yield* harness({ generate: () => Effect.succeed(answer("Fast title")) })
+      const { resolvedVariants, resolveOptions, titler } = yield* harness({
+        generate: () => Effect.succeed(answer("Fast title")),
+      })
       const session = yield* seed({
         text: "keep the title request cheap",
         model: ModelV2.Ref.make({
@@ -228,6 +233,8 @@ describe("SessionRunnerTitle", () => {
       yield* titler.ensure(session.id)
 
       expect(resolvedVariants).toEqual([undefined])
+      // Nor the model's default level, which would spend the small title cap on thinking.
+      expect(resolveOptions).toEqual([{ defaultVariant: false }])
     }),
   )
 

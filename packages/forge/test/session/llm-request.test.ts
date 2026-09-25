@@ -83,3 +83,65 @@ describe("OpenCode request headers", () => {
     expect(headers["x-opencode-session"]).toBeUndefined()
   })
 })
+
+describe("Claude default reasoning", () => {
+  const adaptive = (effort: string) => ({ thinking: { type: "adaptive" }, effort })
+  const claude = (apiID: string, variants: Record<string, Record<string, unknown>>) => ({
+    ...model("anthropic"),
+    id: apiID,
+    api: { id: apiID, url: "https://api.anthropic.com/v1", npm: "@ai-sdk/anthropic" },
+    variants,
+  })
+  const prepareOptions = (input: {
+    readonly model: ReturnType<typeof claude>
+    readonly variant?: string
+    readonly small?: boolean
+    readonly toolChoice?: "auto" | "required" | "none"
+  }) =>
+    Effect.runPromise(
+      LLMRequestPrep.prepare({
+        user: {
+          id: "msg_claude_default",
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "test",
+          model: { providerID: "anthropic", modelID: input.model.id, variant: input.variant },
+        } as any,
+        sessionID,
+        model: input.model,
+        agent: { name: "test", mode: "primary", prompt: "test", options: {}, permission: [] } as any,
+        system: [],
+        messages: [{ role: "user", content: "hello" }],
+        small: input.small,
+        toolChoice: input.toolChoice,
+        tools: {},
+        provider: { id: "anthropic", options: {} } as any,
+        auth: undefined,
+        plugin,
+        flags: { outputTokenMax: 32_000, client: "test" } as any,
+        isWorkflow: false,
+      }),
+    ).then((result) => result.params.options)
+  const opus = claude("claude-opus-4-7", { low: adaptive("low"), high: adaptive("high") })
+
+  test("turns adaptive thinking on at high when no level is chosen", async () => {
+    expect(await prepareOptions({ model: opus })).toMatchObject(adaptive("high"))
+    expect(await prepareOptions({ model: opus, variant: "default" })).toMatchObject(adaptive("high"))
+  })
+
+  test("keeps a chosen level", async () => {
+    expect(await prepareOptions({ model: opus, variant: "low" })).toMatchObject(adaptive("low"))
+  })
+
+  test("does not raise background calls or forced-tool calls to the default", async () => {
+    // Small calls keep their existing lowest-published-level behaviour (`ProviderTransform.smallOptions`).
+    expect(await prepareOptions({ model: opus, small: true })).toMatchObject({ effort: "low" })
+    expect((await prepareOptions({ model: opus, toolChoice: "required" })).thinking).toBeUndefined()
+  })
+
+  test("leaves budget-based models alone", async () => {
+    const sonnet = claude("claude-sonnet-4-5", { high: { thinking: { type: "enabled", budgetTokens: 16_000 } } })
+    expect((await prepareOptions({ model: sonnet })).thinking).toBeUndefined()
+  })
+})

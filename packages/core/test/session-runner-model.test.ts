@@ -489,6 +489,50 @@ describe("SessionRunnerModel", () => {
     }),
   )
 
+  // Background calls (titles, compaction) cap output far below a turn, so the model's default
+  // reasoning level must not follow them there. A level the session chose still does.
+  it.effect("skips the catalog default only when asked, and never a selected variant", () =>
+    Effect.gen(function* () {
+      const fallback = ModelV2.VariantID.make("medium")
+      const selected = ModelV2.VariantID.make("low")
+      const base = model({ type: "aisdk", package: "@ai-sdk/openai", url: "https://openai.example/v1" }, [
+        { id: selected, headers: {}, body: { reasoningEffort: "low" } },
+        { id: fallback, headers: {}, body: { reasoningEffort: "medium" } },
+      ])
+      const catalog = ModelV2.Info.make({ ...base, request: { ...base.request, variant: fallback } })
+      const session = (variant?: ModelV2.VariantID) =>
+        SessionV2.Info.make({
+          id: SessionV2.ID.make("ses_model_variant_background"),
+          projectID: ProjectV2.ID.global,
+          title: "test",
+          model: { id: catalog.id, providerID: catalog.providerID, ...(variant ? { variant } : {}) },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+          location: { directory: AbsolutePath.make("/project") },
+        })
+      const background = { defaultVariant: false }
+
+      expect((yield* SessionRunnerModel.resolveWithRef(session(), catalog)).ref.variant).toBe(fallback)
+      expect(
+        (yield* SessionRunnerModel.resolveWithRef(session(), catalog, undefined, undefined, background)).ref.variant,
+      ).toBeUndefined()
+      expect(
+        (yield* SessionRunnerModel.resolveWithRef(
+          session(ModelV2.VariantID.make("default")),
+          catalog,
+          undefined,
+          undefined,
+          background,
+        )).ref.variant,
+      ).toBeUndefined()
+      expect(
+        (yield* SessionRunnerModel.resolveWithRef(session(selected), catalog, undefined, undefined, background)).ref
+          .variant,
+      ).toBe(selected)
+    }),
+  )
+
   it.effect("overlays selected Anthropic Session variant bodies", () =>
     Effect.gen(function* () {
       const catalog = model({ type: "aisdk", package: "@ai-sdk/anthropic", url: "https://anthropic.example/v1" }, [
