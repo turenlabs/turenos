@@ -1,0 +1,8 @@
+# Generated artifacts are rebuilt by automation; reviewing them wastes budget.
+ignore = [
+  "Third-Party-Notices.md",
+  "packages/desktop/resources/licenses/*",
+  "packages/extensions/src/generated.ts",
+  "packages/sdk/js/src/gen/*",
+  "packages/sdk/js/src/v2/gen/*",
+]
