@@ -137,9 +137,10 @@ function words(value: string) {
 }
 
 function editDistance(left: string, right: string) {
-  const previous = Array.from({ length: right.length + 1 }, (_, index) => index)
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index)
+  let current = new Array<number>(right.length + 1)
   for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    const current = [leftIndex]
+    current[0] = leftIndex
     for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
       current[rightIndex] = Math.min(
         current[rightIndex - 1] + 1,
@@ -147,7 +148,9 @@ function editDistance(left: string, right: string) {
         previous[rightIndex - 1] + Number(left[leftIndex - 1] !== right[rightIndex - 1]),
       )
     }
-    previous.splice(0, previous.length, ...current)
+    const row = previous
+    previous = current
+    current = row
   }
   return previous[right.length]
 }
