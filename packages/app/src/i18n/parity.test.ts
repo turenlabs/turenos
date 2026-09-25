@@ -43,7 +43,9 @@ const domains = [
 ] as const
 
 describe("i18n parity", () => {
-  test("non-English locales have every English key", async () => {
+  // These sweeps load dozens of locale modules; slow filesystems (Windows CI)
+  // need far more than the default 5s test timeout.
+  test("non-English locales have every English key", { timeout: 30_000 }, async () => {
     for (const domain of domains) {
       const [source, ...targets] = await Promise.all(
         [domain.source, ...domain.locales.map(domain.target)].map(dictionary),
@@ -62,7 +64,7 @@ describe("i18n parity", () => {
     }
   })
 
-  test("non-English locales preserve English placeholders", async () => {
+  test("non-English locales preserve English placeholders", { timeout: 30_000 }, async () => {
     for (const domain of domains) {
       const [source, ...targets] = await Promise.all(
         [domain.source, ...domain.locales.map(domain.target)].map(dictionary),
@@ -77,25 +79,26 @@ describe("i18n parity", () => {
     }
   })
 
-  test("non-English locales translate targeted unseen session keys", async () => {
-    const source = await dictionary("./en.ts")
-    for (const locale of appLocales) {
-      const target = await dictionary(`./${locale}.ts`)
+  test("non-English locales translate targeted unseen session keys", { timeout: 30_000 }, async () => {
+    const [source, ...targets] = await Promise.all(
+      ["./en.ts", ...appLocales.map((locale) => `./${locale}.ts`)].map(dictionary),
+    )
+    for (const [index, target] of targets.entries()) {
       for (const key of ["command.session.previous.unseen", "command.session.next.unseen"]) {
-        expect(target[key]).toBeDefined()
-        expect(target[key]).not.toBe(source[key])
+        expect(target[key], appLocales[index]).toBeDefined()
+        expect(target[key], appLocales[index]).not.toBe(source[key])
       }
     }
   })
 
-  test("changed-file summary keys preserve rendered English copy and localize complete phrases", async () => {
+  test("changed-file summary keys preserve rendered English copy and localize complete phrases", { timeout: 30_000 }, async () => {
     const source = await dictionary("../../../ui/src/i18n/en.ts")
     expect(source["ui.sessionTurn.diffs.changed.one"].replace("{{count}}", "1")).toBe("1 Changed file")
     expect(source["ui.sessionTurn.diffs.changed.other"].replace("{{count}}", "2")).toBe("2 Changed files")
     expect(source["ui.sessionTurn.diffs.changed"]).toBeUndefined()
 
-    for (const locale of appLocales) {
-      const target = await dictionary(`../../../ui/src/i18n/${locale}.ts`)
+    const targets = await Promise.all(appLocales.map((locale) => dictionary(`../../../ui/src/i18n/${locale}.ts`)))
+    for (const target of targets) {
       for (const key of ["ui.sessionTurn.diffs.changed.one", "ui.sessionTurn.diffs.changed.other"]) {
         expect(target[key].trim()).not.toBe("")
         expect(placeholders(target[key])).toEqual(["count"])
