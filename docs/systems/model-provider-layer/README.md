@@ -61,12 +61,12 @@ Both runtimes converge on the same `LLMEvent` stream consumed by the session pro
 ## Limits
 
 - Unsupported providers, other OAuth setups, and missing API keys fall back to AI SDK instead of failing.
-- The `@turenlabs/llm` package's own design (routes, protocols, provider facades, tool dispatch) is documented in [`packages/llm/docs/architecture.md`](../../packages/llm/docs/architecture.md).
+- The `@turenlabs/llm` package's own design (routes, protocols, provider facades, tool dispatch) is documented in [LLM package architecture](./llm-package.md) and [LLM tool dispatch](./llm-tool-dispatch.md).
 
 ## Source
 
-- [`packages/forge/src/session/llm.ts`](../../packages/forge/src/session/llm.ts)
-- [`packages/forge/src/session/llm/native-runtime.ts`](../../packages/forge/src/session/llm/native-runtime.ts)
-- [`packages/forge/src/session/llm/native-request.ts`](../../packages/forge/src/session/llm/native-request.ts)
-- [`packages/forge/src/session/llm/ai-sdk.ts`](../../packages/forge/src/session/llm/ai-sdk.ts)
-- [`packages/forge/src/effect/runtime-flags.ts`](../../packages/forge/src/effect/runtime-flags.ts)
+- [`packages/forge/src/session/llm.ts`](../../../packages/forge/src/session/llm.ts)
+- [`packages/forge/src/session/llm/native-runtime.ts`](../../../packages/forge/src/session/llm/native-runtime.ts)
+- [`packages/forge/src/session/llm/native-request.ts`](../../../packages/forge/src/session/llm/native-request.ts)
+- [`packages/forge/src/session/llm/ai-sdk.ts`](../../../packages/forge/src/session/llm/ai-sdk.ts)
+- [`packages/forge/src/effect/runtime-flags.ts`](../../../packages/forge/src/effect/runtime-flags.ts)

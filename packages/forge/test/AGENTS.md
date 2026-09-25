@@ -1,6 +1,6 @@
 # Forge tests
 
-Rules for tests in `packages/forge/test`. Worked examples are in [README.md](./README.md). Follow `server/AGENTS.md` for HTTP server tests.
+Rules for tests in `packages/forge/test`. Worked examples are in `docs/development/forge-tests.md`. Follow `server/AGENTS.md` for HTTP server tests.
 
 ## Fixtures
 

@@ -115,5 +115,5 @@ trusted pushes to `dev` or explicit dispatches, never pull-request code.
 
 See each tool's README and provenance files for source and toolchain details.
 
-See `docs/targets.md` for the reviewed WASM, native-sidecar, and service
+See `docs/systems/offline-security-tools/targets.md` for the reviewed WASM, native-sidecar, and service
 boundaries for future security tools.

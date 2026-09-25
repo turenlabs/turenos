@@ -1,4 +1,4 @@
-# Skill Quality Benchmark
+# Skill quality benchmark
 
 Catalog skills must be operational procedures, not role descriptions. Score every skill from 0 to 10 against the criteria below during review; publication requires at least 8.
 

@@ -3,8 +3,8 @@
 This directory contains source-grounded engineering notes for TurenOS. Start with the architecture overview and the
 systems catalog when you need the current product vocabulary, package/runtime model, or subsystem ownership. Pages are
 grouped by section: whole-system [architecture](./architecture/README.md), individual [systems](./systems/README.md),
-model [providers](./providers/README.md), [operations](./operations/README.md), and [experimental](./experimental/README.md)
-work.
+model [providers](./providers/README.md), [operations](./operations/README.md), [development](./development/README.md) guides,
+and [experimental](./experimental/README.md) work.
 
 The rebrand changes product-facing prose to TurenOS. Technical identifiers remain exact: do not rename `FORGE_*`,
 `.forge` paths, `forge` commands, package or namespace identifiers containing `forge`, URLs, serialized values, or
@@ -54,15 +54,15 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 - Security
   - [Security browser and proxy](./systems/security-browser.md): the Desktop AppSec Proxy workspace, with cases, a
     sandboxed browser, Intercept, Repeater, and its boundaries.
-  - [Offline security tools](./systems/offline-security-tools.md): bounded offline analysis of attachments, binaries,
+  - [Offline security tools](./systems/offline-security-tools/README.md): bounded offline analysis of attachments, binaries,
     captures, macros, .NET IL, archives, and packer evidence.
   - [Secure storage](./systems/secure-storage.md): encrypting credentials and sensitive files with the OS-protected
     Secret Vault.
 - Models and providers
-  - [Model and provider layer](./systems/model-provider-layer.md): how a session request reaches a provider through
+  - [Model and provider layer](./systems/model-provider-layer/README.md): how a session request reaches a provider through
     the default AI SDK runtime or the opt-in native `@turenlabs/llm` runtime.
 - Extensions
-  - [Developer catalog runtime](./systems/developer-catalog-runtime.md): catalog validation and runtime projection
+  - [Developer catalog runtime](./systems/developer-catalog-runtime/README.md): catalog validation and runtime projection
     rules.
 
 ## Providers
@@ -81,6 +81,11 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 - [Releases](./operations/releases/README.md): the operator checklist for cutting a release (version bump, dispatch,
   verification, and recovery), with [automated releases](./operations/releases/automation.md) and
   [release signing](./operations/releases/signing.md).
+
+## Development
+
+- [Forge test fixtures](./development/forge-tests.md): temporary directories, Effect test helpers, and waiting on
+  concurrent work in `packages/forge` tests.
 
 ## Experimental
 
@@ -108,6 +113,8 @@ entry points when changing a public boundary:
 
 ## Elsewhere in the repo
 
+These READMEs are short entry points into their area; their long-form documentation lives in this folder.
+
 - [`tools/README.md`](../tools/README.md): the built-in WebAssembly security tools, their builds, and provenance.
 - [`services/catalog/README.md`](../services/catalog/README.md): the built-in extension catalog and how to add sources,
   skills, and MCP packages.
@@ -119,10 +126,12 @@ entry points when changing a public boundary:
 
 - **One home per page.** [Architecture](./architecture/README.md) covers the whole-system shape and naming,
   [systems](./systems/README.md) covers one named system each, [providers](./providers/README.md) covers driving one model
-  provider or agent CLI, [operations](./operations/README.md) covers hosting and releases, and
-  [experimental](./experimental/README.md) holds prototypes and benchmarks with a status line. Images and diagram sources
-  go in `assets/`. Contracts stay in `specs/`, area docs stay beside `tools/`, `services/catalog/` and each package, and
-  HTML prototypes go in `mockups/`.
+  provider or agent CLI, [operations](./operations/README.md) covers hosting and releases,
+  [development](./development/README.md) holds contributor guides, and [experimental](./experimental/README.md) holds
+  prototypes and benchmarks with a status line. Images and diagram sources go in `assets/`.
+- **All documentation lives here.** Package and area READMEs are short entry points that link into this folder, and
+  `AGENTS.md` files point here for detail. The exceptions are contracts in `specs/`, per-target build provenance in
+  `tools/<target>/`, and HTML prototypes in `mockups/`.
 - **The systems catalog is the index of systems.** Every system page has a row in the
   [catalog](./systems/README.md) that links it. A new system adds its row in the same change.
 - **Source-grounded.** System pages end with a `## Source` list of the files that implement them. Those links are

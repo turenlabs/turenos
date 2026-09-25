@@ -7,11 +7,11 @@ bounds as first-class product requirements.
 ## Directory Layout
 
 This directory is the former `turenio/wasm-tools` repository inside the Forge
-monorepo. It contains only shared documentation and tool directories:
+monorepo. It contains only tool directories and these shared instructions; cross-tool decisions and target research
+live in `docs/systems/offline-security-tools/targets.md`:
 
 ```text
 ../.github/workflows/build-<target>.yml  Trusted reproducible builds
-docs/                                    Cross-tool decisions and target research
 <target>/                                One self-contained tool target
 AGENTS.md                                Contributor and agent instructions
 README.md                                Overview
@@ -120,7 +120,7 @@ repository as embedded binaries or arbitrary command wrappers.
 | x64dbg | Disposable Windows VM service only. Never attach to TurenOS host processes; destroy the VM on timeout and expose typed debugger operations rather than scripts or commands. |
 | netcat | Do not expose the binary or an arbitrary byte stream. Implement typed outbound `tcp_connect`, `banner_read`, `tls_handshake`, and optionally fixed-payload bounded `udp_exchange` operations. |
 
-See `docs/targets.md` for licensing details, operation names, and the complete
+See `docs/systems/offline-security-tools/targets.md` for licensing details, operation names, and the complete
 reasoning behind these boundaries.
 
 ## Adding Or Updating A Target
@@ -141,7 +141,7 @@ reasoning behind these boundaries.
 6. Merge only a passing checksum-verified package update PR. Verify source,
    Node, compiled CLI, Desktop bundle, and packaged Desktop paths when the
    runtime ships in all of them.
-7. Update this file, the target's own `AGENTS.md`, and `docs/targets.md` when a
+7. Update this file, the target's own `AGENTS.md`, and `docs/systems/offline-security-tools/targets.md` when a
    target changes status or its security boundary changes.
 
 ## Review Checklist

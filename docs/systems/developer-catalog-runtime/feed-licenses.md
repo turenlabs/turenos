@@ -1,4 +1,4 @@
-# Threat Intelligence Feed Rights
+# Threat intelligence feed rights
 
 The catalog admits feeds only when the data, not merely client code, has clear product-compatible rights. Turen performs bounded point lookup or event retrieval and preserves source provenance.
 

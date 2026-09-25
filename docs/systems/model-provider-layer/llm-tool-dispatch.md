@@ -1,4 +1,7 @@
-# Tools and dispatch
+# LLM tool dispatch
+
+How `@turenlabs/llm` represents tool loops, runs one local tool call with typed dispatch, and passes hosted provider tools
+through untouched.
 
 ## Tool loops
 

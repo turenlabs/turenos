@@ -1,6 +1,6 @@
 # LLM package architecture
 
-This package is an Effect Schema-first LLM core. The Schema classes in `src/schema/` are the canonical runtime data model. Convenience functions in `src/llm.ts` are thin constructors that return those same Schema class instances; they should improve callsites without creating a second model.
+`@turenlabs/llm` (`packages/llm`) is an Effect Schema-first LLM core. The Schema classes in `packages/llm/src/schema/` are the canonical runtime data model. Convenience functions in `packages/llm/src/llm.ts` are thin constructors that return those same Schema class instances; they should improve callsites without creating a second model.
 
 Primary in-repo integration point:
 
@@ -74,4 +74,4 @@ packages/llm/src/
 
 The dependency arrow points down: `providers/*.ts` files import protocol routes and auth-option utilities; protocol modules import `endpoint`, `auth`, `framing`, and transport pieces. Protocols do not import provider facades. Lower-level modules know nothing about provider catalog metadata.
 
-Tool loops and dispatch are covered in [tools.md](./tools.md).
+Tool loops and dispatch are covered in [LLM tool dispatch](./llm-tool-dispatch.md).

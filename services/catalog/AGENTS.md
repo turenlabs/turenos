@@ -15,7 +15,7 @@ artifacts back into this directory.
 - `manifests/mcp/` — hosted, customer-url, managed-package, and local MCP
   definitions (`mcp:<id>`)
 - `manifests/tools/` — packaged WASM tool entries
-- `docs/` — feed license notes and the skill quality rubric
+- Feed license notes and the skill quality rubric live in `docs/systems/developer-catalog-runtime/`.
 
 ## Workflow
 
@@ -39,7 +39,7 @@ artifacts back into this directory.
   single source of truth for where data comes from; runtime adapters never
   hardcode origins.
 - Skills carry bounded inline `source.content` (no secrets, commands,
-  configuration, or tool policies) and meet `docs/skill-quality.md`.
+  configuration, or tool policies) and meet `docs/systems/developer-catalog-runtime/skill-quality.md`.
 - MCP contributions declare deployment, authentication, explicit tool
   allowlists, and any secrets/configuration up front. Wildcard policies are
   prohibited.

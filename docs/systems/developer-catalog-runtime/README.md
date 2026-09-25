@@ -96,10 +96,15 @@ and must not delay restored-tab navigation.
 6. Never diagnose from a raw `Cause([Interrupt(...)])`: expected interruption is logged as cancellation and must
    not be persisted as Failed.
 
+## Related pages
+
+- [Skill quality benchmark](./skill-quality.md): the review rubric every catalog skill must pass.
+- [Threat intelligence feed rights](./feed-licenses.md): which threat feeds the catalog may admit and how their data is handled.
+
 ## Source
 
-- [`services/catalog/manifests`](../../services/catalog/manifests)
-- [`packages/extensions/script/generate.ts`](../../packages/extensions/script/generate.ts)
-- [`packages/extensions/src/validate.ts`](../../packages/extensions/src/validate.ts)
-- [`packages/core/src/extension.ts`](../../packages/core/src/extension.ts)
-- [`packages/forge/src/skill/vigil.ts`](../../packages/forge/src/skill/vigil.ts)
+- [`services/catalog/manifests`](../../../services/catalog/manifests)
+- [`packages/extensions/script/generate.ts`](../../../packages/extensions/script/generate.ts)
+- [`packages/extensions/src/validate.ts`](../../../packages/extensions/src/validate.ts)
+- [`packages/core/src/extension.ts`](../../../packages/core/src/extension.ts)
+- [`packages/forge/src/skill/vigil.ts`](../../../packages/forge/src/skill/vigil.ts)

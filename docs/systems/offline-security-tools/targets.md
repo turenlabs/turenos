@@ -1,4 +1,4 @@
-# Agent Tool Targets
+# Agent tool targets
 
 This document records the implementation boundary for candidate Turen agent
 tools. `wasm-tools` is for deterministic, bounded byte processing. Programs

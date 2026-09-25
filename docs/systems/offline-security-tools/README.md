@@ -65,12 +65,17 @@ packer evidence, archive listing, attachment bytes, and the WASM memory maximum.
 This supplements source tests; it does not replace platform signing, notarization,
 or release publication checks.
 
+## Related pages
+
+- [Agent tool targets](./targets.md): the implementation boundary for every candidate agent tool: shipped WASM targets,
+  planned replacements, native and service integrations, and required limits.
+
 ## Source
 
-- [`packages/core/src/tool/static-analysis-tools.ts`](../../packages/core/src/tool/static-analysis-tools.ts)
-- [`packages/core/src/tool/static-analysis-worker.ts`](../../packages/core/src/tool/static-analysis-worker.ts)
-- [`packages/core/src/tool/email-security-tools.ts`](../../packages/core/src/tool/email-security-tools.ts)
-- [`packages/core/src/tool/follow-stream.ts`](../../packages/core/src/tool/follow-stream.ts)
-- [`packages/static-analysis-wasm/source-106`](../../packages/static-analysis-wasm/source-106)
-- [`packages/email-security-wasm/source-106`](../../packages/email-security-wasm/source-106)
-- [`packages/desktop/scripts/verify-security-extensions-artifact.ts`](../../packages/desktop/scripts/verify-security-extensions-artifact.ts)
+- [`packages/core/src/tool/static-analysis-tools.ts`](../../../packages/core/src/tool/static-analysis-tools.ts)
+- [`packages/core/src/tool/static-analysis-worker.ts`](../../../packages/core/src/tool/static-analysis-worker.ts)
+- [`packages/core/src/tool/email-security-tools.ts`](../../../packages/core/src/tool/email-security-tools.ts)
+- [`packages/core/src/tool/follow-stream.ts`](../../../packages/core/src/tool/follow-stream.ts)
+- [`packages/static-analysis-wasm/source-106`](../../../packages/static-analysis-wasm/source-106)
+- [`packages/email-security-wasm/source-106`](../../../packages/email-security-wasm/source-106)
+- [`packages/desktop/scripts/verify-security-extensions-artifact.ts`](../../../packages/desktop/scripts/verify-security-extensions-artifact.ts)

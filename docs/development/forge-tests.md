@@ -1,7 +1,7 @@
 # Forge test fixtures
 
-Worked examples for the test fixtures and patterns used in this package. Fixtures live in
-[`fixture/fixture.ts`](./fixture/fixture.ts); Effect helpers live in [`lib/effect.ts`](./lib/effect.ts).
+Worked examples for the test fixtures and patterns used in `packages/forge` tests. Fixtures live in
+[`packages/forge/test/fixture/fixture.ts`](../../packages/forge/test/fixture/fixture.ts); Effect helpers live in [`packages/forge/test/lib/effect.ts`](../../packages/forge/test/lib/effect.ts).
 
 ## Temporary directories
 

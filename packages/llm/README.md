@@ -128,7 +128,7 @@ This package is built on Effect. Public methods return `Effect` or `Stream`; pro
 
 ## See also
 
-- [`docs/architecture.md`](docs/architecture.md) — request flow, folder layout, and dependency direction
-- [`docs/tools.md`](docs/tools.md) — tool loops, typed dispatch, and hosted tools
+- [LLM package architecture](../../docs/systems/model-provider-layer/llm-package.md) — request flow, folder layout, and dependency direction
+- [LLM tool dispatch](../../docs/systems/model-provider-layer/llm-tool-dispatch.md) — tool loops, typed dispatch, and hosted tools
 - `example/tutorial.ts` — runnable end-to-end walkthrough
 - `test/provider/*.test.ts` — fixture-first protocol tests; `*.recorded.test.ts` files cover live cassettes

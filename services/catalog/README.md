@@ -25,10 +25,10 @@ manifests/
   skills/   prompt-only skills and fixed-profile subagents (skill:<id>)
   mcp/      hosted, customer-URL, managed-package, and local MCP definitions (mcp:<id>)
   tools/    packaged WASM security tools (tool adapters)
-docs/
-  feed-licenses.md   data feed rights and exclusions
-  skill-quality.md   the skill review rubric
 ```
+
+Feed rights and the skill review rubric are documented in
+[`docs/systems/developer-catalog-runtime/`](../../docs/systems/developer-catalog-runtime/README.md).
 
 Each manifest is one JSON file holding a single extension whose contributions share one type.
 
@@ -70,7 +70,7 @@ The catalog contains 23 cybersecurity data sources:
 - Parallel Web Search
 
 Every entry declares its exact agent-facing tool allowlist. All `tools.write` lists are empty.
-Threat-feed rights and exclusions are recorded in [`docs/feed-licenses.md`](docs/feed-licenses.md).
+Threat-feed rights and exclusions are recorded in [threat intelligence feed rights](../../docs/systems/developer-catalog-runtime/feed-licenses.md).
 
 ## Current Skills And Subagents
 
@@ -163,7 +163,7 @@ Required invariants:
 - Secrets are declared explicitly and stored by Turen's secret vault, never in catalog state.
 - Homepages must use credential-free HTTPS URLs.
 - Version history is append-only and includes a publication date for the current version.
-- Every skill must meet the review rubric in `docs/skill-quality.md`.
+- Every skill must meet the review rubric in `docs/systems/developer-catalog-runtime/skill-quality.md`.
 
 ## Adding A Source
 
@@ -181,7 +181,7 @@ Catalog metadata is not runtime authority. A data manifest may select only a sep
 2. Use a `catalog` source and keep secrets, commands, configuration, and tool policies empty.
 3. Add `agent.profile` only for a subagent; choose `read`, `data`, or `binary`.
 4. List non-authoritative tool requirements so the UI can disclose expected capabilities.
-5. Review the entry against `docs/skill-quality.md`, then run `bun run generate` in `packages/extensions`.
+5. Review the entry against `docs/systems/developer-catalog-runtime/skill-quality.md`, then run `bun run generate` in `packages/extensions`.
 6. Installs are scanned by Vigil; reviewed manifests are allowlisted by digest in `packages/forge/src/skill/vigil.ts`.
 
 ## Adding A Managed MCP Package

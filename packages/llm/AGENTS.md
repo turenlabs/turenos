@@ -1,6 +1,6 @@
 # LLM package
 
-Rules for `packages/llm`, an Effect Schema-first LLM core. Follow the nested files when working in those folders: `src/route/AGENTS.md` (routes, endpoints, auth, framing), `src/providers/AGENTS.md` (provider facades), `src/protocols/AGENTS.md` (protocol modules), and `test/AGENTS.md` (recorded tests). Walkthroughs of the request flow, folder layout, and tool dispatch are in `docs/architecture.md` and `docs/tools.md`.
+Rules for `packages/llm`, an Effect Schema-first LLM core. Follow the nested files when working in those folders: `src/route/AGENTS.md` (routes, endpoints, auth, framing), `src/providers/AGENTS.md` (provider facades), `src/protocols/AGENTS.md` (protocol modules), and `test/AGENTS.md` (recorded tests). Walkthroughs of the request flow, folder layout, and tool dispatch are in `docs/systems/model-provider-layer/llm-package.md` and `docs/systems/model-provider-layer/llm-tool-dispatch.md`.
 
 ## Effect
 

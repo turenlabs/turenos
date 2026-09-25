@@ -39,10 +39,15 @@ const folders = new Map(
 )
 
 const docsEdits = await Promise.all(
-  (await markdownUnder(docs)).map(async (file) => ({ file, ...rewriteDocsPage(await Bun.file(file).text(), file) })),
+  // Pages moving in from outside docs/ need their links rewritten for their new home too.
+  [...new Set([...(await markdownUnder(docs)), ...[...moves.keys()].filter((file) => /\.mdx?$/.test(file))])].map(
+    async (file) => ({ file, ...rewriteDocsPage(await Bun.file(file).text(), file) }),
+  ),
 )
 const inboundEdits = await Promise.all(
-  outsideMarkdown().map(async (file) => ({ file, dead: [], ...rewriteInbound(await Bun.file(file).text(), file) })),
+  outsideMarkdown()
+    .filter((file) => !moves.has(file))
+    .map(async (file) => ({ file, dead: [], ...rewriteInbound(await Bun.file(file).text(), file) })),
 )
 const edits = [...docsEdits, ...inboundEdits].filter((edit) => edit.count > 0)
 const broken = docsEdits.flatMap((edit) => edit.dead.map((target) => `${path.relative(root, edit.file)}: ${target}`))

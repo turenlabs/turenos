@@ -45,10 +45,11 @@ Docs rot when code moves and nobody searches. When the task is "update the docs"
 2. Search every docs tree for each old path and name (`rg -n '<old>' docs/ tools/ services/catalog/`). Update each hit, or delete the claim if the thing is gone.
 3. For an audit, re-verify each page's code-level claims against the source and run the checker. Report stale claims with the current reality ("says `--port`, flag is now `--listen`").
 
-## Consistency across docs trees
+## One docs tree, many entry points
 
-TurenOS has several documentation trees: `docs/`, `tools/` (`README.md`, `docs/targets.md` and per-target READMEs), `services/catalog/` (`README.md`, `docs/`), the package READMEs and `specs/`. Each is fine on its own. The failure mode is the set contradicting itself.
+All TurenOS documentation lives in `docs/`. Package and area READMEs (`packages/<pkg>/README.md`, `tools/README.md`, `services/catalog/README.md`) are entry points, `AGENTS.md` files point into `docs/` for detail, and `specs/` holds contracts. The failure mode is those places contradicting each other.
 
-- **A shared fact has one source of truth.** Counts (built-in tools, catalog sources), version pins, identifier tables and supported-format lists get copied into several pages and then drift. For each such fact, name its authority, preferably a build or config file or a single catalogue page. When it changes, grep every tree and instruction file for the old value and update them all in the same change.
-- **Link, don't restate.** `docs/README.md` links each area's own docs once, under "Elsewhere in the repo", and points at the authority for shared facts instead of re-deriving them.
-- A contradiction between two docs is a bug even when each page reads fine on its own.
+- **A shared fact has one source of truth.** Counts (built-in tools, catalog sources), version pins, identifier tables and supported-format lists get copied into several pages and READMEs, then drift. For each such fact, name its authority, preferably a build or config file or a single `docs/` page. When it changes, grep `docs/`, the READMEs and the `AGENTS.md` files for the old value and update them all in the same change.
+- **Link, don't restate.** A README or `AGENTS.md` names the fact and links the `docs/` page instead of copying its explanation.
+- **No second docs tree.** Never add a `docs/` folder inside a package or area. If a README grows long-form prose, move that prose into a `docs/` page with `move.ts` and link it.
+- A contradiction between two places is a bug even when each one reads fine on its own.

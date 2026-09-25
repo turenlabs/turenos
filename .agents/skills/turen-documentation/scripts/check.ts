@@ -43,6 +43,7 @@ const findings = [
   ...[...pages].flatMap(([file, text]) => contentFindings(file, text)),
   ...linkFindings(),
   ...catalogFindings(),
+  ...strayDocsFindings(),
 ]
 const errors = findings.filter((finding) => finding.level === "error")
 const warnings = findings.filter((finding) => finding.level === "warning")
@@ -187,6 +188,29 @@ function linkFindings(): Finding[] {
           .map((file) => warning(`orphan page, not reachable from docs/README.md: ${file}`))
       : []),
   ]
+}
+
+// Documentation is centralized: a `docs/` folder anywhere else in the repository is a second tree. Vendored upstream
+// code keeps its own docs.
+function strayDocsFindings(): Finding[] {
+  const listed = Bun.spawnSync(["git", "-C", docs, "rev-parse", "--show-toplevel"], { stdout: "pipe", stderr: "pipe" })
+  if (listed.exitCode !== 0) return []
+  const root = listed.stdout.toString().trim()
+  const tracked = Bun.spawnSync(
+    ["git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "*/docs/*"],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  )
+  const home = path.relative(root, docs).split(path.sep).join("/")
+  const stray: string[] = tracked.stdout
+    .toString()
+    .split("\n")
+    .filter((file) => file.length > 0 && !file.startsWith(`${home}/`) && !/(^|\/)(vendor|node_modules)\//.test(file))
+  return [...new Set(stray.map((file) => file.slice(0, file.indexOf("/docs/") + "/docs/".length)))].map((folder) =>
+    warning(`documentation outside docs/: ${folder} (move its pages into ${home}/ with move.ts)`),
+  )
 }
 
 function catalogFindings(): Finding[] {

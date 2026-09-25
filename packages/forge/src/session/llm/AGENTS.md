@@ -6,7 +6,7 @@
 - `native-request.ts` converts the normalized session input into a native `@turenlabs/llm` `LLMRequest`. It does not execute requests.
 - `native-runtime.ts` is the opt-in native runtime adapter. It decides whether a selected model is supported, builds the native request, bridges session tools into native executable tools, and delegates transport to `LLMClient` / `RequestExecutor`.
 
-The runtime-selection flow and its diagram are in `docs/systems/model-provider-layer.md` at the repository root.
+The runtime-selection flow and its diagram are in `docs/systems/model-provider-layer/README.md` at the repository root.
 
 ## Seams
 
