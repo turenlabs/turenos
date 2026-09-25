@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.30",
+  "version": "1.0.31",
   "name": "@turenlabs/forge",
   "description": "TurenOS bundled security engineering runtime and CLI",
   "type": "module",
