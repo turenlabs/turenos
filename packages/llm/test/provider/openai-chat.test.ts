@@ -720,6 +720,35 @@ describe("OpenAI Chat route", () => {
     }),
   )
 
+  it.effect("keeps OpenRouter-only reasoning fields out of the shared OpenAI Chat parser", () =>
+    Effect.gen(function* () {
+      const body = sseEvents(
+        {
+          choices: [
+            {
+              delta: {
+                reasoning_content: "thinking",
+                reasoning: "openrouter text",
+                reasoning_details: [{ type: "reasoning.encrypted", data: "opaque==" }],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: { content: "Hello" } }] },
+        { choices: [{ delta: {}, finish_reason: "stop" }] },
+      )
+
+      const response = yield* LLMClient.generate(request).pipe(Effect.provide(fixedResponse(body)))
+
+      // DeepSeek-style routes read only `reasoning_content` and never attach provider metadata.
+      expect(response.reasoning).toBe("thinking")
+      expect(response.message.content).toEqual([
+        { type: "reasoning", text: "thinking" },
+        { type: "text", text: "Hello" },
+      ])
+    }),
+  )
+
   it.effect("assembles streamed tool call input", () =>
     Effect.gen(function* () {
       const body = sseEvents(
