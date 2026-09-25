@@ -307,6 +307,29 @@ describe("SessionRunnerModel", () => {
     }),
   )
 
+  it.effect("maps chunkTimeout to the native idle timeout and keeps the OpenRouter default otherwise", () =>
+    Effect.gen(function* () {
+      const openrouter = {
+        type: "aisdk",
+        package: "@openrouter/ai-sdk-provider",
+        url: "https://openrouter.ai/api/v1",
+      } as const
+      const configured = yield* SessionRunnerModel.fromCatalogModel(
+        model({ ...openrouter, settings: { chunkTimeout: 30_000 } }),
+      )
+      const defaulted = yield* SessionRunnerModel.fromCatalogModel(model(openrouter))
+      const compatible = yield* SessionRunnerModel.fromCatalogModel(
+        model({ type: "aisdk", package: "@ai-sdk/openai-compatible", url: "https://compatible.example/v1" }),
+      )
+
+      expect(configured.route.defaults.http?.idleTimeoutMs).toBe(30_000)
+      // chunkTimeout is transport control, never an upstream body field.
+      expect(configured.route.defaults.http?.body).not.toHaveProperty("chunkTimeout")
+      expect(defaulted.route.defaults.http?.idleTimeoutMs).toBe(120_000)
+      expect(compatible.route.defaults.http?.idleTimeoutMs).toBeUndefined()
+    }),
+  )
+
   it.effect("overlays selected OpenAI Session variant bodies", () =>
     Effect.gen(function* () {
       const catalog = model({ type: "aisdk", package: "@ai-sdk/openai", url: "https://openai.example/v1" }, [
