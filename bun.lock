@@ -763,7 +763,7 @@
     },
     "packages/server": {
       "name": "@turenlabs/server",
-      "version": "1.0.29",
+      "version": "1.0.30",
       "dependencies": {
         "@turenlabs/core": "workspace:*",
         "@turenlabs/protocol": "workspace:*",
