@@ -1,0 +1,27 @@
+name: Lisa
+
+# pull_request_target so fork PRs get secrets. Safe only because this job never
+# checks out PR code — do not add a checkout step.
+on:
+  pull_request_target:
+    paths-ignore: ["packages/*-wasm/**"]
+
+concurrency:
+  group: lisa-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lisa:
+    name: lisa
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: turenlabs/lisa@e8d7a87f4c430f3ac09b47de799e9566a60abb57 # v1
+        with:
+          api-key: ${{ secrets.TYPESAFE_API_KEY }}
