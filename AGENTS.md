@@ -3,11 +3,12 @@
 - Keep runtime dependencies directed from Schema to Core and Protocol, then from Core and Protocol to Server. Client runtime code may depend on Schema and Protocol but never Core or Server; `sdk-next` composes Client, Core, and Server.
 - The canonical development branch is `main`. `turenio/turen` consumes it for signing and release only.
 - `tools/` holds the imported wasm-tools bounded WASM tool targets; follow `tools/AGENTS.md` when working there. `.github/workflows/build-<target>.yml` rebuilds and opens a PR updating `packages/<target>-wasm`; locally run `bun run build:wasm <target>` (recipes live in `script/build-wasm.ts`) and `bun run verify:wasm` checks package checksums.
+- `docs/` follows the documentation method in `.agents/skills/turen-documentation/SKILL.md`; follow it when adding, editing, or moving docs, and run `bun .agents/skills/turen-documentation/scripts/check.ts docs` before finishing.
 - `services/catalog/manifests` is the canonical built-in extension catalog (data, skills, MCP, tools); follow `services/catalog/AGENTS.md` when editing it. Run `bun run generate` in `packages/extensions` to update `src/generated.ts`. There is no remote catalog.
 
 ## Releases
 
-- Use the committed orchestration in `docs/release-automation.md`. Do not recreate manual artifact-copy or public-mirror procedures from old session notes.
+- Use the committed orchestration in `docs/operations/releases/automation.md`. Do not recreate manual artifact-copy or public-mirror procedures from old session notes.
 - `turenlabs/turenos` `main` is the canonical source; `turenio/turen` only builds that source privately to sign and publish. Prepare and merge the version change with normal CI on `main` first, then run `./script/release <version>`; GitHub Actions builds/signs privately, verifies and publishes the public release, then updates Homebrew.
 - If the public release already exists (draft or published), use `./script/release <version> --publish-existing`. Never rebuild/re-sign a published version or overwrite published assets.
 - Keep build/signing credentials in `turenio/turen`. `PUBLIC_RELEASE_TOKEN` is a dedicated fine-grained token for `turenlabs/turenos` and `turenlabs/homebrew-turenos`; never upload a developer's general-purpose local login token.

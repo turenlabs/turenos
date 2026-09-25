@@ -64,6 +64,18 @@ Three areas with different toolchains and CI paths:
 
 Read the nearest `AGENTS.md` before editing a package. Run focused tests and `bun typecheck` from each package you changed before opening a pull request. Do not run the root `test` script; the repository intentionally requires package-scoped test commands.
 
+## Documentation
+
+Engineering docs live in [`docs/`](docs/README.md), organized by the method summarized in
+[How these docs are organized](docs/README.md#how-these-docs-are-organized). After changing docs, run:
+
+```bash
+bun .agents/skills/turen-documentation/scripts/check.ts docs
+```
+
+Coding agents such as Codex, OpenCode, TurenOS, and Claude Code can apply the method through the
+`turen-documentation` skill in [`.agents/skills/`](.agents/skills/turen-documentation/SKILL.md).
+
 ## Pull requests
 
 - Branch from `main` and use a short branch name.
@@ -72,5 +84,5 @@ Read the nearest `AGENTS.md` before editing a package. Run focused tests and `bu
 - Include a reproducible verification note and screenshots for visible UI changes.
 - Keep upstream compatibility in mind, but do not reintroduce the upstream workspace package scope or imports.
 
-Read [docs/architecture.md](docs/architecture.md) for the dependency graph and
-[docs/branding.md](docs/branding.md) before changing product or compatibility names.
+Read [docs/architecture/README.md](docs/architecture/README.md) for the dependency graph and
+[docs/architecture/branding.md](docs/architecture/branding.md) before changing product or compatibility names.

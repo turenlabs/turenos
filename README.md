@@ -16,8 +16,8 @@ The `forge` executable supports headless server operation, remote hosts over SSH
 backends, and backend administration. It is not a separate user-facing agent product.
 Desktop runs its local server directly in an Electron utility process; a separate CLI installation
 is not required. Existing CLI commands remain available, but their presence does not define a
-parallel CLI product direction. See [Architecture](docs/architecture.md#system-shape) for the runtime
-boundaries and [Branding](docs/branding.md) for retained compatibility names.
+parallel CLI product direction. See [Architecture](docs/architecture/README.md#system-shape) for the runtime
+boundaries and [Branding](docs/architecture/branding.md) for retained compatibility names.
 
 TurenOS should make a useful security workflow available without spending the first hour wiring tools together:
 
@@ -46,16 +46,16 @@ TurenOS is not a sandbox. Agents can execute commands and modify files with your
 
 Engineering documentation lives in [docs/](docs/README.md). Start with:
 
-- [Claude Code provider](docs/claude-code.md) — using a local `claude auth login` subscription instead of an API key.
-- [Local models](docs/local-models.md) — running Bonsai 2 locally and connecting its OpenAI-compatible endpoint.
-- [Architecture](docs/architecture.md) — package boundaries, runtime topology, and durable data flows.
-- [Systems and subsystems](docs/systems.md) — responsibilities, ownership, and failure behavior across TurenOS.
-- [Branding and compatibility](docs/branding.md) — why some `forge` identifiers remain stable.
-- [Secure storage](docs/secure-storage.md) — how credentials are encrypted.
-- [Memory](docs/memory.md) — durable project memory.
-- [Automations](docs/automations.md) — durable in-app workflows with interval/cron schedules,
+- [Claude Code provider](docs/providers/claude-code/README.md) — using a local `claude auth login` subscription instead of an API key.
+- [Local models](docs/providers/local-models.md) — running Bonsai 2 locally and connecting its OpenAI-compatible endpoint.
+- [Architecture](docs/architecture/README.md) — package boundaries, runtime topology, and durable data flows.
+- [Systems and subsystems](docs/systems/README.md) — responsibilities, ownership, and failure behavior across TurenOS.
+- [Branding and compatibility](docs/architecture/branding.md) — why some `forge` identifiers remain stable.
+- [Secure storage](docs/systems/secure-storage.md) — how credentials are encrypted.
+- [Memory](docs/systems/memory.md) — durable project memory.
+- [Automations](docs/systems/automations/README.md) — durable in-app workflows with interval/cron schedules,
   per-step `when`/`onFailure` conditions, and local file-change/session-end event triggers.
-- [Token efficiency](docs/token-efficiency.md) — measured context cost against Claude Code and Codex.
+- [Token efficiency](docs/labs/token-efficiency.md) — measured context cost against Claude Code and Codex.
 
 ## Monorepo
 
@@ -107,7 +107,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the pinned-runner fallback, build com
 - `tools/` — WASM tool sources and build recipes; CI packs output into `packages/*-wasm`.
 - `services/catalog` — catalog manifest sources and authoring docs.
 
-All TurenOS-owned workspace packages use the `@turenlabs/*` scope. Upstream provider IDs and durable migration keys remain unchanged where compatibility requires them. See [branding and compatibility](docs/branding.md) before changing a `forge` identifier.
+All TurenOS-owned workspace packages use the `@turenlabs/*` scope. Upstream provider IDs and durable migration keys remain unchanged where compatibility requires them. See [branding and compatibility](docs/architecture/branding.md) before changing a `forge` identifier.
 
 ## Hard fork provenance
 
