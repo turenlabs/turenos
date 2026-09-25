@@ -55,3 +55,5 @@ a connection policy use AI SDK.
 - [`packages/forge/src/session/llm/native-runtime.ts`](../../../packages/forge/src/session/llm/native-runtime.ts)
 - [`packages/forge/src/session/llm/native-request.ts`](../../../packages/forge/src/session/llm/native-request.ts)
 - [`packages/forge/src/effect/runtime-flags.ts`](../../../packages/forge/src/effect/runtime-flags.ts)
+- Contracts: [`specs/v2/provider-model.md`](../../../specs/v2/provider-model.md),
+  [`specs/v2/provider-policy.md`](../../../specs/v2/provider-policy.md)

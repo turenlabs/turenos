@@ -76,7 +76,7 @@ packages/llm/src/
     openai-compatible.ts    generic compatible helper + family model helpers
     openai-compatible-profile.ts family defaults (deepseek, togetherai, ...)
     azure.ts / amazon-bedrock.ts / cloudflare.ts / github-copilot.ts / google.ts / xai.ts / openai.ts / anthropic.ts / openrouter.ts
-  tool.ts                   typed tool() helper
+  tool.ts                   typed Tool.make() helper and Tool.toDefinitions()
   tool-runtime.ts           narrow one-call typed tool dispatcher
 ```
 

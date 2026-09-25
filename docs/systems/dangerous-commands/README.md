@@ -68,6 +68,10 @@ if (recommendation)
   return yield* new ToolFailure({ message: ShellToolRouting.blockedMessage(recommendation) })
 ```
 
+The routing step is abridged above: a bare `apply_patch <<EOF` heredoc at the workspace root is applied through the patch
+tool instead of being refused (see [Shell tool routing](../shell-tool-routing.md#routed-commands)). A `ShellSafety`
+violation is never softened this way.
+
 The model sees a tool error containing `blockedMessage(violation)`:
 
 ```text
@@ -162,11 +166,14 @@ match the pattern.
 of OS-privacy-protected locations — the macOS TCC categories under the home directory and `~/Library`, the darwin root
 metadata directories, and the Windows shell folders — and it exists so that scanning does not trip a consent prompt.
 
-Its only consumers are `packages/core/src/ripgrep.ts`, which turns the list into `--glob=!` exclusions for its `glob`,
-`find`, and `grep` operations, and `packages/core/src/filesystem/watcher.ts`, which appends the paths to the watcher's
-ignore list. The effect is that those paths are invisible to search and to the watcher. Nothing is blocked, no error is
-raised, and no permission is requested. It places no restriction whatsoever on what the bash tool may read, write, or
-delete, and it returns an empty list on Linux. There is no test coverage for it.
+Its consumers all use it to hide paths, never to refuse them. `packages/core/src/ripgrep.ts` and
+`packages/core/src/ripgrep/wasm.ts` turn the list into `!` glob exclusions for their `glob`, `find`, and `grep`
+operations; `packages/core/src/filesystem/watcher.ts` appends the paths to the watcher's ignore list; and
+`FileSystem.list` in `packages/core/src/filesystem.ts` omits the protected folders when listing the home directory. The
+effect is that those paths are invisible to search, the watcher, and home-directory browsing. Nothing is blocked, no
+error is raised, and no permission is requested. It places no restriction whatsoever on what the bash tool may read,
+write, or delete, and it returns an empty list on Linux. `packages/core/test/filesystem-protected.test.ts` covers the
+table itself.
 
 ## Limits
 
@@ -189,9 +196,10 @@ the write tool and then invoked by an interpreter TurenOS does not recognize.
 **Any shell that is not PowerShell or `cmd` is parsed as bash.** `fish`, `nu`, and other shells with different quoting
 and expansion rules are analysed with a grammar that does not describe them.
 
-**The interpreter list is a fixed set of names.** `nested()` recognizes `bash`, `dash`, `ksh`, `sh`, `zsh`, `eval`,
-`powershell`, `pwsh`, `cmd`, and `Invoke-Expression`. A shell outside that list used the same way is not descended into
-at all: `fish -c 'rm -rf /'` is allowed by the analyser.
+**The interpreter list is a fixed set of names.** `nested()` recognizes the POSIX shells in `POSIX_SHELL` (`ash`,
+`bash`, `csh`, `dash`, `fish`, `ksh`, `mksh`, `sh`, `tcsh`, `zsh`) plus `eval`, `powershell`, `pwsh`, `cmd`, and
+`Invoke-Expression`/`iex`. A shell outside that list used the same way is not descended into at all:
+`nu -c 'rm -rf /'` is allowed by the analyser.
 
 **`cmd` analysis is not parser-based.** It is regex splitting and lexing, and is the weakest of the three paths.
 
@@ -212,11 +220,11 @@ hazardous in the tool description and are not blocked.
 
 ## Tests
 
-`packages/core/test/shell-safety.test.ts` is the specification in practice: a table of 125 commands that must be blocked
-and 23 that must be allowed, each run through `ShellSafety.inspect` with `cwd` set to `/workspace/project`, plus three
-targeted cases for ancestor detection with a `..`-prefixed directory name, a `cmd` control-body delete against a Windows
-`cwd`, and Windows trailing-space normalization, and one assertion that `PROCESS_SAFETY_GUIDANCE` still says what it is
-supposed to say. Add a case to the appropriate table when changing behaviour; the tables are the reason the evasion
+`packages/core/test/shell-safety.test.ts` is the specification in practice: a table of 131 commands that must be blocked
+and 23 that must be allowed (as of 2026-09-25), each run through `ShellSafety.inspect` with `cwd` set to
+`/workspace/project`, plus five targeted cases for ancestor detection with a `..`-prefixed directory name, a `cmd`
+control-body delete against a Windows `cwd`, the first unsafe target in two multi-target `cmd` deletes, and Windows
+trailing-space normalization, and one assertion that `PROCESS_SAFETY_GUIDANCE` still says what it is supposed to say. Add a case to the appropriate table when changing behaviour; the tables are the reason the evasion
 handling can be refactored safely.
 
 Integration behaviour — that a violation blocks before permission and before execution — is covered in

@@ -24,7 +24,7 @@ Routes lower these into provider-native assistant tool-call messages and tool-re
 `LLM.stream(request)` and `LLM.generate(request)` each run exactly one provider turn. Add tool schemas to `request.tools` with `Tool.toDefinitions(tools)`. When a caller wants the package's typed one-call execution behavior, pass each canonical local `tool-call` event to `ToolRuntime.dispatch(tools, call)`.
 
 ```ts
-const get_weather = tool({
+const get_weather = Tool.make({
   description: "Get current weather for a city",
   parameters: Schema.Struct({ city: Schema.String }),
   success: Schema.Struct({ temperature: Schema.Number, condition: Schema.String }),

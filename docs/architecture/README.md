@@ -93,6 +93,7 @@ flowchart TD
     Desktop["@turenlabs/desktop"]
 
     Core --> Schema
+    Core -->|proxy-policy only| Protocol
     Protocol --> Schema
     Server --> Core
     Server --> Protocol

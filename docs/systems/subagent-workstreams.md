@@ -168,7 +168,7 @@ This protocol applies to the durable V2 `spawn_agent` path. The legacy
 `BackgroundJob` path and foreground `wait`; it is not made incremental by this
 workstream guide.
 
-## Source Locations
+## Source
 
 - [`packages/core/src/tool/subagent.ts`](../../packages/core/src/tool/subagent.ts)
 - [`packages/core/src/tool/team-board.ts`](../../packages/core/src/tool/team-board.ts)
@@ -176,15 +176,6 @@ workstream guide.
 - [`packages/core/src/session/task.ts`](../../packages/core/src/session/task.ts)
 - [`packages/core/src/session/execution/local.ts`](../../packages/core/src/session/execution/local.ts)
 - [`packages/core/src/agent/guidance.ts`](../../packages/core/src/agent/guidance.ts)
-- [`packages/core/test/tool-subagent.test.ts`](../../packages/core/test/tool-subagent.test.ts)
-- [`packages/core/test/session-task.test.ts`](../../packages/core/test/session-task.test.ts)
-- [`packages/core/test/team-board.test.ts`](../../packages/core/test/team-board.test.ts)
-
-## Source
-
-- [`packages/core/src/tool/subagent.ts`](../../packages/core/src/tool/subagent.ts)
-- [`packages/core/src/tool/team-board.ts`](../../packages/core/src/tool/team-board.ts)
-- [`packages/core/src/team/board.ts`](../../packages/core/src/team/board.ts)
-- [`packages/core/src/session/task.ts`](../../packages/core/src/session/task.ts)
 - [`packages/forge/src/tool/task.ts`](../../packages/forge/src/tool/task.ts)
+- Contract: [`specs/v2/subagent-fleet.md`](../../specs/v2/subagent-fleet.md)
 - Tests: [`packages/core/test/tool-subagent.test.ts`](../../packages/core/test/tool-subagent.test.ts), [`packages/core/test/session-task.test.ts`](../../packages/core/test/session-task.test.ts), [`packages/core/test/team-board.test.ts`](../../packages/core/test/team-board.test.ts)

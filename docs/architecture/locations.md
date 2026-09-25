@@ -9,7 +9,7 @@ routing but remains reserved for future placement semantics.
 flowchart TB
     Global[Global graph\nDatabase, EventV2, Memory, Loop, task coordination]
     Map[LocationServiceMap\nkeyed by directory and workspace]
-    Location[Location graph\nConfig, Agent, Policy, Tools, MCP, LSP, Snapshot]
+    Location[Location graph\nConfig, Agent, Policy, Tools, MCP, Snapshot]
     Session[SessionLocation middleware\nloads session row and Location.Ref]
     Request[HTTP request]
 

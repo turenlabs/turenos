@@ -58,18 +58,22 @@ tokens that trigger a forward scan:
 builtin  busybox  command  doas  env  exec  nice  nohup  setsid  stdbuf  sudo  timeout
 ```
 
-`WRAPPED_COMMAND` is what the scan looks for — the commands worth re-inspecting from that point:
+`WRAPPED_COMMAND` is what the scan looks for — the commands worth re-inspecting from that point. It is the POSIX and
+Windows shell lists plus `find` and `rm`:
 
 ```
-bash  cmd  dash  find  ksh  powershell  pwsh  rm  sh  zsh
+ash  bash  csh  dash  fish  ksh  mksh  sh  tcsh  zsh  cmd  powershell  pwsh  find  rm
 ```
 
 `INTERPRETER` is the subset that is refused outright when reached through a wrapper, because its payload is a program
-rather than an argument list:
+rather than an argument list. It is the same two shell lists:
 
 ```
-bash  cmd  dash  ksh  powershell  pwsh  sh  zsh
+ash  bash  csh  dash  fish  ksh  mksh  sh  tcsh  zsh  cmd  powershell  pwsh
 ```
+
+Both derive from `POSIX_SHELL` and `WINDOWS_SHELL` in `packages/core/src/shell-safety.ts`, so a new shell name added
+there reaches the wrapper scan, the refusal set, and `nested()` together.
 
 So `env -P /bin sh -c 'rm -rf "$HOME"'` and `sudo --user root sh -c 'rm -rf "$HOME"'` are refused as
 `target: "dynamic evaluator input"`.

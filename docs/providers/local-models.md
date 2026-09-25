@@ -57,10 +57,11 @@ curl http://127.0.0.1:8080/v1/chat/completions \
   -d '{"model":"bonsai-2-27b","messages":[{"role":"user","content":"Hello"}],"max_tokens":64}'
 ```
 
-### Use Bonsai from Forge
+### Use Bonsai from TurenOS
 
-Add a custom provider to the global `forge.json` or `forge.jsonc` under the
-Forge config directory. The `provider` spelling below is the existing v1
+Add a custom provider to the global `forge.json` or `forge.jsonc` in the
+TurenOS config directory (`$XDG_CONFIG_HOME/forge`, by default
+`~/.config/forge`, or `FORGE_CONFIG_DIR` when set). The `provider` spelling below is the existing v1
 configuration form accepted by TurenOS; the model reference is
 `bonsai-local/bonsai-2-27b`.
 
@@ -101,7 +102,7 @@ configuration form accepted by TurenOS; the model reference is
 ```
 
 Restart or refresh the provider list after changing the config. The server must
-be running before Forge sends a request. The `--alias bonsai-2-27b` flag keeps
+be running before TurenOS sends a request. The `--alias bonsai-2-27b` flag keeps
 the model ID stable even though the downloaded GGUF filename may change.
 
 ## If vLLM is required

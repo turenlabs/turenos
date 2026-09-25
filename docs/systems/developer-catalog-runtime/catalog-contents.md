@@ -47,7 +47,7 @@ The catalog contains eleven downloadable skills:
 - Technical Security Blog
 - Threat Model Review
 - IaC Config Review
-- Customize Forge
+- Customize TurenOS
 
 It also contains four downloadable subagents:
 
@@ -56,4 +56,4 @@ It also contains four downloadable subagents:
 - Incident Responder
 - Threat Hunter
 
-Catalog prompts are original Turen content. They do not grant permissions. Subagents select only one host-defined profile (`read`, `data`, or `binary`), and Turen constructs the fixed read-only permission set.
+Catalog prompts are original Turen Labs content. They do not grant permissions. Subagents select only one host-defined profile (`read`, `data`, or `binary`), and TurenOS constructs the fixed read-only permission set.

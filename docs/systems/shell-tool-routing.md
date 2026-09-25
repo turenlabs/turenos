@@ -53,6 +53,12 @@ The current policy recognizes these command families:
 | shell `apply_patch`                                                                                  | `apply_patch` or `edit`, according to the visible mutation tool |
 | workspace writes through `echo`, `printf`, `cat`, `tee`, `Set-Content`, `Add-Content`, or `Out-File` | `edit` or `apply_patch`, according to the visible mutation tool |
 
+One routed shape is executed instead of refused. In the V2 `bash` tool, a bare `apply_patch <<EOF` heredoc run from the
+workspace root under a bash or PowerShell shell is a model writing a patch in Codex style, so the tool extracts the patch
+text with `ShellToolRouting.patchHeredoc` and applies it through the real `apply_patch` pipeline, with its fuzzy
+matching, permission check, and diff tracking. Every other routed command, and `apply_patch` under `cmd` or from another
+directory, returns the routing error.
+
 The legacy registry does not advertise `edit` and `apply_patch` together. GPT models selected for patch editing receive
 `apply_patch`; other models receive `edit` and `write`. Before returning an error, the legacy shell integration maps a
 mutation recommendation to the tool actually visible to that model so it never instructs the agent to call an absent
@@ -150,8 +156,9 @@ tests separately prove that a routed command stops before permission and process
 ## Limits
 
 - The policy recognizes high-confidence command shapes, not arbitrary scripts or interpreters.
-- It does not rewrite commands or execute a specialized tool automatically. It returns an actionable error and lets the
-  model make the typed retry.
+- Apart from the V2 `apply_patch` heredoc described under [Routed Commands](#routed-commands), it does not rewrite
+  commands or execute a specialized tool automatically. It returns an actionable error and lets the model make the typed
+  retry.
 - It does not replace permissions. Commands that are not routed still proceed through normal Bash permission handling.
 - It does not make Bash safe. An allowed process retains the host user's filesystem, process, and network authority.
 - It is not a live provider benchmark. Changes to prompts and schemas still require task-level evaluation to measure

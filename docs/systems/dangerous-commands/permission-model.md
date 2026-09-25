@@ -4,9 +4,11 @@ Deletion safety, specialized-tool routing, and permissions are separate systems 
 `ShellSafety` runs first and cannot be overridden. `ShellToolRouting` runs second and redirects high-confidence workspace
 searches and mutations. `PermissionV2` runs last and is entirely user-configurable.
 
-After the safety and routing checks pass, the bash tool may assert permission twice. If the resolved `workdir` is outside
-the active Location, it first asserts `action: "external_directory"` with the resource `<canonical directory>/*`. It
-always asserts the tool's own action:
+After the safety and routing checks pass, the bash tool asserts permission in this order. If the resolved `workdir` is
+outside the active Location, it asserts `action: "external_directory"` with the resource `<canonical directory>/*`. It
+then asserts `external_directory` once for each external directory referenced by a command argument (see
+[Command arguments outside the workspace](#command-arguments-outside-the-workspace)). It always asserts the tool's own
+action last:
 
 ```
 yield* permission.assert({
@@ -39,15 +41,24 @@ Neither of those affects `ShellSafety`. A blanket `allow`, a saved grant for the
 disabled all still leave the recursive-delete block in force, because it runs before `permission.assert` and returns a
 `ToolFailure` rather than a permission request.
 
-The command-argument scan is a different matter. The bash tool tokenizes the command, and for each absolute path outside
-the working directory emits a warning:
+## Command arguments outside the workspace
+
+Command arguments are gated as well as the `workdir`. The V2 bash tool tokenizes the command, expands a leading `~`,
+`$HOME`, or `${HOME}`, and for each absolute path that resolves outside the working directory asserts
+`action: "external_directory"` with the resource `<parent directory>/*`, saving the same resource on "Allow always". A
+`deny` for `external_directory` therefore stops the command before the process starts. Once approved, the tool output
+notes each directory:
 
 ```text
-Command argument references external directory <dir>/*. Bash runs with host-user filesystem, process, and network
-authority; this scan is advisory only.
+Command argument references approved external directory <dir>/*.
 ```
 
-This is advisory in the literal sense. `packages/core/test/tool-bash.test.ts` has "reports external command arguments as
-advisory warnings without enforcing approval", which sets the `external_directory` action to deny, runs
-`cat <path outside the project>`, and asserts that the only permission assertion made is `bash` and that the process ran
-anyway. Only the resolved `workdir` is gated by `external_directory`; command arguments are not.
+`packages/core/test/tool-bash.test.ts` covers this with "enforces external-directory policy for detected command
+arguments", which denies `external_directory`, runs `cat <path outside the project>`, and asserts that the only
+permission assertion made is `external_directory`, that no process ran, and that the result is an error. "expands
+home-directory command arguments before enforcing scope" does the same for `cat ~/.ssh/id_rsa`. The V1 shell tool asks
+`external_directory` for the directories its command scan finds in the same way.
+
+The scan is lexical. It sees literal absolute paths and home-relative paths in the command text, not paths assembled at
+run time, read from files, or reached through relative `..` traversal. With the default ruleset `external_directory` is
+`ask`, so while permission checks are not enforced these arguments resolve to `allow`.

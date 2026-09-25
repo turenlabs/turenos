@@ -41,7 +41,7 @@ scoped MCP server. Prompt and output sizes are bounded; malformed JSONL, missing
 terminal events, and unsuccessful exits fail visibly. Temporary files are
 removed after completion or cancellation.
 
-## Limitations
+## Limits
 
 - Text-only input and output; attachments fail explicitly instead of being silently omitted.
 - `exec` does not report token usage, so the bridge leaves usage unavailable rather than inventing counts or API costs.

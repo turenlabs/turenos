@@ -166,6 +166,16 @@ Spotlight generation and critic calls, taxonomy-mining system, self-attestation 
 same model reliably detects defects in its own writes. This workflow should therefore be treated as a pragmatic review
 discipline, not a reproduction of the paper's reported accuracy or safety results.
 
+## Verification
+
+Run the focused checks from the package directory:
+
+```bash
+cd packages/core
+bun test test/agent.test.ts test/agent-guidance.test.ts test/subagent-authority-tools.test.ts test/permission.test.ts
+bun typecheck
+```
+
 ## Limits
 
 - The workflow is advisory and can be unavailable, ignored by the model, disabled, or changed by agent configuration.
@@ -176,32 +186,9 @@ discipline, not a reproduction of the paper's reported accuracy or safety result
   score, review revision, or production-calibrated recall measurement.
 - An empty finding set is not proof that the change is correct.
 
-## Source and Verification
-
-Source:
-
-- [`packages/core/src/plugin/agent.ts`](../../packages/core/src/plugin/agent.ts)
-- [`packages/core/src/agent/guidance.ts`](../../packages/core/src/agent/guidance.ts)
-- [`packages/core/src/tool/subagent.ts`](../../packages/core/src/tool/subagent.ts)
-
-Tests:
-
-- [`packages/core/test/agent.test.ts`](../../packages/core/test/agent.test.ts)
-- [`packages/core/test/agent-guidance.test.ts`](../../packages/core/test/agent-guidance.test.ts)
-- [`packages/core/test/subagent-authority-tools.test.ts`](../../packages/core/test/subagent-authority-tools.test.ts)
-- [`packages/core/test/permission.test.ts`](../../packages/core/test/permission.test.ts)
-
-Run the focused checks from the package directory:
-
-```bash
-cd packages/core
-bun test test/agent.test.ts test/agent-guidance.test.ts test/subagent-authority-tools.test.ts test/permission.test.ts
-bun typecheck
-```
-
 ## Source
 
 - [`packages/core/src/plugin/agent.ts`](../../packages/core/src/plugin/agent.ts)
 - [`packages/core/src/agent/guidance.ts`](../../packages/core/src/agent/guidance.ts)
 - [`packages/core/src/tool/subagent.ts`](../../packages/core/src/tool/subagent.ts)
-- Tests: [`packages/core/test/agent.test.ts`](../../packages/core/test/agent.test.ts), [`packages/core/test/agent-guidance.test.ts`](../../packages/core/test/agent-guidance.test.ts), [`packages/core/test/subagent-authority-tools.test.ts`](../../packages/core/test/subagent-authority-tools.test.ts)
+- Tests: [`packages/core/test/agent.test.ts`](../../packages/core/test/agent.test.ts), [`packages/core/test/agent-guidance.test.ts`](../../packages/core/test/agent-guidance.test.ts), [`packages/core/test/subagent-authority-tools.test.ts`](../../packages/core/test/subagent-authority-tools.test.ts), [`packages/core/test/permission.test.ts`](../../packages/core/test/permission.test.ts)

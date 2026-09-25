@@ -3,7 +3,7 @@
 TurenOS can drive a locally installed Claude Code and reuse its existing Claude
 subscription session, so no Anthropic API key is involved.
 
-For how Claude Code's native tools are routed through TurenOS's policy and
+For how Claude Code's tool calls are routed through TurenOS's policy and
 settlement boundary once a session is running, see
 [Claude Code tool routing](./tool-routing.md).
 
@@ -24,10 +24,13 @@ picker, exposing `claude-code/fable`, `sonnet`, `opus`, and `haiku`.
 The provider launches the local Claude Code executable and uses the Claude
 subscription session that `claude auth login` established.
 
-TurenOS removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and
-`ANTHROPIC_BASE_URL` from the child environment, so the executable cannot
-silently fall back to API-key or proxy billing. Claude's native tools run
-locally; TurenOS records their results and mediates permission requests.
+TurenOS removes every `ANTHROPIC_*` variable, every `CLAUDE_CODE_USE_*`
+variable, `CLAUDE_CODE_API_BASE_URL`, and `CLAUDE_CODE_OAUTH_TOKEN` from the
+child environment, so the executable cannot silently fall back to API-key,
+proxy, or alternate-provider billing. Claude's native tools are disabled
+(`--tools ""`). Claude calls TurenOS's own tools through a private, turn-scoped
+MCP server, so every call goes through TurenOS's permissions and tool
+settlement.
 
 ## Configuration
 
