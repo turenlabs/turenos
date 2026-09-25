@@ -1295,25 +1295,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   )
 
   const variants = createMemo(() => props.controls.model.selection.variant.list())
-  const automaticEffort = createMemo(() => {
-    const selected = props.controls.model.selection.variant.selected()
-    if (selected === null) return true
-    if (selected) return false
-    const current = props.controls.model.selection.variant.current()
-    return !current || current === props.controls.model.selection.variant.configured()
-  })
-  const currentEffort = () =>
-    modelEffortDisplay(automaticEffort() ? "default" : (props.controls.model.selection.variant.current() ?? "default"))
+  const explicitEffort = createMemo(() => props.controls.model.selection.variant.explicit())
+  const inheritedEffort = createMemo(() => props.controls.model.selection.variant.inherited())
+  const currentEffort = () => modelEffortDisplay(explicitEffort() ?? inheritedEffort() ?? "default")
   const showVariantControl = createMemo(() => variants().length > 0)
   const setAutomaticEffort = (automatic: boolean) => {
-    if (automatic) return props.controls.model.selection.variant.inherit()
-    props.controls.model.selection.variant.set(variants()[modelEffortDefaultIndex(variants())])
+    const selection = props.controls.model.selection.variant
+    if (automatic) return selection.inherit()
+    selection.set(selection.remembered() ?? inheritedEffort() ?? variants()[modelEffortDefaultIndex(variants())])
   }
   const effortControl = () => (
     <ModelEffortControl
       variants={variants()}
-      current={props.controls.model.selection.variant.current()}
-      automatic={automaticEffort()}
+      explicit={explicitEffort()}
+      inherited={inheritedEffort()}
       onAutomaticChange={setAutomaticEffort}
       onVariantChange={props.controls.model.selection.variant.set}
     />
