@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Checks a docs/ tree against the TurenOS documentation method: the section table and rules in ../SKILL.md
-// plus the naming, link, anchor, orphan, index and source-path rules in ../references/practices.md.
+// plus the naming, index and reachability rules in ../references/practices.md.
 // It proves structure only: every link, anchor and cited path resolves and every page is indexed. Whether a page is
 // true comes from reading the code. Exits 1 when any error is found. Read-only. The rules live in lib/: layout.ts
 // (tree shape and indexes), content.ts (a few page conventions and source paths) and links.ts (links, anchors,

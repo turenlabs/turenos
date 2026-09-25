@@ -22,7 +22,8 @@ happened.
 
 - `createProfilerController` (`packages/desktop/src/main/profiler.ts`) owns arming, the auto-stop timer, and the run
   directory. The `IS_DEV` check (`CHANNEL === "dev"`) folds to a constant at build time, so in other channels the controller
-  and its IPC channels (`profiler-status`, `profiler-start`, `profiler-stop`) are unreachable.
+  and its IPC channels (`profiler-status`, `profiler-start`, `profiler-stop`, `profiler-subscribe`,
+  `profiler-unsubscribe`) are unreachable.
 - The sidecar starts the V8 inspector only when armed (`sidecar-profiler.ts`, `v8-cpu-profiler.ts`). While disarmed there
   is no timer, no inspector session, and the profiler module is not even imported.
 - Sampling defaults to 1 ms (`DEFAULT_SAMPLE_INTERVAL_US = 1_000`), V8's default. A requested interval must be between

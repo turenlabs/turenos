@@ -21,7 +21,8 @@ Until a revocation is positively acknowledged, the local share record and its se
 
 `FORGE_LEGACY_SHARE_ENDPOINT` must be an HTTPS URL, or plain HTTP on `localhost`, `127.0.0.1`, or `::1`. It may not
 contain credentials, a query, or a fragment. Without it every revocation fails with "Legacy share network access is
-disabled". Account credentials are attached only when the endpoint's origin matches the active account's origin.
+disabled". With a signed-in account that has an active organization, the endpoint's origin must match the account's
+origin, or revocation fails.
 
 ## Verification
 

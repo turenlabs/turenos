@@ -75,7 +75,7 @@ Catalog prompts are original Turen Labs content. They do not grant permissions. 
 ## MCP integrations
 
 The catalog contains 25 MCP integrations, all official and all disabled until enabled. `Deployment` is the manifest's
-`deployment` value: `hosted` is the vendor's endpoint, `customer-url` is an endpoint URL the user supplies, `managed` is a
+`deployment.type`: `hosted` is the vendor's endpoint, `customer-url` is an endpoint URL the user supplies, `managed` is a
 package TurenOS runs through its managed MCP runtime, and `local` is a program already installed on the host. `Write
 tools` counts the manifest's `tools.write` allowlist; the rest are read-only.
 

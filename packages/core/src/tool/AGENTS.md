@@ -68,9 +68,9 @@ Producer capture limits are separate. For example, Bash keeps `AppProcess.maxOut
 
 ## Execution Interceptors
 
-`interceptor.ts` owns `tool.execute.before`/`.after`. It is a Location-scoped registration store, not a hook bus: `ToolRegistry.settleRegistration` runs it because the registry owns the one boundary where a call resolves, the same way `AISDK` runs its own hooks at provider construction. There is no `trigger` and nothing outside `registry.ts` calls it.
+`interceptor.ts` owns the `before`, `after`, `finalize` and `turnComplete` tool hooks. It is a Location-scoped registration store, not a hook bus: `ToolRegistry.settleRegistration` runs it because the registry owns the one boundary where a call resolves, the same way `AISDK` runs its own hooks at provider construction. There is no `trigger` and nothing outside `registry.ts` calls it.
 
 - `before` sees the **raw** provider arguments, before the input schema decodes them. It may deny (terminal; the call never executes and the reason becomes the tool error) or replace the arguments (composes in registration order; the replacement is re-decoded through the tool's own schema, so an invalid one fails the call rather than reaching `execute`).
 - `after` sees the settled result after execution, encoding and bounding. It is read-only except for `notes`, which append advisory text to the model-visible output, including error results. Notes are dropped for denied calls.
 - An interceptor that throws, dies, or exceeds its phase budget has no opinion and the call proceeds. Interruption still propagates.
-- Both phases run for every call that reaches a real registration, including subagent calls, which share the parent's Location. They do not run for unknown or stale tool names, because nothing executes there.
+- `before` and `after` run for every call that reaches a real registration, including subagent calls, which share the parent's Location. They do not run for unknown or stale tool names, because nothing executes there.

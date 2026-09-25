@@ -98,7 +98,7 @@ Follow these on new pages, and fix old pages when you touch them rather than mas
 
 ## Keeping links and indexes in sync
 
-- **Indexes to update with every page change**: `docs/README.md` (one heading per section in table order, then "Contracts and specs" and "Elsewhere in the repo"; its "How these docs are organized" section summarizes this method and stays in step with it), the section's `README.md`, the systems catalog row, and the root `README.md` "Documentation" list if the page is on it.
+- **Indexes to update with every page change**: `docs/README.md` (one heading per section in table order except `assets/`, then "Contracts and specs" and "Elsewhere in the repo"; its "How these docs are organized" section summarizes this method and stays in step with it), the section's `README.md`, the systems catalog row, and the root `README.md` "Documentation" list if the page is on it.
 - **Inbound links from outside `docs/`** break on every move. The mover rewrites Markdown links. This grep finds the rest, skipping `tools/` and `services/`, whose `docs/` links point at their own trees:
   ```bash
   git grep -n -E '(^|[^/A-Za-z0-9_.-]|\.\./)docs/[A-Za-z0-9/_.#-]+' -- ':!docs/' ':!tools/' ':!services/' ':!**/test/**'

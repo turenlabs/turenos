@@ -8,7 +8,7 @@ The persisted service, tables, and HTTP routes retain the `loop` name for compat
 
 The `loop` table stores definitions and schedules. Each `loop_run` row stores its trigger, execution snapshot, status, lease, Session ID, step cursor, outputs, and error. A unique `(loop_id, scheduled_at)` constraint prevents duplicate scheduled occurrences.
 
-The scheduler polls every five seconds. Core claims due rows transactionally, marks a new occurrence `skipped` when the same Automation has an active run, and advances the schedule. A missed interval is not replayed once per tick; the next interval is scheduled from the current time. Cron schedules use the Automation's IANA timezone. Event-triggered Automations have no `next_run_at` and enter through `Loop.fireEvent` on the selected server.
+The scheduler polls every five seconds. Core claims due rows transactionally, marks a new occurrence `skipped` when the same Automation has an active run, and advances the schedule. A missed interval is not replayed once per tick; the next interval is scheduled from the current time. Cron schedules use the Automation's IANA timezone, and their next time is computed from the scheduled time rather than the current time, so after downtime missed cron times are claimed one per poll. Event-triggered Automations have no `next_run_at` and enter through `Loop.fireEvent` on the selected server.
 
 Each claimed run keeps a snapshot of its workflow. Edits to the Automation do not change a run already claimed. Workflow steps execute in order; the run persists each completed step's output and advances its cursor before admitting the next step. A `when` condition can skip a step, and `onFailure: "continue"` records a failed step and proceeds.
 

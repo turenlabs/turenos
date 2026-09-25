@@ -100,7 +100,7 @@ BM25-plus-dense retriever.
 ## Repository retrieval
 
 `BENCH_DATASET=repo` uses the current TurenOS checkout as the corpus. It scans
-9,408 overlapping TypeScript/TSX chunks from `packages/`, excludes generated
+9,408 overlapping TypeScript/TSX chunks from `packages/` (counted when the benchmark ran), excludes generated
 and build output, and evaluates eight queries against real implementation
 files. Targets are scored at file level so a neighboring chunk from the
 correct source file counts as a hit.

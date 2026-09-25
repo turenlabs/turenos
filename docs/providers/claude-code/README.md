@@ -17,7 +17,8 @@ claude auth status
 ```
 
 TurenOS then discovers `Claude Code (local)` automatically in the Desktop model
-picker, exposing `claude-code/fable`, `sonnet`, `opus`, and `haiku`.
+picker, exposing `claude-code/fable`, `sonnet`, `opus`, and `haiku`, plus pinned older model versions from the
+Anthropic catalog.
 
 ## What it does
 

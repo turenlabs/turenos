@@ -101,7 +101,7 @@ tunnel with its readiness checks.
 ## Surface
 
 The controller's API is exposed to the renderer through `TrustedIpc` handlers
-(`ssh-servers-get-state`, `-subscribe`, `-probe-runtime`, `-probe-host`, `-add`, `-remove`,
+(`ssh-servers-get-state`, `-subscribe`, `-unsubscribe`, `-probe-runtime`, `-probe-host`, `-add`, `-remove`,
 `-start`, `-stop-remote`, `-install-forge`, `-respond-prompt`) and the preload bridge, and typed as
 `SshServersPlatform` on the platform context. IPC inputs are validated at the boundary by
 `requireSshIpcString` / `requireSshIpcTarget` — host must be a non-empty string, port must be an

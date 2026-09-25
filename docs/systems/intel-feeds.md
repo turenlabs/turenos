@@ -8,21 +8,21 @@ each of those hosts makes outbound requests to the feeds below unless the feeds 
 
 The defaults are in `DEFAULT_FEEDS` (`packages/server/src/intel/sources.ts`). All are enabled until you turn them off.
 
-| Feed              | Kind     | Source                                                                                     |
-| ----------------- | -------- | ------------------------------------------------------------------------------------------ |
-| CISA KEV          | `kev`    | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json`      |
-| NVD (last 7d)     | `nvd`    | `https://services.nvd.nist.gov/rest/json/cves/2.0/`, CVEs published in the last seven days |
-| EPSS              | `epss`   | `https://api.first.org/data/v1/epss`                                                       |
-| GitHub Advisories | `github` | `https://api.github.com/advisories`, unauthenticated                                       |
-| CISA News         | `rss`    | `https://www.cisa.gov/news.xml`                                                            |
-| BleepingComputer  | `rss`    | `https://www.bleepingcomputer.com/feed/`                                                   |
-| The Hacker News   | `rss`    | `https://feeds.feedburner.com/TheHackersNews`                                              |
-| SANS ISC          | `rss`    | `https://isc.sans.edu/rssfeed_full.xml`                                                    |
-| Dark Reading      | `rss`    | `https://www.darkreading.com/rss.xml`                                                      |
-| GreyNoise         | `rss`    | `https://www.greynoise.io/blog/rss.xml` (the blog, not GreyNoise threat data)              |
-| StepSecurity      | `rss`    | `https://www.stepsecurity.io/blog/rss.xml`                                                 |
+| Feed              | Kind     | Source                                                                                    |
+| ----------------- | -------- | ----------------------------------------------------------------------------------------- |
+| CISA KEV          | `kev`    | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json`     |
+| NVD (last 7d)     | `nvd`    | `https://services.nvd.nist.gov/rest/json/cves/2.0/`, CVEs modified in the last seven days |
+| EPSS              | `epss`   | `https://api.first.org/data/v1/epss`                                                      |
+| GitHub Advisories | `github` | `https://api.github.com/advisories`, unauthenticated                                      |
+| CISA News         | `rss`    | `https://www.cisa.gov/news.xml`                                                           |
+| BleepingComputer  | `rss`    | `https://www.bleepingcomputer.com/feed/`                                                  |
+| The Hacker News   | `rss`    | `https://feeds.feedburner.com/TheHackersNews`                                             |
+| SANS ISC          | `rss`    | `https://isc.sans.edu/rssfeed_full.xml`                                                   |
+| Dark Reading      | `rss`    | `https://www.darkreading.com/rss.xml`                                                     |
+| GreyNoise         | `rss`    | `https://www.greynoise.io/blog/rss.xml` (the blog, not GreyNoise threat data)             |
+| StepSecurity      | `rss`    | `https://www.stepsecurity.io/blog/rss.xml`                                                |
 
-The Intel tab's settings can disable any feed, add an HTTP(S) feed of one of the five kinds, or reset the list to the
+**Settings > Infrastructure > Threat intelligence** can disable any feed, add an HTTP(S) feed of one of the five kinds, or reset the list to the
 defaults. These are display feeds for the Intel tab. They are separate from the data sources in the extension catalog,
 whose admission rules are in [threat intelligence feed rights](./developer-catalog-runtime/feed-licenses.md).
 
@@ -41,7 +41,8 @@ snapshot's poll time advances only when at least one feed succeeds, so a total o
 ## Storage and API
 
 The snapshot is `intel-cache.json` and the feed list is `intel-feeds.json`, both in the server's state directory
-(`Global.Path.state`, `~/.local/state/forge` by default). The cache file is replaced atomically.
+(`Global.Path.state`: `~/.local/state/forge` by default, or `<userData>/forge` for the Desktop's local server, which
+sets `XDG_STATE_HOME` to its user data folder). The cache file is replaced atomically.
 
 The Protocol `intel` group serves `/api/intel/advisories`, `kev`, `news`, `trends`, `status`, `feeds` (list, add,
 update, reset), and `poll`.

@@ -7,15 +7,14 @@ proceeds.
 
 ## Enabling it
 
-Turn on **Batou** under **Settings → Security Integrations**. The catalog entry is
+Enable the **Batou** extension on the **Extend** page. The catalog entry is
 `services/catalog/manifests/tools/batou.json` (`defaultEnabled: false`).
 
 TurenOS looks for a `batou` executable on `PATH` first. Otherwise it uses `<cache>/security/batou/batou` under the
 TurenOS cache directory (`~/.cache/forge` by default), and on first enable downloads the pinned release
 (`v2.0.0`) from `https://github.com/turenlabs/batou/releases`, checks its SHA-256 against a digest compiled into
 TurenOS, and moves it into place atomically. Downloads exist for macOS and Linux on x64 and arm64; Windows is not
-supported. After a failed download, TurenOS waits 60 seconds before trying again. The settings row shows the status:
-not installed, downloading, installed, or failed.
+supported. After a failed download, TurenOS waits 60 seconds before trying again.
 
 ## How a write is scanned
 

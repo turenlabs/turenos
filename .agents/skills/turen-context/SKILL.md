@@ -19,7 +19,7 @@ As of 2026-09-25, from each tool's documentation:
 | Claude Code | `CLAUDE.md` (never `AGENTS.md`) in the working directory and every folder above it, plus its `@` imports | `CLAUDE.md` when it reads a file in that subtree | about 200 lines per file for good adherence                                        |
 | OpenCode    | `AGENTS.md`, walking up from the working directory; `CLAUDE.md` only as a fallback                       | not documented                                   | none documented                                                                    |
 
-TurenOS's own loaders, inherited from OpenCode, stack every `AGENTS.md` from the working directory up to the project root and read `CLAUDE.md` only where no `AGENTS.md` exists, so the shim never loads twice (`packages/forge/src/session/instruction.ts`, `packages/core/src/instruction-context.ts`). The legacy loader also attaches deeper files when a file is read. If a tool's behavior matters to a decision, re-check its current docs.
+TurenOS's own loaders, inherited from OpenCode, stack every `AGENTS.md` from the working directory up to the project root and read `CLAUDE.md` only when no `AGENTS.md` exists anywhere in that chain, so the shim never loads twice (`packages/forge/src/session/instruction.ts`, `packages/core/src/instruction-context.ts`). The legacy loader also attaches deeper files when a file is read. If a tool's behavior matters to a decision, re-check its current docs.
 
 What follows:
 

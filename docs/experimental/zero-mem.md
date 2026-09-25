@@ -114,7 +114,7 @@ The benchmark measures retrieval over drawer-as-trace projections. It is not an 
 
 ### Recorded results
 
-Results as recorded in the repository on 2026-09-03:
+Results as recorded on 2026-09-03 (no raw result file is committed):
 
 | System                 | Query p50 | Query p95 | Recall@5 | Precision@5 |   MRR |
 | ---------------------- | --------: | --------: | -------: | ----------: | ----: |

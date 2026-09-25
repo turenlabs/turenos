@@ -14,7 +14,7 @@ sh ~/.forge/bin/forge-remote status
 
 The CLI already consumes a running server this way. `forge run --attach <url>` skips loading a local
 instance entirely and builds a client against the given base URL with
-[`ServerAuth.headers`](../../../packages/server/src/auth.ts):
+[`ServerAuth.headers`](../../../packages/forge/src/server/auth.ts):
 
 ```sh
 (
