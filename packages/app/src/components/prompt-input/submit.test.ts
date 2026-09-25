@@ -1864,6 +1864,12 @@ describe("/loop commands", () => {
     expect(navigations).toEqual([`/automations?directory=${encodeURIComponent("/repo/main")}`])
   })
 
+  test("/loop <interval> <prompt> enables the Automations surface so the loop stays reachable", async () => {
+    await submitText("/loop 60s check the deploy")
+    expect(automationsEnabled).toBe(true)
+    expect(navigations).toEqual([])
+  })
+
   test("/loop stop pauses the project's only active loop and cancels its in-flight run", async () => {
     loops.push(
       { id: "lop_1", name: "Loop: ping", status: "active", directory: "/repo/main" },

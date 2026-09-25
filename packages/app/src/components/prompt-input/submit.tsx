@@ -772,6 +772,10 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         return
       }
 
+      // Issuing the command is the opt-in, same as openAutomations — a created
+      // loop the user cannot reach or manage is worse than a surfaced page.
+      if (!settings.general.automationsEnabled()) settings.general.setAutomationsEnabled(true)
+
       // Show confirmation dialog before creating the loop
       const createLoop = async () => {
         const projectDirectory = sdk().directory
