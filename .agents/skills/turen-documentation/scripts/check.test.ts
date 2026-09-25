@@ -61,19 +61,3 @@ test("checks relative docs links outside docs without treating broken links as r
     expect(result.output).toContain("docs/systems/api.md, which does not exist relative to this file")
     expect(result.output).not.toContain("api.md#toolmake, which has no such heading")
   }))
-
-test("coverage follows declared workspaces including nested packages", () =>
-  fixture((root) => {
-    writeFileSync(
-      path.join(root, "package.json"),
-      JSON.stringify({ workspaces: { packages: ["packages/*", "packages/sdk/js"] } }),
-    )
-    mkdirSync(path.join(root, "packages/sdk/js"), { recursive: true })
-    mkdirSync(path.join(root, "command-guard"), { recursive: true })
-    writeFileSync(path.join(root, "packages/sdk/js/package.json"), "{}")
-    writeFileSync(path.join(root, "command-guard/package.json"), "{}")
-    const result = check(root, "--coverage")
-    expect(result.code).toBe(0)
-    expect(result.output).toContain("no docs page mentions packages/sdk/js")
-    expect(result.output).not.toContain("no docs page mentions command-guard")
-  }))

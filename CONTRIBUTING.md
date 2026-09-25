@@ -78,7 +78,9 @@ Read the nearest `AGENTS.md` before editing a package. Run focused tests and `bu
 ## Documentation
 
 Engineering docs live in [`docs/`](docs/README.md), organized by the method summarized in
-[How these docs are organized](docs/README.md#how-these-docs-are-organized). After changing docs, run:
+[How these docs are organized](docs/README.md#how-these-docs-are-organized). Write and correct pages by reading the
+code they describe; the checker below only catches broken links, missing paths and unindexed pages. After changing
+docs, run:
 
 ```bash
 bun .agents/skills/turen-documentation/scripts/check.ts docs

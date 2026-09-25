@@ -1,10 +1,9 @@
-// Rules for each graded AGENTS.md: load budget, size, parent pointers, @mentions, links, emphasis and upstream names,
-// plus lines repeated across files.
+// Rules for each graded AGENTS.md: load budget, size, parent pointers, @mentions, cited paths, package scripts and links.
 
 import path from "node:path"
 import { existsSync } from "node:fs"
 import { commandFindings } from "./commands"
-import { error, note, warning, type Finding } from "./findings"
+import { error, warning, type Finding } from "./findings"
 import { bareMentions, codeSpans, stripFences } from "./markdown"
 import { pathFinding } from "./paths"
 import { ancestors, chainBytes, type Repo } from "./repo"
@@ -58,53 +57,5 @@ export function fileFindings(repo: Repo, file: string): Finding[] {
       .filter((target) => target !== "" && !/^([a-z][a-z0-9+.-]*:|#)/i.test(target))
       .filter((target) => !existsSync(path.resolve(repo.root, path.posix.dirname(file), target.split("#")[0] ?? "")))
       .map((target) => error(file, `broken link: ${target}`)),
-    ...emphasisFindings(file, prose),
-    ...upstreamFindings(file, prose),
   ]
-}
-
-export function duplicateFindings(repo: Repo): Finding[] {
-  const seen = new Map<string, Set<string>>()
-  repo.graded.forEach((file) =>
-    stripFences(repo.texts.get(file) ?? "")
-      .split("\n")
-      .map((line) =>
-        line
-          .replace(/^[\s>*#-]+/, "")
-          .replace(/\s+/g, " ")
-          .trim(),
-      )
-      .filter((line) => line.length >= 40)
-      .forEach((line) => seen.set(line, new Set([...(seen.get(line) ?? []), file]))),
-  )
-  return [...seen]
-    .filter((entry) => entry[1].size > 1)
-    .map((entry) =>
-      warning(
-        "",
-        `repeated in ${[...entry[1]].join(", ")}: "${entry[0].slice(0, 90)}". Keep it in the deepest file where it is true`,
-      ),
-    )
-}
-
-function emphasisFindings(file: string, prose: string): Finding[] {
-  const words = [...prose.matchAll(/\b(IMPORTANT|MUST|NEVER|ALWAYS|CRITICAL|REQUIRED)\b/g)].length
-  return words >= 6 ? [note(file, `${words} all-caps emphasis words; when everything is emphasized, nothing is`)] : []
-}
-
-// Lines inherited from OpenCode name commands, APIs and hosts that TurenOS never shipped (`opencode dev web`,
-// `opencode.tools.register`). TurenOS spells its own identifiers `forge` or TurenOS, so any OpenCode name needs checking.
-function upstreamFindings(file: string, prose: string): Finding[] {
-  return prose
-    .split("\n")
-    .flatMap((line, number) =>
-      /\bopencode\b/i.test(line)
-        ? [
-            warning(
-              file,
-              `line ${number + 1} names OpenCode, the upstream product; confirm the command, API or path exists in TurenOS or remove the line`,
-            ),
-          ]
-        : [],
-    )
 }

@@ -1,6 +1,6 @@
 # Page templates
 
-Starting shapes for TurenOS pages. Adapt the headings to the content, and delete any section that would be empty rather than writing "N/A". All of them follow the page conventions in SKILL.md: sentence-case title, lead paragraph, `./`-relative links, and cited source.
+Starting shapes for TurenOS pages. Adapt the headings to the content, and delete any section that would be empty rather than writing "N/A". All of them follow the page conventions in SKILL.md: sentence-case title, lead paragraph, `./`-relative links, and cited source. Fill each placeholder from the code you read, not from another page.
 
 ## System page (`docs/systems/<system>.md`)
 

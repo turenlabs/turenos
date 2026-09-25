@@ -1,7 +1,5 @@
 # TurenOS systems catalog
 
-<!-- long-page: reference -->
-
 This catalog names the current TurenOS systems and the seams between them. "Owner" means the
 package or runtime service that owns the state transition or policy boundary; it does not mean that
 all work executes in one process. For source-level details, follow the links in the last column.

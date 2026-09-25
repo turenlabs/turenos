@@ -53,9 +53,6 @@ export function fileFindings(file: string): Finding[] {
   const section = file.includes("/") ? file.split("/")[0] : undefined
   return [
     ...(name === "README.md" || KEBAB_FILE.test(name) ? [] : [error(`file name is not kebab-case: ${file}`)]),
-    ...(/-v?\d+(\.\d+)+\.[a-z]+$/.test(name)
-      ? [warning(`version number in file name, say "as of <version>" in the page instead: ${file}`)]
-      : []),
     ...(section !== "assets" && PROTOTYPE.test(name)
       ? [
           error(
@@ -67,7 +64,6 @@ export function fileFindings(file: string): Finding[] {
       ? [warning(`image outside assets/: ${file}`)]
       : []),
     ...(section === "assets" && isPage(file) ? [error(`documentation page inside assets/: ${file}`)] : []),
-    ...(file.split("/").length > 3 ? [warning(`nested deeper than docs/<section>/<folder>/<page>: ${file}`)] : []),
   ]
 }
 

@@ -176,23 +176,22 @@ These READMEs are short entry points into their area; their long-form documentat
   `tools/<target>/`, and HTML prototypes in `mockups/`.
 - **The systems catalog is the index of systems.** Every system page has a row in the
   [catalog](./systems/README.md) that links it. A new system adds its row in the same change.
-- **Source-grounded.** System pages end with a `## Source` list of the files that implement them. Linked and
-  backticked repository paths are both checked, so a renamed or deleted source file shows up as an error instead of a
-  silently stale page. A clean check proves structure, not truth: behavior claims are verified against the code when a
-  page is written or audited.
-- **One topic per page.** Each page covers one topic and one kind of content: explanation, how-to, or reference.
-  Past about 300 lines a page gets a review: if it bundles several topics it becomes a folder whose `README.md` is the
-  main page and links focused sibling pages, as `architecture/`, `operations/ssh-remote/` and
-  `systems/dangerous-commands/` do. Long reference pages such as the systems catalog stay whole.
+- **Written from the code.** Every default, limit, flag, path and behavior on a page comes from reading the source,
+  registrations and tests that implement it, and system pages end with a `## Source` list of those files. When code and
+  a page disagree, the page is wrong.
+- **One topic per page.** Each page covers one topic and one kind of content: explanation, how-to, or reference. A page
+  that grows to cover several topics becomes a folder whose `README.md` is the main page and links focused sibling
+  pages, as `architecture/`, `operations/ssh-remote/` and `systems/dangerous-commands/` do. Long reference pages such as
+  the systems catalog stay whole.
 - **Names.** Prose says TurenOS; technical identifiers keep their exact `forge` spelling. Titles and headings use
   sentence case. See [Branding](./architecture/branding.md).
-- **Checks.** After any docs change, run `bun .agents/skills/turen-documentation/scripts/check.ts docs` (add `--coverage` to
-  list packages no page mentions). To move or rename
+- **Checks.** After any docs change, run `bun .agents/skills/turen-documentation/scripts/check.ts docs`. It catches
+  broken links, anchors and cited paths and unindexed pages; it can't tell whether a page is true. To move or rename
   pages, use `bun .agents/skills/turen-documentation/scripts/move.ts <moves-file>`, which rewrites every link the move
   would break.
 
 The complete method, including where a new page goes, page conventions, and templates, is
 [`.agents/skills/turen-documentation/SKILL.md`](../.agents/skills/turen-documentation/SKILL.md), with an audit method in
-its [practices](../.agents/skills/turen-documentation/references/practices.md#auditing-for-confusion). It is written for
+its [practices](../.agents/skills/turen-documentation/references/practices.md#auditing). It is written for
 people and coding agents alike; an agent uses it by reading the file, since not every agent discovers `.agents/skills/`
 on its own.
