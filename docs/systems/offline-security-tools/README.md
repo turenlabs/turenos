@@ -1,10 +1,11 @@
 # Offline security tools
 
 TurenOS includes bounded offline analysis tools for email attachments, binaries, packet captures, Office macros, .NET
-assemblies, archives, and packer evidence. They shipped in 1.0.6, and this page describes them as of that release.
-There is no live scanning, ZAP, TShark, or interactive VM debugging; those native and service integrations are deferred.
+assemblies, archives, and packer evidence. The operations and verification below cover the `source-106` security
+extensions; [agent tool targets](./targets.md) lists the broader shipped target inventory and proposed native or service
+integrations. These tools do not perform live scanning or interactive VM debugging.
 
-## Capabilities
+## Source-106 capabilities
 
 | Tool                                    | Addition                                                                                                          | Deliberate Limits                                                                                                                                                                                                      |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -23,7 +24,7 @@ File tools use the existing Location and permission boundaries. Attachment
 extraction uses exclusive file creation after source and destination approval.
 No analyzed executable, document, script, or macro is run.
 
-New static analyzers run in a fresh worker with the existing timeout and a
+These static analyzers run in a fresh worker with the existing timeout and a
 verified maximum WebAssembly linear memory of 256 MiB. Archive expansion is
 limited to 64 MiB, with at most 4 MiB JSON output. JSON transport can reduce the
 effective selected-member limit below the nominal 8 MiB extraction cap.
@@ -37,7 +38,7 @@ Office inspection and ZIP/tar handling. The extension artifact is packaged under
 source snapshot did not reproduce every operation in the previously shipped
 artifact, so replacing it wholesale would risk regressions.
 
-## Sources and Verification
+## Verification
 
 Modified crate sources and locked dependencies are included in
 `packages/email-security-wasm/source-106` and

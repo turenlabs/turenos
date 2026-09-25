@@ -1,6 +1,6 @@
 # TurenOS engineering documentation
 
-This directory contains source-grounded engineering notes for TurenOS. Start with the architecture overview and the
+Start with the architecture overview and the
 systems catalog when you need the current product vocabulary, package/runtime model, or subsystem ownership. Pages are
 grouped by section: whole-system [architecture](./architecture/README.md), individual [systems](./systems/README.md),
 model [providers](./providers/README.md), [operations](./operations/README.md), [development](./development/README.md) guides,
@@ -43,6 +43,7 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   - [In-agent code review](./systems/agent-review.md): intent-aware worker checks, risk-ranked adversarial review,
     authority boundaries, and research limits.
 - Tools and shell
+  - [CodeMode](./systems/codemode/README.md): bounded JavaScript execution over host-supplied tools, with API, discovery, and execution references.
   - [Shell tool routing](./systems/shell-tool-routing.md): specialized discovery/search/mutation tools and the
     deterministic routing benchmark.
   - [Background shell jobs](./systems/shell-jobs.md): nonblocking commands, session-owned output and cancellation,
@@ -96,7 +97,7 @@ Prototypes and benchmarks that explore or measure rather than document shipped b
   the prompt behind bounded search and read tools.
 - [Embedding model benchmark](./experimental/embedding-models.md): small embedding models against the BM25 baseline for
   memory, code, and repository retrieval.
-- [Token efficiency](./experimental/token-efficiency.md): measured context-token cost, benchmark method, and remaining
+- [Token efficiency](./experimental/token-efficiency/README.md): measured context-token cost, benchmark method, and remaining
   overhead.
 
 ## Contracts and specs

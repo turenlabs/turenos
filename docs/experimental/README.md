@@ -9,4 +9,4 @@ Each page starts with a status line. When a prototype ships, its behavior moves 
   prompt behind bounded search and read tools.
 - [Embedding model benchmark](./embedding-models.md): small embedding models against the BM25 baseline for memory,
   code, and repository retrieval.
-- [Token efficiency](./token-efficiency.md): measured context-token cost, benchmark method, and remaining overhead.
+- [Token efficiency](./token-efficiency/README.md): measured context-token cost, benchmark method, and remaining overhead.

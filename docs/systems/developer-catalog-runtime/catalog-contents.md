@@ -1,7 +1,6 @@
 # Catalog contents
 
-What the built-in catalog ships, as of 2026-09-25. The manifests in `services/catalog/manifests/` are the source of truth;
-update this page in the same change as any manifest you add or remove.
+The built-in catalog inventory as of 2026-09-25 is defined by the manifests in `services/catalog/manifests/`.
 
 ## Data sources
 

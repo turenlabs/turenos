@@ -2,13 +2,12 @@
 
 Status: benchmark, as of 2026-08-02 (the measurement date below).
 
-TurenOS sends fewer tokens to the model than comparable coding agents to do the same
-work. This document records how that is measured, what the numbers are, and where
-the remaining cost sits.
-
-Everything here is measured, not estimated. The benchmark lives in
-[`packages/core/test/benchmark/token-efficiency/`](../../packages/core/test/benchmark/token-efficiency)
-and every number below came out of it.
+In one 2026-08-02 benchmark run, TurenOS's Claude Code provider used fewer
+context tokens than Claude Code on four small fixture tasks with the same Haiku
+model. The results are observations from one run per case, not a general
+performance or answer-quality claim. [How the benchmark works](./benchmark.md) covers running it and its design. The
+benchmark and raw-run records live in
+[`packages/core/test/benchmark/token-efficiency/`](../../../packages/core/test/benchmark/token-efficiency).
 
 ## Results
 
@@ -16,7 +15,7 @@ Measured 2026-08-02, one repetition per cell, all verifiers passing.
 
 The metric is **context tokens** — uncached input plus cache reads plus cache
 writes, i.e. the prompt tokens the model had to be shown. Output tokens are
-reported separately by the benchmark but are a rounding error at this scale.
+reported separately and are not included in this metric.
 
 | harness                                   |    trivial |     search |       edit | 5-turn conversation |
 | ----------------------------------------- | ---------: | ---------: | ---------: | ------------------: |
@@ -24,31 +23,32 @@ reported separately by the benchmark but are a rounding error at this scale.
 | **TurenOS** (claude-code provider, haiku) | **12,400** | **12,159** | **13,059** |          **65,345** |
 | Codex (gpt-5.6-sol)                       |     26,748 |     26,760 |     55,927 |             137,505 |
 
-Against Claude Code on the same underlying model and the same subscription,
-TurenOS uses **4.1x fewer context tokens** on a trivial question and **3.6x fewer**
-across a five-turn conversation.
+In this run, TurenOS used **4.1x fewer context tokens** than Claude Code on the
+trivial task and **3.6x fewer** across the five-turn conversation. Both used the
+same Haiku model and subscription.
 
 Per-turn growth in the conversation task: TurenOS 426 tokens/turn, Codex 374,
 Claude Code 3,323.
 
-### Why the comparison is fair
+### Comparison scope and limits
 
-- **Models are paired, not mixed.** Comparing TurenOS-on-Haiku against
-  Codex-on-GPT-5 would measure the models, not the harnesses. The Claude Code row
-  and the TurenOS row above run the _same_ underlying model (`claude-haiku-4-5`)
-  through the same subscription, which isolates harness overhead.
-- **Every task is verified.** Each task has a deterministic checker, so a harness
-  cannot look cheap by answering badly. A failed verifier is recorded as a
-  failure, never dropped from the table.
-- **Failures are reported, not estimated.** The `turen-openai` arm is recorded as
-  `blocked` because headless TurenOS uses a throwaway vault key and cannot decrypt
-  the stored OAuth credential. It needs `OPENAI_API_KEY` to run. No number is
-  invented for it.
+- **Paired model:** The TurenOS and Claude Code rows use `claude-haiku-4-5`
+  through the same subscription. This removes the model difference between those
+  rows, but does not control every runtime or configuration difference.
+- **Different Codex model:** Codex used `gpt-5.6-sol`. Its row describes that
+  run; differences from the Haiku rows cannot be attributed to harness overhead
+  alone.
+- **Small sample:** There was one repetition per case. The table does not show
+  run-to-run variance, and the deterministic task verifiers check specific
+  outcomes rather than overall answer quality.
+- **Blocked arm:** The `turen-openai` arm was blocked because the throwaway
+  vault key could not decrypt the stored OAuth credential. It needs
+  `OPENAI_API_KEY` to run; no result is imputed for it.
 
 ## Where the tokens go
 
 The floor — what a single trivial request costs before any real work — dominates
-everything. It is over 95% of TurenOS's cost on every task measured. The five-turn
+the measured tasks. The five-turn
 conversation is 65,345 tokens, of which roughly 62,000 is the same preamble sent
 five times and about 1,500 is actual conversation growth.
 
@@ -56,13 +56,13 @@ Decomposition of the floor on the claude-code provider, measured by
 `decompose.ts` (which PATH-shims the `claude` binary to capture the real request,
 then probes the CLI directly for what a shim cannot observe):
 
-| contributor                                            | tokens | share |
-| ------------------------------------------------------ | -----: | ----: |
-| Claude Code native tool schemas (8 tools)              |  9,277 | 53.2% |
-| Claude Code preset system prompt (removed — see below) |  6,178 | 35.4% |
-| request envelope                                       |    657 |  3.8% |
-| TurenOS's own system prompt                            |    478 |  2.7% |
-| transcript, tool result, per-turn context              |   ~850 |  4.9% |
+| contributor                                             | tokens | share |
+| ------------------------------------------------------- | -----: | ----: |
+| Claude Code native tool schemas (8 tools)               |  9,277 | 53.2% |
+| Claude Code preset system prompt (removed — see below)  |  6,178 | 35.4% |
+| request envelope                                        |    657 |  3.8% |
+| TurenOS's own system prompt                             |    478 |  2.7% |
+| transcript, tool result, per-turn context (approximate) |   ~850 |  4.9% |
 
 Per-tool marginal cost, probed individually: Bash 2,962 · Agent 2,462 · Grep
 1,057 · Read 688 · WebFetch 492 · Edit 440 · Write 277 · Glob 254.
@@ -85,21 +85,20 @@ prompt.
 `provider-prompt/anthropic.txt` restated guidance for a tool this path does not
 advertise.
 
-One thing is genuinely lost: the Claude Code CLI injects git status and memory
+Removing the preset also removes context: the Claude Code CLI injects git status and memory
 paths alongside its preset, so dropping the preset drops those. TurenOS's `<env>`
 block still supplies cwd, workspace root, platform, date and is-git-repo — the
 same context every other TurenOS provider receives — but not git status.
 
-## Deliberately not cut
+## Tradeoffs retained
 
 - **The `Agent` native tool (2,462 tokens, ~20% of the current floor).** Removing
   it is a one-line change and the single largest remaining win, but it deletes
   subagent delegation on the claude-code provider. Parallel subagents are a core
   workflow, so this is a capability trade rather than an efficiency win.
 - `WebFetch` (492) and `Write` (277) are the same shape at smaller scale.
-- `ClaudeCodeGuidance.WORKFLOW` (301) now partly overlaps the provider prompt's
-  tool-usage policy, but it is sharper than the generic text and the
-  PostToolBatch reminder is written against it.
+- `ClaudeCodeGuidance.WORKFLOW` (301) partly overlaps the provider prompt's
+  tool-usage policy; the PostToolBatch reminder still refers to it.
 
 ## Running it
 

@@ -26,6 +26,8 @@ Before writing that a function exists, a flag is supported, a command takes an a
 
 Numbers need the same care: limits, defaults, timeouts and counts come from constants in the source (`MAX_OWNER_ACTIVE = 4`), not from another page.
 
+For an audit, check behavioral guarantees separately from API names and links. Follow crash, retry, and side-effect claims through the actual recovery branches; a stable identifier or passing test does not establish idempotency downstream. Read benchmark methods before repeating causal, fairness, or quality claims, and state sample size and estimates beside the numbers. Scan page openings and headings for praise, self-reference, and commentary on the writing; replace those with the behavior or decision readers need.
+
 ## Names and layout
 
 - File and folder names are kebab-case (`shell-tool-routing.md`), with `README.md` as the only exception. Names starting with `_` or `.` are treated as site-generator files and skipped.

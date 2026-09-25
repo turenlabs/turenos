@@ -1,7 +1,7 @@
 # TurenOS quality gate
 
-TurenOS's quality gate is a small, deterministic check inside the agent tool loop. It looks only at code the agent is
-changing and nudges the agent when a patch introduces a strong signal of unfinished or unnecessarily complex code.
+TurenOS's quality gate is a deterministic check inside the agent tool loop. It looks only at code the agent is changing
+and adds an advisory when a patch introduces a strong signal of unfinished or unnecessarily complex code.
 
 The gate is intentionally an **advisory ratchet**, not a blocker. A flagged edit still happens. The model receives one
 short note in the existing tool result and can correct the change on its next turn.
@@ -12,7 +12,7 @@ M src/provider.ts
 Quality ratchet: complete or remove the new placeholder implementation.
 ```
 
-Healthy edits receive no note. The user sees no additional workflow, TurenOS makes no additional model call, and the
+Edits below the threshold receive no note. The user sees no additional workflow, TurenOS makes no additional model call, and the
 turn spends no additional output tokens on the gate.
 
 ## Why It Exists

@@ -1,7 +1,6 @@
 # Agent tool targets
 
-This document records the implementation boundary for candidate Turen agent
-tools. `wasm-tools` is for deterministic, bounded byte processing. Programs
+TurenOS agent tools use WebAssembly for deterministic, bounded byte processing. Programs
 that need host networking, packet capture, process debugging, a JVM, or broad
 filesystem authority belong behind typed native or service integrations.
 
@@ -47,7 +46,7 @@ unavailable by design, so unresolvable references render as explicit
 `// WARNING: method body not decoded` comment. Malformed input fails closed
 with `Error: ...` text. The analyzed assembly is never executed.
 
-## Deeper Replacements
+## Planned replacements
 
 | Capability       | Implementation                  | Boundary                                                                   |
 | ---------------- | ------------------------------- | -------------------------------------------------------------------------- |
@@ -57,10 +56,10 @@ with `Error: ...` text. The analyzed assembly is never executed.
 Full 7-Zip is not used because its LGPL and restricted RAR components do not
 fit a permissive WASM artifact.
 
-## Second Wave
+## Additional shipped targets
 
-The 1.0.7 batch adds eighteen general-purpose bounded targets, all built with
-the pinned Rust/wasm-pack toolchain and the shared byte-in/JSON-out ABI:
+These bounded targets use the pinned Rust/wasm-pack toolchain and the shared
+byte-in/JSON-out ABI:
 
 - `tools/codec`: decompress/compress (flate2, brotli, lz4_flex, bzip2-rs,
   lzma-rs, ruzstd) and base-N/quoted-printable/uudecode transforms. Pure-Rust
@@ -116,7 +115,7 @@ the pinned Rust/wasm-pack toolchain and the shared byte-in/JSON-out ABI:
   control-word histogram, \objdata embedded-object inventory with OLE magic
   detection, exploit-doc audit flags, bounded text extraction.
 
-## Native And Service Integrations
+## Proposed native and service integrations
 
 | Tool      | Decision                                                                                                                                                                                           | Typed operations                                                                                                                    |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |

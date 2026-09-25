@@ -1,8 +1,8 @@
 # Automated releases
 
-One deliberate dispatch from the private repository now owns the complete release.
-`turenlabs/turenos` `main` is the canonical source of truth; `turenio/turen` only
-builds that public source privately, signs it, and publishes back to public.
+The `turenio/turen` release workflow builds, signs, and publishes from the
+canonical `turenlabs/turenos` `main` source. It runs privately and publishes the
+verified assets to the public repository.
 
 1. Validate the committed version on public `main`, repository identities, and
    publishing access.

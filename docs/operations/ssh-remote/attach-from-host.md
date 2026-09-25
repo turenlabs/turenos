@@ -2,7 +2,7 @@
 
 The server the desktop starts is an ordinary `forge serve` with Basic auth, so anything running on
 the remote host as the same user can use it directly — a TUI, a script, or a second `forge`
-invocation. There is no separate API for this and none is needed.
+invocation. There is no separate API for host-side attachment.
 
 Discovery goes through the shim rather than through the state files, because `status` also verifies
 the pid is alive:

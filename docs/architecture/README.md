@@ -1,8 +1,8 @@
 # TurenOS architecture
 
-This document is a source-oriented overview of the current TurenOS runtime. It explains the package
-layers, process boundaries, data flow, scope rules, generated artifacts, and operational constraints.
-It describes the implementation in this repository, not a proposed hosted architecture.
+TurenOS runs a shared server from the Desktop sidecar, a headless CLI, or a remote host. The package
+layers, process boundaries, data flow, Location scopes, and generated artifacts below describe the
+implementation in this repository.
 
 Names in code blocks and inline code are compatibility identifiers. In particular, `forge`,
 `@turenlabs/forge`, `packages/forge`, `FORGE_*`, `.forge`, and `forge.json` are retained exactly;
@@ -151,8 +151,8 @@ where local data lives.
 
 ## Trust and scope boundaries
 
-[Trust and scope boundaries](./trust-boundaries.md) walks the deliberate boundaries between untrusted input and durable
-state: contracts and authentication, Location and Session authority, tools, extensions and MCP, and events.
+Untrusted input crosses [trust and scope boundaries](./trust-boundaries.md) at contracts and authentication, Location
+and Session authority, tools, extensions and MCP, and event persistence.
 
 ## Generated and packaged artifacts
 

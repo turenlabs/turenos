@@ -55,7 +55,7 @@ Engineering documentation lives in [docs/](docs/README.md). Start with:
 - [Memory](docs/systems/memory.md) — durable project memory.
 - [Automations](docs/systems/automations/README.md) — durable in-app workflows with interval/cron schedules,
   per-step `when`/`onFailure` conditions, and local file-change/session-end event triggers.
-- [Token efficiency](docs/experimental/token-efficiency.md) — measured context cost against Claude Code and Codex.
+- [Token efficiency](docs/experimental/token-efficiency/README.md) — measured context cost against Claude Code and Codex.
 
 ## Monorepo
 
