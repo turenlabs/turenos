@@ -1245,12 +1245,12 @@ function closureFor(
 }
 
 function sortResultIDs(
-  ids: readonly string[],
   components: ReadonlyMap<string, ZeroMemScoreComponents>,
   scores: ReadonlyMap<string, number>,
   index: BuiltIndex,
+  limit: number,
 ): string[] {
-  return [...ids].sort((a, b) => {
+  const compare = (a: string, b: string) => {
     const scoreOrder = (scores.get(b) ?? 0) - (scores.get(a) ?? 0)
     if (scoreOrder !== 0) return scoreOrder
     const aComponents = components.get(a)
@@ -1267,7 +1267,65 @@ function sortResultIDs(
       return aRecord.timestampValue < bRecord.timestampValue ? 1 : -1
     }
     return compareStrings(a, b)
-  })
+  }
+  if (limit <= 0) return []
+
+  const reverseRanked: string[] = []
+  let reverseOffset = 0
+  let previous: string | undefined
+  let reverseSorted = true
+  for (const id of scores.keys()) {
+    if (previous !== undefined && compare(previous, id) <= 0) {
+      reverseSorted = false
+      break
+    }
+    if (reverseRanked.length < limit) reverseRanked.push(id)
+    else {
+      reverseRanked[reverseOffset] = id
+      reverseOffset = (reverseOffset + 1) % limit
+    }
+    previous = id
+  }
+  if (reverseSorted) {
+    const ranked =
+      reverseOffset === 0
+        ? reverseRanked
+        : reverseRanked.slice(reverseOffset).concat(reverseRanked.slice(0, reverseOffset))
+    return ranked.reverse()
+  }
+
+  // Keep the worst result at the root so each candidate can replace it in O(log K).
+  const ranked: string[] = []
+  for (const id of scores.keys()) {
+    if (ranked.length < limit) {
+      ranked.push(id)
+      let child = ranked.length - 1
+      while (child > 0) {
+        const parent = (child - 1) >> 1
+        if (compare(ranked[parent]!, ranked[child]!) >= 0) break
+        const parentID = ranked[parent]!
+        ranked[parent] = ranked[child]!
+        ranked[child] = parentID
+        child = parent
+      }
+      continue
+    }
+    if (compare(id, ranked[0]!) >= 0) continue
+
+    ranked[0] = id
+    let parent = 0
+    while (parent * 2 + 1 < ranked.length) {
+      const left = parent * 2 + 1
+      const right = left + 1
+      const child = right < ranked.length && compare(ranked[left]!, ranked[right]!) < 0 ? right : left
+      if (compare(ranked[parent]!, ranked[child]!) >= 0) break
+      const parentID = ranked[parent]!
+      ranked[parent] = ranked[child]!
+      ranked[child] = parentID
+      parent = child
+    }
+  }
+  return ranked.sort(compare)
 }
 
 class ZeroMemStoreImpl implements ZeroMemStore {
@@ -1356,7 +1414,7 @@ class ZeroMemStoreImpl implements ZeroMemStore {
       scores.set(id, score)
     }
 
-    const rankedIDs = sortResultIDs([...scores.keys()], components, scores, this.index).slice(0, resolved.topK)
+    const rankedIDs = sortResultIDs(components, scores, this.index, resolved.topK)
     return rankedIDs.map((id) => {
       const component = components.get(id) ?? { lexical: 0, graph: 0, local: 0 }
       const views: ZeroMemView[] = []
