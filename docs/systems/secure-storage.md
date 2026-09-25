@@ -4,7 +4,7 @@ TurenOS-managed credentials and small sensitive files must be encrypted with `Se
 vault uses one random application key protected by the operating system and exposes authenticated encryption to Core and
 TurenOS services.
 
-## Security Boundary
+## Security boundary
 
 The vault protects TurenOS-managed data at rest against accidental disclosure, copied application data, backups that do not
 include the operating-system key, and access by other OS users. Plaintext exists in trusted process memory while TurenOS is
@@ -36,7 +36,12 @@ Its temporary bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`, `FOR
 Secret Vault layer initializes and before normal child tools are started. Headless server startup reads the same two
 variables; without them, non-test startup fails instead of falling back to an ephemeral or plaintext mode.
 
-## On-Disk Locations
+The Desktop main process checks the same two variables in its own environment before it touches `safeStorage`. When
+both are set and the key decodes to 32 bytes, it uses that key instead of unwrapping the one in `forge.settings`
+([`packages/desktop/src/main/index.ts`](../../packages/desktop/src/main/index.ts)). A Desktop launched with a different
+key cannot read secrets sealed with the stored one.
+
+## On-disk locations
 
 | Artifact                | Location                                                                    | Contents                                                                                               |
 | ----------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
@@ -58,7 +63,7 @@ Electron derives the OS keychain item from `app.getName()` as `"<name> Safe Stor
 macOS Keychain. The internal app name deliberately stays `Forge` after the TurenOS rename so the existing Keychain item
 keeps decrypting the wrapped key; changing it requires a credential migration.
 
-## Platform Behavior
+## Platform behavior
 
 | Platform | Protection                                                         | Expected prompt behavior                                                                                                                                                                                                                                                                                                                                           |
 | -------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -75,7 +80,7 @@ TurenOS accepts these Linux backends:
 
 TurenOS rejects `basic_text`, `unknown`, an absent backend, and unrecognized future backends. There is no plaintext fallback.
 
-## Cryptographic Format
+## Cryptographic format
 
 `SecretVault` produces an opaque versioned string:
 
@@ -95,7 +100,7 @@ Version 1 uses:
 
 Ciphertext cannot be moved to another scope or logical key and still authenticate. Use immutable identifiers for both.
 
-## String Values
+## String values
 
 Use the Effect service inside repositories:
 
@@ -121,7 +126,7 @@ const credential = yield * Schema.decodeUnknown(Schema.fromJsonString(Credential
 Always validate decrypted structured data with its existing schema. Do not return decrypted values from public HTTP
 projections or include them in errors, logs, events, telemetry, or debug exports.
 
-## Sensitive Files
+## Sensitive files
 
 `sealBytes` and `openBytes` support binary values up to 1 MiB:
 
@@ -139,7 +144,7 @@ encryption does not replace access control.
 The current API is intentionally for credentials and small files. Large or streaming files need a chunked authenticated
 format rather than increasing the one MiB limit or buffering unbounded content.
 
-## Scope And Key Rules
+## Scope and key rules
 
 The scope provides domain separation. The logical key binds ciphertext to one record.
 
@@ -161,7 +166,7 @@ Rules:
 - Do not inspect or construct the envelope outside `SecretVault`.
 - Do not use `SecretVault.ephemeral` outside tests.
 
-## MCP Credentials
+## MCP credentials
 
 Two durable shapes carry MCP secrets:
 
@@ -183,7 +188,7 @@ A plaintext `mcp-auth.json` in `Global.Path.data` is atomically renamed to `mcp-
 fingerprinted migration receipt, and deleted only when every imported name verifies in sealed storage. Unreadable or
 conflicting staging files are restored, not dropped.
 
-## Existing Plaintext Migration
+## Existing plaintext migration
 
 Repository startup migrations follow this sequence:
 
@@ -203,7 +208,7 @@ SQLite uses `PRAGMA secure_delete = ON`, but migration cannot guarantee forensic
 copy-on-write snapshots, external backups, or previously copied files. High-value credentials should be rotated when prior
 plaintext exposure is a concern.
 
-## Key Loading And Failure
+## Key loading and failure
 
 Desktop startup loads or creates the wrapped key after `app.whenReady()` and after the final Electron `userData` path is
 configured. A corrupt wrapped-key record is never overwritten automatically.
@@ -237,7 +242,7 @@ Required coverage for a new secret repository includes:
 - A migration conflict does not overwrite a newer value.
 - Public projections do not expose the decrypted value.
 
-## Current Integrations
+## Current integrations
 
 The vault currently protects:
 
