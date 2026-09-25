@@ -1,6 +1,6 @@
 # Forge package
 
-- Follow `test/AGENTS.md` for tests, `src/server/routes/instance/httpapi/AGENTS.md` for the HttpApi routes, and `src/session/llm/AGENTS.md` for the session LLM runtime.
+- Follow `test/AGENTS.md` for tests, `src/server/routes/instance/httpapi/AGENTS.md` for the HttpApi routes, `src/session/llm/AGENTS.md` for the session LLM runtime, and `src/security/AGENTS.md` for Security MCP integrations.
 
 ## Database
 

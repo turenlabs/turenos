@@ -50,7 +50,7 @@ export type IntegrationGroup =
   | "iac" // infrastructure-as-code misconfiguration scanning
 
 /**
- * The contract every module in `integrations/` implements. See CONVENTIONS.md
+ * The contract every module in `integrations/` implements. See docs/development/security-integrations.md
  * for the full rules (output shape, caching, secrets, error handling).
  */
 export interface Integration {

@@ -11,13 +11,13 @@ import { fetchJson, HttpError } from "../util/http"
  * - POST /v1/querybatch   many packages at once -> vuln ids only
  * - GET  /v1/vulns/{id}   full record by OSV id (GHSA-..., CVE-..., ...)
  *
- * Per-query responses are cached ~1h in ctx.cacheDir (CONVENTIONS.md). Records
+ * Per-query responses are cached ~1h in ctx.cacheDir (docs/development/security-integrations.md). Records
  * are trimmed to agent-relevant fields and capped so results stay well under
  * the 50KB serialization limit.
  */
 
 const API = ExtensionCatalog.dataEndpoint("security:osv")
-const CACHE_TTL_MS = 3_600_000 // ~1h, per CONVENTIONS.md for per-query APIs
+const CACHE_TTL_MS = 3_600_000 // ~1h, per docs/development/security-integrations.md for per-query APIs
 const MAX_RECORDS = 50
 const MAX_BATCH_QUERIES = 100
 const MAX_IDS_PER_BATCH_RESULT = 50

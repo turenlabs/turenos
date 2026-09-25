@@ -10,6 +10,29 @@ Linux kernel with a pinned BusyBox initramfs, exposes only a temporary read-only
 input directory and the Rosetta share, registers the x86-64 ELF handler, and
 returns a JSON envelope over the virtio console.
 
+## Setup
+
+Build the host helper:
+
+```sh
+swift build --package-path packages/rosetta-harness -c release
+codesign --force --sign - --entitlements packages/rosetta-harness/Resources/entitlements.plist packages/rosetta-harness/.build/release/turen-rosetta-harness
+```
+
+The execution pack is built separately and must provide:
+
+```text
+kernel
+initrd
+```
+
+Build a local pack from a pinned ARM64 kernel and matching modules:
+
+```sh
+packages/rosetta-harness/Scripts/build-pack.sh \
+  Image busybox virtiofs.ko binfmt_misc.ko dist/rosetta-pack
+```
+
 Install the execution pack by setting these host-only variables before starting
 TurenOS:
 
@@ -19,25 +42,31 @@ TUREN_ROSETTA_KERNEL=/path/to/arm64/Image
 TUREN_ROSETTA_INITRD=/path/to/turen-rosetta-initrd.gz
 ```
 
+The `TUREN_*` names are the first-class harness contract even though the host runtime still lives under the
+compatibility-oriented `packages/forge` path.
+
 The agent cannot select or change these paths. If the pack is not installed,
 the tool returns an unavailable error instead of falling back to Docker or a
 host shell.
 
-Build a local pack from a pinned ARM64 kernel and matching modules:
+To exercise the helper outside TurenOS:
 
 ```sh
-packages/rosetta-harness/Scripts/build-pack.sh \
-  Image busybox virtiofs.ko binfmt_misc.ko dist/rosetta-pack
+turen-rosetta-harness --kernel kernel --initrd initrd --executable static-x86_64-elf
 ```
+
+## Verification
 
 The current validation fixture is an x86-64 static ELF. The direct helper and
 TurenOS tool tests prove the full path, including Apple Virtualization.framework,
 two virtio console channels, virtiofs, `binfmt_misc`, Rosetta translation,
 guest exit status, and host-side cleanup.
 
+## Limits
+
 The initial harness is deliberately single-process and text-output only. Do
 not add writable shares, networking, guest arguments, dynamic package install,
-or persistent guest state without a separate security review.
+or persistent guest state without a separate security review. The harness accepts no guest arguments, network, writable mounts, or dynamically linked executables.
 
 ## Source
 

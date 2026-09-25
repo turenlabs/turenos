@@ -1,6 +1,7 @@
-# TurenOS Security MCP — implementer conventions
+# Security MCP integration conventions
 
-A local stdio MCP server ("forge-security") exposing TurenOS-managed security and
+How to implement an integration for the TurenOS Security MCP server, whose code lives in `packages/forge/src/security/`.
+It is a local stdio MCP server ("forge-security") exposing TurenOS-managed security and
 agent integrations as MCP tools. Started by the hidden CLI command `forge security-mcp`; the forge
 MCP client spawns it as a `type: "local"` server and prefixes every tool name
 with the config key (`<server>_<tool>`).
@@ -20,8 +21,8 @@ CLI: src/cli/cmd/security-mcp.ts (registered in src/index.ts)
 
 ## Ownership
 
-You implement exactly one file: `integrations/<your-id>.ts`. It is already
-wired into `registry.ts` — do not edit `registry.ts`, `mcp/server.ts`,
+You implement exactly one file: `packages/forge/src/security/integrations/<your-id>.ts`. It is already
+wired into `registry.ts` — do not edit `registry.ts`, `packages/forge/src/security/mcp/server.ts`,
 `types.ts`, the util files, or any other integration. If a shared helper is
 missing, add a private helper inside your own file. Tests (optional) go in
 `packages/forge/test/security/<your-id>.test.ts`.
@@ -82,7 +83,7 @@ schemas within your integration.
 
 ## Caching (data integrations)
 
-Always fetch through `util/http.ts` (`fetchJson`/`fetchText`) — it sets the
+Always fetch through `packages/forge/src/security/util/http.ts` (`fetchJson`/`fetchText`) — it sets the
 `forge-security` User-Agent, retries 429/5xx with backoff, and caches:
 
 - Every new external data adapter must pass `fixedEndpoint: { id, endpoint, pathPrefix }`.
@@ -130,7 +131,7 @@ The app writes an MCP config entry (`config.mcp["forge-security"]`):
 ```
 
 In-process, build the command with `resolvePtyCommand(FORGE_CLI_COMMAND, ["security-mcp"])`
-from `src/server/pty-command.ts` (handles dev vs compiled binary). Do NOT use
+from `packages/forge/src/server/pty-command.ts` (handles dev vs compiled binary). Do NOT use
 the literal string `"forge"` as `command[0]` — the MCP client sets
 `BUN_BE_BUN=1` for it, which turns the compiled binary into a plain bun
 runtime and the CLI never runs.

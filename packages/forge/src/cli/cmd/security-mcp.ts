@@ -3,7 +3,7 @@ import { cmd } from "./cmd"
 /**
  * Internal command: starts the "TurenOS Security" stdio MCP server. Spawned by
  * the forge MCP client via a local MCP config entry (see
- * src/security/CONVENTIONS.md); hidden from `forge --help`.
+ * docs/development/security-integrations.md); hidden from `forge --help`.
  *
  * stdout is the MCP JSON-RPC wire — nothing else may write to it.
  */

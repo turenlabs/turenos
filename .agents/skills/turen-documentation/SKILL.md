@@ -90,7 +90,7 @@ Follow these on new pages, and fix old pages when you touch them rather than mas
   ```bash
   git grep -n -E '(^|[^/A-Za-z0-9_.-]|\.\./)docs/[A-Za-z0-9/_.#-]+' -- ':!docs/' ':!tools/' ':!services/' ':!**/test/**'
   ```
-  Typical hits are the root `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, package READMEs and scripts that read `docs/assets/`. Prompt text, `.forge/glossary` and test strings also match but aren't links. The checker resolves every `docs/` path and `#anchor` cited from Markdown outside `docs/` (READMEs, `AGENTS.md`, `CONTRIBUTING.md`), skipping fenced examples and `.forge/`, so a rename made without the mover shows up as an error.
+  Typical hits are the root `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, package READMEs and scripts that read `docs/assets/`. Prompt text, `.forge/glossary` and test strings also match but aren't links. The checker resolves every `docs/` path and `#anchor` cited from Markdown outside `docs/` (READMEs, `AGENTS.md`, `CONTRIBUTING.md`), skipping fenced examples and `.forge/`, so a rename made without the mover shows up as an error. Code comments often cite a page by its bare file name ("per `CONVENTIONS.md`"), which neither the mover nor the checker can resolve, so also run `git grep -n -F '<file name>'` for each moved page and update those comments.
 
 ## Workflow
 

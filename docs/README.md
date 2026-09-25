@@ -85,6 +85,8 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 
 ## Development
 
+- [Security MCP integration conventions](./development/security-integrations.md): the contract, handlers, output,
+  caching, and scanner rules for Security MCP integrations.
 - [Forge test fixtures](./development/forge-tests.md): temporary directories, Effect test helpers, and waiting on
   concurrent work in `packages/forge` tests.
 
