@@ -74,7 +74,9 @@ bun .agents/skills/turen-documentation/scripts/check.ts docs
 ```
 
 Coding agents such as Codex, OpenCode, TurenOS, and Claude Code can apply the method through the
-`turen-documentation` skill in [`.agents/skills/`](.agents/skills/turen-documentation/SKILL.md).
+`turen-documentation` skill in [`.agents/skills/`](.agents/skills/turen-documentation/SKILL.md). The `AGENTS.md` files
+those agents read are maintained with the [`turen-context`](.agents/skills/turen-context/SKILL.md) skill; after editing
+one, run `bun .agents/skills/turen-context/scripts/check.ts`.
 
 ## Pull requests
 

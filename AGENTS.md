@@ -3,6 +3,7 @@
 - Keep runtime dependencies directed from Schema to Core and Protocol, then from Core and Protocol to Server. Client runtime code may depend on Schema and Protocol but never Core or Server; `sdk-next` composes Client, Core, and Server.
 - The canonical development branch is `main`. `turenio/turen` consumes it for signing and release only.
 - `tools/` holds the imported wasm-tools bounded WASM tool targets; follow `tools/AGENTS.md` when working there. `.github/workflows/build-<target>.yml` rebuilds and opens a PR updating `packages/<target>-wasm`; locally run `bun run build:wasm <target>` (recipes live in `script/build-wasm.ts`) and `bun run verify:wasm` checks package checksums.
+- `AGENTS.md` files (these instructions) follow `.agents/skills/turen-context/SKILL.md`; run `bun .agents/skills/turen-context/scripts/check.ts` after changing any of them.
 - `docs/` follows the documentation method in `.agents/skills/turen-documentation/SKILL.md`; follow it when adding, editing, or moving docs, and run `bun .agents/skills/turen-documentation/scripts/check.ts docs` before finishing.
 - `services/catalog/manifests` is the canonical built-in extension catalog (data, skills, MCP, tools); follow `services/catalog/AGENTS.md` when editing it. Run `bun run generate` in `packages/extensions` to update `src/generated.ts`. There is no remote catalog.
 
