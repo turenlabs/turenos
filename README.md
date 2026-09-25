@@ -48,14 +48,14 @@ Engineering documentation lives in [docs/](docs/README.md). Start with:
 
 - [Claude Code provider](docs/providers/claude-code/README.md) — using a local `claude auth login` subscription instead of an API key.
 - [Local models](docs/providers/local-models.md) — running Bonsai 2 locally and connecting its OpenAI-compatible endpoint.
-- [Architecture](docs/architecture/README.md) — package boundaries, runtime topology, and durable data flows.
+- [Architecture](docs/architecture/README.md) — package boundaries and runtime topology, with linked pages on data flow, persistence, and trust boundaries.
 - [Systems and subsystems](docs/systems/README.md) — responsibilities, ownership, and failure behavior across TurenOS.
 - [Branding and compatibility](docs/architecture/branding.md) — why some `forge` identifiers remain stable.
 - [Secure storage](docs/systems/secure-storage.md) — how credentials are encrypted.
 - [Memory](docs/systems/memory.md) — durable project memory.
 - [Automations](docs/systems/automations/README.md) — durable in-app workflows with interval/cron schedules,
   per-step `when`/`onFailure` conditions, and local file-change/session-end event triggers.
-- [Token efficiency](docs/labs/token-efficiency.md) — measured context cost against Claude Code and Codex.
+- [Token efficiency](docs/experimental/token-efficiency.md) — measured context cost against Claude Code and Codex.
 
 ## Monorepo
 

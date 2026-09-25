@@ -44,6 +44,7 @@ const findings = [
   ...linkFindings(),
   ...catalogFindings(),
   ...strayDocsFindings(),
+  ...inboundFindings(),
 ]
 const errors = findings.filter((finding) => finding.level === "error")
 const warnings = findings.filter((finding) => finding.level === "warning")
@@ -213,6 +214,53 @@ function strayDocsFindings(): Finding[] {
   )
 }
 
+// Markdown outside docs/ (READMEs, AGENTS.md, CONTRIBUTING.md, skills) points into it. A page renamed without move.ts
+// breaks those pointers silently, so resolve every one: links relative to their file, bare mentions from the root.
+function inboundFindings(): Finding[] {
+  const rootCheck = Bun.spawnSync(["git", "-C", docs, "rev-parse", "--show-toplevel"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  if (rootCheck.exitCode !== 0) return []
+  const root = rootCheck.stdout.toString().trim()
+  const home = path.relative(root, docs).split(path.sep).join("/")
+  const listed = Bun.spawnSync(["git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "*.md"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const sources: string[] = listed.stdout
+    .toString()
+    .split("\n")
+    // .forge/ holds runtime config and translation glossaries, not documentation.
+    .filter(
+      (file) =>
+        file.length > 0 && !file.startsWith(`${home}/`) && !/(^|\/)(vendor|node_modules)\/|^\.forge\//.test(file),
+    )
+  const pattern = new RegExp(`(?<![\\w./-])((?:\\.\\./)*)${home}/([A-Za-z0-9_./-]*[A-Za-z0-9_/-])(#[a-z0-9-]+)?`, "g")
+  return sources.flatMap((source) =>
+    // Fenced blocks hold examples, not pointers; inline code stays, since AGENTS.md cites paths that way.
+    stripCode(readFileSync(path.join(root, source), "utf8"), true)
+      .split("\n")
+      .flatMap((line, number) =>
+        [...line.matchAll(pattern)].flatMap((match) => {
+          const prefix = match[1] ?? ""
+          const rest = match[2] ?? ""
+          const anchor = (match[3] ?? "").slice(1)
+          const fromFile = path.resolve(root, path.dirname(source), `${prefix}${home}`, rest)
+          const fromRoot = path.resolve(root, home, rest)
+          const target = existsSync(fromFile) ? fromFile : prefix === "" && existsSync(fromRoot) ? fromRoot : undefined
+          const where = `${source}:${number + 1}`
+          if (target === undefined) return [error(`${where}: points to ${home}/${rest}, which does not exist`)]
+          const page = statSync(target).isDirectory() ? path.join(target, "README.md") : target
+          if (anchor && isPage(page) && existsSync(page) && !anchors(readFileSync(page, "utf8")).has(anchor)) {
+            return [error(`${where}: points to ${home}/${rest}#${anchor}, which has no such heading`)]
+          }
+          return []
+        }),
+      ),
+  )
+}
+
 function catalogFindings(): Finding[] {
   const catalog = pages.get("systems/README.md")
   if (catalog === undefined) return []
@@ -292,7 +340,7 @@ function anchors(text: string) {
 }
 
 // Blanks fenced blocks and inline code so examples aren't checked as links or references.
-function stripCode(text: string) {
+function stripCode(text: string, keepSpans = false) {
   const lines = text.split("\n")
   const fences = lines.map((line) => /^\s*(```+|~~~+)/.exec(line)?.[1])
   const inside = fences.reduce<{ open?: string; flags: boolean[] }>(
@@ -304,7 +352,9 @@ function stripCode(text: string) {
     },
     { flags: [] },
   ).flags
-  return lines.map((line, index) => (inside[index] ? "" : line.replace(/`[^`\n]*`/g, "``"))).join("\n")
+  return lines
+    .map((line, index) => (inside[index] ? "" : keepSpans ? line : line.replace(/`[^`\n]*`/g, "``")))
+    .join("\n")
 }
 
 function linksTo(text: string, target: string) {
