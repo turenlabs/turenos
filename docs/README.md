@@ -42,6 +42,12 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   - [Quality gate](./systems/quality-gate/README.md): TurenOS quality-gate architecture and operation.
   - [In-agent code review](./systems/agent-review.md): intent-aware worker checks, risk-ranked adversarial review,
     authority boundaries, and research limits.
+  - [Agent improvement proposals](./systems/agent-improvement.md): proposing, validating, and applying revised agent
+    definitions.
+  - [Session replay](./systems/session-replay.md): cross-session search over durable events, its query syntax, and
+    the per-session debug stream.
+  - [Lobby](./systems/lobby.md): the beta shared-room surface where local agents answer through capability-limited
+    sessions.
 - Tools and shell
   - [CodeMode](./systems/codemode/README.md): bounded JavaScript execution over host-supplied tools, with API, discovery, and execution references.
   - [Shell tool routing](./systems/shell-tool-routing.md): specialized discovery/search/mutation tools and the
@@ -52,19 +58,28 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
     shell safety.
   - [Rosetta execution](./systems/rosetta-exec.md): experimental bounded local x86-64 Linux execution through Apple's
     virtualization path.
+  - [Formatters](./systems/formatters.md): running project formatters after legacy-runtime file edits.
 - Security
-  - [Security browser and proxy](./systems/security-browser.md): the Desktop AppSec Proxy workspace, with cases, a
-    sandboxed browser, Intercept, Repeater, and its boundaries.
+  - [Security browser and proxy](./systems/security-browser.md): each Desktop session's shared Security Browser, with
+    History, Intercept, Repeater, and its boundaries.
   - [Offline security tools](./systems/offline-security-tools/README.md): bounded offline analysis of attachments, binaries,
     captures, macros, .NET IL, archives, and packer evidence.
   - [Secure storage](./systems/secure-storage.md): encrypting credentials and sensitive files with the OS-protected
     Secret Vault.
+  - [Legacy session shares](./systems/legacy-shares.md): revoking public share links created by older builds.
 - Models and providers
   - [Model and provider layer](./systems/model-provider-layer/README.md): how Session V2 resolves an `@turenlabs/llm`
     route, and how the legacy Forge processor selects its AI SDK or native adapter.
 - Extensions
   - [Developer catalog runtime](./systems/developer-catalog-runtime/README.md): catalog validation and runtime projection
     rules.
+- Platform
+  - [Configuration](./systems/configuration.md): where `forge.json` is read, precedence, v1 migration, and every key.
+  - [Observability](./systems/observability.md): the local log file, rotation, and optional OTLP export.
+  - [Desktop storage](./systems/desktop-storage.md): server-backed Desktop settings and the one-time legacy store
+    import.
+  - [ACP server](./systems/acp.md): `forge acp` for editors that speak the Agent Client Protocol.
+  - [Workspaces](./systems/workspaces.md): the experimental workspace control plane and its routing.
 
 ## Providers
 
@@ -89,6 +104,8 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   caching, and scanner rules for Security MCP integrations.
 - [Forge test fixtures](./development/forge-tests.md): temporary directories, Effect test helpers, and waiting on
   concurrent work in `packages/forge` tests.
+- [Desktop sidecar profiler](./development/desktop-profiler.md): recording a CPU profile of the local sidecar in
+  dev-channel Desktop builds.
 
 ## Experimental
 
@@ -117,6 +134,10 @@ entry points when changing a public boundary:
   fleets.
 - [`../specs/v2/instructions.md`](../specs/v2/instructions.md): working rules for `packages/core` during the V2 port.
 - [`../specs/storage.md`](../specs/storage.md): authoritative storage ownership and persistence rules.
+- [`../specs/project.md`](../specs/project.md): running sessions for multiple projects and worktrees from one instance.
+- [`../packages/forge/specs/v2/message-shape.md`](../packages/forge/specs/v2/message-shape.md): the V2 message shape.
+- [`../packages/forge/specs/effect/`](../packages/forge/specs/effect/): Effect patterns for `packages/forge`, indexed
+  from [development](./development/README.md).
 
 ## Elsewhere in the repo
 
