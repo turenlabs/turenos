@@ -12,6 +12,7 @@ describe("managed MCP integrations", () => {
       "atlassian-security-context",
       "automox",
       "automox-local",
+      "aws-documentation",
       "chainguard-docs",
       "cloudflare-audit-logs",
       "cloudflare-casb",
@@ -665,6 +666,13 @@ describe("managed MCP integrations", () => {
   })
 
   test("exposes only reviewed provider capabilities", () => {
+    expect(McpIntegration.allowsTool("aws-documentation", "search_documentation")).toBe(true)
+    expect(McpIntegration.allowsTool("aws-documentation", "read_documentation")).toBe(true)
+    expect(McpIntegration.allowsTool("aws-documentation", "read_sections")).toBe(true)
+    expect(McpIntegration.allowsTool("aws-documentation", "search_table")).toBe(true)
+    expect(McpIntegration.allowsTool("aws-documentation", "recommend")).toBe(false)
+    expect(McpIntegration.allowsTool("aws-documentation", "recommend", { writeTools: "enabled" })).toBe(false)
+
     expect(McpIntegration.allowsTool("onepassword", "authenticate")).toBe(true)
     expect(McpIntegration.allowsTool("onepassword", "list_variables")).toBe(true)
     expect(McpIntegration.allowsTool("onepassword", "append_variables")).toBe(false)
