@@ -40,4 +40,5 @@ implementation can replace local Location services without changing API contract
 
 Project identity is durable and is not re-derived from a mutable remote URL after it has been
 claimed. Git discovery can seed an identity for a new directory; a remembered identity wins on later
-opens. See [`packages/core/src/project.ts`](../../packages/core/src/project.ts).
+opens. See [`packages/core/src/project.ts`](../../packages/core/src/project.ts) and the multi-project contract in
+[`specs/project.md`](../../specs/project.md).

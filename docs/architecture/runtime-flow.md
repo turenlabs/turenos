@@ -48,7 +48,8 @@ shows the smaller standard route composition.
 
 ## Session and event data flow
 
-Session V2 separates durable admission from model execution:
+Session V2 separates durable admission from model execution. The normative contract is
+[`specs/v2/session.md`](../../specs/v2/session.md); this section summarizes it:
 
 1. A prompt, command, or goal input is validated and admitted as one `session_input` record through a
    durable `session.next.prompt.admitted` event.

@@ -46,6 +46,21 @@ unavailable by design, so unresolvable references render as explicit
 `// WARNING: method body not decoded` comment. Malformed input fails closed
 with `Error: ...` text. The analyzed assembly is never executed.
 
+The analysis runtimes behind the binary, string, unpacking, and email tools are also shipped targets:
+
+- `tools/ghidra-decompiler`: Ghidra's standalone C++ decompiler behind a narrow memory-backed ABI.
+- `tools/stng-core`: bounded raw, wide, decoded, classified, and XOR string extraction derived from stng.
+- `tools/static-unpack`: official UPX decompression and an analysis-grade, RetDec-derived MPRESS PE32 reconstructor.
+- `tools/debug-symbols`: object symbols, debug-section inventory, and PDB public symbols with optional Rust, Itanium
+  C++, and MSVC demangling, capped at 64 MiB input and 4,096 records; it never resolves source paths or loads a debugger.
+- `tools/email-authenticate`: DKIM, SPF, and DMARC verification from the vendored `mail-auth` crate against a supplied
+  DNS snapshot; a missing record is `offline_snapshot_miss`, and no DNS or network lookup is made.
+
+`packages/ripgrep-wasm` is a WebAssembly build of the libripgrep crates that Core's `Ripgrep.Service` uses in place of
+the `rg` binary unless `FORGE_RIPGREP_WASM=0`. It has no `tools/` target: its build script compiles
+`workbench/ripgrep-wasm/crate`, which is not in this repository, so the vendored `rgwasm.wasm` cannot be rebuilt from
+here.
+
 ## Planned replacements
 
 | Capability       | Implementation                  | Boundary                                                                   |

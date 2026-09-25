@@ -5,7 +5,7 @@ Automations are durable workflows that run Agent and Skill steps on a schedule a
 For the scheduler, lease model, storage, and HTTP surface behind them, see
 [Automations internals](./internals.md).
 
-## Create An Automation
+## Create an Automation
 
 Open **Automations** from the left rail. The builder provides reusable starter blueprints for common workflows, including daily briefings, CI failure triage, and documentation drift.
 
@@ -24,13 +24,31 @@ An Automation contains:
 
 Project is optional. When it is left blank, the Automation runs from the selected server's default global data directory and that resolved directory is stored with the Automation and each run. This is useful for prompts that do not need a repository; Agent and Model choices remain available without selecting a project.
 
-The composer also supports a one-step quick create command:
+## Composer commands
+
+Two slash commands create a recurring prompt without opening the builder. Both take an interval of
+`<integer><s|m|h|d>` of at least 60 seconds, reject prompts with attachments, and turn on the Automations surface if it
+was off.
 
 ```text
 /automation 30m Check CI and summarize actionable failures
+/loop 30m Check CI and summarize actionable failures
+/loop stop
+/loop
 ```
 
-## Asking An Agent
+- `/automation <interval> <prompt>` creates a one-step Automation named after the prompt.
+- `/loop <interval> <prompt>` asks for confirmation, then creates a loop named `Loop: <prompt>` in the current project
+  that runs with the composer's current agent, model, and variant.
+- `/loop stop` pauses the project's only active loop and cancels its in-flight run. When several loops are active it
+  opens Automations to choose one; when none is, it says so.
+- `/loop` or `/loop list` opens Automations for the current project.
+
+Automation and loop runs are sessions with the origin `automation`; loop run IDs start with `ses_loop_`. The Home
+session library keeps them out of **All**, which shows only sessions you started, and groups them under the **Loops**
+filter.
+
+## Asking an agent
 
 Mention `@automations` in the composer to point an agent at this surface. The mention is a reference to the surface itself, not a snapshot: it tells the agent that Automations exist and which tools read and change them, and the agent reads the current state when it runs.
 
@@ -53,7 +71,7 @@ The built-in catalog currently includes:
 - CI failure triage
 - Docs drift
 
-## Schedule And Event Triggers
+## Schedule and event triggers
 
 An Automation fires on exactly one trigger: an interval, a cron schedule, or a server event. Switching trigger kinds later replaces the schedule; an Automation never combines them.
 
@@ -67,7 +85,7 @@ Cron fire times follow the Automation's IANA timezone (for example `America/New_
 
 Event Automations have no ticking schedule: they stay active with no next run time until a matching event fires. If an event arrives while an earlier occurrence is still running, it is recorded as `skipped`, exactly like an overlapping interval tick. Events are delivered by the scheduler on the selected server — there is no network trigger source.
 
-## Step Data Bindings
+## Step data bindings
 
 Every step's binding ID is derived from its name (for example, `Gather updates` becomes `steps.gather_updates`). Renaming a step re-derives its ID and rewrites any bindings that referenced it, so existing references keep resolving.
 
@@ -88,7 +106,7 @@ The selected project path is available as `trigger.payload.repository` and `trig
 
 This follows the same product pattern as Hermes Automation Blueprints while keeping creation, editing, execution, and delivery inside TurenOS.
 
-## Step Conditions
+## Step conditions
 
 A step may carry two flow-control fields:
 
@@ -113,7 +131,7 @@ Different Automations may run concurrently. One Automation never overlaps itself
 
 Automation steps run with the same tools an ordinary Session has, including tools hosted by enabled MCP Extensions. Managed MCP servers are contacted the first time a turn assembles its tools, so an Automation that never runs never starts them.
 
-## Durability And Recovery
+## Durability and recovery
 
 Automation definitions and runs are stored in SQLite. Existing installations retain the physical `loop` and `loop_run` table names as an internal migration detail.
 
@@ -131,7 +149,7 @@ Automation definitions and runs are stored in SQLite. Existing installations ret
 - Maximum lifetime: seven days from creation.
 - Overlap policy: skip.
 
-## Server Selection
+## Server selection
 
 Automation management targets the server selected in the **Run on** control. Each configured server owns its own Automation definitions and scheduler. Listing Automations reads that server's process-global SQLite index without opening project directories. Project filesystem and catalog access occur only while configuring or executing a workflow on the selected server.
 

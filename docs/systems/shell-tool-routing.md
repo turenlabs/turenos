@@ -170,3 +170,4 @@ tests separately prove that a routed command stops before permission and process
 - [`packages/core/src/tool/bash.ts`](../../packages/core/src/tool/bash.ts)
 - [`packages/forge/src/tool/shell.ts`](../../packages/forge/src/tool/shell.ts)
 - Tests: [`packages/core/test/shell-tool-routing.test.ts`](../../packages/core/test/shell-tool-routing.test.ts)
+- Contract: [`specs/v2/tools.md`](../../specs/v2/tools.md)
