@@ -1,0 +1,69 @@
+# Tools and dispatch
+
+## Tool loops
+
+Tool loops are represented in common messages and events:
+
+```ts
+const call = ToolCallPart.make({ id: "call_1", name: "lookup", input: { query: "weather" } })
+const result = Message.tool({ id: "call_1", name: "lookup", result: { forecast: "sunny" } })
+
+const followUp = LLM.request({
+  model,
+  messages: [Message.user("Weather?"), Message.assistant([call]), result],
+})
+```
+
+Routes lower these into provider-native assistant tool-call messages and tool-result messages. Streaming providers should emit `tool-input-delta` events while arguments arrive, then a final `tool-call` event with parsed input.
+
+## Dispatch
+
+`LLM.stream(request)` and `LLM.generate(request)` each run exactly one provider turn. Add tool schemas to `request.tools` with `Tool.toDefinitions(tools)`. When a caller wants the package's typed one-call execution behavior, pass each canonical local `tool-call` event to `ToolRuntime.dispatch(tools, call)`.
+
+```ts
+const get_weather = tool({
+  description: "Get current weather for a city",
+  parameters: Schema.Struct({ city: Schema.String }),
+  success: Schema.Struct({ temperature: Schema.Number, condition: Schema.String }),
+  execute: ({ city }) =>
+    Effect.gen(function* () {
+      // city: string  — typed from parameters Schema
+      const data = yield* WeatherApi.fetch(city)
+      return { temperature: data.temp, condition: data.cond }
+      // return type checked against success Schema
+    }),
+})
+
+const tools = { get_weather, get_time, ... }
+const events = yield* LLM.stream(
+  LLM.updateRequest(request, { tools: Tool.toDefinitions(tools) }),
+).pipe(Stream.runCollect)
+
+const call = Array.from(events).find(LLMEvent.is.toolCall)
+if (call && !call.providerExecuted) {
+  const dispatched = yield* ToolRuntime.dispatch(tools, call)
+  // Persist call + dispatched.result, then construct the next request explicitly.
+}
+```
+
+The dispatcher:
+
+- On `tool-call`: looks up the named tool, decodes input against `parameters` Schema, dispatches to the typed `execute`, encodes the result against `success` Schema, and returns canonical `tool-result` events.
+- Does not stream providers, construct Session events, schedule fibers, append history, count steps, or continue model rounds.
+- Leaves persistence and continuation to the enclosing product flow.
+
+Handler dependencies (services, permissions, plugin hooks, abort handling) are closed over by the consumer at tool-construction time. Build the tools record inside an `Effect.gen` once and reuse it across many dispatches.
+
+Errors must be expressed as `ToolFailure`. The runtime catches it and emits a `tool-error` event, then a `tool-result` of `type: "error"`, so the model can self-correct on the next step. Anything that is not a `ToolFailure` is treated as a defect and fails the stream. Three recoverable error paths produce `tool-error` events:
+
+- The model called an unknown tool name.
+- Input failed the `parameters` Schema.
+- The handler returned a `ToolFailure`.
+
+Provider-defined / hosted tools (Anthropic `web_search` / `code_execution` / `web_fetch`, OpenAI Responses `web_search_call` / `file_search_call` / `code_interpreter_call` / `mcp_call` / `local_shell_call` / `image_generation_call` / `computer_use_call`) pass through the runtime untouched:
+
+- Routes surface the model's call as a `tool-call` event with `providerExecuted: true`, and the provider's result as a matching `tool-result` event with `providerExecuted: true`.
+- Callers detect `providerExecuted` on `tool-call` and **skip local dispatch** — no handler is invoked and no `tool-error` is raised for "unknown tool". The provider already executed it.
+- Callers that continue should retain both events in explicit history when the protocol requires it. Anthropic encodes them back as `server_tool_use` + `web_search_tool_result` (or `code_execution_tool_result` / `web_fetch_tool_result`) blocks; OpenAI Responses callers typically use `previous_response_id` instead of resending hosted-tool items.
+
+Add provider-defined tools to `request.tools` (no runtime entry needed). The matching route must know how to lower the tool definition into the provider-native shape; right now Anthropic accepts `web_search` / `code_execution` / `web_fetch` and OpenAI Responses accepts the hosted tool names listed above.

@@ -21,7 +21,7 @@ artifacts back into this directory.
 
 1. Edit or add a manifest under `manifests/<type>/`.
 2. Run `bun run generate` from `packages/extensions` and commit the regenerated
-   `src/generated.ts`. CI runs `bun run check` and fails on stale output.
+   `packages/extensions/src/generated.ts`. CI runs `bun run check` and fails on stale output.
 3. Editing a skill manifest changes its install digest: update
    `reviewedSkillDigests` in `packages/forge/src/skill/vigil.ts` by hashing
    `JSON.stringify(manifest)` of each catalog-sourced skill in

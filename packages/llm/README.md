@@ -128,6 +128,7 @@ This package is built on Effect. Public methods return `Effect` or `Stream`; pro
 
 ## See also
 
-- `AGENTS.md` — architecture, route construction, contributor guide
+- [`docs/architecture.md`](docs/architecture.md) — request flow, folder layout, and dependency direction
+- [`docs/tools.md`](docs/tools.md) — tool loops, typed dispatch, and hosted tools
 - `example/tutorial.ts` — runnable end-to-end walkthrough
 - `test/provider/*.test.ts` — fixture-first protocol tests; `*.recorded.test.ts` files cover live cassettes

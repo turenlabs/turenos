@@ -1,26 +1,14 @@
-# Session LLM Runtime Boundaries
+# Session LLM runtime
 
-`../llm.ts` is the opencode session LLM service. It owns opencode concerns: auth, config, model/provider resolution, plugins, permissions, telemetry headers, and runtime selection. It is the only file in this area that should know about the full session request shape.
-
-This folder contains adapters behind that service boundary:
+`../llm.ts` is the TurenOS session LLM service. It owns session concerns (auth, config, model and provider resolution, plugins, permissions, telemetry headers, and runtime selection) and is the only file in this area that should know the full session request shape. This folder holds the adapters behind it:
 
 - `ai-sdk.ts` converts AI SDK `fullStream` parts into `@turenlabs/llm` `LLMEvent`s. This is the default runtime path.
-- `native-request.ts` converts opencode's normalized session input into a native `@turenlabs/llm` `LLMRequest`. It does not execute requests.
-- `native-runtime.ts` is the opt-in native runtime adapter. It decides whether a selected model is supported, builds the native request, bridges opencode tools into native executable tools, and delegates transport to `LLMClient` / `RequestExecutor`.
+- `native-request.ts` converts the normalized session input into a native `@turenlabs/llm` `LLMRequest`. It does not execute requests.
+- `native-runtime.ts` is the opt-in native runtime adapter. It decides whether a selected model is supported, builds the native request, bridges session tools into native executable tools, and delegates transport to `LLMClient` / `RequestExecutor`.
 
-## File Structure
+The runtime-selection flow and its diagram are in `docs/systems/model-provider-layer.md` at the repository root.
 
-```txt
-src/session/
-  llm.ts                    session-owned orchestration and runtime selection
-  llm/
-    AGENTS.md               boundary notes for the adapter layer
-    ai-sdk.ts               AI SDK fullStream -> @turenlabs/llm LLMEvent adapter
-    native-request.ts       TurenOS/AI SDK-shaped input -> @turenlabs/llm LLMRequest
-    native-runtime.ts       native runtime gate, tool bridge, and LLMClient handoff
-```
-
-Integration points:
+## Seams
 
 - `../llm.ts` imports `LLMClient` from `@turenlabs/llm/route`; native execution is the only path that calls it directly.
 - `../llm.ts` imports `LLMAISDK` from `./llm/ai-sdk`; the AI SDK path still calls `streamText(...)` locally, then adapts `result.fullStream` into shared `LLMEvent`s.
@@ -31,60 +19,8 @@ Integration points:
 
 Keep new integration code on one of these seams. Avoid importing session services into `native-request.ts`; pass normalized data through `RequestInput` instead.
 
-## Runtime selection
+## Safety boundary
 
-Both runtimes converge on the same `LLMEvent` stream consumed by the session processor. The gate is per-request: a single session can route some calls through native and fall back for others.
-
-```txt
-                             ╭───────────────────╮
-╭───────────────────────────▶│ session processor │
-│                            ╰─────────┬─────────╯
-│                                      │
-│                                      │
-│                                      │
-│                                      ▼
-│                         ╭─────────────────────────╮
-│                         │ LLM.Service (../llm.ts) │
-│                         ╰────────────┬────────────╯
-│                                      │
-│                                      │
-│                                      │
-│                                      ▼
-│                                ╭───────────╮
-│                              ╭─╯           ╰─╮
-│                              │  native gate  │
-│                              ╰─╮           ╭─╯
-│                                ╰─────┬─────╯
-│                                      │
-│                     ╭────── no ──────┴─────── yes ────────╮
-│                     │                                     │
-│                     ▼                                     ▼
-│       ╭───────────────────────────╮             ╭───────────────────╮
-│       │          AI SDK           │             │ native-runtime.ts │
-│       │ streamText / generateText │             ╰────────┬──────────╯
-│       ╰─────────────┬─────────────╯                      │
-│                     │                                    │
-│                 ╭───╯                                    │
-│                 │                                        │
-│                 ▼                                        ▼
-│     ╭───────────────────────╮             ╭────────────────────────────╮
-│     │       ai-sdk.ts       │             │     native-request.ts      │
-│     │ fullStream → LLMEvent │             │ session input → LLMRequest │
-│     ╰──────────┬────────────╯             ╰──────────────┬─────────────╯
-│                │                                         │
-│                │                                     ╭───╯
-│                │                                     │
-│                ▼                                     ▼
-│       ╭─────────────────╮             ╭─────────────────────────────╮
-╰───────┤ LLMEvent stream │◀────────────┤ LLMClient · RequestExecutor │
-        ╰─────────────────╯             ╰─────────────────────────────╯
-```
-
-`native-runtime.ts` evaluates the gate and either bridges into `@turenlabs/llm` or returns control so `llm.ts` can take the AI SDK path. Tool execution stays opencode-owned in both branches; only request lowering and transport differ.
-
-Safety boundary:
-
-- AI SDK remains the default.
-- `FORGE_EXPERIMENTAL_NATIVE_LLM=true` or the umbrella `FORGE_EXPERIMENTAL=true` opts in. Native is not a global replacement.
-- Native execution currently supports OpenAI, opencode-managed OpenAI-compatible, and Anthropic API-key paths backed by `@ai-sdk/openai`, `@ai-sdk/openai-compatible`, or `@ai-sdk/anthropic` catalog entries.
-- Unsupported providers, OpenAI OAuth, and missing API-key cases fall back to AI SDK.
+- AI SDK remains the default. Native is not a global replacement: `../llm.ts` tries it only when `FORGE_EXPERIMENTAL_NATIVE_LLM=true` and the request has no connection policy. The umbrella `FORGE_EXPERIMENTAL` does not enable it.
+- Native execution supports the `openai` and `anthropic` providers when their catalog entry uses `@ai-sdk/openai`, `@ai-sdk/openai-compatible`, or `@ai-sdk/anthropic` and an API key is configured. OAuth is native only for OpenAI with a provider fetch override. Everything else returns an unsupported reason and falls back to AI SDK.
+- Tool execution stays session-owned on both paths; only request lowering and transport differ.

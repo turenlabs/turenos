@@ -58,6 +58,9 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
     captures, macros, .NET IL, archives, and packer evidence.
   - [Secure storage](./systems/secure-storage.md): encrypting credentials and sensitive files with the OS-protected
     Secret Vault.
+- Models and providers
+  - [Model and provider layer](./systems/model-provider-layer.md): how a session request reaches a provider through
+    the default AI SDK runtime or the opt-in native `@turenlabs/llm` runtime.
 - Extensions
   - [Developer catalog runtime](./systems/developer-catalog-runtime.md): catalog validation and runtime projection
     rules.
