@@ -221,8 +221,21 @@ export const settle = (
   },
 ) => ({ cost: cost(resolved, settlement), billed: settlement.processed })
 
+export type ResolveOptions = {
+  /**
+   * False for background calls (titles, compaction) that cap output far below a normal turn: the
+   * model's default reasoning level would spend that cap on thinking. A variant the session
+   * explicitly selected still applies.
+   */
+  readonly defaultVariant?: boolean
+}
+
 export interface Interface {
-  readonly resolve: (session: SessionSchema.Info, request?: ProviderV2.Request) => Effect.Effect<Resolved, Error>
+  readonly resolve: (
+    session: SessionSchema.Info,
+    request?: ProviderV2.Request,
+    options?: ResolveOptions,
+  ) => Effect.Effect<Resolved, Error>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@forge/v2/SessionRunnerModel") {}
@@ -491,11 +504,13 @@ const withVariant = (
   model: ModelV2.Info,
   variantID: ModelV2.VariantID | undefined,
   request?: ProviderV2.Request,
+  options?: ResolveOptions,
 ): { readonly model: ModelV2.Info; readonly variant?: ModelV2.VariantID } => {
   const published = (id: string | undefined) =>
     id === undefined ? undefined : model.variants.find((item) => item.id === id)
-  const requested = variantID === "default" || variantID === undefined ? model.request.variant : variantID
-  const variant = published(requested) ?? published(model.request.variant)
+  const fallback = options?.defaultVariant === false ? undefined : model.request.variant
+  const requested = variantID === "default" || variantID === undefined ? fallback : variantID
+  const variant = published(requested) ?? published(fallback)
   return {
     model:
       variant || request
@@ -1132,8 +1147,9 @@ const resolveWith = <R>(
     selected: ModelV2.Info,
     value?: Credential.Value,
   ) => Effect.Effect<Model, UnsupportedApiError | ProviderConfigurationError, R>,
+  options?: ResolveOptions,
 ) => {
-  const selected = withVariant(model, session.model?.variant, request)
+  const selected = withVariant(model, session.model?.variant, request, options)
   return resolver(selected.model, credential).pipe(
     Effect.map(
       (resolved): Resolved => ({
@@ -1160,21 +1176,24 @@ export const resolveWithRef = (
   model: ModelV2.Info,
   credential?: Credential.Value,
   request?: ProviderV2.Request,
-) => resolveWith(session, model, credential, request, fromCatalogModel)
+  options?: ResolveOptions,
+) => resolveWith(session, model, credential, request, fromCatalogModel, options)
 
 export const resolveWithAISDKRef = (
   session: SessionSchema.Info,
   model: ModelV2.Info,
   credential?: Credential.Value,
   request?: ProviderV2.Request,
-) => resolveWith(session, model, credential, request, fromCatalogModelWithAISDK)
+  options?: ResolveOptions,
+) => resolveWith(session, model, credential, request, fromCatalogModelWithAISDK, options)
 
 export const resolve = (
   session: SessionSchema.Info,
   model: ModelV2.Info,
   credential?: Credential.Value,
   request?: ProviderV2.Request,
-) => resolveWithRef(session, model, credential, request).pipe(Effect.map((resolved) => resolved.model))
+  options?: ResolveOptions,
+) => resolveWithRef(session, model, credential, request, options).pipe(Effect.map((resolved) => resolved.model))
 
 export const supported = (model: ModelV2.Info) =>
   ClaudeCodeBridge.isClaudeCode(model) ||
@@ -1290,7 +1309,7 @@ export const locationLayer = Layer.effect(
         }
       }).pipe(Effect.timeoutOrElse({ duration: "10 seconds", orElse: () => Effect.succeed(undefined) }))
     return Service.of({
-      resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session, request) {
+      resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session, request, options) {
         // Location plugins populate and filter the catalog asynchronously during layer startup.
         if (session.model) {
           const selected = yield* selectedModel(session)
@@ -1306,6 +1325,7 @@ export const locationLayer = Layer.effect(
             selected,
             yield* providerCredential(selected.providerID, provider?.integrationID, integrations),
             request,
+            options,
           ).pipe(Effect.provideService(AISDK.Service, aisdk))
         }
 
@@ -1327,7 +1347,7 @@ export const locationLayer = Layer.effect(
               candidate.model.id === defaultModel.id,
           ) ?? candidates[0]
         if (!selected) return yield* new ModelNotSelectedError({ sessionID: session.id })
-        return yield* resolveWithAISDKRef(session, selected.model, selected.credential, request).pipe(
+        return yield* resolveWithAISDKRef(session, selected.model, selected.credential, request, options).pipe(
           Effect.provideService(AISDK.Service, aisdk),
         )
       }),
