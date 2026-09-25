@@ -682,7 +682,7 @@ function HomeProjectColumn(props: {
   const global = useGlobal()
   const notification = useNotification()
   const permission = usePermission()
-  const [library, setLibrary] = createStore({ filter: "all" as "all" | "running" | "archived" })
+  const [library, setLibrary] = createStore({ filter: "all" as "all" | "running" | "loops" | "archived" })
   const selectedServer = () =>
     props.focusedServer() ??
     global.servers.list().find((item) => ServerConnection.key(item) === props.selected.server) ??
@@ -755,18 +755,33 @@ function HomeProjectColumn(props: {
       return status === "working" || status === "attention"
     }),
   )
+  const automationRecords = createMemo(() =>
+    props.records.filter((record) => sessionOrigin(record.session) === "automation"),
+  )
+  const manualRecords = createMemo(() =>
+    props.records.filter((record) => sessionOrigin(record.session) !== "automation"),
+  )
   const libraryRecords = createMemo(() =>
-    recentHomeSessionRecords(library.filter === "running" ? runningRecords() : props.records, props.records.length),
+    recentHomeSessionRecords(
+      library.filter === "running"
+        ? runningRecords()
+        : library.filter === "loops"
+          ? automationRecords()
+          : manualRecords(),
+      props.records.length,
+    ),
   )
   const archivedSessions = createMemo(() =>
     props.archivedSessions.filter((session) => knownDirectories().has(pathKey(session.directory))),
   )
   const inactiveSessions = createMemo(() =>
-    props.inactiveSessions.filter((session) => knownDirectories().has(pathKey(session.directory))),
+    props.inactiveSessions.filter(
+      (session) => knownDirectories().has(pathKey(session.directory)) && sessionOrigin(session) !== "automation",
+    ),
   )
   const libraryGroups = createMemo(() => groupSessions(libraryRecords(), props.language))
 
-  function setLibraryFilter(filter: "all" | "running" | "archived") {
+  function setLibraryFilter(filter: "all" | "running" | "loops" | "archived") {
     if (filter === "archived" && !props.archivedOpen) props.toggleArchived()
     if (library.filter === "archived" && filter !== "archived" && props.archivedOpen) props.toggleArchived()
     setLibrary("filter", filter)
@@ -919,7 +934,7 @@ function HomeProjectColumn(props: {
             class={HOME_LIBRARY_CHIP}
             onClick={() => setLibraryFilter("all")}
           >
-            All <span class="tabular-nums text-v2-text-text-faint">{props.records.length}</span>
+            All <span class="tabular-nums text-v2-text-text-faint">{manualRecords().length}</span>
           </button>
           <button
             type="button"
@@ -930,6 +945,16 @@ function HomeProjectColumn(props: {
             onClick={() => setLibraryFilter("running")}
           >
             Running <span class="tabular-nums text-v2-text-text-faint">{runningRecords().length}</span>
+          </button>
+          <button
+            type="button"
+            data-component="home-library-filter"
+            data-value="loops"
+            data-active={library.filter === "loops" ? "" : undefined}
+            class={HOME_LIBRARY_CHIP}
+            onClick={() => setLibraryFilter("loops")}
+          >
+            Loops <span class="tabular-nums text-v2-text-text-faint">{automationRecords().length}</span>
           </button>
           <button
             type="button"
