@@ -17,10 +17,10 @@
 
 import path from "node:path"
 import { existsSync } from "node:fs"
+import { git, listed } from "./lib/git"
+import { fenced, headingSlugs, REWRITABLE_LINK } from "./lib/markdown"
 
 type Group = { file: string; title: string; sections: string[] }
-
-const LINK = /(\]\(\s*<?|^\s*\[[^\]]+\]:\s*<?|(?:href|src)=")([^)\s>"]+)/gm
 
 const args = process.argv.slice(2)
 const page = path.resolve(args[0] ?? "")
@@ -86,9 +86,7 @@ await Promise.all(
     Bun.write(path.join(folder, entry.group.file), relink(entry.text, path.join(folder, entry.group.file))),
   ),
 )
-const others = (git(root, "ls-files", "--cached", "--others", "--exclude-standard", "*.md") ?? "")
-  .split("\n")
-  .filter((file) => file.length > 0)
+const others = listed(root, "*.md")
   .map((file) => path.join(root, file))
   .filter((file) => file !== page)
 const updated = await Promise.all(
@@ -126,11 +124,12 @@ function renderGroup(group: Group) {
 function relink(text: string, file: string) {
   const self = path.resolve(file)
   const lines = text.split("\n")
-  return lines.map((line, index) => (insideFence(lines, index) ? line : relinkLine(line, file, self))).join("\n")
+  const inside = fenced(lines)
+  return lines.map((line, index) => (inside[index] ? line : relinkLine(line, file, self))).join("\n")
 }
 
 function relinkLine(line: string, file: string, self: string) {
-  return line.replace(LINK, (whole, prefix: string, target: string) => {
+  return line.replace(REWRITABLE_LINK, (whole, prefix: string, target: string) => {
     if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return whole
     const hash = target.indexOf("#")
     if (hash === -1) return whole
@@ -148,20 +147,12 @@ function relinkLine(line: string, file: string, self: string) {
   })
 }
 
-// A line is inside a fence when an odd number of fence markers precede it; the markers count as inside.
-function insideFence(lines: string[], index: number) {
-  const markers = lines.slice(0, index + 1).filter((line) => /^\s*(```|~~~)/.test(line)).length
-  return markers % 2 === 1 || /^\s*(```|~~~)/.test(lines[index] ?? "")
-}
-
 function splitBlocks(text: string) {
   const lines = text.split("\n")
-  const fenced = lines.map(
-    (_, index) => lines.slice(0, index).filter((line) => /^\s*(```|~~~)/.test(line)).length % 2 === 1,
-  )
+  const inside = fenced(lines)
   const starts = lines
     .map((line, index) => ({ match: /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line), index }))
-    .filter((entry) => entry.match !== null && !fenced[entry.index])
+    .filter((entry) => entry.match !== null && !inside[entry.index])
   return [
     { heading: "", level: 0, lines: lines.slice(0, starts[0]?.index ?? lines.length) },
     ...starts.map((entry, at) => ({
@@ -170,23 +161,6 @@ function splitBlocks(text: string) {
       lines: lines.slice(entry.index, starts[at + 1]?.index ?? lines.length),
     })),
   ].filter((block) => block.level > 0 || block.lines.some((line) => line.trim() !== ""))
-}
-
-// GitHub heading slugs, with -1, -2 suffixes for repeated headings.
-function headingSlugs(headings: string[]) {
-  const counts = new Map<string, number>()
-  return headings.map((heading) => {
-    const slug = heading
-      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-      .replaceAll("`", "")
-      .trim()
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}_\- ]/gu, "")
-      .replaceAll(" ", "-")
-    const seen = counts.get(slug) ?? 0
-    counts.set(slug, seen + 1)
-    return seen === 0 ? slug : `${slug}-${seen}`
-  })
 }
 
 function parseGroups(rest: string[]): Group[] {
@@ -200,10 +174,4 @@ function parseGroups(rest: string[]): Group[] {
     if (arg === "--section") return [...found.slice(0, -1), { ...last, sections: [...last.sections, value] }]
     return found
   }, [])
-}
-
-// Typed explicitly so type-aware lint keeps string types where Bun's type definitions aren't installed.
-function git(cwd: string, ...command: string[]): string | undefined {
-  const result = Bun.spawnSync(["git", "-C", cwd, ...command], { stdout: "pipe", stderr: "pipe" })
-  return result.exitCode === 0 ? result.stdout.toString().trim() : undefined
 }

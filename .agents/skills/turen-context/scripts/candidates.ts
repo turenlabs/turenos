@@ -8,6 +8,7 @@
 
 import path from "node:path"
 import { readFileSync } from "node:fs"
+import { git } from "./lib/git"
 
 const VENDORED = /(^|\/)(vendor|node_modules|dist|build|third[-_]party|fixtures?|__snapshots__)\//
 // Checked-in, checksum-verified WASM build outputs; the root AGENTS.md already says not to edit them.
@@ -130,10 +131,4 @@ function commits() {
       const lines = entry.split("\n")
       return { subject: lines[0] ?? "", files: lines.slice(1).filter((line) => line.length > 0) }
     })
-}
-
-// Typed explicitly so type-aware lint keeps string types where Bun's type definitions aren't installed.
-function git(cwd: string, ...command: string[]): string | undefined {
-  const result = Bun.spawnSync(["git", "-C", cwd, ...command], { stdout: "pipe", stderr: "pipe" })
-  return result.exitCode === 0 ? result.stdout.toString().trim() : undefined
 }

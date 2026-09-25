@@ -17,8 +17,9 @@
 
 import path from "node:path"
 import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, statSync } from "node:fs"
+import { git, listed } from "./lib/git"
+import { fenced, isPage, REWRITABLE_LINK } from "./lib/markdown"
 
-const LINK = /(\]\(\s*<?|^\s*\[[^\]]+\]:\s*<?|(?:href|src)=")([^)\s>"]+)/gm
 // Match a complete relative docs/ path, not a docs/ suffix inside an area path such as tools/foo/docs/.
 const INBOUND = /(?<![A-Za-z0-9_./-])((?:\.\.?\/)*)docs\/([A-Za-z0-9/_.-]+(?:#[A-Za-z0-9_-]+)?)/g
 
@@ -41,9 +42,10 @@ const folders = new Map(
 
 const docsEdits = await Promise.all(
   // Pages moving in from outside docs/ need their links rewritten for their new home too.
-  [...new Set([...(await markdownUnder(docs)), ...[...moves.keys()].filter((file) => /\.mdx?$/.test(file))])].map(
-    async (file) => ({ file, ...rewriteDocsPage(await Bun.file(file).text(), file) }),
-  ),
+  [...new Set([...(await markdownUnder(docs)), ...[...moves.keys()].filter(isPage)])].map(async (file) => ({
+    file,
+    ...rewriteDocsPage(await Bun.file(file).text(), file),
+  })),
 )
 const inboundEdits = await Promise.all(
   outsideMarkdown()
@@ -109,7 +111,7 @@ function rewriteDocsPage(text: string, file: string) {
   const linked = outsideCode(
     text,
     (chunk) =>
-      chunk.replace(LINK, (whole, prefix: string, target: string) => {
+      chunk.replace(REWRITABLE_LINK, (whole, prefix: string, target: string) => {
         if (/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(target)) return whole
         const hash = target.indexOf("#")
         const linkPath = hash === -1 ? target : target.slice(0, hash)
@@ -187,25 +189,16 @@ function rewriteInbound(text: string, file: string) {
 // Applies transform outside fenced code blocks, and outside inline code unless keepSpans is set.
 function outsideCode(text: string, transform: (chunk: string) => string, keepSpans: boolean) {
   const lines = text.split(/(?<=\n)/)
-  const result = lines.reduce<{ out: string[]; prose: string[]; fence?: string }>(
-    (state, line) => {
-      const marker = /^\s*(```+|~~~+)/.exec(line)?.[1]
-      if (marker && state.fence === undefined) {
-        return {
-          out: [...state.out, spans(state.prose.join(""), transform, keepSpans), line],
-          prose: [],
-          fence: marker,
-        }
-      }
-      if (marker && state.fence !== undefined && marker[0] === state.fence[0]) {
-        return { out: [...state.out, line], prose: [], fence: undefined }
-      }
-      if (state.fence !== undefined) return { ...state, out: [...state.out, line] }
-      return { ...state, prose: [...state.prose, line] }
-    },
-    { out: [], prose: [] },
+  const inside = fenced(lines)
+  // Consecutive prose lines are transformed together, so a link that wraps across lines still matches.
+  const result = lines.reduce<{ out: string[]; prose: string }>(
+    (state, line, index) =>
+      inside[index]
+        ? { out: [...state.out, spans(state.prose, transform, keepSpans), line], prose: "" }
+        : { out: state.out, prose: state.prose + line },
+    { out: [], prose: "" },
   )
-  return [...result.out, spans(result.prose.join(""), transform, keepSpans)].join("")
+  return [...result.out, spans(result.prose, transform, keepSpans)].join("")
 }
 
 function spans(chunk: string, transform: (chunk: string) => string, keepSpans: boolean) {
@@ -223,11 +216,8 @@ async function markdownUnder(folder: string) {
 
 function outsideMarkdown() {
   // Tracked and new, unignored files, so pages added in the same change are rewritten too.
-  const listed = git(root, "ls-files", "--cached", "--others", "--exclude-standard", "*.md")
-  if (listed === undefined) return []
-  return listed
-    .split("\n")
-    .filter((file) => file.length > 0 && !file.includes("node_modules/") && !file.includes("/vendor/"))
+  return listed(root, "*.md")
+    .filter((file) => !file.includes("node_modules/") && !file.includes("/vendor/"))
     .map((file) => path.join(root, file))
     .filter((file) => !file.startsWith(docs + path.sep) && existsSync(file))
 }
@@ -238,9 +228,4 @@ function removeEmptyFolders(folder: string) {
     .filter((entry) => statSync(entry).isDirectory())
     .forEach(removeEmptyFolders)
   if (folder !== docs && readdirSync(folder).length === 0) rmdirSync(folder)
-}
-
-function git(cwd: string, ...command: string[]) {
-  const result = Bun.spawnSync(["git", "-C", cwd, ...command], { stdout: "pipe", stderr: "pipe" })
-  return result.exitCode === 0 ? result.stdout.toString().trim() : undefined
 }
