@@ -574,6 +574,8 @@ describe("OpenAI Chat route", () => {
   for (const [name, media] of [
     ["mismatched data URL MIME", { mediaType: "image/png", data: "data:image/jpeg;base64,/9j/" }],
     ["malformed base64", { mediaType: "image/png", data: "not-base64" }],
+    ["misplaced base64 padding", { mediaType: "image/png", data: "AA=A" }],
+    ["excess base64 padding", { mediaType: "image/png", data: "A===" }],
     ["unsupported SVG", { mediaType: "image/svg+xml", data: "PHN2Zz4=" }],
   ] as const)
     it.effect(`rejects ${name}`, () =>
