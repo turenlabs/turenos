@@ -1,4 +1,4 @@
-import type { ModelMessage } from "ai"
+import type { ModelMessage, ToolExecutionOptions } from "ai"
 import type { SecretOutput } from "@turenlabs/core/secret-output"
 import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 
@@ -80,6 +80,38 @@ export async function workflow(
         message === undefined ? "Tool execution failed" : attempt(() => guard.text(message), "Tool execution failed"),
     }
   }
+}
+
+interface Executable {
+  execute?(args: unknown, options: ToolExecutionOptions): unknown
+}
+
+/**
+ * The tool callback installed on a workflow language model. That model is cached and outlives the
+ * request that installs the callback, so the callback holds only a way to acquire protection: every
+ * call -- an unknown tool name included -- takes its own snapshot and releases it when it returns.
+ * No request's compiled configured values stay reachable through the cached model.
+ */
+export function executor(input: {
+  readonly tools: Readonly<Record<string, Executable | undefined>>
+  readonly messages: ModelMessage[]
+  readonly abort: AbortSignal
+  readonly protection: () => PromiseLike<SecretOutput.Snapshot>
+}) {
+  return (toolName: string, argsJson: string, requestID: string) =>
+    workflow(
+      async () => {
+        const tool = input.tools[toolName]
+        if (!tool?.execute) throw new Error(`Unknown tool: ${toolName}`)
+        return tool.execute(JSON.parse(argsJson), {
+          toolCallId: requestID,
+          messages: input.messages,
+          abortSignal: input.abort,
+        })
+      },
+      input.abort,
+      input.protection(),
+    )
 }
 
 function attempt<A>(run: () => A, fallback: A): A {

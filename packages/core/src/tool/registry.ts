@@ -154,8 +154,15 @@ const registryLayer = Layer.effect(
         ...(subagentContext && Tool.requiresSubagentContext(registration.tool) ? { subagentContext } : {}),
       }).pipe(
         Effect.map((output) => ({ output })),
+        // Protect the whole message before the formatter rewrites or caps any part of it.
         Effect.catchTag("LLM.ToolFailure", (failure) =>
-          Effect.succeed({ result: { type: "error" as const, value: ToolVisibleError.make(failure) } }),
+          Effect.try({
+            try: () => ToolVisibleError.make(failure, protection.text),
+            catch: () => "Tool output withheld because secret redaction failed",
+          }).pipe(
+            Effect.catch((withheld) => Effect.succeed(withheld)),
+            Effect.map((value) => ({ result: { type: "error" as const, value } })),
+          ),
         ),
       )
       if ("result" in pending) return pending

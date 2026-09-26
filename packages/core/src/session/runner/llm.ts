@@ -249,6 +249,19 @@ function goalTokenDelta(tokens: GoalTokens | undefined) {
 }
 
 /**
+ * Error text for durable records and model replies. The complete original message is protected
+ * first: ToolVisibleError's own rewriting and length cap would otherwise hide part of a configured
+ * value from the guard. Without protection the details are withheld, never passed through.
+ */
+const visibleError = (protection: Effect.Effect<SecretOutput.Snapshot, SecretOutput.Error>, error: unknown) =>
+  protection.pipe(
+    Effect.flatMap((guard) =>
+      Effect.try({ try: () => ToolVisibleError.make(error, guard.text), catch: () => "unprotectable" }),
+    ),
+    Effect.catch(() => Effect.succeed("Secret output protection unavailable or failed; details withheld")),
+  )
+
+/**
  * The harness as instructions, not as an inventory.
  *
  * A tool listed in the tool schema is easy to walk past: when the model already knows a familiar way
@@ -425,7 +438,7 @@ const layer = Layer.effect(
         sessionID,
         timestamp: yield* DateTime.now,
         assistantMessageID,
-        error: { type: "unknown", message: ToolVisibleError.make(failure) },
+        error: { type: "unknown", message: yield* visibleError(secretOutput.snapshot(), failure) },
       })
     })
     const recordUnstartedInterruption = Effect.fnUntraced(function* (sessionID: SessionSchema.ID) {
@@ -1125,6 +1138,7 @@ const layer = Layer.effect(
         },
         protection,
       )
+      const visible = (error: unknown) => visibleError(protection, error)
       // The CLI receives these replies directly, outside durable publication.
       const protectReply = (result: ToolResultValue) =>
         protection.pipe(
@@ -1214,7 +1228,7 @@ const layer = Layer.effect(
                   type: "error",
                   value: Cause.hasInterruptsOnly(settlement.cause)
                     ? "Tool execution interrupted"
-                    : `Tool execution failed: ${ToolVisibleError.make(Cause.squash(settlement.cause))}`,
+                    : `Tool execution failed: ${yield* visible(Cause.squash(settlement.cause))}`,
                 })
                 yield* publish(LLMEvent.toolResult({ id: call.id, name: call.name, result }))
                 return result
@@ -1476,9 +1490,7 @@ const layer = Layer.effect(
           }
           if (overflowRecoveryFailure) {
             yield* withPublication(
-              publisher.failAssistant(
-                `Provider context recovery failed: ${ToolVisibleError.make(overflowRecoveryFailure)}`,
-              ),
+              publisher.failAssistant(`Provider context recovery failed: ${yield* visible(overflowRecoveryFailure)}`),
             )
           } else if (overflowFailure && stream._tag === "Success") {
             // If the provider emitted an overflow frame and then the stream itself failed, the later
@@ -1532,7 +1544,7 @@ const layer = Layer.effect(
               publisher.failUnsettledTools("Provider stream failed before the tool returned", true),
             )
             yield* withPublication(
-              publisher.failAssistant(`Provider stream failed: ${ToolVisibleError.make(Cause.squash(stream.cause))}`),
+              publisher.failAssistant(`Provider stream failed: ${yield* visible(Cause.squash(stream.cause))}`),
             )
           }
           if (toolMaterialization) {
@@ -1571,9 +1583,7 @@ const layer = Layer.effect(
           }
           if (regularSettled._tag === "Failure" && !Cause.hasInterrupts(regularSettled.cause) && !userDeclined) {
             const failure = Cause.squash(regularSettled.cause)
-            yield* withPublication(
-              publisher.failUnsettledTools(`Tool execution failed: ${ToolVisibleError.make(failure)}`),
-            )
+            yield* withPublication(publisher.failUnsettledTools(`Tool execution failed: ${yield* visible(failure)}`))
           }
           const stepSettlement = publisher.stepSettlement()
           if (
@@ -1640,9 +1650,7 @@ const layer = Layer.effect(
           const settled = regularSettled._tag === "Failure" ? regularSettled : goalUpdatesSettled
           if (goalUpdatesSettled._tag === "Failure" && !Cause.hasInterrupts(goalUpdatesSettled.cause)) {
             const failure = Cause.squash(goalUpdatesSettled.cause)
-            yield* withPublication(
-              publisher.failUnsettledTools(`Goal update failed: ${ToolVisibleError.make(failure)}`),
-            )
+            yield* withPublication(publisher.failUnsettledTools(`Goal update failed: ${yield* visible(failure)}`))
           }
           if (stepSettlement && !publisher.hasProviderError() && !turnInterrupted) {
             const endSnapshot = yield* snapshots.capture()

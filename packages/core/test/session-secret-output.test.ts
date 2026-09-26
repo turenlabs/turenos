@@ -41,6 +41,8 @@ import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
 import { SecretOutput } from "@turenlabs/core/secret-output"
 import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { SessionDisclosure } from "@turenlabs/core/session/disclosure"
+import { ExtensionRuntime } from "@turenlabs/core/extension"
+import { Extension } from "@turenlabs/schema"
 import { ClaudeCodeCLI } from "@turenlabs/core/provider/claude-code"
 import { ClaudeCodeMcp } from "@turenlabs/core/session/runner/claude-code-mcp-namespace"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -56,26 +58,30 @@ const scratch = mkdtempSync(join(tmpdir(), "forge-session-secret-"))
 let responses: LLMEvent[][] = []
 const requests: LLMRequest[] = []
 // Stands in for the Claude Code CLI calling TurenOS tools over the turn's private MCP bridge.
-const bridgeCalls: Array<{ readonly name: string; readonly arguments: Record<string, unknown> }> = []
+type BridgeCall = { readonly name: string; readonly arguments: Record<string, unknown> }
+const bridgeCalls: BridgeCall[] = []
 const bridgeResults: unknown[] = []
-const callBridge = (token: string) =>
+// An MCP client connected to the turn's bridge with its bearer credential, closed with the scope.
+const connect = (token: string) =>
   Effect.gen(function* () {
     const server = yield* ClaudeCodeMcp.serve(token)
     const mcp = new Client({ name: "forge-secret-test", version: "1" })
+    const transport = new StreamableHTTPClientTransport(new URL(server.url), {
+      requestInit: { headers: { Authorization: server.authorization } },
+    })
     yield* Effect.acquireRelease(
-      Effect.promise(() =>
-        mcp.connect(
-          new StreamableHTTPClientTransport(new URL(server.url), {
-            requestInit: { headers: { Authorization: server.authorization } },
-          }),
-        ),
-      ),
+      Effect.promise(() => mcp.connect(transport)),
       () => Effect.promise(() => mcp.close()),
     )
-    for (const call of bridgeCalls.splice(0))
-      bridgeResults.push(
-        yield* Effect.promise(() => mcp.callTool(call).catch((error: unknown) => ({ rejected: String(error) }))),
-      )
+    return mcp
+  })
+// A rejected call is recorded rather than thrown, so its text can be checked for leaks.
+const call = (mcp: Client, input: BridgeCall) =>
+  Effect.promise(() => mcp.callTool(input).catch((error: unknown) => ({ rejected: String(error) })))
+const callBridge = (token: string) =>
+  Effect.gen(function* () {
+    const mcp = yield* connect(token)
+    for (const input of bridgeCalls.splice(0)) bridgeResults.push(yield* call(mcp, input))
   }).pipe(Effect.scoped)
 const client = Layer.succeed(
   LLMClient.Service,
@@ -112,6 +118,8 @@ const permission = Layer.succeed(
 // The source file retains the synthetic token; only tool output may be masked.
 const secret = `ghp_${"aB12".repeat(9)}`
 const gitlab = `glpat-${"Zx9-".repeat(5)}`
+// A configured value whose first half is also a detected format (see the composite regressions).
+const composite = `AKIA${"Q7".repeat(8)}:synthetic/Private+Suffix92837`
 const fixture = join(scratch, "credential.txt")
 const fileRead = Tool.make({
   description: "Read the synthetic credential fixture",
@@ -137,6 +145,12 @@ const toolsLayer = Layer.effectDiscard(
         input: Schema.Struct({}),
         output: Schema.String,
         execute: () => Effect.interrupt,
+      }),
+      fixture_composite: Tool.make({
+        description: "Crash with a configured composite credential in the defect",
+        input: Schema.Struct({}),
+        output: Schema.String,
+        execute: () => Effect.die(new Error(`adapter crashed while holding ${composite}`)),
       }),
     }),
   ),
@@ -199,6 +213,7 @@ const harness = (extra: ReadonlyArray<readonly [unknown, unknown]> = []) => {
         ReferenceGuidance.node,
         Config.node,
         Snapshot.node,
+        ExtensionRuntime.node,
         node,
         SessionV2.node,
       ]),
@@ -422,6 +437,78 @@ describe("Session secret-safe tool output", () => {
       expect(crash).toContain("adapter crashed")
       expect(crash).toContain("[SECRET:v1:gitlab:")
       expect(interrupted).toContain("interrupted")
+    }),
+  )
+
+  const configureComposite = Effect.gen(function* () {
+    const extensions = yield* ExtensionRuntime.Service
+    yield* extensions.update(
+      Extension.ID.make("turenlabs", "pagerduty"),
+      { enabled: false, secrets: { PAGERDUTY_CLIENT_SECRET: composite } },
+      { local: true },
+    )
+  })
+  const retained = (id: SessionV2.ID) =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const events = yield* database.db.select().from(EventTable).where(eq(EventTable.aggregate_id, id)).all()
+      const executions = yield* database.db
+        .select()
+        .from(ToolExecutionTable)
+        .where(eq(ToolExecutionTable.session_id, id))
+        .all()
+      return { events, executions }
+    })
+
+  cli.effect("CLI bridge failures mask a whole configured value before legacy error formatting", () =>
+    Effect.gen(function* () {
+      const id = SessionV2.ID.make("ses_secret_cli_composite")
+      yield* prepare(id)
+      yield* configureComposite
+      bridgeResults.length = 0
+      bridgeCalls.push({ name: "fixture_composite", arguments: {} })
+      responses = turn({}, "unused").slice(1)
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID: id, prompt: Prompt.make({ text: "Use the tool" }), resume: false })
+      yield* session.resume(id)
+
+      expect(bridgeResults).toHaveLength(1)
+      const { events, executions } = yield* retained(id)
+      for (const record of [bridgeResults, events, executions].map((value) => JSON.stringify(value))) {
+        expect(record).not.toContain("Private+Suffix92837")
+        expect(record).not.toContain("AKIA")
+      }
+      expect(JSON.stringify(bridgeResults)).toMatch(/adapter crashed while holding \[SECRET:v1:known:[a-f0-9]{32}\]/)
+      expect(events.some((event) => event.type.startsWith("session.next.tool.failed"))).toBe(true)
+    }),
+  )
+
+  endToEnd.effect("native tool failures mask a whole configured value before legacy error formatting", () =>
+    Effect.gen(function* () {
+      const id = SessionV2.ID.make("ses_secret_native_composite")
+      yield* prepare(id)
+      yield* configureComposite
+      responses = [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "composite-call", name: "fixture_composite", input: {} }),
+          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+          LLMEvent.finish({ reason: "tool-calls" }),
+        ],
+        ...turn({}, "unused").slice(1),
+      ]
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID: id, prompt: Prompt.make({ text: "Use the tool" }), resume: false })
+      yield* session.resume(id).pipe(Effect.exit)
+
+      const { events, executions } = yield* retained(id)
+      const failed = events.filter((event) => event.type.startsWith("session.next.tool.failed"))
+      expect(failed).toHaveLength(1)
+      for (const record of [events, executions].map((value) => JSON.stringify(value))) {
+        expect(record).not.toContain("Private+Suffix92837")
+        expect(record).not.toContain("AKIA")
+      }
+      expect(JSON.stringify(failed)).toMatch(/adapter crashed while holding \[SECRET:v1:known:[a-f0-9]{32}\]/)
     }),
   )
 })

@@ -21,6 +21,16 @@ import { ProviderV2 } from "@turenlabs/core/provider"
 import { ModelV2 } from "@turenlabs/core/model"
 import { SecretOutput } from "@turenlabs/core/secret-output"
 import { SecretRedaction } from "@turenlabs/core/secret-redaction"
+import { Database } from "@turenlabs/core/database/database"
+import { EventTable } from "@turenlabs/core/event/sql"
+import { eq } from "drizzle-orm"
+import { ToolOutput } from "@/tool/secret-output"
+import { ShellTool } from "@/tool/shell"
+import { Config } from "@/config/config"
+import { Agent } from "@/agent/agent"
+import { Plugin } from "@/plugin"
+import { Truncate } from "@/tool/truncate"
+import { FSUtil } from "@turenlabs/core/fs-util"
 
 const graph = LayerNode.group([
   SessionNs.node,
@@ -40,7 +50,7 @@ const it = testEffect(AppNodeBuilder.build(graph, replacements))
 // Format detectors only, with an outage switch for the credential snapshot.
 const protection = { available: true }
 const guarded = testEffect(
-  AppNodeBuilder.build(graph, [
+  AppNodeBuilder.build(LayerNode.group([graph, Database.node]), [
     ...replacements,
     [
       SecretOutput.node,
@@ -55,6 +65,23 @@ const guarded = testEffect(
       ),
     ],
   ]),
+)
+
+// Real shell execution feeding real Session persistence, as SessionTools wires streamed metadata.
+const shellIt = testEffect(
+  AppNodeBuilder.build(
+    LayerNode.group([
+      graph,
+      Config.node,
+      Agent.node,
+      Plugin.node,
+      Truncate.node,
+      FSUtil.node,
+      RuntimeFlags.node,
+      Database.node,
+    ]),
+    replacements,
+  ),
 )
 
 const awaitDeferred = <T>(deferred: Deferred.Deferred<T>, message: string) =>
@@ -410,6 +437,178 @@ describe("Session", () => {
       expect(pruned?.status === "completed" && pruned.time.compacted).toBe(3)
       expect(JSON.stringify(outcome.fresh)).not.toContain(secret)
       expect(JSON.stringify(outcome.fresh)).toContain("withheld")
+      yield* session.remove(info.id)
+    }),
+  )
+  ;(process.platform === "win32" ? shellIt.instance.skip : shellIt.instance)(
+    "streamed shell previews never write a partially received credential to event history",
+    () =>
+      Effect.gen(function* () {
+        const { session, info, messageID } = yield* toolMessage()
+        const part = {
+          id: PartID.ascending(),
+          messageID,
+          sessionID: info.id,
+          type: "tool" as const,
+          tool: "bash",
+          callID: "streamed",
+        }
+        const shell = yield* (yield* ShellTool).init()
+        const prefix = `ghp_${"0".repeat(35)}`
+        const output = yield* shell.execute(
+          { command: "printf 'ghp_%035d' 0; sleep 0.2; printf '7\\n'; sleep 0.2" },
+          {
+            sessionID: info.id,
+            messageID,
+            callID: "streamed",
+            agent: "build",
+            abort: AbortSignal.any([]),
+            messages: [],
+            ask: () => Effect.void,
+            // SessionTools protects each streamed metadata value before persisting it.
+            metadata: (value) =>
+              session
+                .updatePart({
+                  ...part,
+                  state: {
+                    status: "running",
+                    input: {},
+                    time: { start: 1 },
+                    metadata: ToolOutput.record(value.metadata ?? {}, SecretRedaction),
+                  },
+                })
+                .pipe(Effect.asVoid),
+          },
+        )
+        yield* session.updatePart({
+          ...part,
+          state: {
+            status: "completed",
+            input: {},
+            time: { start: 1, end: 2 },
+            title: "streamed",
+            metadata: output.metadata,
+            output: output.output,
+          },
+        })
+        const database = yield* Database.Service
+        const events = yield* database.db.select().from(EventTable).where(eq(EventTable.aggregate_id, info.id)).all()
+        expect(events.length).toBeGreaterThan(0)
+        expect(JSON.stringify(events)).not.toContain(prefix)
+        const saved = yield* session.getPart({ sessionID: info.id, messageID, partID: part.id })
+        expect(JSON.stringify(saved)).not.toContain(prefix)
+        expect(JSON.stringify(saved)).toContain("[SECRET:v1:github:")
+        yield* session.remove(info.id)
+      }),
+    30_000,
+  )
+
+  guarded.instance("an outage never runs incoming hooks and persists only previously stored text", () =>
+    Effect.gen(function* () {
+      const { session, info, messageID } = yield* toolMessage()
+      const token = `ghp_${"Q7a9".repeat(9)}`
+      const calls = { getter: 0, toJSON: 0, output: 0, trap: 0 }
+      const base = (callID: string) => ({
+        id: PartID.ascending(),
+        messageID,
+        sessionID: info.id,
+        type: "tool" as const,
+        tool: "read",
+        callID,
+        state: {
+          status: "completed" as const,
+          input: {},
+          title: "ok",
+          output: "ok",
+          metadata: { value: "old" },
+          time: { start: 1, end: 2 },
+        },
+      })
+      const parts = {
+        // Returns the stored value on first read and a fresh credential on the next one.
+        getter: base("getter"),
+        toJSON: base("toJSON"),
+        output: base("output"),
+        proxy: base("proxy"),
+        rejected: base("rejected"),
+        equal: base("equal"),
+      }
+      for (const part of Object.values(parts)) yield* session.updatePart(part)
+      const cycle: Record<string, unknown> = { value: "old" }
+      cycle.self = cycle
+      const incoming = {
+        getter: {
+          ...parts.getter.state,
+          metadata: Object.defineProperty({}, "value", {
+            enumerable: true,
+            get() {
+              calls.getter += 1
+              return calls.getter === 1 ? "old" : token
+            },
+          }),
+        },
+        toJSON: {
+          ...parts.toJSON.state,
+          metadata: {
+            toJSON() {
+              calls.toJSON += 1
+              return { value: token }
+            },
+          },
+        },
+        output: Object.defineProperty({ ...parts.output.state }, "output", {
+          enumerable: true,
+          get() {
+            calls.output += 1
+            return calls.output === 1 ? "ok" : token
+          },
+        }),
+        proxy: {
+          ...parts.proxy.state,
+          metadata: new Proxy(
+            { value: "old" },
+            {
+              get(target, key) {
+                calls.trap += 1
+                return key === "value" ? token : Reflect.get(target, key)
+              },
+              ownKeys(target) {
+                calls.trap += 1
+                return Reflect.ownKeys(target)
+              },
+              getOwnPropertyDescriptor(target, key) {
+                calls.trap += 1
+                return key === "value"
+                  ? { value: token, enumerable: true, configurable: true, writable: true }
+                  : Reflect.getOwnPropertyDescriptor(target, key)
+              },
+            },
+          ),
+        },
+        rejected: { ...parts.rejected.state, metadata: { value: token, big: 1n, self: cycle } },
+        equal: { ...parts.equal.state, metadata: { value: "old" } },
+      }
+
+      protection.available = false
+      yield* Effect.gen(function* () {
+        for (const key of Object.keys(parts) as (keyof typeof parts)[])
+          yield* session.updatePart({ ...parts[key], state: incoming[key] as never })
+      }).pipe(Effect.ensuring(Effect.sync(() => (protection.available = true))))
+
+      expect(calls).toEqual({ getter: 0, toJSON: 0, output: 0, trap: 0 })
+      const database = yield* Database.Service
+      const events = yield* database.db.select().from(EventTable).where(eq(EventTable.aggregate_id, info.id)).all()
+      expect(JSON.stringify(events)).not.toContain(token)
+      for (const [key, part] of Object.entries(parts)) {
+        const saved = yield* session.getPart({ sessionID: info.id, messageID, partID: part.id })
+        expect(JSON.stringify(saved)).not.toContain(token)
+        const state = saved?.type === "tool" && saved.state.status === "completed" ? saved.state : undefined
+        // Output that still equals the stored value is kept; new or unreadable data is withheld.
+        expect(state?.output).toBe(key === "output" ? ToolOutput.WITHHELD : "ok")
+        expect(state?.metadata).toEqual(
+          key === "equal" || key === "output" ? { value: "old" } : { error: ToolOutput.WITHHELD },
+        )
+      }
       yield* session.remove(info.id)
     }),
   )

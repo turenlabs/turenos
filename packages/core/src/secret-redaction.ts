@@ -1,5 +1,6 @@
 export * as SecretRedaction from "./secret-redaction"
 
+import { types } from "node:util"
 import { SecretVault } from "./secret-vault"
 
 // Leave room for producer captures and their structured/text representations before
@@ -12,8 +13,10 @@ const MAX_KNOWN_VALUES = 256
 const MAX_KNOWN_BYTES = 65_536
 const MAX_NODES = 100_000
 const MAX_DEPTH = 64
-// Streamed text is released only this far behind its end, well beyond any detected format.
-const STREAM_TAIL = 4096
+// Detected formats and references are shorter than this; a longer run can no longer become one.
+const MAX_FINDING = 128
+// Every private key header the PEM detector recognizes, so a partially received one can be held.
+const HEADERS = ["", "RSA ", "EC ", "DSA ", "OPENSSH ", "ENCRYPTED "].map((type) => `-----BEGIN ${type}PRIVATE KEY`)
 /** Stands in for a value the lenient walk refuses to read or cannot bound. */
 export const WITHHELD = "[withheld: secret redaction failed]"
 // Well-known placeholders that local OpenAI-compatible servers document as "any key works".
@@ -30,20 +33,24 @@ const PLACEHOLDERS = new Set([
 const MARKER = /\[SECRET:v1:[a-z][a-z0-9-]{0,63}:[a-f0-9]{32}\]/g
 const PEM = /-----BEGIN ((?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY)/g
 
+// Each detected format fills a whole token run and starts with one of the listed prefixes.
 const RULES = [
   [
     "github",
     /(?<![A-Za-z0-9_-])(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59})(?![A-Za-z0-9_-])/g,
+    ["ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"],
   ],
-  ["gitlab", /(?<![A-Za-z0-9_-])glpat-[A-Za-z0-9_-]{20}(?![A-Za-z0-9_-])/g],
+  ["gitlab", /(?<![A-Za-z0-9_-])glpat-[A-Za-z0-9_-]{20}(?![A-Za-z0-9_-])/g, ["glpat-"]],
   [
     "slack",
     /(?<![A-Za-z0-9_-])(?:xoxb-[0-9]{10,13}-[0-9]{10,13}-[A-Za-z0-9]{24,32}|xoxp-[0-9]{10,13}-[0-9]{10,13}-[0-9]{10,13}-[A-Za-z0-9]{32})(?![A-Za-z0-9_-])/g,
+    ["xoxb-", "xoxp-"],
   ],
-  ["stripe", /(?<![A-Za-z0-9_-])(?:sk|rk)_live_[A-Za-z0-9]{24,99}(?![A-Za-z0-9_-])/g],
-  ["aws-access-key-id", /(?<![A-Za-z0-9_-])(?:AKIA|ASIA)[A-Z0-9]{16}(?![A-Za-z0-9_-])/g],
-  ["google-api-key", /(?<![A-Za-z0-9_-])AIza[A-Za-z0-9_-]{35}(?![A-Za-z0-9_-])/g],
+  ["stripe", /(?<![A-Za-z0-9_-])(?:sk|rk)_live_[A-Za-z0-9]{24,99}(?![A-Za-z0-9_-])/g, ["sk_live_", "rk_live_"]],
+  ["aws-access-key-id", /(?<![A-Za-z0-9_-])(?:AKIA|ASIA)[A-Z0-9]{16}(?![A-Za-z0-9_-])/g, ["AKIA", "ASIA"]],
+  ["google-api-key", /(?<![A-Za-z0-9_-])AIza[A-Za-z0-9_-]{35}(?![A-Za-z0-9_-])/g, ["AIza"]],
 ] as const
+const STARTS: readonly string[] = RULES.flatMap(([, , starts]) => starts)
 
 /**
  * Whether a configured value is specific enough to mask wherever it appears. Short, repetitive
@@ -70,13 +77,16 @@ export function compile(secrets: readonly string[] = []) {
     literals.length === 0
       ? undefined
       : new RegExp(literals.map((secret) => secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g")
-  // Longer than any detected format or configured value, so nothing still arriving can straddle it.
-  const tail = Math.max(STREAM_TAIL, literals[0]?.length ?? 0)
   return Object.freeze({
     text: (value: string) => guarded(() => redact(value, known)),
     json: (value: unknown) => guarded(() => traverse(value, (part) => redact(part, known))),
-    boundary: (value: string) => guarded(() => boundary(value, known, tail)),
+    boundary: (value: string) => guarded(() => boundary(value, known, literals)),
   })
+}
+
+/** Spans of the `[SECRET:v1:…]` references already present in `value`. */
+export function references(value: string) {
+  return [...value.matchAll(MARKER)].map((match) => ({ start: match.index, end: match.index + match[0].length }))
 }
 
 export function text(value: string, secrets?: readonly string[]): string {
@@ -136,15 +146,61 @@ function redact(value: string, known: RegExp | undefined): string {
 }
 
 /**
- * The longest prefix of streamed text that can be redacted on its own: at least `tail` characters
- * before the end, and never inside a finding. An unterminated private key block holds everything
- * from its header, so a stream is never flushed through the middle of one. Returns 0 to hold.
+ * The longest prefix of streamed text that is already decided and can be redacted on its own.
+ *
+ * Only what later text could still turn into a finding is held back: an open run of token
+ * characters that could still become a detected format (each fills a whole run from a fixed
+ * prefix), a partial private key header, an unclosed reference, the start of a configured value,
+ * and anything a finding spans -- an unterminated private key block holds everything from its
+ * header. Ordinary output, including a trailing word with no delimiter yet, is released as soon as
+ * it arrives, so a live preview never waits on text that cannot contain a credential.
  */
-function boundary(value: string, known: RegExp | undefined, tail: number) {
+function boundary(value: string, known: RegExp | undefined, literals: readonly string[]) {
   if (Buffer.byteLength(value, "utf8") > MAX_BYTES) throw failure()
-  const cut = value.length - tail
-  if (cut <= 0) return 0
-  return unions(locate(value, known)).find((union) => union.start < cut && union.end > cut)?.start ?? cut
+  let run = 0
+  while (run <= MAX_FINDING && run < value.length && token(value.charCodeAt(value.length - 1 - run))) run += 1
+  const word = value.slice(value.length - run)
+  const open = value.lastIndexOf("[")
+  const candidates = [
+    run <= MAX_FINDING && STARTS.some((start) => start.startsWith(word) || word.startsWith(start))
+      ? value.length - run
+      : value.length,
+    open !== -1 && value.length - open <= MAX_FINDING && !value.includes("]", open) ? open : value.length,
+    ...HEADERS.map((header) => value.length - partial(value, header)),
+    ...literals.map((literal) => value.length - partial(value, literal)),
+  ]
+  const held = Math.min(...candidates)
+  // A finding that reaches the end may still grow (an unterminated key block always does).
+  const cut =
+    unions(locate(value, known)).find((union) => union.start < held && (union.end > held || union.end === value.length))
+      ?.start ?? held
+  // Each release is encoded on its own, so never end one between the halves of a surrogate pair.
+  return high(value.charCodeAt(cut - 1)) ? cut - 1 : cut
+}
+
+// Length of the longest suffix of `value` that is a proper prefix of `target`.
+function partial(value: string, target: string) {
+  for (
+    let index = value.indexOf(target[0], Math.max(0, value.length - target.length + 1));
+    index !== -1;
+    index = value.indexOf(target[0], index + 1)
+  )
+    if (target.startsWith(value.slice(index))) return value.length - index
+  return 0
+}
+
+function token(code: number) {
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122) ||
+    code === 45 ||
+    code === 95
+  )
+}
+
+function high(code: number) {
+  return code >= 0xd800 && code <= 0xdbff
 }
 
 // Overlapping findings, in order, merged into the disjoint regions that get one reference each.
@@ -269,7 +325,8 @@ function relaxed(
   if (value === undefined || value === null || typeof value === "boolean") return value
   if (typeof value === "number") return Number.isFinite(value) ? value : null
   if (typeof value === "function" || typeof value === "symbol") return undefined
-  if (typeof value !== "object" || depth > MAX_DEPTH || active.has(value)) return WITHHELD
+  // A proxy's traps are hooks too: withhold it without enumerating or reading through it.
+  if (typeof value !== "object" || depth > MAX_DEPTH || active.has(value) || types.isProxy(value)) return WITHHELD
   const time = dateValue(value)
   if (time !== undefined) return Number.isNaN(time) ? null : new Date(time).toISOString()
   active.add(value)
@@ -364,7 +421,7 @@ function walk(
     (typeof value === "number" && Number.isFinite(value))
   )
     return value
-  if (typeof value !== "object" || active.has(value)) throw failure()
+  if (typeof value !== "object" || active.has(value) || types.isProxy(value)) throw failure()
   const array = Array.isArray(value)
   if (!array && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
     throw failure()

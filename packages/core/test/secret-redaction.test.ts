@@ -221,32 +221,68 @@ describe("SecretRedaction configured values", () => {
       expect(SecretRedaction.eligible(real)).toBe(true)
   })
 
-  test("stream boundaries never split a finding and hold an unterminated private key", () => {
-    const compiled = SecretRedaction.compile(["synthetic-opaque-9QxW-7741"])
+  test("stream boundaries release decided text and hold only what could still become a finding", () => {
+    const compiled = SecretRedaction.compile(["synthetic-opaque-9QxW-7741", "correct horse battery 9!"])
     const token = `ghp_${"Tb5".repeat(12)}`
+    expect(compiled.boundary("done\n")).toBe(5)
+    // A trailing word no detected format can grow from is released without waiting for a delimiter.
+    expect(compiled.boundary("printf truncation-ready")).toBe(23)
+    // An open run that could still become a token, a partial key header, an unclosed reference or
+    // a configured value's start.
+    expect(compiled.boundary("see gh")).toBe(4)
+    expect(compiled.boundary("see AKIA2")).toBe(4)
+    expect(compiled.boundary(`see ${token}`)).toBe(4)
+    expect(compiled.boundary(`see ${token}.`)).toBe(`see ${token}.`.length)
+    expect(compiled.boundary("key -----BEGIN RSA PRI")).toBe(4)
+    expect(compiled.boundary("ref [SECRET:v1:github:ab")).toBe(4)
+    expect(compiled.boundary("pass: correct horse bat")).toBe(6)
+    // A run longer than any detected format can no longer become one.
+    expect(compiled.boundary("x".repeat(200))).toBe(200)
+    // An open private key block is held from its header, however long it grows.
+    const open = `lead -----BEGIN PRIVATE KEY-----\nc3ludGhldGlj ${"y ".repeat(5000)}`
+    expect(compiled.boundary(open)).toBe(5)
+    // Releasing at every boundary reproduces one-shot redaction, whatever the chunking.
     const filler = "x ".repeat(4000)
-    expect(compiled.boundary("short")).toBe(0)
-    // A token straddling the default release point moves the cut to the token's start.
-    const straddling = `${filler}${token} ${"y ".repeat(2046)}`
-    const start = straddling.indexOf(token)
-    expect(straddling.length - 4096).toBeGreaterThan(start)
-    expect(straddling.length - 4096).toBeLessThan(start + token.length)
-    expect(compiled.boundary(straddling)).toBe(start)
-    // An open private key block is held from its header.
-    const open = `${filler}-----BEGIN PRIVATE KEY-----\nc3ludGhldGlj${"y".repeat(8000)}`
-    expect(compiled.boundary(open)).toBe(open.indexOf("-----BEGIN"))
-    // Releasing prefixes at every boundary reproduces one-shot redaction.
-    const text = `${filler}${token} key synthetic-opaque-9QxW-7741 ${filler}${token}\n${filler}`
-    let pending = ""
-    let released = ""
-    for (const chunk of text.match(/[\s\S]{1,997}/g)!) {
-      pending += chunk
-      const cut = compiled.boundary(pending)
-      released += compiled.text(pending.slice(0, cut))
-      pending = pending.slice(cut)
+    const text = [
+      `${filler}ghost gho_ skip sk_live AKIAx glpat xoxo AIzb ${token} key synthetic-opaque-9QxW-7741`,
+      ` pass correct horse battery 9!`,
+      `${filler}${token}\n-----BEGIN PRIVATE KEY-----\nc3ludGhldGlj\n-----END PRIVATE KEY-----\n${filler}`,
+    ].join("")
+    for (const size of [1, 7, 97, 997]) {
+      let pending = ""
+      let released = ""
+      for (const chunk of text.match(new RegExp(`[\\s\\S]{1,${size}}`, "g"))!) {
+        pending += chunk
+        const cut = compiled.boundary(pending)
+        released += compiled.text(pending.slice(0, cut))
+        pending = pending.slice(cut)
+      }
+      released += compiled.text(pending)
+      expect(released).toBe(compiled.text(text))
     }
-    released += compiled.text(pending)
-    expect(released).toBe(compiled.text(text))
+  })
+
+  test("stream boundaries never bisect a surrogate pair, so separately encoded releases stay valid UTF-8", () => {
+    const compiled = SecretRedaction.compile(["😀synthetic-opaque-9QxW"])
+    const plain = "x".repeat(20_000)
+    const release = compiled.boundary(plain)
+    expect(release).toBeGreaterThan(0)
+    // A supplementary character straddling a release point, then chunk edges inside surrogate pairs.
+    const text = `${plain.slice(0, release - 1)}😀${plain.slice(release + 1)} 😀😀 😀synthetic-opaque-9QxW 😀x😀\n`
+    for (const size of [1, 3, 7, 4099]) {
+      let pending = ""
+      const pieces: string[] = []
+      for (const chunk of text.match(new RegExp(`[\\s\\S]{1,${size}}`, "g"))!) {
+        pending += chunk
+        const cut = compiled.boundary(pending)
+        pieces.push(compiled.text(pending.slice(0, cut)))
+        pending = pending.slice(cut)
+      }
+      pieces.push(compiled.text(pending))
+      const written = Buffer.concat(pieces.map((piece) => Buffer.from(piece))).toString()
+      expect(written).not.toContain("�")
+      expect(written).toBe(compiled.text(text))
+    }
   })
 
   test("compiled snapshots match one-shot redaction and never mask ineligible values", () => {

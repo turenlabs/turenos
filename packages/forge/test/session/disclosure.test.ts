@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { LLMDisclosure } from "../../src/session/disclosure"
 import type { ModelMessage } from "ai"
 import type { JSONValue } from "@ai-sdk/provider"
@@ -126,4 +127,36 @@ test("prepared messages redact old tool JSON but preserve provider options and f
   expect(safe[1]).toEqual(input[1])
   expect(safe[3]).toEqual(input[3])
   expect(input[0].content).toBe(secret)
+})
+
+test("workflow executors acquire protection per callback and capture no operation snapshot", async () => {
+  // The executor outlives the request on a cached language model, so it may hold only a way to
+  // acquire protection -- never a compiled snapshot of configured values.
+  const rotated = "synthetic-rotated-value-77"
+  const acquired: string[][] = []
+  const execute = LLMDisclosure.executor({
+    tools: {
+      echo: {
+        execute: async (args: unknown) => ({
+          output: typeof args === "object" && args !== null && "value" in args ? String(args.value) : "",
+        }),
+      },
+    },
+    messages: [],
+    abort: new AbortController().signal,
+    protection: () => {
+      const values = acquired.length === 0 ? [] : [rotated]
+      acquired.push(values)
+      return Promise.resolve(SecretRedaction.compile(values))
+    },
+  })
+  expect((await execute("echo", JSON.stringify({ value: rotated }), "first")).result).toBe(rotated)
+  expect((await execute("echo", JSON.stringify({ value: rotated }), "second")).result).toMatch(
+    /^\[SECRET:v1:known:[a-f0-9]{32}\]$/,
+  )
+  const unknown = await execute(`missing:${secret}`, "{}", "third")
+  expect(unknown.error).toContain("Unknown tool")
+  expect(unknown.error).not.toContain(secret)
+  expect(acquired).toHaveLength(3)
+  expect(await execute("echo", "{", "malformed")).toMatchObject({ result: "" })
 })

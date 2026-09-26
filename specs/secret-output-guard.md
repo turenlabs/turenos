@@ -32,7 +32,7 @@ The user approved planning and implementation of the proposal. These bounded def
 
 ## Architecture
 
-1. A shared Core redactor transforms text and JSON using bounded format detectors and an operation's configured values, compiled once per snapshot. SecretVault supplies a domain-separated fingerprint without exposing the root key. A lenient JSON-compatible walk serves legacy display metadata, and a stream boundary lets appended output be released without splitting a finding.
+1. A shared Core redactor transforms text and JSON using bounded format detectors and an operation's configured values, compiled once per snapshot. SecretVault supplies a domain-separated fingerprint without exposing the root key. A lenient JSON-compatible walk serves legacy display metadata without running accessors, `toJSON` hooks or proxy traps. A stream boundary releases decided output to previews, saved files and tails, holds only a suffix that could still become a finding, and never splits a surrogate pair.
 2. Core registry sanitizes tool output before ToolOutputStore can create overflow files, reusing the settlement's snapshot for bounding. Settlement is checked again after plugin notes and before durable execution retention; cached settlements are sanitized on return.
 3. ShellJob and Core direct shell sanitize captured output before their durable writes and before their own output truncation. This is separate from registry settlement.
 4. Input placeholders, and input the check cannot inspect, are rejected before built-in file mutation and shell execution with a tool error. This prevents accidental round-trip corruption, not deliberate encoding or alternate mutation channels.
@@ -73,6 +73,12 @@ No new findings database or raw-secret store. Model-visible references have the 
   - Core direct shell stored raw output, and legacy shell appended raw output to its saved file;
   - a transient outage overwrote stored legacy tool text, and opaque provider metadata was rewritten;
   - Claude Code bridge failures lost their diagnostic, and an interrupted bridge call was never settled.
+- A second independent review reproduced four more defects and a lifetime concern, now also pinned by regression tests:
+  - The Forge outage fallback compared incoming metadata with `JSON.stringify`, running accessors and `toJSON` hooks. It then kept the incoming object, which was read again and persisted a fresh credential. It now inspects data properties through the hook-free walk and writes the stored copy.
+  - Forge shell previews and the final tail were derived from raw output. A credential split across chunks was published in event history before it completed, and the tail could cut one before masking. One protector now feeds previews, the saved file and the tail.
+  - Core error formatting (path and key-shape rewriting, 4 KiB cap) ran before the guard, destroying whole-value matches for configured composites and cutting tokens. The complete message is now protected first, with references preserved through formatting.
+  - Stream releases could bisect a surrogate pair, corrupting separately written UTF-8. Release boundaries now step back over a pair, and hold only the undecided suffix instead of a fixed tail. A trailing word is held only while it could still become a detected format, so a prompt printed without a newline still previews.
+  - The GitLab workflow callback captured the request's compiled snapshot on a cached model. It now acquires protection per call.
 - The literal `[SECRET:v1` mutation check also refuses searches for references. That false positive is kept deliberately: the check cannot tell a search pattern from a truncated reference copied into a command, and the workaround (omit the bracket) is documented.
 
 See `docs/secret-output-protection.md` for the implemented boundaries and explicit limitations. Integration tests exercise synthetic secrets through real retention and provider-request paths; they are not a universal DLP or containment guarantee.

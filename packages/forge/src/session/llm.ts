@@ -176,22 +176,15 @@ const live: Layer.Layer<
         }
         workflowModel.sessionID = input.sessionID
         workflowModel.systemPrompt = prepared.system.join("\n")
-        workflowModel.toolExecutor = async (toolName, argsJson, _requestID) => {
-          const t = prepared.tools[toolName]
-          if (!t || !t.execute) return { result: "", error: `Unknown tool: ${LLMDisclosure.text(toolName, guard)}` }
-          // A fresh snapshot per callback; if it is unavailable the tool does not run and the
-          // workflow service receives an ordinary tool error rather than a rejected callback.
-          return LLMDisclosure.workflow(
-            async () =>
-              t.execute!(JSON.parse(argsJson), {
-                toolCallId: _requestID,
-                messages: prepared.messages,
-                abortSignal: input.abort,
-              }),
-            input.abort,
-            bridge.promise(secretOutput.snapshot()),
-          )
-        }
+        // The model is cached, so the callback acquires protection per call rather than capturing
+        // this request's snapshot; if it is unavailable the tool does not run and the workflow
+        // service receives an ordinary tool error rather than a rejected callback.
+        workflowModel.toolExecutor = LLMDisclosure.executor({
+          tools: prepared.tools,
+          messages: prepared.messages,
+          abort: input.abort,
+          protection: () => bridge.promise(secretOutput.snapshot()),
+        })
 
         const ruleset = Permission.merge(input.agent.permission ?? [], input.permission ?? [])
         workflowModel.sessionPreapprovedTools = Object.keys(prepared.tools).filter((name) => {

@@ -13,8 +13,8 @@ const unavailable: SecretOutput.Snapshot = {
   boundary: (value) => value.length,
 }
 
-/** Releases held output once this much is pending, so a long stream is written as it runs. */
-const STREAM_FLUSH = 256 * 1024
+// A held suffix at least this long is re-examined only once it has doubled, keeping a long hold linear.
+const LONG_HOLD = 64 * 1024
 
 export interface Stream {
   /** Accepts the next captured chunk; returns protected text that is now safe to append. */
@@ -24,25 +24,37 @@ export interface Stream {
 }
 
 /**
- * Protects output that is appended to a file as it arrives. Text is held until the snapshot
- * reports a boundary no credential can straddle -- a chunk edge can split a token, and redacting
- * each chunk alone would miss both halves. A guard without boundaries holds everything until the
- * end; past the redactor's byte budget the rest of the stream is withheld rather than written raw.
+ * Protects output as it arrives, for everything derived from it: live previews, saved files and
+ * final tails. Each push releases the text the snapshot reports as decided -- a chunk edge can split
+ * a token, and redacting each chunk alone would publish its first half -- and holds only the suffix
+ * that later text could still turn into a finding. A guard without boundaries holds everything
+ * until the end; past the redactor's byte budget the rest of the stream is withheld, never raw.
  */
 export function stream(guard: SecretOutput.Snapshot): Stream {
   let pending = ""
+  let held = 0
   let withheld = false
+  let repeated = false
+  // Consecutive failed releases collapse into one notice instead of one per chunk.
+  const emit = (value: string) => {
+    const safe = text(value, guard)
+    if (safe === WITHHELD && repeated) return ""
+    repeated = safe === WITHHELD
+    return safe
+  }
   return {
     push: (chunk) => {
       if (withheld) return ""
       pending += chunk
-      if (pending.length < STREAM_FLUSH) return ""
+      if (held >= LONG_HOLD && pending.length < held * 2) return ""
       const cut = release(pending, guard)
       if (cut > 0) {
         const head = pending.slice(0, cut)
         pending = pending.slice(cut)
-        return text(head, guard)
+        held = 0
+        return emit(head)
       }
+      held = pending.length
       if (Buffer.byteLength(pending, "utf8") <= SecretRedaction.MAX_BYTES) return ""
       withheld = true
       pending = ""
@@ -51,14 +63,17 @@ export function stream(guard: SecretOutput.Snapshot): Stream {
     end: () => {
       const rest = pending
       pending = ""
-      return withheld || rest.length === 0 ? "" : text(rest, guard)
+      return withheld || rest.length === 0 ? "" : emit(rest)
     },
   }
 }
 
 function release(value: string, guard: SecretOutput.Snapshot) {
   try {
-    return guard.boundary?.(value) ?? 0
+    const cut = guard.boundary?.(value) ?? 0
+    // Each release is encoded on its own; never end one between the halves of a surrogate pair.
+    const code = value.charCodeAt(cut - 1)
+    return code >= 0xd800 && code <= 0xdbff ? cut - 1 : cut
   } catch {
     return 0
   }
@@ -101,34 +116,49 @@ export function state(value: SessionV1.ToolState, guard: SecretOutput.Snapshot):
 
 /**
  * The state to persist while protection is unavailable. Text already stored for this part is kept
- * exactly as stored -- it was protected when written, and re-saving a historical part (a compaction
- * mark, say) must not destroy it. Anything new is withheld rather than written raw.
+ * -- it was protected when written, and re-saving a historical part (a compaction mark, say) must
+ * not destroy it -- and anything new is withheld rather than written raw.
+ *
+ * The incoming state is read only through its own data properties, and compared through the same
+ * hook-free walk that normalizes healthy metadata: no accessor, `toJSON` hook or proxy trap runs.
+ * A matching field is written from the stored copy, so no incoming object is retained to be read
+ * again when the part is serialized.
  */
 export function withheld(value: SessionV1.ToolState, stored: SessionV1.ToolState | undefined): SessionV1.ToolState {
-  if (value.status === "pending") return value
-  const kept = <A>(next: A, previous: unknown) => {
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  const own: Record<string, unknown> = Object.fromEntries(
+    Object.entries(descriptors).flatMap(([key, descriptor]) =>
+      descriptor.enumerable && "value" in descriptor ? [[key, descriptor.value]] : [],
+    ),
+  )
+  // A subset of the typed state's own fields; an accessor-backed field is absent here.
+  const fields = own as SessionV1.ToolState
+  if (fields.status === "pending") return fields
+  // Present means set to anything, including an accessor that is never called.
+  const present = (key: string) => {
+    const descriptor = descriptors[key]
+    return descriptor !== undefined && (!("value" in descriptor) || descriptor.value !== undefined)
+  }
+  const previous: Record<string, unknown> = stored?.status === fields.status ? stored : {}
+  const kept = (key: string) => {
+    if (previous[key] === undefined || !(key in own)) return undefined
     try {
-      return previous !== undefined && JSON.stringify(next) === JSON.stringify(previous) ? next : undefined
+      const incoming = SecretRedaction.lenient(own[key], (part) => part)
+      return JSON.stringify(incoming) === JSON.stringify(previous[key]) ? previous[key] : undefined
     } catch {
       return undefined
     }
   }
-  const previous = stored?.status === value.status ? (stored as Record<string, unknown>) : {}
-  const metadata =
-    value.metadata === undefined ? undefined : (kept(value.metadata, previous.metadata) ?? { error: WITHHELD })
-  if (value.status === "error") return { ...value, metadata, error: kept(value.error, previous.error) ?? WITHHELD }
-  if (value.status === "running")
-    return {
-      ...value,
-      metadata,
-      title: value.title === undefined ? undefined : (kept(value.title, previous.title) ?? WITHHELD),
-    }
-  return {
-    ...value,
-    metadata: metadata ?? {},
-    title: kept(value.title, previous.title) ?? WITHHELD,
-    output: kept(value.output, previous.output) ?? WITHHELD,
+  const storedMetadata = kept("metadata")
+  const metadata = present("metadata") ? (isRecord(storedMetadata) ? storedMetadata : { error: WITHHELD }) : undefined
+  const content = (key: string) => {
+    const text = kept(key)
+    return typeof text === "string" ? text : WITHHELD
   }
+  if (fields.status === "error") return { ...fields, metadata, error: content("error") }
+  if (fields.status === "running")
+    return { ...fields, metadata, title: present("title") ? content("title") : undefined }
+  return { ...fields, metadata: metadata ?? {}, title: content("title"), output: content("output") }
 }
 
 export * as ToolOutput from "./secret-output"

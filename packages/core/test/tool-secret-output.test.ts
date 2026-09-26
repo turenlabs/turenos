@@ -9,15 +9,29 @@ import { Tool } from "@turenlabs/core/tool/tool"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
 import { ExtensionRuntime } from "@turenlabs/core/extension"
 import { Extension } from "@turenlabs/schema"
+import { Database } from "@turenlabs/core/database/database"
+import { ToolExecutionTable } from "@turenlabs/core/tool/execution.sql"
+import { eq } from "drizzle-orm"
 import { Effect, Schema } from "effect"
 import { testEffect } from "./lib/effect"
 import { settleTool, toolIdentity } from "./lib/tool"
 
 const it = testEffect(
-  AppNodeBuilder.build(LayerNode.group([ToolRegistry.node, ToolInterceptor.node, ExtensionRuntime.node]), [
-    [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],
-  ]),
+  AppNodeBuilder.build(
+    LayerNode.group([ToolRegistry.node, ToolInterceptor.node, ExtensionRuntime.node, Database.node]),
+    [[ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig]],
+  ),
 )
+const stored = (callID: string) =>
+  Effect.gen(function* () {
+    const database = yield* Database.Service
+    return yield* database.db
+      .select()
+      .from(ToolExecutionTable)
+      .where(eq(ToolExecutionTable.call_id, callID))
+      .all()
+      .pipe(Effect.orDie)
+  })
 const secret = `ghp_${"aB12".repeat(9)}`
 const call = (name: string, id: string, input: unknown = {}): ToolRegistry.ExecuteInput => ({
   sessionID: SessionV2.ID.make("ses_secret_output"),
@@ -243,6 +257,83 @@ describe("secret-safe tool settlement", () => {
         expect(JSON.stringify(exit.value.result)).toContain("could not be checked")
       }
       expect(executions).toEqual([])
+    }),
+  )
+
+  it.effect("masks a whole configured value in a tool failure before legacy error formatting", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const extensions = yield* ExtensionRuntime.Service
+      // A configured composite whose first half is also a detected format: formatting first used to
+      // replace only that half, leaving the configured value unmatchable and its secret half exposed.
+      const composite = `AKIA${"Q7".repeat(8)}:synthetic/Private+Suffix92837`
+      yield* extensions.update(
+        Extension.ID.make("turenlabs", "pagerduty"),
+        { enabled: false, secrets: { PAGERDUTY_CLIENT_SECRET: composite } },
+        { local: true },
+      )
+      yield* registry.register({
+        failing: Tool.make({
+          description: "Fail with a configured composite credential",
+          input: Schema.Struct({}),
+          output: Schema.String,
+          execute: () => Effect.fail(new ToolFailure({ message: `failure ${composite} at /Users/someone/work/file` })),
+        }),
+      })
+      const result = yield* settleTool(registry, call("failing", "composite-error"))
+      const rows = yield* stored("composite-error")
+      expect(rows).toHaveLength(1)
+      for (const retained of [JSON.stringify(result), JSON.stringify(rows)]) {
+        expect(retained).not.toContain("Private+Suffix92837")
+        expect(retained).not.toContain("AKIA")
+        expect(retained).toMatch(/failure \[SECRET:v1:known:[a-f0-9]{32}\]/)
+        // Legacy diagnostics still apply to the rest of the message.
+        expect(retained).toContain("$HOME/work/file")
+      }
+    }),
+  )
+
+  it.effect("masks a detected credential before the error length cap can cut it", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const token = `glpat-${"Q7a9".repeat(5)}`
+      yield* registry.register({
+        verbose: Tool.make({
+          description: "Fail with a long message",
+          input: Schema.Struct({}),
+          output: Schema.String,
+          execute: () =>
+            Effect.fail(new ToolFailure({ message: `${"x".repeat(4060)} ${token}${" trailing context".repeat(20)}` })),
+        }),
+      })
+      const result = yield* settleTool(registry, call("verbose", "cut-error"))
+      const rows = yield* stored("cut-error")
+      for (const retained of [JSON.stringify(result), JSON.stringify(rows)]) {
+        expect(retained).not.toContain(token.slice(0, 12))
+        expect(retained).toContain("[error truncated]")
+      }
+      // The cap never leaves half a reference behind.
+      if (result.result.type === "error" && typeof result.result.value === "string")
+        expect(result.result.value).not.toMatch(/\[SECRET:v1:[a-z0-9-]*(:[a-f0-9]{0,31})?…/)
+    }),
+  )
+
+  it.effect("keeps existing references intact through legacy error formatting", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      yield* registry.register({
+        leaking: Tool.make({
+          description: "Fail with a detected credential",
+          input: Schema.Struct({}),
+          output: Schema.String,
+          execute: () => Effect.fail(new ToolFailure({ message: `secret: ${secret} token=${secret}` })),
+        }),
+      })
+      const result = yield* settleTool(registry, call("leaking", "reference-error"))
+      expect(JSON.stringify(result)).not.toContain(secret)
+      // `secret:` / `token=` rewriting must not mangle the stable reference into `[SECRET:[redacted]`.
+      expect(JSON.stringify(result.result)).toMatch(/secret: \[SECRET:v1:github:[a-f0-9]{32}\]/)
+      expect(JSON.stringify(result.result)).toMatch(/token=\[SECRET:v1:github:[a-f0-9]{32}\]/)
     }),
   )
 })
