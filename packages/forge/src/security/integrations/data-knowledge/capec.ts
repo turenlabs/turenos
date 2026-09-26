@@ -1,4 +1,5 @@
 import { DomUtils, parseDocument } from "htmlparser2"
+import { XMLValidator } from "fast-xml-parser"
 import { ExtensionCatalog } from "@turenlabs/extensions"
 import type { Integration } from "../../registry"
 import { ToolError, type IntegrationContext } from "../../types"
@@ -70,9 +71,13 @@ function childIDs(element: XmlElement, containerName: string, itemName: string, 
 }
 
 function parseCatalog(xml: string) {
+  if (XMLValidator.validate(xml) !== true) {
+    throw new ToolError("MITRE CAPEC returned an invalid XML catalog; check network access and retry later")
+  }
   const document = parseDocument(xml, { xmlMode: true, decodeEntities: true })
   const roots = DomUtils.getElementsByTagName("Attack_Pattern_Catalog", document.children, false)
   const root = roots[0]
+  const documentElements = document.children.filter((child) => child.type === "tag")
   const version = root?.attribs.Version ?? ""
   const date = root?.attribs.Date ?? ""
   const container = root && children(root, "Attack_Patterns")[0]
@@ -103,12 +108,12 @@ function parseCatalog(xml: string) {
     ]
   })
   const ids = patterns.map((pattern) => pattern.id)
-  const rootClose = "</Attack_Pattern_Catalog>"
   if (
     roots.length !== 1 ||
+    documentElements.length !== 1 ||
+    documentElements[0] !== root ||
     !/^\d+\.\d+$/.test(version) ||
     !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-    !xml.includes(rootClose) ||
     patterns.length === 0 ||
     patterns.length !== records.length ||
     new Set(ids).size !== ids.length

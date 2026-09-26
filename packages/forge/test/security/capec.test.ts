@@ -48,6 +48,12 @@ describe("MITRE CAPEC parser", () => {
     expect(() => parseCatalog("<html>temporarily unavailable</html>")).toThrow("invalid XML catalog")
     expect(() => parseCatalog(sample.replace("</Attack_Pattern_Catalog>", ""))).toThrow("invalid XML catalog")
     expect(() =>
+      parseCatalog(sample.replace("</Attack_Pattern_Catalog>", "<!-- </Attack_Pattern_Catalog> -->")),
+    ).toThrow("invalid XML catalog")
+    expect(() =>
+      parseCatalog(sample.replace("</Attack_Pattern_Catalog>", "</Attack_Pattern_Catalog><Unexpected />")),
+    ).toThrow("invalid XML catalog")
+    expect(() =>
       parseCatalog(
         sample.replace(
           "</Attack_Patterns>",
