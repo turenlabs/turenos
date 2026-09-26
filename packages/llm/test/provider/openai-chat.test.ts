@@ -603,6 +603,20 @@ describe("OpenAI Chat route", () => {
     }),
   )
 
+  it.effect("accepts large canonical base64 image data", () =>
+    Effect.gen(function* () {
+      const base64 = "AQID".repeat(2 * 1024 * 1024)
+      const media = yield* ProviderShared.validateMedia(
+        "openai-chat",
+        { type: "media", mediaType: "image/png", data: base64 },
+        new Set(["image/png"]),
+      )
+
+      expect(media.base64).toBe(base64)
+      expect(media.bytes.byteLength).toBe((base64.length / 4) * 3)
+    }),
+  )
+
   it.effect("prepares raw and data URL image media as vision input", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare<OpenAIChat.OpenAIChatBody>(
