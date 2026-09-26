@@ -8,7 +8,16 @@ import { PermissionV2 } from "../permission"
 import { SessionSchema } from "../session/schema"
 import { SessionTaskV2 } from "../session/task"
 import { SystemContext } from "../system-context/index"
-import { interruptName, listName, notifyParentName, peekName, sendName, spawnName, waitName } from "../tool/subagent"
+import {
+  interruptName,
+  listName,
+  notifyParentName,
+  peekName,
+  sendName,
+  spawnBatchName,
+  spawnName,
+  waitName,
+} from "../tool/subagent"
 import { SwarmRoomTool } from "../tool/swarm-room"
 
 const Summary = Schema.Struct({
@@ -21,6 +30,7 @@ const State = Schema.Struct({
   agents: Schema.Array(Summary),
   limit: Schema.Int.pipe(Schema.optional),
   notify: Schema.Boolean.pipe(Schema.optional),
+  orchestrator: Schema.Boolean.pipe(Schema.optional),
   unavailable: Schema.Literal("max_depth").pipe(Schema.optional),
 })
 type State = typeof State.Type
@@ -29,6 +39,7 @@ type State = typeof State.Type
 // catalog, so listing it here would teach a tool the parent cannot call.
 const toolNames = [
   spawnName,
+  spawnBatchName,
   sendName,
   waitName,
   interruptName,
@@ -43,7 +54,7 @@ const toolNames = [
 const render = (state: State) => {
   if (state.unavailable === "max_depth")
     return [
-      "Nested delegation is unavailable because this session is already at the maximum subagent depth. Complete the assigned work directly and do not call spawn_agent.",
+      `Nested delegation is unavailable because this session is at the maximum subagent depth or was not granted orchestrate. Complete the assigned work directly and do not call ${spawnName} or ${spawnBatchName}.`,
       ...(state.tools.includes(SwarmRoomTool.readName)
         ? [
             `Team coordination remains available in the swarm room: call ${SwarmRoomTool.readName} for the plan, claimed lanes, and sibling updates; ${SwarmRoomTool.claimName} a lane before starting it; post findings, status, and questions with ${SwarmRoomTool.postName}; park on ${SwarmRoomTool.waitName} once your lane is done so the swarm can still reach you. Each post queues an advisory the other members see at their next provider-turn boundary.`,
@@ -67,8 +78,21 @@ const render = (state: State) => {
     ...(state.limit === undefined
       ? []
       : [
-          `  At most ${state.limit} subagents run at once for this session. Plan fan-out in waves of ${state.limit} or fewer; a further ${spawnName} fails until one settles.`,
+          `  At most ${state.limit} subagents run at once for this session; further spawns are admitted as queued and start automatically as slots free.`,
         ]),
+    ...(state.tools.includes(spawnBatchName)
+      ? [
+          [
+            `  For more than about 10 workers, use ${spawnBatchName} with one wave tag and wait by wave.`,
+            ...(state.orchestrator === true
+              ? []
+              : [
+                  "For more than about 50, spawn orchestrators (orchestrate: true), each owning one bounded slice of at most 50 workers and returning one synthesized report; orchestrators hold at most half the concurrency slots.",
+                ]),
+            "Parked workers hold slots, so post a room decision promptly when work is queued.",
+          ].join(" "),
+        ]
+      : []),
     "  2. Split implementation into disjoint workers with non-overlapping write roots. Do not assign duplicate work.",
     "  When spawning, omit model unless a specific override is required; an omitted model uses the child agent's configured default, then inherits the parent session's model.",
     ...(state.tools.includes(SwarmRoomTool.postName) && state.tools.includes(SwarmRoomTool.readName)
@@ -115,7 +139,12 @@ const render = (state: State) => {
           `  Use ${listName} to recover durable child IDs and status; result and error previews appear only after a task settles.`,
         ]
       : []),
-    "  Avoid nested delegation. Keep each assignment bounded, self-contained, and explicit about expected evidence.",
+    "  Only delegate further when you were granted orchestrate; otherwise avoid nested delegation. Keep each assignment bounded, self-contained, and explicit about expected evidence.",
+    ...(state.orchestrator === true
+      ? [
+          `  You are an orchestrator: split your assignment into bounded worker lanes, spawn them with ${spawnBatchName} under one wave, wait by wave, and return one synthesized report; your workers cannot delegate further and are already instructed to finish and report without parking.`,
+        ]
+      : []),
     "</subagent_workflow>",
     "<available_subagent_tools>",
     ...state.tools.map((tool) => `  <tool>${escapeXml(tool)}</tool>`),
@@ -168,10 +197,12 @@ const layer = Layer.effect(
         : [info.permissions]
       const allowed = (action: string, resource: string) =>
         rulesets.every((rules) => PermissionV2.evaluate(action, resource, rules).effect !== "deny")
-      const tools = toolNames.filter((name) => allowed(name, "*"))
-      if (owner && owner.depth >= SessionTaskV2.MAX_DEPTH)
+      // `spawn_agents` shares `spawn_agent` as its permission action, matching
+      // the tool's declared permission so guidance agrees with the catalog.
+      const tools = toolNames.filter((name) => allowed(name === spawnBatchName ? spawnName : name, "*"))
+      if (owner && (owner.depth >= SessionTaskV2.MAX_DEPTH || owner.authority.orchestrate !== true))
         return {
-          tools: tools.filter((name) => name !== spawnName),
+          tools: tools.filter((name) => name !== spawnName && name !== spawnBatchName),
           agents: [],
           notify: allowed(notifyParentName, "*"),
           unavailable: "max_depth" as const,
@@ -191,7 +222,7 @@ const layer = Layer.effect(
       const limit = SessionTaskV2.resolveActiveLimit(
         Config.latest(yield* config.entries(), "subagents")?.max_concurrent,
       )
-      return { tools, agents: visible, limit }
+      return { tools, agents: visible, limit, ...(owner ? { orchestrator: true } : {}) }
     })
 
     return Service.of({

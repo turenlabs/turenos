@@ -56,6 +56,18 @@ const layer = Layer.effect(
         return Option.isSome(config)
           ? Reflection.reflectionSettings(yield* config.value.entries())
           : { enabled: undefined, interval: undefined }
+        }).pipe(Effect.provide(locations.get(session.location)))
+    })
+    const promotionLimit = Effect.fn("SessionExecutionLocal.promotionLimit")(function* (
+      rootSessionID: SessionSchema.ID,
+    ) {
+      const session = yield* store.get(rootSessionID)
+      if (!session) return SessionTaskV2.DEFAULT_ACTIVE_PER_ROOT
+      return yield* Effect.gen(function* () {
+        const config = yield* Effect.serviceOption(Config.Service)
+        return Option.isSome(config)
+          ? SessionTaskV2.resolveActiveLimit(Config.latest(yield* config.value.entries(), "subagents")?.max_concurrent)
+          : SessionTaskV2.DEFAULT_ACTIVE_PER_ROOT
       }).pipe(Effect.provide(locations.get(session.location)))
     })
     let wakeAdvisory: (sessionID: SessionSchema.ID) => Effect.Effect<void> = () => Effect.void
@@ -138,9 +150,13 @@ const layer = Layer.effect(
                   : { error: failure instanceof Error ? failure.message : String(failure) }),
               })
               .pipe(Effect.orDie)
-            // Only the drain that moved the task to a terminal state advises the
-            // parent; an already-terminal or still-running task must not re-notify.
+            // Settling an orchestrator retires its unfinished workers; their
+            // drains are separate sessions that must be stopped explicitly.
             if (settled?.transitioned === true) {
+              yield* Effect.forEach(settled.retired, control.interrupt, {
+                concurrency: 1,
+                discard: true,
+              })
               const notified = yield* tasks
                 .notifyParent({
                   taskID: settled.task.id,
@@ -310,6 +326,11 @@ const layer = Layer.effect(
       Effect.asVoid,
     )
     yield* wakePendingShellInputs()
+    // Queued subagents start here: settle, cancel, restart, and commits from
+    // another process all free slots without a caller that could wake the child.
+    yield* tasks
+      .runPromotion(coordinator.wake, promotionLimit)
+      .pipe(Effect.forkIn(scope, { startImmediately: true }), Effect.asVoid)
 
     return SessionExecution.Service.of({
       active: coordinator.active,

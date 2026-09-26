@@ -53,6 +53,7 @@ export default {
           \`actor_session_id\` text NOT NULL,
           \`actor_assistant_message_id\` text NOT NULL,
           \`actor_tool_call_id\` text NOT NULL,
+          \`actor_item\` integer DEFAULT -1 NOT NULL,
           \`operation_id\` text NOT NULL UNIQUE,
           \`task_id\` text NOT NULL,
           \`kind\` text NOT NULL,
@@ -68,6 +69,7 @@ export default {
           \`actor_session_id\` text NOT NULL,
           \`actor_assistant_message_id\` text NOT NULL,
           \`actor_tool_call_id\` text NOT NULL,
+          \`actor_item\` integer DEFAULT -1 NOT NULL,
           \`kind\` text NOT NULL,
           \`request_hash\` text NOT NULL,
           \`message_id\` text,
@@ -92,10 +94,12 @@ export default {
           \`actor_session_id\` text NOT NULL,
           \`actor_assistant_message_id\` text NOT NULL,
           \`actor_tool_call_id\` text NOT NULL,
+          \`actor_item\` integer DEFAULT -1 NOT NULL,
           \`agent\` text NOT NULL,
           \`model\` text,
           \`prompt\` text NOT NULL,
           \`description\` text NOT NULL,
+          \`wave\` text,
           \`depth\` integer NOT NULL,
           \`status\` text NOT NULL,
           \`revision\` integer NOT NULL,
@@ -105,6 +109,7 @@ export default {
           \`hard_permissions\` text NOT NULL,
           \`write_roots\` text NOT NULL,
           \`commands\` text NOT NULL,
+          \`orchestrate\` integer DEFAULT false NOT NULL,
           \`result\` text,
           \`error\` text,
           \`time_created\` integer NOT NULL,
@@ -656,11 +661,11 @@ export default {
         `CREATE INDEX \`agent_improvement_root_idx\` ON \`agent_improvement_proposal\` (\`root_session_id\`,\`time_created\`,\`id\`);`,
       )
       yield* tx.run(
-        `CREATE UNIQUE INDEX \`session_task_actor_claim_actor_idx\` ON \`session_task_actor_claim\` (\`actor_session_id\`,\`actor_assistant_message_id\`,\`actor_tool_call_id\`);`,
+        `CREATE UNIQUE INDEX \`session_task_actor_claim_actor_idx\` ON \`session_task_actor_claim\` (\`actor_session_id\`,\`actor_assistant_message_id\`,\`actor_tool_call_id\`,\`actor_item\`);`,
       )
       yield* tx.run(`CREATE INDEX \`session_task_actor_claim_task_idx\` ON \`session_task_actor_claim\` (\`task_id\`);`)
       yield* tx.run(
-        `CREATE UNIQUE INDEX \`session_task_operation_actor_idx\` ON \`session_task_operation\` (\`actor_session_id\`,\`actor_assistant_message_id\`,\`actor_tool_call_id\`);`,
+        `CREATE UNIQUE INDEX \`session_task_operation_actor_idx\` ON \`session_task_operation\` (\`actor_session_id\`,\`actor_assistant_message_id\`,\`actor_tool_call_id\`,\`actor_item\`);`,
       )
       yield* tx.run(
         `CREATE INDEX \`session_task_operation_task_idx\` ON \`session_task_operation\` (\`task_id\`,\`time_created\`);`,
@@ -686,6 +691,9 @@ export default {
       yield* tx.run(`CREATE INDEX \`session_task_parent_task_idx\` ON \`session_task\` (\`parent_task_id\`);`)
       yield* tx.run(
         `CREATE INDEX \`session_task_status_created_idx\` ON \`session_task\` (\`status\`,\`time_created\`);`,
+      )
+      yield* tx.run(
+        `CREATE INDEX \`session_task_parent_wave_idx\` ON \`session_task\` (\`parent_session_id\`,\`wave\`);`,
       )
       yield* tx.run(
         `CREATE INDEX \`team_board_root_idx\` ON \`team_board_note\` (\`root_session_id\`,\`time_created\`,\`id\`);`,
