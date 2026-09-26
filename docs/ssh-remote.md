@@ -233,6 +233,39 @@ Startup then races three outcomes: health polling against `GET /global/health` w
 (`forge:<password>`, 100 ms interval), a 20-second timeout, and tunnel exit. Whichever settles first
 wins; a timeout or early exit stops the tunnel and surfaces the summarized ssh stderr.
 
+## Managed persistent servers
+
+A host promoted to a persistent server ([Persistent server](./persistent-server.md)) owns its vault key and runs
+under its service manager. The desktop must neither start it nor send it a key. That is why `connectSshRemote`
+checks for one **before** it writes the shim or runs `ensure`:
+
+1. It sends [`REMOTE_ATTACH_PROBE_SCRIPT`](../packages/desktop/src/main/ssh/persistent.ts) over the control master on
+   stdin. The script contains no secrets. It reports whether `/etc/turenos/attach.json` (Linux system service,
+   `0640 root:turenos-operators`) exists and is readable.
+2. `classifyAttach` turns the report into one of three results:
+
+   | Result | Meaning | Action |
+   | --- | --- | --- |
+   | `attach-existing` | A well-formed attach record names a loopback listener | Tunnel to it. No shim write, no `ensure`, no key sent |
+   | `start-quick-connect` | No record, and the target was never persistent | Today's quick-connect path |
+   | `conflict` | Record unreadable or malformed, a saved persistent target has no record, or the record names a different server | Fail closed with an actionable message |
+
+3. For `attach-existing`, the desktop opens the tunnel to the record's port and reads the authenticated
+   `GET /global/server` descriptor. It keeps the connection only if the descriptor's `serverID` matches the record and
+   `mode` is `persistent`. A rejected request fails at once rather than waiting out the health timeout.
+
+The first successful attach saves `persistent: { serverID }` on the `SshServerConfig`. The password is never
+saved in desktop storage; it is re-read from the attach record on every connect. After that:
+
+- **Disconnect.** On a persistent target, the Stop menu item reads "Disconnect". It closes only this client's tunnel
+  and sends nothing to the host. The ssh master may be shared with other clients of the same host, so it is left to
+  expire through `ControlPersist`.
+- **Remove.** Removing the target deletes the saved entry and disconnects. Neither action runs `forge-remote stop`.
+- **Stop server.** Stopping or retiring the service is an operator action on the host (`systemctl stop turenos`).
+- **Updates.** Install and update actions are hidden, because the host's service setup owns the binary.
+
+Desktop shutdown (`stopAll`) disconnects only, as before.
+
 ## Runtime state and recovery
 
 Each server carries one runtime state: `starting`, `ready` (with the loopback `url`, `username`,
@@ -247,7 +280,8 @@ reaches `ready`. Two cases never retry: a user-cancelled prompt (retrying would 
 an exhausted schedule. Stale work is discarded by a per-server start-attempt counter, so a removal
 or restart during an in-flight connect closes the late connection instead of adopting it.
 
-`stopRemote` kills the remote server (`forge-remote stop`) and closes the master; the server stays
+For quick-connect targets, `stopRemote` kills the remote server (`forge-remote stop`) and closes the master (persistent
+targets only disconnect; see above); the server stays
 configured and can be started again. `removeServer` drops it from storage and clears cached probes
 and version checks, and passes `reachable: false` so removal _never_ re-authenticates — a removal
 must not pop a password prompt. When the master is already alive the stop still runs over it;

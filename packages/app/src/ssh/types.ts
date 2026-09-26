@@ -16,6 +16,11 @@ export type SshServerConfig = {
   port: number | null
   identityFile: string | null
   displayName: string | null
+  /**
+   * Set once this target attached to a managed persistent server. Such a target is never
+   * started or stopped remotely; its HTTP password is re-read from the host attach record.
+   */
+  persistent?: { serverID: string } | null
 }
 
 export type SshHostProbe = {

@@ -9374,6 +9374,46 @@ export type GlobalHealthResponses = {
 
 export type GlobalHealthResponse = GlobalHealthResponses[keyof GlobalHealthResponses]
 
+export type GlobalServerData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/server"
+}
+
+export type GlobalServerErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type GlobalServerError = GlobalServerErrors[keyof GlobalServerErrors]
+
+export type GlobalServerResponses = {
+  /**
+   * Server descriptor
+   */
+  200: {
+    serverID: string
+    dataIdentity: {
+      databasePath: string
+      databaseUUID: string
+    }
+    keyID: string
+    mode: "quick-connect" | "persistent"
+    keySource: string
+    listener: string
+    version: string
+  }
+}
+
+export type GlobalServerResponse = GlobalServerResponses[keyof GlobalServerResponses]
+
 export type GlobalEventData = {
   body?: never
   path?: never

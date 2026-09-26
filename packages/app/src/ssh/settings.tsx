@@ -76,7 +76,8 @@ export function SshServerSettings(props: {
           const check = () => ssh.data?.forgeChecks[item.config.id]
           const action = () => {
             const c = check()
-            if (!c) return undefined
+            // A managed persistent server's binary belongs to the host's service setup.
+            if (!c || item.config.persistent) return undefined
             if (c.error) return language.t("ssh.server.install")
             if (c.matchesDesktop === false) return language.t("ssh.server.update")
             return undefined
@@ -135,7 +136,7 @@ export function SshServerSettings(props: {
                         </Show>
                         <Show when={item.runtime.kind === "ready"}>
                           <MenuV2.Item onSelect={() => api && request.mutate(() => api.stopRemote(item.config.id))}>
-                            {language.t("ssh.server.stopRemote")}
+                            {language.t(item.config.persistent ? "ssh.server.disconnect" : "ssh.server.stopRemote")}
                           </MenuV2.Item>
                         </Show>
                         <Show when={props.controller.canDefault() && props.controller.defaultKey() !== key}>

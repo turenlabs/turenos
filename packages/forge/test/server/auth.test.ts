@@ -49,11 +49,27 @@ describe("ServerAuth", () => {
     })
   })
 
+  test("uses listener credentials from protected configuration when the environment has none", () => {
+    Flag.FORGE_SERVER_PASSWORD = undefined
+    Flag.FORGE_SERVER_USERNAME = undefined
+    const previous = ServerAuth.configure({ password: "file-secret" })
+    try {
+      expect(ServerAuth.headers()).toEqual({
+        Authorization: `Basic ${Buffer.from("forge:file-secret").toString("base64")}`,
+      })
+    } finally {
+      ServerAuth.configure(previous)
+    }
+    expect(ServerAuth.header()).toBeUndefined()
+  })
+
   test("validates decoded credentials against effect config", () => {
     const config = { password: Option.some("secret"), username: "alice" }
 
     expect(ServerAuth.required(config)).toBe(true)
     expect(ServerAuth.authorized({ username: "alice", password: Redacted.make("secret") }, config)).toBe(true)
     expect(ServerAuth.authorized({ username: "opencode", password: Redacted.make("secret") }, config)).toBe(false)
+    expect(ServerAuth.authorized({ username: "alice", password: Redacted.make("secre") }, config)).toBe(false)
+    expect(ServerAuth.authorized({ username: "alice", password: Redacted.make("secret") }, { ...config, password: Option.none() })).toBe(false)
   })
 })

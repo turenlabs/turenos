@@ -666,11 +666,14 @@ export function spawnTunnel(
       "-L",
       spec,
       // A multiplexed "-N" session exits immediately - there is no command
-      // channel to hold. Hold one open with a remote sleep so this child's
-      // exit still signals a dropped connection.
-      "while :; do sleep 86400; done",
+      // channel to hold. Hold one open so this child's exit still signals a
+      // dropped connection. It reads the open stdin pipe, so the remote side
+      // exits when the channel closes; a command that ignores stdin outlives
+      // the tunnel and keeps its session, until the host's MaxSessions limit
+      // refuses every new tunnel on the shared master.
+      "cat >/dev/null",
     ],
-    { stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
+    { stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
   )
   let stderr = ""
   const collect = (chunk: Buffer) => {

@@ -20,6 +20,11 @@ import { lazy } from "@/util/lazy"
 import { Flag } from "@turenlabs/core/flag/flag"
 import { isLoopbackHostname } from "./shared/local-request"
 import { SecretVault } from "@turenlabs/core/secret-vault"
+import { ServerOwnership } from "./ownership"
+import { ServerDescriptor } from "./descriptor"
+import { ServerOwner } from "@turenlabs/core/database/server-owner"
+import { Database } from "@turenlabs/core/database/database"
+import type { Source } from "@/cli/secret-vault-key"
 import { SecurityProxyStore } from "@turenlabs/core/security-proxy"
 import { SecurityProxyRuntime } from "@turenlabs/core/security-proxy-runtime"
 import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
@@ -51,6 +56,11 @@ type ListenOptions = CorsOptions & {
     keyID: string
     key: Uint8Array
   }
+  keySource?: Source
+  serverAuth?: {
+    password: string
+    username?: string
+  }
   securityProxy?: (command: SecurityProxy.Command) => Promise<SecurityProxy.Result>
 }
 type ListenerState = {
@@ -60,6 +70,7 @@ type ListenerState = {
   http: ListenerServer
   websockets: WebSocketTracker.Interface
   securityProxy: SecurityProxyStore.Interface
+  database: Database.Interface
 }
 type EffectListener = Omit<Listener, "stop"> & {
   stop: (close?: boolean) => Effect.Effect<void>
@@ -91,21 +102,32 @@ export let url: URL | undefined
 export async function listen(opts: ListenOptions): Promise<Listener> {
   // Binding a non-loopback interface exposes every privileged API on the LAN, so a
   // password is mandatory there unless the caller explicitly opts into insecure mode.
-  const password = process.env.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD
+  const password = opts.serverAuth?.password ?? process.env.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD
   if (!password && !opts.insecure && !isLoopbackHostname(opts.hostname)) {
     throw new Error(
       `Refusing to listen on ${opts.hostname} without FORGE_SERVER_PASSWORD. ` +
         "Set FORGE_SERVER_PASSWORD, bind a loopback hostname, or pass --insecure to override.",
     )
   }
-  if (opts.credentialVault) SecretVault.configure(opts.credentialVault)
-  const listener = await Effect.runPromise(listenEffect(opts))
-  return {
-    hostname: listener.hostname,
-    port: listener.port,
-    url: listener.url,
-    stop: (close?: boolean) => runListenerStop(listener.stop(close)),
-    securityProxy: listener.securityProxy,
+  const releaseOwner = await ServerOwnership.acquire(opts)
+  try {
+    const listener = await Effect.runPromise(listenEffect(opts))
+    return {
+      hostname: listener.hostname,
+      port: listener.port,
+      url: listener.url,
+      stop: async (close?: boolean) => {
+        try {
+          await runListenerStop(listener.stop(close))
+        } finally {
+          releaseOwner()
+        }
+      },
+      securityProxy: listener.securityProxy,
+    }
+  } catch (error) {
+    releaseOwner()
+    throw error
   }
 }
 
@@ -132,6 +154,12 @@ const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unkno
     const listenerUrl = makeURL(opts.hostname, address.port)
     const unpublishMdns = yield* setupMdns(opts, address.port, state.scope)
     url = listenerUrl
+    ServerDescriptor.configure({
+      keySource: opts.keySource ?? (opts.credentialVault ? "desktop" : "env"),
+      listener: listenerUrl,
+    })
+    if (ServerOwner.mode() === "persistent" && !(yield* ServerDescriptor.read(state.database)))
+      return yield* Effect.die(new Error("persistent server started without an owner record"))
 
     return {
       hostname: opts.hostname,
@@ -144,13 +172,34 @@ const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unkno
 )
 
 function listenerLayer(opts: ListenOptions, port: number) {
+  const configEnv = Object.fromEntries(
+    Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  )
   const secretVault = opts.credentialVault ? SecretVault.layer(opts.credentialVault) : SecretVault.runtime
-    return HttpRouter.serve(HttpApiApp.createRoutes(opts, undefined, secretVault, opts.securityProxy ? { execute: (command) => Effect.tryPromise({ try: () => opts.securityProxy!(command), catch: (error) => new SecurityProxyRuntime.Error(error instanceof Error ? error.message : String(error)) }) } : undefined), {
-    middleware: disposeMiddleware,
-    disableLogger: true,
-    disableListenLog: true,
-  }).pipe(
+  return HttpRouter.serve(
+    HttpApiApp.createRoutes(
+      opts,
+      undefined,
+      secretVault,
+      opts.securityProxy
+        ? {
+            execute: (command) =>
+              Effect.tryPromise({
+                try: () => opts.securityProxy!(command),
+                catch: (error) =>
+                  new SecurityProxyRuntime.Error(error instanceof Error ? error.message : String(error)),
+              }),
+          }
+        : undefined,
+    ),
+    {
+      middleware: disposeMiddleware,
+      disableLogger: true,
+      disableListenLog: true,
+    },
+  ).pipe(
     Layer.provideMerge(AppNodeBuilder.build(WebSocketTracker.node)),
+    Layer.provideMerge(AppNodeBuilder.build(Database.node)),
     Layer.provideMerge(AppNodeBuilder.build(SecurityProxyStore.node, [[SecretVault.node, secretVault]])),
     Layer.provideMerge(serverLayer({ port, hostname: opts.hostname })),
     // Install a fresh `ConfigProvider` per listener so `Config.string(...)`
@@ -158,7 +207,19 @@ function listenerLayer(opts: ListenOptions, port: number) {
     // `ConfigProvider` snapshots `process.env` on first read and caches the
     // result on a module-singleton Reference; without overriding it here,
     // every later `Server.listen()` keeps observing that initial snapshot.
-    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv())),
+    Layer.provide(
+      ConfigProvider.layer(
+        ConfigProvider.fromEnv({
+          env: opts.serverAuth
+            ? {
+                ...configEnv,
+                FORGE_SERVER_PASSWORD: opts.serverAuth.password,
+                ...(opts.serverAuth.username ? { FORGE_SERVER_USERNAME: opts.serverAuth.username } : {}),
+              }
+            : configEnv,
+        }),
+      ),
+    ),
   )
 }
 
@@ -213,6 +274,7 @@ function startListener(opts: ListenOptions, port: number) {
         http: Context.get(ctx, ListenerServerService),
         websockets: Context.get(ctx, WebSocketTracker.Service),
         securityProxy: Context.get(ctx, SecurityProxyStore.Service),
+        database: Context.get(ctx, Database.Service),
       }),
     ),
   )

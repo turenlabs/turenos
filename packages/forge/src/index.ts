@@ -24,6 +24,7 @@ import { errorMessage } from "./util/error"
 import { Heap } from "./cli/heap"
 import { ProvidersCommand } from "./cli/cmd/providers"
 import { PluginCommand } from "./cli/cmd/plug"
+import { PersistentCommand } from "./cli/cmd/persistent"
 
 const args = hideBin(process.argv)
 
@@ -84,6 +85,7 @@ const cli = yargs(args)
   .command(UpgradeCommand)
   .command(UninstallCommand)
   .command(ServeCommand)
+  .command(PersistentCommand)
   .command(ModelsCommand)
   .command(StatsCommand)
   .command(ExportCommand)

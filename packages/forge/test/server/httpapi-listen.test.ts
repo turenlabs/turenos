@@ -212,6 +212,31 @@ describe("HttpApi Server.listen", () => {
     await expect(Server.runListenerStop(Effect.die(failure).pipe(Effect.ignore))).rejects.toBe(failure)
   })
 
+  test("uses listener-provided auth without exporting its password to the environment", async () => {
+    Flag.FORGE_SERVER_PASSWORD = undefined
+    delete process.env.FORGE_SERVER_PASSWORD
+    delete process.env.FORGE_SERVER_USERNAME
+    const listener = await Server.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      serverAuth: { username: "operator", password: "protected-file-password" },
+    })
+    try {
+      expect(process.env.FORGE_SERVER_PASSWORD).toBeUndefined()
+      const endpoint = new URL(GlobalPaths.health, listener.url)
+      expect((await fetch(endpoint)).status).toBe(401)
+      expect(
+        (
+          await fetch(endpoint, {
+            headers: { authorization: `Basic ${btoa("operator:protected-file-password")}` },
+          })
+        ).status,
+      ).toBe(200)
+    } finally {
+      await stop(listener, "listener-configured auth stop")
+    }
+  })
+
   testPty("serves HTTP routes and upgrades PTY websocket through Server.listen", async () => {
     await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
     const listener = await startListener()

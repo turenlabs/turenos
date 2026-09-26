@@ -44,6 +44,8 @@ export type SshServersControllerOptions = {
     config: SshServerConfig,
     ctx: { onPrompt: (request: SshPromptRequest) => Promise<string | null> },
   ) => Promise<SshConnection>
+  /** Test seam: replaces the quick-connect remote stop */
+  stopRemote?: (config: SshServerConfig) => Promise<void>
   /** Test seam: replaces the remote forge install */
   installForge?: (config: SshServerConfig) => Promise<void>
   /** Test seam: probe without touching ssh */
@@ -251,6 +253,11 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
     logger?.log("ssh connecting", { id, host: item.config.host })
     try {
       const connection = await connect(item.config)
+      if (connection.persistent)
+        await recordPersistent(id, connection.persistent).catch((error) => {
+          connection.listener.stop()
+          throw error
+        })
       if (!isCurrentStartAttempt(id, attempt)) {
         try {
           connection.listener.stop()
@@ -298,6 +305,26 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
     } catch {
       /* ignore */
     }
+  }
+
+  const recordPersistent = async (id: string, persistent: NonNullable<SshServerConfig["persistent"]>) => {
+    const current = state.servers.find((item) => item.config.id === id)?.config
+    if (!current || current.persistent?.serverID === persistent.serverID) return
+    await writeServers((await readServers()).map((config) => (config.id === id ? { ...config, persistent } : config)))
+    updateServer(id, (item) => ({ ...item, config: { ...item.config, persistent } }))
+  }
+
+  // A managed persistent server belongs to its host's service manager, and the ssh master can be
+  // shared with other clients of the same host, so a persistent target only drops its own tunnel,
+  // which the caller has already closed. The master expires on its own (ControlPersist).
+  const releaseRemote = async (config: SshServerConfig, stop: () => Promise<void>) => {
+    if (config.persistent) return
+    await (options?.stopRemote ? options.stopRemote(config) : stop()).catch((error) => {
+      logger?.error("ssh remote stop failed", {
+        id: config.id,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    })
   }
 
   const refreshFromStore = async () => {
@@ -414,14 +441,9 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
       if (config) {
         // Never re-authenticate during removal - if the master is already
         // alive the stop runs over it; otherwise the remote stays up.
-        await import("./connection")
-          .then(({ stopSshRemote }) => stopSshRemote(config, { ...deps, reachable: false }))
-          .catch((error) => {
-            logger?.error("ssh remote stop failed", {
-              id,
-              message: error instanceof Error ? error.message : String(error),
-            })
-          })
+        await releaseRemote(config, () =>
+          import("./connection").then(({ stopSshRemote }) => stopSshRemote(config, { ...deps, reachable: false })),
+        )
       }
       const remaining = (await readServers()).filter((item) => item.id !== id)
       await writeServers(remaining)
@@ -438,14 +460,9 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
       if (!config) return
       invalidateStartAttempt(id)
       await stopConnection(id)
-      await import("./connection")
-        .then(({ stopSshRemote }) => stopSshRemote(config, { ...deps, onPrompt: onPrompt(id) }))
-        .catch((error) => {
-          logger?.error("ssh remote stop failed", {
-            id,
-            message: error instanceof Error ? error.message : String(error),
-          })
-        })
+      await releaseRemote(config, () =>
+        import("./connection").then(({ stopSshRemote }) => stopSshRemote(config, { ...deps, onPrompt: onPrompt(id) })),
+      )
       setRuntime(id, { kind: "stopped" })
     },
 

@@ -30,6 +30,8 @@ the reference when prose and code appear together.
   and tunnel a remote TurenOS backend from Desktop.
 - [Secure storage](./secure-storage.md): encrypting credentials and sensitive files with the
   OS-protected Secret Vault.
+- [Persistent server](./persistent-server.md): one host-owned server and vault key that every client
+  attaches to, with systemd setup, key import, and recovery.
 - [Release guide](./release-guide.md): the operator checklist for cutting a release —
   version bump, dispatch, verification, and recovery.
 - [Release signing](./release-signing.md): native platform signatures, certificate handoff, and

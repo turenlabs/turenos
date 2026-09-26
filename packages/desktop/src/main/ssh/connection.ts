@@ -1,9 +1,15 @@
 import { createServer } from "node:net"
 import { readFile } from "node:fs/promises"
 import type { SshServerConfig } from "../../preload/types"
-import { checkHealth } from "../server"
 import type { CredentialVault } from "../secret-key"
 import { pollSshHealth } from "./startup"
+import {
+  REMOTE_ATTACH_PROBE_SCRIPT,
+  classifyAttach,
+  parseAttachProbe,
+  verifyDescriptor,
+  type AttachRecord,
+} from "./persistent"
 import {
   FORGE_REMOTE_SHIM,
   FORGE_REMOTE_SHIM_PATH,
@@ -33,6 +39,8 @@ export type SshConnection = {
   url: string
   username: string | null
   password: string
+  /** Present when the connection attached to a managed persistent server */
+  persistent?: { serverID: string }
 }
 
 export class ForgeRemoteMissingError extends Error {
@@ -66,8 +74,11 @@ function targetFor(config: SshServerConfig): SshTarget {
 
 /**
  * Full connect for one configured ssh server: establish (or reuse) the
- * control master, refresh the remote lifecycle shim, ensure the daemonized
- * `forge serve` is up, then open the loopback tunnel and wait for health.
+ * control master and check for a managed persistent server. A persistent
+ * server is attached through its attach record without touching the shim or
+ * sending the vault key. Otherwise refresh the remote lifecycle shim, ensure
+ * the daemonized `forge serve` is up, then open the loopback tunnel and wait
+ * for health.
  */
 export async function connectSshRemote(
   config: SshServerConfig,
@@ -81,6 +92,15 @@ export async function connectSshRemote(
     signal: deps.signal,
   })
 
+  const probe = await runRemote(binary, deps.controlDir, target, "sh -s", {
+    timeoutMs: 20_000,
+    input: REMOTE_ATTACH_PROBE_SCRIPT,
+    signal: deps.signal,
+  })
+  const classification = classifyAttach(config, parseAttachProbe(probe.stdout))
+  if (classification.kind === "conflict") throw new Error(classification.message)
+  if (classification.kind === "attach-existing") return attachPersistent(config, classification.record, deps)
+
   // Always refresh the shim - it is small, and an outdated copy self-heals.
   await writeRemoteFile(binary, deps.controlDir, target, FORGE_REMOTE_SHIM_PATH, FORGE_REMOTE_SHIM, 0o755, {
     signal: deps.signal,
@@ -92,15 +112,75 @@ export async function connectSshRemote(
     return ensureRemote(binary, deps.controlDir, target, deps)
   })
 
+  // Lazy: ../server pulls in Electron, which the persistent attach path never needs.
+  const { checkHealth } = await import("../server")
+  const { tunnel, url } = await openTunnel(config, deps, state.port, (url) => checkHealth(url, state.password))
+  return {
+    listener: { stop: () => tunnel.stop(), onExit: (cb) => tunnel.onExit(cb) },
+    url,
+    username: state.username,
+    password: state.password,
+  }
+}
+
+async function attachPersistent(
+  config: SshServerConfig,
+  record: AttachRecord,
+  deps: SshConnectionDeps,
+): Promise<SshConnection> {
+  const authorization = `Basic ${Buffer.from(`${record.username}:${record.password}`).toString("base64")}`
+  const describe = (url: string) =>
+    fetch(new URL("/global/server", url), { headers: { authorization }, signal: AbortSignal.timeout(3000) })
+  // Any answer below 500 means the tunnel reaches the server. A rejection (a rotated password, or a
+  // server without the descriptor route) will not change by retrying, so it is reported below at once.
+  const { tunnel, url } = await openTunnel(config, deps, Number(new URL(record.url).port), (url) =>
+    describe(url).then(
+      (response) => response.status < 500,
+      () => false,
+    ),
+  ).catch((error: Error) => {
+    if (error.message !== "ssh tunnel health check timed out") throw error
+    throw new Error(
+      `${config.host} publishes persistent server ${record.serverID}, but it is not answering on ${record.url}. Check the service on the host (for example systemctl status turenos).`,
+    )
+  })
+  await describe(url)
+    .then(async (response) => {
+      if (!response.ok)
+        throw new Error(
+          `TurenOS server ${record.serverID} on ${config.host} answered ${response.status} to its attach record credentials`,
+        )
+      verifyDescriptor(record, await response.json())
+    })
+    .catch((error) => {
+      tunnel.stop()
+      throw error
+    })
+  return {
+    listener: { stop: () => tunnel.stop(), onExit: (cb) => tunnel.onExit(cb) },
+    url,
+    username: record.username,
+    password: record.password,
+    persistent: { serverID: record.serverID },
+  }
+}
+
+async function openTunnel(
+  config: SshServerConfig,
+  deps: SshConnectionDeps,
+  remotePort: number,
+  healthy: (url: string) => Promise<boolean>,
+) {
+  const binary = deps.binary ?? sshBinary()
   const localPort = await allocatePort()
-  const tunnel = spawnTunnel(binary, deps.controlDir, target, localPort, state.port, {
+  const tunnel = spawnTunnel(binary, deps.controlDir, targetFor(config), localPort, remotePort, {
     onLine: deps.onLine,
     signal: deps.signal,
   })
 
   const url = `http://127.0.0.1:${localPort}`
   const startup = new AbortController()
-  const health = pollSshHealth(() => checkHealth(url, state.password), startup.signal)
+  const health = pollSshHealth(() => healthy(url), startup.signal)
   let timeout: ReturnType<typeof setTimeout>
   const timedOut = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => reject(new Error("ssh tunnel health check timed out")), 20_000)
@@ -123,13 +203,7 @@ export async function connectSshRemote(
     clearTimeout(timeout!)
     startup.abort()
   }
-
-  return {
-    listener: { stop: () => tunnel.stop(), onExit: (cb) => tunnel.onExit(cb) },
-    url,
-    username: state.username,
-    password: state.password,
-  }
+  return { tunnel, url }
 }
 
 async function ensureRemote(

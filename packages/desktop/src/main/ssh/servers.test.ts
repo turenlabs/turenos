@@ -39,6 +39,25 @@ async function waitFor(fn: () => boolean, timeout = 2_000) {
   throw new Error("timed out waiting for condition")
 }
 
+test("closes a persistent attach whose server record cannot be saved", async () => {
+  let stops = 0
+  const controller = createSshServersController(deps, {
+    readServers: () => [config("ssh:me@host")],
+    writeServers: () => {
+      throw new Error("storage unavailable")
+    },
+    reconnectDelays: () => [],
+    connect: async () => ({
+      ...ready(),
+      listener: { stop: () => void stops++, onExit: () => undefined },
+      persistent: { serverID: "srv_1" },
+    }),
+  })
+  await controller.initialize()
+  await waitFor(() => controller.getState().servers[0]?.runtime.kind === "failed")
+  expect(stops).toBe(1)
+})
+
 test("health polling stops when the tunnel startup settles", async () => {
   const abort = new AbortController()
   let checks = 0
@@ -293,8 +312,12 @@ test("probeHost records a successful probe and a failure", async () => {
 test("stopRemote disconnects the tunnel and marks the server stopped", async () => {
   const persisted: SshServerConfig[] = [config("ssh:me@a")]
   let stopped = 0
+  const remoteStops: string[] = []
   const controller = createSshServersController(deps, {
     readServers: () => persisted,
+    stopRemote: async (cfg) => {
+      remoteStops.push(cfg.id)
+    },
     connect: async () => ({
       listener: { stop: () => stopped++, onExit: () => undefined },
       url: "http://127.0.0.1:4096",
@@ -307,6 +330,7 @@ test("stopRemote disconnects the tunnel and marks the server stopped", async () 
 
   await controller.stopRemote("ssh:me@a")
   expect(stopped).toBe(1)
+  expect(remoteStops).toEqual(["ssh:me@a"])
   expect(controller.getState().servers[0]?.runtime).toEqual({ kind: "stopped" })
   // Server stays in the list - it can be reconnected.
   expect(controller.getState().servers).toHaveLength(1)

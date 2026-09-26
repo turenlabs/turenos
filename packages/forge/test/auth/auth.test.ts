@@ -13,13 +13,19 @@ function run<E>(
   legacy: LegacyFile,
   body: (services: {
     storage: Storage.Interface
-    auth: (provided?: Storage.Interface) => Effect.Effect<Auth.Interface, never, Scope.Scope>
+    vault: SecretVault.Interface
+    auth: (
+      provided?: Storage.Interface,
+      providedVault?: SecretVault.Interface,
+    ) => Effect.Effect<Auth.Interface, never, Scope.Scope>
   }) => Effect.Effect<void, E, Scope.Scope>,
 ) {
   return Effect.runPromise(
     Effect.gen(function* () {
+      const databaseContext = yield* Layer.build(Database.layerFromPath(":memory:"))
+      const database = Context.get(databaseContext, Database.Service)
       const storageContext = yield* Layer.build(
-        LayerNode.compile(Storage.node, [[Database.node, Database.layerFromPath(":memory:")]]),
+        LayerNode.compile(Storage.node, [[Database.node, Layer.succeed(Database.Service, database)]]),
       )
       const storage = Context.get(storageContext, Storage.Service)
       const vaultContext = yield* Layer.build(LayerNode.compile(SecretVault.node))
@@ -40,22 +46,127 @@ function run<E>(
           })
         }),
       ).pipe(Layer.provide(LayerNode.compile(FSUtil.node)))
-      const auth = (provided = storage) =>
+      const auth = (provided = storage, providedVault = vault) =>
         Layer.build(
           Layer.fresh(
             LayerNode.compile(Auth.node, [
+              [Database.node, Layer.succeed(Database.Service, database)],
               [Storage.node, Layer.succeed(Storage.Service, provided)],
               [FSUtil.node, fs],
-              [SecretVault.node, Layer.succeed(SecretVault.Service, vault)],
+              [SecretVault.node, Layer.succeed(SecretVault.Service, providedVault)],
             ]),
           ),
         ).pipe(Effect.map((context) => Context.get(context, Auth.Service)))
-      yield* body({ storage, auth })
+      yield* body({ storage, vault, auth })
     }).pipe(Effect.scoped),
   )
 }
 
 describe("Auth", () => {
+  test("creates and accepts the database-bound verification sentinel", async () => {
+    await run({ content: undefined, reads: 0 }, ({ storage, auth }) =>
+      Effect.gen(function* () {
+        yield* auth()
+        const sentinel = yield* storage.get({
+          scope: Storage.Scope.make("internal/database-verification"),
+          key: Storage.Key.make("sentinel"),
+        })
+        expect(sentinel?.value.startsWith("forge-secret:v1:")).toBe(true)
+        expect(Exit.isSuccess(yield* Effect.exit(auth()))).toBe(true)
+      }),
+    )
+  })
+
+  test("refuses a quick-connect start on a persistent-owned database", async () => {
+    await run({ content: undefined, reads: 0 }, ({ storage, vault, auth }) =>
+      Effect.gen(function* () {
+        yield* auth()
+        yield* storage.set({
+          scope: Storage.Scope.make("internal/server-owner"),
+          key: Storage.Key.make("record"),
+          value: JSON.stringify({
+            serverID: "persistent-server",
+            keyID: vault.keyID,
+            mode: "persistent",
+            pid: 1,
+            startedAt: 1,
+          }),
+        })
+        const exit = yield* Effect.exit(auth())
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("another persistent server")
+      }),
+    )
+  })
+
+  test("rejects wrong key bytes even when the key ID matches", async () => {
+    await run({ content: undefined, reads: 0 }, ({ auth, vault }) =>
+      Effect.gen(function* () {
+        yield* auth()
+        const wrongVault = yield* Effect.gen(function* () {
+          return yield* SecretVault.Service
+        }).pipe(Effect.provide(SecretVault.layer({ keyID: vault.keyID, key: new Uint8Array(32).fill(42) })))
+        const exit = yield* Effect.exit(auth(undefined, wrongVault))
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("Database secret verification failed")
+      }),
+    )
+  })
+
+  test("rejects ciphertext that cannot open using the configured vault", async () => {
+    await run({ content: undefined, reads: 0 }, ({ storage, vault, auth }) =>
+      Effect.gen(function* () {
+        yield* auth()
+        yield* storage.set({
+          scope: Storage.Scope.make("internal/database-verification"),
+          key: Storage.Key.make("sentinel"),
+          value: `forge-secret:v1:${vault.keyID}:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA`,
+        })
+        const exit = yield* Effect.exit(auth())
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("Database secret verification failed")
+      }),
+    )
+  })
+
+  test("rejects sealed values that have multiple key IDs", async () => {
+    await run({ content: undefined, reads: 0 }, ({ storage, vault, auth }) =>
+      Effect.gen(function* () {
+        yield* auth()
+        const otherValue = yield* Effect.gen(function* () {
+          const otherVault = yield* SecretVault.Service
+          return yield* otherVault.seal("test/mixed-key-ids", "entry", "secret")
+        }).pipe(Effect.provide(SecretVault.layer({ keyID: "other-key", key: new Uint8Array(32).fill(42) })))
+        yield* storage.set({
+          scope: Storage.Scope.make("test/mixed-key-ids"),
+          key: Storage.Key.make("entry"),
+          value: otherValue,
+        })
+
+        expect(vault.isSealed(otherValue)).toBe(true)
+        const exit = yield* Effect.exit(auth())
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("multiple key IDs")
+      }),
+    )
+  })
+
+  test("rejects malformed values that use the sealed-secret prefix", async () => {
+    await run({ content: undefined, reads: 0 }, ({ storage, auth }) =>
+      Effect.gen(function* () {
+        yield* auth()
+        yield* storage.set({
+          scope: Storage.Scope.make("test/malformed-sealed-value"),
+          key: Storage.Key.make("entry"),
+          value: "forge-secret:v1:truncated",
+        })
+        const exit = yield* Effect.exit(auth())
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("Malformed sealed storage value")
+      }),
+    )
+  })
+
   test.each([
     { provider: "anthropic", credential: new Auth.Api({ type: "api", key: "invalid-stale-api-key" }) },
     {

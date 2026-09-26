@@ -38,7 +38,7 @@ export const layer = (options: Key) => {
   return Layer.succeed(Service, Service.of(make(options)))
 }
 
-function make(options: Key): Interface {
+export function make(options: Key): Interface {
   const root = Buffer.from(options.key)
   const sealBytes = (scope: string, key: string, value: Uint8Array) =>
     Effect.try({
