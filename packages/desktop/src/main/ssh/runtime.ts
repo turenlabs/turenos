@@ -186,10 +186,10 @@ function authFailure(result: SshRunResult) {
  * ssh prints prompts without a trailing newline, so only the tail matters.
  */
 export function detectSshPrompt(tail: string): SshPromptRequest | null {
-  const normalized = tail.replace(/\r/g, "")
-  const lastLine = normalized.slice(normalized.lastIndexOf("\n") + 1)
+  const lastLine = tail.slice(tail.lastIndexOf("\n") + 1).replace(/\r/g, "")
   if (/\(yes\/no(?:\/\[fingerprint\])?\)\s*\??\s*$/.test(lastLine)) {
-    const block = normalized
+    const block = tail
+      .replace(/\r/g, "")
       .split("\n")
       .slice(-8)
       .map((line) => line.trim())
