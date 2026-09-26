@@ -71,6 +71,7 @@ Cancellation remains cancellation. An interrupted Claude Code bridge call is sti
 Do not treat an unmasked result as proof that it contains no sensitive information.
 
 - Unknown formats, arbitrary passwords, short or low-variety configured values, PII, entropy-based discovery, encoded secrets, OCR, images, and binary artifacts are not generally detected.
+- Streaming can conservatively mask more than one-shot detection. Once preceding text has been released, a later token-shaped chunk can match without its original left context, even when the combined identifier would not match. This accepted trade-off can change output depending on chunk boundaries; streamed and one-shot output are not guaranteed to be identical.
 - Media payloads/URIs, attachment fields, opaque provider metadata, signed reasoning, and transport authentication are not generally rewritten. Authentication must still work.
 - Raw tool arguments, pending inputs, typed direct-shell commands, original files, existing event logs, and pre-existing output artifacts are not scrubbed at rest by this feature. Model-generated assistant text is stored as produced; it is protected when sent again.
 - A producer that truncates or encodes a credential before the guard sees it can defeat detection. Matches split across unrelated structured fields are not reconstructed for detection. A detected token directly adjacent to another credential can lose its word boundary and go unrecognized on that pass.
