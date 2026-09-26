@@ -220,12 +220,15 @@ spawns the forward over the master:
 ```
 ssh -S <controlPath> -L 127.0.0.1:<local>:127.0.0.1:<remote> \
     -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 \
-    -o ServerAliveCountMax=2 -o TCPKeepAlive=yes <dest> 'while :; do sleep 86400; done'
+    -o ServerAliveCountMax=2 -o TCPKeepAlive=yes <dest> 'cat >/dev/null'
 ```
 
 Two details are load-bearing. A multiplexed `-N` session exits immediately because there is no
-command channel to hold, so a remote sleep loop keeps the child alive and makes _its_ exit a
-reliable signal that the connection dropped. And forwards registered through the mux outlive the
+command channel to hold, so a remote `cat` on the child's open stdin pipe keeps the child alive and
+makes _its_ exit a reliable signal that the connection dropped. Because `cat` reads that pipe, the
+remote side also exits when the tunnel closes. A command that ignores stdin would outlive the tunnel
+and keep its session until the host's `MaxSessions` limit refused every new tunnel on the shared
+master. And forwards registered through the mux outlive the
 session that created them, so on exit the desktop explicitly issues `-O cancel -L <spec>` — otherwise
 the local port stays bound and the next connect cannot re-register it.
 

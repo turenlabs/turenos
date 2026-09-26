@@ -79,14 +79,14 @@ sudo forge persistent install --user alice --apply \
 
 `install --apply` does the following:
 
-1. Generates a 32-byte key and a key ID exactly once. It writes the recovery copy (`0400`), encrypts the key into
-   `/etc/credstore.encrypted/forge-secret-vault-key` through `systemd-creds encrypt` on stdin, and writes the
-   non-secret key ID to `/etc/credstore/forge-secret-vault-key-id`.
+1. Generates a 32-byte key and a key ID exactly once. It writes the recovery copy (`0400`) and the non-secret key ID to
+   `/etc/credstore/forge-secret-vault-key-id`, then encrypts the key into
+   `/etc/credstore.encrypted/forge-secret-vault-key` through `systemd-creds encrypt` on stdin.
 2. Generates the HTTP password and encrypts it as `forge-server-password`.
 3. Creates the `/var/lib/turenos-server` data root (owned by the service user, `0700`) with pinned XDG directories and
    `FORGE_DB`, away from the default path that the legacy quick-connect shim uses.
 4. Writes `/etc/turenos/attach.json` (`0640 root:turenos-operators`, creating the group if needed) and
-   `/etc/systemd/system/turenos.service`, then runs `systemctl enable --now`.
+   `/etc/systemd/system/turenos.service`, then enables and restarts the service.
 5. Waits for `/global/server` and checks the server ID, key ID, and mode.
 
 Move the recovery copy offline, then delete it from the host. Host-bound encryption (host key or TPM2) isn't a backup.
