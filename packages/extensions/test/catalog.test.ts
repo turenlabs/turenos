@@ -12,6 +12,7 @@ const expected = [
   "turenlabs/bandit",
   "turenlabs/batou",
   "turenlabs/bug-root-cause",
+  "turenlabs/capec",
   "turenlabs/certfr-misp",
   "turenlabs/chainguard-docs",
   "turenlabs/checkov",
@@ -48,6 +49,7 @@ const expected = [
   "turenlabs/kev",
   "turenlabs/linear",
   "turenlabs/lolbas",
+  "turenlabs/mcp-security-review",
   "turenlabs/microsoft-graph-enterprise",
   "turenlabs/microsoft-sentinel",
   "turenlabs/native-audit",
@@ -151,7 +153,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(16)
+    expect(skills.length).toBe(17)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0

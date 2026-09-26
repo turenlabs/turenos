@@ -15,6 +15,7 @@ import { Nvd } from "./integrations/nvd"
 import { Attack } from "./integrations/data-knowledge/attack"
 import { Cwe } from "./integrations/data-knowledge/cwe"
 import { D3fend } from "./integrations/data-knowledge/d3fend"
+import { Capec } from "./integrations/data-knowledge/capec"
 import { CirclHashlookup } from "./integrations/data-ioc/circl-hashlookup"
 import { Euvd } from "./integrations/data-community/euvd"
 import { Lolbas } from "./integrations/data-community/lolbas"
@@ -92,6 +93,7 @@ const implementations: readonly Integration[] = [
   Attack,
   Cwe,
   D3fend,
+  Capec,
   CirclHashlookup,
   Euvd,
   Lolbas,
