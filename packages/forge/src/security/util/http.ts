@@ -40,6 +40,8 @@ export interface CacheOptions {
   ttlMs: number
   /** Explicit cache key; defaults to a hash of method + url + body. */
   key?: string
+  /** Reject invalid cached or upstream values before returning or caching them. */
+  validate?: (value: unknown) => void
 }
 
 export interface RequestOptions {
@@ -179,6 +181,7 @@ async function fixedEndpointRequest(options: NonNullable<RequestOptions["fixedEn
 async function responseValue(response: Response, accept: "json" | "text", maxBytes: number) {
   const declared = Number(response.headers.get("content-length"))
   if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body?.cancel().catch(() => {})
     throw new Error(`response exceeded ${maxBytes} bytes`)
   }
   if (!response.body) return accept === "json" ? undefined : ""
@@ -205,12 +208,21 @@ async function request(url: string, opts: RequestOptions, accept: "json" | "text
   if (!cache) return requestUpstream(url, opts, accept)
   const key = cacheKey(url, opts, accept)
   const hit = await readCache(key, cache)
-  if (hit) return hit.value
+  if (hit) {
+    try {
+      cache.validate?.(hit.value)
+      return hit.value
+    } catch {
+      memory.delete(key)
+      await fs.rm(cacheFile(cache.dir, key), { force: true }).catch(() => {})
+    }
+  }
   const pending = inflight.get(key)
   if (pending) return pending
 
   const next = requestUpstream(url, opts, accept)
     .then(async (value) => {
+      cache.validate?.(value)
       await writeCache(key, cache, value)
       return value
     })
@@ -252,6 +264,7 @@ async function requestUpstream(url: string, opts: RequestOptions, accept: "json"
 
     if (response.status === 429 || response.status >= 500) {
       lastError = new HttpError(url, response.status)
+      await response.body?.cancel().catch(() => {})
       if (attempt + 1 < attempts) {
         await sleep(retryDelay(attempt, response.headers.get("retry-after")))
         continue

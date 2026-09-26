@@ -43,7 +43,7 @@ Each manifest is one JSON file holding a single extension whose contributions sh
 
 ## Current Sources
 
-The catalog contains 23 cybersecurity data sources:
+The catalog contains 24 cybersecurity data sources:
 
 - CISA Known Exploited Vulnerabilities
 - CIRCL Hashlookup
@@ -57,6 +57,7 @@ The catalog contains 23 cybersecurity data sources:
 - GTFOBins
 - Have I Been Pwned
 - LOLBAS
+- MITRE CAPEC
 - MITRE ATT&CK
 - MITRE CWE
 - MITRE D3FEND
@@ -74,7 +75,7 @@ Threat-feed rights and exclusions are recorded in [`docs/feed-licenses.md`](docs
 
 ## Current Skills And Subagents
 
-The catalog contains twelve downloadable skills:
+The catalog contains thirteen downloadable skills:
 
 - Secure Code Review
 - Bug Root Cause
@@ -84,6 +85,7 @@ The catalog contains twelve downloadable skills:
 - Threat Intelligence Brief
 - Detection Engineering Review
 - Incident Evidence Triage
+- MCP Security Review
 - Technical Security Blog
 - Threat Model Review
 - IaC Config Review
