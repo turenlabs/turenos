@@ -17,7 +17,11 @@ function seed(filename: string) {
     const vault = SecretVault.make(right)
     yield* db
       .insert(CredentialTable)
-      .values({ id: "cred_1" as never, label: "api", value: yield* vault.seal("credential", "cred_1", '{"type":"api"}') })
+      .values({
+        id: "cred_1" as never,
+        label: "api",
+        value: yield* vault.seal("credential", "cred_1", '{"type":"api"}'),
+      })
       .run()
     yield* db
       .insert(AccountTable)
@@ -49,7 +53,8 @@ describe("VaultVerification", () => {
 
     const exit = await start(filename, wrong)
     expect(Exit.isFailure(exit)).toBe(true)
-    if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("cannot open existing secrets in: credential, account")
+    if (Exit.isFailure(exit))
+      expect(Cause.pretty(exit.cause)).toContain("cannot open existing secrets in: credential, account")
 
     expect(Exit.isSuccess(await start(filename, right))).toBe(true)
     const again = await start(filename, wrong)
@@ -79,7 +84,11 @@ describe("VaultVerification", () => {
 
     const report = await Effect.gen(function* () {
       const database = yield* Database.Service
-      return yield* VaultVerification.inspect(Database.primary(database.db), database.databaseUUID, SecretVault.make(right))
+      return yield* VaultVerification.inspect(
+        Database.primary(database.db),
+        database.databaseUUID,
+        SecretVault.make(right),
+      )
     }).pipe(Effect.provide(Database.layerFromPath(filename)), Effect.scoped, Effect.runPromise)
     expect(report).toEqual({
       keyIDs: ["host-key"],

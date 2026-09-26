@@ -32,7 +32,9 @@ const line = (state: string, text = "") => `FORGE_ATTACH ${state}${text ? ` ${te
 
 describe("persistent attach classification", () => {
   test("parses readable, unreadable, and missing probe lines while ignoring banner noise", () => {
-    expect(parseAttachProbe(["Welcome FORGE_ATTACH readable {}", line("readable", JSON.stringify(record))].join("\n"))).toEqual({
+    expect(
+      parseAttachProbe(["Welcome FORGE_ATTACH readable {}", line("readable", JSON.stringify(record))].join("\n")),
+    ).toEqual({
       state: "readable",
       record,
     })
@@ -58,7 +60,9 @@ describe("persistent attach classification", () => {
 
   test("verifies the tunnelled descriptor against the attach record", () => {
     expect(() => verifyDescriptor(record, { serverID: "srv_1", mode: "persistent" })).not.toThrow()
-    expect(() => verifyDescriptor(record, { serverID: "srv_2", mode: "persistent" })).toThrow("attach record names srv_1")
+    expect(() => verifyDescriptor(record, { serverID: "srv_2", mode: "persistent" })).toThrow(
+      "attach record names srv_1",
+    )
     expect(() => verifyDescriptor(record, { serverID: "srv_1", mode: "quick-connect" })).toThrow("not persistent")
   })
 
@@ -178,10 +182,7 @@ describe("persistent server lifecycle", () => {
     try {
       const log = join(dir, "ssh.log")
       const fake = join(dir, "ssh")
-      await writeFile(
-        fake,
-        `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(log)}\ncat >/dev/null\nexit 0\n`,
-      )
+      await writeFile(fake, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(log)}\ncat >/dev/null\nexit 0\n`)
       await chmod(fake, 0o755)
       let servers: SshServerConfig[] = [config]
       const controller = createSshServersController(

@@ -70,6 +70,11 @@ describe("ServerAuth", () => {
     expect(ServerAuth.authorized({ username: "alice", password: Redacted.make("secret") }, config)).toBe(true)
     expect(ServerAuth.authorized({ username: "opencode", password: Redacted.make("secret") }, config)).toBe(false)
     expect(ServerAuth.authorized({ username: "alice", password: Redacted.make("secre") }, config)).toBe(false)
-    expect(ServerAuth.authorized({ username: "alice", password: Redacted.make("secret") }, { ...config, password: Option.none() })).toBe(false)
+    expect(
+      ServerAuth.authorized(
+        { username: "alice", password: Redacted.make("secret") },
+        { ...config, password: Option.none() },
+      ),
+    ).toBe(false)
   })
 })

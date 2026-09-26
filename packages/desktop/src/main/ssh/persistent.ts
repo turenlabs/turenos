@@ -27,7 +27,7 @@ export const REMOTE_ATTACH_PROBE_SCRIPT = [
   `f="${ATTACH_RECORD_PATH}"`,
   'if [ ! -e "$f" ]; then printf "FORGE_ATTACH missing\\n"',
   'elif [ ! -r "$f" ]; then printf "FORGE_ATTACH unreadable\\n"',
-  "else printf \"FORGE_ATTACH readable %s\\n\" \"$(tr -d '\\r\\n' < \"$f\")\"; fi",
+  'else printf "FORGE_ATTACH readable %s\\n" "$(tr -d \'\\r\\n\' < "$f")"; fi',
   "",
 ].join("\n")
 

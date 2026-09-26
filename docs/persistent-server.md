@@ -127,12 +127,12 @@ blob to another machine.
 
 ### Operating
 
-| Task | Command |
-| --- | --- |
-| Status and logs | `systemctl status turenos`, `journalctl -u turenos` |
-| Stop or retire the service | `systemctl disable --now turenos`. Clients never stop a persistent server |
-| Re-run or upgrade | `sudo forge persistent install --apply` with no other options reuses the installed unit's account, data root, port, and server ID, then restarts the service. It refuses to replace an existing key, to change the account or data root of an installed server, or to overwrite a unit for a different server |
-| Check what a key opens | `forge persistent verify-key --db <path>` (key on stdin) |
+| Task                       | Command                                                                                                                                                                                                                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status and logs            | `systemctl status turenos`, `journalctl -u turenos`                                                                                                                                                                                                                                                           |
+| Stop or retire the service | `systemctl disable --now turenos`. Clients never stop a persistent server                                                                                                                                                                                                                                     |
+| Re-run or upgrade          | `sudo forge persistent install --apply` with no other options reuses the installed unit's account, data root, port, and server ID, then restarts the service. It refuses to replace an existing key, to change the account or data root of an installed server, or to overwrite a unit for a different server |
+| Check what a key opens     | `forge persistent verify-key --db <path>` (key on stdin)                                                                                                                                                                                                                                                      |
 
 ### Failure behavior
 

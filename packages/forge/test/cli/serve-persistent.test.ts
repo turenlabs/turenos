@@ -22,7 +22,9 @@ async function setup(root: string) {
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
       (entry): entry is [string, string] =>
-        typeof entry[1] === "string" && !entry[0].startsWith("FORGE_SECRET_VAULT") && !entry[0].startsWith("FORGE_SERVER"),
+        typeof entry[1] === "string" &&
+        !entry[0].startsWith("FORGE_SECRET_VAULT") &&
+        !entry[0].startsWith("FORGE_SERVER"),
     ),
   )
   Object.assign(env, {

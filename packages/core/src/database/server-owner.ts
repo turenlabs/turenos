@@ -112,7 +112,8 @@ function write(db: Database.Primary, record: Record) {
   return Effect.gen(function* () {
     const now = Date.now()
     yield* db
-      .run(sql`
+      .run(
+        sql`
         INSERT INTO storage_state (scope, key, value, revision, deleted, time_created, time_updated)
         VALUES (${scope}, ${key}, ${JSON.stringify(record)}, 1, 0, ${now}, ${now})
         ON CONFLICT(scope, key) DO UPDATE SET
@@ -120,7 +121,8 @@ function write(db: Database.Primary, record: Record) {
           revision = storage_state.revision + 1,
           deleted = 0,
           time_updated = excluded.time_updated
-      `)
+      `,
+      )
       .pipe(Effect.orDie)
     return record
   })

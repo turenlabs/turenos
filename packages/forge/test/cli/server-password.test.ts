@@ -36,7 +36,10 @@ describe("CLI server password source", () => {
 
     expect(
       await rejection(
-        loadServerPassword({ CREDENTIALS_DIRECTORY: tmp.path, FORGE_SERVER_PASSWORD_CREDENTIAL: "forge-server-password" }),
+        loadServerPassword({
+          CREDENTIALS_DIRECTORY: tmp.path,
+          FORGE_SERVER_PASSWORD_CREDENTIAL: "forge-server-password",
+        }),
       ),
     ).toMatchObject({ message: "server password credential is empty" })
   })

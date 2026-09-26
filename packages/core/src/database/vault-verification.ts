@@ -80,7 +80,8 @@ export function scan(db: Database.Primary) {
       const rows = yield* db.all<Record<string, string>>(store.query)
       for (const row of rows)
         for (const value of store.locate(row))
-          if (typeof value.value === "string" && value.value.startsWith(PREFIX)) sealed.push({ store: store.name, ...value })
+          if (typeof value.value === "string" && value.value.startsWith(PREFIX))
+            sealed.push({ store: store.name, ...value })
     }
     return sealed
   }).pipe(Effect.orDie)
@@ -145,7 +146,8 @@ export function inspectFile(filename: string, key: SecretVault.Key) {
 export function verify(db: Database.Primary, databaseUUID: string, vault: SecretVault.Interface) {
   return Effect.gen(function* () {
     const report = yield* inspect(db, databaseUUID, vault)
-    if (report.keyIDs.length > 1) return yield* Effect.die(new Error("Database contains secrets sealed by multiple key IDs"))
+    if (report.keyIDs.length > 1)
+      return yield* Effect.die(new Error("Database contains secrets sealed by multiple key IDs"))
     if (report.keyIDs.length === 1 && report.keyIDs[0] !== vault.keyID)
       return yield* Effect.die(new Error("Stored credentials belong to another OS-protected key"))
     if (report.verification === "invalid")
@@ -161,16 +163,20 @@ export function verify(db: Database.Primary, databaseUUID: string, vault: Secret
     const sealed = yield* vault.seal(verificationScope, verificationKey, plaintext(databaseUUID))
     const now = Date.now()
     yield* db
-      .run(sql`
+      .run(
+        sql`
         INSERT INTO storage_state (scope, key, value, revision, deleted, time_created, time_updated)
         VALUES (${verificationScope}, ${verificationKey}, ${sealed}, 1, 0, ${now}, ${now})
         ON CONFLICT(scope, key) DO NOTHING
-      `)
+      `,
+      )
       .pipe(Effect.orDie)
     const stored = yield* db
-      .get<{ value: string }>(sql`
+      .get<{ value: string }>(
+        sql`
         SELECT value FROM storage_state WHERE scope = ${verificationScope} AND key = ${verificationKey}
-      `)
+      `,
+      )
       .pipe(Effect.orDie)
     if (!stored || !(yield* sentinelMatches(vault, stored.value, databaseUUID)))
       return yield* Effect.die(

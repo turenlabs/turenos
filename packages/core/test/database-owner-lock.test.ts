@@ -72,10 +72,9 @@ describe("Database owner lock", () => {
     raw.run(
       "CREATE TABLE storage_state (scope text NOT NULL, key text NOT NULL, value text NOT NULL, revision integer NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, PRIMARY KEY (scope, key))",
     )
-    raw.run(
-      "INSERT INTO storage_state VALUES ('internal/server-owner', 'record', ?, 1, 1, 1)",
-      [JSON.stringify({ serverID: "old-server", keyID: "old-key", mode: "quick-connect", pid: 1, startedAt: 1 })],
-    )
+    raw.run("INSERT INTO storage_state VALUES ('internal/server-owner', 'record', ?, 1, 1, 1)", [
+      JSON.stringify({ serverID: "old-server", keyID: "old-key", mode: "quick-connect", pid: 1, startedAt: 1 }),
+    ])
     raw.close()
 
     const owner = await Effect.runPromise(

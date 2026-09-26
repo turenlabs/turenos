@@ -33,10 +33,9 @@ export const ServeCommand = cmd<{}, ServeArgs>({
       import("@turenlabs/core/observability"),
       import("@turenlabs/core/effect/memo-map"),
     ])
-    const runtime = ManagedRuntime.make(
-      Layer.provideMerge(AppNodeBuilderV1.build(Config.node), Observability.layer),
-      { memoMap },
-    )
+    const runtime = ManagedRuntime.make(Layer.provideMerge(AppNodeBuilderV1.build(Config.node), Observability.layer), {
+      memoMap,
+    })
     await runtime.runPromise(
       Effect.gen(function* () {
         const { Server } = yield* Effect.promise(() => import("../../server/server"))

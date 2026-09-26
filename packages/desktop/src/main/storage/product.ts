@@ -389,7 +389,10 @@ function isSshServers(value: unknown): value is SshServerConfig[] {
         "host" in item &&
         typeof item.host === "string" &&
         item.host.length > 0 &&
-        (!("persistent" in item) || item.persistent === null || item.persistent === undefined || isPersistentTarget(item.persistent)),
+        (!("persistent" in item) ||
+          item.persistent === null ||
+          item.persistent === undefined ||
+          isPersistentTarget(item.persistent)),
     )
   )
 }

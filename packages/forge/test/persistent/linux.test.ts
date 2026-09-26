@@ -47,9 +47,13 @@ const facts: PersistentLinux.Facts = {
 describe("PersistentLinux", () => {
   test("the unit pins the data root and reads secrets only through systemd credentials", () => {
     const text = PersistentLinux.unit(plan)
-    expect(text).toContain("ExecStart=/usr/local/bin/forge serve --key-source systemd-credentials --hostname 127.0.0.1 --port 4096")
+    expect(text).toContain(
+      "ExecStart=/usr/local/bin/forge serve --key-source systemd-credentials --hostname 127.0.0.1 --port 4096",
+    )
     expect(text).toContain("Environment=FORGE_DB=/var/lib/turenos/data/forge/forge.db")
-    expect(text).toContain("LoadCredentialEncrypted=forge-secret-vault-key:/etc/credstore.encrypted/forge-secret-vault-key")
+    expect(text).toContain(
+      "LoadCredentialEncrypted=forge-secret-vault-key:/etc/credstore.encrypted/forge-secret-vault-key",
+    )
     expect(text).toContain("Environment=FORGE_SERVER_PASSWORD_CREDENTIAL=forge-server-password")
     expect(text).not.toMatch(/FORGE_SECRET_VAULT_KEY=|FORGE_SERVER_PASSWORD=/)
     expect(PersistentLinux.installed(text).serverID).toBe("srv_test")
@@ -120,7 +124,13 @@ describe("PersistentLinux", () => {
     expect(PersistentLinux.evaluate(facts, plan).problems).toEqual([])
     expect(PersistentLinux.parseSystemdVersion("systemd 252 (252.22-1~deb12u1)\n+PAM +AUDIT")).toBe(252)
     const problems = PersistentLinux.evaluate(
-      { ...facts, root: false, systemdVersion: 245, systemdCreds: false, existingUnit: "Environment=FORGE_SERVER_ID=srv_other" },
+      {
+        ...facts,
+        root: false,
+        systemdVersion: 245,
+        systemdCreds: false,
+        existingUnit: "Environment=FORGE_SERVER_ID=srv_other",
+      },
       plan,
     ).problems
     expect(problems).toContain("setup must run as root (for example with sudo)")
@@ -158,7 +168,12 @@ describe("PersistentLinux", () => {
       yield* ServerOwner.promote(yield* Database.openExisting(target), { serverID: "srv_test", keyID: key.keyID })
     }).pipe(Effect.scoped, Effect.runPromise)
 
-    const release = await Database.acquireOwnerLock(target, { mode: "persistent", serverID: "srv_test", keyID: key.keyID, key })
+    const release = await Database.acquireOwnerLock(target, {
+      mode: "persistent",
+      serverID: "srv_test",
+      keyID: key.keyID,
+      key,
+    })
     try {
       const owner = await Effect.gen(function* () {
         return yield* ServerOwner.read(Database.primary((yield* Database.Service).db))

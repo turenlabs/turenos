@@ -35,15 +35,20 @@ const planOptions = (yargs: Argv) =>
       describe: `loopback listener port (default: the installed unit's, or ${PersistentLinux.defaults.port})`,
     })
     .option("forge-bin", { type: "string", describe: "forge binary the service runs (default: this binary)" })
-    .option("server-id", { type: "string", describe: "stable server ID (defaults to the installed unit's, or a new one)" })
+    .option("server-id", {
+      type: "string",
+      describe: "stable server ID (defaults to the installed unit's, or a new one)",
+    })
 
 async function plan(args: PlanArgs, runner = PersistentLinux.run) {
   const existing = await readFile(PersistentLinux.defaults.unitPath, "utf8").catch(() => undefined)
   const installed = PersistentLinux.installed(existing)
-  const sameServer = installed.serverID !== undefined && (args["server-id"] ?? installed.serverID) === installed.serverID
+  const sameServer =
+    installed.serverID !== undefined && (args["server-id"] ?? installed.serverID) === installed.serverID
   const user = args.user ?? (sameServer ? installed.user : undefined)
   if (!user) throw refuse("--user is required to set up a new service")
-  const dataRoot = args["data-root"] ?? (sameServer ? installed.dataRoot : undefined) ?? PersistentLinux.defaults.dataRoot
+  const dataRoot =
+    args["data-root"] ?? (sameServer ? installed.dataRoot : undefined) ?? PersistentLinux.defaults.dataRoot
   const conflicts = sameServer
     ? [
         ...(installed.user && user !== installed.user
@@ -135,7 +140,10 @@ const UnitCommand = cmd<{}, PlanArgs>({
   },
 })
 
-const InstallCommand = cmd<{}, PlanArgs & { apply?: boolean; "key-stdin"?: boolean; "import-db"?: string; "recovery-file"?: string }>({
+type InstallArgs = PlanArgs & { apply?: boolean; "key-stdin"?: boolean; "import-db"?: string; "recovery-file"?: string }
+type Key = ReturnType<typeof keyFromText>
+
+const InstallCommand = cmd<{}, InstallArgs>({
   command: "install",
   describe: "set up a persistent systemd service; prints the plan unless --apply is given",
   builder: ((yargs: Argv) =>
@@ -148,7 +156,6 @@ const InstallCommand = cmd<{}, PlanArgs & { apply?: boolean; "key-stdin"?: boole
         describe: "where to write the recovery copy of a newly generated key (required for a fresh key)",
       })) as never,
   async handler(args) {
-    const runner = PersistentLinux.run
     const { target, shown, conflicts } = await plan(args)
     const facts = await PersistentLinux.gather(target)
     const evaluated = PersistentLinux.evaluate(facts, target)
@@ -165,147 +172,212 @@ const InstallCommand = cmd<{}, PlanArgs & { apply?: boolean; "key-stdin"?: boole
       return
     }
 
-    if (args["key-stdin"] && facts.keyCredential)
-      throw refuse("this host already has a vault key credential; refusing to replace it")
-    const imported = args["key-stdin"] ? keyFromText(await stdinText()) : undefined
-    const hasData = facts.database || args["import-db"] !== undefined
-    const key = imported
-      ? imported
-      : facts.keyCredential
-        ? keyFromText(
-            `${(await readFile(join(target.credstore, PersistentLinux.credentials.keyID), "utf8")).trim()}\n` +
-              (await PersistentLinux.decryptCredential(runner, target.credstoreEncrypted, PersistentLinux.credentials.key)),
-          )
-        : hasData
-          ? undefined
-          : (() => {
-              const fresh = PersistentLinux.newKey()
-              return { ...fresh, encoded: fresh.key, key: parseKey(fresh.keyID, fresh.key).key }
-            })()
-    if (!key) throw refuse("existing data needs its original key (--key-stdin); a replacement key is never created")
-    if (!facts.keyCredential && !imported && !args["recovery-file"])
-      throw refuse("a fresh key needs --recovery-file so a recovery copy exists before first use")
-    // Another account able to write the directory could swap the file before it is moved into place.
-    if (
-      !facts.keyCredential &&
-      !imported &&
-      !(await PersistentLinux.writableOnlyByRoot(dirname(resolve(args["recovery-file"]!))))
-    )
-      throw refuse(`--recovery-file must be in a directory writable only by root, such as /root`)
-    const importDB = args["import-db"]
-      ? await realpath(args["import-db"]).catch(() => {
-          throw refuse(`${args["import-db"]} does not exist`)
-        })
-      : undefined
-    // SQLite running as root follows the WAL, SHM, and lock file names beside a database and chowns
-    // what it opens, so root never opens one in a directory another account can write.
-    if (importDB && !(await PersistentLinux.writableOnlyByRoot(dirname(importDB))))
-      throw refuse(
-        `${args["import-db"]} is in a directory another account can write. Stop its server, copy the database ` +
-          "(and its -wal file, if any) into a directory writable only by root, and import that copy",
-      )
-
-    const user = facts.user!
-    const database = PersistentLinux.databasePath(target.dataRoot)
-    const service = PersistentLinux.defaults.serviceName
-    // Stop the service and take its data root back before working in it as root, so nothing the
-    // service account plants there can redirect root's writes or ownership changes.
-    if (facts.serviceActive) await runner("systemctl", ["stop", service])
-    let owned = false
-    try {
-      await PersistentLinux.claimDataRoot(target.dataRoot)
-      try {
-        if (importDB) {
-          if (facts.database) throw refuse(`${database} already exists; refusing to overwrite it`)
-          assertOpens(await VaultVerification.inspectFile(importDB, key), key.keyID, importDB)
-          const release = await Database.acquireOwnerLock(importDB)
-          try {
-            await Effect.gen(function* () {
-              const db = yield* Database.openReadonly(importDB)
-              yield* db.run(sql`VACUUM INTO ${database}`).pipe(Effect.orDie)
-            }).pipe(Effect.scoped, Effect.runPromise)
-          } finally {
-            release()
-          }
-        } else if (facts.database) {
-          const report = await VaultVerification.inspectFile(database, key)
-          assertOpens(report, key.keyID, database, target.serverID)
-          owned = report.owner?.mode === "persistent"
-        }
-
-        // A re-run over this server's own database leaves its owner record as it is.
-        if (!owned && (await stat(database).then(() => true, () => false)))
-          await Effect.gen(function* () {
-            yield* ServerOwner.promote(yield* Database.openExisting(database), {
-              serverID: target.serverID,
-              keyID: key.keyID,
-            })
-          }).pipe(Effect.scoped, Effect.runPromise)
-      } finally {
-        await PersistentLinux.releaseDataRoot(target.dataRoot, user)
-      }
-    } catch (error) {
-      if (facts.serviceActive) await runner("systemctl", ["start", service])
-      throw error
-    }
-
-    if (!facts.keyCredential) {
-      if (!imported)
-        await PersistentLinux.writeRestricted(args["recovery-file"]!, `${key.keyID}\n${key.encoded}\n`, 0o400)
-      // The key credential is what marks the key as installed, so it is written last.
-      await PersistentLinux.writeRestricted(join(target.credstore, PersistentLinux.credentials.keyID), `${key.keyID}\n`, 0o600)
-      await PersistentLinux.encryptCredential(runner, target.credstoreEncrypted, PersistentLinux.credentials.key, key.encoded)
-    }
-    const password = facts.passwordCredential
-      ? await PersistentLinux.decryptCredential(runner, target.credstoreEncrypted, PersistentLinux.credentials.password)
-      : PersistentLinux.newPassword()
-    if (!facts.passwordCredential)
-      await PersistentLinux.encryptCredential(runner, target.credstoreEncrypted, PersistentLinux.credentials.password, password)
-    await PersistentLinux.protectCredentials(target.credstoreEncrypted)
-
-    if ((await PersistentLinux.groupID(target.group, runner)) === undefined) {
-      const created = await runner("groupadd", ["--system", target.group])
-      if (created.code !== 0) throw new Error(`groupadd ${target.group} failed: ${created.stderr.trim()}`)
-    }
-    const gid = (await PersistentLinux.groupID(target.group, runner))!
-    await PersistentLinux.writeRestricted(target.attachPath, PersistentLinux.attachRecord(target, password), 0o640, {
-      uid: 0,
-      gid,
-    })
-    await PersistentLinux.writeRestricted(target.unitPath, PersistentLinux.unit(target), 0o644)
-    // restart, not enable --now: a re-run must load an updated binary or unit into a running service.
-    for (const step of [["daemon-reload"], ["enable", service], ["restart", service]]) {
-      const result = await runner("systemctl", step)
-      if (result.code !== 0) throw new Error(`systemctl ${step.join(" ")} failed: ${result.stderr.trim()}`)
-    }
-
-    const descriptor = await waitForDescriptor(target, password, runner).catch(async (error: Error) => {
-      const logs = await runner("journalctl", ["-u", service, "-n", "15", "--no-pager", "-o", "cat"])
-      // A new service that cannot start would otherwise restart forever; leave an existing one to its operator.
-      if (!facts.existingUnit) await runner("systemctl", ["disable", "--now", service])
-      throw refuse(
-        [
-          error.message,
-          logs.stdout.trim(),
-          facts.existingUnit
-            ? `Check: journalctl -u ${service}`
-            : "The new service was stopped and disabled. Fix the cause above and re-run install.",
-        ].join("\n\n"),
-      )
-    })
+    const { key, fresh } = await resolveKey(args, facts, target)
+    const importDB = await importSource(args["import-db"])
+    await prepareData(target, facts, key, importDB)
+    const password = await writeCredentials(target, facts, key, fresh ? args["recovery-file"] : undefined)
+    await writeAttachAndUnit(target, password)
+    const descriptor = await startService(target, facts, password)
     if (descriptor.keyID !== key.keyID) throw refuse(`service reports key ${descriptor.keyID}, expected ${key.keyID}`)
     console.log(`\nPersistent server ${descriptor.serverID} is running with key ${descriptor.keyID}.`)
-    if (!imported && !facts.keyCredential)
-      console.log(`Move the recovery copy in ${args["recovery-file"]} to offline storage, then delete it from this host.`)
-    console.log(`Add users who may attach to the ${target.group} group. Reboot once and re-run preflight to confirm startup.`)
+    if (fresh)
+      console.log(
+        `Move the recovery copy in ${args["recovery-file"]} to offline storage, then delete it from this host.`,
+      )
+    console.log(
+      `Add users who may attach to the ${target.group} group. Reboot once and re-run preflight to confirm startup.`,
+    )
   },
 })
+
+/** The key to install: imported on stdin, the installed one, or a new one when there is no data yet. */
+async function resolveKey(args: InstallArgs, facts: PersistentLinux.Facts, target: PersistentLinux.Plan) {
+  if (args["key-stdin"] && facts.keyCredential)
+    throw refuse("this host already has a vault key credential; refusing to replace it")
+  if (args["key-stdin"]) return { key: keyFromText(await stdinText()), fresh: false }
+  if (facts.keyCredential) {
+    const keyID = (await readFile(join(target.credstore, PersistentLinux.credentials.keyID), "utf8")).trim()
+    const encoded = await PersistentLinux.decryptCredential(
+      PersistentLinux.run,
+      target.credstoreEncrypted,
+      PersistentLinux.credentials.key,
+    )
+    return { key: keyFromText(`${keyID}\n${encoded}`), fresh: false }
+  }
+  if (facts.database || args["import-db"] !== undefined)
+    throw refuse("existing data needs its original key (--key-stdin); a replacement key is never created")
+  if (!args["recovery-file"])
+    throw refuse("a fresh key needs --recovery-file so a recovery copy exists before first use")
+  // Another account able to write the directory could swap the file before it is moved into place.
+  if (!(await PersistentLinux.writableOnlyByRoot(dirname(resolve(args["recovery-file"])))))
+    throw refuse("--recovery-file must be in a directory writable only by root, such as /root")
+  const generated = PersistentLinux.newKey()
+  return { key: keyFromText(`${generated.keyID}\n${generated.key}`), fresh: true }
+}
+
+/**
+ * SQLite running as root follows the WAL, SHM, and lock file names beside a database and chowns
+ * what it opens, so root never opens one in a directory another account can write.
+ */
+async function importSource(path: string | undefined) {
+  if (!path) return undefined
+  const resolved = await realpath(path).catch(() => {
+    throw refuse(`${path} does not exist`)
+  })
+  if (!(await PersistentLinux.writableOnlyByRoot(dirname(resolved))))
+    throw refuse(
+      `${path} is in a directory another account can write. Stop its server, copy the database ` +
+        "(and its -wal file, if any) into a directory writable only by root, and import that copy",
+    )
+  return resolved
+}
+
+/**
+ * Imports or checks the database and records this server as its owner. The service is stopped and
+ * its data root taken back first, so nothing the service account plants there can redirect root's
+ * writes or ownership changes; a failure restarts a service that was running.
+ */
+async function prepareData(
+  target: PersistentLinux.Plan,
+  facts: PersistentLinux.Facts,
+  key: Key,
+  importDB: string | undefined,
+) {
+  const service = PersistentLinux.defaults.serviceName
+  if (facts.serviceActive) await PersistentLinux.run("systemctl", ["stop", service])
+  try {
+    await PersistentLinux.claimDataRoot(target.dataRoot)
+    try {
+      await placeDatabase(target, facts, key, importDB)
+    } finally {
+      await PersistentLinux.releaseDataRoot(target.dataRoot, facts.user!)
+    }
+  } catch (error) {
+    if (facts.serviceActive) await PersistentLinux.run("systemctl", ["start", service])
+    throw error
+  }
+}
+
+async function placeDatabase(
+  target: PersistentLinux.Plan,
+  facts: PersistentLinux.Facts,
+  key: Key,
+  importDB: string | undefined,
+) {
+  const database = PersistentLinux.databasePath(target.dataRoot)
+  if (importDB) {
+    if (facts.database) throw refuse(`${database} already exists; refusing to overwrite it`)
+    assertOpens(await VaultVerification.inspectFile(importDB, key), key.keyID, importDB)
+    const release = await Database.acquireOwnerLock(importDB)
+    try {
+      await Effect.gen(function* () {
+        const db = yield* Database.openReadonly(importDB)
+        yield* db.run(sql`VACUUM INTO ${database}`).pipe(Effect.orDie)
+      }).pipe(Effect.scoped, Effect.runPromise)
+    } finally {
+      release()
+    }
+  }
+  if (!importDB && facts.database) {
+    const report = await VaultVerification.inspectFile(database, key)
+    assertOpens(report, key.keyID, database, target.serverID)
+    // A re-run over this server's own database leaves its owner record as it is.
+    if (report.owner?.mode === "persistent") return
+  }
+  if (
+    !(await stat(database).then(
+      () => true,
+      () => false,
+    ))
+  )
+    return
+  await Effect.gen(function* () {
+    yield* ServerOwner.promote(yield* Database.openExisting(database), { serverID: target.serverID, keyID: key.keyID })
+  }).pipe(Effect.scoped, Effect.runPromise)
+}
+
+/** Installs the key (recovery copy first, key credential last) and the HTTP password; returns the password. */
+async function writeCredentials(
+  target: PersistentLinux.Plan,
+  facts: PersistentLinux.Facts,
+  key: Key,
+  recoveryFile: string | undefined,
+) {
+  const run = PersistentLinux.run
+  if (!facts.keyCredential) {
+    if (recoveryFile) await PersistentLinux.writeRestricted(recoveryFile, `${key.keyID}\n${key.encoded}\n`, 0o400)
+    // The key credential is what marks the key as installed, so it is written last.
+    await PersistentLinux.writeRestricted(
+      join(target.credstore, PersistentLinux.credentials.keyID),
+      `${key.keyID}\n`,
+      0o600,
+    )
+    await PersistentLinux.encryptCredential(
+      run,
+      target.credstoreEncrypted,
+      PersistentLinux.credentials.key,
+      key.encoded,
+    )
+  }
+  const password = facts.passwordCredential
+    ? await PersistentLinux.decryptCredential(run, target.credstoreEncrypted, PersistentLinux.credentials.password)
+    : PersistentLinux.newPassword()
+  if (!facts.passwordCredential)
+    await PersistentLinux.encryptCredential(
+      run,
+      target.credstoreEncrypted,
+      PersistentLinux.credentials.password,
+      password,
+    )
+  await PersistentLinux.protectCredentials(target.credstoreEncrypted)
+  return password
+}
+
+async function writeAttachAndUnit(target: PersistentLinux.Plan, password: string) {
+  if ((await PersistentLinux.groupID(target.group)) === undefined) {
+    const created = await PersistentLinux.run("groupadd", ["--system", target.group])
+    if (created.code !== 0) throw new Error(`groupadd ${target.group} failed: ${created.stderr.trim()}`)
+  }
+  const gid = (await PersistentLinux.groupID(target.group))!
+  await PersistentLinux.writeRestricted(target.attachPath, PersistentLinux.attachRecord(target, password), 0o640, {
+    uid: 0,
+    gid,
+  })
+  await PersistentLinux.writeRestricted(target.unitPath, PersistentLinux.unit(target), 0o644)
+}
+
+/** Restarts the service and waits for its descriptor. A new service that never becomes healthy is disabled. */
+async function startService(target: PersistentLinux.Plan, facts: PersistentLinux.Facts, password: string) {
+  const run = PersistentLinux.run
+  const service = PersistentLinux.defaults.serviceName
+  // restart, not enable --now: a re-run must load an updated binary or unit into a running service.
+  for (const step of [["daemon-reload"], ["enable", service], ["restart", service]]) {
+    const result = await run("systemctl", step)
+    if (result.code !== 0) throw new Error(`systemctl ${step.join(" ")} failed: ${result.stderr.trim()}`)
+  }
+  return waitForDescriptor(target, password, run).catch(async (error: Error) => {
+    const logs = await run("journalctl", ["-u", service, "-n", "15", "--no-pager", "-o", "cat"])
+    // A new service that cannot start would otherwise restart forever; leave an existing one to its operator.
+    if (!facts.existingUnit) await run("systemctl", ["disable", "--now", service])
+    throw refuse(
+      [
+        error.message,
+        logs.stdout.trim(),
+        facts.existingUnit
+          ? `Check: journalctl -u ${service}`
+          : "The new service was stopped and disabled. Fix the cause above and re-run install.",
+      ].join("\n\n"),
+    )
+  })
+}
 
 async function waitForDescriptor(target: PersistentLinux.Plan, password: string, runner: PersistentLinux.Runner) {
   const authorization = `Basic ${Buffer.from(`forge:${password}`).toString("base64")}`
   const restarts = async () =>
     Number(
-      (await runner("systemctl", ["show", "-p", "NRestarts", "--value", PersistentLinux.defaults.serviceName])).stdout.trim(),
+      (
+        await runner("systemctl", ["show", "-p", "NRestarts", "--value", PersistentLinux.defaults.serviceName])
+      ).stdout.trim(),
     ) || 0
   const baseline = await restarts()
   const deadline = Date.now() + 60_000

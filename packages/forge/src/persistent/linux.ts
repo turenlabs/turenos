@@ -196,37 +196,59 @@ export function evaluate(facts: Facts, plan: Plan) {
   const existingID = installed(facts.existingUnit).serverID
   if (facts.existingUnit !== undefined && existingID !== plan.serverID)
     problems.push(`${plan.unitPath} already exists for a different server; it was left untouched`)
-  const ownPort = facts.serviceActive && existingID === plan.serverID && installed(facts.existingUnit).port === plan.port
+  const ownPort =
+    facts.serviceActive && existingID === plan.serverID && installed(facts.existingUnit).port === plan.port
   if (facts.portInUse && !ownPort) problems.push(`127.0.0.1:${plan.port} is already in use; choose another --port`)
   if (facts.database && !facts.keyCredential)
     notes.push("a database already exists at the pinned data root; its key must be imported with --key-stdin")
-  notes.push(facts.tpm2 ? "credentials are bound to the host key and TPM2" : "no TPM2 found; credentials are bound to the host key only")
+  notes.push(
+    facts.tpm2
+      ? "credentials are bound to the host key and TPM2"
+      : "no TPM2 found; credentials are bound to the host key only",
+  )
   notes.push("keep a separate recovery copy of the vault key and key ID; host-bound encryption is not a backup")
   return { problems, notes }
 }
 
 export async function gather(plan: Plan, runner: Runner = run): Promise<Facts> {
-  const exists = (path: string) => stat(path).then(() => true, () => false)
+  const exists = (path: string) =>
+    stat(path).then(
+      () => true,
+      () => false,
+    )
   const passwd = await runner("getent", ["passwd", plan.user])
   const fields = passwd.code === 0 ? passwd.stdout.trim().split(":") : []
   const systemctl = await runner("systemctl", ["--version"])
   return {
     platform: process.platform,
     root: typeof process.getuid === "function" && process.getuid() === 0,
-    pid1: await readFile("/proc/1/comm", "utf8").then((value) => value.trim(), () => undefined),
+    pid1: await readFile("/proc/1/comm", "utf8").then(
+      (value) => value.trim(),
+      () => undefined,
+    ),
     systemdVersion: systemctl.code === 0 ? parseSystemdVersion(systemctl.stdout) : undefined,
     systemdCreds: (await runner("systemd-creds", ["--version"])).code === 0,
     tpm2: (await runner("systemd-creds", ["has-tpm2", "--quiet"])).code === 0,
-    user: fields.length >= 6 ? { name: fields[0]!, uid: Number(fields[2]), gid: Number(fields[3]), home: fields[5]! } : undefined,
+    user:
+      fields.length >= 6
+        ? { name: fields[0]!, uid: Number(fields[2]), gid: Number(fields[3]), home: fields[5]! }
+        : undefined,
     existingUnit: await readFile(plan.unitPath, "utf8").catch(() => undefined),
     keyCredential: await exists(join(plan.credstoreEncrypted, credentials.key)),
     passwordCredential: await exists(join(plan.credstoreEncrypted, credentials.password)),
     database: await exists(databasePath(plan.dataRoot)),
-    dataRootOwner: await lstat(plan.dataRoot).then((info) => info.uid, () => undefined),
-    dataRootLink: await lstat(plan.dataRoot).then((info) => info.isSymbolicLink(), () => false),
+    dataRootOwner: await lstat(plan.dataRoot).then(
+      (info) => info.uid,
+      () => undefined,
+    ),
+    dataRootLink: await lstat(plan.dataRoot).then(
+      (info) => info.isSymbolicLink(),
+      () => false,
+    ),
     dataRootParentSafe: await writableOnlyByRoot(dirname(plan.dataRoot)),
     forgeBinSafe: await stat(plan.forgeBin).then(
-      (info) => info.isFile() && info.uid === 0 && (info.mode & 0o022) === 0 && writableOnlyByRoot(dirname(plan.forgeBin)),
+      (info) =>
+        info.isFile() && info.uid === 0 && (info.mode & 0o022) === 0 && writableOnlyByRoot(dirname(plan.forgeBin)),
       () => false,
     ),
     portInUse: await portInUse(plan.port),
@@ -321,7 +343,11 @@ export function newPassword() {
 
 export async function encryptCredential(runner: Runner, credstoreEncrypted: string, name: string, value: string) {
   await mkdir(credstoreEncrypted, { recursive: true, mode: 0o700 })
-  const result = await runner("systemd-creds", ["encrypt", `--name=${name}`, "-", join(credstoreEncrypted, name)], value)
+  const result = await runner(
+    "systemd-creds",
+    ["encrypt", `--name=${name}`, "-", join(credstoreEncrypted, name)],
+    value,
+  )
   if (result.code !== 0) throw new Error(`systemd-creds encrypt ${name} failed: ${result.stderr.trim()}`)
 }
 
@@ -340,7 +366,12 @@ export async function decryptCredential(runner: Runner, credstoreEncrypted: stri
 }
 
 /** Creates the file with its final mode so its content is never readable more broadly. */
-export async function writeRestricted(path: string, content: string, mode: number, owner?: { uid: number; gid: number }) {
+export async function writeRestricted(
+  path: string,
+  content: string,
+  mode: number,
+  owner?: { uid: number; gid: number },
+) {
   await mkdir(dirname(path), { recursive: true, mode: 0o755 })
   const staging = `${path}.${process.pid}.tmp`
   const handle = await open(staging, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, mode)
