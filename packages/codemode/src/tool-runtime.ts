@@ -352,6 +352,8 @@ export type SearchEntry = {
   readonly description: ToolDescription
   /** Top-level namespace (first path segment), matched by the search `namespace` option. */
   readonly namespace: string
+  readonly pathLower: string
+  readonly descriptionLower: string
   /** Lowercased path + description + input property names/descriptions, for substring matching. */
   readonly searchText: string
 }
@@ -416,8 +418,8 @@ const makeSearchTool = (searchIndex: ReadonlyArray<SearchEntry>): Definition => 
           ? [exact]
           : scoped
               .map((entry) => {
-                const path = entry.description.path.toLowerCase()
-                const description = entry.description.description.toLowerCase()
+                const path = entry.pathLower
+                const description = entry.descriptionLower
                 const score = terms.reduce(
                   (total, forms) =>
                     total +
@@ -460,6 +462,8 @@ const catalogLine = (tool: ToolDescription) => {
 const toSearchEntry = <R>(path: string, definition: Definition<R>, description: ToolDescription): SearchEntry => ({
   description,
   namespace: path.split(".", 1)[0]!,
+  pathLower: path.toLowerCase(),
+  descriptionLower: description.description.toLowerCase(),
   searchText: [
     path,
     definition.description,
