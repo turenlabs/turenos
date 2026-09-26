@@ -250,21 +250,9 @@ export const validateMedia = Effect.fn("ProviderShared.validateMedia")(function*
 })
 
 function hasBase64Shape(value: string) {
-  if (value.length === 0 || value.length % 4 !== 0) return false
   const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0
-  const contentLength = value.length - padding
-  for (let i = 0; i < contentLength; i++) {
-    const code = value.charCodeAt(i)
-    if (
-      (code < 48 || code > 57) &&
-      (code < 65 || code > 90) &&
-      (code < 97 || code > 122) &&
-      code !== 43 &&
-      code !== 47
-    )
-      return false
-  }
-  return true
+  if (value.length === 0 || value.length % 4 !== 0) return false
+  return /^[A-Za-z0-9+/]*$/.test(value.slice(0, value.length - padding))
 }
 
 export const validateToolFile = (route: string, part: ToolFileContent, supportedMimes: ReadonlySet<string>) =>
