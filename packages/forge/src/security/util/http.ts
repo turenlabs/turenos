@@ -40,6 +40,8 @@ export interface CacheOptions {
   ttlMs: number
   /** Explicit cache key; defaults to a hash of method + url + body. */
   key?: string
+  /** Reject invalid cached or upstream values before returning or caching them. */
+  validate?: (value: unknown) => void
 }
 
 export interface RequestOptions {
@@ -205,12 +207,21 @@ async function request(url: string, opts: RequestOptions, accept: "json" | "text
   if (!cache) return requestUpstream(url, opts, accept)
   const key = cacheKey(url, opts, accept)
   const hit = await readCache(key, cache)
-  if (hit) return hit.value
+  if (hit) {
+    try {
+      cache.validate?.(hit.value)
+      return hit.value
+    } catch {
+      memory.delete(key)
+      await fs.rm(cacheFile(cache.dir, key), { force: true }).catch(() => {})
+    }
+  }
   const pending = inflight.get(key)
   if (pending) return pending
 
   const next = requestUpstream(url, opts, accept)
     .then(async (value) => {
+      cache.validate?.(value)
       await writeCache(key, cache, value)
       return value
     })

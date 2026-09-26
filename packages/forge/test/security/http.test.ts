@@ -61,4 +61,38 @@ describe("security data HTTP", () => {
       await rm(directory, { recursive: true, force: true })
     }
   })
+
+  test("evicts cached and upstream text rejected by its validator", async () => {
+    let requests = 0
+    let body = "malformed"
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        requests += 1
+        return new Response(body)
+      },
+    })
+    const directory = await mkdtemp(path.join(tmpdir(), "turen-security-http-"))
+    try {
+      const url = `${server.url}feed`
+      const cache = { dir: directory, ttlMs: 60_000, key: "validated-feed" }
+      const validated = {
+        cache: {
+          ...cache,
+          validate: (value: unknown) => {
+            if (value !== "valid") throw new Error("invalid feed")
+          },
+        },
+      }
+      expect(await fetchText(url, { cache })).toBe("malformed")
+      await expect(fetchText(url, validated)).rejects.toThrow("invalid feed")
+      body = "valid"
+      expect(await fetchText(url, validated)).toBe("valid")
+      expect(requests).toBe(3)
+    } finally {
+      server.stop(true)
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
 })

@@ -147,10 +147,19 @@ async function loadCatalog(ctx: IntegrationContext) {
   try {
     xml = await fetchText(FEED_URL, {
       fixedEndpoint: FIXED_ENDPOINT,
-      cache: { dir: ctx.cacheDir, ttlMs: CACHE_TTL_MS, key: "capec-latest-xml" },
+      cache: {
+        dir: ctx.cacheDir,
+        ttlMs: CACHE_TTL_MS,
+        key: "capec-latest-xml",
+        validate: (value) => {
+          if (typeof value !== "string") throw new ToolError("MITRE CAPEC returned an invalid XML catalog")
+          parseCatalog(value)
+        },
+      },
       maxResponseBytes: MAX_RESPONSE_BYTES,
     })
   } catch (error) {
+    if (error instanceof ToolError) throw error
     const status = error instanceof HttpError ? ` (HTTP ${error.status})` : ""
     throw new ToolError(`failed to download MITRE CAPEC${status}; check network access and retry later`)
   }
