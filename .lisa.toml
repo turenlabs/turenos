@@ -5,6 +5,7 @@ ignore = [
   "packages/extensions/src/generated.ts",
   "packages/sdk/js/src/gen/*",
   "packages/sdk/js/src/v2/gen/*",
+  "packages/sdk/openapi.json",
 ]
 
 # Asked once about the whole pull request: its title, description, and a summary of every
