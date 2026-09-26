@@ -11,11 +11,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 export const canonicalizeJson = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(canonicalizeJson)
   if (isRecord(value)) {
-    return Object.fromEntries(
-      Object.keys(value)
-        .toSorted()
-        .map((key) => [key, canonicalizeJson(value[key])]),
-    )
+    const canonicalized: Record<string, unknown> = {}
+    for (const key of Object.keys(value).toSorted())
+      Object.defineProperty(canonicalized, key, {
+        value: canonicalizeJson(value[key]),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      })
+    return canonicalized
   }
   return value
 }
