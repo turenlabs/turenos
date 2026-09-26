@@ -30,19 +30,27 @@ export type Detector = ReturnType<typeof make>
 
 export function make() {
   const window: string[] = []
+  const unigramCounts = new Map<string, number>()
+  const trigramCounts = new Map<string, number>()
   // A delta can split a word, so the trailing fragment is held back and prepended to the next one.
   let partial = ""
   let sinceCheck = 0
   let collapsedDeltas = 0
   let tripped = false
 
+  const increment = (counts: Map<string, number>, key: string) => counts.set(key, (counts.get(key) ?? 0) + 1)
+  const decrement = (counts: Map<string, number>, key: string) => {
+    const count = counts.get(key)!
+    if (count === 1) counts.delete(key)
+    else counts.set(key, count - 1)
+  }
+  const trigramAt = (index: number) =>
+    index < 2 ? undefined : `${window[index - 2]} ${window[index - 1]} ${window[index]}`
+
   const ratios = () => {
-    const unigrams = new Set(window)
-    const trigrams = new Set<string>()
-    for (let i = 2; i < window.length; i++) trigrams.add(`${window[i - 2]} ${window[i - 1]} ${window[i]}`)
     return {
-      unigram: unigrams.size / window.length,
-      trigram: trigrams.size / (window.length - 2),
+      unigram: unigramCounts.size / window.length,
+      trigram: trigramCounts.size / (window.length - 2),
     }
   }
 
@@ -57,11 +65,26 @@ export function make() {
     partial = ENDS_MID_WORD.test(text) ? (words.pop() ?? "") : ""
     if (words.length === 0) return false
 
+    const previousLength = window.length
     window.push(...words.slice(-WINDOW))
+    for (let i = previousLength; i < window.length; i++) {
+      increment(unigramCounts, window[i]!)
+      const trigram = trigramAt(i)
+      if (trigram !== undefined) increment(trigramCounts, trigram)
+    }
     sinceCheck += words.length
     if (window.length < WINDOW || sinceCheck < STRIDE) return false
 
-    if (window.length > WINDOW) window.splice(0, window.length - WINDOW)
+    const excess = window.length - WINDOW
+    if (excess > 0) {
+      // Trigrams are indexed by their right endpoint, so two more endpoints cross the evicted prefix.
+      for (let i = 0; i < excess + 2; i++) {
+        if (i < excess) decrement(unigramCounts, window[i]!)
+        const trigram = trigramAt(i)
+        if (trigram !== undefined) decrement(trigramCounts, trigram)
+      }
+      window.splice(0, excess)
+    }
     sinceCheck = 0
     const { unigram, trigram } = ratios()
     collapsedDeltas = unigram < MAX_UNIGRAM_RATIO && trigram < MAX_TRIGRAM_RATIO ? collapsedDeltas + 1 : 0
