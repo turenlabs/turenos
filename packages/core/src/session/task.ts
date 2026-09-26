@@ -3,12 +3,14 @@ export * as SessionTaskV2 from "./task"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
 import { SessionTask } from "@turenlabs/schema/session-task"
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm"
+import { alias } from "drizzle-orm/sqlite-core"
 import { Cause, Context, DateTime, Deferred, Effect, Layer, Schema } from "effect"
 import { createHash } from "node:crypto"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
 import { KeyedMutex } from "../effect/keyed-mutex"
 import { EventV2 } from "../event"
+import { FSUtil } from "../fs-util"
 import { AbsolutePath, NonNegativeInt } from "../schema"
 import { SessionCreation } from "./creation"
 import { SessionEvent } from "./event"
@@ -180,6 +182,11 @@ export class OrchestrateError extends Schema.TaggedErrorClass<OrchestrateError>(
   message: Schema.String,
 }) {}
 
+export class AuthorityError extends Schema.TaggedErrorClass<AuthorityError>()("SessionTask.AuthorityError", {
+  parentTaskID: ID,
+  message: Schema.String,
+}) {}
+
 export class OwnedSessionError extends Schema.TaggedErrorClass<OwnedSessionError>()("SessionTask.OwnedSessionError", {
   sessionID: SessionSchema.ID,
   taskID: ID,
@@ -204,6 +211,7 @@ export type Error =
   | SwarmLimitError
   | QueueLimitError
   | OrchestrateError
+  | AuthorityError
   | OwnedSessionError
 
 export type SpawnInput = {
@@ -268,6 +276,7 @@ export interface Interface {
     | SwarmLimitError
     | QueueLimitError
     | OrchestrateError
+    | AuthorityError
   >
   readonly send: (
     input: SendInput,
@@ -355,17 +364,25 @@ export interface Interface {
     readonly status: "completed" | "failed" | "interrupted"
     readonly error?: string
   }) => Effect.Effect<
-    { readonly task: Info; readonly transitioned: boolean } | undefined,
+    | {
+        readonly task: Info
+        readonly transitioned: boolean
+        /** Child Sessions retired with this task; the drain should interrupt them. */
+        readonly retired: ReadonlyArray<SessionSchema.ID>
+      }
+    | undefined,
     ConflictError | InvalidStateError | ActiveLimitError
   >
   readonly reconcile: () => Effect.Effect<void, NotFoundError | ConflictError | ActiveLimitError>
   /**
    * Promote the oldest queued tasks of one root while it has free active slots.
-   * Returns the child Session IDs the caller must wake.
+   * The caller resolves the Location-scoped `subagents.max_concurrent` value;
+   * this global service cannot read it. Returns the child Session IDs the
+   * caller must wake.
    */
   readonly promote: (
     rootSessionID: SessionSchema.ID,
-    activeLimit?: number,
+    activeLimit: number,
   ) => Effect.Effect<ReadonlyArray<SessionSchema.ID>>
   /**
    * Process-global promotion driver. Promotes every root with queued work, then
@@ -408,11 +425,6 @@ const layer = Layer.effect(
     const removalLeases = new Map<SessionSchema.ID, symbol>()
     const rootCancellationLeases = new Map<SessionSchema.ID, symbol>()
     const cancellationLeases = new Map<ID, symbol>()
-    // Configuration is location scoped and this service is global, so the
-    // promotion driver cannot read `subagents.max_concurrent` itself. It uses
-    // the limit the root's latest spawn or send carried; after a restart the
-    // default applies until the next admission records the configured value.
-    const rootLimits = new Map<SessionSchema.ID, number>()
     let taskChanged = Deferred.makeUnsafe<void>()
 
     const signalTaskChanged = Effect.fn("SessionTask.signalTaskChanged")(function* () {
@@ -543,6 +555,25 @@ const layer = Layer.effect(
         .select()
         .from(SessionTaskOperationTable)
         .where(eq(SessionTaskOperationTable.id, operationID))
+        .get()
+        .pipe(Effect.orDie)
+      return row ? operationFromRow(row) : undefined
+    })
+
+    const pendingOperation = Effect.fn("SessionTask.pendingOperation")(function* (
+      taskID: ID,
+      kind: Operation["kind"],
+    ) {
+      const row = yield* primary
+        .select()
+        .from(SessionTaskOperationTable)
+        .where(
+          and(
+            eq(SessionTaskOperationTable.task_id, taskID),
+            eq(SessionTaskOperationTable.kind, kind),
+            eq(SessionTaskOperationTable.status, "pending"),
+          ),
+        )
         .get()
         .pipe(Effect.orDie)
       return row ? operationFromRow(row) : undefined
@@ -790,13 +821,13 @@ const layer = Layer.effect(
       return (yield* countStatus(rootSessionID, active, true)) < orchestratorLimit(maximum)
     })
 
-    const swarmBudget = Effect.fn("SessionTask.swarmBudget")(function* (parentSessionID: SessionSchema.ID) {
+    const swarmBudget = Effect.fn("SessionTask.swarmBudget")(function* (rootSessionID: SessionSchema.ID) {
       const input = yield* primary
         .select({ prompt: SessionInputTable.prompt, promotedSeq: SessionInputTable.promoted_seq })
         .from(SessionInputTable)
         .where(
           and(
-            eq(SessionInputTable.session_id, parentSessionID),
+            eq(SessionInputTable.session_id, rootSessionID),
             eq(SessionInputTable.source, "user"),
             isNotNull(SessionInputTable.promoted_seq),
             isNull(SessionInputTable.time_cancelled),
@@ -815,15 +846,38 @@ const layer = Layer.effect(
       }
     })
 
+    /**
+     * Tasks admitted under a root's current `@swarm` request. A depth-one task
+     * marks admission by its own actor message; a nested worker is charged by
+     * its orchestrator's actor message, which is recorded in the root Session.
+     */
     const countSwarmTasks = Effect.fn("SessionTask.countSwarmTasks")(function* (
-      parentSessionID: SessionSchema.ID,
+      rootSessionID: SessionSchema.ID,
       promotedSeq: number,
     ) {
+      const Parent = alias(SessionTaskTable, "task_parent")
+      const Marker = alias(SessionMessageTable, "task_marker")
       return (yield* primary
         .select({ id: SessionTaskTable.id })
         .from(SessionTaskTable)
-        .innerJoin(SessionMessageTable, eq(SessionTaskTable.actor_assistant_message_id, SessionMessageTable.id))
-        .where(and(eq(SessionTaskTable.parent_session_id, parentSessionID), gt(SessionMessageTable.seq, promotedSeq)))
+        .leftJoin(Parent, eq(SessionTaskTable.parent_task_id, Parent.id))
+        .innerJoin(
+          Marker,
+          or(
+            and(
+              isNull(SessionTaskTable.parent_task_id),
+              eq(Marker.id, SessionTaskTable.actor_assistant_message_id),
+            ),
+            eq(Marker.id, Parent.actor_assistant_message_id),
+          ),
+        )
+        .where(
+          and(
+            eq(SessionTaskTable.root_session_id, rootSessionID),
+            eq(Marker.session_id, rootSessionID),
+            gt(Marker.seq, promotedSeq),
+          ),
+        )
         .all()
         .pipe(Effect.orDie)).length
     })
@@ -843,15 +897,23 @@ const layer = Layer.effect(
           status: task.status,
           message: "Subagent startup has not reached a safe prompt boundary",
         })
+      // A task that settled before it ever ran has no child Session to deliver
+      // input to; resuming one would fail at durable admission.
+      if (terminal.has(task.status) && task.time.started === undefined)
+        return yield* new InvalidStateError({
+          taskID: task.id,
+          status: task.status,
+          message: "Subagent was interrupted before it ever started",
+        })
       if (task.status !== "running") {
         const maximum = resolveActiveLimit(activeLimit)
-        rootLimits.set(task.rootSessionID, maximum)
-        const count = yield* countActive(task.rootSessionID)
-        if (count >= maximum)
+        // Resuming a terminal task is fresh admission: an orchestrator must
+        // fit under its reserved quota, not just the raw slot count.
+        if (!(yield* hasSlot(task.rootSessionID, maximum, task.authority.orchestrate === true)))
           return yield* new ActiveLimitError({
             rootSessionID: task.rootSessionID,
             maximum,
-            active: count,
+            active: yield* countActive(task.rootSessionID),
           })
       }
       const location = yield* locate(task.rootSessionID)
@@ -898,7 +960,7 @@ const layer = Layer.effect(
       input?: { readonly result?: string; readonly error?: string; readonly operation?: Operation },
     ) {
       const now = yield* DateTime.now
-      return yield* publishTask(
+      const published = yield* publishTask(
         Info.make({
           ...task,
           status,
@@ -914,6 +976,19 @@ const layer = Layer.effect(
         }),
         input?.operation,
       )
+      // A task that reaches a terminal state before running can never replay
+      // its admission; a still-pending spawn operation must settle with it or
+      // an exact retry would try to resurrect startup on a settled task.
+      if ((task.status === "queued" || task.status === "starting") && terminal.has(status)) {
+        const operation = yield* pendingOperation(task.id, "spawn")
+        if (operation)
+          yield* completeOperation(
+            operation,
+            "failed",
+            input?.error ?? "Subagent task settled before it could start",
+          )
+      }
+      return published
     })
 
     const completeOperation = Effect.fn("SessionTask.completeOperation")(function* (
@@ -962,6 +1037,32 @@ const layer = Layer.effect(
         { concurrency: 1 },
       )
       return cancelled
+    })
+
+    /**
+     * Settling an orchestrator retires its unfinished workers with it: a worker
+     * that kept running would hold a concurrency slot while reporting to a
+     * parent that can no longer observe the result. Returns the child Session
+     * IDs that had started so the caller can interrupt their drains.
+     */
+    const settleSubtree = Effect.fn("SessionTask.settleSubtree")(function* (
+      task: Info,
+      status: "completed" | "failed" | "interrupted",
+    ) {
+      const retired = status === "interrupted" ? "interrupted" : "cancelled"
+      return yield* Effect.forEach(
+        yield* descendants(task),
+        (item) =>
+          item.id === task.id || terminal.has(item.status)
+            ? Effect.succeed(undefined)
+            : update(item, retired, {
+                error:
+                  item.status === "queued"
+                    ? "Owning orchestrator finished before this queued subagent started."
+                    : "Owning orchestrator settled before this subagent finished.",
+              }).pipe(Effect.as(item.status === "queued" ? undefined : item.childSessionID)),
+        { concurrency: 1 },
+      ).pipe(Effect.map((sessions) => sessions.filter((session) => session !== undefined)))
     })
 
     const resumeInterrupt = Effect.fn("SessionTask.resumeInterrupt")(function* (operation: Operation) {
@@ -1021,6 +1122,23 @@ const layer = Layer.effect(
             if (!task) return yield* new NotFoundError({ taskID: existing.taskID })
             // A queued spawn is admitted and owned by promotion; a retry only reports it.
             if (task.status === "queued") return { task, operation: existing, wake: false } satisfies Prepared
+            if (terminal.has(task.status))
+              return yield* Effect.gen(function* () {
+                yield* assertRootAvailable(task.rootSessionID)
+                // Rows written before a terminal task settled its spawn can
+                // still hold a pending operation; close it so the retry reports
+                // the recorded outcome instead of resurrecting startup.
+                const operation = yield* operationByID(existing.id)
+                const settled =
+                  operation?.status === "pending"
+                    ? yield* completeOperation(
+                        operation,
+                        "failed",
+                        "Subagent task settled before its spawn could run",
+                      )
+                    : (operation ?? existing)
+                return { task, operation: settled, wake: false } satisfies Prepared
+              }).pipe(roots.withLock(task.rootSessionID))
             return yield* Effect.gen(function* () {
               yield* assertRootAvailable(task.rootSessionID)
               return yield* resumeSpawn(task, existing)
@@ -1051,21 +1169,45 @@ const layer = Layer.effect(
               status: parentTask.status,
               message: "A task-owned Session may spawn only while its owning task is running",
             })
+          if (parentTask) {
+            // A nested child may narrow but never widen the exact grants its
+            // orchestrator was admitted with: commands are exact-string members
+            // of the parent's set and each write root must sit inside one of
+            // the parent's.
+            const widenedCommand = authority.commands.find(
+              (command) => !parentTask.authority.commands.includes(command),
+            )
+            if (widenedCommand !== undefined)
+              return yield* new AuthorityError({
+                parentTaskID: parentTask.id,
+                message: `Subagent command grant exceeds its orchestrator's authority: ${widenedCommand}`,
+              })
+            const widenedRoot = authority.writeRoots.find(
+              (root) => !parentTask.authority.writeRoots.some((allowed) => FSUtil.contains(allowed, root)),
+            )
+            if (widenedRoot !== undefined)
+              return yield* new AuthorityError({
+                parentTaskID: parentTask.id,
+                message: `Subagent write root is outside its orchestrator's authority: ${widenedRoot}`,
+              })
+          }
           const rootSessionID = parentTask?.rootSessionID ?? parent.id
           return yield* Effect.gen(function* () {
             yield* assertRootAvailable(rootSessionID)
-            const budget = yield* swarmBudget(parent.id)
+            // The @swarm budget is a property of the root's latest invocation
+            // and covers every descendant admitted under it, not only direct
+            // children of the invoking Session.
+            const budget = yield* swarmBudget(rootSessionID)
             if (budget) {
-              const admitted = yield* countSwarmTasks(parent.id, budget.promotedSeq)
+              const admitted = yield* countSwarmTasks(rootSessionID, budget.promotedSeq)
               if (admitted >= budget.maximum)
                 return yield* new SwarmLimitError({
-                  sessionID: parent.id,
+                  sessionID: rootSessionID,
                   maximum: budget.maximum,
                   admitted,
                 })
             }
             const maximum = resolveActiveLimit(input.activeLimit)
-            rootLimits.set(rootSessionID, maximum)
             if (authority.orchestrate === true && orchestratorLimit(maximum) === 0)
               return yield* new OrchestrateError({
                 sessionID: parent.id,
@@ -1171,14 +1313,23 @@ const layer = Layer.effect(
                 status: current.status,
                 message: "Subagent startup has not reached a safe prompt boundary",
               })
+            // A task that settled before it ever ran has no child Session to
+            // deliver input to; resuming one would fail at durable admission.
+            if (terminal.has(current.status) && current.time.started === undefined)
+              return yield* new InvalidStateError({
+                taskID: current.id,
+                status: current.status,
+                message: "Subagent was interrupted before it ever started",
+              })
             if (current.status !== "running") {
               const maximum = resolveActiveLimit(input.activeLimit)
-              const count = yield* countActive(current.rootSessionID)
-              if (count >= maximum)
+              // Resuming a terminal task is fresh admission: an orchestrator
+              // must fit under its reserved quota, not just the raw slot count.
+              if (!(yield* hasSlot(current.rootSessionID, maximum, current.authority.orchestrate === true)))
                 return yield* new ActiveLimitError({
                   rootSessionID: current.rootSessionID,
                   maximum,
-                  active: count,
+                  active: yield* countActive(current.rootSessionID),
                 })
             }
             const now = yield* DateTime.now
@@ -1498,6 +1649,7 @@ const layer = Layer.effect(
             message: "Only a running subagent may settle",
           })
         if (yield* hasPendingInput(current.childSessionID)) return current
+        yield* settleSubtree(current, input.status)
         return yield* update(current, input.status, { result: input.result, error: input.error })
       }).pipe(roots.withLock(task.rootSessionID))
     })
@@ -1882,14 +2034,15 @@ const layer = Layer.effect(
       return yield* Effect.gen(function* () {
         const current = yield* owner(input.sessionID)
         if (!current) return
-        if (terminal.has(current.status)) return { task: current, transitioned: false }
+        if (terminal.has(current.status)) return { task: current, transitioned: false, retired: [] }
         if (current.status !== "running")
           return yield* new InvalidStateError({
             taskID: current.id,
             status: current.status,
             message: "Only a running subagent may settle its Session drain",
           })
-        if (yield* hasPendingInput(input.sessionID)) return { task: current, transitioned: false }
+        if (yield* hasPendingInput(input.sessionID))
+          return { task: current, transitioned: false, retired: [] }
         const row = yield* primary
           .select()
           .from(SessionMessageTable)
@@ -1916,30 +2069,16 @@ const layer = Layer.effect(
           text && text.length > MAX_RESULT_LENGTH
             ? `${text.slice(0, MAX_RESULT_LENGTH - RESULT_TRUNCATED_SUFFIX.length)}${RESULT_TRUNCATED_SUFFIX}`
             : text
+        const retired = yield* settleSubtree(current, input.status)
         return {
           task: yield* update(current, input.status, {
             result: result || undefined,
             error: input.error?.slice(0, MAX_ERROR_LENGTH),
           }),
           transitioned: true,
+          retired,
         }
       }).pipe(roots.withLock(task.rootSessionID))
-    })
-
-    const pendingSpawn = Effect.fn("SessionTask.pendingSpawn")(function* (taskID: ID) {
-      const row = yield* primary
-        .select()
-        .from(SessionTaskOperationTable)
-        .where(
-          and(
-            eq(SessionTaskOperationTable.task_id, taskID),
-            eq(SessionTaskOperationTable.kind, "spawn"),
-            eq(SessionTaskOperationTable.status, "pending"),
-          ),
-        )
-        .get()
-        .pipe(Effect.orDie)
-      return row ? operationFromRow(row) : undefined
     })
 
     /**
@@ -1947,15 +2086,23 @@ const layer = Layer.effect(
      * then runs the ordinary spawn startup. Returns the child Session to wake.
      */
     const promoteOne = Effect.fn("SessionTask.promoteOne")(function* (task: Info) {
-      const operation = yield* pendingSpawn(task.id)
+      const operation = yield* pendingOperation(task.id, "spawn")
       const parentTask = task.parentTaskID ? yield* get(task.parentTaskID) : undefined
-      // An orchestrator that finished or stopped has nobody left to report to.
-      if (!operation || (parentTask !== undefined && parentTask.status !== "running")) {
-        const reason = operation
-          ? "Owning orchestrator finished before this queued subagent started."
-          : "Queued subagent lost its spawn operation."
-        yield* update(task, "cancelled", { error: reason })
-        if (operation) yield* completeOperation(operation, "failed", reason)
+      // A pending interrupt already owns the outcome: promotion settles the
+      // queued spawn as cancelled so the interrupt's completer commits the
+      // recorded intent instead of starting a session that must immediately
+      // die. An orchestrator that finished or stopped has nobody left to
+      // report to. `update` fails the still-pending spawn operation itself.
+      const interrupted = (yield* pendingOperation(task.id, "interrupt")) !== undefined
+      const orphaned = parentTask !== undefined && parentTask.status !== "running"
+      if (interrupted || orphaned || operation === undefined) {
+        yield* update(task, "cancelled", {
+          error: interrupted
+            ? "Subagent was interrupted before it started."
+            : orphaned
+              ? "Owning orchestrator finished before this queued subagent started."
+              : "Queued subagent lost its spawn operation.",
+        })
         return undefined
       }
       const starting = yield* update(task, "starting")
@@ -1966,7 +2113,8 @@ const layer = Layer.effect(
             const message = `Queued subagent failed to start: ${error.message}`.slice(0, MAX_ERROR_LENGTH)
             const current = yield* get(task.id)
             if (current && !terminal.has(current.status)) yield* update(current, "failed", { error: message })
-            yield* completeOperation(operation, "failed", message)
+            const pending = yield* pendingOperation(task.id, "spawn")
+            if (pending) yield* completeOperation(pending, "failed", message)
             return undefined
           }),
         ),
@@ -1975,15 +2123,14 @@ const layer = Layer.effect(
 
     const promote = Effect.fn("SessionTask.promote")(function* (
       rootSessionID: SessionSchema.ID,
-      activeLimit?: number,
+      activeLimit: number,
     ) {
       // Collected outside the guarded pass so children already started still
       // get woken when a later promotion in the same pass fails.
       const woken: SessionSchema.ID[] = []
       yield* Effect.gen(function* () {
         if (removalLeases.has(rootSessionID) || rootCancellationLeases.has(rootSessionID)) return
-        const maximum = resolveActiveLimit(activeLimit ?? rootLimits.get(rootSessionID))
-        rootLimits.set(rootSessionID, maximum)
+        const maximum = resolveActiveLimit(activeLimit)
         while ((yield* countActive(rootSessionID)) < maximum) {
           const orchestrators = (yield* countStatus(rootSessionID, active, true)) < orchestratorLimit(maximum)
           const row = yield* primary
@@ -2032,6 +2179,15 @@ const layer = Layer.effect(
               activeLimit(row.rootSessionID).pipe(
                 Effect.flatMap((limit) => promote(row.rootSessionID, limit)),
                 Effect.flatMap((ids) => Effect.forEach(ids, wake)),
+                // A root whose configured limit cannot be resolved must not
+                // stall promotion for every other root in this pass.
+                Effect.catchCause((cause) =>
+                  Cause.hasInterruptsOnly(cause)
+                    ? Effect.failCause(cause)
+                    : Effect.logError("Subagent promotion failed for root", cause).pipe(
+                        Effect.annotateLogs({ rootSessionID: row.rootSessionID }),
+                      ),
+                ),
               ),
             { discard: true },
           )
@@ -2069,12 +2225,16 @@ const layer = Layer.effect(
           const current = yield* get(operation.taskID)
           const now = yield* DateTime.now
           yield* retireOperationInput(operation, now)
+          // Cancelling a starting task already settles its pending spawn; only
+          // close an operation that is still pending afterward.
           if (current && !terminal.has(current.status)) yield* cancelTree(current, "interrupted")
-          yield* completeOperation(
-            operation,
-            "failed",
-            "Operation was interrupted by process recovery and was not replayed.",
-          )
+          const latest = yield* operationByID(operation.id)
+          if (latest?.status === "pending")
+            yield* completeOperation(
+              latest,
+              "failed",
+              "Operation was interrupted by process recovery and was not replayed.",
+            )
         }).pipe(roots.withLock(task.rootSessionID))
       }
       const unretiredInputs = yield* primary
@@ -2123,9 +2283,14 @@ const layer = Layer.effect(
         .all()
         .pipe(Effect.orDie)
       for (const row of rows) {
-        const task = taskFromRow(row)
-        if (terminal.has(task.status)) continue
-        yield* cancelTree(task, "interrupted").pipe(roots.withLock(task.rootSessionID))
+        yield* Effect.gen(function* () {
+          // The snapshot predates this pass: an earlier cancelTree may already
+          // have settled the task, so re-read it under the root lock rather
+          // than replaying stale revisions.
+          const task = yield* get(taskFromRow(row).id)
+          if (!task || terminal.has(task.status)) return
+          yield* cancelTree(task, "interrupted")
+        }).pipe(roots.withLock(taskFromRow(row).rootSessionID))
       }
     })
 
@@ -2390,11 +2555,10 @@ const projectTask = Effect.fn("SessionTask.projectTask")(function* (
     yield* validateTaskPlacement(
       db,
       task,
-      // A queued task has no child Session yet; neither does a starting task
-      // that settles before its startup created one.
-      previous.status === "queued" || (previous.status === "starting" && terminal.has(task.status))
-        ? "optional"
-        : "required",
+      // Startup creates the child Session only as the task goes running, so a
+      // task that never reached running has none: it may be queued or
+      // starting, or interrupted out of either state before startup finished.
+      task.time.started === undefined ? "optional" : "required",
     )
     const updated = yield* db
       .update(SessionTaskTable)

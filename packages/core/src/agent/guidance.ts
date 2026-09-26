@@ -142,7 +142,7 @@ const render = (state: State) => {
     "  Only delegate further when you were granted orchestrate; otherwise avoid nested delegation. Keep each assignment bounded, self-contained, and explicit about expected evidence.",
     ...(state.orchestrator === true
       ? [
-          `  You are an orchestrator: split your assignment into bounded worker lanes, spawn them with ${spawnBatchName} under one wave, tell workers to report without parking, wait by wave, and return one synthesized report; your workers cannot delegate further.`,
+          `  You are an orchestrator: split your assignment into bounded worker lanes, spawn them with ${spawnBatchName} under one wave, wait by wave, and return one synthesized report; your workers cannot delegate further and are already instructed to finish and report without parking.`,
         ]
       : []),
     "</subagent_workflow>",
@@ -197,7 +197,9 @@ const layer = Layer.effect(
         : [info.permissions]
       const allowed = (action: string, resource: string) =>
         rulesets.every((rules) => PermissionV2.evaluate(action, resource, rules).effect !== "deny")
-      const tools = toolNames.filter((name) => allowed(name, "*"))
+      // `spawn_agents` shares `spawn_agent` as its permission action, matching
+      // the tool's declared permission so guidance agrees with the catalog.
+      const tools = toolNames.filter((name) => allowed(name === spawnBatchName ? spawnName : name, "*"))
       if (owner && (owner.depth >= SessionTaskV2.MAX_DEPTH || owner.authority.orchestrate !== true))
         return {
           tools: tools.filter((name) => name !== spawnName && name !== spawnBatchName),

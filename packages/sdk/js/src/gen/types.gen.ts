@@ -3014,6 +3014,7 @@ export type SessionTaskSummary = {
   agent: string
   model?: ModelRef
   description: string
+  wave?: string
   depth: number
   status: SessionTaskStatus
   revision: number
@@ -3062,6 +3063,7 @@ export type SessionTaskDetail = {
     text: string
   }
   description: string
+  wave?: string
   depth: number
   status: SessionTaskStatus
   revision: number

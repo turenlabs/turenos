@@ -1910,6 +1910,7 @@ export type SessionsTaskListOutput = {
     readonly agent: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
     readonly description: string
+    readonly wave?: string | null
     readonly depth: number
     readonly status: "queued" | "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
     readonly revision: number
@@ -1931,6 +1932,7 @@ export type SessionsTaskListOutput = {
     readonly agent: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
     readonly description: string
+    readonly wave?: string | null
     readonly depth: number
     readonly status: "queued" | "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
     readonly revision: number
@@ -1963,6 +1965,7 @@ export type SessionsTaskGetOutput = {
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
     readonly prompt: { readonly text: string }
     readonly description: string
+    readonly wave?: string | null
     readonly depth: number
     readonly status: "queued" | "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
     readonly revision: number
@@ -2017,6 +2020,7 @@ export type SessionsTaskCancelOutput = {
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
     readonly prompt: { readonly text: string }
     readonly description: string
+    readonly wave?: string | null
     readonly depth: number
     readonly status: "queued" | "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
     readonly revision: number

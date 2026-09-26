@@ -6,9 +6,8 @@ import type {
 import { Swarm } from "@turenlabs/schema/swarm"
 import type { ThinkingState } from "@turenlabs/ui/thinking"
 
-// The task list summary omits wave, but live task events carry it for grouping in the dock.
 export type SessionTaskStatus = GeneratedSessionTaskStatus
-export type SessionTaskInfo = Omit<SessionTaskSummary, "status"> & { status: SessionTaskStatus; wave?: string }
+export type SessionTaskInfo = Omit<SessionTaskSummary, "status"> & { status: SessionTaskStatus }
 
 export type SessionSwarmProgress = {
   status: Swarm.Invocation["status"]

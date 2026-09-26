@@ -2345,10 +2345,10 @@ describe("SessionTaskV2 fleets", () => {
       )
       expect(spawned.map((item) => item.task.status)).toEqual(["running", "running", "queued", "queued"])
       expect(spawned.map((item) => item.wake)).toEqual([true, true, false, false])
-      expect(yield* tasks.promote(parentSessionID)).toEqual([])
+      expect(yield* tasks.promote(parentSessionID, 2)).toEqual([])
 
       yield* cancel(tasks, parentSessionID, spawned[0]!.task.id)
-      expect(yield* tasks.promote(parentSessionID)).toEqual([spawned[2]!.task.childSessionID])
+      expect(yield* tasks.promote(parentSessionID, 2)).toEqual([spawned[2]!.task.childSessionID])
       expect(yield* tasks.get(spawned[2]!.task.id)).toMatchObject({ status: "running" })
       expect(yield* tasks.get(spawned[3]!.task.id)).toMatchObject({ status: "queued" })
       expect(yield* tasks.counts({ parentSessionID })).toEqual({ queued: 1, active: 2, terminal: 1 })
@@ -2444,7 +2444,7 @@ describe("SessionTaskV2 fleets", () => {
       const worker = yield* tasks.spawn(spawnInput(yield* actor(parentSessionID, "fleet_quota_w"), "fleet_quota_w", 4))
       expect(worker.task.status).toBe("queued")
       // ...and promotion skips the orchestrator that has no quota left.
-      expect(yield* tasks.promote(parentSessionID)).toEqual([worker.task.childSessionID])
+      expect(yield* tasks.promote(parentSessionID, 4)).toEqual([worker.task.childSessionID])
       expect(yield* tasks.get(orchestrators[2]!.task.id)).toMatchObject({ status: "queued" })
 
       const tooSmall = yield* setup("fleet_quota_small")

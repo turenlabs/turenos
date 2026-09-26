@@ -150,9 +150,13 @@ const layer = Layer.effect(
                   : { error: failure instanceof Error ? failure.message : String(failure) }),
               })
               .pipe(Effect.orDie)
-            // Only the drain that moved the task to a terminal state advises the
-            // parent; an already-terminal or still-running task must not re-notify.
+            // Settling an orchestrator retires its unfinished workers; their
+            // drains are separate sessions that must be stopped explicitly.
             if (settled?.transitioned === true) {
+              yield* Effect.forEach(settled.retired, control.interrupt, {
+                concurrency: 1,
+                discard: true,
+              })
               const notified = yield* tasks
                 .notifyParent({
                   taskID: settled.task.id,

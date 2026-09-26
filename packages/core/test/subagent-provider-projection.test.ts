@@ -113,7 +113,7 @@ const expectedShapes = {
     required: ["prompt", "task_id"],
   },
   wait_agents: {
-    properties: ["task_ids", "timeout_ms", "wave"],
+    properties: ["offset", "task_ids", "timeout_ms", "wave"],
     required: [],
   },
   interrupt_agent: {
