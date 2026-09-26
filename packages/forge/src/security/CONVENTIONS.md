@@ -113,6 +113,7 @@ Always fetch through `util/http.ts` (`fetchJson`/`fetchText`) — it sets the
 | `FORGE_SECURITY_NVD_KEY`      | NVD API key -> `ctx.secrets.NVD_KEY`                           |
 | `FORGE_SECURITY_GITHUB_TOKEN` | GitHub token for GHSA -> `ctx.secrets.GITHUB_TOKEN`            |
 | `FORGE_SECURITY_HIBP_KEY`     | HIBP API key -> `ctx.secrets.HIBP_KEY`                         |
+| `FORGE_SECURITY_SPUR_TOKEN`   | Spur Context API token -> `ctx.secrets.SPUR_TOKEN`             |
 
 New secrets follow the same pattern: `FORGE_SECURITY_<NAME>` -> `ctx.secrets.<NAME>`;
 declare them in your `Integration.secrets`.

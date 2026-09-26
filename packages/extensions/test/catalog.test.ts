@@ -66,6 +66,7 @@ const expected = [
   "turenlabs/socket",
   "turenlabs/software-architecture-reviewer",
   "turenlabs/sonarqube-cloud-security",
+  "turenlabs/spur",
   "turenlabs/technical-security-blog",
   "turenlabs/tenable",
   "turenlabs/test-strategy",

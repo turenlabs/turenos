@@ -59,6 +59,7 @@ const categoryByExtensionID: Readonly<Record<string, ClassifiedExtensionCategory
   "turenlabs/circl-hashlookup": "threat-intelligence",
   "turenlabs/tweetfeed": "threat-intelligence",
   "turenlabs/tor-exit": "threat-intelligence",
+  "turenlabs/spur": "threat-intelligence",
   "turenlabs/phishing-database": "threat-intelligence",
   "turenlabs/certfr-misp": "threat-intelligence",
   "turenlabs/datadog-malicious": "supply-chain",

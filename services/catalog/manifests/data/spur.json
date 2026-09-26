@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/spur",
+  "name": "Spur IP Context",
+  "description": "Enrich IP addresses with Spur's VPN, residential proxy, and anonymization context",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://docs.spur.us/context-api",
+  "contributions": [{
+    "type": "data", "id": "spur", "name": "Spur IP Context",
+    "description": "Enrich IP addresses with Spur's VPN, residential proxy, and anonymization context",
+    "adapter": "security:spur",
+    "secrets": [{ "id": "SPUR_TOKEN", "label": "Spur Context API token", "required": true }],
+    "endpoints": { "api": "https://api.spur.us" },
+    "tools": { "allow": ["spur_ip_context"], "write": [] }, "defaultEnabled": false,
+    "instructions": "Each lookup sends the queried public IP to Spur and consumes a query from the user's Spur subscription; look up only IPs relevant to the task and do not repeat lookups. Treat VPN, proxy, and tunnel labels as anonymity context, not malicious reputation or attribution. Never block or accuse solely from this classification."
+  }],
+  "versions": [{ "version": "1.0.0", "published": "2026-09-26" }]
+}

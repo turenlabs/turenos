@@ -24,6 +24,7 @@ import { CertFrMisp } from "./integrations/data-certfr/certfr-misp"
 import { DatadogMalicious } from "./integrations/data-supply/datadog-malicious"
 import { PhishingDatabase } from "./integrations/data-ti-open/phishing-database"
 import { TorExit } from "./integrations/data-ti-open/tor-exit"
+import { Spur } from "./integrations/data-ti-open/spur"
 import { TweetFeed } from "./integrations/data-ti-open/tweetfeed"
 import { Gitleaks } from "./integrations/gitleaks"
 import { Trivy } from "./integrations/trivy"
@@ -101,6 +102,7 @@ const implementations: readonly Integration[] = [
   DatadogMalicious,
   PhishingDatabase,
   TorExit,
+  Spur,
   TweetFeed,
   // agent integrations
   Linear,
