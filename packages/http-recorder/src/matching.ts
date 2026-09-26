@@ -10,18 +10,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 export const canonicalizeJson = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(canonicalizeJson)
-  if (isRecord(value)) {
-    const canonicalized: Record<string, unknown> = {}
-    for (const key of Object.keys(value).toSorted())
-      Object.defineProperty(canonicalized, key, {
-        value: canonicalizeJson(value[key]),
-        enumerable: true,
-        configurable: true,
-        writable: true,
-      })
-    return canonicalized
+  if (!isRecord(value)) return value
+
+  const canonicalized: Record<string, unknown> = {}
+  for (const key of Object.keys(value).toSorted()) {
+    Object.defineProperty(canonicalized, key, {
+      value: canonicalizeJson(value[key]),
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    })
   }
-  return value
+  return canonicalized
 }
 
 export type { RequestMatcher } from "./types.js"
