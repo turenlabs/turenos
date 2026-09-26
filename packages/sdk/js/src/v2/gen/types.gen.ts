@@ -11919,9 +11919,17 @@ export type SessionDeleteErrors = {
    */
   404: NotFoundError
   /**
+   * ConflictError
+   */
+  409: ConflictError
+  /**
    * InternalServerError
    */
   500: EffectHttpApiErrorInternalServerError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
 }
 
 export type SessionDeleteError = SessionDeleteErrors[keyof SessionDeleteErrors]

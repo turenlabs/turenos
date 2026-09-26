@@ -6144,12 +6144,32 @@
               }
             }
           },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "InternalServerError",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/effect_HttpApiError_InternalServerError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
                 }
               }
             }
@@ -27189,6 +27209,9 @@
             "additionalProperties": {
               "type": "object"
             }
+          },
+          "defaultVariant": {
+            "type": "string"
           }
         },
         "required": [
