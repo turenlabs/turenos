@@ -5,47 +5,54 @@ import "./model-effort-control.css"
 
 export function ModelEffortControl(props: {
   variants: string[]
-  current: string | undefined
-  automatic: boolean
+  /** The level the user chose; undefined while following the default. */
+  explicit: string | undefined
+  /** What a turn runs at while following the default; undefined when no level is sent. */
+  inherited: string | undefined
   onAutomaticChange: (automatic: boolean) => void
   onVariantChange: (variant: string) => void
 }) {
+  const automatic = () => props.explicit === undefined
+  const effective = () => props.explicit ?? props.inherited
   const index = createMemo(() => {
-    const current = props.current ? props.variants.indexOf(props.current) : -1
-    if (current >= 0) return current
+    const current = effective()
+    const position = current ? props.variants.indexOf(current) : -1
+    if (position >= 0) return position
     return modelEffortDefaultIndex(props.variants)
   })
   const value = createMemo(() => props.variants[index()] ?? props.variants[0])
-  const display = createMemo(() => modelEffortDisplay(value() ?? "default"))
+  const display = createMemo(() => modelEffortDisplay(effective() ?? "default"))
   const label = (position: number) => modelEffortDisplay(props.variants[position] ?? "default").label
   const progress = createMemo(() => (props.variants.length <= 1 ? 0 : (index() / (props.variants.length - 1)) * 100))
+  const defaultSummary = () =>
+    props.inherited ? `Uses ${modelEffortDisplay(props.inherited).label} (${props.inherited})` : "No level sent"
 
   return (
     <div data-component="model-effort-control">
       <div class="flex flex-col gap-1 px-3 pb-2 pt-3">
         <div class="text-[13px] font-[530] leading-5 text-v2-text-text-strong">How much should TurenOS think?</div>
         <div class="text-[11px] font-[440] leading-4 text-v2-text-text-faint">
-          Automatic uses the model's configured behavior. Switch it off to choose an exact level.
+          Default follows the agent or model setting. Switch it off to choose an exact level.
         </div>
       </div>
       <div class="h-px bg-v2-border-border-muted" />
       <div class="p-3">
         <div class="flex items-center justify-between gap-3 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-3 py-2.5">
           <div class="min-w-0">
-            <div class="text-[12px] font-[530] leading-4 text-v2-text-text-base">Automatic</div>
-            <div class="truncate text-[10px] font-[440] leading-4 text-v2-text-text-faint">Use the model default</div>
+            <div class="text-[12px] font-[530] leading-4 text-v2-text-text-base">Default</div>
+            <div class="truncate text-[10px] font-[440] leading-4 text-v2-text-text-faint">{defaultSummary()}</div>
           </div>
           <Switch
-            checked={props.automatic}
+            checked={automatic()}
             onChange={props.onAutomaticChange}
             hideLabel
-            aria-label="Automatic reasoning"
+            aria-label="Default reasoning"
             data-action="prompt-model-variant-automatic"
           >
-            Automatic reasoning
+            Default reasoning
           </Switch>
         </div>
-        <div class="mt-4" classList={{ "opacity-35": props.automatic }}>
+        <div class="mt-4" classList={{ "opacity-35": automatic() }}>
           <div class="flex min-h-10 items-end justify-between gap-3">
             <div class="min-w-0">
               <div class="truncate text-[18px] font-[530] leading-6 text-v2-text-text-accent">{display().label}</div>
@@ -53,7 +60,7 @@ export function ModelEffortControl(props: {
                 {display().description}
               </div>
             </div>
-            <code class="shrink-0 pb-0.5 text-[9px] text-v2-text-text-faint">{value()}</code>
+            <code class="shrink-0 pb-0.5 text-[9px] text-v2-text-text-faint">{effective() ?? "—"}</code>
           </div>
           <input
             data-action="prompt-model-variant-slider"
@@ -62,7 +69,7 @@ export function ModelEffortControl(props: {
             max={Math.max(0, props.variants.length - 1)}
             step="1"
             value={index()}
-            disabled={props.automatic}
+            disabled={automatic()}
             aria-label="Manual reasoning level"
             aria-valuetext={display().label}
             style={{ "--model-effort-progress": `${progress()}%` }}
@@ -78,9 +85,13 @@ export function ModelEffortControl(props: {
           </div>
         </div>
         <div class="mt-4 flex justify-between gap-3 border-t border-v2-border-border-muted pt-2.5 text-[9px] leading-3 text-v2-text-text-faint">
-          <span>Current behavior</span>
+          <span>Sent with each turn</span>
           <span class="text-right font-[530] text-v2-text-text-muted">
-            {props.automatic ? "Model default / no override" : `Explicit override / ${value()}`}
+            {automatic()
+              ? props.inherited
+                ? `Default / ${props.inherited}`
+                : "Nothing; provider decides"
+              : `Override / ${value()}`}
           </span>
         </div>
       </div>

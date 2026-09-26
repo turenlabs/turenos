@@ -26,7 +26,8 @@ env:
 jobs:
   unit:
     name: ${{ matrix.name }}
-    timeout-minutes: 10
+    # Windows shards lose minutes to slow setup phases; keep Linux tight.
+    timeout-minutes: ${{ matrix.timeout || 10 }}
     strategy:
       fail-fast: false
       matrix:
@@ -51,12 +52,14 @@ jobs:
               directory: ".",
               command: "bun .github/scripts/test-packages.ts --shard=1/2",
               transport: true,
+              timeout: 20,
             }
           - {
               name: "unit (windows 2/2)",
               host: blacksmith-4vcpu-windows-2025, github_host: windows-latest,
               directory: ".",
               command: "bun .github/scripts/test-packages.ts --shard=2/2",
+              timeout: 20,
             }
     runs-on: ${{ github.repository == 'turenlabs/turenos' && matrix.github_host || matrix.host }}
     defaults:

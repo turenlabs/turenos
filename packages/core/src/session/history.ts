@@ -85,11 +85,8 @@ const messageRows = Effect.fnUntraced(function* (
   if (!compaction || compaction.throughSeq === undefined) return rows
   // Preserved rows were committed before the checkpoint event, but model history is checkpoint
   // first, then the original structured tail it did not summarize.
-  return rows.sort((left, right) => {
-    if (left.id === compaction.id) return -1
-    if (right.id === compaction.id) return 1
-    return left.seq - right.seq
-  })
+  const checkpoint = rows.find((row) => row.id === compaction.id)
+  return checkpoint ? [checkpoint, ...rows.filter((row) => row.id !== compaction.id)] : rows
 })
 
 const decodeMessageRow = (row: typeof SessionMessageTable.$inferSelect) =>

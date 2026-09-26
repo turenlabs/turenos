@@ -250,9 +250,12 @@ const adopt = Effect.fn("SessionTranscriptAdoption.convert")(function* (
       message: unrepresentable,
     })
   const converted = convertMessages(legacy)
-  const duplicate = converted.find(
-    (item, index) => converted.findIndex((candidate) => candidate.message.id === item.message.id) !== index,
-  )
+  const seenMessageIDs = new Set<string>()
+  const duplicate = converted.find((item) => {
+    if (seenMessageIDs.has(item.message.id)) return true
+    seenMessageIDs.add(item.message.id)
+    return false
+  })
   if (duplicate)
     return yield* new AdoptionError({
       sessionID,

@@ -47,7 +47,6 @@ export const dict = {
 
   "command.session.new": "New session",
   "command.tab.new": "New tab",
-  "tab.desktop": "Desktop",
   "tab.groups.new": "Add tab to new group",
   "tab.groups.add": "Add tab to group",
   "tab.groups.move": "Move tab to group",
@@ -106,9 +105,6 @@ export const dict = {
   "command.session.redo.description": "Redo the last undone message",
   "command.session.goal": "Set goal",
   "command.session.goal.description": "Give TurenOS an objective to pursue on its own",
-  "command.session.loop": "Start loop",
-  "command.session.loop.description":
-    "Enter loop mode to persistently work toward an objective with bounded iterations",
   "command.session.compact": "Compact session",
   "command.session.compact.description": "Summarize the session to reduce context size",
   "command.session.fork": "Fork from message",

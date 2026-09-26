@@ -8,6 +8,7 @@ const expected = [
   "turenlabs/attack",
   "turenlabs/automox",
   "turenlabs/automox-local",
+  "turenlabs/aws-documentation",
   "turenlabs/bandit",
   "turenlabs/batou",
   "turenlabs/bug-root-cause",
@@ -24,6 +25,7 @@ const expected = [
   "turenlabs/datadog-malicious",
   "turenlabs/datadog-security",
   "turenlabs/dependency-risk-review",
+  "turenlabs/dependency-upgrade-impact",
   "turenlabs/depsdev",
   "turenlabs/detection-engineering-review",
   "turenlabs/elastic-security",
@@ -149,7 +151,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(15)
+    expect(skills.length).toBe(16)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0
@@ -527,6 +529,31 @@ describe("ExtensionCatalog", () => {
     if (contribution?.type !== "mcp") throw new Error("Automox MCP contribution is missing")
     expect(contribution.tools.allow).toHaveLength(85)
     expect(contribution.secrets.map((secret) => secret.id)).toEqual(["AUTOMOX_API_KEY", "AUTOMOX_ACCOUNT_UUID"])
+  })
+
+  test("ships AWS Documentation as a credential-free, pinned, read-only MCP package", () => {
+    const contribution = ExtensionCatalog.get("turenlabs/aws-documentation")?.contributions[0]
+    expect(contribution).toMatchObject({
+      type: "mcp",
+      id: "aws-documentation",
+      adapter: "mcp:aws-documentation",
+      authentication: "none",
+      localOnly: true,
+      secrets: [],
+      deployment: {
+        type: "managed",
+        package: "awslabs.aws-documentation-mcp-server",
+        version: "1.2.1",
+        cutoff: "2026-09-08T15:03:45.578535Z",
+        command: "awslabs.aws-documentation-mcp-server",
+        args: [],
+        environment: { AWS_DOCUMENTATION_PARTITION: "aws", FASTMCP_LOG_LEVEL: "ERROR" },
+      },
+      tools: {
+        allow: ["search_documentation", "read_documentation", "read_sections", "search_table"],
+        write: [],
+      },
+    })
   })
 
   test("pins hosted security MCP endpoints, authentication, and reviewed tool policies", () => {

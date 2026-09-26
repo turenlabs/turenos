@@ -492,6 +492,34 @@ describe("Loop", () => {
     }),
   )
 
+  it.effect("cancels every active run bound to a session without touching terminal or foreign runs", () =>
+    Effect.gen(function* () {
+      const loops = yield* Loop.Service
+      for (const id of ["lop_cancel_session_a", "lop_cancel_session_b", "lop_cancel_session_c"]) {
+        yield* loops.create(input(id, { paused: true }))
+      }
+      const claimed = yield* loops.runNow({ id: "lop_cancel_session_a", owner: "owner" })
+      yield* loops.recordRunSession({ id: claimed.id, owner: "owner", sessionID: "session-gone" })
+      const running = yield* loops.runNow({ id: "lop_cancel_session_b", owner: "owner" })
+      yield* loops.recordRunSession({ id: running.id, owner: "owner", sessionID: "session-gone" })
+      yield* loops.startRun({ id: running.id, owner: "owner", sessionID: "session-gone" })
+      const foreign = yield* loops.runNow({ id: "lop_cancel_session_c", owner: "owner" })
+      yield* loops.recordRunSession({ id: foreign.id, owner: "owner", sessionID: "session-kept" })
+
+      expect(yield* loops.cancelRunForSession("session-gone")).toBe(true)
+
+      for (const run of [claimed, running]) {
+        const settled = yield* loops.getRun({ id: run.id })
+        expect(settled.status).toBe("cancelled")
+        expect(settled.lease).toBeUndefined()
+        expect(settled.time.completed).toBeDefined()
+      }
+      expect(yield* loops.getRun({ id: foreign.id })).toMatchObject({ status: "claimed" })
+      expect(yield* loops.cancelRunForSession("session-gone")).toBe(false)
+      expect(yield* loops.cancelRunForSession("session-unknown")).toBe(false)
+    }),
+  )
+
   it.effect("rejects invalid creation inputs", () =>
     Effect.gen(function* () {
       const loops = yield* Loop.Service

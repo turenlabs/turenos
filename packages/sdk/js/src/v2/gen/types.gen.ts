@@ -2304,6 +2304,7 @@ export type Model = {
       [key: string]: unknown
     }
   }
+  defaultVariant?: string
 }
 
 export type Provider = {

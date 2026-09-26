@@ -74,12 +74,13 @@ Threat-feed rights and exclusions are recorded in [`docs/feed-licenses.md`](docs
 
 ## Current Skills And Subagents
 
-The catalog contains eleven downloadable skills:
+The catalog contains twelve downloadable skills:
 
 - Secure Code Review
 - Bug Root Cause
 - Test Strategy
 - Dependency Risk Review
+- Dependency Upgrade Impact
 - Threat Intelligence Brief
 - Detection Engineering Review
 - Incident Evidence Triage

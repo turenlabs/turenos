@@ -34,7 +34,6 @@ import { createDraftPromptSession, createPromptSession } from "@/context/prompt-
 import { toLegacySummary } from "@/context/global-sync/home-session-index"
 import {
   resolveSessionGoalSubmission,
-  resolveSessionLoopSubmission,
   sessionGoalSubmissionMutation,
   sessionGoalObjectiveError,
   type SessionGoalInfo,
@@ -47,6 +46,7 @@ import {
 } from "@/pages/session/goal/session-prompt-state"
 import { loopApi, responseData } from "@/pages/loops/api"
 import { parseAutomationCommand, parseLoopCommand } from "@/pages/loops/loop-command"
+import { isActiveRun } from "@/pages/loops/run-view"
 import { deriveStepID } from "@/pages/loops/workflow"
 import type { SkillSlashInvocation } from "@/pages/session/skill-slash"
 
@@ -530,6 +530,64 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     })
   }
 
+  // The Automations surface is opt-in, but issuing a /loop or /automation command is itself the
+  // opt-in: enable it so the management page is reachable instead of bouncing off the route gate.
+  const openAutomations = (id?: string) => {
+    if (!settings.general.automationsEnabled()) settings.general.setAutomationsEnabled(true)
+    const directory = encodeURIComponent(sdk().directory)
+    navigate(id ? `/automations/${id}?directory=${directory}` : `/automations?directory=${directory}`)
+  }
+
+  const stopActiveLoops = async () => {
+    const api = loopApi(sdk().client)
+    const active = await api
+      .list()
+      .then(responseData)
+      .then((items) =>
+        items.filter((item) => item.status === "active" && item.location.directory === sdk().directory),
+      )
+      .catch((err: unknown) => {
+        showToast({ title: "Could not stop loop", description: errorMessage(err) })
+        return undefined
+      })
+    if (!active) return
+    if (active.length === 0) {
+      showToast({
+        title: "No active loops",
+        description: "There are no running loops in this project.",
+        actions: [{ label: "Open Automations", onClick: () => openAutomations() }],
+      })
+      return
+    }
+    if (active.length > 1) {
+      showToast({ title: "Multiple loops are running", description: "Pick which loop to stop." })
+      openAutomations()
+      return
+    }
+    const [loop] = active
+    await api
+      .pause({ loopID: loop.id })
+      .then(() => api.runList({ loopID: loop.id }))
+      .then(responseData)
+      .then((runs) =>
+        Promise.all(
+          runs
+            .filter(isActiveRun)
+            .map((run) => api.runCancel({ loopID: loop.id, runID: run.id }).catch(() => undefined)),
+        ),
+      )
+      .then(() =>
+        showToast({
+          title: "Loop stopped",
+          description: `Paused "${loop.name}". Resume or delete it from Automations.`,
+          actions: [{ label: "View", onClick: () => openAutomations(loop.id) }],
+        }),
+      )
+      .catch((err: unknown) => {
+        showToast({ title: "Could not stop loop", description: errorMessage(err) })
+      })
+  }
+
   const performSubmit = async (event: Event, steer?: boolean) => {
     event.preventDefault()
     if (params.id && interrupting[pendingKey(params.id)]) return
@@ -566,7 +624,6 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     const text = currentPrompt.map((part) => ("content" in part ? part.content : "")).join("")
     const goalCommand =
       mode === "normal" && input.goal ? resolveSessionGoalSubmission(text, input.goal.mode()) : undefined
-    const slashLoopCommand = mode === "normal" && input.goal ? resolveSessionLoopSubmission(text, false) : undefined
 
     if (goalCommand?.type === "toggle") {
       submission.clear()
@@ -673,7 +730,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           submission.clear()
           input.setMode("normal")
           input.setPopover(null)
-          navigate(`/automations/${loop.id}?directory=${encodeURIComponent(sdk().directory)}`)
+          openAutomations(loop.id)
         })
         .catch((err) => {
           showToast({ title: "Could not create automation", description: errorMessage(err) })
@@ -685,6 +742,14 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       mode === "normal" && settings.general.newLayoutDesigns() ? parseLoopCommand(text) : { type: "none" as const }
     if (loopCommand.type === "invalid") {
       showToast({ title: "Could not start loop", description: loopCommand.message })
+      return
+    }
+    if (loopCommand.type === "manage" || loopCommand.type === "stop") {
+      submission.clear()
+      input.setMode("normal")
+      input.setPopover(null)
+      if (loopCommand.type === "manage") openAutomations()
+      if (loopCommand.type === "stop") await stopActiveLoops()
       return
     }
     if (loopCommand.type === "loop") {
@@ -707,6 +772,10 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         return
       }
 
+      // Issuing the command is the opt-in, same as openAutomations — a created
+      // loop the user cannot reach or manage is worse than a surfaced page.
+      if (!settings.general.automationsEnabled()) settings.general.setAutomationsEnabled(true)
+
       // Show confirmation dialog before creating the loop
       const createLoop = async () => {
         const projectDirectory = sdk().directory
@@ -728,6 +797,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         showToast({
           title: "Loop created",
           description: `${loopCommand.value.prompt} (every ${loopCommand.value.intervalSeconds}s)${nextRunIn}`,
+          actions: [{ label: "View", onClick: () => openAutomations(loop.id) }],
         })
       }
 
@@ -772,60 +842,6 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         title: language.t("prompt.toast.modelAgentRequired.title"),
         description: language.t("prompt.toast.modelAgentRequired.description"),
       })
-      return
-    }
-
-    // Handle /loop slash commands - start autonomous goal loop
-    if (slashLoopCommand?.type === "set") {
-      const objectiveError = sessionGoalObjectiveError(slashLoopCommand.objective)
-      if (objectiveError) {
-        showToast({
-          title: language.t(`session.goal.error.${objectiveError}`),
-          description: language.t("session.goal.placeholder"),
-        })
-        return
-      }
-      if (
-        images.length > 0 ||
-        context.length > 0 ||
-        currentPrompt.some((part) => part.type === "file" || part.type === "image" || part.type === "agent")
-      ) {
-        showToast({
-          title: language.t("session.goal.error.attachments"),
-          description: language.t("session.goal.placeholder"),
-        })
-        return
-      }
-
-      const sessionID = params.id
-      if (!sessionID) {
-        showToast({
-          title: language.t("session.goal.error.start"),
-          description: language.t("common.requestFailed"),
-        })
-        return
-      }
-
-      await input
-        .goal!.start({
-          sessionID,
-          objective: slashLoopCommand.objective,
-          agent: currentAgent.name,
-          model: { providerID: currentModel.provider.id, id: currentModel.id, variant },
-          client: sdk().client,
-          scope: sdk().scope,
-        })
-        .then(() => {
-          submission.clear()
-          input.setMode("normal")
-          input.setPopover(null)
-        })
-        .catch((err) => {
-          showToast({
-            title: language.t("session.goal.error.start"),
-            description: errorMessage(err),
-          })
-        })
       return
     }
 

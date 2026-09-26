@@ -66,6 +66,7 @@ const categoryByExtensionID: Readonly<Record<string, ClassifiedExtensionCategory
   "turenlabs/incident-responder": "incident-response",
   "turenlabs/secret-exposure-review": "application-security",
   "turenlabs/dependency-risk-review": "supply-chain",
+  "turenlabs/dependency-upgrade-impact": "supply-chain",
   "turenlabs/binary-static-snapshot": "security-knowledge",
   "turenlabs/pcap-triage": "security-operations",
   "turenlabs/threat-intel-enrichment": "threat-intelligence",
