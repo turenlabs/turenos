@@ -94,6 +94,17 @@ describe("server session", () => {
     expect(store.get("root")?.id).toBe("root")
   })
 
+  test("keeps optimistic messages sorted and replaces matching IDs", () => {
+    const existing = [userMessage("message-c"), userMessage("message-a")]
+    const replacement = userMessage("message-c", { time: { created: 2 } })
+    const store = setup({ child: session("child") }).store
+    store.set("message", "child", existing)
+
+    store.optimistic.add({ sessionID: "child", message: replacement, parts: [] })
+
+    expect(store.data.message.child).toEqual([existing[1], replacement])
+  })
+
   test("clears delta buffers when removing optimistic content", () => {
     const message = userMessage("message")
     const part = textPart(message.id, { text: "optimistic" })

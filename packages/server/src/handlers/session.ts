@@ -1327,6 +1327,8 @@ function taskSummary(task: SessionTaskV2.Info) {
     agent: AgentV2.ID.make(boundedTaskString(task.agent, SessionTaskResponseLimits.agentID)),
     model: boundedTaskModel(task.model),
     description: boundedTaskString(task.description, SessionTaskResponseLimits.summaryDescription),
+    wave:
+      task.wave === undefined ? undefined : boundedTaskString(task.wave, SessionTaskResponseLimits.wave),
     depth: task.depth,
     status: task.status,
     revision: task.revision,
@@ -1355,6 +1357,8 @@ function taskDetail(task: SessionTaskV2.Info) {
       text: boundedTaskString(task.prompt.text, SessionTaskResponseLimits.detailPrompt),
     },
     description: boundedTaskString(task.description, SessionTaskResponseLimits.detailDescription),
+    wave:
+      task.wave === undefined ? undefined : boundedTaskString(task.wave, SessionTaskResponseLimits.wave),
     depth: task.depth,
     status: task.status,
     revision: task.revision,

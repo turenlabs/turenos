@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test"
 import {
   applySessionTaskSnapshot,
   formatSessionTaskDuration,
+  sessionTaskActive,
   sessionTaskElapsedSeconds,
   sessionTaskIDs,
   sessionTaskRoot,
+  sessionTaskRunning,
+  sessionTaskStatusLabel,
   sessionSwarmProgress,
   sessionSwarmRequest,
   sessionTaskThinkingProfiles,
@@ -77,6 +80,15 @@ describe("durable subagent presentation", () => {
     expect(formatSessionTaskDuration(Number.NaN)).toBe("0s")
   })
 
+  test("treats a queued task as waiting: non-terminal but not running, with a frozen clock", () => {
+    const queued = task({ status: "queued", time: { created: 1_000, updated: 3_000 } })
+
+    expect(sessionTaskStatusLabel("queued")).toBe("session.subagents.status.queued")
+    expect(sessionTaskActive(queued)).toBe(true)
+    expect(sessionTaskRunning(queued)).toBe(false)
+    expect(sessionTaskElapsedSeconds(queued, 60_000)).toBe(2)
+  })
+
   test("projects swarm lifecycle, lanes, failures, cancellation, and evidence freshness", () => {
     const progress = sessionSwarmProgress(
       {
@@ -86,6 +98,8 @@ describe("durable subagent presentation", () => {
         explicitCount: false,
       },
       [
+        task({ id: "tsk_queued_1", status: "queued", description: "Backlog one" }),
+        task({ id: "tsk_queued_2", status: "queued", description: "Backlog two" }),
         task({ id: "tsk_starting", status: "starting", description: "Primary sources" }),
         task({ id: "tsk_running", status: "running", description: "Workspace audit" }),
         task({ id: "tsk_complete", status: "completed", description: "UX review" }),
@@ -110,11 +124,12 @@ describe("durable subagent presentation", () => {
       objective: "Compare competitors",
       requested: 12,
       admitted: 1,
+      queued: 2,
       running: 1,
       completed: 1,
       failed: 1,
       cancelled: 2,
-      total: 6,
+      total: 8,
       lanes: ["Primary sources", "Workspace audit"],
       evidenceCount: 1,
       evidenceUpdatedAt: 4_000,

@@ -88,7 +88,9 @@ Without `shell`, the shell tool runs `/bin/sh`, or `COMSPEC` (falling back to `c
 instead uses `$SHELL`; without it, `/bin/zsh` on macOS, then `bash` on `PATH`, then `/bin/sh`. On Windows it takes the
 first of `pwsh`, `powershell`, Git Bash, and `COMSPEC` or `cmd.exe`.
 
-Session V2 subagents have a fixed nesting depth of 1 (`packages/core/src/session/task.ts`) and ignore `subagent_depth`.
+Session V2 subagents ignore `subagent_depth`. Their task graph has a fixed maximum depth of 2 (`MAX_DEPTH` in
+`packages/schema/src/session-task.ts`), and a child spawns workers only when it was granted `orchestrate`; see
+[orchestrators](./subagent-workstreams.md#orchestrators).
 
 `server` accepts `port`, `hostname`, `mdns`, `mdnsDomain`, and `cors`. An explicit CLI flag wins over the config value,
 and `cors` entries are added to the `--cors` list. The CLI defaults are port `0` (any free port), hostname `127.0.0.1`
@@ -98,7 +100,7 @@ and `cors` entries are added to the `--cors` list. The CLI defaults are port `0`
 
 | Key                                      | Default | Notes                                                                                                                    |
 | ---------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `subagents.max_concurrent`               | 50      | Subagents one session may run at once. Values above 50 are clamped.                                                      |
+| `subagents.max_concurrent`               | 50      | Subagents one root Session's task graph may run at once; further spawns queue. Values above 50 are clamped.              |
 | `attachments.image.auto_resize`          | `true`  | Resize images that exceed the limits below.                                                                              |
 | `attachments.image.max_width`            | 2,000   | Pixels.                                                                                                                  |
 | `attachments.image.max_height`           | 2,000   | Pixels.                                                                                                                  |

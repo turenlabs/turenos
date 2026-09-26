@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "b305b717-d371-490d-b802-9d42893237dd",
+  "id": "5ff8d263-f97d-45ca-a861-251fd11fdeda",
   "prevIds": [
-    "aa161089-d9a1-494d-846d-acc7d7c275f9"
+    "b305b717-d371-490d-b802-9d42893237dd"
   ],
   "ddl": [
     {
@@ -509,6 +509,16 @@
       "table": "session_task_actor_claim"
     },
     {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "-1",
+      "generated": null,
+      "name": "actor_item",
+      "entityType": "columns",
+      "table": "session_task_actor_claim"
+    },
+    {
       "type": "text",
       "notNull": true,
       "autoincrement": false,
@@ -615,6 +625,16 @@
       "default": null,
       "generated": null,
       "name": "actor_tool_call_id",
+      "entityType": "columns",
+      "table": "session_task_operation"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "-1",
+      "generated": null,
+      "name": "actor_item",
       "entityType": "columns",
       "table": "session_task_operation"
     },
@@ -789,6 +809,16 @@
       "table": "session_task"
     },
     {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "-1",
+      "generated": null,
+      "name": "actor_item",
+      "entityType": "columns",
+      "table": "session_task"
+    },
+    {
       "type": "text",
       "notNull": true,
       "autoincrement": false,
@@ -825,6 +855,16 @@
       "default": null,
       "generated": null,
       "name": "description",
+      "entityType": "columns",
+      "table": "session_task"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "wave",
       "entityType": "columns",
       "table": "session_task"
     },
@@ -915,6 +955,16 @@
       "default": null,
       "generated": null,
       "name": "commands",
+      "entityType": "columns",
+      "table": "session_task"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "false",
+      "generated": null,
+      "name": "orchestrate",
       "entityType": "columns",
       "table": "session_task"
     },
@@ -5502,6 +5552,10 @@
         {
           "value": "actor_tool_call_id",
           "isExpression": false
+        },
+        {
+          "value": "actor_item",
+          "isExpression": false
         }
       ],
       "isUnique": true,
@@ -5537,6 +5591,10 @@
         },
         {
           "value": "actor_tool_call_id",
+          "isExpression": false
+        },
+        {
+          "value": "actor_item",
           "isExpression": false
         }
       ],
@@ -5706,6 +5764,24 @@
       "where": null,
       "origin": "manual",
       "name": "session_task_status_created_idx",
+      "entityType": "indexes",
+      "table": "session_task"
+    },
+    {
+      "columns": [
+        {
+          "value": "parent_session_id",
+          "isExpression": false
+        },
+        {
+          "value": "wave",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "session_task_parent_wave_idx",
       "entityType": "indexes",
       "table": "session_task"
     },

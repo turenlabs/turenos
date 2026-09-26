@@ -31,6 +31,42 @@ wait for the child provider turn or final result. The default guidance tells
 the parent to use the time after spawning for independent work and to read the
 room before repeating a sibling's investigation.
 
+## Concurrency and queueing
+
+Every task in one root Session's graph (the root's direct children, any
+orchestrators, and their workers) shares one active pool. Its size is
+`subagents.max_concurrent`, 50 by default and clamped to 1 through 50
+(`resolveActiveLimit`). `queued` tasks do not hold a slot; `starting` and
+`running` tasks do.
+
+- A spawn never fails for capacity. When the pool is full, or when other tasks
+  of the root are already queued, the task is admitted as `queued` and the tool
+  returns at once with that status. Its child Session does not exist yet.
+- A process-wide promotion driver owned by `SessionExecutionLocal` starts
+  queued tasks in creation order (`time.created`, then ID) whenever a slot is
+  free. It wakes on task events and on writes from another process, reads the
+  root Session's Location config for the limit on every pass, and re-drives
+  queued tasks after a restart.
+- One root holds at most 10,000 unfinished tasks (`MAX_TASKS_PER_ROOT`);
+  spawning past that fails with a queue-limit error.
+- Promotion cancels, rather than starts, a queued task that has a pending
+  interrupt or whose orchestrator is no longer running.
+
+### Orchestrators
+
+The task graph is at most two levels deep (`MAX_DEPTH` is 2). A child may spawn
+workers of its own only if it was spawned with `orchestrate: true`, which also
+requires the separate `orchestrate` permission action. Its workers can never be
+granted `orchestrate`, and their `commands` and `write_roots` must stay within
+the orchestrator's own grants.
+
+Running orchestrators hold at most `floor(limit / 2)` slots
+(`orchestratorLimit`), so they cannot fill the pool their own workers need.
+Promotion skips queued orchestrators while that quota is full. With a limit of
+1 the quota is 0, and an `orchestrate` spawn fails. When an orchestrator
+settles, its unfinished workers settle with it: they are cancelled, or
+interrupted when the orchestrator was interrupted.
+
 ## Tool roles
 
 The coordination tools (`room_read`, `room_post`, `room_claim`, `room_wait`)
@@ -41,49 +77,73 @@ calling them.
 
 ### `spawn_agent`
 
-Starts one bounded child assignment and returns a durable task ID, child
-Session ID, and current task view. `model` is optional: an omitted model uses
-the child agent's configured default, then the parent Session's model.
-`write_roots` (up to 16 existing directories inside the active workspace) and
-`commands` (up to 32 exact, complete shell strings) grant edit and shell
-authority; omitting both makes the child read-only. A spawn fails with an
-active-limit error when the Session already runs its configured maximum of
-concurrent children (`subagents.max_concurrent`).
+Admits one bounded child assignment and returns a durable task ID, child
+Session ID, and current task view, whose status is `starting` or `queued`.
+`model` is optional: an omitted model uses the child agent's configured
+default, then the parent Session's model. `write_roots` (up to 16 existing
+directories inside the active workspace) and `commands` (up to 32 exact,
+complete shell strings) grant edit and shell authority; omitting both makes the
+child read-only. `wave` (1 to 64 characters) tags the task so `wait_agents`,
+`list_agents`, and `interrupt_agent` can act on the group. `orchestrate: true`
+makes the child an [orchestrator](#orchestrators).
 
 The child prompt is followed by a fixed workstream protocol that tells the
 child to read the room, claim its lane when a plan exists, post findings as
 they are ready, mark its lane done, and park on `room_wait` until a `decision`
-or a lane release.
+or a lane release. A worker spawned by an orchestrator is instead told to end
+its turn without parking, because a parked worker holds a slot its queued
+siblings are waiting for.
+
+### `spawn_agents`
+
+Admits up to 256 items (`MAX_SPAWN_BATCH`) in one call, in order, each with the
+same fields as `spawn_agent`. A top-level `wave` tags every item that omits its
+own. Each item is its own durable operation, so a retried call reconciles per
+item, and a failed item reports its error in `results` without failing the
+batch. The output also counts queued, running, and failed items. The batch uses
+the `spawn_agent` permission action.
 
 ### `send_agent`
 
 Sends additional durable instructions to an existing direct child, or, from a
 child, to a sibling's task ID found with `list_agents`. The message promotes at
 the target's next provider-turn boundary. Exact tool-call retries reconcile
-without duplicating the prompt.
+without duplicating the prompt. Sending to a `queued` or `starting` task, a
+cancelled task, or a task that never started is rejected. Sending to a finished
+task resumes it, and unlike a spawn this does not queue: it fails with an
+active-limit error when the pool, or for an orchestrator its quota, is full.
 
 ### `wait_agents`
 
 Waits for selected direct children to reach terminal states and returns their
-complete durable reports. This is an explicit final-report barrier, not the
-normal step after spawning. The default timeout is 2 minutes and the maximum is
-10 minutes. A timeout returns snapshots while children remain active; it does
-not cancel them. When every still-running child is parked on `room_wait`, the
-call returns early with `parked: true` so the parent can post a `decision` or
-release lanes and wait again.
+complete durable reports. It takes exactly one of `task_ids` (up to 50) or
+`wave`. This is an explicit final-report barrier, not the normal step after
+spawning. The default timeout is 2 minutes and the maximum is 10 minutes. A
+timeout returns snapshots while children remain queued or active; it does not
+cancel them. When no child is queued and every still-running child is parked on
+`room_wait`, the call returns early with `parked: true` so the parent can post a
+`decision` or release lanes and wait again. The output counts queued, running,
+and terminal tasks. A wave wait returns full results for at most 50 tasks,
+finished first and newest first, sets `truncated` when there are more, and
+pages further back with `offset`.
 
 ### `interrupt_agent`
 
-Stops an obsolete or off-track direct child. The interrupt intent is persisted
-first, then local execution gets 5 seconds to stop before cancellation is
-committed. A timeout is reported and leaves the intent retryable rather than
-pretending that the child stopped.
+Stops an obsolete or off-track direct child, or up to 256 unfinished direct
+children in one `wave`, reporting how many wave members remain for another
+call. Queued children are cancelled without running. The interrupt intent is
+persisted first, then local execution gets 5 seconds to stop before
+cancellation is committed. A timeout is reported and leaves the intent
+retryable rather than pretending that the child stopped.
 
 ### `list_agents`
 
 Lists up to 32 tasks: the caller's siblings (when it is a child) and its direct
 children, keeping active tasks and the newest terminal ones. Result and error
 previews appear only for terminal tasks and are capped at 4,096 characters.
+`wave` and `status` filters narrow the list, and `counts` reports queued,
+running, and terminal direct children, so a large fleet stays readable without
+paging.
 
 ### `peek_agent`
 
@@ -113,8 +173,11 @@ to:
 
 1. Post a `plan` with named lanes so workers can claim a lane instead of
    colliding.
-2. Spawn independent children in the same provider turn, in waves no larger
-   than the concurrency limit, with disjoint write roots.
+2. Spawn independent children in the same provider turn with disjoint write
+   roots, expecting spawns past the concurrency limit to queue. For more than
+   about 10 workers, use `spawn_agents` with one wave tag and wait by wave; for
+   more than about 50, spawn orchestrators that each own a slice of at most 50
+   workers and return one synthesized report.
 3. Keep doing non-overlapping work after admission.
 4. Steer running children with `send_agent` and observe them with `peek_agent`.
 5. Run at most one adversarial review, only for a concrete high-risk boundary.
@@ -122,6 +185,10 @@ to:
 7. Interrupt obsolete children with `interrupt_agent`.
 8. Post a `decision` to release parked workers, then use `wait_agents` only
    when complete terminal reports are needed.
+
+An orchestrator's own guidance tells it to split its slice into worker lanes,
+spawn them with `spawn_agents` under one wave, wait by wave, and return one
+synthesized report.
 
 A prompt that asks a child to post does not mean an entry exists; only
 `room_read` or an arriving advisory confirms it. A room entry is an
@@ -151,10 +218,11 @@ permissions, filesystem authority, or tool authority.
 Subagent tools are filtered by agent depth, configured specialist visibility,
 and permission rules. The guidance injected into a Session lists the tools and
 specialists currently available to that Session, and that list is
-authoritative: a tool absent from it cannot be called. The maximum depth is 1
-(`MAX_DEPTH` in `packages/core/src/session/task.ts`), so a child never gets
-`spawn_agent`. At that depth the guidance still lists the permitted room tools,
-`list_agents` and `send_agent` for reaching siblings, and `notify_parent`.
+authoritative: a tool absent from it cannot be called. `spawn_agent` and
+`spawn_agents` reach a top-level Session and a running orchestrator at depth 1;
+a child without the `orchestrate` grant, and every depth-2 worker, never gets
+them. Those Sessions still get the permitted room tools, `list_agents` and
+`send_agent` for reaching siblings, and `notify_parent`.
 
 ## Verification
 
@@ -163,6 +231,7 @@ Run tests from the package directory, not the repository root:
 ```bash
 cd packages/core
 bun test test/session-task.test.ts test/tool-subagent.test.ts test/swarm-room.test.ts
+bun test test/subagent-fleet.test.ts test/subagent-fleet-tools.test.ts
 bun test test/simulator/subagent.test.ts test/simulator/turn-matrix.test.ts
 bun typecheck
 ```
@@ -180,8 +249,9 @@ updates.
 - [`packages/core/src/tool/swarm-room.ts`](../../packages/core/src/tool/swarm-room.ts)
 - [`packages/core/src/team/room.ts`](../../packages/core/src/team/room.ts)
 - [`packages/core/src/session/task.ts`](../../packages/core/src/session/task.ts)
+- [`packages/schema/src/session-task.ts`](../../packages/schema/src/session-task.ts)
 - [`packages/core/src/session/execution/local.ts`](../../packages/core/src/session/execution/local.ts)
 - [`packages/core/src/agent/guidance.ts`](../../packages/core/src/agent/guidance.ts)
 - [`packages/forge/src/tool/task.ts`](../../packages/forge/src/tool/task.ts)
 - Contract: [`specs/v2/subagent-fleet.md`](../../specs/v2/subagent-fleet.md)
-- Tests: [`packages/core/test/tool-subagent.test.ts`](../../packages/core/test/tool-subagent.test.ts), [`packages/core/test/session-task.test.ts`](../../packages/core/test/session-task.test.ts), [`packages/core/test/swarm-room.test.ts`](../../packages/core/test/swarm-room.test.ts)
+- Tests: [`packages/core/test/tool-subagent.test.ts`](../../packages/core/test/tool-subagent.test.ts), [`packages/core/test/session-task.test.ts`](../../packages/core/test/session-task.test.ts), [`packages/core/test/subagent-fleet.test.ts`](../../packages/core/test/subagent-fleet.test.ts), [`packages/core/test/subagent-fleet-tools.test.ts`](../../packages/core/test/subagent-fleet-tools.test.ts), [`packages/core/test/swarm-room.test.ts`](../../packages/core/test/swarm-room.test.ts)

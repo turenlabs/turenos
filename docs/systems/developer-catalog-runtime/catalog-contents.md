@@ -49,13 +49,14 @@ behavior and obtain a source-specific rights review before new storage or redist
 
 ## Skills and subagents
 
-The catalog contains ten downloadable skills plus the built-in Customize TurenOS skill, whose `embedded` source ships
+The catalog contains eleven downloadable skills plus the built-in Customize TurenOS skill, whose `embedded` source ships
 with TurenOS and is not downloaded or scanned by Vigil:
 
 - Secure Code Review
 - Bug Root Cause
 - Test Strategy
 - Dependency Risk Review
+- Dependency Upgrade Impact
 - Threat Intelligence Brief
 - Detection Engineering Review
 - Incident Evidence Triage
@@ -74,7 +75,7 @@ Catalog prompts are original Turen Labs content. They do not grant permissions. 
 
 ## MCP integrations
 
-The catalog contains 25 MCP integrations, all official and all disabled until enabled. `Deployment` is the manifest's
+The catalog contains 26 MCP integrations, all official and all disabled until enabled. `Deployment` is the manifest's
 `deployment.type`: `hosted` is the vendor's endpoint, `customer-url` is an endpoint URL the user supplies, `managed` is a
 package TurenOS runs through its managed MCP runtime, and `local` is a program already installed on the host. `Write
 tools` counts the manifest's `tools.write` allowlist; the rest are read-only.
@@ -85,6 +86,7 @@ tools` counts the manifest's `tools.write` allowlist; the rest are read-only.
 | Atlassian Security Context                  | `turenlabs/atlassian-security-context` | `hosted`       | 0           |
 | Automox                                     | `turenlabs/automox-local`              | `managed`      | 0           |
 | Automox Hosted                              | `turenlabs/automox`                    | `hosted`       | 0           |
+| AWS Documentation                           | `turenlabs/aws-documentation`          | `managed`      | 0           |
 | Chainguard Docs                             | `turenlabs/chainguard-docs`            | `hosted`       | 0           |
 | Cloudflare Audit Logs                       | `turenlabs/cloudflare-audit-logs`      | `hosted`       | 0           |
 | Cloudflare One CASB                         | `turenlabs/cloudflare-casb`            | `hosted`       | 0           |

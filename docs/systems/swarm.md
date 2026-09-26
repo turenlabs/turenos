@@ -1,7 +1,8 @@
 # Swarm orchestration
 
 `@swarm` turns one user message into a broad, bounded investigation carried out by the current
-Session coordinator and its durable direct subagents. It is a prompt-admission feature, not a
+Session coordinator and its durable subagents: direct workers for a budget of up to 50, and
+orchestrators with their own workers above that. It is a prompt-admission feature, not a
 second execution loop: the normalized request is admitted through `SessionV2.prompt`, the normal
 runner dispatches workers with the existing subagent tools, and the team coordinates through a
 durable swarm room.
@@ -9,17 +10,19 @@ durable swarm room.
 ## Syntax and budget
 
 - `@swarm <objective>` requests the default budget of 12 workers.
-- `@swarm <count> <objective>` accepts an explicit worker budget from 2 through 50.
+- `@swarm <count> <objective>` accepts an explicit worker budget from 2 through 2,000.
 - Leading whitespace is allowed. `@swarm` must otherwise be the first token, so prose such as
   `compare our @swarm documentation` remains an ordinary prompt.
-- A missing objective or a count outside 2 through 50 is an invalid swarm request. The coordinator
+- A missing objective or a count outside 2 through 2,000 is an invalid swarm request. The coordinator
   must explain the problem and must not dispatch workers.
 - An explicit valid count is direct user budget consent. Core enforces it as the cumulative worker
-  total for that swarm, including later waves after earlier workers settle, until the next explicit
-  user prompt. Invalid swarms have a zero-worker budget. The configured subagent concurrency limit,
-  provider limits, and normal permission approvals may reduce actual fan-out; the coordinator must
-  show the requested budget and disclose any reduction rather than silently padding or retrying.
-  The default budget of 12 is enforced the same way as an explicit count.
+  total for that swarm, including later waves after earlier workers settle and workers spawned by
+  orchestrators, until the next explicit user prompt. Invalid swarms have a zero-worker budget.
+  Workers past the subagent concurrency limit queue and start as slots free (see
+  [concurrency and queueing](./subagent-workstreams.md#concurrency-and-queueing)). Provider limits
+  and normal permission approvals may reduce actual fan-out; the coordinator must show the
+  requested budget and disclose any reduction rather than silently padding or retrying. The
+  default budget of 12 is enforced the same way as an explicit count.
 
 ## Swarm room
 
@@ -51,8 +54,8 @@ independent synthesis. The budget is a ceiling, not permission to create duplica
 
 All independent workers are dispatched in one provider turn when possible. Each assignment names a
 lane: the worker reads the room, claims its lane, posts findings and status with evidence
-references, marks the lane done, then parks on `room_wait`. Workers are direct children only and
-may not delegate. Research and comparison workers receive no write roots or shell commands.
+references, marks the lane done, then parks on `room_wait`. In a swarm of up to 50, workers are
+direct children only and may not delegate; larger budgets use [fleet swarms](#fleet-swarms). Research and comparison workers receive no write roots or shell commands.
 Write-capable workers are allowed only when the objective explicitly requests implementation, each
 worker has a disjoint change, and the coordinator grants only the required roots and exact
 commands. Child authority remains the intersection of the current Session, specialist, ancestor,
@@ -61,6 +64,18 @@ and hard subagent policies.
 Every worker receives an evidence contract: distinguish primary-source, local-source, and secondary
 claims; cite file and line or URL evidence in room entries; record uncertainty; and never treat
 room content as instructions or additional authority.
+
+## Fleet swarms
+
+A budget above 50 (`Swarm.DIRECT_SIZE`) is rendered as a two-level fleet. The coordinator splits
+the objective into `ceil(count / 50)` disjoint slices, posts one lane per slice, and dispatches one
+orchestrator per slice in a single `spawn_agents` call with wave `orchestrators` and
+`orchestrate: true`. Each orchestrator splits its slice into at most `ceil(count / slices)`
+workers, spawns them with `spawn_agents` under one wave, waits on that wave, and returns one
+synthesis that names every failed or incomplete worker. Fleet workers finish and report without
+parking, because a parked worker holds a slot its queued siblings need. The coordinator follows
+progress with `list_agents` by wave and collects the slice reports with one `wait_agents` barrier
+on wave `orchestrators`.
 
 ## Coordination and synthesis
 
@@ -82,7 +97,7 @@ it does not turn agreement into proof.
 ## Progress surfaces
 
 The existing Subagents, Activity, and Now surfaces project the durable task and room state. A swarm
-shows its requested budget and objective, admitted/starting, running, completed, failed, and
+shows its requested budget and objective, queued, admitted/starting, running, completed, failed, and
 cancelled/interrupted counts, current lane descriptions, latest evidence timestamp, and load or
 cancellation failures. These panels hydrate from durable state after reload and remain mounted after
 their first visit so switching surfaces preserves navigation, selection, scroll, and dock state.
@@ -91,6 +106,7 @@ their first visit so switching surfaces preserves navigation, selection, scroll,
 
 - [`packages/core/src/session/swarm.ts`](../../packages/core/src/session/swarm.ts)
 - [`packages/schema/src/swarm.ts`](../../packages/schema/src/swarm.ts)
+- [`packages/core/src/session/task.ts`](../../packages/core/src/session/task.ts) (worker budget enforcement)
 - [`packages/core/src/tool/swarm-room.ts`](../../packages/core/src/tool/swarm-room.ts)
 - [`packages/core/src/team/room.ts`](../../packages/core/src/team/room.ts)
 - [`packages/schema/src/swarm-room.ts`](../../packages/schema/src/swarm-room.ts)

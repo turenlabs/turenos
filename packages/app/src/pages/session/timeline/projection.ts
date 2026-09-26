@@ -45,22 +45,25 @@ export function createTimelineProjection(input: {
     return result
   })
   const activeMessageID = createMemo(() => {
-    const parentID = input
-      .messages()
-      .findLast(
-        (message): message is AssistantMessage =>
-          message.role === "assistant" && typeof message.time.completed !== "number",
-      )?.parentID
+    const messages = input.messages()
+    const parentID = messages.findLast(
+      (message): message is AssistantMessage =>
+        message.role === "assistant" && typeof message.time.completed !== "number",
+    )?.parentID
     if (parentID) {
-      const messages = input.messages()
       const result = Binary.search(messages, parentID, (message) => message.id)
       const message = result.found ? messages[result.index] : messages.find((item) => item.id === parentID)
       if (message?.role === "user") return message.id
     }
 
-    if (input.status().type === "idle")
-      return input.messages().findLast((message) => message.role === "user" && input.starting(message.id))?.id
-    return input.messages().findLast((message) => message.role === "user")?.id
+    if (input.status().type !== "idle") return messages.findLast((message) => message.role === "user")?.id
+
+    const users = input.userMessages()
+    // A staged revert hides a suffix from the visible rows. Use that shorter list only when it
+    // still reaches the transcript's latest user; otherwise preserve the full-transcript result.
+    if (users.at(-1)?.id !== messages.findLast((message) => message.role === "user")?.id)
+      return messages.findLast((message) => message.role === "user" && input.starting(message.id))?.id
+    return users.findLast((message) => input.starting(message.id))?.id
   })
   // Status and compaction can only change the active turn and the row that displays compaction.
   const isActiveMessage = createSelector(activeMessageID)

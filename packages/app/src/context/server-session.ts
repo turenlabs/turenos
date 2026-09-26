@@ -82,7 +82,8 @@ function runInflight(map: Map<string, Promise<void>>, key: string, task: () => P
 }
 
 function merge<T extends { id: string }>(a: readonly T[], b: readonly T[]) {
-  const items = new Map(a.map((item) => [item.id, item] as const))
+  const items = new Map<string, T>()
+  for (const item of a) items.set(item.id, item)
   for (const item of b) items.set(item.id, item)
   return [...items.values()].sort((x, y) => cmp(x.id, y.id))
 }

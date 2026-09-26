@@ -456,10 +456,15 @@ const requestDefaults = (model: ModelV2.Info) => {
     ...(packageName && !DIRECT_ADAPTER_PACKAGES.has(packageName) ? httpBody : {}),
     ...Object.fromEntries(Object.entries(packageOptions).filter(([, value]) => value !== undefined)),
   })
+  // `chunkTimeout` is the AI SDK path's opt-in SSE idle limit; the native route honors it too.
+  const chunkTimeout = numberOption(body, "chunkTimeout") ?? numberOption(model.api.settings ?? {}, "chunkTimeout")
   return {
     generation: Object.keys(definedGeneration).length === 0 ? undefined : definedGeneration,
     providerOptions: Object.keys(providerOptions).length === 0 ? undefined : providerOptions,
-    http: { body: httpBody },
+    http: {
+      body: httpBody,
+      ...(chunkTimeout !== undefined && chunkTimeout > 0 ? { idleTimeoutMs: chunkTimeout } : {}),
+    },
   }
 }
 

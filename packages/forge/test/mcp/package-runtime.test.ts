@@ -13,6 +13,36 @@ function mcpItem(id: string) {
 }
 
 describe("managed MCP packages", () => {
+  test("builds the pinned credential-free AWS Documentation runtime", async () => {
+    const executable = process.platform === "win32" ? "C:\\Turen\\uv-0.12.6.exe" : "/turen/bin/uv-0.12.6"
+    const entry = await Effect.runPromise(
+      McpPackageRuntime.configuration(mcpItem("aws-documentation"), {}, {}, { ensureUv: async () => executable }),
+    )
+    expect(entry).toMatchObject({
+      type: "local",
+      enabled: true,
+      timeout: 120_000,
+      command: [
+        executable,
+        "tool",
+        "run",
+        "--no-config",
+        "--managed-python",
+        "--exclude-newer",
+        "2026-09-08T15:03:45.578535Z",
+        "--from",
+        "awslabs.aws-documentation-mcp-server==1.2.1",
+        "awslabs.aws-documentation-mcp-server",
+      ],
+    })
+    if (!entry) throw new Error("AWS Documentation package runtime was unavailable")
+    expect(McpRuntime.serverFor(entry)).toMatchObject({
+      backend: "package",
+      secrets: [],
+      environment: { AWS_DOCUMENTATION_PARTITION: "aws", FASTMCP_LOG_LEVEL: "ERROR" },
+    })
+  })
+
   test("builds an isolated pinned Automox runtime", async () => {
     const executable = process.platform === "win32" ? "C:\\Turen\\uv-0.12.6.exe" : "/turen/bin/uv-0.12.6"
     const entry = await Effect.runPromise(

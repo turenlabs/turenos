@@ -14,7 +14,7 @@ import { Prompt } from "@turenlabs/core/session/prompt"
 import { SessionSchema } from "@turenlabs/core/session/schema"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
 import { SystemContext } from "@turenlabs/core/system-context"
-import { interruptName, listName, peekName, sendName, spawnName, waitName } from "@turenlabs/core/tool/subagent"
+import { interruptName, listName, peekName, sendName, spawnBatchName, spawnName, waitName } from "@turenlabs/core/tool/subagent"
 import { SwarmRoomTool } from "@turenlabs/core/tool/swarm-room"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
@@ -96,10 +96,11 @@ describe("AgentGuidance", () => {
       expect(generation.baseline).toContain("repair only confirmed defects")
       expect(generation.baseline).toContain("do not launch a second review after repairs")
       expect(generation.baseline).not.toContain("After implementation, delegate an adversarial-review pass")
-      expect(generation.baseline).toContain("Avoid nested delegation")
+      expect(generation.baseline).toContain("otherwise avoid nested delegation")
       expect(
         [
           spawnName,
+          spawnBatchName,
           sendName,
           waitName,
           interruptName,
@@ -184,7 +185,7 @@ describe("AgentGuidance", () => {
       maxConcurrent = 7
       const configured = yield* SystemContext.initialize(yield* context.guidance.load(yield* context.agents.select()))
       expect(configured.baseline).toContain("At most 7 subagents run at once for this session")
-      expect(configured.baseline).toContain("Plan fan-out in waves of 7 or fewer")
+      expect(configured.baseline).toContain("further spawns are admitted as queued")
       expect(configured.baseline).not.toContain(`waves of ${SessionTaskV2.DEFAULT_ACTIVE_PER_ROOT}`)
 
       maxConcurrent = 10_000

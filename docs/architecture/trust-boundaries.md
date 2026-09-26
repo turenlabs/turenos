@@ -50,7 +50,9 @@ A request is not authorized solely by a directory string. Location middleware re
 and optional workspace; Session middleware reads the Session row and provides the Session's recorded
 Location. Session tasks carry parent/child authority, write roots, exact commands, permissions,
 and ownership. Mutations are rejected when task ownership or the durable authority chain conflicts.
-The task graph is depth-limited: `MAX_DEPTH` is 1, so a child task cannot spawn its own children
+The task graph is depth-limited: `MAX_DEPTH` is 2, and a child task may spawn workers only while it
+is running and was granted `orchestrate` at spawn. Those workers cannot be granted `orchestrate`,
+and their commands and write roots must stay inside the orchestrator's own grants
 ([`packages/core/src/session/task.ts`](../../packages/core/src/session/task.ts)).
 
 ## Tool authority

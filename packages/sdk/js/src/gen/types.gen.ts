@@ -3015,6 +3015,7 @@ export type SessionTaskSummary = {
   agent: string
   model?: ModelRef
   description: string
+  wave?: string
   depth: number
   status: SessionTaskStatus
   revision: number
@@ -3063,6 +3064,7 @@ export type SessionTaskDetail = {
     text: string
   }
   description: string
+  wave?: string
   depth: number
   status: SessionTaskStatus
   revision: number
@@ -3722,9 +3724,10 @@ export type SessionTaskActor = {
   sessionID: string
   assistantMessageID: string
   toolCallID: string
+  item?: number
 }
 
-export type SessionTaskStatus = "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+export type SessionTaskStatus = "queued" | "starting" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
 
 export type PermissionV2Effect = "allow" | "deny" | "ask"
 
@@ -3741,6 +3744,7 @@ export type SessionTaskAuthority = {
   hardPermissions: Array<PermissionV2Rule>
   writeRoots: Array<string>
   commands: Array<string>
+  orchestrate?: true
 }
 
 export type SessionTaskTime = {
@@ -3765,6 +3769,7 @@ export type SessionTaskInfo = {
   }
   prompt: Prompt
   description: string
+  wave?: string
   depth: number
   status: SessionTaskStatus
   revision: number
@@ -11914,9 +11919,17 @@ export type SessionDeleteErrors = {
    */
   404: NotFoundError
   /**
+   * ConflictError
+   */
+  409: ConflictError
+  /**
    * InternalServerError
    */
   500: EffectHttpApiErrorInternalServerError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
 }
 
 export type SessionDeleteError = SessionDeleteErrors[keyof SessionDeleteErrors]
