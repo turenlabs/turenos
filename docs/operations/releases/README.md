@@ -57,10 +57,13 @@ Confirm before dispatching:
 gh run list --repo turenlabs/turenos --branch main --limit 2
 ```
 
-Both `test` and `typecheck` must be green on the current `main` HEAD. Commits
+Confirm that both `test` and `typecheck` are green on the current `main` HEAD. The
+workflow's gate is weaker than that: it collects the conclusions of every `test` and
+`typecheck` check run, removes duplicates, and passes when the only conclusion left
+is `success`, so one green check with the other missing also passes. Commits
 merged after the bump are built and shipped in the release as long as they
-leave `VERSION` unchanged. If HEAD's checks are missing, still running, or
-failed, the build, publish, and distribute jobs are skipped and the run still
+leave `VERSION` unchanged. If HEAD's checks are all missing, or any is still
+running or failed, the build, publish, and distribute jobs are skipped and the run still
 finishes green with nothing published, so check the run's job list rather than
 its overall status.
 
@@ -117,7 +120,9 @@ read-back; the checks above confirm externally.
 
 `--publish-existing` skips every build and upload job and runs only the
 verify→publish→Homebrew stage, so it is the cheap resume for any failure after
-the draft is fully uploaded. It cannot add or replace a draft asset.
+the draft is fully uploaded. It cannot add or replace a draft asset. It also
+bypasses the CI gate: `distribute` runs even when the source's `test`/`typecheck`
+checks are missing, pending, or failed.
 
 The release workflow and `script/release-distribute.ts` run from the private
 repository's own checkout (`Checkout trusted workflow revision` in

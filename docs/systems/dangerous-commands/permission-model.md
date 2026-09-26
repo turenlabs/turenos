@@ -27,8 +27,13 @@ most restrictive effect wins: `deny` beats `ask` beats `allow`.
 Choosing "Allow always" — the reply is `always` — writes a row into the SQLite `permission` table scoped to the current
 project, and those rows are replayed as `effect: "allow"` rules. Because bash saves the exact command string, a saved
 bash grant normally matches only that exact command again. Saved rules are still evaluated with `Wildcard.match`, so a
-saved command that contains `*` or `?` also matches other commands that fit that pattern. Saved grants can only upgrade
-an `ask` to an `allow`; a configured `deny` is checked first and is never overridable.
+saved command that contains `*` or `?` also matches other commands that fit that pattern. In Session V2, saved grants can only
+upgrade an `ask` to an `allow`; a configured `deny` is checked first and is never overridable.
+
+The legacy runtime works differently (`packages/forge/src/permission/index.ts`). It keeps "always" approvals in memory
+for the project instance and takes the last rule that matches across the configured rules and those approvals, so a
+later approval can override a configured `deny`. The legacy shell tool's "always" saves `<command prefix> *` rather
+than the exact command (`packages/forge/src/tool/shell.ts`), so one approval covers every command with that prefix.
 
 A delegated subagent task can narrow this further. When the task is given exact command grants, every `bash` call must
 match one of them exactly and run with `workdir` `.`; otherwise it is denied before the rules are evaluated. A task

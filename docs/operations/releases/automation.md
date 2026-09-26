@@ -7,20 +7,24 @@ verified assets to the public repository.
 1. Resolve the release source (public `main` HEAD at dispatch, or an existing
    draft's target commit), check that its `VERSION` equals the requested
    version, and validate repository identities and publishing access.
-2. Require the release source's public `test`/`typecheck` checks to be green.
+2. Require the release source's public `test`/`typecheck` checks to be green. The gate passes when every
+   check run with either name succeeded, so it passes if only one of the two exists.
 3. Check out `turenlabs/turenos` at the release commit, build every platform on
    private runners, and sign/notarize with private credentials.
 4. Create a public **draft** release and upload all signed assets to it.
 5. Re-download the draft, verify every byte, checksum, detached signature, and
    update feed against the pinned signing key.
 6. Verify the release chain: the previous release's signed manifest names the
-   previous tag's commit, which must be an ancestor of this release's source.
+   previous tag's commit, which must be an ancestor of this release's source. When
+   the manifest names a commit that is not on public `main` (a private source commit),
+   the manifest-to-tag match is skipped; the tag's commit must still be an ancestor.
 7. Publish the stable public release and verify anonymous downloads.
 8. Update and read back `turenlabs/homebrew-turenos/Formula/turenos.rb`.
 
 A failure in any step from build onward fails the run. The CI gate in step 2 does not: when the
 source's `test`/`typecheck` checks are missing, pending, or failed, the build, publish, and
-distribute jobs are skipped and the run still ends green with nothing published. Confirm that the
+distribute jobs are skipped and the run still ends green with nothing published. With
+`--publish-existing` the gate does not apply at all: `distribute` runs whatever the checks say. Confirm that the
 distribute job ran before treating a run as a release. It writes release/source links and the
 verified artifact count to the Actions job summary.
 
@@ -119,7 +123,9 @@ refuses the wrong repository or a non-default dispatch ref. There is no source m
 release tag is created on the public `main` commit directly, so public history is the only
 history. The release source must be an ancestor of public `main`, its `VERSION` file must
 match the requested version, and the previous release's signed manifest must name the
-previous public tag's commit.
+previous public tag's commit. Manifests that name a commit not reachable from public `main` are exempt: for the
+previous release the tag match is skipped, and the current release's artifacts are verified against the commit its
+own manifest names instead of the release source.
 
 Without an existing draft or tag, the release source is public `main` HEAD at dispatch, not the
 version-bump commit. Commits merged after the bump are built into the release, a later commit

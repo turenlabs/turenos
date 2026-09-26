@@ -1,11 +1,11 @@
 ---
 name: turen-context
-description: Audit, place and maintain the AGENTS.md files that coding agents load while developing TurenOS, and the root CLAUDE.md shim that lets Claude Code read them. Every rule is checked by reading the code it describes (symbols, commands, flags, invariants and "not wired"/"only" claims), and a small checker proves what a script can: load budget, parent pointers, cited paths and scripts, and the CLAUDE.md shim. Covers how Codex, Claude Code, OpenCode and TurenOS load instruction files, what belongs in one, and when an area deserves its own. Use it when adding, editing, splitting or moving any AGENTS.md or CLAUDE.md, when an agent keeps missing a repo convention, when a package gains its own commands or gotchas, or for a periodic audit. Not for docs/ (use turen-documentation), and not for how the TurenOS product loads its users' instruction files.
+description: Audit, place and maintain the AGENTS.md files that coding agents load while developing TurenOS, and the one-line CLAUDE.md shims beside them that let Claude Code read them. Every rule is checked by reading the code it describes (symbols, commands, flags, invariants and "not wired"/"only" claims), and a small checker proves what a script can: load budget, parent pointers, cited paths and scripts, and the CLAUDE.md shims. Covers how Codex, Claude Code, OpenCode and TurenOS load instruction files, what belongs in one, and when an area deserves its own. Use it when adding, editing, splitting or moving any AGENTS.md or CLAUDE.md, when an agent keeps missing a repo convention, when a package gains its own commands or gotchas, or for a periodic audit. Not for docs/ (use turen-documentation), and not for how the TurenOS product loads its users' instruction files.
 ---
 
 # turen-context
 
-`AGENTS.md` files are instructions for the coding agents (Codex, OpenCode, Claude Code, TurenOS and others) that developers use to build TurenOS. They are harness configuration: loaded into every session, paid for in context, and followed as rules. They are not documentation. `AGENTS.md` is the one format every agent shares, so rules are written only there; the root `CLAUDE.md` exists only to import it. Run commands from the repository root; Bun is the only prerequisite.
+`AGENTS.md` files are instructions for the coding agents (Codex, OpenCode, Claude Code, TurenOS and others) that developers use to build TurenOS. They are harness configuration: loaded into every session, paid for in context, and followed as rules. They are not documentation. `AGENTS.md` is the one format every agent shares, so rules are written only there; each `CLAUDE.md` exists only to import the `AGENTS.md` beside it. Run commands from the repository root; Bun is the only prerequisite.
 
 A rule an agent follows but the code contradicts does more harm than no rule, so every rule is verified against the code. The default is diagnose, then propose, then edit only after the user approves.
 
@@ -25,9 +25,9 @@ What follows:
 
 1. **Rules every change must follow go in the root file.** It's the only file every agent loads wherever a session starts.
 2. **A nested file holds only what is true in its subtree and not above it.** Restating the root costs budget twice and lets copies drift. A convention that differs between packages lives in each package's file, never as a root rule one package silently breaks.
-3. **Every nested file is named by an ancestor**, normally its parent, with a line like "follow `tools/AGENTS.md` when working in `tools/`". Codex sessions started above the folder and every Claude Code session learn it exists only from that line.
+3. **Every nested file is named by an ancestor**, normally its parent, with a line like "follow `tools/AGENTS.md` when working in `tools/`". Codex sessions started above the folder learn it exists only from that line. A pointer is prose: no agent loads a file because a line names it.
 4. **Each root-to-file chain stays under 32 KiB, ideally about 26 KiB.** Past the budget, Codex drops the deepest, most specific instructions.
-5. **The root has a `CLAUDE.md` whose only line is `@AGENTS.md`.** Without it Claude Code loads none of the rules. Don't add rules to `CLAUDE.md`, where only Claude Code sees them, and don't add nested shims: rule 3 already reaches nested files.
+5. **Every `AGENTS.md` has a sibling `CLAUDE.md` whose only line is `@AGENTS.md`**, the root included. Claude Code loads only `CLAUDE.md` files and their `@` imports, so without the root shim it sees none of the rules, and without a nested shim it never loads that folder's `AGENTS.md`, whatever rule 3's pointer says. With the shim, Claude Code loads the nested file when it reads a file in that subtree. Don't add rules to a `CLAUDE.md`, where only Claude Code sees them. Codex ignores `CLAUDE.md`, and TurenOS and OpenCode read it only where no `AGENTS.md` exists, so the shims never load twice.
 6. **Wrap `@` mentions in backticks.** Claude Code treats a bare `@path` or `@scope/package` as a file import.
 
 Repository skills live in `.agents/skills/<name>/SKILL.md`, which Codex discovers natively. Other agents reach a skill through a pointer line in the root `AGENTS.md`, so each skill needs one. Vendored `AGENTS.md` files (for example under `tools/*/vendor/`) belong to upstream projects: they load for agents in those folders, but don't grade or edit them.
@@ -69,7 +69,7 @@ Then run the checker for what a script can prove:
 bun .agents/skills/turen-context/scripts/check.ts
 ```
 
-It reports each `AGENTS.md` with its lines, bytes and chain bytes, and flags: chains over or near the 32 KiB budget, files over 200 lines, nested files no ancestor names, bare `@` mentions, backticked paths that don't exist, package-script commands no `package.json` defines (or defines elsewhere), broken links, and a missing or extended root `CLAUDE.md`. Errors mean a file doesn't load or cites something that doesn't exist. Notes are tokens that may not be paths (package names, routes, repo slugs); judge each one.
+It reports each `AGENTS.md` with its lines, bytes and chain bytes, and flags: chains over or near the 32 KiB budget, files over 200 lines, nested files no ancestor names, bare `@` mentions, backticked paths that don't exist, package-script commands no `package.json` defines (or defines elsewhere), broken links, and a missing or extended `CLAUDE.md` shim beside any `AGENTS.md`. Errors mean a file doesn't load or cites something that doesn't exist. Notes are tokens that may not be paths (package names, routes, repo slugs); judge each one.
 
 ## Grading a file
 
@@ -92,13 +92,13 @@ Read the area first: its `package.json` scripts, build setup, generated or vendo
 
 Size and churn alone are not enough. Moving content deeper frees budget in every other chain, but Codex sessions started above the folder then see only the parent's pointer. Move a section down when it applies to one area; keep it in the root when changes elsewhere must obey it.
 
-For each proposal, give the path, a 3 to 6 bullet draft, why the parent can't hold it, the parent pointer line, and the resulting chain size.
+For each proposal, give the path, a 3 to 6 bullet draft, why the parent can't hold it, the parent pointer line, and the resulting chain size. Every new `AGENTS.md` gets a sibling `CLAUDE.md` containing only `@AGENTS.md`.
 
 ## Workflow
 
 1. **Read and verify** each file against the code, then run the checker.
 2. **Report** in the format below, and stop. Offer to apply the edits.
-3. **After approval**, make targeted edits (never a wholesale rewrite), create approved files with their parent pointer line, and confirm before deleting any file. Re-run the checker until it reports no errors.
+3. **After approval**, make targeted edits (never a wholesale rewrite), create approved files with their parent pointer line and `CLAUDE.md` shim, and confirm before deleting any file (and its shim). Re-run the checker until it reports no errors.
 
 ## Report format
 

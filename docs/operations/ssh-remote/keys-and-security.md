@@ -67,9 +67,14 @@ key, and clearing environment variables is not a guarantee of erasing the initia
 - The remote listener binds `127.0.0.1` with a kernel-assigned port and is reachable only through
   the SSH forward from the desktop. Other processes on the remote can reach loopback too, so
   authentication remains required; its state files are 0600 under a 0700 directory.
-- Every request still carries HTTP Basic auth with a per-start 16-byte random password. Startup
+- Every request must carry the per-start 16-byte random password. Most send it as an HTTP Basic
+  `Authorization` header; the server also accepts the same base64 credentials in an `auth_token` query
+  parameter, which the terminal WebSocket uses, so the password can appear in request URLs and any log
+  that records them. Startup
   fails if secure password generation fails; new state and log files use a private umask.
-- CORS is restricted to the renderer origins the desktop actually uses.
+- CORS allows the renderer origins passed in `FORGE_REMOTE_CORS`, but also any `http://localhost:*` or
+  `http://127.0.0.1:*` origin, `forge-internal://renderer`, and the Tauri origins (`packages/server/src/cors.ts`).
+  CORS is not the barrier; the password is.
 - Destination arguments cannot inject ssh options; the destination is always the final argv element.
 - Host keys are never silently accepted — the user confirms a new key with the fingerprint in view,
   and changed keys fail.

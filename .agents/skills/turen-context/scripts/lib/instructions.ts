@@ -21,7 +21,12 @@ export function fileFindings(repo: Repo, file: string): Finding[] {
     file !== "AGENTS.md" &&
     !ancestors(repo, file).some((parent) => {
       const parentText = repo.texts.get(parent) ?? ""
-      return parentText.includes(file) || parentText.includes(path.posix.relative(path.posix.dirname(parent), file))
+      // A whole path, so `c/b/AGENTS.md` in the parent doesn't count as naming `b/AGENTS.md`.
+      return [file, path.posix.relative(path.posix.dirname(parent), file)].some((name) =>
+        [...parentText.matchAll(new RegExp(name.replaceAll(".", "\\."), "g"))].some(
+          (match) => !/[\w./-]/.test(parentText[(match.index ?? 0) - 1] ?? " "),
+        ),
+      )
     })
   return [
     ...(chain > CODEX_BUDGET

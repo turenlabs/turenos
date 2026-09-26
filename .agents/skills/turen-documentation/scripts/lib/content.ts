@@ -1,8 +1,8 @@
 // Rules about what a single page says: the few conventions a script can prove, and backticked repository paths.
 
 import path from "node:path"
-import { existsSync } from "node:fs"
 import type { Docs } from "./docs"
+import { existsExactly } from "./exact"
 import { error, warning, type Finding } from "./findings"
 import { linkTargets, stripCode } from "./markdown"
 
@@ -51,7 +51,7 @@ export function sourcePathFindings(docs: Docs, file: string, text: string): Find
           .replace(/#.*$/, "")
           .replace(/:\d+(-\d+)?$/, "")
         if (!REPO_PATH.test(token) || /[<>*{}$]|\.\.\./.test(token)) return []
-        return existsSync(path.join(root, token))
+        return existsExactly(path.resolve(root, token), root)
           ? []
           : [error(`${file}:${number + 1}: \`${token}\` does not exist in the repository`)]
       }),

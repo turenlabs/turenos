@@ -20,10 +20,13 @@ that external service.
   after 10 seconds and retries transient failures twice; a cross-process lock
   keeps concurrent processes from racing on the cache file.
 - Reads use `FORGE_MODELS_PATH` when set, otherwise the cache file, then a
-  snapshot bundled into the build. A failed fetch keeps the cached or last
+  snapshot bundled into the build. `FORGE_MODELS_PATH` does not stop the
+  fetches: they still run and write the cache file, which is then never read. A failed fetch keeps the cached or last
   good catalog rather than emptying it.
 - `FORGE_DISABLE_MODELS_FETCH` turns off both the startup and hourly fetches;
-  with no cache or snapshot the catalog is empty.
+  with no cache or snapshot the catalog is empty. It does not stop a forced
+  refresh: `forge models --refresh` and `forge auth login` call `refresh(true)`,
+  which fetches regardless of the flag.
 
 ## Session V2
 

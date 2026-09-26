@@ -1,6 +1,7 @@
-// Link targets in inline, reference-style and HTML form.
+// Link targets in inline, reference-style and HTML form. An inline target is matched on its `](` alone, so a link
+// wrapped around an image badge is still seen; `<...>` targets may hold spaces, and titles may use any quote style.
 export const LINK =
-  /!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|^\s*\[[^\]]+\]:\s*<?(\S+?)>?(?:\s|$)|(?:href|src)="([^"]+)"/gm
+  /\]\(\s*(?:<([^>\n]+)>|([^)\s]+))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)|^\s*\[[^\]]+\]:\s*(?:<([^>\n]+)>|(\S+))|(?:href|src)="([^"]+)"/gm
 // The same link forms with their prefix captured, for scripts that rewrite a target in place.
 export const REWRITABLE_LINK = /(\]\(\s*<?|^\s*\[[^\]]+\]:\s*<?|(?:href|src)=")([^)\s>"]+)/gm
 
@@ -10,7 +11,7 @@ export function isPage(file: string) {
 
 export function linkTargets(prose: string) {
   return [...prose.matchAll(LINK)]
-    .map((match) => match[1] ?? match[2] ?? match[3])
+    .map((match) => match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5])
     .filter((target) => target !== undefined)
 }
 
@@ -58,7 +59,10 @@ export function headingSlugs(headings: string[]) {
 // GitHub keeps its text in the slug, so "### `Tool.make`" is #toolmake.
 export function anchors(text: string) {
   const headings = [...stripCode(text, true).matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$/gm)].map((match) => match[1] ?? "")
-  const explicit = [...text.matchAll(/<[^>]+\b(?:id|name)="([^"]+)"/g)].map((match) => (match[1] ?? "").toLowerCase())
+  // Fenced examples can hold HTML too; only real attributes are anchors.
+  const explicit = [...stripCode(text, true).matchAll(/<[^>]+\b(?:id|name)="([^"]+)"/g)].map((match) =>
+    (match[1] ?? "").toLowerCase(),
+  )
   return new Set([...headingSlugs(headings), ...explicit])
 }
 

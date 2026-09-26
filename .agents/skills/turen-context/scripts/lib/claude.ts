@@ -3,8 +3,9 @@ import { existsSync, readFileSync } from "node:fs"
 import { error, warning, type Finding } from "./findings"
 import { VENDORED, type Repo } from "./repo"
 
-// Claude Code reads CLAUDE.md, never AGENTS.md, so the root needs a CLAUDE.md that imports it. Every CLAUDE.md is a
-// one-line shim: rules written only there would reach Claude Code and no other agent.
+// Claude Code reads CLAUDE.md, never AGENTS.md, and loads only CLAUDE.md files and their `@` imports: a prose pointer to
+// a nested AGENTS.md doesn't load it. So every graded AGENTS.md needs a sibling CLAUDE.md that imports it. Every
+// CLAUDE.md is a one-line shim: rules written only there would reach Claude Code and no other agent.
 export function claudeFindings(repo: Repo): Finding[] {
   const shims = repo.instructionFiles.filter(
     (file) => path.posix.basename(file) === "CLAUDE.md" && !VENDORED.test(file),
@@ -18,6 +19,14 @@ export function claudeFindings(repo: Repo): Finding[] {
           ),
         ]
       : []),
+    ...repo.graded
+      .filter((file) => file !== "AGENTS.md" && !shims.includes(`${path.posix.dirname(file)}/CLAUDE.md`))
+      .map((file) =>
+        error(
+          file,
+          `${file} has no sibling CLAUDE.md: Claude Code never loads it. Add ${path.posix.dirname(file)}/CLAUDE.md containing only \`@AGENTS.md\``,
+        ),
+      ),
     ...shims.flatMap((claude) => shimFindings(repo, claude)),
   ]
 }

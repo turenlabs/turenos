@@ -4,6 +4,7 @@
 import path from "node:path"
 import { existsSync, readFileSync, statSync } from "node:fs"
 import type { Docs } from "./docs"
+import { existsExactly } from "./exact"
 import { error, warning, type Finding } from "./findings"
 import { listed } from "./git"
 import { anchors, isPage, linkTargets, stripCode } from "./markdown"
@@ -53,9 +54,9 @@ export function inboundFindings(docs: Docs): Finding[] {
           const linked = /\]\(\s*<?$/.test(line.slice(0, match.index))
           const fromFile = path.resolve(root, path.dirname(source), `${prefix}${home}`, rest)
           const fromRoot = path.resolve(root, home, rest)
-          const target = existsSync(fromFile)
+          const target = existsExactly(fromFile, root)
             ? fromFile
-            : !linked && prefix === "" && existsSync(fromRoot)
+            : !linked && prefix === "" && existsExactly(fromRoot, root)
               ? fromRoot
               : undefined
           const where = `${source}:${number + 1}`
@@ -86,7 +87,7 @@ function resolveLink(docs: Docs, file: string, target: string): { page?: string;
   const absolute = linkPath
     ? path.resolve(path.dirname(path.join(docs.dir, file)), linkPath)
     : path.join(docs.dir, file)
-  if (!existsSync(absolute)) return { finding: error(`${file}: broken link: ${target}`) }
+  if (!existsExactly(absolute, docs.root ?? docs.dir)) return { finding: error(`${file}: broken link: ${target}`) }
   const readmeOfFolder = path.join(absolute, "README.md")
   const destination = statSync(absolute).isDirectory() && existsSync(readmeOfFolder) ? readmeOfFolder : absolute
   if (!isPage(destination)) return {}

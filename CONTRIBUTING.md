@@ -93,7 +93,8 @@ with the [`turen-context`](.agents/skills/turen-context/SKILL.md) skill; after e
 `bun .agents/skills/turen-context/scripts/check.ts`.
 
 Agent rules live only in `AGENTS.md` files, the format Codex, OpenCode, TurenOS and most other agents read. Claude
-Code reads `CLAUDE.md` instead, so the root `CLAUDE.md` holds a single `@AGENTS.md` import line; don't add rules to it.
+Code reads `CLAUDE.md` instead, so every `AGENTS.md` has a `CLAUDE.md` beside it holding a single `@AGENTS.md` import
+line; don't add rules to those.
 
 ## Pull requests
 

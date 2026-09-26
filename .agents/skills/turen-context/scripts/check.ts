@@ -11,10 +11,17 @@
 import path from "node:path"
 import { claudeFindings } from "./lib/claude"
 import type { Level } from "./lib/findings"
+import { git } from "./lib/git"
 import { fileFindings } from "./lib/instructions"
 import { chainBytes, loadRepo } from "./lib/repo"
 
-const repo = loadRepo(path.resolve(process.argv[2] ?? "."))
+const start = path.resolve(process.argv[2] ?? ".")
+// The checker reads git's file list; outside a repository it would find nothing and report clean.
+if (git(start, "rev-parse", "--show-toplevel") === undefined) {
+  console.error(`not inside a git repository: ${start}`)
+  process.exit(2)
+}
+const repo = loadRepo(start)
 const findings = [...repo.graded.flatMap((file) => fileFindings(repo, file)), ...claudeFindings(repo)]
 
 console.log(`# AGENTS.md audit: ${repo.graded.length} files under ${repo.root}`)

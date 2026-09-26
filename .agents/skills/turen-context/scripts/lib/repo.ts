@@ -10,9 +10,10 @@ export type Repo = ReturnType<typeof loadRepo>
 // package scripts commands can name.
 export function loadRepo(start: string) {
   const root = git(start, "rev-parse", "--show-toplevel") ?? start
-  const tracked = (git(root, "ls-files", "--cached", "--others", "--exclude-standard") ?? "")
-    .split("\n")
-    .filter((file) => file.length > 0)
+  // -z keeps non-ASCII names unquoted; a tracked file deleted from disk is dropped rather than read.
+  const tracked = [
+    ...new Set((git(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard") ?? "").split("\0")),
+  ].filter((file) => file.length > 0 && existsSync(path.join(root, file)))
   const instructionFiles = tracked.filter((file) => /(^|\/)(AGENTS|AGENTS\.override|CLAUDE)\.md$/.test(file))
   const graded = instructionFiles.filter((file) => path.posix.basename(file) === "AGENTS.md" && !VENDORED.test(file))
   return {

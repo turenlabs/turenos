@@ -61,3 +61,30 @@ test("checks relative docs links outside docs without treating broken links as r
     expect(result.output).toContain("docs/systems/api.md, which does not exist relative to this file")
     expect(result.output).not.toContain("api.md#toolmake, which has no such heading")
   }))
+
+test("reports broken targets hidden by badges, single-quoted titles, angle brackets, and letter case", () =>
+  fixture((root) => {
+    writeFileSync(
+      path.join(root, "docs/systems/README.md"),
+      "# Systems\n\n[API](./api.md)\n[![b](./api.md)](./badge.md)\n[t](./titled.md 'Title')\n[s](<./no such.md>)\n[c](./API.md)\n",
+    )
+    const result = check(root)
+    expect(result.code).toBe(1)
+    expect(result.output).toContain("broken link: ./badge.md")
+    expect(result.output).toContain("broken link: ./titled.md")
+    expect(result.output).toContain("broken link: ./no such.md")
+    expect(result.output).toContain("broken link: ./API.md")
+  }))
+
+test("survives non-ASCII page names and tracked files deleted from disk", () =>
+  fixture((root) => {
+    writeFileSync(path.join(root, "docs/systems/README.md"), "# Systems\n\n[API](./api.md)\n[Café](./café.md)\n")
+    writeFileSync(path.join(root, "docs/systems/café.md"), "# Café\n\n[Gone](./nope.md)\n\n## Source\n")
+    mkdirSync(path.join(root, "pkg"))
+    writeFileSync(path.join(root, "pkg/README.md"), "[Docs](../docs/README.md)\n")
+    expect(Bun.spawnSync(["git", "add", "."], { cwd: root }).exitCode).toBe(0)
+    rmSync(path.join(root, "pkg/README.md"))
+    const result = check(root)
+    expect(result.output).not.toContain("error:")
+    expect(result.output).toContain("systems/café.md: broken link: ./nope.md")
+  }))
