@@ -5,11 +5,10 @@
 
 ## Debugging
 
-- NEVER try to restart the app, or the server process, EVER.
+- Never restart the user's running app or server process. Start your own dev servers (below) when you need to verify a change.
 
 ## Local Dev
 
-- `opencode dev web` proxies `https://app.opencode.ai`, so local UI/CSS changes will not show there.
 - For local UI changes, run the backend and app dev servers separately.
 - Backend (from `packages/forge`): `bun run --conditions=browser ./src/index.ts serve --port 4096`
 - App (from `packages/app`): `bun dev -- --port 4444`
@@ -19,21 +18,10 @@
 
 - Always prefer `createStore` over multiple `createSignal` calls
 
+## Startup
+
+- Home hydrates session directories incrementally and cancels the rest when route restore unmounts it. Global server readiness waits only for project identity; config, provider, and path queries must not delay restored-tab navigation.
+
 ## Extend Page
 
 - `src/pages/extend.tsx` renders only the server's built-in catalog (`extension.list`). There is no remote catalog endpoint or external merge; catalog content comes from `services/catalog/manifests` via `packages/extensions`.
-
-## Tool Calling
-
-- ALWAYS USE PARALLEL TOOLS WHEN APPLICABLE.
-
-## Browser Automation
-
-Use `agent-browser` for web automation. Run `agent-browser --help` for all commands.
-
-Core workflow:
-
-1. `agent-browser open <url>` - Navigate to page
-2. `agent-browser snapshot -i` - Get interactive elements with refs (@e1, @e2)
-3. `agent-browser click @e1` / `fill @e2 "text"` - Interact using refs
-4. Re-snapshot after page changes

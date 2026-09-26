@@ -16,7 +16,7 @@ import { fetchJson, HttpError } from "../util/http"
  */
 
 const API = ExtensionCatalog.dataEndpoint("security:nvd")
-const CACHE_TTL_MS = 3_600_000 // ~1h, per CONVENTIONS.md for per-query APIs
+const CACHE_TTL_MS = 3_600_000 // ~1h, per docs/development/security-integrations.md for per-query APIs
 const NOTICE = "This product uses the NVD API but is not endorsed or certified by the NVD."
 
 const WINDOW_MS = 30_000

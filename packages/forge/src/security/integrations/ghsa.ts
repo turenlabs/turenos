@@ -19,7 +19,7 @@ import { fetchJson, HttpError } from "../util/http"
  */
 
 const API = ExtensionCatalog.dataEndpoint("security:ghsa")
-const CACHE_TTL_MS = 3_600_000 // ~1h, per CONVENTIONS.md for per-query APIs
+const CACHE_TTL_MS = 3_600_000 // ~1h, per docs/development/security-integrations.md for per-query APIs
 const MAX_ADVISORIES = 30
 const ATTRIBUTION = "GitHub Advisory Database (CC-BY 4.0)"
 

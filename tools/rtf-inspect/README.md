@@ -31,13 +31,21 @@ fn(input_bytes, options_json) -> JSON string
   Optional `{"include_payload_hex":true}` inlines the full payload only when
   it is at or below 64 KiB.
 - `rtf_audit` — security findings, each `{kind, offset, detail, severity}`:
-  `objdata_payload`, `ole_compound_object`, `suspicious_objclass`,
-  `datastore`, `file_table`, `embedded_file`, `template_path`,
-  `field_external_ref` (HYPERLINK / INCLUDETEXT / FORMTEXT / external refs),
-  `password_protection`, `panose`, `control_word_density`,
-  `obfuscated_control`, `hex_heavy_region`, `deep_nesting`,
-  `unbalanced_braces`, `stray_closing_brace`, `trailing_data`,
-  `mixed_encodings`, `malformed_hex`.
+  - embedded content: `objdata_payload`, `ole_compound_object`,
+    `malformed_objdata`, `suspicious_objclass`, `datastore`, `file_table`,
+    `embedded_file`, `binary_blob`, `template_path`;
+  - fields: `field_external_ref` (INCLUDETEXT / INCLUDEPICTURE / LINK /
+    IMPORT, and HYPERLINK / EMBED / MACROBUTTON / AUTOTEXT / GOTOBUTTON),
+    `form_field` (FORMTEXT / FORMCHECKBOX / FORMDROPDOWN),
+    `field_instruction` (any other field);
+  - obfuscation: `password_protection`, `control_density`,
+    `control_fragmentation`, `overlong_control_name`,
+    `excess_ignorable_groups`, `hex_heavy_region`, `hex_obfuscation`,
+    `malformed_hex_escape`, `fragmented_text`, `unicode_anomaly`,
+    `mixed_encodings`;
+  - structure: `deep_nesting`, `extreme_nesting`, `unbalanced_braces`,
+    `stray_closing_brace`, `missing_rtf_header`, `unusual_rtf_version`,
+    `leading_data`, `trailing_data`.
 - `rtf_text` — bounded plain-text extraction: strips control words,
   resolves `\'hh` and `\uN` (with `\uc` fallback skipping and negative-value
   wrap), skips `fonttbl`/`stylesheet`/ignorable `\*` destinations and

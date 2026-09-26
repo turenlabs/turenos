@@ -1,27 +1,26 @@
-# opencode database guide
+# Forge package
 
-## Database
-
-- **Schema**: Drizzle schema lives in `packages/core/src/**/*.sql.ts`.
-- **Migrations**: database migrations live in `packages/core` and are applied by core.
+- Follow `test/AGENTS.md` for tests, `src/server/routes/instance/httpapi/AGENTS.md` for the HttpApi routes, `src/session/llm/AGENTS.md` for the session LLM runtime, and `src/security/AGENTS.md` for Security MCP integrations.
+- The database schema and migrations live in Core; see `packages/core/AGENTS.md`.
 
 ## Development
 
 - Running `bun dev` from the repository root starts TurenOS Desktop.
 - Run package-scoped runtime commands from `packages/forge` only when testing the bundled server or headless automation path.
+- Headless `serve` requires `FORGE_SECRET_VAULT_KEY_ID` plus a base64 32-byte `FORGE_SECRET_VAULT_KEY`; a key that did not seal existing credentials fails startup with "Stored credentials belong to another OS-protected key". For a throwaway instance, point `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME` at a scratch dir.
 
 ## Extension Catalog
 
 - Built-in catalog items come from `@turenlabs/extensions` (`ExtensionCatalog`), generated from `services/catalog/manifests`. Do not add manifest JSON here.
 - `src/extension` serves `extension.list`/`extension.update`; installing a skill or generic hosted MCP submits the client manifest, which Vigil scans in `src/skill/vigil.ts`.
-- Changing a catalog skill manifest invalidates its `reviewedSkillDigests` entry in `src/skill/vigil.ts`; regenerate per `services/catalog/AGENTS.md` or installs lose the reviewed exemption.
 
-# Module shape
+## Module shape
 
 Do not use `export namespace Foo { ... }` for module organization. It is not
 standard ESM, it prevents tree-shaking, and it breaks Node's native TypeScript
-runner. Use flat top-level exports combined with a self-reexport at the bottom
-of the file:
+runner. Use flat top-level exports combined with a self-reexport. Put it at the
+bottom of a new file; existing files vary (some put it on the first line), so
+match the file you are editing:
 
 ```ts
 // src/foo/foo.ts
@@ -47,7 +46,7 @@ Namespace-private helpers stay as non-exported top-level declarations in the
 same file — they remain inaccessible to consumers (they are not projected by
 `export * as`) but are usable by the file's own code.
 
-## When the file is an `index.ts`
+### When the file is an `index.ts`
 
 If the module is `foo/index.ts` (single-namespace directory), use `"."` for
 the self-reexport source rather than `"./index"`:
@@ -59,7 +58,7 @@ export const thing = ...
 export * as Foo from "."
 ```
 
-## Multi-sibling directories
+### Multi-sibling directories
 
 For directories with several independent modules (e.g. `src/session/`,
 `src/config/`), keep each sibling as its own file with its own self-reexport,
@@ -73,13 +72,13 @@ import { SessionStatus } from "@/session/status"
 Barrels in multi-sibling directories force every import through the barrel to
 evaluate every sibling, which defeats tree-shaking and slows module load.
 
-# opencode Effect rules
+## Effect rules
 
 Use these rules when writing or migrating Effect code.
 
 See `specs/effect/migration.md` for the compact pattern reference and examples.
 
-## Core
+### Core
 
 - Use `Effect.gen(function* () { ... })` for composition.
 - Use `Effect.fn("Domain.method")` for named/traced effects and `Effect.fnUntraced` for internal helpers.
@@ -88,11 +87,7 @@ See `specs/effect/migration.md` for the compact pattern reference and examples.
 - Use `Effect.void` instead of `Effect.succeed(undefined)` or `Effect.succeed(void 0)`.
 - Prefer `DateTime.nowAsDate` over `new Date(yield* Clock.currentTimeMillis)` when you need a `Date`.
 
-## Module conventions
-
-- In `src/config`, follow the existing self-export pattern at the top of the file (for example `export * as ConfigAgent from "./agent"`) when adding a new config module.
-
-## Schemas and errors
+### Schemas and errors
 
 - Use `Schema.Class` for multi-field data.
 - Use branded schemas (`Schema.brand`) for single-value types.
@@ -100,22 +95,22 @@ See `specs/effect/migration.md` for the compact pattern reference and examples.
 - Use `Schema.Defect` instead of `unknown` for defect-like causes.
 - In `Effect.gen` / `Effect.fn`, prefer `yield* new MyError(...)` over `yield* Effect.fail(new MyError(...))` for direct early-failure branches.
 
-## Runtime vs InstanceState
+### Service nodes vs InstanceState
 
-- Use `makeRuntime` (from `src/effect/run-service.ts`) for all services. It returns `{ runPromise, runFork, runCallback }` backed by a shared `memoMap` that deduplicates layers.
+- Expose each service as a graph node: `export const node = makeGlobalNode({ service, layer, deps })` (from `@turenlabs/core/effect/app-node`) or `LayerNode.make(...)`, listing the `node` of every service the layer yields in `deps`.
 - Use `InstanceState` (from `src/effect/instance-state.ts`) for per-directory or per-project state that needs per-instance cleanup. It uses `ScopedCache` keyed by directory — each open project gets its own state, automatically cleaned up on disposal.
 - If two open directories should not share one copy of the service, it needs `InstanceState`.
 - Do the work directly in the `InstanceState.make` closure — `ScopedCache` handles run-once semantics. Don't add fibers, `ensure()` callbacks, or `started` flags on top.
 - Use `Effect.addFinalizer` or `Effect.acquireRelease` inside the `InstanceState.make` closure for cleanup (subscriptions, process teardown, etc.).
 - Use `Effect.forkScoped` inside the closure for background stream consumers — the fiber is interrupted when the instance is disposed.
 - To make a service's `init()` non-blocking, fork `InstanceState.get(state)` at the `init()` call site (e.g. `Effect.forkIn(scope)`), not by forking work inside the `InstanceState.make` closure. Forking inside the closure leaves state incomplete for other methods that read it.
-- `src/project/bootstrap.ts` already wraps every service `init()` in `Effect.forkDetach`, so `init()` is fire-and-forget in production. Keep `init()` methods synchronous internally; the caller controls concurrency.
+- `src/project/bootstrap.ts` awaits every service `init()` concurrently before an instance is ready, so a slow `init()` delays instance open. Move slow work that other methods don't need into `Effect.forkScoped` fibers.
 
-## Effect v4 beta API
+### Effect v4 beta API
 
 - `Effect.fork` and `Effect.forkDaemon` do not exist. Use `Effect.forkIn(scope)` to fork a fiber into a specific scope.
 
-## Preferred Effect services
+### Preferred Effect services
 
 - In effectified services, prefer yielding existing Effect services over dropping down to ad hoc platform APIs.
 - Prefer `FileSystem.FileSystem` instead of raw `fs/promises` for effectful file I/O.
@@ -124,11 +119,11 @@ See `specs/effect/migration.md` for the compact pattern reference and examples.
 - Prefer `Path.Path`, `Config`, `Clock`, and `DateTime` when those concerns are already inside Effect code.
 - For background loops or scheduled tasks, use `Effect.repeat` or `Effect.schedule` with `Effect.forkScoped` in the layer definition.
 
-## Effect.cached for deduplication
+### Effect.cached for deduplication
 
 Use `Effect.cached` when multiple concurrent callers should share a single in-flight computation rather than storing `Fiber | undefined` or `Promise | undefined` manually. See `specs/effect/migration.md` for the full pattern.
 
-## Callback boundaries
+### Callback boundaries
 
 Use `EffectBridge` for native or external callbacks (`@parcel/watcher`, `node-pty`, native `fs.watch`, plugin callbacks, etc.) that need to re-enter Effect services with instance/workspace context.
 

@@ -10,7 +10,7 @@ and rejects stale, invalid, or duplicate catalog entries.
 
 New entries must declare every secret, executable, upstream tool, and
 write-capable operation. Unknown MCP tools are blocked by default. Linear is
-the sole exception: `audited-linear-dynamic-v1` pins its endpoint, credential,
+the sole exception: its `upstreamPolicy` value, `audited-linear-dynamic-v1`, pins its endpoint, credential,
 two broker tools, and write policy while runtime code permits only names
 advertised by that exact upstream. A manifest is distribution metadata and
 never grants filesystem, process, or network authority by itself. New adapter

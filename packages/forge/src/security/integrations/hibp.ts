@@ -20,7 +20,7 @@ import { fetchJson, fetchText, HttpError } from "../util/http"
 const SOURCE = "Have I Been Pwned (CC-BY 4.0, haveibeenpwned.com)"
 const RANGE_API = ExtensionCatalog.dataEndpoint("security:hibp", "passwords")
 const BREACH_API = ExtensionCatalog.dataEndpoint("security:hibp", "breaches")
-/** Per-query API cache TTL (~1h, per CONVENTIONS.md). */
+/** Per-query API cache TTL (~1h, per docs/development/security-integrations.md). */
 const QUERY_TTL_MS = 3_600_000
 /** Cap breach lists so results stay well under the 50KB serialization limit. */
 const MAX_BREACHES = 50

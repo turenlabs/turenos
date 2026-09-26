@@ -1,0 +1,21 @@
+# Core package
+
+- Follow `src/tool/AGENTS.md` when working on built-in tools in `src/tool/`.
+- Put a new module's self-reexport (`export * as Foo from "./foo"`) on its first line. Existing files vary; match the file you are editing.
+
+## Database
+
+- Drizzle schema lives in `src/**/*.sql.ts`; Core owns and applies the migrations in `src/database/migration/`.
+- After changing a schema, run `bun run migration --name <name>` from `packages/core` to add the migration and regenerate `src/database/migration.gen.ts` and `src/database/schema.gen.ts`. Never edit those two generated files by hand.
+
+## V2 Session Core
+
+- Keep durable prompt admission separate from model execution. `SessionV2.prompt(...)` admits one durable `session_input` row before scheduling advisory `SessionExecution.wake(sessionID)` unless `resume: false` requests admit-only behavior. The serialized runner promotes admitted inputs into visible user messages at safe boundaries.
+- Reusing a Session ID adopts the existing Session. Reusing a prompt message ID reconciles an exact retry only when Session, prompt, and delivery mode match; conflicting reuse fails. Historical projected prompts lazily synthesize promoted inbox records during exact retry.
+- Keep `SessionExecution` process-global and Session-ID based. Its local implementation owns the process-local Session coordinator and discovers placement through `SessionStore` plus `LocationServiceMap.get(session.location)` only when a drain starts; no layer should take a Session ID. V2 interruption targets the active process-local ownership chain for that Session; idle or missing interruption is a no-op.
+- Keep `SessionRunner`, model resolution, tool registry, permissions, and filesystem Location-scoped. Omitted `Location.workspaceID` means implicit-local placement; explicit workspace identity remains reserved for future placement semantics.
+- Preserve one explicit `llm.stream(request)` call per provider turn and reload projected history before durable continuation. Do not bridge through legacy `SessionPrompt.loop(...)` or delegate orchestration to an in-memory tool loop.
+- Keep local Session drains process-local until clustering is implemented. `SessionRunCoordinator` joins explicit same-Session resumes, coalesces prompt wakeups, and allows different Sessions to run concurrently. Advisory wakes drain eligible durable inbox rows only; post-crash continuation recovery requires a separate explicit design before it may retry provider work. A drain has no durable identity or transcript boundary.
+- Keep delivery vocabulary explicit. Prompts steer by default and promote at the next safe provider-turn boundary while the current drain requires continuation. An explicit `queue` input promotes one at a time at the next provider-turn boundary after in-flight tool calls settle — it does not wait for the Session to become idle; reevaluate continuation before promoting another. Machine advisory inputs (board posts, settle notices, direct child advisories, shell-job completions) instead promote as one consecutive batch at a boundary so a settling swarm costs a single provider turn. Steers take precedence over queued inputs at every boundary. Promoting any new user input resets the selected agent's provider-turn allowance; a batch of steers resets it once.
+- Keep EventV2 replay owner claims separate from clustered Session execution ownership.
+- Keep the System Context algebra, registry, and built-ins in `src/system-context`; keep Context Source producers with their observed domains, and keep Session History selection plus Context Epoch persistence Session-owned.

@@ -1,9 +1,8 @@
-# Turen WASM Tools
+# TurenOS WASM tools
 
-Reproducible WebAssembly builds used by Turen agent tools. This directory is
-the former `turenio/wasm-tools` repository, imported into the Forge monorepo.
-Each target builds into its checked-in workspace package at
-`packages/<target>-wasm`.
+Reproducible WebAssembly builds used by TurenOS agent tools. Each target builds
+into its checked-in workspace package at `packages/<target>-wasm`. The list
+below is the complete inventory of `tools/` targets.
 
 Each target owns its source, build scripts, tests, licenses, and provenance:
 
@@ -13,6 +12,9 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   patched with pre-serialization aggregate result limits for agent use.
 - [`tools/goblin`](goblin): bounded PE, ELF, Mach-O, TE, COFF, and Unix
   archive metadata inspection built from Goblin.
+- [`tools/debug-symbols`](debug-symbols): bounded object symbols,
+  debug-section inventory, and PDB public symbols with optional Rust, Itanium
+  C++, and MSVC demangling; never resolves source paths or loads a debugger.
 - [`tools/stng-core`](stng-core): portable bounded raw, wide, decoded,
   classified, and XOR string extraction derived from stng.
 - [`tools/libpcap`](libpcap): official tcpdump-group libpcap configured
@@ -22,6 +24,9 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
 - [`tools/email-security`](email-security): bounded RFC 5322/MIME
   parsing, attachment metadata and bounded byte extraction, IOC extraction, and advertised authentication
   failure signals.
+- [`tools/email-authenticate`](email-authenticate): offline DKIM, SPF, and
+  DMARC verification from the vendored `mail-auth` crate against a supplied
+  DNS snapshot; never performs DNS or network lookups.
 - [`tools/wasm-inspect`](wasm-inspect): static validation and section
   inspection for WebAssembly modules and components; inspected bytes are never
   instantiated.
@@ -88,7 +93,7 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   forensics — header, schema, b-tree stats, rows, freelist, and heuristic
   deleted-record carving.
 - [`tools/capa-match`](capa-match): static-subset capa capability
-  matcher — 1,054 embedded Mandiant rules, string/byte/import/section/format
+  matcher — about 1,050 embedded Mandiant rules, string/byte/import/section/format
   features; non-file-scope rules report unsupported, never fabricate.
 - [`tools/rtf-inspect`](rtf-inspect): RTF structure, embedded-object
   (\objdata/OLE) extraction metadata, exploit-document audit flags, and
@@ -111,9 +116,9 @@ Emscripten 6.0.8 on PATH for the Emscripten targets.
 
 The self-hosted GitHub Actions workflows build each target from its pinned
 toolchain and open a PR updating `packages/<target>-wasm`. They run only for
-trusted pushes to `dev` or explicit dispatches, never pull-request code.
+trusted pushes to `main` or explicit dispatches, never pull-request code.
 
 See each tool's README and provenance files for source and toolchain details.
 
-See `docs/targets.md` for the reviewed WASM, native-sidecar, and service
+See `docs/systems/offline-security-tools/targets.md` for the reviewed WASM, native-sidecar, and service
 boundaries for future security tools.

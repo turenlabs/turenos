@@ -14,7 +14,7 @@ import { Scanner } from "../util/scanner"
  * results ourselves. Python-only: a cheap directory walk short-circuits with
  * a "no Python files" note when nothing would be scanned.
  *
- * Deliberate deviation from CONVENTIONS.md (per integration spec): a missing
+ * Deliberate deviation from docs/development/security-integrations.md (per integration spec): a missing
  * binary returns a structured `{ installed: false, installHint }` result
  * instead of throwing, so agents can relay install instructions; findings are
  * capped at 100 (not 50) with a truncation note.

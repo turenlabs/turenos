@@ -38,5 +38,5 @@ bun --cwd packages/app test:browser
 - Generated client types remain compatibility-oriented (`ForgeClient` and the
   `forge` package path); they are not display branding.
 
-See [`../../docs/architecture.md`](../../docs/architecture.md) for the full
+See [`../../docs/architecture/README.md`](../../docs/architecture/README.md) for the full
 process and package topology.

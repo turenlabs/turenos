@@ -8,7 +8,7 @@ headless process.
 The package path, package name, and executable remain `packages/forge`,
 `@turenlabs/forge`, and `forge` for compatibility with existing installs,
 scripts, and consumers. The product name is TurenOS; see
-[`../../docs/branding.md`](../../docs/branding.md) before changing one of
+[`../../docs/architecture/branding.md`](../../docs/architecture/branding.md) before changing one of
 these identifiers.
 
 ## Development
@@ -40,6 +40,6 @@ The same server can run headlessly for CLI, API, WSL, and automation flows.
 - Desktop owns the OS-facing shell and sidecar lifecycle; it does not move
   session execution into the renderer.
 
-See [`../../docs/architecture.md`](../../docs/architecture.md) and
-[`../../docs/systems.md`](../../docs/systems.md) for the runtime graphs and
+See [`../../docs/architecture/README.md`](../../docs/architecture/README.md) and
+[`../../docs/systems/README.md`](../../docs/systems/README.md) for the runtime graphs and
 subsystem catalog.
