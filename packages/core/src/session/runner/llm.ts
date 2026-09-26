@@ -50,6 +50,8 @@ import { SessionMessage } from "../message"
 import { SessionTodo } from "../todo"
 import { SessionTodoGuidance } from "../todo-guidance"
 import { ProviderPrompt } from "../provider-prompt"
+import { SecretOutput } from "../../secret-output"
+import { SessionDisclosure } from "../disclosure"
 import { SessionSchema } from "../schema"
 import { SessionStatus } from "../status"
 import { SessionTable } from "../sql"
@@ -284,6 +286,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const events = yield* EventV2.Service
     const llm = yield* LLMClient.Service
+    const secretOutput = yield* SecretOutput.Service
     const agents = yield* AgentV2.Service
     const agentGuidance = yield* AgentGuidance.Service
     const toolSnapshots = yield* SessionToolSnapshot.Service
@@ -345,6 +348,7 @@ const layer = Layer.effect(
       return { model: resolved?.model, system: selection.info?.system } satisfies SessionCompaction.Summarizer
     })
     const compaction = SessionCompaction.make({
+      disclosure: secretOutput.snapshot(),
       events,
       llm,
       // The Effect, not a captured array: compaction re-reads config per call, so `compaction`
@@ -352,7 +356,14 @@ const layer = Layer.effect(
       config: config.entries(),
       summarizer: compactionSummarizer,
     })
-    const title = SessionRunnerTitle.make({ agents, events, llm, models, store })
+    const title = SessionRunnerTitle.make({
+      agents,
+      events,
+      llm,
+      models,
+      store,
+      disclosure: secretOutput.snapshot(),
+    })
     /**
      * The scope background work is forked into, and the reason it has to be this one. `Effect.fork`
      * would attach the fiber to the drain, which ends the instant the run does; the per-turn scope
@@ -1100,13 +1111,26 @@ const layer = Layer.effect(
       // publisher only opens the durable step on the first content frame, so if the turn ends
       // with the step never opened, the settlement block below hands the responsibility back.
       markTurnRecorded(session.id)
-      const publisher = createLLMEventPublisher(events, {
-        sessionID: session.id,
-        assistantMessageID: providerTurnID,
-        agent: agent.id,
-        model: modelRef,
-        snapshot: startSnapshot,
-      })
+      // One protection snapshot per turn, shared by every provider attempt, publication and CLI
+      // tool reply. Local tool settlements acquire their own when they run.
+      const protection = SecretOutput.reuse(secretOutput)
+      const publisher = createLLMEventPublisher(
+        events,
+        {
+          sessionID: session.id,
+          assistantMessageID: providerTurnID,
+          agent: agent.id,
+          model: modelRef,
+          snapshot: startSnapshot,
+        },
+        protection,
+      )
+      // The CLI receives these replies directly, outside durable publication.
+      const protectReply = (result: ToolResultValue) =>
+        protection.pipe(
+          Effect.map((guard) => SessionDisclosure.safeResult(result, guard)),
+          Effect.catch(() => Effect.succeed({ type: "error" as const, value: SessionDisclosure.WITHHELD })),
+        )
       const withPublication = Semaphore.makeUnsafe(1).withPermit
       const toolTurnIDs = new Set<SessionMessage.ID>()
       const publish = (event: LLMEvent, outputPaths: ReadonlyArray<string> = []) =>
@@ -1184,10 +1208,14 @@ const layer = Layer.effect(
                 // active MCP call: awaiting the interrupt from inside one of
                 // those calls would deadlock on our own settlement.
                 if (isUserDeclined(settlement.cause)) yield* Effect.forkDetach(control.interrupt(session.id))
-                const result = {
-                  type: "error" as const,
-                  value: ToolVisibleError.make(Cause.squash(settlement.cause)),
-                }
+                // Every call the CLI started gets a durable terminal result: nothing else settles
+                // a CLI tool call, so re-raising an interruption left it running forever.
+                const result = yield* protectReply({
+                  type: "error",
+                  value: Cause.hasInterruptsOnly(settlement.cause)
+                    ? "Tool execution interrupted"
+                    : `Tool execution failed: ${ToolVisibleError.make(Cause.squash(settlement.cause))}`,
+                })
                 yield* publish(LLMEvent.toolResult({ id: call.id, name: call.name, result }))
                 return result
               }
@@ -1201,7 +1229,7 @@ const layer = Layer.effect(
                   }),
                   settlement.value.outputPaths ?? [],
                 )
-                return settlement.value.result
+                return yield* protectReply(settlement.value.result)
               }
               if (call.name === "todowrite") todoUpdated = true
               yield* publish(
@@ -1213,7 +1241,7 @@ const layer = Layer.effect(
                 }),
                 settlement.value.outputPaths ?? [],
               )
-              return settlement.value.result
+              return yield* protectReply(settlement.value.result)
             }),
           )
       }
@@ -1229,7 +1257,10 @@ const layer = Layer.effect(
       // request; re-running a `Stream` value built once would replay whatever the first call
       // produced, which for a rate limit means retrying the rate limit rather than the request.
       let providerAttemptNumber = 0
-      const providerAttempt = Effect.suspend(() => {
+      const providerAttempt = Effect.gen(function* () {
+        // Typed, not a defect: an unavailable snapshot fails this attempt before any provider
+        // request, and the settlement below still records a visible terminal step.
+        const guard = yield* protection
         providerAttemptNumber += 1
         const attempt = providerAttemptNumber
         const providerStartedAt = Date.now()
@@ -1237,7 +1268,7 @@ const layer = Layer.effect(
         // Fresh per attempt: a retry issues a new provider request, so repetition measured against
         // the abandoned one must not carry into it.
         const loop = SessionRunnerLoopDetector.make()
-        const stream = llm.stream(wireRequest).pipe(
+        const stream = llm.stream(SessionDisclosure.request(wireRequest, guard)).pipe(
           Stream.runForEach((event) =>
             Effect.gen(function* () {
               if (firstProviderEvent) {
@@ -1341,7 +1372,7 @@ const layer = Layer.effect(
           ),
           Effect.ensuring(withPublication(publisher.flush())),
         )
-        return startupPhase("provider_request_started", { attempt }).pipe(Effect.andThen(stream))
+        return yield* startupPhase("provider_request_started", { attempt }).pipe(Effect.andThen(stream))
       })
 
       // Provider retry. Bounded here rather than in `RequestExecutor` because this is the layer
@@ -1995,6 +2026,7 @@ export const node = makeLocationNode({
   deps: [
     EventV2.node,
     llmClient,
+    SecretOutput.node,
     AgentV2.node,
     AgentGuidance.node,
     SessionToolSnapshot.node,

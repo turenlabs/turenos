@@ -1259,6 +1259,31 @@ describe("tool.shell truncation", () => {
       }),
     ),
   )
+  ;(process.platform === "win32" ? it.live.skip : it.live)(
+    "protects credentials streamed into the saved file after truncation starts",
+    () =>
+      runIn(
+        projectRoot,
+        Effect.gen(function* () {
+          // The command builds the credential, so only captured output carries it; it is printed
+          // after the capture passes the byte limit and the tool starts streaming to disk.
+          const token = `ghp_${"0".repeat(35)}7`
+          const result = yield* run({
+            // The pause lets the stream consumer drain before exit; see the note in ShellTool.run.
+            command:
+              "i=0; while [ $i -lt 1500 ]; do printf 'line %04d padding padding padding padding\\n' $i; i=$((i+1)); done; printf 'late token=ghp_%036d\\n' 7; sleep 0.5",
+          })
+          mustTruncate(result)
+          const filepath = (result.metadata as { outputPath?: string }).outputPath
+          expect(filepath).toBeTruthy()
+          const saved = yield* (yield* FSUtil.Service).readFileString(filepath!)
+          expect(saved).not.toContain(token)
+          expect(saved).toMatch(/late token=\[SECRET:v1:github:[a-f0-9]{32}\]/)
+          expect(saved).toContain("line 0000 padding")
+          expect(saved).toContain("line 1499 padding")
+        }),
+      ),
+  )
 
   it.live("full output is saved to file when truncated", () =>
     runIn(

@@ -29,6 +29,8 @@ import * as OtelTracer from "@effect/opentelemetry/Tracer"
 import { LLMAISDK } from "./llm/ai-sdk"
 import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
+import { LLMDisclosure } from "./disclosure"
+import { SecretOutput } from "@turenlabs/core/secret-output"
 import { LLMClaudeCodeDirect } from "./llm/claude-code-direct"
 import { ClaudeCodeProvider } from "@/provider/claude-code"
 import { ClaudeCodeCLI } from "@turenlabs/core/provider/claude-code"
@@ -78,6 +80,7 @@ const live: Layer.Layer<
   | EventV2Bridge.Service
   | LLMClientService
   | RuntimeFlags.Service
+  | SecretOutput.Service
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -89,6 +92,7 @@ const live: Layer.Layer<
     const events = yield* EventV2Bridge.Service
     const llmClient = yield* LLMClient.Service
     const flags = yield* RuntimeFlags.Service
+    const secretOutput = yield* SecretOutput.Service
 
     const run = Effect.fn("LLM.run")(function* (input: StreamRequest) {
       yield* Effect.logInfo("stream", {
@@ -112,7 +116,7 @@ const live: Layer.Layer<
       const language =
         isClaudeCode || isMuseCode ? undefined : yield* provider.getLanguage(input.model, input.connectionPolicy)
       const isWorkflow = language instanceof GitLabWorkflowLanguageModel
-      const prepared = yield* LLMRequestPrep.prepare({
+      const draft = yield* LLMRequestPrep.prepare({
         ...input,
         provider: item,
         auth: info,
@@ -120,6 +124,13 @@ const live: Layer.Layer<
         flags,
         isWorkflow,
       })
+
+      const guard = yield* secretOutput.snapshot()
+      const prepared = {
+        ...draft,
+        messages: LLMDisclosure.messages(draft.messages, guard),
+        system: draft.system.map((text) => LLMDisclosure.text(text, guard)),
+      }
 
       // Wire up toolExecutor for DWS workflow models so that tool calls
       // from the workflow service are executed via opencode's tool system
@@ -167,24 +178,19 @@ const live: Layer.Layer<
         workflowModel.systemPrompt = prepared.system.join("\n")
         workflowModel.toolExecutor = async (toolName, argsJson, _requestID) => {
           const t = prepared.tools[toolName]
-          if (!t || !t.execute) {
-            return { result: "", error: `Unknown tool: ${toolName}` }
-          }
-          try {
-            const result = await t.execute!(JSON.parse(argsJson), {
-              toolCallId: _requestID,
-              messages: input.messages,
-              abortSignal: input.abort,
-            })
-            const output = typeof result === "string" ? result : (result?.output ?? JSON.stringify(result))
-            return {
-              result: output,
-              metadata: typeof result === "object" ? result?.metadata : undefined,
-              title: typeof result === "object" ? result?.title : undefined,
-            }
-          } catch (e: any) {
-            return { result: "", error: e.message ?? String(e) }
-          }
+          if (!t || !t.execute) return { result: "", error: `Unknown tool: ${LLMDisclosure.text(toolName, guard)}` }
+          // A fresh snapshot per callback; if it is unavailable the tool does not run and the
+          // workflow service receives an ordinary tool error rather than a rejected callback.
+          return LLMDisclosure.workflow(
+            async () =>
+              t.execute!(JSON.parse(argsJson), {
+                toolCallId: _requestID,
+                messages: prepared.messages,
+                abortSignal: input.abort,
+              }),
+            input.abort,
+            bridge.promise(secretOutput.snapshot()),
+          )
         }
 
         const ruleset = Permission.merge(input.agent.permission ?? [], input.permission ?? [])
@@ -451,6 +457,7 @@ export const node = LayerNode.make({
     EventV2Bridge.node,
     llmClient,
     RuntimeFlags.node,
+    SecretOutput.node,
   ],
 })
 

@@ -5,6 +5,8 @@ import { ModelV2 } from "../../model"
 import { SessionEvent } from "../event"
 import { SessionMessage } from "../message"
 import { SessionSchema } from "../schema"
+import { SessionDisclosure } from "../disclosure"
+import type { SecretOutput } from "../../secret-output"
 
 type Input = {
   readonly sessionID: SessionSchema.ID
@@ -18,6 +20,8 @@ const safe = (value: number | undefined) => Math.max(0, Number.isFinite(value) ?
 
 const MAX_DURABLE_TOOL_OUTPUT_BYTES = 512 * 1024
 const DURABLE_TOOL_OUTPUT_TRUNCATION = "\n[tool output truncated before durable storage]"
+const WITHHELD_RESULT = "Tool output withheld because secret output protection failed"
+const WITHHELD_MESSAGE = "Secret output protection unavailable or failed; details withheld"
 
 /**
  * The assistant message's token record: what the model's context window holds
@@ -255,8 +259,18 @@ function boundedProviderMetadata(value: ProviderMetadata | undefined) {
     : undefined
 }
 
-/** Persist one provider turn without executing tools or starting a continuation turn. */
-export const createLLMEventPublisher = (events: EventV2.Interface, input: Input) => {
+/**
+ * Persist one provider turn without executing tools or starting a continuation turn.
+ *
+ * `disclosure` supplies the turn's secret-output protection. Its failure never strands the durable
+ * transcript: a result that cannot be protected is still settled, with fixed text in place of
+ * anything the guard could not process.
+ */
+export const createLLMEventPublisher = (
+  events: EventV2.Interface,
+  input: Input,
+  disclosure: Effect.Effect<SecretOutput.Snapshot, SecretOutput.Error>,
+) => {
   const tools = new Map<
     string,
     {
@@ -270,6 +284,17 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
     }
   >()
   const timestamp = DateTime.now
+  // Undefined when protection is unavailable or cannot process the value; callers substitute
+  // fixed text. Interruption still propagates.
+  const protect = <A>(apply: (guard: SecretOutput.Snapshot) => A): Effect.Effect<A | undefined> =>
+    disclosure.pipe(
+      Effect.flatMap((guard) => Effect.try({ try: () => apply(guard), catch: () => undefined })),
+      Effect.catch(() => Effect.succeed(undefined)),
+    )
+  const protectMessage = (message: string) =>
+    protect((guard) => guard.text(message)).pipe(
+      Effect.map((safe) => truncateText(safe ?? WITHHELD_MESSAGE, MAX_DURABLE_TOOL_OUTPUT_BYTES)),
+    )
   let assistantMessageID: SessionMessage.ID | undefined
   let assistantActive = false
   let assistantFailed = false
@@ -410,11 +435,13 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
 
   const failAssistant = Effect.fnUntraced(function* (message: string) {
     if (assistantFailed) return
+    // Provider errors can echo request content back; protect before this becomes durable.
+    const boundedMessage = yield* protectMessage(message)
+    if (assistantFailed) return
     yield* flush()
     const assistantMessageID = yield* startAssistant()
     assistantActive = false
     assistantFailed = true
-    const boundedMessage = truncateText(message, MAX_DURABLE_TOOL_OUTPUT_BYTES)
     yield* events.publish(SessionEvent.Step.Failed, {
       sessionID: input.sessionID,
       timestamp: yield* timestamp,
@@ -427,7 +454,8 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
     message: string,
     hostedOnly = false,
   ) {
-    const boundedMessage = truncateText(message, MAX_DURABLE_TOOL_OUTPUT_BYTES)
+    // Cleanup must settle every open call even when protection itself is what failed.
+    const boundedMessage = yield* protectMessage(message)
     for (const [callID, tool] of tools) {
       if (tool.settled || (hostedOnly && !tool.providerExecuted)) continue
       tool.settled = true
@@ -564,13 +592,34 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
           if (event.result.type === "error") return
           return yield* Effect.die(`Duplicate tool result: ${event.id}`)
         }
+        // Hosted tools already ran upstream. This protects storage and later replay,
+        // not the provider's initial exposure during hosted execution. Everything that can fail
+        // runs before the call is marked settled, so a failure here can never orphan it.
+        const safe = yield* protect((guard) => {
+          const safeResult = SessionDisclosure.result(event.result, guard)
+          const safeOutput = event.output === undefined ? undefined : SessionDisclosure.output(event.output, guard)
+          return { safeResult, result: boundedToolOutput(settledOutput(safeOutput, safeResult)) }
+        })
+        if (tool.settled) return
         tool.settled = true
-        const result = boundedToolOutput(settledOutput(event.output, event.result))
         const metadata = boundedProviderMetadata(event.providerMetadata)
         const provider = {
           executed: event.providerExecuted === true || tool.providerExecuted,
           ...(metadata === undefined ? {} : { metadata }),
         }
+        if (safe === undefined) {
+          yield* events.publish(SessionEvent.Tool.Failed, {
+            sessionID: input.sessionID,
+            timestamp: yield* timestamp,
+            assistantMessageID: tool.assistantMessageID,
+            callID: event.id,
+            error: { type: "unknown", message: WITHHELD_RESULT },
+            provider,
+          })
+          return
+        }
+        const safeResult = safe.safeResult
+        const result = safe.result
         if ("error" in result) {
           yield* events.publish(SessionEvent.Tool.Failed, {
             sessionID: input.sessionID,
@@ -578,12 +627,12 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
             assistantMessageID: tool.assistantMessageID,
             callID: event.id,
             error: result.error,
-            result: boundedToolResult(event.result),
+            result: boundedToolResult(safeResult),
             provider,
           })
           return
         }
-        const compatibilityResult = provider.executed ? boundedToolResult(event.result, result) : undefined
+        const compatibilityResult = provider.executed ? boundedToolResult(safeResult, result) : undefined
         yield* events.publish(SessionEvent.Tool.Success, {
           sessionID: input.sessionID,
           timestamp: yield* timestamp,
@@ -602,6 +651,8 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
         if (tool.name !== event.name)
           return yield* Effect.die(`Tool error name changed for ${event.id}: ${tool.name} -> ${event.name}`)
         if (tool.settled) return yield* Effect.die(`Duplicate tool error: ${event.id}`)
+        const message = yield* protectMessage(event.message)
+        if (tool.settled) return yield* Effect.die(`Duplicate tool error: ${event.id}`)
         tool.settled = true
         const metadata = boundedProviderMetadata(event.providerMetadata)
         yield* events.publish(SessionEvent.Tool.Failed, {
@@ -609,7 +660,7 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
           timestamp: yield* timestamp,
           assistantMessageID: tool.assistantMessageID,
           callID: event.id,
-          error: { type: "unknown", message: truncateText(event.message, MAX_DURABLE_TOOL_OUTPUT_BYTES) },
+          error: { type: "unknown", message },
           provider: {
             executed: tool.providerExecuted,
             ...(metadata === undefined ? {} : { metadata }),

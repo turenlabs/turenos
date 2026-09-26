@@ -17,24 +17,44 @@ import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { InstanceStore } from "@/project/instance-store"
 import { InstanceBootstrap } from "@/project/bootstrap"
 import { McpBroker } from "@/mcp/broker"
+import { ProviderV2 } from "@turenlabs/core/provider"
+import { ModelV2 } from "@turenlabs/core/model"
+import { SecretOutput } from "@turenlabs/core/secret-output"
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 
-const it = testEffect(
-  AppNodeBuilder.build(
-    LayerNode.group([
-      SessionNs.node,
-      EventV2Bridge.node,
-      SessionProjector.node,
-      CrossSpawnSpawner.node,
-      InstanceStore.node,
-    ]),
+const graph = LayerNode.group([
+  SessionNs.node,
+  EventV2Bridge.node,
+  SessionProjector.node,
+  CrossSpawnSpawner.node,
+  InstanceStore.node,
+])
+const replacements: LayerNode.Replacements = [
+  [RuntimeFlags.node, RuntimeFlags.layer({ experimentalWorkspaces: false })],
+  [
+    InstanceBootstrap.node,
+    Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void })),
+  ],
+]
+const it = testEffect(AppNodeBuilder.build(graph, replacements))
+// Format detectors only, with an outage switch for the credential snapshot.
+const protection = { available: true }
+const guarded = testEffect(
+  AppNodeBuilder.build(graph, [
+    ...replacements,
     [
-      [RuntimeFlags.node, RuntimeFlags.layer({ experimentalWorkspaces: false })],
-      [
-        InstanceBootstrap.node,
-        Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void })),
-      ],
+      SecretOutput.node,
+      Layer.succeed(
+        SecretOutput.Service,
+        SecretOutput.Service.of({
+          snapshot: () =>
+            protection.available
+              ? Effect.succeed(SecretRedaction)
+              : Effect.fail(new SecretOutput.Error({ message: "Secret output protection unavailable" })),
+        }),
+      ),
     ],
-  ),
+  ]),
 )
 
 const awaitDeferred = <T>(deferred: Deferred.Deferred<T>, message: string) =>
@@ -207,6 +227,193 @@ describe("step-finish token propagation via event", () => {
 })
 
 describe("Session", () => {
+  for (const status of ["running", "completed", "error"] as const) {
+    it.instance(`redacts ${status} tool output before event and database persistence`, () =>
+      Effect.gen(function* () {
+        const session = yield* SessionNs.Service
+        const events = yield* EventV2Bridge.Service
+        const info = yield* session.create({})
+        const messageID = MessageID.ascending()
+        yield* session.updateMessage({
+          id: messageID,
+          sessionID: info.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "build",
+          model: { providerID: ProviderV2.ID.make("test"), modelID: ModelV2.ID.make("test") },
+        })
+        const secret = `ghp_${"D".repeat(36)}`
+        const seen: unknown[] = []
+        const unsubscribe = yield* events.listen((event) => {
+          if (event.type === SessionV1.Event.PartUpdated.type) seen.push(event.data)
+          return Effect.void
+        })
+        yield* Effect.addFinalizer(() => unsubscribe)
+        const base = { input: {}, metadata: { nested: [secret], [secret]: "value" }, time: { start: 1, end: 2 } }
+        const state: SessionV1.ToolState =
+          status === "completed"
+            ? { ...base, status, output: secret, title: secret }
+            : status === "error"
+              ? { ...base, status, error: secret }
+              : { ...base, status, title: secret }
+        const part = {
+          id: PartID.ascending(),
+          messageID,
+          sessionID: info.id,
+          type: "tool" as const,
+          tool: "bash",
+          callID: "secret-test",
+          state,
+        }
+        const result = yield* session.updatePart(part)
+        const saved = yield* session.getPart({ sessionID: info.id, messageID, partID: part.id })
+        expect(JSON.stringify(saved)).not.toContain(secret)
+        expect(JSON.stringify(result)).not.toContain(secret)
+        expect(JSON.stringify(seen)).not.toContain(secret)
+        expect(JSON.stringify(saved)).toContain("[SECRET:v1:")
+        expect(part.state).toEqual(state)
+        yield* session.remove(info.id)
+      }),
+    )
+  }
+
+  const toolMessage = Effect.fn("SessionTest.toolMessage")(function* () {
+    const session = yield* SessionNs.Service
+    const info = yield* session.create({})
+    const messageID = MessageID.ascending()
+    yield* session.updateMessage({
+      id: messageID,
+      sessionID: info.id,
+      role: "user",
+      time: { created: Date.now() },
+      agent: "build",
+      model: { providerID: ProviderV2.ID.make("test"), modelID: ModelV2.ID.make("test") },
+    })
+    return { session, info, messageID }
+  })
+
+  it.instance("keeps JSON-compatible tool metadata while redacting it, instead of discarding all of it", () =>
+    Effect.gen(function* () {
+      const { session, info, messageID } = yield* toolMessage()
+      const secret = `ghp_${"M".repeat(36)}`
+      class FileDiff {
+        constructor(
+          readonly file: string,
+          readonly after: string,
+        ) {}
+      }
+      const part = {
+        id: PartID.ascending(),
+        messageID,
+        sessionID: info.id,
+        type: "tool" as const,
+        tool: "edit",
+        callID: "metadata-shape",
+        state: {
+          status: "completed" as const,
+          input: {},
+          output: "ok",
+          title: "a.ts",
+          time: { start: 1, end: 2 },
+          metadata: {
+            at: new Date(0),
+            ratio: Number.NaN,
+            filediff: new FileDiff("a.ts", `token=${secret}`),
+            diagnostics: { "a.ts": [{ message: "unused" }] },
+          },
+        },
+      }
+      yield* session.updatePart(part)
+      const saved = yield* session.getPart({ sessionID: info.id, messageID, partID: part.id })
+      const state = saved?.type === "tool" ? saved.state : undefined
+      expect(state?.status).toBe("completed")
+      const metadata = state?.status === "completed" ? state.metadata : undefined
+      expect(JSON.stringify(saved)).not.toContain(secret)
+      expect(metadata).toMatchObject({
+        at: "1970-01-01T00:00:00.000Z",
+        ratio: null,
+        filediff: { file: "a.ts", after: expect.stringMatching(/^token=\[SECRET:v1:github:/) },
+        diagnostics: { "a.ts": [{ message: "unused" }] },
+      })
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("leaves opaque provider metadata on tool parts byte-for-byte intact", () =>
+    Effect.gen(function* () {
+      const { session, info, messageID } = yield* toolMessage()
+      const providerMetadata = {
+        providerExecuted: true,
+        google: { thoughtSignature: `c2ln/ghp_${"S".repeat(36)}/+==` },
+      }
+      const part = {
+        id: PartID.ascending(),
+        messageID,
+        sessionID: info.id,
+        type: "tool" as const,
+        tool: "web_search",
+        callID: "provider-metadata",
+        state: { status: "running" as const, input: {}, time: { start: 1 } },
+        metadata: providerMetadata,
+      }
+      yield* session.updatePart(part)
+      const saved = yield* session.getPart({ sessionID: info.id, messageID, partID: part.id })
+      expect(saved?.type === "tool" ? saved.metadata : undefined).toEqual(providerMetadata)
+      yield* session.remove(info.id)
+    }),
+  )
+
+  guarded.instance("a transient protection outage preserves stored tool output and withholds only new text", () =>
+    Effect.gen(function* () {
+      const { session, info, messageID } = yield* toolMessage()
+      const secret = `ghp_${"H".repeat(36)}`
+      const stored = {
+        id: PartID.ascending(),
+        messageID,
+        sessionID: info.id,
+        type: "tool" as const,
+        tool: "bash",
+        callID: "historical",
+        state: {
+          status: "completed" as const,
+          input: {},
+          output: `listing ${secret}`,
+          title: "ls",
+          metadata: { exit: 0 },
+          time: { start: 1, end: 2 },
+        },
+      }
+      yield* session.updatePart(stored)
+      const persisted = yield* session.getPart({ sessionID: info.id, messageID, partID: stored.id })
+      if (persisted?.type !== "tool" || persisted.state.status !== "completed") throw new Error("missing part")
+      const historical = persisted.state
+      expect(historical.output).toContain("[SECRET:v1:github:")
+
+      protection.available = false
+      const outcome = yield* Effect.gen(function* () {
+        // Compaction re-saves a historical part with only a time mark changed.
+        yield* session.updatePart({
+          ...persisted,
+          state: { ...historical, time: { ...historical.time, compacted: 3 } },
+        })
+        const pruned = yield* session.getPart({ sessionID: info.id, messageID, partID: stored.id })
+        // A live update with new text must never persist it raw while protection is down.
+        const live = { ...stored, id: PartID.ascending(), callID: "live" }
+        yield* session.updatePart({ ...live, state: { ...live.state, output: `fresh ${secret}` } })
+        const fresh = yield* session.getPart({ sessionID: info.id, messageID, partID: live.id })
+        return { pruned, fresh }
+      }).pipe(Effect.ensuring(Effect.sync(() => (protection.available = true))))
+
+      const pruned = outcome.pruned?.type === "tool" ? outcome.pruned.state : undefined
+      expect(pruned?.status === "completed" && pruned.output).toBe(historical.output)
+      expect(pruned?.status === "completed" && pruned.title).toBe("ls")
+      expect(pruned?.status === "completed" && pruned.time.compacted).toBe(3)
+      expect(JSON.stringify(outcome.fresh)).not.toContain(secret)
+      expect(JSON.stringify(outcome.fresh)).toContain("withheld")
+      yield* session.remove(info.id)
+    }),
+  )
+
   it.instance("clears broker selections for a removed session tree", () =>
     Effect.gen(function* () {
       const session = yield* SessionNs.Service

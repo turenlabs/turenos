@@ -16,6 +16,7 @@ import { ShellToolRouting } from "@turenlabs/core/shell-tool-routing"
 import { ShellID } from "./shell/id"
 
 import * as Truncate from "./truncate"
+import type { ToolOutput } from "./secret-output"
 import { Plugin } from "@/plugin"
 import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
@@ -403,6 +404,8 @@ export const ShellTool = Tool.define(
       let used = 0
       let file = ""
       let sink: ReturnType<typeof createWriteStream> | undefined
+      // Everything appended to the saved file passes through this, including the first batch.
+      let protector: ToolOutput.Stream | undefined
       let cut = false
       let expired = false
       let aborted = false
@@ -412,6 +415,8 @@ export const ShellTool = Tool.define(
         if (!stream) return
         sink = undefined
         if (stream.destroyed || stream.closed) return
+        const rest = protector?.end()
+        if (rest) stream.write(rest)
         yield* Effect.promise(
           () =>
             new Promise<void>((resolve) => {
@@ -458,16 +463,20 @@ export const ShellTool = Tool.define(
               last = preview(last + chunk)
 
               if (file) {
-                sink?.write(chunk)
+                const safe = protector?.push(chunk)
+                if (safe) sink?.write(safe)
               } else {
                 full += chunk
                 if (Buffer.byteLength(full, "utf-8") > limits.maxBytes) {
-                  return trunc.write(full).pipe(
-                    Effect.andThen((next) =>
+                  return Effect.all([trunc.write(""), trunc.stream()]).pipe(
+                    Effect.andThen(([next, stream]) =>
                       Effect.sync(() => {
                         file = next
                         cut = true
+                        protector = stream
                         sink = createWriteStream(next, { flags: "a" })
+                        const safe = stream.push(full)
+                        if (safe) sink.write(safe)
                         full = ""
                       }),
                     ),

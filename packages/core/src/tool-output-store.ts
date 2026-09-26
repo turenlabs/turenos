@@ -8,6 +8,7 @@ import { Global } from "./global"
 import { makeGlobalNode, makeLocationNode } from "./effect/app-node"
 import { SessionSchema } from "./session/schema"
 import { Identifier } from "./util/identifier"
+import { SecretOutput } from "./secret-output"
 import type { ToolOutput } from "@turenlabs/llm"
 
 export const MAX_LINES = 2_000
@@ -20,6 +21,8 @@ export interface BoundInput {
   readonly sessionID: SessionSchema.ID
   readonly toolCallID: string
   readonly output: ToolOutput
+  /** The caller's operation snapshot; a fresh one is acquired when omitted. */
+  readonly protection?: SecretOutput.Snapshot
 }
 
 export interface BoundResult {
@@ -128,6 +131,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const global = yield* Global.Service
+    const secretOutput = yield* SecretOutput.Service
     const config = yield* Effect.serviceOption(Config.Service)
     const directory = path.join(global.data, MANAGED_DIRECTORY)
     const limits = Effect.fn("ToolOutputStore.limits")(function* () {
@@ -162,21 +166,49 @@ const layer = Layer.effect(
       const outputLimits = yield* limits()
       const media = input.output.content.filter((item) => item.type === "file")
       const text = input.output.content.filter((item) => item.type === "text")
-      const contextual =
+      const joined =
         input.output.content.length === 0
           ? yield* Effect.try({
               try: () => JSON.stringify(input.output.structured, null, 2) ?? String(input.output.structured),
               catch: (cause) => new StorageError({ operation: "encode", cause }),
             })
           : text.map((item) => item.text).join("")
+      // Joining separately safe text blocks can reconstruct a credential. Protect
+      // the exact bytes retained and previewed, not only each incoming block.
+      const protection =
+        input.protection ??
+        (yield* secretOutput
+          .snapshot()
+          .pipe(
+            Effect.mapError(
+              () => new StorageError({ operation: "encode", cause: new Error("Secret output protection unavailable") }),
+            ),
+          ))
+      const contextual = yield* Effect.try({
+        try: () => protection.text(joined),
+        catch: () =>
+          new StorageError({ operation: "encode", cause: new Error("Secret output protection unavailable") }),
+      })
       if (
         lineCount(contextual) <= outputLimits.maxLines &&
         Buffer.byteLength(contextual, "utf-8") <= outputLimits.maxBytes
-      )
+      ) {
+        if (contextual === joined) return { output: input.output, outputPaths: [] }
+        // The redacted join replaces the first text block; attachments keep their order.
+        const first = input.output.content.findIndex((item) => item.type === "text")
         return {
-          output: input.output,
+          output: {
+            structured: input.output.structured,
+            content:
+              first === -1
+                ? [{ type: "text" as const, text: contextual }]
+                : input.output.content.flatMap((item, index): ToolOutput["content"][number][] =>
+                    item.type !== "text" ? [item] : index === first ? [{ type: "text", text: contextual }] : [],
+                  ),
+          },
           outputPaths: [],
         }
+      }
 
       const outputPath = yield* write(contextual)
       const marker = `... output truncated; full content saved to ${outputPath} ...`
@@ -215,9 +247,17 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = makeLocationNode({ service: Service, layer, deps: [FSUtil.node, Global.node, Config.node] })
+export const node = makeLocationNode({
+  service: Service,
+  layer,
+  deps: [FSUtil.node, Global.node, Config.node, SecretOutput.node],
+})
 
-export const nodeWithoutConfig = makeLocationNode({ service: Service, layer, deps: [FSUtil.node, Global.node] })
+export const nodeWithoutConfig = makeLocationNode({
+  service: Service,
+  layer,
+  deps: [FSUtil.node, Global.node, SecretOutput.node],
+})
 
 /** Runs retention scanning once globally rather than once per active Location. */
 export const cleanupLayer = Layer.effectDiscard(
@@ -230,5 +270,5 @@ export const cleanupLayer = Layer.effectDiscard(
 export const cleanupNode = makeGlobalNode({
   name: "tool-output-cleanup",
   layer: Layer.merge(layer, cleanupLayer.pipe(Layer.provide(layer))),
-  deps: [FSUtil.node, Global.node],
+  deps: [FSUtil.node, Global.node, SecretOutput.node],
 })

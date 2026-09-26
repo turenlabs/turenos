@@ -3,6 +3,7 @@ import { LLM, LLMError, type LLMEvent } from "@turenlabs/llm"
 import { LLMClient, RequestExecutor } from "@turenlabs/llm/route"
 import { DateTime, Effect, Fiber, Layer, Stream } from "effect"
 import { EventV2 } from "@turenlabs/core/event"
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { createLLMEventPublisher } from "@turenlabs/core/session/runner/publish-llm-event"
 import { SessionV2 } from "@turenlabs/core/session"
 import { ProjectV2 } from "@turenlabs/core/project"
@@ -209,11 +210,15 @@ const publishAll = (events: ReadonlyArray<LLMEvent>) =>
       remove: () => Effect.void,
       claim: () => Effect.void,
     })
-    const publisher = createLLMEventPublisher(service, {
-      sessionID: SessionV2.ID.make("ses_claude_code_tool"),
-      agent: "build",
-      model: { id: ModelV2.ID.make("opus"), providerID: ProviderV2.ID.make("claude-code") },
-    })
+    const publisher = createLLMEventPublisher(
+      service,
+      {
+        sessionID: SessionV2.ID.make("ses_claude_code_tool"),
+        agent: "build",
+        model: { id: ModelV2.ID.make("opus"), providerID: ProviderV2.ID.make("claude-code") },
+      },
+      Effect.succeed(SecretRedaction),
+    )
     for (const event of events) yield* publisher.publish(event)
     yield* publisher.flush()
     return published.map((item) => item.type)

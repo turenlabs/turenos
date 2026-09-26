@@ -8,6 +8,7 @@ import { makeGlobalNode } from "./effect/app-node"
 import { KeyedMutex } from "./effect/keyed-mutex"
 import { AppProcess } from "./process"
 import { Storage } from "./storage"
+import { SecretOutput } from "./secret-output"
 
 export const MAX_ACTIVE = 32
 export const MAX_OWNER_ACTIVE = 4
@@ -97,6 +98,7 @@ const ownerGone = (record: Record) => {
 /** Global runner: admission is durable before fork; no persisted command is ever replayed. */
 export const make = Effect.gen(function* () {
   const storage = yield* Storage.Service
+  const secretOutput = yield* SecretOutput.Service
   const serviceScope = yield* Scope.Scope
   const owner = randomUUID()
   runtimes.add(owner)
@@ -223,7 +225,9 @@ export const make = Effect.gen(function* () {
             return yield* new ToolFailure({
               message: `Shell job limit reached (${active.size}/${MAX_ACTIVE} active across all sessions). Retry after running jobs complete.`,
             })
-          const ownerJobs = [...active.entries()].flatMap(([id, job]) => (job.sessionID === input.sessionID ? [id] : []))
+          const ownerJobs = [...active.entries()].flatMap(([id, job]) =>
+            job.sessionID === input.sessionID ? [id] : [],
+          )
           if (ownerJobs.length >= MAX_OWNER_ACTIVE) {
             // The bare rejection invited blind retries: name the occupants and the remedy so the
             // next action is shell_job wait/status/cancel on a listed job, not another bash call.
@@ -311,7 +315,20 @@ export const make = Effect.gen(function* () {
                     : timedOut
                       ? `Command exceeded timeout of ${input.timeout} ms. Retry with a larger timeout if the command is expected to take longer.`
                       : "Shell execution failed."
-                const captured = new TextDecoder().decode(Buffer.from(output).subarray(0, MAX_OUTPUT_BYTES), {
+                // Redact the complete available capture before our cap can split a credential.
+                // AppProcess may already have capped its capture: a credential cut there cannot
+                // reliably be recognized here. This boundary cannot recover discarded bytes.
+                const sanitized = yield* secretOutput.snapshot().pipe(
+                  Effect.flatMap((protection) =>
+                    Effect.try({
+                      try: () => protection.text(output),
+                      // Do not log the thrown value: sanitizer errors may contain the raw capture.
+                      catch: () => "Shell output withheld because secret sanitization failed.",
+                    }),
+                  ),
+                  Effect.catch(() => Effect.succeed("Shell output withheld because secret sanitization failed.")),
+                )
+                const captured = new TextDecoder().decode(Buffer.from(sanitized).subarray(0, MAX_OUTPUT_BYTES), {
                   stream: true,
                 })
                 yield* storage.set({ scope: outputScope, key: Storage.Key.make(id), value: captured })
@@ -326,7 +343,7 @@ export const make = Effect.gen(function* () {
                         : "failed",
                   output: "",
                   truncated:
-                    Buffer.byteLength(output) > MAX_OUTPUT_BYTES ||
+                    Buffer.byteLength(sanitized) > MAX_OUTPUT_BYTES ||
                     (Exit.isSuccess(exit) && exit.value.outputTruncated === true),
                   ...(Exit.isSuccess(exit) ? { exit: exit.value.exitCode } : {}),
                 })
@@ -401,4 +418,8 @@ export const make = Effect.gen(function* () {
       }),
   })
 })
-export const node = makeGlobalNode({ service: Service, layer: Layer.effect(Service, make), deps: [Storage.node] })
+export const node = makeGlobalNode({
+  service: Service,
+  layer: Layer.effect(Service, make),
+  deps: [Storage.node, SecretOutput.node],
+})
