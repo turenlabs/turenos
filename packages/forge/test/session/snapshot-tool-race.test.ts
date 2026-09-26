@@ -33,6 +33,8 @@ import { CrossSpawnSpawner } from "@turenlabs/core/cross-spawn-spawner"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Provider } from "@/provider/provider"
 import { ProviderTest } from "../fake/provider"
+import { ProviderV2 } from "@turenlabs/core/provider"
+import { ModelV2 } from "@turenlabs/core/model"
 
 const mcp = Layer.succeed(
   MCP.Service,
@@ -141,6 +143,7 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
       yield* prompt.prompt({
         sessionID: session.id,
         agent: "build",
+        model: { providerID: ProviderV2.ID.make("test"), modelID: ModelV2.ID.make("test-model") },
         noReply: true,
         parts: [{ type: "text", text: "create the file" }],
       })
