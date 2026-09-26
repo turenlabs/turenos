@@ -14,6 +14,58 @@ describe("security data HTTP", () => {
     )
   })
 
+  test("cancels retryable status bodies before retrying or returning the final error", async () => {
+    let requests = 0
+    let cancelled = 0
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = Object.assign(
+      async () => {
+        requests += 1
+        return new Response(
+          new ReadableStream({
+            cancel() {
+              cancelled += 1
+            },
+          }),
+          { status: 503, headers: { "retry-after": "0" } },
+        )
+      },
+      { preconnect: originalFetch.preconnect },
+    )
+    try {
+      await expect(fetchText("https://example.test/feed", { attempts: 2 })).rejects.toThrow("HTTP 503")
+      expect(requests).toBe(2)
+      expect(cancelled).toBe(2)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("cancels responses rejected by declared content length", async () => {
+    let cancelled = false
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = Object.assign(
+      async () =>
+        new Response(
+          new ReadableStream({
+            cancel() {
+              cancelled = true
+            },
+          }),
+          { headers: { "content-length": "4" } },
+        ),
+      { preconnect: originalFetch.preconnect },
+    )
+    try {
+      await expect(fetchText("https://example.test/feed", { attempts: 1, maxResponseBytes: 3 })).rejects.toThrow(
+        "response exceeded 3 bytes",
+      )
+      expect(cancelled).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   test("rejects fixed endpoints that resolve outside the public network", async () => {
     await expect(
       fetchText("http://127.0.0.1/feed", {

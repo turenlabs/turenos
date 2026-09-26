@@ -181,6 +181,7 @@ async function fixedEndpointRequest(options: NonNullable<RequestOptions["fixedEn
 async function responseValue(response: Response, accept: "json" | "text", maxBytes: number) {
   const declared = Number(response.headers.get("content-length"))
   if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body?.cancel().catch(() => {})
     throw new Error(`response exceeded ${maxBytes} bytes`)
   }
   if (!response.body) return accept === "json" ? undefined : ""
@@ -263,6 +264,7 @@ async function requestUpstream(url: string, opts: RequestOptions, accept: "json"
 
     if (response.status === 429 || response.status >= 500) {
       lastError = new HttpError(url, response.status)
+      await response.body?.cancel().catch(() => {})
       if (attempt + 1 < attempts) {
         await sleep(retryDelay(attempt, response.headers.get("retry-after")))
         continue
