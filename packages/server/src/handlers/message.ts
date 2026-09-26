@@ -27,13 +27,14 @@ function leanToolContent(item: SessionMessage.AssistantContent): SessionMessage.
   // output is what the timeline is live-rendering — eliding it would blank the open card.
   if (item.type !== "tool" || (item.state.status !== "completed" && item.state.status !== "error")) return item
   const state = item.state
+  const structuredBytes = byteSize(state.structured)
   const bytes =
     byteSize(state.content) +
-    byteSize(state.structured) +
+    structuredBytes +
     byteSize("result" in state ? state.result : undefined) +
     byteSize("attachments" in state ? state.attachments : undefined)
   if (bytes <= LeanToolBodyBytes) return item
-  const structured = byteSize(state.structured) <= LeanStructuredKeepBytes ? state.structured : {}
+  const structured = structuredBytes <= LeanStructuredKeepBytes ? state.structured : {}
   return {
     ...item,
     truncated: { bytes },
