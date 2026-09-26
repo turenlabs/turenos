@@ -177,7 +177,7 @@ export function evaluate(facts: Facts, plan: Plan) {
   if (!facts.root) problems.push("setup must run as root (for example with sudo)")
   if (facts.pid1 !== "systemd") problems.push("PID 1 is not systemd; use quick connect or another service manager")
   if (facts.systemdVersion === undefined) problems.push("could not determine the systemd version")
-  else if (facts.systemdVersion < 250)
+  if (facts.systemdVersion !== undefined && facts.systemdVersion < 250)
     problems.push(`systemd ${facts.systemdVersion} is too old for encrypted credentials (250 or later is required)`)
   if (!facts.systemdCreds)
     problems.push("systemd-creds is unavailable; refusing to fall back to an unprotected key file")

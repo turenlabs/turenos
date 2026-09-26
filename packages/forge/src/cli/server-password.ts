@@ -6,7 +6,7 @@ import { ServerOwner } from "@turenlabs/core/database/server-owner"
 
 export async function loadServerPassword(env = process.env): Promise<string | undefined> {
   const persistent = ServerOwner.mode(env) === "persistent"
-  if (persistent) ServerMode.assertNoSecretsInEnvironment(env)
+  ServerMode.assertNoSecretsInEnvironment(env)
   const name = env.FORGE_SERVER_PASSWORD_CREDENTIAL
   if (!name) {
     if (persistent) throw new Error("persistent server requires FORGE_SERVER_PASSWORD_CREDENTIAL")

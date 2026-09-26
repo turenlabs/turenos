@@ -18,7 +18,7 @@ export function selectedSource(env = process.env, override?: string): Source | u
 export async function loadSecretVaultKey(env = process.env, override?: string): Promise<Key | undefined> {
   const source = selectedSource(env, override)
   const persistent = ServerOwner.mode(env) === "persistent"
-  if (persistent) ServerMode.assertNoSecretsInEnvironment(env)
+  ServerMode.assertNoSecretsInEnvironment(env)
   if (persistent && source !== "systemd-credentials")
     throw new Error("persistent server requires the systemd-credentials secret vault key source")
 
