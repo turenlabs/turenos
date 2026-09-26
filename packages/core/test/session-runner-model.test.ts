@@ -307,6 +307,29 @@ describe("SessionRunnerModel", () => {
     }),
   )
 
+  it.effect("maps chunkTimeout to the native idle timeout and keeps the OpenRouter default otherwise", () =>
+    Effect.gen(function* () {
+      const openrouter = {
+        type: "aisdk",
+        package: "@openrouter/ai-sdk-provider",
+        url: "https://openrouter.ai/api/v1",
+      } as const
+      const configured = yield* SessionRunnerModel.fromCatalogModel(
+        model({ ...openrouter, settings: { chunkTimeout: 30_000 } }),
+      )
+      const defaulted = yield* SessionRunnerModel.fromCatalogModel(model(openrouter))
+      const compatible = yield* SessionRunnerModel.fromCatalogModel(
+        model({ type: "aisdk", package: "@ai-sdk/openai-compatible", url: "https://compatible.example/v1" }),
+      )
+
+      expect(configured.route.defaults.http?.idleTimeoutMs).toBe(30_000)
+      // chunkTimeout is transport control, never an upstream body field.
+      expect(configured.route.defaults.http?.body).not.toHaveProperty("chunkTimeout")
+      expect(defaulted.route.defaults.http?.idleTimeoutMs).toBe(120_000)
+      expect(compatible.route.defaults.http?.idleTimeoutMs).toBeUndefined()
+    }),
+  )
+
   it.effect("overlays selected OpenAI Session variant bodies", () =>
     Effect.gen(function* () {
       const catalog = model({ type: "aisdk", package: "@ai-sdk/openai", url: "https://openai.example/v1" }, [
@@ -489,6 +512,50 @@ describe("SessionRunnerModel", () => {
     }),
   )
 
+  // Background calls (titles, compaction) cap output far below a turn, so the model's default
+  // reasoning level must not follow them there. A level the session chose still does.
+  it.effect("skips the catalog default only when asked, and never a selected variant", () =>
+    Effect.gen(function* () {
+      const fallback = ModelV2.VariantID.make("medium")
+      const selected = ModelV2.VariantID.make("low")
+      const base = model({ type: "aisdk", package: "@ai-sdk/openai", url: "https://openai.example/v1" }, [
+        { id: selected, headers: {}, body: { reasoningEffort: "low" } },
+        { id: fallback, headers: {}, body: { reasoningEffort: "medium" } },
+      ])
+      const catalog = ModelV2.Info.make({ ...base, request: { ...base.request, variant: fallback } })
+      const session = (variant?: ModelV2.VariantID) =>
+        SessionV2.Info.make({
+          id: SessionV2.ID.make("ses_model_variant_background"),
+          projectID: ProjectV2.ID.global,
+          title: "test",
+          model: { id: catalog.id, providerID: catalog.providerID, ...(variant ? { variant } : {}) },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+          location: { directory: AbsolutePath.make("/project") },
+        })
+      const background = { defaultVariant: false }
+
+      expect((yield* SessionRunnerModel.resolveWithRef(session(), catalog)).ref.variant).toBe(fallback)
+      expect(
+        (yield* SessionRunnerModel.resolveWithRef(session(), catalog, undefined, undefined, background)).ref.variant,
+      ).toBeUndefined()
+      expect(
+        (yield* SessionRunnerModel.resolveWithRef(
+          session(ModelV2.VariantID.make("default")),
+          catalog,
+          undefined,
+          undefined,
+          background,
+        )).ref.variant,
+      ).toBeUndefined()
+      expect(
+        (yield* SessionRunnerModel.resolveWithRef(session(selected), catalog, undefined, undefined, background)).ref
+          .variant,
+      ).toBe(selected)
+    }),
+  )
+
   it.effect("overlays selected Anthropic Session variant bodies", () =>
     Effect.gen(function* () {
       const catalog = model({ type: "aisdk", package: "@ai-sdk/anthropic", url: "https://anthropic.example/v1" }, [
@@ -510,8 +577,9 @@ describe("SessionRunnerModel", () => {
       })
 
       const resolved = yield* SessionRunnerModel.resolve(session, catalog)
+      // The shared fixture caps output at 20 tokens; Anthropic needs max_tokens above the budget.
       const prepared = yield* LLMClient.prepare<Record<string, unknown>>(
-        LLM.request({ model: resolved, prompt: "Hello" }),
+        LLM.request({ model: resolved, prompt: "Hello", generation: { maxTokens: 32_000 } }),
       )
 
       expect(resolved.route.defaults.http?.body).toEqual({ custom_extension: { enabled: true } })
@@ -519,6 +587,38 @@ describe("SessionRunnerModel", () => {
         anthropic: { thinking: { type: "enabled", budget_tokens: 12000 } },
       })
       expect(prepared.body).toMatchObject({ thinking: { type: "enabled", budget_tokens: 12000 } })
+    }),
+  )
+
+  // Compaction and titles cap output far below a budget-based variant; that used to send an
+  // invalid budget_tokens >= max_tokens request that Anthropic rejects.
+  it.effect("drops a selected thinking budget on calls whose output cap cannot hold it", () =>
+    Effect.gen(function* () {
+      const catalog = model({ type: "aisdk", package: "@ai-sdk/anthropic", url: "https://anthropic.example/v1" }, [
+        {
+          id: ModelV2.VariantID.make("high"),
+          headers: {},
+          body: { thinking: { type: "enabled", budgetTokens: 16_000 } },
+        },
+      ])
+      const session = SessionV2.Info.make({
+        id: SessionV2.ID.make("ses_anthropic_budget"),
+        projectID: ProjectV2.ID.global,
+        title: "test",
+        model: { id: catalog.id, providerID: catalog.providerID, variant: ModelV2.VariantID.make("high") },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+        location: { directory: AbsolutePath.make("/project") },
+      })
+
+      const resolved = yield* SessionRunnerModel.resolve(session, catalog)
+      const prepared = yield* LLMClient.prepare<Record<string, unknown>>(
+        LLM.request({ model: resolved, prompt: "Summarise", generation: { maxTokens: 4_096 } }),
+      )
+
+      expect(prepared.body.max_tokens).toBe(4_096)
+      expect(prepared.body.thinking).toBeUndefined()
     }),
   )
 

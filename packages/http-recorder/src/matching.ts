@@ -10,14 +10,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 export const canonicalizeJson = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(canonicalizeJson)
-  if (isRecord(value)) {
-    return Object.fromEntries(
-      Object.keys(value)
-        .toSorted()
-        .map((key) => [key, canonicalizeJson(value[key])]),
-    )
-  }
-  return value
+  if (!isRecord(value)) return value
+
+  // Avoid inherited setters while building, then restore the ordinary prototype.
+  const canonicalized = Object.create(null) as Record<string, unknown>
+  Object.keys(value)
+    .toSorted()
+    .forEach((key) => (canonicalized[key] = canonicalizeJson(value[key])))
+  Object.setPrototypeOf(canonicalized, Object.prototype)
+  return canonicalized
 }
 
 export type { RequestMatcher } from "./types.js"

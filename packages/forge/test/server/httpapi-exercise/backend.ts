@@ -14,9 +14,14 @@ type CallOptions = {
 }
 
 export function call(scenario: ActiveScenario, ctx: SeededContext<unknown>, options: CallOptions = {}) {
-  return Effect.promise(async () =>
-    capture(await app(await runtime(), options).request(toRequest(scenario, ctx)), scenario.capture),
-  )
+  // tryPromise so the scenario timeout can actually interrupt a wedged request;
+  // Effect.promise defers interruption until the promise settles, which never
+  // happens when the in-process handler deadlocks.
+  return Effect.tryPromise({
+    try: async (signal) =>
+      capture(await app(await runtime(), options).request(toRequest(scenario, ctx, signal)), scenario.capture),
+    catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+  }).pipe(Effect.catch((error) => Effect.die(error)))
 }
 
 export function prepareAuthApp() {
@@ -84,12 +89,13 @@ function app(modules: Runtime, options: CallOptions) {
   })
 }
 
-function toRequest(scenario: ActiveScenario, ctx: SeededContext<unknown>) {
+function toRequest(scenario: ActiveScenario, ctx: SeededContext<unknown>, signal?: AbortSignal) {
   const spec = scenario.request(ctx, ctx.state)
   return new Request(new URL(spec.path, "http://localhost"), {
     method: scenario.method,
     headers: spec.body === undefined ? spec.headers : { "content-type": "application/json", ...spec.headers },
     body: spec.body === undefined ? undefined : JSON.stringify(spec.body),
+    signal,
   })
 }
 

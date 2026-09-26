@@ -4,7 +4,9 @@ import { Schema } from "effect"
 
 export const DEFAULT_SIZE = 12
 export const MIN_SIZE = 2
-export const MAX_SIZE = 50
+/** Largest swarm one leader dispatches directly; larger swarms go through orchestrators. */
+export const DIRECT_SIZE = 50
+export const MAX_SIZE = 2_000
 
 export const InvalidReason = Schema.Literals(["missing_objective", "count_out_of_range"]).annotate({
   identifier: "Swarm.InvalidReason",

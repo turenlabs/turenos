@@ -23,7 +23,10 @@ describe("Extension v1 runtime migration", () => {
       expect(manifest?.contributions.some((item) => item.name === definition.name)).toBe(true)
       expect(contribution?.type).toBe("mcp")
       if (contribution?.type !== "mcp") continue
-      for (const tool of contribution.tools.allow) expect(McpIntegration.allowsTool(definition.id, tool)).toBe(true)
+      for (const tool of contribution.tools.allow) {
+        expect(McpIntegration.allowsTool(definition.id, tool, { writeTools: "enabled" })).toBe(true)
+        expect(McpIntegration.allowsTool(definition.id, tool)).toBe(!contribution.tools.write.includes(tool))
+      }
       expect(McpIntegration.allowsTool(definition.id, "unreviewed_tool")).toBe(false)
     }
   })

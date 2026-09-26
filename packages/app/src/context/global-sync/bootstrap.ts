@@ -252,9 +252,10 @@ export async function bootstrapDirectory(input: {
     startupTrace("bootstrap", "directory.started", { directory: input.directory })
     const slow = [
       () => Promise.resolve(input.loadSessions(input.directory)),
-      // fetchQuery, not ensureQueryData: this is the sole writer of store.agent, and the
-      // server.instance.disposed / global.disposed re-bootstrap path relies on it actually
-      // refetching — a cache hit here made edited agents invisible until an app restart.
+      // fetchQuery, not ensureQueryData: the paths that refresh store.agent after
+      // server-side invalidation (instance disposal re-bootstrap, `config.updated`)
+      // rely on it actually refetching — a cache hit made edited agents invisible
+      // until an app restart.
       () =>
         input.queryClient
           .fetchQuery(loadAgentsQuery(input.scope, input.directory, input.sdk))

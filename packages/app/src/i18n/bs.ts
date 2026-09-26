@@ -50,7 +50,6 @@ export const dict = {
 
   "command.session.new": "Nova sesija",
   "command.tab.new": "Nova kartica",
-  "tab.desktop": "Desktop",
   "command.file.open": "Otvori datoteku",
   "command.tab.close": "Zatvori karticu",
   "command.tab.reopenClosed": "Ponovo otvori zatvorenu karticu",

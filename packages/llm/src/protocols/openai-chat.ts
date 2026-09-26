@@ -76,6 +76,9 @@ const OpenAIChatMessage = Schema.Union([
     content: Schema.NullOr(Schema.String),
     tool_calls: optionalArray(OpenAIChatAssistantToolCall),
     reasoning_content: Schema.optional(Schema.String),
+    // Opaque per-route reasoning blocks (OpenRouter). Only set when the route opts in through
+    // `fromRequestWith`, so other OpenAI Chat routes never carry the key.
+    reasoning_details: optionalArray(JsonObject),
   }),
   Schema.Struct({ role: Schema.Literal("tool"), tool_call_id: Schema.String, content: Schema.String }),
 ]).pipe(Schema.toTaggedUnion("role"))
@@ -116,7 +119,7 @@ export type OpenAIChatBody = Schema.Schema.Type<typeof OpenAIChatBody>
 // The event schema is one decoded SSE `data:` payload. `Framing.sse` splits the
 // byte stream into strings, then `Protocol.jsonEvent` decodes each string into
 // this provider-native event shape.
-const OpenAIChatUsage = Schema.Struct({
+export const OpenAIChatUsage = Schema.Struct({
   prompt_tokens: Schema.optional(Schema.Number),
   completion_tokens: Schema.optional(Schema.Number),
   total_tokens: Schema.optional(Schema.Number),
@@ -144,11 +147,12 @@ const OpenAIChatToolCallDelta = Schema.Struct({
 })
 type OpenAIChatToolCallDelta = Schema.Schema.Type<typeof OpenAIChatToolCallDelta>
 
-const OpenAIChatDelta = Schema.Struct({
+export const deltaFields = {
   content: optionalNull(Schema.String),
   reasoning_content: optionalNull(Schema.String),
   tool_calls: optionalNull(Schema.Array(OpenAIChatToolCallDelta)),
-})
+}
+const OpenAIChatDelta = Schema.Struct(deltaFields)
 
 const OpenAIChatChoice = Schema.Struct({
   delta: optionalNull(OpenAIChatDelta),
@@ -159,10 +163,10 @@ const OpenAIChatEvent = Schema.Struct({
   choices: Schema.Array(OpenAIChatChoice),
   usage: optionalNull(OpenAIChatUsage),
 })
-type OpenAIChatEvent = Schema.Schema.Type<typeof OpenAIChatEvent>
+export type OpenAIChatEvent = Schema.Schema.Type<typeof OpenAIChatEvent>
 type OpenAIChatRequestMessage = LLMRequest["messages"][number]
 
-interface ParserState {
+export interface ParserState {
   readonly tools: ToolStream.State<number>
   readonly toolCallEvents: ReadonlyArray<LLMEvent>
   readonly usage?: Usage
@@ -171,6 +175,14 @@ interface ParserState {
 }
 
 const invalid = ProviderShared.invalidRequest
+
+/**
+ * Route-specific lowering hooks. `reasoningDetails` reads a route's opaque reasoning blocks back
+ * off canonical reasoning parts; only a route that passes it emits `reasoning_details`.
+ */
+export interface Lowering {
+  readonly reasoningDetails?: (parts: ReadonlyArray<ReasoningPart>) => ReadonlyArray<Record<string, unknown>>
+}
 
 // =============================================================================
 // Request Lowering
@@ -233,6 +245,7 @@ const lowerUserMessage = Effect.fn("OpenAIChat.lowerUserMessage")(function* (mes
 const lowerAssistantMessage = Effect.fn("OpenAIChat.lowerAssistantMessage")(function* (
   message: OpenAIChatRequestMessage,
   reasoningPassback: boolean,
+  lowering: Lowering,
 ) {
   const content: TextPart[] = []
   const reasoning: ReasoningPart[] = []
@@ -264,6 +277,7 @@ const lowerAssistantMessage = Effect.fn("OpenAIChat.lowerAssistantMessage")(func
     results.push(lowered.message)
     images.push(...lowered.images)
   }
+  const reasoningDetails = lowering.reasoningDetails?.(reasoning) ?? []
   const assistant: OpenAIChatMessage = {
     role: "assistant" as const,
     // An assistant turn with neither text nor tool calls -- reasoning only, usually because the
@@ -275,6 +289,7 @@ const lowerAssistantMessage = Effect.fn("OpenAIChat.lowerAssistantMessage")(func
       reasoning.length > 0
         ? reasoning.map((part) => part.text).join("")
         : (openAICompatibleReasoningContent(message.native?.openaiCompatible) ?? (reasoningPassback ? "" : undefined)),
+    ...(reasoningDetails.length === 0 ? {} : { reasoning_details: reasoningDetails }),
   }
   return { messages: [assistant, ...results], images }
 })
@@ -313,17 +328,18 @@ const lowerToolMessages = Effect.fn("OpenAIChat.lowerToolMessages")(function* (m
 const lowerMessage = Effect.fn("OpenAIChat.lowerMessage")(function* (
   message: OpenAIChatRequestMessage,
   reasoningPassback: boolean,
+  lowering: Lowering,
 ) {
   if (message.role === "user")
     return {
       messages: [yield* lowerUserMessage(message)],
       images: [] as Array<Schema.Schema.Type<typeof OpenAIChatUserContent>>,
     }
-  if (message.role === "assistant") return yield* lowerAssistantMessage(message, reasoningPassback)
+  if (message.role === "assistant") return yield* lowerAssistantMessage(message, reasoningPassback, lowering)
   return yield* lowerToolMessages(message)
 })
 
-const lowerMessages = Effect.fn("OpenAIChat.lowerMessages")(function* (request: LLMRequest) {
+const lowerMessages = Effect.fn("OpenAIChat.lowerMessages")(function* (request: LLMRequest, lowering: Lowering) {
   const reasoningPassback = request.model.compatibility?.reasoningPassback === true
   const system: OpenAIChatMessage[] =
     request.system.length === 0 ? [] : [{ role: "system", content: ProviderShared.joinText(request.system) }]
@@ -366,7 +382,7 @@ const lowerMessages = Effect.fn("OpenAIChat.lowerMessages")(function* (request: 
       continue
     }
     flushImages()
-    const lowered = yield* lowerMessage(message, reasoningPassback)
+    const lowered = yield* lowerMessage(message, reasoningPassback, lowering)
     messages.push(...lowered.messages)
     pendingImages.push(...lowered.images)
   }
@@ -387,33 +403,36 @@ const lowerOptions = Effect.fn("OpenAIChat.lowerOptions")(function* (request: LL
   }
 })
 
-const fromRequest = Effect.fn("OpenAIChat.fromRequest")(function* (request: LLMRequest) {
-  // `fromRequest` returns the provider body only. Endpoint, auth, framing,
-  // validation, and HTTP execution are composed by `Route.make`.
-  const generation = request.generation
-  const toolSchemaCompatibility = request.model.compatibility?.toolSchema
-  return {
-    model: request.model.id,
-    messages: yield* lowerMessages(request),
-    tools:
-      request.tools.length === 0
-        ? undefined
-        : request.tools.map((tool) =>
-            lowerTool(tool, ToolSchemaProjection.modelCompatibility(tool.inputSchema, toolSchemaCompatibility)),
-          ),
-    tool_choice: request.toolChoice ? yield* lowerToolChoice(request.toolChoice) : undefined,
-    stream: true as const,
-    stream_options: { include_usage: true },
-    max_tokens: generation?.maxTokens,
-    temperature: generation?.temperature,
-    top_p: generation?.topP,
-    frequency_penalty: generation?.frequencyPenalty,
-    presence_penalty: generation?.presencePenalty,
-    seed: generation?.seed,
-    stop: generation?.stop,
-    ...(yield* lowerOptions(request)),
-  }
-})
+export const fromRequestWith = (lowering: Lowering) =>
+  Effect.fn("OpenAIChat.fromRequest")(function* (request: LLMRequest) {
+    // `fromRequest` returns the provider body only. Endpoint, auth, framing,
+    // validation, and HTTP execution are composed by `Route.make`.
+    const generation = request.generation
+    const toolSchemaCompatibility = request.model.compatibility?.toolSchema
+    return {
+      model: request.model.id,
+      messages: yield* lowerMessages(request, lowering),
+      tools:
+        request.tools.length === 0
+          ? undefined
+          : request.tools.map((tool) =>
+              lowerTool(tool, ToolSchemaProjection.modelCompatibility(tool.inputSchema, toolSchemaCompatibility)),
+            ),
+      tool_choice: request.toolChoice ? yield* lowerToolChoice(request.toolChoice) : undefined,
+      stream: true as const,
+      stream_options: { include_usage: true },
+      max_tokens: generation?.maxTokens,
+      temperature: generation?.temperature,
+      top_p: generation?.topP,
+      frequency_penalty: generation?.frequencyPenalty,
+      presence_penalty: generation?.presencePenalty,
+      seed: generation?.seed,
+      stop: generation?.stop,
+      ...(yield* lowerOptions(request)),
+    }
+  })
+
+const fromRequest = fromRequestWith({})
 
 // =============================================================================
 // Stream Parsing
@@ -450,7 +469,7 @@ const mapUsage = (usage: OpenAIChatEvent["usage"]): Usage | undefined => {
   })
 }
 
-const step = (state: ParserState, event: OpenAIChatEvent) =>
+export const step = (state: ParserState, event: OpenAIChatEvent) =>
   Effect.gen(function* () {
     const events: LLMEvent[] = []
     const usage = mapUsage(event.usage) ?? state.usage
@@ -505,7 +524,7 @@ const step = (state: ParserState, event: OpenAIChatEvent) =>
     ] as const
   })
 
-const finishEvents = (state: ParserState): ReadonlyArray<LLMEvent> => {
+export const finishEvents = (state: ParserState): ReadonlyArray<LLMEvent> => {
   const events: LLMEvent[] = []
   const hasToolCalls = state.toolCallEvents.length > 0
   const reason = state.finishReason === "stop" && hasToolCalls ? "tool-calls" : state.finishReason

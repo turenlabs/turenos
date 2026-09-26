@@ -245,28 +245,38 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
 }
 
 export function toV2Prompt(parts: PromptRequestPart[]): PromptInput {
-  const textParts = parts.filter((part): part is TextPartInput & { id: string } => part.type === "text")
-  const text = textParts
-    .filter((part) => !part.ignored)
-    .map((part) => part.text)
-    .filter(Boolean)
-    .join("\n\n")
-  const files = parts
-    .filter((part): part is FilePartInput & { id: string } => part.type === "file")
-    .map((part) => ({
-      uri: part.url,
-      name: part.filename,
-      source: part.source?.text
-        ? {
-            text: part.source.text.value,
-            start: part.source.text.start,
-            end: part.source.text.end,
-          }
-        : undefined,
-    }))
-  const agents = parts
-    .filter((part): part is AgentPartInput & { id: string } => part.type === "agent")
-    .map((part) => ({
+  const text: string[] = []
+  const textParts: NonNullable<PromptInput["parts"]> = []
+  const files: NonNullable<PromptInput["files"]> = []
+  const agents: NonNullable<PromptInput["agents"]> = []
+  for (const part of parts) {
+    if (part.type === "text") {
+      if (!part.ignored && part.text) text.push(part.text)
+      const comment = readCommentMetadata(part.metadata)
+      textParts.push({
+        id: part.id,
+        text: part.text,
+        synthetic: part.synthetic,
+        ignored: part.ignored,
+        metadata: comment ? createCommentMetadata(comment) : undefined,
+      })
+      continue
+    }
+    if (part.type === "file") {
+      files.push({
+        uri: part.url,
+        name: part.filename,
+        source: part.source?.text
+          ? {
+              text: part.source.text.value,
+              start: part.source.text.start,
+              end: part.source.text.end,
+            }
+          : undefined,
+      })
+      continue
+    }
+    agents.push({
       name: part.name,
       source: part.source
         ? {
@@ -275,19 +285,11 @@ export function toV2Prompt(parts: PromptRequestPart[]): PromptInput {
             end: part.source.end,
           }
         : undefined,
-    }))
+    })
+  }
   return {
-    text,
-    parts: textParts.map((part) => {
-      const comment = readCommentMetadata(part.metadata)
-      return {
-        id: part.id,
-        text: part.text,
-        synthetic: part.synthetic,
-        ignored: part.ignored,
-        metadata: comment ? createCommentMetadata(comment) : undefined,
-      }
-    }),
+    text: text.join("\n\n"),
+    parts: textParts,
     files: files.length ? files : undefined,
     agents: agents.length ? agents : undefined,
   }

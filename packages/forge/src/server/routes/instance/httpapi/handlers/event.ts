@@ -22,15 +22,17 @@ function eventID() {
   return EventV2.ID.create()
 }
 
+// A stalled subscriber must fail and reconnect, not accumulate the whole event
+// stream in process memory — the unbounded queue here was a heap-growth vector.
+const subscriberCapacity = 256
+
 function eventResponse(events: EventV2.Interface) {
   return Effect.gen(function* () {
     const instance = yield* InstanceState.context
     const workspaceID = yield* InstanceState.workspaceID
     // Listener registration is eager, so events published after this point cannot
     // be lost while the HTTP body fiber is starting or emitting server.connected.
-    const queue = yield* Queue.unbounded<EventV2.Payload>()
-    const unsubscribe = yield* events.listen((event) => Effect.sync(() => Queue.offerUnsafe(queue, event)))
-    yield* Effect.addFinalizer(() => unsubscribe)
+    const live = yield* EventV2.allBounded(events, subscriberCapacity)
     // An unlocated event cannot be routed to any instance, so the filter below
     // drops it exactly like an event belonging to another directory. That is the
     // safety property the filter exists for, but it is also indistinguishable
@@ -40,7 +42,7 @@ function eventResponse(events: EventV2.Interface) {
     // reported once per connection so a systematically unlocated event cannot
     // flood the log.
     const unlocated = new Set<string>()
-    const stream = Stream.fromQueue(queue).pipe(
+    const stream = live.pipe(
       Stream.tap((event) =>
         event.location !== undefined || unlocated.has(event.type)
           ? Effect.void
@@ -59,23 +61,26 @@ function eventResponse(events: EventV2.Interface) {
       ),
       Stream.map((event) => ({ id: event.id, type: event.type, properties: event.data })),
     )
-    const disposed = Stream.callback<{ id: string; type: string; properties: unknown }>((queue) => {
-      const listener = (event: {
-        directory?: string
-        payload: { id?: string; type?: string; properties?: unknown }
-      }) => {
-        if (event.directory !== instance.directory || event.payload.type !== "server.instance.disposed") return
-        Queue.offerUnsafe(queue, {
-          id: event.payload.id ?? eventID(),
-          type: "server.instance.disposed",
-          properties: event.payload.properties ?? {},
-        })
-      }
-      return Effect.acquireRelease(
-        Effect.sync(() => GlobalBus.on("event", listener)),
-        () => Effect.sync(() => GlobalBus.off("event", listener)),
-      )
-    })
+    const disposed = Stream.callback<{ id: string; type: string; properties: unknown }>(
+      (queue) => {
+        const listener = (event: {
+          directory?: string
+          payload: { id?: string; type?: string; properties?: unknown }
+        }) => {
+          if (event.directory !== instance.directory || event.payload.type !== "server.instance.disposed") return
+          Queue.offerUnsafe(queue, {
+            id: event.payload.id ?? eventID(),
+            type: "server.instance.disposed",
+            properties: event.payload.properties ?? {},
+          })
+        }
+        return Effect.acquireRelease(
+          Effect.sync(() => GlobalBus.on("event", listener)),
+          () => Effect.sync(() => GlobalBus.off("event", listener)),
+        )
+      },
+      { bufferSize: 16 },
+    )
     const output = stream.pipe(
       Stream.merge(disposed, { haltStrategy: "left" }),
       Stream.takeUntil((event) => event.type === "server.instance.disposed"),

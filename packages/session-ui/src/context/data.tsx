@@ -31,6 +31,7 @@ type Model = {
       [key: string]: unknown
     }
   }
+  defaultVariant?: string
 }
 
 type Provider = {

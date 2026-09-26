@@ -574,6 +574,8 @@ describe("OpenAI Chat route", () => {
   for (const [name, media] of [
     ["mismatched data URL MIME", { mediaType: "image/png", data: "data:image/jpeg;base64,/9j/" }],
     ["malformed base64", { mediaType: "image/png", data: "not-base64" }],
+    ["misplaced base64 padding", { mediaType: "image/png", data: "AA=A" }],
+    ["excess base64 padding", { mediaType: "image/png", data: "A===" }],
     ["unsupported SVG", { mediaType: "image/svg+xml", data: "PHN2Zz4=" }],
   ] as const)
     it.effect(`rejects ${name}`, () =>
@@ -600,6 +602,20 @@ describe("OpenAI Chat route", () => {
         }),
       ).pipe(Effect.flip)
       expect(error.message).toContain("encoded limit")
+    }),
+  )
+
+  it.effect("accepts large canonical base64 image data", () =>
+    Effect.gen(function* () {
+      const base64 = "AQID".repeat(2 * 1024 * 1024)
+      const media = yield* ProviderShared.validateMedia(
+        "openai-chat",
+        { type: "media", mediaType: "image/png", data: base64 },
+        new Set(["image/png"]),
+      )
+
+      expect(media.base64).toBe(base64)
+      expect(media.bytes.byteLength).toBe((base64.length / 4) * 3)
     }),
   )
 
@@ -716,6 +732,35 @@ describe("OpenAI Chat route", () => {
         { type: "text-end", id: "text-0" },
         { type: "step-finish", index: 0, reason: "stop" },
         { type: "finish", reason: "stop" },
+      ])
+    }),
+  )
+
+  it.effect("keeps OpenRouter-only reasoning fields out of the shared OpenAI Chat parser", () =>
+    Effect.gen(function* () {
+      const body = sseEvents(
+        {
+          choices: [
+            {
+              delta: {
+                reasoning_content: "thinking",
+                reasoning: "openrouter text",
+                reasoning_details: [{ type: "reasoning.encrypted", data: "opaque==" }],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: { content: "Hello" } }] },
+        { choices: [{ delta: {}, finish_reason: "stop" }] },
+      )
+
+      const response = yield* LLMClient.generate(request).pipe(Effect.provide(fixedResponse(body)))
+
+      // DeepSeek-style routes read only `reasoning_content` and never attach provider metadata.
+      expect(response.reasoning).toBe("thinking")
+      expect(response.message.content).toEqual([
+        { type: "reasoning", text: "thinking" },
+        { type: "text", text: "Hello" },
       ])
     }),
   )

@@ -285,7 +285,17 @@ function withContext<A, E>(
           todos: (sessionID, todos) => run(modules.Todo.Service.use((svc) => svc.update({ sessionID, todos }))),
           worktree: (input) => run(modules.Worktree.Service.use((svc) => svc.create(input).pipe(Effect.orDie))),
           worktreeRemove: (directory) =>
-            run(modules.Worktree.Service.use((svc) => svc.remove({ directory })).pipe(Effect.ignore)),
+            run(
+              modules.InstanceStore.Service.use((store) => store.load({ directory })).pipe(
+                // Settle the load that `create` forked before removing — removing
+                // mid-boot races disposeDirectory's Deferred.await against the
+                // in-flight bootstrap.
+                Effect.ignore,
+                Effect.andThen(
+                  modules.Worktree.Service.use((svc) => svc.remove({ directory })).pipe(Effect.ignore),
+                ),
+              ),
+            ),
         }
         yield* trace(options, scenario, `${label} seed start`)
         const state = yield* scenario.seed(base)

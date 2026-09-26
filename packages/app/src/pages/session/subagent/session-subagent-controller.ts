@@ -14,6 +14,7 @@ import {
 
 const SUBAGENT_TOOLS = new Set([
   "spawn_agent",
+  "spawn_agents",
   "send_agent",
   "wait_agents",
   "interrupt_agent",
@@ -54,6 +55,7 @@ export function createSessionSubagentController(input: { sessionID: Accessor<str
       agent: task.agent,
       model: task.model,
       description: task.description,
+      wave: task.wave,
       depth: task.depth,
       status: task.status,
       revision: task.revision,

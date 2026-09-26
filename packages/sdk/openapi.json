@@ -506,6 +506,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/effect_HttpApiError_Forbidden"
+                }
+              }
+            }
           }
         },
         "description": "Enable or disable prompts for tool actions configured as Ask. Explicit denies remain enforced.",
@@ -5530,6 +5540,69 @@
         ]
       }
     },
+    "/provider/{providerID}": {
+      "delete": {
+        "tags": ["provider"],
+        "operationId": "provider.remove",
+        "parameters": [
+          {
+            "name": "providerID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Provider removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean",
+                  "description": "Provider removed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Remove a provider's stored credentials and configured entries, and disable it until it is set up again.",
+        "summary": "Remove a provider",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.provider.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/provider/{providerID}/oauth/callback": {
       "post": {
         "tags": ["provider"],
@@ -5782,6 +5855,16 @@
                       "$ref": "#/components/schemas/InvalidRequestError"
                     }
                   ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -6061,12 +6144,32 @@
               }
             }
           },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "InternalServerError",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/effect_HttpApiError_InternalServerError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
                 }
               }
             }
@@ -6424,11 +6527,28 @@
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "BadRequest | InvalidRequestError",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/effect_HttpApiError_BadRequest"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -7084,6 +7204,16 @@
                       "$ref": "#/components/schemas/InvalidRequestError"
                     }
                   ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -13712,6 +13842,202 @@
         ]
       }
     },
+    "/api/session/{sessionID}/input/{messageID}/steer": {
+      "post": {
+        "tags": ["sessions"],
+        "operationId": "v2.session.inputSteer",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "messageID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg_"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Upgrade one admitted queue-delivered input to steer delivery so it promotes ahead of queued inputs at the next provider-turn boundary.",
+        "summary": "Steer a queued session input",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.session.inputSteer({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/session/{sessionID}/input/{messageID}/cancel": {
+      "post": {
+        "tags": ["sessions"],
+        "operationId": "v2.session.inputCancel",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "messageID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg_"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Cancel one admitted input that has not yet been promoted into the projected transcript.",
+        "summary": "Cancel a pending session input",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createForgeClient } from \"@turenlabs/sdk\"\n\nconst client = createForgeClient()\nawait client.v2.session.inputCancel({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/api/session/{sessionID}/history": {
       "get": {
         "tags": ["sessions"],
@@ -18267,6 +18593,24 @@
               "type": "string"
             },
             "required": false
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["publishedAt", "severity", "cvss", "source", "title"]
+            },
+            "required": false
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            },
+            "required": false
           }
         ],
         "security": [],
@@ -18332,6 +18676,24 @@
               "type": "string"
             },
             "required": false
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["cveID", "name", "vendor", "dateAdded", "dueDate"]
+            },
+            "required": false
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            },
+            "required": false
           }
         ],
         "security": [],
@@ -18395,6 +18757,24 @@
             "in": "query",
             "schema": {
               "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["source", "title", "publishedAt"]
+            },
+            "required": false
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
             },
             "required": false
           }
@@ -19669,6 +20049,9 @@
           },
           {
             "$ref": "#/components/schemas/EventGlobalDisposed"
+          },
+          {
+            "$ref": "#/components/schemas/EventConfigUpdated"
           },
           {
             "$ref": "#/components/schemas/EventServerInstanceDisposed"
@@ -25180,6 +25563,25 @@
                 "additionalProperties": false
               },
               {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["config.updated"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {}
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
                 "$ref": "#/components/schemas/EventServerInstanceDisposed"
               },
               {
@@ -26113,6 +26515,17 @@
         "required": ["enforced"],
         "additionalProperties": false
       },
+      "effect_HttpApiError_Forbidden": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["Forbidden"]
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      },
       "McpRuntimeLocalProcess": {
         "type": "object",
         "properties": {
@@ -26796,6 +27209,9 @@
             "additionalProperties": {
               "type": "object"
             }
+          },
+          "defaultVariant": {
+            "type": "string"
           }
         },
         "required": [
@@ -27111,6 +27527,38 @@
             "required": ["visible", "capabilities", "loaded", "notLoaded"],
             "additionalProperties": false
           },
+          "deferred": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "selected": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["name", "description", "selected"],
+                  "additionalProperties": false
+                }
+              },
+              "loaded": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["available", "loaded"],
+            "additionalProperties": false
+          },
           "exclusions": {
             "type": "array",
             "items": {
@@ -27130,6 +27578,7 @@
           "visible",
           "mcpServers",
           "broker",
+          "deferred",
           "exclusions"
         ],
         "additionalProperties": false
@@ -28968,6 +29417,10 @@
             "type": "string",
             "maxLength": 120
           },
+          "wave": {
+            "type": "string",
+            "maxLength": 64
+          },
           "depth": {
             "type": "integer",
             "minimum": 0
@@ -29176,6 +29629,10 @@
           "description": {
             "type": "string",
             "maxLength": 120
+          },
+          "wave": {
+            "type": "string",
+            "maxLength": 64
           },
           "depth": {
             "type": "integer",
@@ -30190,6 +30647,9 @@
           },
           {
             "$ref": "#/components/schemas/GlobalDisposed"
+          },
+          {
+            "$ref": "#/components/schemas/ConfigUpdated"
           }
         ]
       },
@@ -30361,17 +30821,6 @@
         "required": ["_tag", "sessionID", "expectedRevision", "actualRevision", "message"],
         "additionalProperties": false
       },
-      "effect_HttpApiError_Forbidden": {
-        "type": "object",
-        "properties": {
-          "_tag": {
-            "type": "string",
-            "enum": ["Forbidden"]
-          }
-        },
-        "required": ["_tag"],
-        "additionalProperties": false
-      },
       "ConnectionInfo": {
         "anyOf": [
           {
@@ -30526,7 +30975,7 @@
           "count": {
             "type": "integer",
             "minimum": 2,
-            "maximum": 50
+            "maximum": 2000
           },
           "explicitCount": {
             "type": "boolean"
@@ -31181,6 +31630,10 @@
           "toolCallID": {
             "type": "string",
             "maxLength": 256
+          },
+          "item": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": ["sessionID", "assistantMessageID", "toolCallID"],
@@ -31188,7 +31641,7 @@
       },
       "SessionTaskStatus": {
         "type": "string",
-        "enum": ["starting", "running", "completed", "failed", "cancelled", "interrupted"]
+        "enum": ["queued", "starting", "running", "completed", "failed", "cancelled", "interrupted"]
       },
       "PermissionV2Effect": {
         "type": "string",
@@ -31260,6 +31713,10 @@
               "maxLength": 65536
             },
             "maxItems": 32
+          },
+          "orchestrate": {
+            "type": "boolean",
+            "enum": [true]
           }
         },
         "required": [
@@ -31346,6 +31803,10 @@
           "description": {
             "type": "string",
             "maxLength": 120
+          },
+          "wave": {
+            "type": "string",
+            "maxLength": 64
           },
           "depth": {
             "type": "integer",
@@ -34940,6 +35401,15 @@
           },
           "required": {
             "type": "boolean"
+          },
+          "default": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": ["id", "label", "required"],
@@ -35088,6 +35558,74 @@
               }
             },
             "required": ["type", "command", "platforms"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["managed"]
+              },
+              "package": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "cutoff": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "platforms": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["darwin", "linux", "win32"]
+                }
+              },
+              "environment": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "configuration": {
+                          "type": "string",
+                          "pattern": "^[a-z][A-Za-z0-9]*$"
+                        }
+                      },
+                      "required": ["configuration"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "secret": {
+                          "type": "string",
+                          "pattern": "^[A-Z][A-Z0-9_]*$"
+                        }
+                      },
+                      "required": ["secret"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["type", "package", "version", "cutoff", "command", "platforms"],
             "additionalProperties": false
           },
           {
@@ -35285,6 +35823,12 @@
           "defaultEnabled": {
             "type": "boolean"
           },
+          "endpoints": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
           "tools": {
             "$ref": "#/components/schemas/ExtensionToolPolicy"
           }
@@ -35298,6 +35842,7 @@
           "adapter",
           "secrets",
           "defaultEnabled",
+          "endpoints",
           "tools"
         ],
         "additionalProperties": false
@@ -35511,9 +36056,6 @@
             "type": "string"
           },
           "installed": {
-            "type": "boolean"
-          },
-          "updateAvailable": {
             "type": "boolean"
           },
           "secretsSet": {
@@ -43060,6 +43602,47 @@
         "required": ["id", "type", "data"],
         "additionalProperties": false
       },
+      "ConfigUpdated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["config.updated"]
+          },
+          "durable": {
+            "type": "object",
+            "properties": {
+              "aggregateID": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": ["aggregateID", "seq", "version"],
+            "additionalProperties": false
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          },
+          "data": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        "required": ["id", "type", "data"],
+        "additionalProperties": false
+      },
       "QuestionV2Request": {
         "type": "object",
         "properties": {
@@ -48736,6 +49319,25 @@
           "type": {
             "type": "string",
             "enum": ["global.disposed"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
+      "EventConfigUpdated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["config.updated"]
           },
           "properties": {
             "type": "object",

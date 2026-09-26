@@ -54,9 +54,21 @@ export function resolveModelVariant(input: VariantInput) {
   return undefined
 }
 
+/**
+ * The level the user explicitly chose, or undefined when the turn follows the inherited default
+ * (the agent's pinned variant, else whatever the server applies when none is sent).
+ */
+export function explicitModelVariant(input: VariantInput & { saved: string | undefined }) {
+  if (input.selected && input.variants.includes(input.selected)) return input.selected
+  if (input.selected === null) return undefined
+  // A pinned agent variant outranks the level remembered for this model.
+  if (input.configured && input.variants.includes(input.configured)) return undefined
+  if (input.saved && input.variants.includes(input.saved)) return input.saved
+  return undefined
+}
+
 export function resolveEffectiveModelVariant(input: VariantInput & { saved: string | undefined }) {
-  if (input.selected === null) return resolveModelVariant(input)
-  return resolveModelVariant(input) ?? (input.saved && input.variants.includes(input.saved) ? input.saved : undefined)
+  return explicitModelVariant(input) ?? resolveModelVariant({ ...input, selected: undefined })
 }
 
 export function cycleModelVariant(input: VariantInput) {

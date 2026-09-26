@@ -5,7 +5,7 @@ import { render as renderEndpoint } from "../endpoint"
 import { Framing, type Framing as FramingDef } from "../framing"
 import type { Transport, TransportPrepareInput } from "./index"
 import * as ProviderShared from "../../protocols/shared"
-import { mergeJsonRecords, type LLMRequest } from "../../schema"
+import { LLMError, TransportReason, mergeJsonRecords, type LLMRequest } from "../../schema"
 import { redactUrl } from "../executor"
 
 export type JsonRequestInput<Body> = TransportPrepareInput<Body>
@@ -133,18 +133,42 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
       Effect.gen(function* () {
         const execute = runtime.http.execute(prepared.request)
         const redirect = request.http?.redirect
-        const response = redirect
-          ? yield* Effect.serviceOption(FetchHttpClient.RequestInit).pipe(
-              Effect.flatMap((init) =>
-                execute.pipe(
-                  Effect.provideService(FetchHttpClient.RequestInit, {
-                    ...Option.getOrElse(init, () => ({})),
-                    redirect,
-                  }),
+        // A stalled provider must fail into the retry path instead of hanging the Session. The
+        // same limit covers the wait for response headers and every gap between body chunks, and
+        // the failure is a retryable Transport error, like a dropped connection. Unset (the default
+        // for routes that do not declare one) means no limit.
+        const idleTimeoutMs = request.http?.idleTimeoutMs
+        const idleError = (phase: string) =>
+          new LLMError({
+            module: "HttpTransport",
+            method: "frames",
+            reason: new TransportReason({
+              message: `No ${phase} from ${request.model.provider}/${request.model.route.id} for ${idleTimeoutMs}ms`,
+              kind: "Timeout",
+              url: redactUrl(prepared.request.url),
+            }),
+          })
+        const response = yield* (
+          redirect
+            ? Effect.serviceOption(FetchHttpClient.RequestInit).pipe(
+                Effect.flatMap((init) =>
+                  execute.pipe(
+                    Effect.provideService(FetchHttpClient.RequestInit, {
+                      ...Option.getOrElse(init, () => ({})),
+                      redirect,
+                    }),
+                  ),
                 ),
-              ),
-            )
-          : yield* execute
+              )
+            : execute
+        ).pipe(
+          idleTimeoutMs === undefined
+            ? (effect) => effect
+            : Effect.timeoutOrElse({
+                duration: idleTimeoutMs,
+                orElse: () => Effect.fail(idleError("response headers")),
+              }),
+        )
         return prepared.framing.frame(
           response.stream.pipe(
             Stream.mapError((error) =>
@@ -154,6 +178,12 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
                 ProviderShared.describeError(error).replaceAll(prepared.request.url, redactUrl(prepared.request.url)),
               ),
             ),
+            idleTimeoutMs === undefined
+              ? (stream) => stream
+              : Stream.timeoutOrElse({
+                  duration: idleTimeoutMs,
+                  orElse: () => Stream.fail(idleError("stream data")),
+                }),
           ),
         )
       }),

@@ -10,7 +10,7 @@ export type ModelSelectionDisplay = {
 }
 
 const effort = {
-  default: { label: "Automatic", description: "Use the model's configured behavior" },
+  default: { label: "Default", description: "No level sent; the provider decides" },
   none: { label: "None", description: "Disable extra reasoning" },
   minimal: { label: "Minimal", description: "Very light reasoning for quick tasks" },
   low: { label: "Light", description: "Quick questions and small edits" },

@@ -11,6 +11,7 @@ import { hasCustomAgent, resolveAgent } from "./local-agent"
 import {
   carryModelVariant,
   cycleModelVariant,
+  explicitModelVariant,
   getConfiguredAgentVariant,
   resolveEffectiveModelVariant,
   resolveModelVariant,
@@ -378,6 +379,30 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       variant: {
         configured,
         selected,
+        /**
+         * The level a turn runs at when nothing is selected: the agent's pinned variant, else the
+         * catalog default the runner applies server-side. Undefined means no reasoning setting is
+         * sent and the provider's own default applies.
+         */
+        inherited() {
+          const fallback = current()?.defaultVariant
+          return this.configured() ?? (fallback && this.list().includes(fallback) ? fallback : undefined)
+        },
+        explicit() {
+          return explicitModelVariant({
+            variants: this.list(),
+            selected: this.selected(),
+            configured: this.configured(),
+            saved: this.remembered(),
+          })
+        },
+        /** The level last chosen manually for this model, if it still publishes it. */
+        remembered() {
+          const model = current()
+          if (!model) return
+          const saved = models.variant.get({ providerID: model.provider.id, modelID: model.id })
+          return saved && this.list().includes(saved) ? saved : undefined
+        },
         current() {
           const model = current()
           return resolveEffectiveModelVariant({
@@ -410,6 +435,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             }),
           )
         },
+        /**
+         * Follows the inherited default for this Session. The level remembered for the model is
+         * kept so switching back to manual restores it; `null` stops that memory applying here.
+         */
         inherit() {
           startTransition(() =>
             batch(() => {
@@ -418,10 +447,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
                 type: "variant",
                 agent: agent.current()?.name,
                 model: model ? { providerID: model.provider.id, modelID: model.id } : null,
-                variant: undefined,
+                variant: null,
               })
-              write({ variant: undefined })
-              if (model) models.variant.set({ providerID: model.provider.id, modelID: model.id }, undefined)
+              write({ variant: null })
             }),
           )
         },

@@ -501,7 +501,7 @@ const lowerMessages = Effect.fn("AnthropicMessages.lowerMessages")(function* (
 
 const anthropicOptions = (request: LLMRequest) => request.providerOptions?.anthropic
 
-const lowerThinking = Effect.fn("AnthropicMessages.lowerThinking")(function* (request: LLMRequest) {
+const lowerThinking = Effect.fn("AnthropicMessages.lowerThinking")(function* (request: LLMRequest, maxTokens: number) {
   const thinking = anthropicOptions(request)?.thinking
   if (!ProviderShared.isRecord(thinking)) return undefined
   if (thinking.type === "adaptive") {
@@ -520,6 +520,10 @@ const lowerThinking = Effect.fn("AnthropicMessages.lowerThinking")(function* (re
         ? thinking.budget_tokens
         : undefined
   if (budget === undefined) return yield* invalid("Anthropic thinking provider option requires budgetTokens")
+  // Anthropic rejects a budget that is not below max_tokens. Short internal calls (titles,
+  // compaction) cap output well under a variant's budget; shrinking the budget to fit would leave
+  // too little room for the answer itself, so run those calls without extended thinking instead.
+  if (budget >= maxTokens) return undefined
   return { type: "enabled" as const, budget_tokens: budget }
 })
 
@@ -567,6 +571,7 @@ const fromRequest = Effect.fn("AnthropicMessages.fromRequest")(function* (reques
       `Anthropic Messages: dropped ${breakpoints.dropped} cache breakpoint(s); the API allows at most ${ANTHROPIC_BREAKPOINT_CAP} per request.`,
     )
   }
+  const maxTokens = generation?.maxTokens ?? outputLimit
   return {
     model: request.model.id,
     system,
@@ -574,12 +579,12 @@ const fromRequest = Effect.fn("AnthropicMessages.fromRequest")(function* (reques
     tools,
     tool_choice: toolChoice,
     stream: true as const,
-    max_tokens: generation?.maxTokens ?? outputLimit,
+    max_tokens: maxTokens,
     temperature: generation?.temperature,
     top_p: generation?.topP,
     top_k: generation?.topK,
     stop_sequences: generation?.stop,
-    thinking: yield* lowerThinking(request),
+    thinking: yield* lowerThinking(request, maxTokens),
     output_config: yield* lowerOutputConfig(request),
   }
 })

@@ -41,7 +41,6 @@ export const dict = {
   "command.language.set": "언어 사용: {{language}}",
   "command.session.new": "새 세션",
   "command.tab.new": "새 탭",
-  "tab.desktop": "데스크톱",
   "command.file.open": "파일 열기",
   "command.tab.close": "탭 닫기",
   "command.context.addSelection": "선택 영역을 컨텍스트에 추가",

@@ -319,18 +319,21 @@ const layer = Layer.effect(
     const compactionSummarizer = Effect.fnUntraced(function* (sessionID: SessionSchema.ID) {
       const selection = yield* agents.select(AgentV2.ID.make("compaction"))
       const override = selection.info?.model
-      const session = override ? yield* store.get(sessionID) : undefined
-      const resolved =
-        override && session
-          ? yield* models.resolve({ ...session, model: override }, selection.info?.request).pipe(
+      const session = yield* store.get(sessionID)
+      // Resolved even without an override: the turn's model carries the model's default reasoning
+      // level, which would spend the summary's small output cap on thinking.
+      const resolved = session
+        ? yield* models
+            .resolve(override ? { ...session, model: override } : session, selection.info?.request, {
+              defaultVariant: false,
+            })
+            .pipe(
               Effect.catch((error) =>
-                Effect.logWarning(
-                  "Configured compaction model is unavailable; summarising with the session model",
-                ).pipe(
+                Effect.logWarning("Compaction model is unavailable; summarising with the session model").pipe(
                   Effect.annotateLogs({
                     sessionID,
-                    providerID: override.providerID,
-                    modelID: override.id,
+                    providerID: override?.providerID ?? session.model?.providerID,
+                    modelID: override?.id ?? session.model?.id,
                     error: ToolVisibleError.make(error),
                   }),
                   Effect.as(undefined),
@@ -338,7 +341,7 @@ const layer = Layer.effect(
               ),
               Effect.catchDefect(() => Effect.succeed(undefined)),
             )
-          : undefined
+        : undefined
       return { model: resolved?.model, system: selection.info?.system } satisfies SessionCompaction.Summarizer
     })
     const compaction = SessionCompaction.make({

@@ -70,11 +70,12 @@ export namespace Timeline {
     const interrupted = interruptedMessageIndex !== -1
     const error = assistantMessages.find((m) => m.error && m.error.name !== "MessageAbortedError")?.error
 
-    const assistantPartRefs = assistantMessages.flatMap((message, messageIndex) =>
-      getMessageParts(message.id)
-        .filter((part) => renderable(part, showReasoning))
-        .map((part) => ({ messageID: message.id, messageIndex, part })),
-    )
+    const assistantPartRefs: Array<{ messageID: string; messageIndex: number; part: Part }> = []
+    assistantMessages.forEach((message, messageIndex) => {
+      getMessageParts(message.id).forEach((part) => {
+        if (renderable(part, showReasoning)) assistantPartRefs.push({ messageID: message.id, messageIndex, part })
+      })
+    })
     const assistantItems =
       interrupted && !compaction
         ? [

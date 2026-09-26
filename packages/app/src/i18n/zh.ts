@@ -57,7 +57,6 @@ export const dict = {
 
   "command.session.new": "新建会话",
   "command.tab.new": "新建标签页",
-  "tab.desktop": "桌面",
 
   "command.file.open": "打开文件",
 

@@ -4,5 +4,6 @@ import { Event } from "./event"
 
 export const Connected = Event.define({ type: "server.connected", schema: {} })
 export const Disposed = Event.define({ type: "global.disposed", schema: {} })
+export const ConfigUpdated = Event.define({ type: "config.updated", schema: {} })
 
-export const Definitions = Event.inventory(Connected, Disposed)
+export const Definitions = Event.inventory(Connected, Disposed, ConfigUpdated)

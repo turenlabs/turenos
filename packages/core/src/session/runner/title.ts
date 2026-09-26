@@ -106,7 +106,7 @@ export const make = (dependencies: Dependencies): Interface => {
             model: { id: session.model.id, providerID: session.model.providerID },
           }
         : session
-    const resolved = yield* dependencies.models.resolve(titleSession, selection.info.request)
+    const resolved = yield* dependencies.models.resolve(titleSession, selection.info.request, { defaultVariant: false })
     // `generate`, not `stream`: nobody is watching a title arrive, and one awaited response is one
     // fewer thing that can stall half-consumed. No tools are offered, which matches the agent's
     // ruleset and removes any chance of this turning into a loop.

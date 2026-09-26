@@ -217,6 +217,12 @@ export const layer = Layer.effect(
         ) {
           return yield* invalid(id, "Customer endpoint is invalid")
         }
+        if (
+          input.configuration?.writeTools !== undefined &&
+          !["", "enabled"].includes(input.configuration.writeTools)
+        ) {
+          return yield* invalid(id, "Write tool access must be enabled or cleared")
+        }
 
         const declared = new Set(declaredSecrets(manifest).map((item) => item.id))
         const undeclaredSecret = Object.keys(input.secrets ?? {}).find((name) => !declared.has(name))
@@ -409,6 +415,10 @@ function configurationFields(contribution: Extension.Contribution) {
     return [
       ...(contribution.configuration ?? []).map((field) => String(field.id)),
       ...(contribution.deployment.type === "customer-url" ? ["endpoint"] : []),
+      // Managed MCP write tools stay hidden until the user opts in through this platform-owned key.
+      ...(contribution.adapter === `mcp:${contribution.id}` && contribution.tools.write.length > 0
+        ? ["writeTools"]
+        : []),
     ]
   }
   return []

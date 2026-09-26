@@ -13,6 +13,8 @@ export type LoopCommand = {
 export type LoopCommandResult =
   | { type: "none" }
   | { type: "invalid"; message: string }
+  | { type: "manage" }
+  | { type: "stop" }
   | { type: "loop"; value: LoopCommand }
 
 export type AutomationCommandResult =
@@ -22,12 +24,18 @@ export type AutomationCommandResult =
 
 const UNIT_SECONDS = { s: 1, m: 60, h: 3_600, d: 86_400 } as const
 
-/** Parses the deterministic `/loop <interval> <prompt>` grammar for in-session autonomous loops. */
+/** Parses the deterministic `/loop` grammar: bare or `list` opens loop management, `stop` pauses
+ *  the project's active loop, and `/loop <interval> <prompt>` creates one. */
 export function parseLoopCommand(text: string): LoopCommandResult {
   if (text !== "/loop" && !text.startsWith("/loop ")) return { type: "none" }
 
-  const match = text.match(/^\/loop ([1-9]\d*)([smhd]) (\S[\s\S]*)$/)
-  if (!match) return { type: "invalid", message: "Use /loop <integer><s|m|h|d> <prompt>" }
+  const rest = text.slice("/loop".length).trim()
+  if (rest === "" || rest === "list") return { type: "manage" }
+  if (rest === "stop") return { type: "stop" }
+
+  const match = rest.match(/^([1-9]\d*)([smhd]) (\S[\s\S]*)$/)
+  if (!match)
+    return { type: "invalid", message: "Use /loop <integer><s|m|h|d> <prompt>, or /loop to manage loops" }
 
   const intervalSeconds = Number(match[1]) * UNIT_SECONDS[match[2] as keyof typeof UNIT_SECONDS]
   if (!Number.isSafeInteger(intervalSeconds)) return { type: "invalid", message: "The loop interval is too large" }

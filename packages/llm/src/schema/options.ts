@@ -55,6 +55,13 @@ export class HttpOptions extends Schema.Class<HttpOptions>("LLM.HttpOptions")({
   headers: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   query: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   redirect: Schema.optional(Schema.Literals(["error", "follow", "manual"])),
+  /**
+   * Longest silence, in milliseconds, the HTTP transport accepts before failing the request with a
+   * retryable `Transport` error of kind `Timeout`: first while waiting for response headers, then
+   * between response body chunks. SSE comments are body bytes, so provider keepalives count as
+   * activity. Unset means no idle limit.
+   */
+  idleTimeoutMs: Schema.optional(Schema.Number),
 }) {}
 
 export namespace HttpOptions {
@@ -69,8 +76,9 @@ export const mergeHttpOptions = (...items: ReadonlyArray<HttpOptions | undefined
   const headers = mergeStringRecords(...items.map((item) => item?.headers))
   const query = mergeStringRecords(...items.map((item) => item?.query))
   const redirect = items.findLast((item) => item?.redirect !== undefined)?.redirect
-  if (!body && !headers && !query && !redirect) return undefined
-  return new HttpOptions({ body, headers, query, redirect })
+  const idleTimeoutMs = items.findLast((item) => item?.idleTimeoutMs !== undefined)?.idleTimeoutMs
+  if (!body && !headers && !query && !redirect && idleTimeoutMs === undefined) return undefined
+  return new HttpOptions({ body, headers, query, redirect, idleTimeoutMs })
 }
 
 export class GenerationOptions extends Schema.Class<GenerationOptions>("LLM.GenerationOptions")({

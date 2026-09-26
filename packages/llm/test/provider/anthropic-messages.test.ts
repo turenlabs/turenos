@@ -76,6 +76,48 @@ describe("Anthropic Messages route", () => {
     }),
   )
 
+  it.effect("keeps a thinking budget that fits under max_tokens", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare(
+        LLM.updateRequest(request, {
+          generation: { maxTokens: 32_000 },
+          providerOptions: { anthropic: { thinking: { type: "enabled", budgetTokens: 16_000 } } },
+        }),
+      )
+
+      expect(prepared.body).toMatchObject({ max_tokens: 32_000, thinking: { type: "enabled", budget_tokens: 16_000 } })
+    }),
+  )
+
+  // Anthropic rejects budget_tokens >= max_tokens. Internal calls (titles, compaction) cap output
+  // far below a variant's budget; squeezing thinking into that cap would starve the answer itself.
+  it.effect("drops a thinking budget that does not fit under max_tokens", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(
+        LLM.updateRequest(request, {
+          generation: { maxTokens: 2_048 },
+          providerOptions: { anthropic: { thinking: { type: "enabled", budgetTokens: 16_000 } } },
+        }),
+      )
+
+      expect(prepared.body.max_tokens).toBe(2_048)
+      expect(prepared.body.thinking).toBeUndefined()
+    }),
+  )
+
+  it.effect("drops a thinking budget equal to max_tokens", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(
+        LLM.updateRequest(request, {
+          generation: { maxTokens: 4_096 },
+          providerOptions: { anthropic: { thinking: { type: "enabled", budget_tokens: 4_096 } } },
+        }),
+      )
+
+      expect(prepared.body.thinking).toBeUndefined()
+    }),
+  )
+
   it.effect("lowers chronological system updates natively for Claude Opus 4.8 with cache hints", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(

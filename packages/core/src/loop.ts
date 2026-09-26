@@ -222,6 +222,7 @@ export interface Interface {
     readonly id: RunID
     readonly loopID?: ID
   }) => Effect.Effect<Run, NotFoundError | RunNotFoundError | InvalidStateError>
+  readonly cancelRunForSession: (sessionID: string) => Effect.Effect<boolean>
   readonly listRuns: (loopID: ID) => Effect.Effect<ReadonlyArray<Run>, NotFoundError>
   readonly getRun: (input: {
     readonly id: RunID
@@ -811,6 +812,18 @@ const layer = Layer.effect(
       return toRun(row)
     })
 
+    const cancelRunForSession = Effect.fn("Loop.cancelRunForSession")(function* (sessionID: string) {
+      const now = Date.now()
+      const rows = yield* db
+        .update(LoopRunTable)
+        .set({ status: "cancelled", lease_owner: null, lease_expires_at: null, time_updated: now, time_completed: now })
+        .where(and(eq(LoopRunTable.session_id, sessionID), inArray(LoopRunTable.status, ["claimed", "running"])))
+        .returning({ id: LoopRunTable.id })
+        .all()
+        .pipe(Effect.orDie)
+      return rows.length > 0
+    })
+
     const listRuns = Effect.fn("Loop.listRuns")(function* (loopID: ID) {
       yield* get(loopID)
       const rows = yield* db
@@ -991,6 +1004,7 @@ const layer = Layer.effect(
       runNow,
       fireEvent,
       cancelRun,
+      cancelRunForSession,
       listRuns,
       getRun: findRun,
       claimDue,

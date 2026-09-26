@@ -4,6 +4,7 @@ import type { ModelKey, ModelSelection } from "@/context/local"
 import {
   carryModelVariant,
   cycleModelVariant,
+  explicitModelVariant,
   getConfiguredAgentVariant,
   resolveEffectiveModelVariant,
   resolveModelVariant,
@@ -133,6 +134,25 @@ export function createPromptModelSelection(input: { agent: () => { model?: Model
       selected() {
         return prompt.model.current()?.variant
       },
+      /** See `useLocal().model.variant.inherited`. */
+      inherited() {
+        const fallback = current()?.defaultVariant
+        return this.configured() ?? (fallback && this.list().includes(fallback) ? fallback : undefined)
+      },
+      explicit() {
+        return explicitModelVariant({
+          variants: this.list(),
+          selected: this.selected(),
+          configured: this.configured(),
+          saved: this.remembered(),
+        })
+      },
+      remembered() {
+        const model = current()
+        if (!model) return
+        const saved = models.variant.get({ providerID: model.provider.id, modelID: model.id })
+        return saved && this.list().includes(saved) ? saved : undefined
+      },
       current() {
         const model = current()
         return resolveEffectiveModelVariant({
@@ -161,8 +181,8 @@ export function createPromptModelSelection(input: { agent: () => { model?: Model
           batch(() => {
             const model = current()
             if (!model) return
-            prompt.model.set({ providerID: model.provider.id, modelID: model.id, variant: undefined })
-            models.variant.set({ providerID: model.provider.id, modelID: model.id }, undefined)
+            // Keep the remembered level so switching back to manual restores it.
+            prompt.model.set({ providerID: model.provider.id, modelID: model.id, variant: null })
           }),
         )
       },

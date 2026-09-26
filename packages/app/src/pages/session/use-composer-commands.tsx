@@ -112,6 +112,13 @@ export const useComposerCommands = (input: { model?: ModelSelection; goal?: { to
             slash: "automation",
             slashArguments: true,
           }),
+          sessionCommand({
+            id: "loop.manage",
+            title: "Create or manage loops",
+            description: "Usage: /loop <integer><s|m|h|d> <prompt>, /loop stop, or /loop to manage",
+            slash: "loop",
+            slashArguments: true,
+          }),
         ]
       : []),
     ...(input.goal
@@ -121,14 +128,6 @@ export const useComposerCommands = (input: { model?: ModelSelection; goal?: { to
             title: language.t("command.session.goal"),
             description: language.t("command.session.goal.description"),
             slash: "goal",
-            slashArguments: true,
-            onSelect: input.goal.toggle,
-          }),
-          sessionCommand({
-            id: "loop.start",
-            title: language.t("command.session.loop"),
-            description: language.t("command.session.loop.description"),
-            slash: "loop",
             slashArguments: true,
             onSelect: input.goal.toggle,
           }),

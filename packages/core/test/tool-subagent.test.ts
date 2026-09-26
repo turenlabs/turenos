@@ -1062,7 +1062,7 @@ describe("SubagentTool", () => {
     }),
   )
 
-  it.effect("fails the spawn past the configured concurrency limit with an actionable message", () =>
+  it.effect("queues the spawn past the configured concurrency limit instead of failing it", () =>
     Effect.gen(function* () {
       const session = yield* setup("limit")
       maxConcurrent = 2
@@ -1082,19 +1082,68 @@ describe("SubagentTool", () => {
           },
         })
 
-      // The configured ceiling is two, so a third spawn failing here can only
+      // The configured ceiling is two, so a third spawn queuing here can only
       // come from the configured value.
       expect((yield* spawn(calls[0]!)).result.type).not.toBe("error")
       expect((yield* spawn(calls[1]!)).result.type).not.toBe("error")
-      const rejected = yield* spawn(calls[2]!)
+      const queued = yield* spawn(calls[2]!)
 
-      expect(rejected.result).toEqual({
-        type: "error",
-        value:
-          "Active subagent limit reached: 2 of 2 concurrent subagents are already running for this session. " +
-          `Call ${SubagentTool.waitName} on the running children, then spawn the next wave.`,
+      expect(queued.result).toMatchObject({ type: "json", value: { task: { status: "queued" } } })
+      expect(yield* (yield* SessionTaskV2.Service).list({ parentSessionID: session.id })).toHaveLength(3)
+    }),
+  )
+
+  it.effect("preserves wave-interrupt item identities when retrying after a partial commit", () =>
+    Effect.gen(function* () {
+      const session = yield* setup("wave_interrupt_retry")
+      const tools = yield* materialize(session.id, SessionExecutionControl.noop)
+      const spawnMessageID = yield* assistant(session.id, "wave_interrupt_retry_spawn", SubagentTool.spawnBatchName, [
+        "call-wave-interrupt-retry-spawn",
+      ])
+      yield* settle(tools, {
+        sessionID: session.id,
+        assistantMessageID: spawnMessageID,
+        id: "call-wave-interrupt-retry-spawn",
+        name: SubagentTool.spawnBatchName,
+        value: {
+          wave: "retry-wave",
+          items: [
+            { agent: "explore", description: "First wave task", prompt: "Handle the first slice." },
+            { agent: "explore", description: "Second wave task", prompt: "Handle the second slice." },
+          ],
+        },
       })
-      expect(yield* (yield* SessionTaskV2.Service).list({ parentSessionID: session.id })).toHaveLength(2)
+
+      const tasks = yield* SessionTaskV2.Service
+      const wave = yield* tasks.list({ parentSessionID: session.id, wave: "retry-wave" })
+      expect(wave).toHaveLength(2)
+      const interruptMessageID = yield* assistant(
+        session.id,
+        "wave_interrupt_retry_interrupt",
+        SubagentTool.interruptName,
+        ["call-wave-interrupt-retry"],
+      )
+      const first = yield* tasks.interrupt({
+        actor: SessionTaskV2.Actor.make({
+          sessionID: session.id,
+          assistantMessageID: interruptMessageID,
+          toolCallID: "call-wave-interrupt-retry",
+          item: 0,
+        }),
+        taskID: wave[0]!.id,
+      })
+      yield* tasks.completeInterrupt(first.operation.id)
+
+      const retried = yield* settle(tools, {
+        sessionID: session.id,
+        assistantMessageID: interruptMessageID,
+        id: "call-wave-interrupt-retry",
+        name: SubagentTool.interruptName,
+        value: { wave: "retry-wave" },
+      })
+      expect(retried.result).toMatchObject({ type: "json", value: { interrupted: 1, remaining: 0 } })
+      expect(yield* tasks.get(wave[0]!.id)).toMatchObject({ status: "cancelled" })
+      expect(yield* tasks.get(wave[1]!.id)).toMatchObject({ status: "cancelled" })
     }),
   )
 
@@ -1481,7 +1530,7 @@ describe("SubagentTool", () => {
       expect(followup.result.type).not.toBe("error")
 
       const invalid = yield* setup("swarm_invalid")
-      yield* admitPrompt(invalid, "swarm_invalid", "@swarm 99 audit everything")
+      yield* admitPrompt(invalid, "swarm_invalid", "@swarm 2001 audit everything")
       const invalidMessageID = yield* assistant(invalid.id, "swarm_invalid", SubagentTool.spawnName, [
         "call-swarm-invalid",
       ])

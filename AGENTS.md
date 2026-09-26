@@ -17,6 +17,7 @@
 ## Dev Builds
 
 - Packaged dev app (unsigned, dev channel, `com.turenlabs.forge.dev` data): from `packages/desktop`, run `bun run build && bunx electron-builder --mac dir --config electron-builder.config.ts --publish never "--config.mac.identity=-" "--config.mac.notarize=false"`, then open `dist/mac-arm64/TurenOS Dev.app`. For renderer-only changes, skip `prebuild` and the verify scripts: `bunx electron-vite build` followed by the same `electron-builder` command.
+- `packages/desktop/package.json` is source, not build output. Never copy a packaged app's `package.json` over it: electron-builder strips `scripts` and injects `desktopName`, which silently breaks `bun dev`, `bun run build`, and desktop typechecking in CI.
 - Shells spawned inside another Electron app inherit `ELECTRON_RUN_AS_NODE=1`, which makes any `electron` binary run as plain Node and exit silently. Prefix Electron launches and `electron-vite dev` with `env -u ELECTRON_RUN_AS_NODE`.
 - Headless `serve` requires `FORGE_SECRET_VAULT_KEY_ID` plus a base64 32-byte `FORGE_SECRET_VAULT_KEY`; a key that did not seal existing credentials fails startup with "Stored credentials belong to another OS-protected key". For a throwaway instance, point `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME` at a scratch dir.
 

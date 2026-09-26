@@ -6,7 +6,7 @@ import { Icon as IconV2 } from "@turenlabs/ui/v2/icon"
 import { useGlobal } from "@/context/global"
 import { useLanguage } from "@/context/language"
 import { ServerConnection, serverName } from "@/context/server"
-import { displayName, projectForSession } from "@/pages/layout/helpers"
+import { displayName, projectForSession, sessionLocationName } from "@/pages/layout/helpers"
 import { SessionTabAvatar } from "@/pages/layout/session-tab-avatar"
 import { showToast } from "@/utils/toast"
 import type { Session } from "@turenlabs/sdk/v2"
@@ -65,6 +65,11 @@ export function TabNavItem(props: {
     const session = props.session()
     if (!session) return
     return displayName(project() ?? { worktree: session.directory })
+  })
+  const locationName = createMemo(() => {
+    const session = props.session()
+    if (!session) return
+    return sessionLocationName(session, project())
   })
   const previewPath = createMemo(() => {
     const session = props.session()
@@ -303,7 +308,7 @@ export function TabNavItem(props: {
               event.preventDefault()
             }}
           />
-          <Show when={!editing() && projectName()}>
+          <Show when={!editing() && locationName()}>
             {(name) => (
               <span
                 data-slot="tab-project"
@@ -358,6 +363,7 @@ export function DraftTabItem(props: {
   ref?: Ref<HTMLDivElement>
   href: string
   title: string
+  location?: string
   active?: boolean
   onNavigate: () => void
   onClose: () => void
@@ -396,6 +402,7 @@ export function DraftTabItem(props: {
         data-slot="tab-link"
         data-titlebar-tab-link
         href={props.href}
+        title={props.location ? `${props.title} | ${props.location}` : props.title}
         draggable={false}
         onDragStart={(event) => {
           event.preventDefault()
@@ -425,6 +432,16 @@ export function DraftTabItem(props: {
         >
           {props.title}
         </span>
+        <Show when={props.location}>
+          {(name) => (
+            <span
+              data-slot="tab-project"
+              class="min-w-0 shrink overflow-hidden text-clip whitespace-nowrap text-v2-text-text-faint"
+            >
+              | {name()}
+            </span>
+          )}
+        </Show>
       </a>
       <div data-slot="tab-close" class="group-hover:bg-[var(--tab-bg)] group-data-[active=true]:bg-[var(--tab-bg)]">
         <IconButtonV2

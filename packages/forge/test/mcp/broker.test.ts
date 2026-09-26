@@ -25,6 +25,28 @@ describe("McpBroker", () => {
     expect(approved.maxLoadedTools).toBe(5)
   })
 
+  test("security data tools are searchable by advisory terms", () => {
+    const tools = [
+      McpBroker.capability({ key: "forge-security_ghsa_lookup", server: "forge-security", name: "ghsa_lookup" }),
+      McpBroker.capability({ key: "forge-security_osv_query", server: "forge-security", name: "osv_query" }),
+      McpBroker.capability({ key: "pagerduty_list_incidents", server: "pagerduty", name: "list_incidents" }),
+    ]
+    expect(tools[0].description).toContain("GitHub Security Advisory")
+    expect(tools[0].maxLoadedTools).toBe(8)
+    expect(McpBroker.search("one", tools, "look up a GitHub security advisory GHSA for a CVE").matches[0]?.key).toBe(
+      "forge-security_ghsa_lookup",
+    )
+  })
+
+  test("security instructions list only enabled integrations", () => {
+    expect(McpBroker.securityInstructions(new Set())).toBeUndefined()
+    const text = McpBroker.securityInstructions(new Set(["ghsa", "unknown"]))
+    expect(text).toContain("mcp_search")
+    expect(text).toContain("- ghsa (data): ")
+    expect(text).not.toContain("- osv")
+    expect(text).not.toContain("unknown")
+  })
+
   test("searches approved capabilities and loads tools for the next turn", () => {
     const tools = [capability("alpha_alerts"), capability("alpha_incidents")]
     expect(McpBroker.beginTurn("one", tools)).toEqual([])

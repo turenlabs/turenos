@@ -22,11 +22,12 @@ describe("Swarm.parse", () => {
   })
 
   test("rejects invalid budgets and missing objectives without losing the request", () => {
-    expect(Swarm.parse("@swarm 51 compare everything")).toEqual({
+    expect(Swarm.parse("@swarm 2000 fleet limit")?.status).toBe("ready")
+    expect(Swarm.parse("@swarm 2001 compare everything")).toEqual({
       status: "invalid",
       objective: "compare everything",
       reason: "count_out_of_range",
-      requestedCount: "51",
+      requestedCount: "2001",
     })
     expect(Swarm.parse("@swarm 1 too narrow")).toEqual({
       status: "invalid",

@@ -38,6 +38,37 @@ describe("Zero-Mem", () => {
     expect(localResults.find((result) => result.trace.id === "turn-5")?.closure.kind).not.toBe("none")
   })
 
+  test("keeps ranking order when limiting tied and reverse-ordered results", () => {
+    const memory = create({ topK: 5, graphWeight: 0, localWeight: 0, graphHops: 0, localRadius: 0 })
+    memory.upsert(
+      Array.from({ length: 24 }, (_, i) =>
+        trace(`trace-${String(i).padStart(2, "0")}`, "stable quartz evidence", Math.floor(i / 2), `session-${i}`),
+      ),
+    )
+
+    expect(memory.search("stable quartz").map((result) => result.trace.id)).toEqual([
+      "trace-22",
+      "trace-23",
+      "trace-20",
+      "trace-21",
+      "trace-18",
+    ])
+
+    memory.clear()
+    memory.upsert(
+      Array.from({ length: 24 }, (_, i) =>
+        trace(`trace-${String(i).padStart(2, "0")}`, "stable quartz evidence", i, `session-${i}`),
+      ),
+    )
+    expect(memory.search("stable quartz").map((result) => result.trace.id)).toEqual([
+      "trace-23",
+      "trace-22",
+      "trace-21",
+      "trace-20",
+      "trace-19",
+    ])
+  })
+
   test("keeps scope filters fail-closed and upserts by source id", () => {
     const memory = create({ topK: 10 })
     memory.ingest([

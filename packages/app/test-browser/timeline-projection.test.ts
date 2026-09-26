@@ -79,3 +79,35 @@ test("shows startup feedback for a pending prompt before the server becomes acti
     dispose()
   })
 })
+
+test("preserves the latest starting user when a revert hides the visible suffix", () => {
+  const user = (id: string) => ({ id, role: "user" }) as UserMessage
+  const assistant = (id: string, parentID: string, created: number) =>
+    ({ id, parentID, role: "assistant", time: { created, completed: created + 1 } }) as AssistantMessage
+  const visible = user("user-visible")
+  const hidden = user("user-hidden")
+  const messages: Message[] = [
+    visible,
+    assistant("assistant-visible", visible.id, 1),
+    hidden,
+    assistant("assistant-hidden", hidden.id, 3),
+  ]
+
+  createRoot((dispose) => {
+    const [store, setStore] = createStore({ users: [visible, hidden] })
+    const projection = createTimelineProjection({
+      messages: () => messages,
+      userMessages: () => store.users,
+      parts: () => [],
+      status: () => ({ type: "idle" }),
+      starting: (messageID) => messageID === visible.id || messageID === hidden.id,
+      showReasoningSummaries: () => true,
+      inlineComments: () => true,
+    })
+
+    expect(projection.activeMessageID()).toBe(hidden.id)
+    setStore("users", [visible])
+    expect(projection.activeMessageID()).toBe(hidden.id)
+    dispose()
+  })
+})

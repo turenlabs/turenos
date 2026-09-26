@@ -52,7 +52,6 @@ export const dict = {
 
   "command.session.new": "Yeni oturum",
   "command.tab.new": "Yeni sekme",
-  "tab.desktop": "Masaüstü",
   "command.file.open": "Dosya aç",
   "command.tab.close": "Sekmeyi kapat",
   "command.tab.reopenClosed": "Kapatılan sekmeyi yeniden aç",

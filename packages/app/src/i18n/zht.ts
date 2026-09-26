@@ -52,7 +52,6 @@ export const dict = {
 
   "command.session.new": "新增工作階段",
   "command.tab.new": "新增分頁",
-  "tab.desktop": "桌面",
   "command.file.open": "開啟檔案",
   "command.tab.close": "關閉分頁",
   "command.tab.reopenClosed": "重新開啟已關閉的分頁",

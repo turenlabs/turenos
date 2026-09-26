@@ -1,6 +1,8 @@
 import { PermissionV1 } from "@turenlabs/core/v1/permission"
 import { SessionExecution } from "@turenlabs/core/session/execution"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
+import { SessionV2 } from "@turenlabs/core/session"
+import { Loop } from "@turenlabs/core/loop"
 import { Agent } from "@/agent/agent"
 import { SessionV1 } from "@turenlabs/core/v1/session"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -69,6 +71,8 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const events = yield* EventV2Bridge.Service
     const execution = yield* SessionExecution.Service
     const tasks = yield* SessionTaskV2.Service
+    const sessionsV2 = yield* SessionV2.Service
+    const loops = yield* Loop.Service
     const scope = yield* Scope.Scope
 
     const assertMutation = (sessionID: SessionID) =>
@@ -124,6 +128,48 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
           ),
         )
     })
+
+    // `SessionV2.interrupt` runs the full cascade — descendant executions,
+    // compactions, shell jobs, then the Session's own drain — while
+    // `removeCoordinated`-style callbacks only cover task-owned children.
+    const interruptSession = (sessionID: SessionID, service: string) =>
+      sessionsV2.interrupt(sessionID).pipe(
+        Effect.timeoutOrElse({
+          duration: "15 seconds",
+          orElse: () =>
+            Effect.fail(
+              new ServiceUnavailableError({
+                message: `Session execution did not stop within 15 seconds: ${sessionID}`,
+                service,
+              }),
+            ),
+        }),
+        Effect.catchTags({
+          "SessionTask.OwnedSessionError": (error) =>
+            Effect.fail(
+              new InvalidRequestError({
+                kind: "session_task_owned",
+                message: `${error.message}: ${error.sessionID} is owned by ${error.taskID}`,
+              }),
+            ),
+          "Session.InterruptionTimeoutError": (error) =>
+            Effect.fail(
+              new ServiceUnavailableError({
+                message: `Session execution did not stop within 5 seconds: ${error.sessionID}`,
+                service,
+              }),
+            ),
+          "SessionTask.ConflictError": (error) =>
+            Effect.fail(new ConflictError({ resource: error.resource, message: error.message })),
+          "SessionTask.ActiveLimitError": (error) =>
+            Effect.fail(
+              new ConflictError({
+                resource: error.rootSessionID,
+                message: `Session already has ${error.maximum} active subagents`,
+              }),
+            ),
+        }),
+      )
 
     const list = Effect.fn("SessionHttpApi.list")(function* (ctx: { query: typeof ListQuery.Type }) {
       const directory = ctx.query.directory ? yield* InstanceState.directory : undefined
@@ -253,6 +299,14 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const remove = Effect.fn("SessionHttpApi.remove")(function* (ctx: { params: { sessionID: SessionID } }) {
       yield* assertMutation(ctx.params.sessionID)
       const current = yield* requireSession(ctx.params.sessionID)
+      // A bound Loop run keeps executing and heartbeating against removed
+      // storage, and stale-run reclaim would recreate the Session — cancel it
+      // before teardown so the scheduler settles the run instead.
+      yield* loops.cancelRunForSession(ctx.params.sessionID)
+      // `removeCoordinated` only interrupts task-owned descendants; the root
+      // Session's own drain and shell jobs must stop before its rows are
+      // removed.
+      yield* interruptSession(ctx.params.sessionID, "session.remove")
       yield* SessionError.mapStorageNotFound(
         session.removeCoordinated({
           sessionID: ctx.params.sessionID,
@@ -334,6 +388,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       yield* requireSession(ctx.params.sessionID)
       yield* assertMutation(ctx.params.sessionID)
       yield* cancelDescendants(ctx.params.sessionID)
+      yield* interruptSession(ctx.params.sessionID, "session.abort")
       yield* promptSvc.cancel(ctx.params.sessionID)
       return true
     })

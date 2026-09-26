@@ -33,14 +33,10 @@ export function useAgentSettings() {
   const models = useModels()
   const language = useLanguage()
 
-  const [agents, { refetch }] = createResource(
-    serverSDK,
-    async (sdk) => {
-      const response = await sdk.client.app.agents()
-      return response.data ?? []
-    },
-    { initialValue: [] as Agent[] },
-  )
+  const [agents, { refetch }] = createResource(serverSDK, async (sdk) => {
+    const response = await sdk.client.app.agents()
+    return response.data ?? []
+  })
 
   const availableModels = createMemo<AgentModelOption[]>(() =>
     models
@@ -55,7 +51,7 @@ export function useAgentSettings() {
   )
 
   const visibleAgents = createMemo(() =>
-    agents()
+    (agents() ?? [])
       .filter((agent) => !agent.hidden)
       .toSorted((a, b) => a.name.localeCompare(b.name)),
   )
@@ -106,7 +102,8 @@ export function useAgentSettings() {
 
   return {
     agents: visibleAgents,
-    loading: () => agents.loading,
+    // "refreshing" keeps the resolved list — only the initial load should gate the UI.
+    loading: () => agents.state === "pending" || agents.state === "unresolved",
     error: () => agents.error,
     modelOptions,
     selectedModel,

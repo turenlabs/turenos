@@ -19,6 +19,7 @@ import { arrayMove } from "@dnd-kit/helpers"
 import { tabHref, tabKey, type SessionTab, type Tab } from "@/context/tabs"
 import { ServerConnection } from "@/context/server"
 import { DraftTabItem, TabNavItem } from "@/components/titlebar-tab-nav"
+import { projectForDirectory, sessionLocationName } from "@/pages/layout/helpers"
 import { useGlobal, type ServerCtx } from "@/context/global"
 import { useLanguage } from "@/context/language"
 import { useCommand } from "@/context/command"
@@ -156,6 +157,7 @@ function DraftTabSlot(props: {
   shortcutIndex: () => number
   active: () => boolean
   title: string
+  location?: string
   onNavigate: (element: HTMLDivElement) => void
   onClose: () => void
   onEditGroup: (id: string) => void
@@ -188,6 +190,7 @@ function DraftTabSlot(props: {
           }}
           href={tabHref(props.tab)}
           title={props.title}
+          location={props.location}
           icon="edit"
           onNavigate={() => props.onNavigate(ref)}
           onClose={props.onClose}
@@ -239,7 +242,6 @@ export function TitlebarTabStrip(props: {
     const index = () => dragIds().indexOf(id)
     const shortcutIndex = () => props.tabs.findIndex((item) => tabKey(item) === id)
     const serverCtx = createMemo(() => {
-      if (tab.type !== "session") return
       const conn = global.servers.list().find((item) => ServerConnection.key(item) === tab.server)
       if (conn) return global.ensureServerCtx(conn)
     })
@@ -269,7 +271,8 @@ export function TitlebarTabStrip(props: {
         index={index}
         shortcutIndex={shortcutIndex}
         active={() => props.currentTab() === tab}
-        title={language.t("tab.desktop")}
+        title={language.t("command.session.new")}
+        location={sessionLocationName(tab, projectForDirectory(tab.directory, serverCtx()?.projects.list() ?? []))}
         hidden={hidden()}
         onEditGroup={setEditingGroupID}
         onNavigate={(element) => props.onNavigate(tab, element)}

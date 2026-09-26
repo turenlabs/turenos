@@ -56,12 +56,12 @@ export function reviewDiffKinds(diffs: RenderDiff[]) {
 
     out.set(file, kind)
 
-    const parts = file.split("/")
-    parts.slice(0, -1).forEach((_, idx) => {
-      const dir = parts.slice(0, idx + 1).join("/")
-      if (!dir) return
-      out.set(dir, merge(out.get(dir), kind))
-    })
+    let index = file.indexOf("/")
+    while (index !== -1) {
+      const dir = file.slice(0, index)
+      if (dir) out.set(dir, merge(out.get(dir), kind))
+      index = file.indexOf("/", index + 1)
+    }
   }
   return out
 }

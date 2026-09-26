@@ -13,8 +13,6 @@ export type SessionGoalCommand =
   | { type: "clear" }
   | { type: "set"; objective: string }
 
-export type SessionLoopCommand = { type: "set"; objective: string }
-
 export function parseSessionGoalCommand(text: string): SessionGoalCommand | undefined {
   const match = text.match(/^\s*\/goal(?:\s+([\s\S]*))?\s*$/i)
   if (!match) return
@@ -27,25 +25,10 @@ export function parseSessionGoalCommand(text: string): SessionGoalCommand | unde
   return { type: "set", objective: value }
 }
 
-export function parseSessionLoopCommand(text: string): SessionLoopCommand | undefined {
-  const match = text.match(/^\s*\/loop(?:\s+([\s\S]*))?\s*$/i)
-  if (!match) return
-  const objective = match[1]?.trim()
-  if (!objective) return
-  return { type: "set", objective }
-}
-
 export function resolveSessionGoalSubmission(text: string, goalMode: boolean) {
   const command = parseSessionGoalCommand(text)
   if (command) return command
   if (!goalMode) return
-  return { type: "set", objective: text.trim() } as const
-}
-
-export function resolveSessionLoopSubmission(text: string, loopMode: boolean) {
-  const command = parseSessionLoopCommand(text)
-  if (command) return command
-  if (!loopMode) return
   return { type: "set", objective: text.trim() } as const
 }
 

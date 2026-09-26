@@ -27,6 +27,7 @@ type PrepareInput = {
   readonly system: string[]
   readonly messages: ModelMessage[]
   readonly small?: boolean
+  readonly toolChoice?: "auto" | "required" | "none"
   readonly tools: Record<string, Tool>
   readonly provider: Provider.Info
   readonly auth: Auth.Info | undefined
@@ -103,6 +104,23 @@ export type Prepared = {
 const mergeOptions = (target: Record<string, any>, source: Record<string, any> | undefined): Record<string, any> =>
   mergeDeep(target, source ?? {}) as Record<string, any>
 
+/**
+ * The user's variant, else Claude's default: adaptive thinking at Anthropic's own "high" effort.
+ * Without it Anthropic runs adaptive-thinking models with thinking off. Mirrors
+ * `VariantPlugin.defaultVariant` for V2; GPT-5 and Gemini 3 defaults already come from
+ * `ProviderTransform.options`. Skipped for a forced tool call, which Anthropic rejects with
+ * thinking enabled.
+ */
+function selectedVariant(input: PrepareInput): Record<string, any> {
+  const chosen = input.user.model.variant
+  if (chosen && chosen !== "default") return input.model.variants?.[chosen] ?? {}
+  if (input.toolChoice === "required") return {}
+  const npm = input.model.api.npm
+  if (npm !== "@ai-sdk/anthropic" && npm !== "@ai-sdk/google-vertex/anthropic") return {}
+  const high = input.model.variants?.high
+  return high?.thinking?.type === "adaptive" ? high : {}
+}
+
 export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: PrepareInput) {
   if (input.constraints?.audit && !input.constraints.messages)
     throw new Error("Shared hook auditing requires the normalized message hook")
@@ -129,10 +147,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
     system.push(header, rest.join("\n"))
   }
 
-  const variant =
-    !input.small && input.model.variants && input.user.model.variant
-      ? input.model.variants[input.user.model.variant]
-      : {}
+  const variant = input.small ? {} : selectedVariant(input)
   const base = input.small
     ? ProviderTransform.smallOptions(input.model)
     : ProviderTransform.options({

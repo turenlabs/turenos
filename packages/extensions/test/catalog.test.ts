@@ -8,6 +8,7 @@ const expected = [
   "turenlabs/attack",
   "turenlabs/automox",
   "turenlabs/automox-local",
+  "turenlabs/aws-documentation",
   "turenlabs/bandit",
   "turenlabs/batou",
   "turenlabs/bug-root-cause",
@@ -24,6 +25,7 @@ const expected = [
   "turenlabs/datadog-malicious",
   "turenlabs/datadog-security",
   "turenlabs/dependency-risk-review",
+  "turenlabs/dependency-upgrade-impact",
   "turenlabs/depsdev",
   "turenlabs/detection-engineering-review",
   "turenlabs/elastic-security",
@@ -149,7 +151,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(15)
+    expect(skills.length).toBe(16)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0
@@ -439,21 +441,8 @@ describe("ExtensionCatalog", () => {
     ).toThrow("header prefix")
   })
 
-  test("pins the new security MCP allowlists to read-only tool names", () => {
+  test("pins read-only security MCP allowlists", () => {
     const expectedPolicies = {
-      "turenlabs/datadog-security": [
-        "get_datadog_incident",
-        "search_datadog_incidents",
-        "search_datadog_logs",
-        "search_datadog_monitors",
-        "get_datadog_trace",
-        "search_datadog_spans",
-        "search_datadog_security_signals",
-        "analyze_datadog_security_signals",
-        "get_datadog_security_signal",
-        "security_findings_schema",
-        "search_datadog_security_findings",
-      ],
       "turenlabs/microsoft-graph-enterprise": [
         "microsoft_graph_suggest_queries",
         "microsoft_graph_get",
@@ -542,6 +531,31 @@ describe("ExtensionCatalog", () => {
     expect(contribution.secrets.map((secret) => secret.id)).toEqual(["AUTOMOX_API_KEY", "AUTOMOX_ACCOUNT_UUID"])
   })
 
+  test("ships AWS Documentation as a credential-free, pinned, read-only MCP package", () => {
+    const contribution = ExtensionCatalog.get("turenlabs/aws-documentation")?.contributions[0]
+    expect(contribution).toMatchObject({
+      type: "mcp",
+      id: "aws-documentation",
+      adapter: "mcp:aws-documentation",
+      authentication: "none",
+      localOnly: true,
+      secrets: [],
+      deployment: {
+        type: "managed",
+        package: "awslabs.aws-documentation-mcp-server",
+        version: "1.2.1",
+        cutoff: "2026-09-08T15:03:45.578535Z",
+        command: "awslabs.aws-documentation-mcp-server",
+        args: [],
+        environment: { AWS_DOCUMENTATION_PARTITION: "aws", FASTMCP_LOG_LEVEL: "ERROR" },
+      },
+      tools: {
+        allow: ["search_documentation", "read_documentation", "read_sections", "search_table"],
+        write: [],
+      },
+    })
+  })
+
   test("pins hosted security MCP endpoints, authentication, and reviewed tool policies", () => {
     const expectedPolicies = {
       "turenlabs/chainguard-docs": {
@@ -619,6 +633,28 @@ describe("ExtensionCatalog", () => {
       ]),
     )
     expect(ExtensionCatalog.writeToolActions).not.toContain("semgrep-hosted_semgrep_findings")
+    const datadog = ExtensionCatalog.get("turenlabs/datadog-security")?.contributions[0]
+    expect(datadog?.type).toBe("mcp")
+    if (datadog?.type === "mcp") {
+      expect(datadog.defaultEnabled).toBe(false)
+      expect(datadog.deployment).toMatchObject({ path: "/v1/mcp?toolsets=core,security,workflows" })
+      expect(datadog.tools.allow).toContain("get_datadog_security_detection_rules")
+      expect(datadog.tools.allow).toContain("validate_datadog_workflow")
+      expect(datadog.tools.write).toEqual([
+        "create_datadog_workflow",
+        "update_datadog_workflow",
+        "publish_datadog_workflow",
+        "unpublish_datadog_workflow",
+        "delete_datadog_workflow",
+        "execute_datadog_workflow",
+        "cancel_datadog_workflow_instance",
+      ])
+      for (const tool of datadog.tools.write) {
+        expect(datadog.tools.allow).toContain(tool)
+        expect(ExtensionCatalog.writeToolActions).toContain(`datadog-security_${tool}`)
+      }
+      expect(datadog.tools.write).not.toContain("validate_datadog_workflow")
+    }
     expect(ExtensionCatalog.get("turenlabs/semgrep-hosted")?.contributions[0]?.instructions).toContain(
       "require explicit approval",
     )

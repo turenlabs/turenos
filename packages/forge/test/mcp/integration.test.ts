@@ -12,6 +12,7 @@ describe("managed MCP integrations", () => {
       "atlassian-security-context",
       "automox",
       "automox-local",
+      "aws-documentation",
       "chainguard-docs",
       "cloudflare-audit-logs",
       "cloudflare-casb",
@@ -328,6 +329,15 @@ describe("managed MCP integrations", () => {
         privateNetwork: true,
       }),
     ).toBeUndefined()
+  })
+
+  test("enables Datadog security and workflow toolsets at the pinned endpoint", () => {
+    const contribution = ExtensionCatalog.get("turenlabs/datadog-security")?.contributions[0]
+    expect(contribution?.type).toBe("mcp")
+    if (contribution?.type !== "mcp" || contribution.deployment.type !== "customer-url") return
+    expect(
+      McpIntegration.resolveCustomerEndpoint("https://mcp.datadoghq.com/?toolsets=all", contribution.deployment),
+    ).toBe("https://mcp.datadoghq.com/v1/mcp?toolsets=core,security,workflows")
   })
 
   test("pins customer MCP DNS and prohibits trust-zone changes and redirects", async () => {
@@ -656,6 +666,13 @@ describe("managed MCP integrations", () => {
   })
 
   test("exposes only reviewed provider capabilities", () => {
+    expect(McpIntegration.allowsTool("aws-documentation", "search_documentation")).toBe(true)
+    expect(McpIntegration.allowsTool("aws-documentation", "read_documentation")).toBe(true)
+    expect(McpIntegration.allowsTool("aws-documentation", "read_sections")).toBe(true)
+    expect(McpIntegration.allowsTool("aws-documentation", "search_table")).toBe(true)
+    expect(McpIntegration.allowsTool("aws-documentation", "recommend")).toBe(false)
+    expect(McpIntegration.allowsTool("aws-documentation", "recommend", { writeTools: "enabled" })).toBe(false)
+
     expect(McpIntegration.allowsTool("onepassword", "authenticate")).toBe(true)
     expect(McpIntegration.allowsTool("onepassword", "list_variables")).toBe(true)
     expect(McpIntegration.allowsTool("onepassword", "append_variables")).toBe(false)
@@ -663,8 +680,35 @@ describe("managed MCP integrations", () => {
     expect(McpIntegration.allowsTool("onepassword", "read_secret")).toBe(false)
 
     expect(McpIntegration.allowsTool("notion", "notion-search")).toBe(true)
-    expect(McpIntegration.allowsTool("notion", "notion-update-page")).toBe(true)
-    expect(McpIntegration.allowsTool("notion", "notion-delete-workspace")).toBe(false)
+    expect(McpIntegration.allowsTool("notion", "notion-update-page", { writeTools: "enabled" })).toBe(true)
+    expect(McpIntegration.allowsTool("notion", "notion-delete-workspace", { writeTools: "enabled" })).toBe(false)
+
+    expect(McpIntegration.allowsTool("crowdstrike-falcon", "falcon_search_ngsiem")).toBe(true)
+    expect(McpIntegration.allowsTool("crowdstrike-falcon", "falcon_create_case")).toBe(false)
+  })
+
+  test("hides declared write tools until the user opts in", () => {
+    const tools = McpIntegration.contribution("datadog-security").item.tools
+    const reads = tools.allow.filter((tool) => !tools.write.includes(tool))
+    expect(tools.write.length).toBeGreaterThan(0)
+    for (const tool of reads) expect(McpIntegration.allowsTool("datadog-security", tool)).toBe(true)
+    for (const tool of tools.write) {
+      expect(McpIntegration.allowsTool("datadog-security", tool)).toBe(false)
+      expect(McpIntegration.allowsTool("datadog-security", tool, { writeTools: "" })).toBe(false)
+      expect(McpIntegration.allowsTool("datadog-security", tool, { writeTools: "enabled" })).toBe(true)
+    }
+    expect(McpIntegration.allowsTool("notion", "notion-update-page")).toBe(false)
+  })
+
+  test("tells the agent whether write tools are available and how the user enables them", () => {
+    const hidden = McpIntegration.writeToolsInstructions("datadog-security", {})
+    expect(hidden).toContain("execute_datadog_workflow")
+    expect(hidden).toContain("turned off by the user")
+    expect(hidden).toContain("select Datadog Security & Incident Response, turn on Allow write tools")
+    expect(McpIntegration.writeToolsInstructions("datadog-security", { writeTools: "enabled" })).toContain(
+      "are turned on. They ask the user for approval by default",
+    )
+    expect(McpIntegration.writeToolsInstructions("sentry", {})).toBeUndefined()
   })
 
   test("removes untrusted descriptions and schema annotations from community MCP tools", () => {

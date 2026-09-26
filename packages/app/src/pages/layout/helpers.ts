@@ -68,6 +68,23 @@ export const childSessionOnPath = (sessions: Session[] | undefined, rootID: stri
 export const displayName = (project: { name?: string; worktree: string }) =>
   project.name || getFilename(project.worktree) || project.worktree
 
+// A session in one of the project's sandboxes (a managed workspace, or a clone
+// that converged on the same project identity) is named after that sandbox, so
+// two checkouts of one project are distinguishable at a glance. Sessions in the
+// main worktree, including its subdirectories, keep the project name.
+export const sessionLocationName = (
+  session: { directory: string },
+  project?: { name?: string; worktree: string; sandboxes?: string[] },
+) => {
+  if (!project) return getFilename(session.directory) || session.directory
+  const directory = pathKey(session.directory)
+  const within = (root: string) => directory === pathKey(root) || directory.startsWith(`${pathKey(root)}/`)
+  // Longest match first: a sandbox may live inside the worktree (e.g. `.worktrees/<name>`).
+  const sandbox = (project.sandboxes ?? []).filter(within).toSorted((a, b) => pathKey(b).length - pathKey(a).length)[0]
+  if (sandbox) return getFilename(sandbox) || sandbox
+  return displayName(project)
+}
+
 export function toggleHomeProjectSelection(
   current: HomeProjectSelection | undefined,
   server: ServerConnection.Key,
@@ -119,10 +136,16 @@ export function projectForSession<T extends { id?: string; worktree: string; san
 ) {
   const direct = byID.get(session.projectID)
   if (direct) return direct
-  const directory = pathKey(session.directory)
+  return projectForDirectory(session.directory, projects)
+}
+
+export function projectForDirectory<T extends { worktree: string; sandboxes?: string[] }>(
+  directory: string,
+  projects: T[],
+) {
+  const key = pathKey(directory)
   return projects.find(
-    (project) =>
-      pathKey(project.worktree) === directory || project.sandboxes?.some((sandbox) => pathKey(sandbox) === directory),
+    (project) => pathKey(project.worktree) === key || project.sandboxes?.some((sandbox) => pathKey(sandbox) === key),
   )
 }
 

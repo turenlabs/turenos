@@ -1,0 +1,29 @@
+# Generated artifacts are rebuilt by automation; reviewing them wastes budget.
+ignore = [
+  "Third-Party-Notices.md",
+  "packages/desktop/resources/licenses/*",
+  "packages/extensions/src/generated.ts",
+  "packages/sdk/js/src/gen/*",
+  "packages/sdk/js/src/v2/gen/*",
+  "packages/sdk/openapi.json",
+]
+
+# Asked once about the whole pull request: its title, description, and a summary of every
+# changed file and directory. A single chunk of the diff cannot show these.
+[[questions]]
+id = "scope-creep"
+scope = "pr"
+question = "Does this pull request mix changes with unrelated purposes, beyond what its title and description say it does?"
+title = "Mixed changes"
+why = "Unrelated changes in one pull request are harder to review, revert, and trace, and each part gets less attention."
+fix = "Split unrelated work into separate pull requests."
+
+[[questions]]
+id = "new-code-volume"
+scope = "pr"
+type = "score"
+question = "How much new code does this pull request add compared with what its stated purpose needs?"
+levels = ["About what the purpose needs", "Somewhat more than needed", "Far more than needed"]
+fail_at = 1.5
+why = "Code a change does not need still has to be reviewed, tested, and maintained."
+fix = "Remove what the stated purpose does not need, or move it to its own pull request."

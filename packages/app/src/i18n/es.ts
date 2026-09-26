@@ -50,7 +50,6 @@ export const dict = {
 
   "command.session.new": "Nueva sesión",
   "command.tab.new": "Nueva pestaña",
-  "tab.desktop": "Escritorio",
   "command.file.open": "Abrir archivo",
   "command.tab.close": "Cerrar pestaña",
   "command.tab.reopenClosed": "Reabrir pestaña cerrada",

@@ -3,7 +3,7 @@ import { modelCapabilitySummary, modelEffortDefaultIndex, modelEffortDisplay } f
 
 describe("model effort display", () => {
   test.each([
-    ["default", "Automatic", "Use the model's configured behavior"],
+    ["default", "Default", "No level sent; the provider decides"],
     ["none", "None", "Disable extra reasoning"],
     ["medium", "Balanced", "Everyday coding and debugging"],
     ["high", "Thorough", "Complex changes and careful review"],

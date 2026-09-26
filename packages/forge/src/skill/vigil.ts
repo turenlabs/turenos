@@ -72,6 +72,8 @@ const reviewedSkillDigests = new Set([
   "a1dfb48317ba26f516b1e2173789979d911cdb35dac4620c5a08ac393367dfe8",
   // turenlabs/dependency-risk-review
   "232928e74daf16ae9bed90db0d4b53205f0e8612657d34e2231b439c77f013d9",
+  // turenlabs/dependency-upgrade-impact
+  "8eb66198359530817494f97f5b552d6d29d16fd0c470510ec96bb694a7f3fbda",
   // turenlabs/detection-engineering-review
   "a5cc17171c5a7cb8de62e84d6ac903ad1bcda2ab43b38a451d52474dc6bcac3b",
   // turenlabs/iac-config-review
