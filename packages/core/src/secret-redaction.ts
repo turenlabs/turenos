@@ -422,24 +422,45 @@ function walk(
   )
     return value
   if (typeof value !== "object" || active.has(value) || types.isProxy(value)) throw failure()
-  const array = Array.isArray(value)
-  if (!array && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
-    throw failure()
   active.add(value)
+  const visit = (item: unknown) => walk(item, transform, active, budget, depth + 1)
+  const result = Array.isArray(value) ? walkArray(value, visit, budget) : walkRecord(value, transform, visit, budget)
+  active.delete(value)
+  return result
+}
+
+function walkArray(value: readonly unknown[], visit: (value: unknown) => unknown, budget: { nodes: number }) {
+  const names = Object.keys(value)
+  if (names.length + budget.nodes > MAX_NODES) throw failure()
+  if (names.length !== value.length || names.some((key, index) => key !== String(index))) throw failure()
+  return names.map((key) => visit(dataProperty(value, key)))
+}
+
+function walkRecord(
+  value: object,
+  transform: (value: string) => string,
+  visit: (value: unknown) => unknown,
+  budget: { nodes: number },
+) {
+  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) throw failure()
   const keys = new Set<string>()
   const names = Object.keys(value)
   if (names.length + budget.nodes > MAX_NODES) throw failure()
-  if (array && (names.length !== value.length || names.some((key, index) => key !== String(index)))) throw failure()
-  const entries = names.map((key) => {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key)
-    if (!descriptor || !("value" in descriptor)) throw failure()
-    const sanitized = array ? key : transform(key)
-    if (keys.has(sanitized)) throw failure()
-    keys.add(sanitized)
-    return [sanitized, walk(descriptor.value, transform, active, budget, depth + 1)] as const
-  })
-  active.delete(value)
-  return array ? entries.map((entry) => entry[1]) : Object.fromEntries(entries)
+  return Object.fromEntries(
+    names.map((key) => {
+      const item = dataProperty(value, key)
+      const sanitized = transform(key)
+      if (keys.has(sanitized)) throw failure()
+      keys.add(sanitized)
+      return [sanitized, visit(item)] as const
+    }),
+  )
+}
+
+function dataProperty(value: object, key: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key)
+  if (!descriptor || !("value" in descriptor)) throw failure()
+  return descriptor.value
 }
 
 function guarded<A>(run: () => A): A {
