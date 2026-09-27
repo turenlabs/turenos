@@ -513,36 +513,34 @@ export function renderWorkflowStep(
 const decodeJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
 
 export function extractStepOutput(messages: ReadonlyArray<SessionMessage.Message>): Loop.StepOutput {
-  const nextUser = messages.findIndex((message) => message.type === "user")
-  const turn = nextUser < 0 ? messages : messages.slice(0, nextUser)
-  const assistants = turn.filter((message): message is SessionMessage.Assistant => message.type === "assistant")
-  const final = assistants.findLast((message) => message.time.completed !== undefined && message.error === undefined)
+  let final: SessionMessage.Assistant | undefined
+  const artifacts: Loop.StepArtifact[] = []
+  for (const message of messages) {
+    if (message.type === "user") break
+    if (message.type !== "assistant") continue
+    if (message.time.completed !== undefined && message.error === undefined) final = message
+    for (const path of message.snapshot?.files ?? []) artifacts.push({ type: "changed", path })
+    for (const part of message.content) {
+      if (part.type !== "tool" || part.state.status !== "completed") continue
+      for (const path of part.state.outputPaths ?? []) artifacts.push({ type: "output", path })
+      for (const content of part.state.content) {
+        if (content.type === "file") {
+          artifacts.push({
+            type: "file",
+            uri: content.uri,
+            mime: content.mime,
+            ...(content.name ? { name: content.name } : {}),
+          })
+        }
+      }
+    }
+  }
   const text = final?.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("") ?? ""
   const parsed = decodeJson(text)
   return {
     text,
     ...(Option.isSome(parsed) ? { json: parsed.value } : {}),
-    artifacts: assistants.flatMap((message) => [
-      ...(message.snapshot?.files ?? []).map((path) => ({ type: "changed" as const, path })),
-      ...message.content.flatMap((part) => {
-        if (part.type !== "tool" || part.state.status !== "completed") return []
-        return [
-          ...(part.state.outputPaths ?? []).map((path) => ({ type: "output" as const, path })),
-          ...part.state.content.flatMap((content) =>
-            content.type === "file"
-              ? [
-                  {
-                    type: "file" as const,
-                    uri: content.uri,
-                    mime: content.mime,
-                    ...(content.name ? { name: content.name } : {}),
-                  },
-                ]
-              : [],
-          ),
-        ]
-      }),
-    ]),
+    artifacts,
   }
 }
 
