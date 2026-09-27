@@ -85,11 +85,12 @@ const normalizeField = (field: string) => field.replace(/[^a-z0-9]/gi, "").toLow
 const redactJsonFields = (value: unknown, fields: ReadonlySet<string>): unknown => {
   if (Array.isArray(value)) return value.map((item) => redactJsonFields(item, fields))
   if (!value || typeof value !== "object") return value
+  const object = value as Record<string, unknown>
   return Object.fromEntries(
-    Object.entries(value).map(([key, child]) => [
+    Object.keys(value).map((key) => [
       key,
-      fields.has(normalizeField(key)) ? REDACTED : redactJsonFields(child, fields),
-    ]),
+      fields.has(normalizeField(key)) ? REDACTED : redactJsonFields(object[key], fields),
+    ] as const),
   )
 }
 
