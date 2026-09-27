@@ -297,11 +297,16 @@ function buildTree(files: string[]): DirNode {
 export function renderStructure(files: string[], budget: number): string {
   const root = buildTree(files)
   const lines: string[] = []
+  let outputLength = 0
   const topDirs = [...root.children.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
   const rootFiles = root.count - topDirs.reduce((sum, [, node]) => sum + node.count, 0)
 
   const emit = (line: string) => {
-    if (lines.join("\n").length + line.length + 1 <= budget) lines.push(line)
+    const separatorLength = lines.length > 0 ? 1 : 0
+    if (outputLength + line.length + 1 <= budget) {
+      outputLength += separatorLength + line.length
+      lines.push(line)
+    }
   }
 
   for (const [name, node] of topDirs) {
