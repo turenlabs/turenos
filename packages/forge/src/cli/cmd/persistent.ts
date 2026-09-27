@@ -109,8 +109,11 @@ function assertOwner(
   if (report.owner?.mode === "persistent" && report.owner.serverID !== serverID)
     throw refuse(
       `${label} is already owned by persistent server ${report.owner.serverID}` +
-        // An install that failed after promoting the data never wrote its unit, so a re-run generates a new ID.
-        (serverID ? `; if an earlier install was interrupted, re-run with --server-id ${report.owner.serverID}` : ""),
+        // A backup of a persistent server keeps its owner, and an install that failed after promoting
+        // the data never wrote its unit, so a re-run generates a new ID. Both continue under the old one.
+        (serverID
+          ? `; to restore that server's data, or to finish an interrupted install, re-run with --server-id ${report.owner.serverID}`
+          : ""),
     )
 }
 
@@ -147,8 +150,16 @@ const UnitCommand = cmd<{}, PlanArgs>({
   },
 })
 
-type InstallArgs = PlanArgs & { apply?: boolean; "key-stdin"?: boolean; "import-db"?: string; "recovery-file"?: string }
+type InstallArgs = PlanArgs & {
+  apply?: boolean
+  "key-stdin"?: boolean
+  "import-db"?: string
+  "import-data"?: string
+  "import-config"?: string
+  "recovery-file"?: string
+}
 type Key = ReturnType<typeof keyFromText>
+type Imports = { db?: string; data?: string; config?: string }
 
 const InstallCommand = cmd<{}, InstallArgs>({
   command: "install",
@@ -158,6 +169,14 @@ const InstallCommand = cmd<{}, InstallArgs>({
       .option("apply", { type: "boolean", describe: "make the changes" })
       .option("key-stdin", { type: "boolean", describe: "import an existing key: key ID and base64 key on stdin" })
       .option("import-db", { type: "string", describe: "copy a stopped quick-connect database into the data root" })
+      .option("import-data", {
+        type: "string",
+        describe: "copy a staged forge data directory (snapshots, plans, tool output) beside the imported database",
+      })
+      .option("import-config", {
+        type: "string",
+        describe: "copy a staged global forge config directory (config, agents, MCP servers) into the data root",
+      })
       .option("recovery-file", {
         type: "string",
         describe: "where to write the recovery copy of a newly generated key (required for a fresh key)",
@@ -180,7 +199,15 @@ const InstallCommand = cmd<{}, InstallArgs>({
     }
 
     const { key, fresh } = await resolveKey(args, facts, target)
-    const importDB = await importSource(args["import-db"])
+    const imports: Imports = {
+      db: await importSource(args["import-db"]),
+      data: await importSource(args["import-data"]),
+      config: await importSource(args["import-config"]),
+    }
+    if ((imports.data || imports.config) && facts.database)
+      throw refuse(
+        `${PersistentLinux.databasePath(target.dataRoot)} already exists; data and config import only into a fresh data root`,
+      )
     // The service is stopped before root works in its data root; any failure before the restart
     // below brings a previously running service back rather than leaving it down.
     const service = PersistentLinux.defaults.serviceName
@@ -191,7 +218,7 @@ const InstallCommand = cmd<{}, InstallArgs>({
     }
     const password = await Promise.resolve()
       .then(async () => {
-        await prepareData(target, facts, key, importDB)
+        await prepareData(target, facts, key, imports)
         const password = await writeCredentials(target, facts, key, fresh ? args["recovery-file"] : undefined)
         await writeAttachAndUnit(target, password)
         return password
@@ -268,15 +295,16 @@ async function importSource(path: string | undefined) {
  * the data root is taken back first, so nothing the service account plants there can redirect
  * root's writes or ownership changes.
  */
-async function prepareData(
-  target: PersistentLinux.Plan,
-  facts: PersistentLinux.Facts,
-  key: Key,
-  importDB: string | undefined,
-) {
-  await PersistentLinux.claimDataRoot(target.dataRoot)
+async function prepareData(target: PersistentLinux.Plan, facts: PersistentLinux.Facts, key: Key, imports: Imports) {
+  // The claim itself can fail partway (a planted link found on the second check), so the release
+  // covers it too; releasing what a failed claim never took is harmless.
   try {
-    await placeDatabase(target, facts, key, importDB)
+    await PersistentLinux.claimDataRoot(target.dataRoot)
+    await placeDatabase(target, facts, key, imports.db)
+    if (imports.data)
+      await PersistentLinux.importTree(imports.data, join(target.dataRoot, "data", "forge"), facts.user!)
+    if (imports.config)
+      await PersistentLinux.importTree(imports.config, join(target.dataRoot, "config", "forge"), facts.user!)
   } finally {
     await PersistentLinux.releaseDataRoot(target.dataRoot, facts.user!)
   }
@@ -290,10 +318,13 @@ async function placeDatabase(
 ) {
   const database = PersistentLinux.databasePath(target.dataRoot)
   if (importDB) {
-    if (facts.database) throw refuse(`${database} already exists; refusing to overwrite it`)
+    if (facts.database)
+      throw refuse(`${database} already exists; refusing to overwrite it (remove the data root to retry an import)`)
     const source = await VaultVerification.inspectFile(importDB, key)
     assertOpens(source, key.keyID, importDB)
-    assertOwner(source, importDB)
+    // A quick-connect source is promoted under this server's ID; a persistent source is a backup
+    // of this server and must be imported under its own ID.
+    assertOwner(source, importDB, target.serverID)
     const release = await Database.acquireOwnerLock(importDB)
     try {
       await Effect.gen(function* () {

@@ -261,8 +261,10 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
     logger?.log("ssh connecting", { id, host: item.config.host })
     try {
       const connection = await connect(item.config)
-      if (connection.persistent)
-        await recordPersistent(id, connection.persistent).catch((error) => {
+      // A superseded attempt (the target was removed, re-added, or restarted meanwhile) must not
+      // record the server it reached onto whatever entry now holds this id.
+      if (connection.persistent && isCurrentStartAttempt(id, attempt))
+        await recordPersistent(id, attempt, connection.persistent).catch((error) => {
           connection.listener.stop()
           throw error
         })
@@ -289,7 +291,17 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
         logger?.error("ssh tunnel exited", { id, host: item.config.host, code, signal })
         scheduleReconnect(id)
       })
-      // The check probes the SSH user's own forge, which a persistent server's service does not run.
+      // The check probes the SSH user's own forge, which a persistent server's service does not run;
+      // a persistent server's version is the one its descriptor reported.
+      if (connection.persistent)
+        setForgeCheck(id, {
+          host: id,
+          resolvedPath: null,
+          version: connection.persistent.version ?? null,
+          expectedVersion: deps.appVersion,
+          matchesDesktop: connection.persistent.version ? connection.persistent.version === deps.appVersion : null,
+          error: null,
+        })
       if (!connection.persistent) void refreshForgeCheck(item.config)
       logger?.log("ssh connected", { id, host: item.config.host, url: connection.url })
     } catch (error) {
@@ -316,11 +328,19 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
     }
   }
 
-  const recordPersistent = async (id: string, persistent: NonNullable<SshServerConfig["persistent"]>) => {
+  const recordPersistent = async (id: string, attempt: number, connection: { serverID: string }) => {
+    const persistent = { serverID: connection.serverID }
     const current = state.servers.find((item) => item.config.id === id)?.config
     if (!current || current.persistent?.serverID === persistent.serverID) return
-    await updateServers((servers) => servers.map((config) => (config.id === id ? { ...config, persistent } : config)))
-    updateServer(id, (item) => ({ ...item, config: { ...item.config, persistent } }))
+    // The write is queued behind other list changes, so the attempt is checked again inside it: a
+    // removal or restart that landed meanwhile must not have its entry overwritten with this identity.
+    await updateServers((servers) =>
+      isCurrentStartAttempt(id, attempt)
+        ? servers.map((config) => (config.id === id ? { ...config, persistent } : config))
+        : servers,
+    )
+    if (isCurrentStartAttempt(id, attempt))
+      updateServer(id, (item) => ({ ...item, config: { ...item.config, persistent } }))
   }
 
   // A managed persistent server belongs to its host's service manager, and the ssh master can be

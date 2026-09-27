@@ -96,6 +96,9 @@ export function SshServerSettings(props: {
                   </span>
                   <span class="settings-v2-servers-meta">
                     <Show when={check()?.version}>{(version) => `v${version()}`}</Show>
+                    <Show when={item.config.persistent && check()?.matchesDesktop === false}>
+                      {language.t("ssh.server.serviceVersionMismatch")}
+                    </Show>
                     <Show when={item.runtime.kind === "failed"}>
                       {(item.runtime as { kind: "failed"; message: string }).message}
                     </Show>

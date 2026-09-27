@@ -282,7 +282,9 @@ saved in desktop storage; it is re-read from the attach record on every connect.
 - **Remove.** Removing the target deletes the saved entry and disconnects. Neither action runs `forge-remote stop`.
 - **Stop server.** Stopping or retiring the service is an operator action on the host (`systemctl stop turenos`).
 - **Updates.** Install and update actions are hidden, and the SSH user's forge version isn't probed, because the host's
-  service setup owns the binary.
+  service setup owns the binary. The version shown beside the target is the service's own, from its descriptor; when
+  it differs from the desktop's, the row says so and the fix is `sudo forge persistent install --apply` on the host
+  with the new binary.
 
 Desktop shutdown (`stopAll`) disconnects only, as before.
 

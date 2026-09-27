@@ -77,6 +77,38 @@ test("concurrent persistent attaches keep every saved binding", async () => {
   expect(servers.map((item) => item.persistent)).toEqual([{ serverID: "srv_me@a" }, { serverID: "srv_me@b" }])
 })
 
+test("a superseded persistent attach never records its server onto the re-added target", async () => {
+  let servers: SshServerConfig[] = [config("ssh:me@a")]
+  const releases: (() => void)[] = []
+  let attaches = 0
+  const controller = createSshServersController(deps, {
+    readServers: () => servers,
+    writeServers: (next) => {
+      servers = next
+    },
+    resolve: async (target) => ({ hostname: target.host, user: "me", port: 22, identityFile: null }),
+    connect: async () => {
+      const id = ++attaches
+      await new Promise<void>((resolve) => releases.push(resolve))
+      // The first attach reached the host before it was replaced; the second reaches its replacement.
+      return { ...ready(), persistent: { serverID: id === 1 ? "srv_old" : "srv_new" } }
+    },
+  })
+  const init = controller.initialize()
+  await waitFor(() => releases.length === 1)
+  await controller.removeServer("ssh:me@a")
+  await controller.addServer({ host: "a" })
+  await waitFor(() => releases.length === 2)
+  releases[1]()
+  await waitFor(() => servers[0]?.persistent?.serverID === "srv_new")
+  releases[0]()
+  await init
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  expect(servers.map((item) => item.persistent)).toEqual([{ serverID: "srv_new" }])
+  expect(controller.getState().servers[0]?.config.persistent).toEqual({ serverID: "srv_new" })
+})
+
 test("concurrent adds of the same SSH host save one target", async () => {
   let servers: SshServerConfig[] = []
   const controller = createSshServersController(deps, {

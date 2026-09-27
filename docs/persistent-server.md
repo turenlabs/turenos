@@ -118,24 +118,44 @@ A database that already holds secrets needs its **original** key. A replacement 
 # Check, read-only, that the key opens every sealed store (safe while the old server still runs)
 printf '%s\n%s\n' "$KEY_ID" "$KEY_BASE64" | forge persistent verify-key --db ~/.local/share/forge/forge.db
 
-# Stop the quick-connect daemon and copy its database into a directory only root can write
+# Stop the quick-connect daemon and stage root-owned copies of its data and config under /root
 sh ~/.forge/bin/forge-remote stop
 sudo install -d -m 700 /root/turenos-import
-sudo cp ~/.local/share/forge/forge.db /root/turenos-import/   # and forge.db-wal, if it exists
+sudo cp -a --no-preserve=ownership ~/.local/share/forge /root/turenos-import/data   # forge.db, -wal, snapshots, plans, ...
+sudo cp -a --no-preserve=ownership ~/.config/forge /root/turenos-import/config      # optional: config, agents, MCP servers
 printf '%s\n%s\n' "$KEY_ID" "$KEY_BASE64" | sudo forge persistent install --user alice --apply \
-  --key-stdin --import-db /root/turenos-import/forge.db
+  --key-stdin --import-db /root/turenos-import/data/forge.db \
+  --import-data /root/turenos-import/data --import-config /root/turenos-import/config
 ```
 
-`--import-db` refuses a source in a directory another account can write, because SQLite running as root follows the
-WAL, SHM, and lock file names beside a database and changes the ownership of what it opens. It verifies the key against
-the source, then takes the source's owner lock, which refuses a server still running on it. It copies the database with `VACUUM INTO` into the pinned data root and leaves the original
-untouched as rollback material. Finally it **promotes** the copy: the owner record becomes `persistent` for the new
-server ID. Older quick-connect binaries don't take the owner lock, so always stop the daemon first. Because the
-promoted data lives outside the default path, an older desktop can only start a separate, empty quick-connect server.
-It can never open the promoted database.
+The unit pins every XDG directory, so a promoted server never reads the old account's `~/.local/share/forge` or
+`~/.config/forge` again. The database alone is not the whole state: sessions refer to snapshot repositories, plans, and
+retained tool output under the data directory, and the server's behavior comes from the global config. Import all
+three, or accept that history diffs and reverts fail for older sessions and that the server starts with default
+configuration. `--import-data` skips database files (they come from `--import-db`), `log`, and `repos` (a regenerable
+clone cache). Nothing from `~/.cache` or `~/.local/state` is needed.
 
-To restore on a new host, import the original key and ID the same way. Never copy a TPM-bound or host-bound credential
-blob to another machine.
+Every `--import-*` source must sit in a directory another account cannot write, because root reads it: SQLite running
+as root follows the WAL, SHM, and lock file names beside a database and changes the ownership of what it opens, and a
+tree copy must not have entries swapped under it. `--import-db` verifies the key against the source, then takes the
+source's owner lock, which refuses a server still running on it. It copies the database with `VACUUM INTO` into the
+pinned data root and leaves the original untouched as rollback material. Finally it **promotes** the copy: the owner
+record becomes `persistent` for the new server ID. Older quick-connect binaries don't take the owner lock, so always
+stop the daemon first. Because the promoted data lives outside the default path, an older desktop can only start a
+separate, empty quick-connect server. It can never open the promoted database.
+
+An import that is interrupted leaves a partial data root; remove it (`rm -rf /var/lib/turenos-server`) and run the
+import again. The staged copies and the original data are untouched.
+
+**Restoring a persistent server's backup** (on the same or a new host) uses the same commands with the backup's own
+server ID: a backup keeps its `persistent` owner record, and `--import-db` refuses it under any other ID, naming the
+ID to pass as `--server-id`. Import the original key with `--key-stdin`. Never copy a TPM-bound or host-bound
+credential blob to another machine.
+
+```sh
+printf '%s\n%s\n' "$KEY_ID" "$KEY_BASE64" | sudo forge persistent install --user alice --apply \
+  --key-stdin --server-id srv_... --import-db /root/turenos-restore/forge.db --import-data /root/turenos-restore
+```
 
 ### Operating
 
@@ -157,6 +177,11 @@ restarting. It doesn't disable a service that was already installed. Preflight r
 port another process holds (quick connect prefers 4096, so the default here is 4097) and a data root that belongs to
 another account. The unit restarts the service on failure. Each restart
 fails the same way until the operator fixes the cause.
+
+While `install` works in the data root, the root and its managed directories belong to root. A failure hands them
+back before the service is started again. If the process itself dies there (a dropped SSH session, Ctrl-C under
+`sudo`), the data root stays root-owned and the service cannot start; preflight reports it as an interrupted setup, and
+the next `install --apply` finishes handing it back.
 
 ## Clients
 

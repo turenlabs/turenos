@@ -41,7 +41,7 @@ export type SshConnection = {
   username: string | null
   password: string
   /** Present when the connection attached to a managed persistent server */
-  persistent?: { serverID: string }
+  persistent?: { serverID: string; version?: string | null }
 }
 
 export class ForgeRemoteMissingError extends Error {
@@ -144,13 +144,13 @@ async function attachPersistent(
       `${config.host} publishes persistent server ${record.serverID}, but it is not answering on ${record.url}. Check the service on the host (for example systemctl status turenos).`,
     )
   })
-  await describe(url)
+  const descriptor = await describe(url)
     .then(async (response) => {
       if (!response.ok)
         throw new Error(
           `TurenOS server ${record.serverID} on ${config.host} refused its descriptor request (HTTP ${response.status})`,
         )
-      verifyDescriptor(record, await response.json())
+      return verifyDescriptor(record, await response.json())
     })
     .catch((error) => {
       stop()
@@ -161,7 +161,7 @@ async function attachPersistent(
     url,
     username: record.username,
     password: record.password,
-    persistent: { serverID: record.serverID },
+    persistent: { serverID: record.serverID, version: descriptor.version },
   }
 }
 

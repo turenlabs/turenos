@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { mkdir, symlink } from "node:fs/promises"
+import { lstat, mkdir, symlink, writeFile } from "node:fs/promises"
 import { Effect } from "effect"
 import { sql } from "drizzle-orm"
 import { Database } from "@turenlabs/core/database/database"
@@ -173,6 +173,34 @@ describe("PersistentLinux", () => {
       "/var/lib/turenos already exists and belongs to another account; choose another --data-root",
     ])
     expect(PersistentLinux.evaluate({ ...facts, dataRootOwner: 1000 }, plan).problems).toEqual([])
+  })
+
+  test("a root-owned data root is an interrupted setup, not another account's", () => {
+    const evaluated = PersistentLinux.evaluate({ ...facts, dataRootOwner: 0 }, plan)
+    expect(evaluated.problems).toEqual([])
+    expect(evaluated.notes[0]).toContain("interrupted setup")
+  })
+
+  test("releasing a data root a failed claim never created is harmless", async () => {
+    await using tmp = await tmpdir()
+    const root = path.join(tmp.path, "missing")
+    await expect(
+      PersistentLinux.releaseDataRoot(root, { uid: process.getuid!(), gid: process.getgid!() }),
+    ).resolves.toBeUndefined()
+  })
+
+  // The copy itself runs as root and is exercised by script/persistent-e2e.ts; here only the refusal
+  // of a staging directory another account can write is checked, without touching the destination.
+  test("a staged tree in a directory another account can write is refused before anything is copied", async () => {
+    await using tmp = await tmpdir()
+    const source = path.join(tmp.path, "staged", "data")
+    await mkdir(path.join(source, "snapshot"), { recursive: true })
+    await writeFile(path.join(source, "snapshot", "HEAD"), "ref: refs/heads/main\n")
+    const destination = path.join(tmp.path, "root", "data", "forge")
+    await expect(
+      PersistentLinux.importTree(source, destination, { uid: process.getuid!(), gid: process.getgid!() }),
+    ).rejects.toThrow("another account can write")
+    expect(await lstat(destination).catch(() => undefined)).toBeUndefined()
   })
 
   test("an imported quick-connect database is copied read-only, verified, and promoted", async () => {

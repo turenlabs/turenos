@@ -120,6 +120,9 @@ async function upload() {
   )
 }
 
+// The backup is a copy, and it stays untouched until a restore has completed: the live files are
+// only removed once every copy exists (by the first reset), and a restore that dies partway can be
+// re-run against the same backup. `complete` marks a backup whose copies all finished.
 async function backup() {
   await ok(
     [
@@ -128,12 +131,11 @@ async function backup() {
       `mkdir -m 700 ${E2E.backup}`,
       `systemctl is-active --quiet turenos.service && touch ${E2E.backup}/was-active || true`,
       `systemctl is-enabled --quiet turenos.service && touch ${E2E.backup}/was-enabled || true`,
-      `systemctl disable --now turenos.service 2>/dev/null || true`,
       ...owned.map(
         (file) =>
-          `if [ -e ${file} ]; then mkdir -p ${E2E.backup}${path.dirname(file)} && mv ${file} ${E2E.backup}${file}; fi`,
+          `if [ -e ${file} ]; then mkdir -p ${E2E.backup}${path.dirname(file)} && cp -a ${file} ${E2E.backup}${file}; fi`,
       ),
-      `systemctl daemon-reload`,
+      `touch ${E2E.backup}/complete`,
       `id -u ${E2E.user} >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin ${E2E.user}`,
     ].join("\n"),
   )
@@ -162,14 +164,21 @@ async function restore() {
   // Checked before reset, which deletes the service files: without a backup there is nothing to put back.
   if ((await remote(`test -d ${E2E.backup}`)).code !== 0)
     throw new Error(`${E2E.backup} is missing; refusing to reset the host's service files`)
+  // A backup that never completed means the live files were never removed; only the partial copies go.
+  if ((await remote(`test -e ${E2E.backup}/complete`)).code !== 0) {
+    await ok(`rm -rf ${E2E.backup} ${E2E.work}`)
+    return
+  }
   await reset()
+  // Copies, so a restore that fails (including the service start) can run again from the same backup,
+  // which is deleted only once everything is back.
   await ok(
     [
       "set -e",
-      `test -d ${E2E.backup}`,
+      `test -e ${E2E.backup}/complete`,
       ...owned.map(
         (file) =>
-          `if [ -e ${E2E.backup}${file} ]; then mkdir -p ${path.dirname(file)} && mv ${E2E.backup}${file} ${file}; fi`,
+          `if [ -e ${E2E.backup}${file} ]; then mkdir -p ${path.dirname(file)} && cp -a ${E2E.backup}${file} ${file}; fi`,
       ),
       `systemctl daemon-reload`,
       `if [ -e ${E2E.backup}/was-enabled ]; then systemctl enable turenos.service; fi`,
@@ -402,6 +411,26 @@ const scenarios: Array<[string, () => Promise<void>]> = [
     },
   ],
   [
+    "a setup that died while it held the data root is finished by the next run",
+    async () => {
+      await freshInstall()
+      const before = await descriptor()
+      // What an interrupted claim leaves behind: the service stopped, the root and its managed
+      // directories root-owned 0700, so the service account cannot even traverse them.
+      await ok(
+        `systemctl stop turenos.service && chown root:root ${E2E.dataRoot} ${E2E.dataRoot}/data ${E2E.dataRoot}/data/forge && chmod 700 ${E2E.dataRoot} ${E2E.dataRoot}/data`,
+      )
+      const preflight = await remote(`${forge} persistent preflight 2>&1`)
+      expect(preflight.code === 0, `preflight refused the interrupted data root:\n${preflight.output}`)
+      expect(preflight.stdout.includes("interrupted setup"), `preflight did not explain the root-owned data root`)
+      const rerun = await remote(`${forge} persistent install --apply 2>&1`)
+      expect(rerun.code === 0, `re-run over the interrupted data root failed:\n${rerun.output}`)
+      expect((await mode(E2E.dataRoot)).endsWith(`${E2E.user}:${E2E.user}`), "the data root was not handed back")
+      expect((await mode(database)).startsWith(`600 ${E2E.user}:`), `the database is ${await mode(database)}`)
+      expect((await descriptor()).serverID === before.serverID, "the re-run changed the server")
+    },
+  ],
+  [
     "a failure after the service is stopped starts it again",
     async () => {
       await freshInstall()
@@ -483,6 +512,65 @@ const scenarios: Array<[string, () => Promise<void>]> = [
     },
   ],
 ]
+
+scenarios.push([
+  "a persistent backup restores under its own server ID with its data and config",
+  async () => {
+    await freshInstall()
+    const before = await descriptor()
+    const key = await ok(`cat ${recoveryFile}`)
+    const stored = await request("/auth/e2e-provider", { method: "PUT", body: { type: "api", key: "sk-e2e-secret" } })
+    expect(stored.status === 200, `storing a provider key failed: ${stored.status} ${stored.body}`)
+    // State beside the database that only a data and config import carries over.
+    const data = `${E2E.dataRoot}/data/forge`
+    const config = `${E2E.dataRoot}/config/forge`
+    await ok(
+      `systemctl stop turenos.service && install -d -o ${E2E.user} -g ${E2E.user} -m 700 ${data}/plans ${config} && ` +
+        `install -o ${E2E.user} -g ${E2E.user} -m 600 /dev/null ${data}/plans/e2e.md && ` +
+        `printf '{}\\n' > ${config}/forge.json && chown ${E2E.user}:${E2E.user} ${config}/forge.json && ` +
+        `ln -s /nonexistent ${data}/e2e-link && chown -h ${E2E.user}:${E2E.user} ${data}/e2e-link`,
+    )
+    const backup = `${E2E.work}/restore`
+    // Copies owned by root, as documented: a staged directory the service account owns would be
+    // refused as one another account can write.
+    await ok(
+      `mkdir -m 700 ${backup} && cp -a --no-preserve=ownership ${data} ${backup}/data && cp -a --no-preserve=ownership ${config} ${backup}/config`,
+    )
+    // The host loses its service and data root, as after a rebuild; the backup is all that is left.
+    await ok(
+      [
+        `systemctl disable --now turenos.service`,
+        ...owned.map((file) => `rm -f ${file}`),
+        `systemctl daemon-reload`,
+        `rm -rf ${E2E.dataRoot}`,
+      ].join(" && "),
+    )
+    const input = `${key}\n`
+    const refusal = await install(`--apply --key-stdin --import-db ${backup}/data/forge.db`, input)
+    refused(refusal, `--server-id ${before.serverID}`)
+    // The claim leaves an empty, user-owned layout behind; what matters is that no database blocks the retry.
+    expect((await remote(`test -e ${database}`)).code !== 0, "a refused restore left a database behind")
+    const result = await install(
+      `--apply --key-stdin --server-id ${before.serverID} --import-db ${backup}/data/forge.db ` +
+        `--import-data ${backup}/data --import-config ${backup}/config`,
+      input,
+    )
+    expect(result.code === 0, `restore failed:\n${result.output}`)
+    const after = await descriptor()
+    expect(after.serverID === before.serverID && after.keyID === before.keyID, "restore changed the server or key")
+    const report = JSON.parse(
+      (await ok(`${forge} persistent verify-key --db ${database}`, { input })).split("\n")[0]!,
+    ) as { stores: Array<{ store: string; sealed: number; opened: boolean }> }
+    expect(
+      report.stores.some((store) => store.store === "storage" && store.sealed > 0 && store.opened),
+      `the restored provider key is not readable: ${JSON.stringify(report.stores)}`,
+    )
+    expect((await mode(`${data}/plans/e2e.md`)) === `600 ${E2E.user}:${E2E.user}`, "the plan was not restored")
+    expect((await mode(`${config}/forge.json`)).endsWith(`${E2E.user}:${E2E.user}`), "the config was not restored")
+    expect((await ok(`readlink ${data}/e2e-link`)) === "/nonexistent", "the link was not copied as a link")
+    expect((await ok(`stat -c %U ${data}/e2e-link`)) === E2E.user, "the link is not owned by the service")
+  },
+])
 
 // ---------------------------------------------------------------------------------------------
 

@@ -3,7 +3,21 @@ export * as PersistentLinux from "./linux"
 import { spawn } from "node:child_process"
 import { randomBytes, randomUUID } from "node:crypto"
 import { constants } from "node:fs"
-import { chmod, lchown, link, lstat, mkdir, open, readFile, realpath, rename, stat, unlink } from "node:fs/promises"
+import {
+  chmod,
+  cp,
+  lchown,
+  link,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  stat,
+  unlink,
+} from "node:fs/promises"
 import { createServer } from "node:net"
 import { dirname, join } from "node:path"
 
@@ -190,7 +204,16 @@ export function evaluate(facts: Facts, plan: Plan) {
   // able to replace that binary could read both.
   if (!facts.forgeBinSafe)
     problems.push(`${plan.forgeBin} must be a root-owned file in directories writable only by root; pass --forge-bin`)
-  if (facts.user && facts.dataRootOwner !== undefined && facts.dataRootOwner !== facts.user.uid)
+  // Setup takes the data root as root while it works in it; an interrupted run (a dropped SSH session,
+  // Ctrl-C under sudo) leaves it root-owned, and a re-run finishes handing it back.
+  if (facts.user && facts.dataRootOwner === 0)
+    notes.push(`${plan.dataRoot} is root-owned from an interrupted setup; it will be handed back to ${plan.user}`)
+  if (
+    facts.user &&
+    facts.dataRootOwner !== undefined &&
+    facts.dataRootOwner !== 0 &&
+    facts.dataRootOwner !== facts.user.uid
+  )
     problems.push(`${plan.dataRoot} already exists and belongs to another account; choose another --data-root`)
   const existingID = installed(facts.existingUnit).serverID
   if (facts.existingUnit !== undefined && existingID !== plan.serverID)
@@ -321,13 +344,61 @@ async function checkLayout(dataRoot: string, create: boolean) {
   }
 }
 
-/** Hands the data root back to the service account. `lchown` never follows a link. */
+/**
+ * Hands the data root back to the service account. `lchown` never follows a link. Runs after a
+ * claim that failed partway too, so it tolerates a root that was never created.
+ */
 export async function releaseDataRoot(dataRoot: string, owner: { uid: number; gid: number }) {
   for (const path of [...layout.map((dir) => join(dataRoot, dir)), ...databaseFiles(dataRoot)]) {
     const info = await lstat(path).catch(() => undefined)
     if (info?.isDirectory() || info?.isFile()) await lchown(path, owner.uid, owner.gid)
   }
-  await lchown(dataRoot, owner.uid, owner.gid)
+  if (await lstat(dataRoot).catch(() => undefined)) await lchown(dataRoot, owner.uid, owner.gid)
+}
+
+// Regenerable or transient state that an import leaves behind, next to the database files.
+const importSkipped = new Set(["log", "repos"])
+
+/**
+ * Copies a staged data or config tree into the claimed data root and hands it to the service
+ * account. The staging directory must be writable only by root, like an imported database, so the
+ * account whose data this is cannot swap entries under root while they are read. Symlinks are
+ * copied as links, never followed; database files come from `VACUUM INTO`, not from here.
+ */
+export async function importTree(source: string, destination: string, owner: { uid: number; gid: number }) {
+  const real = await realpath(source).catch(() => {
+    throw new Error(`${source} does not exist`)
+  })
+  if (!(await stat(real)).isDirectory()) throw new Error(`${source} is not a directory`)
+  if (!(await writableOnlyByRoot(dirname(real))))
+    throw new Error(
+      `${source} is in a directory another account can write; copy it into a directory writable only by root and import that copy`,
+    )
+  // The destination may be a managed directory the claim created; entries are copied one by one
+  // into it, and any that already exist are an interrupted import that must start over.
+  if (!(await lstat(destination).catch(() => undefined))) await mkdir(destination, { mode: 0o700 })
+  for (const entry of await readdir(real)) {
+    if (importSkipped.has(entry) || /^forge[^/]*\.db(-wal|-shm|-journal|\.owner\.lock)?$/.test(entry)) continue
+    if (await lstat(join(destination, entry)).catch(() => undefined))
+      throw new Error(`${join(destination, entry)} already exists; remove the data root to retry an interrupted import`)
+    await cp(join(real, entry), join(destination, entry), {
+      recursive: true,
+      dereference: false,
+      verbatimSymlinks: true,
+      errorOnExist: true,
+      force: false,
+    })
+  }
+  await chownTree(destination, owner)
+}
+
+async function chownTree(root: string, owner: { uid: number; gid: number }) {
+  await lchown(root, owner.uid, owner.gid)
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name)
+    if (entry.isDirectory()) await chownTree(path, owner)
+    else await lchown(path, owner.uid, owner.gid)
+  }
 }
 
 export function newServerID() {

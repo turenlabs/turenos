@@ -105,12 +105,16 @@ export function classifyAttach(config: SshServerConfig, probe: AttachProbe): Att
   return { kind: "start-quick-connect" }
 }
 
-/** Confirms the tunnelled server is the persistent server the attach record names. */
+/**
+ * Confirms the tunnelled server is the persistent server the attach record names, and returns the
+ * service's version so the desktop can show it beside the target.
+ */
 export function verifyDescriptor(record: AttachRecord, descriptor: unknown) {
-  const value = descriptor as { serverID?: unknown; mode?: unknown } | null
+  const value = descriptor as { serverID?: unknown; mode?: unknown; version?: unknown } | null
   if (!value || typeof value !== "object" || typeof value.serverID !== "string")
     throw new Error("TurenOS server did not return a valid descriptor")
   if (value.serverID !== record.serverID)
     throw new Error(`TurenOS server reports ${value.serverID}, but its attach record names ${record.serverID}`)
   if (value.mode !== "persistent") throw new Error("TurenOS server behind the attach record is not persistent")
+  return { version: typeof value.version === "string" && value.version ? value.version : null }
 }

@@ -67,7 +67,10 @@ describe("persistent attach classification", () => {
   })
 
   test("verifies the tunnelled descriptor against the attach record", () => {
-    expect(() => verifyDescriptor(record, { serverID: "srv_1", mode: "persistent" })).not.toThrow()
+    expect(verifyDescriptor(record, { serverID: "srv_1", mode: "persistent" })).toEqual({ version: null })
+    expect(verifyDescriptor(record, { serverID: "srv_1", mode: "persistent", version: "1.0.31" })).toEqual({
+      version: "1.0.31",
+    })
     expect(() => verifyDescriptor(record, { serverID: "srv_2", mode: "persistent" })).toThrow(
       "attach record names srv_1",
     )
