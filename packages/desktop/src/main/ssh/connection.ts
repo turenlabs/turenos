@@ -80,10 +80,7 @@ function targetFor(config: SshServerConfig): SshTarget {
  * the daemonized `forge serve` is up, then open the loopback tunnel and wait
  * for health.
  */
-export async function connectSshRemote(
-  config: SshServerConfig,
-  deps: SshConnectionDeps,
-): Promise<SshConnection> {
+export async function connectSshRemote(config: SshServerConfig, deps: SshConnectionDeps): Promise<SshConnection> {
   const binary = deps.binary ?? sshBinary()
   const target = targetFor(config)
 
@@ -148,7 +145,7 @@ async function attachPersistent(
     .then(async (response) => {
       if (!response.ok)
         throw new Error(
-          `TurenOS server ${record.serverID} on ${config.host} answered ${response.status} to its attach record credentials`,
+          `TurenOS server ${record.serverID} on ${config.host} refused its descriptor request (HTTP ${response.status})`,
         )
       verifyDescriptor(record, await response.json())
     })
@@ -206,12 +203,7 @@ async function openTunnel(
   return { tunnel, url }
 }
 
-async function ensureRemote(
-  binary: string,
-  controlDir: string,
-  target: SshTarget,
-  deps: SshConnectionDeps,
-) {
+async function ensureRemote(binary: string, controlDir: string, target: SshTarget, deps: SshConnectionDeps) {
   const result = await runRemote(binary, controlDir, target, "sh -s", {
     timeoutMs: 90_000,
     input: remoteEnsureScript({

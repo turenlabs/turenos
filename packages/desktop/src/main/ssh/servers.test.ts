@@ -23,6 +23,9 @@ const ready = (): SshConnection => ({
 })
 
 const deps = {
+  // Paths without a test seam (the post-connect forge check) must fail fast rather than start a
+  // real ssh master that waits on a prompt and outlives the test run.
+  binary: "/nonexistent/forge-test-ssh",
   controlDir: "/tmp/forge-ssh-test",
   credentialVault: { keyID: "v1", key: new Uint8Array(32) },
   appVersion: "1.16.2",
@@ -56,6 +59,41 @@ test("closes a persistent attach whose server record cannot be saved", async () 
   await controller.initialize()
   await waitFor(() => controller.getState().servers[0]?.runtime.kind === "failed")
   expect(stops).toBe(1)
+})
+
+test("concurrent persistent attaches keep every saved binding", async () => {
+  let servers = [config("ssh:me@a"), config("ssh:me@b")]
+  const controller = createSshServersController(deps, {
+    readServers: () => servers,
+    writeServers: async (next) => {
+      await Bun.sleep(10)
+      servers = next
+    },
+    connect: async (cfg) => ({ ...ready(), persistent: { serverID: `srv_${cfg.host}` } }),
+  })
+  await controller.initialize()
+  await waitFor(() => controller.getState().servers.every((item) => item.runtime.kind === "ready"))
+  await waitFor(() => servers.every((item) => item.persistent))
+  expect(servers.map((item) => item.persistent)).toEqual([{ serverID: "srv_me@a" }, { serverID: "srv_me@b" }])
+})
+
+test("concurrent adds of the same SSH host save one target", async () => {
+  let servers: SshServerConfig[] = []
+  const controller = createSshServersController(deps, {
+    readServers: () => servers,
+    writeServers: async (next) => {
+      await Bun.sleep(10)
+      servers = next
+    },
+    resolve: async (target) => ({ hostname: target.host, user: "me", port: 22, identityFile: null }),
+    connect: async () => ready(),
+  })
+  await controller.initialize()
+
+  const results = await Promise.allSettled([controller.addServer({ host: "a" }), controller.addServer({ host: "a" })])
+  expect(results.map((result) => result.status)).toEqual(["fulfilled", "rejected"])
+  expect(servers).toHaveLength(1)
+  expect(controller.getState().servers).toHaveLength(1)
 })
 
 test("health polling stops when the tunnel startup settles", async () => {
@@ -101,8 +139,28 @@ test("rejects a forge version that did not update on the remote", () => {
 test("clears cached host probes when removing an SSH server", () => {
   expect(
     clearSshHostState(
-      { "ssh:a@x": { host: "ssh:a@x", sshAvailable: true, batchAuth: true, platform: null, hasBash: false, forgePath: null, forgeVersion: null, error: null } },
-      { "ssh:a@x": { host: "ssh:a@x", resolvedPath: "/u/.forge/bin/forge", version: "1", expectedVersion: "1", matchesDesktop: true, error: null } },
+      {
+        "ssh:a@x": {
+          host: "ssh:a@x",
+          sshAvailable: true,
+          batchAuth: true,
+          platform: null,
+          hasBash: false,
+          forgePath: null,
+          forgeVersion: null,
+          error: null,
+        },
+      },
+      {
+        "ssh:a@x": {
+          host: "ssh:a@x",
+          resolvedPath: "/u/.forge/bin/forge",
+          version: "1",
+          expectedVersion: "1",
+          matchesDesktop: true,
+          error: null,
+        },
+      },
       "ssh:a@x",
     ),
   ).toEqual({ probes: {}, forgeChecks: {} })
@@ -503,9 +561,7 @@ test("sequential prompts each surface and resolve (ssh password retries)", async
   await waitFor(() => controller.getState().prompt?.kind === "password")
   const firstId = controller.getState().prompt!.requestId
   controller.respondPrompt(firstId, "wrong")
-  await waitFor(
-    () => controller.getState().prompt !== null && controller.getState().prompt!.requestId !== firstId,
-  )
+  await waitFor(() => controller.getState().prompt !== null && controller.getState().prompt!.requestId !== firstId)
   controller.respondPrompt(controller.getState().prompt!.requestId, "right")
   await waitFor(() => responses.length === 2)
   expect(responses).toEqual(["wrong", "right"])

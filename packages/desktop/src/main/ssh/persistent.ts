@@ -25,7 +25,9 @@ export type AttachClassification =
 /** Sent on stdin so nothing in it lands in argv. It sends no secrets. */
 export const REMOTE_ATTACH_PROBE_SCRIPT = [
   `f="${ATTACH_RECORD_PATH}"`,
-  'if [ ! -e "$f" ]; then printf "FORGE_ATTACH missing\\n"',
+  // `-e` is false inside a directory this user cannot search, which must not read as "no server".
+  'if [ -d "${f%/*}" ] && [ ! -x "${f%/*}" ]; then printf "FORGE_ATTACH unreadable\\n"',
+  'elif [ ! -e "$f" ]; then printf "FORGE_ATTACH missing\\n"',
   'elif [ ! -r "$f" ]; then printf "FORGE_ATTACH unreadable\\n"',
   'else printf "FORGE_ATTACH readable %s\\n" "$(tr -d \'\\r\\n\' < "$f")"; fi',
   "",
@@ -37,7 +39,8 @@ export function parseAttachProbe(output: string): AttachProbe {
     .split(/\r?\n/g)
     .map((line) => /^FORGE_ATTACH (missing|unreadable|readable)(?: (.*))?$/.exec(line.trim()))
     .findLast((result) => result !== null)
-  if (!match) return { state: "missing" }
+  // A successful SSH command without our marker did not prove the record is absent.
+  if (!match) return { state: "malformed" }
   if (match[1] !== "readable") return { state: match[1] as "missing" | "unreadable" }
   const record = parseAttachRecord(match[2] ?? "")
   return record ? { state: "readable", record } : { state: "malformed" }
@@ -57,7 +60,19 @@ export function parseAttachRecord(text: string): AttachRecord | undefined {
     )
       return
     const url = new URL(value.url)
-    if (url.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) || !url.port) return
+    // The SSH tunnel forwards to remote 127.0.0.1, so only that exact listener can be attached.
+    if (
+      url.protocol !== "http:" ||
+      url.hostname !== "127.0.0.1" ||
+      !url.port ||
+      Number(url.port) === 0 ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
+    )
+      return
     return { version: 1, serverID: value.serverID, url: value.url, username: value.username, password: value.password }
   } catch {
     return
@@ -77,7 +92,8 @@ export function classifyAttach(config: SshServerConfig, probe: AttachProbe): Att
   if (probe.state === "unreadable")
     return {
       kind: "conflict",
-      message: `${config.host} runs a managed TurenOS server, but this SSH user cannot read its attach record. Ask the host operator for access (on Linux, membership in the turenos-operators group).`,
+      // The probe runs over a reused ssh master, whose login still has the groups it started with.
+      message: `${config.host} runs a managed TurenOS server, but this SSH user cannot read its attach record. Ask the host operator for access (on Linux, membership in the turenos-operators group). New group membership applies only to a new SSH login, and TurenOS keeps its SSH connection open until it has been idle for 10 minutes, so reconnect after that.`,
     }
   if (probe.state === "malformed")
     return { kind: "conflict", message: `${config.host} has a malformed TurenOS attach record; refusing to connect.` }

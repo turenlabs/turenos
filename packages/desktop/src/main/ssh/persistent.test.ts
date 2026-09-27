@@ -38,7 +38,8 @@ describe("persistent attach classification", () => {
       state: "readable",
       record,
     })
-    expect(parseAttachProbe("Welcome FORGE_ATTACH readable {}")).toEqual({ state: "missing" })
+    expect(parseAttachProbe(line("missing"))).toEqual({ state: "missing" })
+    expect(parseAttachProbe("Welcome FORGE_ATTACH readable {}")).toEqual({ state: "malformed" })
     expect(parseAttachProbe(line("unreadable"))).toEqual({ state: "unreadable" })
     expect(parseAttachProbe(line("readable", '{"version":1}'))).toEqual({ state: "malformed" })
   })
@@ -46,6 +47,12 @@ describe("persistent attach classification", () => {
   test("rejects attach records that point off the host loopback", () => {
     const remote = JSON.stringify({ ...record, url: "http://203.0.113.9:4096" })
     expect(parseAttachProbe(line("readable", remote))).toEqual({ state: "malformed" })
+    expect(parseAttachProbe(line("readable", JSON.stringify({ ...record, url: "http://[::1]:4096" })))).toEqual({
+      state: "malformed",
+    })
+    expect(parseAttachProbe(line("readable", JSON.stringify({ ...record, url: "http://127.0.0.1:0" })))).toEqual({
+      state: "malformed",
+    })
   })
 
   test("classifies attach, quick connect, and conflicts", () => {
@@ -80,6 +87,26 @@ describe("persistent attach classification", () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  test.skipIf(process.getuid?.() === 0)(
+    "the probe script reports an attach directory it cannot search as unreadable, not missing",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "forge-attach-probe-"))
+      try {
+        const file = join(dir, "attach.json")
+        await writeFile(file, JSON.stringify(record), { mode: 0o600 })
+        await chmod(dir, 0o600)
+        const run = Bun.spawnSync(["sh", "-s"], {
+          stdin: Buffer.from(REMOTE_ATTACH_PROBE_SCRIPT.replace(ATTACH_RECORD_PATH, file)),
+          env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+        })
+        expect(parseAttachProbe(run.stdout.toString())).toEqual({ state: "unreadable" })
+      } finally {
+        await chmod(dir, 0o700)
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+  )
 
   test("the probe script carries no secrets", () => {
     expect(REMOTE_ATTACH_PROBE_SCRIPT).not.toContain("FORGE_SECRET_VAULT_KEY")
@@ -173,6 +200,24 @@ if (forward !== -1) {
     expect(Date.now() - started).toBeLessThan(10_000)
     // The stopped tunnel spawns `ssh -O cancel`; let it run before the fake binary is removed.
     await Bun.sleep(200)
+  }, 30_000)
+
+  test("a subscriber added after tunnel exit still observes the exit", async () => {
+    const setup = await attachThrough(() => Response.json({ serverID: "srv_1", mode: "persistent" }))
+    const connection = await setup.connection
+    const first = new Promise<void>((resolve) => connection.listener.onExit(() => resolve()))
+    connection.listener.stop()
+    await first
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("late tunnel exit was missed")), 1000)
+      connection.listener.onExit(() => {
+        clearTimeout(timeout)
+        resolve()
+      })
+    })
+    // The exit handler issues `ssh -O cancel` in a separate child.
+    await Bun.sleep(100)
   }, 30_000)
 })
 

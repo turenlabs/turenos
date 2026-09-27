@@ -77,6 +77,14 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
   const logger = options?.logger
   const readServers = options?.readServers ?? (() => [])
   const writeServers = options?.writeServers ?? (() => undefined)
+  // Concurrent starts, adds, and removals each rewrite the whole list; serializing them keeps
+  // one caller's read from dropping another's write.
+  let serverWrites: Promise<unknown> = Promise.resolve()
+  const updateServers = (change: (servers: SshServerConfig[]) => SshServerConfig[]) => {
+    const next = serverWrites.then(async () => writeServers(change(await readServers())))
+    serverWrites = next.catch(() => undefined)
+    return next
+  }
   const binary = deps.binary ?? sshBinary()
 
   const emit = () => {
@@ -281,7 +289,8 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
         logger?.error("ssh tunnel exited", { id, host: item.config.host, code, signal })
         scheduleReconnect(id)
       })
-      void refreshForgeCheck(item.config)
+      // The check probes the SSH user's own forge, which a persistent server's service does not run.
+      if (!connection.persistent) void refreshForgeCheck(item.config)
       logger?.log("ssh connected", { id, host: item.config.host, url: connection.url })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -310,7 +319,7 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
   const recordPersistent = async (id: string, persistent: NonNullable<SshServerConfig["persistent"]>) => {
     const current = state.servers.find((item) => item.config.id === id)?.config
     if (!current || current.persistent?.serverID === persistent.serverID) return
-    await writeServers((await readServers()).map((config) => (config.id === id ? { ...config, persistent } : config)))
+    await updateServers((servers) => servers.map((config) => (config.id === id ? { ...config, persistent } : config)))
     updateServer(id, (item) => ({ ...item, config: { ...item.config, persistent } }))
   }
 
@@ -428,7 +437,11 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
       if (state.servers.some((item) => item.config.id === config.id)) {
         throw new Error(`${sshDestinationLabel(config)} is already added`)
       }
-      await writeServers([...(await readServers()), config])
+      await updateServers((servers) => {
+        if (servers.some((item) => item.id === config.id))
+          throw new Error(`${sshDestinationLabel(config)} is already added`)
+        return [...servers, config]
+      })
       setState({ servers: [...state.servers, { config, runtime: { kind: "starting" } }] })
       void startServer(config.id)
       return config
@@ -445,8 +458,7 @@ export function createSshServersController(deps: SshConnectionDeps, options?: Ss
           import("./connection").then(({ stopSshRemote }) => stopSshRemote(config, { ...deps, reachable: false })),
         )
       }
-      const remaining = (await readServers()).filter((item) => item.id !== id)
-      await writeServers(remaining)
+      await updateServers((servers) => servers.filter((item) => item.id !== id))
       setState({
         servers: state.servers.filter((item) => item.config.id !== id),
         ...clearSshHostState(state.probes, state.forgeChecks, id),

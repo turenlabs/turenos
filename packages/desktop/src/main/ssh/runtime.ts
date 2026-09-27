@@ -367,9 +367,7 @@ export async function ensureMaster(
 ): Promise<SshMaster> {
   await mkdir(controlDir, { recursive: true, mode: 0o700 })
   const cp = controlPath(controlDir, target)
-  const pending = (masterLocks.get(cp) ?? Promise.resolve()).then(() =>
-    acquireMaster(binary, cp, target, opts),
-  )
+  const pending = (masterLocks.get(cp) ?? Promise.resolve()).then(() => acquireMaster(binary, cp, target, opts))
   const stored = pending.catch(() => undefined)
   masterLocks.set(cp, stored)
   try {
@@ -522,7 +520,9 @@ export async function runRemote(
   const cp = controlPath(controlDir, target)
   const result = await runSsh(binary, [...sshArgs(target, { controlPath: cp }), remote], opts)
   if (result.code !== 0) {
-    throw new Error(summarizeSshOutput(result.stderr || result.stdout) || `Remote command failed on ${sshDestination(target)}`)
+    throw new Error(
+      summarizeSshOutput(result.stderr || result.stdout) || `Remote command failed on ${sshDestination(target)}`,
+    )
   }
   return result
 }
@@ -569,7 +569,8 @@ export function remotePlatformTarget(platform: string | null) {
   if (!platform) return null
   const [os, arch] = platform.toLowerCase().split("-")
   const osName = os === "darwin" ? "darwin" : os === "linux" ? "linux" : null
-  const archName = arch === "x86_64" || arch === "amd64" ? "x64" : arch === "arm64" || arch === "aarch64" ? "arm64" : null
+  const archName =
+    arch === "x86_64" || arch === "amd64" ? "x64" : arch === "arm64" || arch === "aarch64" ? "arm64" : null
   if (!osName || !archName) return null
   return `${osName}-${archName}`
 }
@@ -687,6 +688,7 @@ export function spawnTunnel(
   }
   child.stdout.on("data", collect)
   child.stderr.on("data", collect)
+  let exited: { code: number | null; signal: NodeJS.Signals | null } | undefined
   const onAbort = () => {
     try {
       child.kill()
@@ -695,7 +697,8 @@ export function spawnTunnel(
     }
   }
   opts.signal?.addEventListener("abort", onAbort, { once: true })
-  child.once("exit", () => {
+  child.once("exit", (code, signal) => {
+    exited = { code, signal }
     opts.signal?.removeEventListener("abort", onAbort)
     // Forwards registered through the mux persist on the master even after the
     // session that created them ends - release the listener explicitly or the
@@ -714,6 +717,10 @@ export function spawnTunnel(
     localPort,
     stderrTail: () => stderr,
     stop: onAbort,
-    onExit: (cb) => child.once("exit", cb),
+    onExit: (cb) => {
+      const settled = exited
+      if (settled) return queueMicrotask(() => cb(settled.code, settled.signal))
+      child.once("exit", cb)
+    },
   }
 }
