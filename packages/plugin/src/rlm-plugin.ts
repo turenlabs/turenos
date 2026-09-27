@@ -116,25 +116,7 @@ export function createRlmPlugin(options: RlmPluginOptions = {}): Plugin {
             const terms = tokenize(args.query)
             const phrase = args.query.trim().toLowerCase()
             const limit = Math.min(args.limit ?? maxSearchResults, maxSearchResults)
-            const results: RlmSearchResult[] = []
-
-            for (let index = 0; index < target.lines.length; index++) {
-              const line = target.lines[index]!
-              const normalized = line.toLowerCase()
-              const termScore = terms.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0)
-              const score = termScore + (phrase.length > 0 && normalized.includes(phrase) ? terms.length : 0)
-              if (score === 0) continue
-              const result = { line: index + 1, score, text: line }
-              if (results.length < limit) {
-                results.push(result)
-                siftUpRlmSearchResults(results, results.length - 1)
-                continue
-              }
-              if (compareRlmSearchResult(result, results[0]!) >= 0) continue
-              siftDownRlmSearchResults(results, result)
-            }
-
-            results.sort(compareRlmSearchResult)
+            const results = rankRlmSearchLines(target.lines, terms, phrase, limit)
 
             return {
               title: `RLM search: ${results.length} match${results.length === 1 ? "" : "es"}`,
@@ -196,32 +178,28 @@ export const RlmPlugin = createRlmPlugin()
 
 type RlmSearchResult = { line: number; score: number; text: string }
 
-function compareRlmSearchResult(left: RlmSearchResult, right: RlmSearchResult) {
-  return right.score - left.score || left.line - right.line
-}
-
-function siftUpRlmSearchResults(results: RlmSearchResult[], child: number) {
-  const result = results[child]!
-  while (child > 0) {
-    const parent = (child - 1) >> 1
-    if (compareRlmSearchResult(results[parent]!, result) >= 0) break
-    results[child] = results[parent]!
-    child = parent
+function rankRlmSearchLines(lines: readonly string[], terms: readonly string[], phrase: string, limit: number) {
+  const resultsByScore = new Map<number, RlmSearchResult[]>()
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!
+    const normalized = line.toLowerCase()
+    const termScore = terms.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0)
+    const score = termScore + (phrase.length > 0 && normalized.includes(phrase) ? terms.length : 0)
+    if (score === 0) continue
+    const matches = resultsByScore.get(score)
+    if (matches === undefined) {
+      resultsByScore.set(score, [{ line: index + 1, score, text: line }])
+      continue
+    }
+    if (matches.length >= limit) continue
+    matches.push({ line: index + 1, score, text: line })
   }
-  results[child] = result
-}
 
-function siftDownRlmSearchResults(results: RlmSearchResult[], result: RlmSearchResult) {
-  let parent = 0
-  while (parent * 2 + 1 < results.length) {
-    const left = parent * 2 + 1
-    const right = left + 1
-    const worse = right < results.length && compareRlmSearchResult(results[right]!, results[left]!) > 0 ? right : left
-    if (compareRlmSearchResult(result, results[worse]!) >= 0) break
-    results[parent] = results[worse]!
-    parent = worse
-  }
-  results[parent] = result
+  // Lines are scanned in order, so each score bucket already has the line-number tie-break.
+  return [...resultsByScore.entries()]
+    .sort(([left], [right]) => right - left)
+    .flatMap(([, matches]) => matches)
+    .slice(0, limit)
 }
 
 export default RlmPlugin
