@@ -71,7 +71,8 @@ owned by another server stops startup. None of these cases creates a key or fall
   and start time. Every database open checks it before migrations run, including CLI commands that don't take the lock.
   A persistent record requires the configured persistent mode and server ID. A quick-connect database becomes
   persistent only through explicit promotion by `forge persistent install`.
-- **Verification.** When the lock carries the key, the database layer verifies the key right after migrations, before
+- **Verification.** When the lock carries the key, an existing database is inspected read-only before WAL setup or
+  migrations; a wrong key cannot migrate it. After migrations the database layer seals or checks the sentinel before
   any service reads or writes a secret. `Auth` runs the same check for other entry points; when the database layer has
   already checked the same key ID, `Auth` only decrypts the sentinel to confirm the key bytes. The check scans every sealed
   store: `storage_state` (auth, MCP auth, extensions, security proxy), `credential`, `account`, `control_account`, and

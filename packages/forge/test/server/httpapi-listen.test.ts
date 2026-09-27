@@ -3,8 +3,12 @@ import net from "node:net"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { Flag } from "@turenlabs/core/flag/flag"
+import { Database } from "@turenlabs/core/database/database"
+import { ServerOwner } from "@turenlabs/core/database/server-owner"
+import { SecretVault } from "@turenlabs/core/secret-vault"
 import { Effect } from "effect"
 import { Server } from "../../src/server/server"
+import { ServerAuth } from "../../src/server/auth"
 import { GlobalPaths } from "../../src/server/routes/instance/httpapi/groups/global"
 import { PtyPaths } from "../../src/server/routes/instance/httpapi/groups/pty"
 import { withTimeout } from "../../src/util/timeout"
@@ -236,6 +240,69 @@ describe("HttpApi Server.listen", () => {
       await stop(listener, "listener-configured auth stop")
     }
   })
+
+  test("keeps listener credentials and descriptors isolated when the older listener stops first", async () => {
+    await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
+    const filename = path.join(tmp.path, "listeners.db")
+    Flag.FORGE_DB = filename
+    Flag.FORGE_SERVER_PASSWORD = undefined
+    Flag.FORGE_SERVER_USERNAME = undefined
+    delete process.env.FORGE_SERVER_PASSWORD
+    delete process.env.FORGE_SERVER_USERNAME
+    await Effect.gen(function* () {
+      const vault = yield* SecretVault.Service
+      const database = yield* Database.Service
+      yield* ServerOwner.claim(Database.primary(database.db), { mode: "quick-connect", keyID: vault.keyID })
+    }).pipe(
+      Effect.provide(SecretVault.runtime),
+      Effect.provide(Database.layerFromPath(filename)),
+      Effect.scoped,
+      Effect.runPromise,
+    )
+    const first = await Server.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      keySource: "systemd-credentials",
+      serverAuth: { username: "first", password: "first-secret" },
+    })
+    let second: Server.Listener | undefined
+    try {
+      second = await Server.listen({
+        hostname: "127.0.0.1",
+        port: 0,
+        keySource: "env",
+        serverAuth: { username: "second", password: "second-secret" },
+      })
+      const request = (listener: Server.Listener, endpoint: string, username: string, password: string) =>
+        fetch(new URL(endpoint, listener.url), {
+          headers: { authorization: `Basic ${btoa(`${username}:${password}`)}` },
+        })
+      const firstDescriptor = await request(first, GlobalPaths.server, "first", "first-secret")
+      const secondDescriptor = await request(second, GlobalPaths.server, "second", "second-secret")
+      expect(firstDescriptor.status).toBe(200)
+      expect(secondDescriptor.status).toBe(200)
+      expect(await firstDescriptor.json()).toMatchObject({
+        listener: first.url.toString(),
+        keySource: "systemd-credentials",
+      })
+      expect(await secondDescriptor.json()).toMatchObject({ listener: second.url.toString(), keySource: "env" })
+      expect((await request(first, GlobalPaths.health, "second", "second-secret")).status).toBe(401)
+      expect((await request(second, GlobalPaths.health, "first", "first-secret")).status).toBe(401)
+      expect(ServerAuth.header()).toBeUndefined()
+      expect(process.env.FORGE_SERVER_PASSWORD).toBeUndefined()
+
+      await stop(first, "first listener stop")
+      expect((await request(second, GlobalPaths.health, "second", "second-secret")).status).toBe(200)
+      expect((await request(second, GlobalPaths.health, "first", "first-secret")).status).toBe(401)
+      const stillSecond = await request(second, GlobalPaths.server, "second", "second-secret")
+      expect(await stillSecond.json()).toMatchObject({ listener: second.url.toString(), keySource: "env" })
+    } finally {
+      await stop(first, "first listener cleanup").catch(() => undefined)
+      if (second) await stop(second, "second listener cleanup")
+    }
+    expect(ServerAuth.header()).toBeUndefined()
+    expect(process.env.FORGE_SERVER_PASSWORD).toBeUndefined()
+  }, 30_000)
 
   testPty("serves HTTP routes and upgrades PTY websocket through Server.listen", async () => {
     await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })

@@ -33,13 +33,13 @@ const stores: Store[] = [
     name: "credential",
     table: "credential",
     // Drizzle JSON mode stores the envelope as a JSON string literal.
-    query: sql`SELECT id, value FROM credential WHERE value LIKE ${'"' + PREFIX + "%"}`,
+    query: sql`SELECT * FROM credential WHERE value LIKE ${'"' + PREFIX + "%"}`,
     locate: (row) => [{ scope: "credential", key: row.id!, value: JSON.parse(row.value!) as string }],
   },
   {
     name: "account",
     table: "account",
-    query: sql`SELECT id, access_token, refresh_token FROM account`,
+    query: sql`SELECT * FROM account`,
     locate: (row) => [
       { scope: `internal/account/${row.id}`, key: "access-token", value: row.access_token! },
       { scope: `internal/account/${row.id}`, key: "refresh-token", value: row.refresh_token! },
@@ -48,7 +48,7 @@ const stores: Store[] = [
   {
     name: "control-account",
     table: "control_account",
-    query: sql`SELECT email, url, access_token, refresh_token FROM control_account`,
+    query: sql`SELECT * FROM control_account`,
     locate: (row) => [
       { scope: `internal/control-account/${row.email}/${row.url}`, key: "access-token", value: row.access_token! },
       { scope: `internal/control-account/${row.email}/${row.url}`, key: "refresh-token", value: row.refresh_token! },
@@ -57,7 +57,7 @@ const stores: Store[] = [
   {
     name: "session-share",
     table: "session_share",
-    query: sql`SELECT id, secret FROM session_share WHERE secret LIKE ${PREFIX + "%"}`,
+    query: sql`SELECT * FROM session_share`,
     locate: (row) => [{ scope: "session-share", key: row.id!, value: row.secret! }],
   },
 ]
@@ -127,36 +127,35 @@ export function inspect(db: Database.Primary, databaseUUID: string | undefined, 
 export function inspectFile(filename: string, key: SecretVault.Key) {
   return Effect.gen(function* () {
     const db = yield* Database.openReadonly(filename)
-    const identity = yield* db
-      .get<{ value: string }>(sql`SELECT value FROM storage_state WHERE scope = 'internal/database' AND key = 'uuid'`)
-      .pipe(Effect.orElseSucceed(() => undefined))
+    const identity = yield* databaseUUID(db)
     const owner = yield* ServerOwner.read(db)
-    const report = yield* inspect(db, identity?.value, SecretVault.make(key))
-    return { ...report, databaseUUID: identity?.value, owner }
+    const report = yield* inspect(db, identity, SecretVault.make(key))
+    return { ...report, databaseUUID: identity, owner }
   }).pipe(Effect.scoped, Effect.runPromise)
+}
+
+export function databaseUUID(db: Database.Primary) {
+  return Effect.gen(function* () {
+    const table = yield* db.get<{ name: string }>(sql`
+      SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'storage_state'
+    `)
+    if (!table) return undefined
+    const identity = yield* db.get<{ value: string }>(sql`
+      SELECT value FROM storage_state WHERE scope = 'internal/database' AND key = 'uuid'
+    `)
+    return identity?.value
+  })
 }
 
 /**
  * Proves the configured key bytes match this database before any service reads or writes a
  * secret. The first successful start seals a database-bound sentinel; later starts decrypt it.
  */
-export function verify(db: Database.Primary, databaseUUID: string, vault: SecretVault.Interface) {
+export function verify(db: Database.Primary, databaseUUID: string, vault: SecretVault.Interface, checked?: Report) {
   return Effect.gen(function* () {
-    const report = yield* inspect(db, databaseUUID, vault)
-    if (report.keyIDs.length > 1)
-      return yield* Effect.die(new Error("Database contains secrets sealed by multiple key IDs"))
-    if (report.keyIDs.length === 1 && report.keyIDs[0] !== vault.keyID)
-      return yield* Effect.die(new Error("Stored credentials belong to another OS-protected key"))
-    if (report.verification === "invalid")
-      return yield* Effect.die(
-        new Error("Database secret verification failed; the configured key or database is incorrect"),
-      )
-    const failed = report.stores.filter((store) => !store.opened).map((store) => store.store)
-    if (failed.length)
-      return yield* Effect.die(
-        new Error(`Configured key cannot open existing secrets in: ${failed.join(", ")}; the key is incorrect`),
-      )
-    if (report.verification === "valid") return
+    if (!checked) yield* check(db, databaseUUID, vault)
+    if (checked?.verification === "valid") return
+    if (!checked && (yield* sentinelValid(db, databaseUUID, vault))) return
     const sealed = yield* vault.seal(verificationScope, verificationKey, plaintext(databaseUUID))
     const now = Date.now()
     yield* db
@@ -177,6 +176,27 @@ export function verify(db: Database.Primary, databaseUUID: string, vault: Secret
       return yield* Effect.die(
         new Error("Database secret verification failed; the configured key or database is incorrect"),
       )
+  })
+}
+
+/** Read-only authentication, safe before opening a SQLite write connection or running migrations. */
+export function check(db: Database.Primary, databaseUUID: string | undefined, vault: SecretVault.Interface) {
+  return Effect.gen(function* () {
+    const report = yield* inspect(db, databaseUUID, vault)
+    if (report.keyIDs.length > 1)
+      return yield* Effect.die(new Error("Database contains secrets sealed by multiple key IDs"))
+    if (report.keyIDs.length === 1 && report.keyIDs[0] !== vault.keyID)
+      return yield* Effect.die(new Error("Stored credentials belong to another OS-protected key"))
+    if (report.verification === "invalid")
+      return yield* Effect.die(
+        new Error("Database secret verification failed; the configured key or database is incorrect"),
+      )
+    const failed = report.stores.filter((store) => !store.opened).map((store) => store.store)
+    if (failed.length)
+      return yield* Effect.die(
+        new Error(`Configured key cannot open existing secrets in: ${failed.join(", ")}; the key is incorrect`),
+      )
+    return report
   })
 }
 

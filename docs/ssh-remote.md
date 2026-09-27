@@ -219,11 +219,15 @@ loudly if it does not — and restarts the server.
 
 ## Tunnel and readiness
 
-With a port in hand the desktop allocates a free loopback port locally (bind :0, read it, close) and
-spawns the forward over the master:
+With a remote port in hand, the desktop binds its own loopback proxy on a kernel-assigned port and
+keeps that listener open for the entire connection. The proxy relays to an ssh forward on a Unix
+socket in a fresh private directory; there is no moment when another local process can take over
+the loopback port and receive an authenticated request. The per-user control directory must be owned
+by the desktop user and private; an unsafe pre-existing directory is refused before ssh runs. The
+forward runs over the master:
 
 ```
-ssh -S <controlPath> -L 127.0.0.1:<local>:127.0.0.1:<remote> \
+ssh -S <controlPath> -L <privateSocket>:127.0.0.1:<remote> \
     -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 \
     -o ServerAliveCountMax=2 -o TCPKeepAlive=yes <dest> 'cat >/dev/null'
 ```
@@ -234,8 +238,8 @@ makes _its_ exit a reliable signal that the connection dropped. Because `cat` re
 remote side also exits when the tunnel closes. A command that ignores stdin would outlive the tunnel
 and keep its session until the host's `MaxSessions` limit refused every new tunnel on the shared
 master. And forwards registered through the mux outlive the
-session that created them, so on exit the desktop explicitly issues `-O cancel -L <spec>` — otherwise
-the local port stays bound and the next connect cannot re-register it.
+session that created them, so on exit the desktop explicitly issues `-O cancel -L <spec>` and closes
+its proxy. The private socket directory is then removed.
 
 Startup then races three outcomes: health polling against `GET /global/health` with Basic auth
 (`forge:<password>`, 100 ms interval), a 20-second timeout, and tunnel exit. Whichever settles first

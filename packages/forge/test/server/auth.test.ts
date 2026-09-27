@@ -49,17 +49,12 @@ describe("ServerAuth", () => {
     })
   })
 
-  test("uses listener credentials from protected configuration when the environment has none", () => {
+  test("explicit protected credentials never become a global fallback", () => {
     Flag.FORGE_SERVER_PASSWORD = undefined
     Flag.FORGE_SERVER_USERNAME = undefined
-    const previous = ServerAuth.configure({ password: "file-secret" })
-    try {
-      expect(ServerAuth.headers()).toEqual({
-        Authorization: `Basic ${Buffer.from("forge:file-secret").toString("base64")}`,
-      })
-    } finally {
-      ServerAuth.configure(previous)
-    }
+    expect(ServerAuth.headers({ password: "file-secret" })).toEqual({
+      Authorization: `Basic ${Buffer.from("forge:file-secret").toString("base64")}`,
+    })
     expect(ServerAuth.header()).toBeUndefined()
   })
 

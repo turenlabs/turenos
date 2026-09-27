@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test"
+import { chmod, mkdir, mkdtemp, rm, symlink } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
   controlPath,
   detectSshPrompt,
+  ensureMaster,
   localPlatformTarget,
   parseRemoteProbe,
   parseSshConfig,
@@ -12,6 +16,33 @@ import {
   summarizeSshOutput,
 } from "./runtime"
 import { parseRemoteState, remoteInstallMissing } from "./shim"
+
+test.skipIf(process.platform === "win32")(
+  "a hostile control directory is rejected before ssh can forward credentials",
+  async () => {
+    const parent = await mkdtemp(join(tmpdir(), "forge-ssh-untrusted-"))
+    const directory = join(parent, "control")
+    try {
+      await symlink(parent, directory)
+      const connect = () =>
+        ensureMaster(
+          "/nonexistent/ssh",
+          directory,
+          { host: "host", user: "user", port: null, identityFile: null },
+          {
+            onPrompt: async () => null,
+          },
+        )
+      await expect(connect()).rejects.toThrow("must be owned by this user and private")
+      await rm(directory)
+      await mkdir(directory)
+      await chmod(directory, 0o777)
+      await expect(connect()).rejects.toThrow("must be owned by this user and private")
+    } finally {
+      await rm(parent, { recursive: true, force: true })
+    }
+  },
+)
 
 describe("parseSshTarget", () => {
   test("parses plain host", () => {

@@ -9,6 +9,7 @@ import type {
 import { Config } from "@/config/config"
 import { createForgeClient } from "@turenlabs/sdk"
 import { ServerAuth } from "@/server/auth"
+import { ServerDescriptor } from "@/server/descriptor"
 import { CodexAuthPlugin } from "./openai/codex"
 import { Session } from "@/session/session"
 import { NamedError } from "@turenlabs/core/util/error"
@@ -27,7 +28,7 @@ import { ExtensionRuntime } from "@turenlabs/core/extension"
 import { Extension } from "@turenlabs/schema"
 import { Storage } from "@turenlabs/core/storage"
 import { Auth } from "@/auth"
-import { Effect, Layer, Context } from "effect"
+import { Effect, Layer, Context, Option } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { errorMessage } from "@/util/error"
@@ -153,6 +154,8 @@ const layer = Layer.effect(
     const extensions = yield* ExtensionRuntime.Service
     const trust = yield* PluginTrust.Service
     const auth = yield* Auth.Service
+    const serverAuth = yield* Effect.serviceOption(ServerAuth.ListenerCredentials)
+    const descriptor = yield* Effect.serviceOption(ServerDescriptor.Service)
 
     const state = yield* InstanceState.make<State>(
       Effect.fn("Plugin.state")(function* (ctx) {
@@ -165,11 +168,12 @@ const layer = Layer.effect(
 
         const { Server } = yield* Effect.promise(() => import("../server/server"))
 
-        const serverUrl = Server.url
+        const serverUrl =
+          Option.isSome(descriptor) && descriptor.value.listener ? new URL(descriptor.value.listener) : undefined
         const client = createForgeClient({
           baseUrl: serverUrl?.toString() ?? "http://localhost:4096",
           directory: ctx.directory,
-          headers: ServerAuth.headers(),
+          headers: ServerAuth.headers(Option.getOrUndefined(serverAuth)),
           ...(serverUrl
             ? {}
             : {
@@ -188,7 +192,7 @@ const layer = Layer.effect(
             },
           },
           get serverUrl(): URL {
-            return Server.url ?? new URL("http://localhost:4096")
+            return serverUrl ?? new URL("http://localhost:4096")
           },
           // @ts-expect-error
           $: typeof Bun === "undefined" ? undefined : Bun.$,

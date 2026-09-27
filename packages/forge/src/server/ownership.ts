@@ -3,7 +3,6 @@ export * as ServerOwnership from "./ownership"
 import { Database } from "@turenlabs/core/database/database"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 import type { Source } from "@/cli/secret-vault-key"
-import { ServerAuth } from "./auth"
 import { ServerMode } from "./mode"
 import { ServerOwner } from "@turenlabs/core/database/server-owner"
 
@@ -14,7 +13,7 @@ export type Options = {
 }
 
 /**
- * Validates persistent-mode inputs, installs the vault key and listener credentials, and takes
+ * Validates persistent-mode inputs, installs the vault key, and takes
  * the database owner lock. It must run before any layer that can open the database, so the
  * owner check precedes migrations and key verification precedes every secret read.
  */
@@ -35,10 +34,5 @@ export async function acquire(opts: Options) {
     keyID: opts.credentialVault?.keyID ?? process.env.FORGE_SECRET_VAULT_KEY_ID,
     key: opts.credentialVault,
   })
-  if (!opts.serverAuth) return release
-  const previous = ServerAuth.configure(opts.serverAuth)
-  return () => {
-    ServerAuth.configure(previous)
-    release()
-  }
+  return release
 }

@@ -111,7 +111,11 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
   }
   const releaseOwner = await ServerOwnership.acquire(opts)
   try {
-    const listener = await Effect.runPromise(listenEffect(opts))
+    const facts: ServerDescriptor.ListenerFacts = {
+      keySource: opts.keySource ?? (opts.credentialVault ? "desktop" : "env"),
+      listener: "",
+    }
+    const listener = await Effect.runPromise(listenEffect(opts, facts))
     return {
       hostname: listener.hostname,
       port: listener.port,
@@ -137,41 +141,36 @@ export async function runListenerStop(effect: Effect.Effect<void, unknown>) {
   throw Cause.squash(exit.cause)
 }
 
-const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unknown> = Effect.fn("Server.listen")(
-  function* (opts: ListenOptions) {
-    const state = yield* startWithPortFallback(opts)
-    // Intel feeds have no layer node, so the listener owns the 6h poll tick
-    // (stopped with the listener scope). Skipped under the test runner so
-    // server tests stay hermetic: no real feed traffic, no shared-state writes.
-    const intelScheduler = process.env.NODE_ENV === "test" ? undefined : startScheduler()
-    if (intelScheduler) {
-      yield* Scope.addFinalizer(
-        state.scope,
-        Effect.sync(() => intelScheduler.stop()),
-      )
-    }
-    const address = yield* tcpAddress(state)
-    const listenerUrl = makeURL(opts.hostname, address.port)
-    const unpublishMdns = yield* setupMdns(opts, address.port, state.scope)
-    url = listenerUrl
-    ServerDescriptor.configure({
-      keySource: opts.keySource ?? (opts.credentialVault ? "desktop" : "env"),
-      listener: listenerUrl,
-    })
-    if (ServerOwner.mode() === "persistent" && !(yield* ServerDescriptor.read(state.database)))
-      return yield* Effect.die(new Error("persistent server started without an owner record"))
+const listenEffect = Effect.fn("Server.listen")(function* (opts: ListenOptions, facts: ServerDescriptor.ListenerFacts) {
+  const state = yield* startWithPortFallback(opts, facts)
+  // Intel feeds have no layer node, so the listener owns the 6h poll tick
+  // (stopped with the listener scope). Skipped under the test runner so
+  // server tests stay hermetic: no real feed traffic, no shared-state writes.
+  const intelScheduler = process.env.NODE_ENV === "test" ? undefined : startScheduler()
+  if (intelScheduler) {
+    yield* Scope.addFinalizer(
+      state.scope,
+      Effect.sync(() => intelScheduler.stop()),
+    )
+  }
+  const address = yield* tcpAddress(state)
+  const listenerUrl = makeURL(opts.hostname, address.port)
+  const unpublishMdns = yield* setupMdns(opts, address.port, state.scope)
+  url = listenerUrl
+  facts.listener = listenerUrl.toString()
+  if (ServerOwner.mode() === "persistent" && !(yield* ServerDescriptor.read(state.database, facts)))
+    return yield* Effect.die(new Error("persistent server started without an owner record"))
 
-    return {
-      hostname: opts.hostname,
-      port: address.port,
-      url: listenerUrl,
-      stop: yield* makeStop(state, unpublishMdns, listenerUrl),
-      securityProxy: (command: SecurityProxy.StoreCommand) => Effect.runPromise(state.securityProxy.execute(command)),
-    }
-  },
-)
+  return {
+    hostname: opts.hostname,
+    port: address.port,
+    url: listenerUrl,
+    stop: yield* makeStop(state, unpublishMdns, listenerUrl),
+    securityProxy: (command: SecurityProxy.StoreCommand) => Effect.runPromise(state.securityProxy.execute(command)),
+  }
+})
 
-function listenerLayer(opts: ListenOptions, port: number) {
+function listenerLayer(opts: ListenOptions, port: number, facts: ServerDescriptor.ListenerFacts) {
   const configEnv = Object.fromEntries(
     Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   )
@@ -191,6 +190,11 @@ function listenerLayer(opts: ListenOptions, port: number) {
               }),
           }
         : undefined,
+      facts,
+      opts.serverAuth ?? {
+        password: configEnv.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD,
+        username: configEnv.FORGE_SERVER_USERNAME ?? Flag.FORGE_SERVER_USERNAME,
+      },
     ),
     {
       middleware: disposeMiddleware,
@@ -223,11 +227,11 @@ function listenerLayer(opts: ListenOptions, port: number) {
   )
 }
 
-function startWithPortFallback(opts: ListenOptions) {
-  if (opts.port !== 0) return startListener(opts, opts.port)
+function startWithPortFallback(opts: ListenOptions, facts: ServerDescriptor.ListenerFacts) {
+  if (opts.port !== 0) return startListener(opts, opts.port, facts)
   // Match the legacy listener port-resolution behavior: explicit `0` prefers
   // 4096 first, then any free port.
-  return startListener(opts, 4096).pipe(Effect.catch(() => startListener(opts, 0)))
+  return startListener(opts, 4096, facts).pipe(Effect.catch(() => startListener(opts, 0, facts)))
 }
 
 /**
@@ -257,11 +261,11 @@ function startWithPortFallback(opts: ListenOptions) {
  * expensive for MCP, which spawns a child process per configured server, so
  * `checkSingleMcp` reports it rather than letting it double silently.
  */
-function startListener(opts: ListenOptions, port: number) {
+function startListener(opts: ListenOptions, port: number, facts: ServerDescriptor.ListenerFacts) {
   const scope = Scope.makeUnsafe()
   const memoMap = Layer.makeMemoMapUnsafe()
   const startedAt = performance.now()
-  return Layer.buildWithMemoMap(listenerLayer(opts, port), memoMap, scope).pipe(
+  return Layer.buildWithMemoMap(listenerLayer(opts, port, facts), memoMap, scope).pipe(
     Effect.provide(HttpApiApp.context),
     Effect.tap(() => startupTrace("listener-layer-ready", startedAt)),
     Effect.tap(() => checkSingleMcp(memoMap)),

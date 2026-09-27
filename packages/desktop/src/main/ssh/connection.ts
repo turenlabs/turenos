@@ -1,5 +1,6 @@
-import { createServer } from "node:net"
-import { readFile } from "node:fs/promises"
+import { createConnection, createServer } from "node:net"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { join } from "node:path"
 import type { SshServerConfig } from "../../preload/types"
 import type { CredentialVault } from "../secret-key"
 import { pollSshHealth } from "./startup"
@@ -60,6 +61,8 @@ export type SshConnectionDeps = {
   corsOrigins: () => string[]
   onPrompt: SshPromptResponder
   onLine?: (text: string) => void
+  /** Test seam: try to occupy the local port while the forward is starting. */
+  onReservedPort?: (port: number) => void
   signal?: AbortSignal
 }
 
@@ -111,9 +114,9 @@ export async function connectSshRemote(config: SshServerConfig, deps: SshConnect
 
   // Lazy: ../server pulls in Electron, which the persistent attach path never needs.
   const { checkHealth } = await import("../server")
-  const { tunnel, url } = await openTunnel(config, deps, state.port, (url) => checkHealth(url, state.password))
+  const { tunnel, url, stop } = await openTunnel(config, deps, state.port, (url) => checkHealth(url, state.password))
   return {
-    listener: { stop: () => tunnel.stop(), onExit: (cb) => tunnel.onExit(cb) },
+    listener: { stop, onExit: (cb) => tunnel.onExit(cb) },
     url,
     username: state.username,
     password: state.password,
@@ -130,7 +133,7 @@ async function attachPersistent(
     fetch(new URL("/global/server", url), { headers: { authorization }, signal: AbortSignal.timeout(3000) })
   // Any answer below 500 means the tunnel reaches the server. A rejection (a rotated password, or a
   // server without the descriptor route) will not change by retrying, so it is reported below at once.
-  const { tunnel, url } = await openTunnel(config, deps, Number(new URL(record.url).port), (url) =>
+  const { tunnel, url, stop } = await openTunnel(config, deps, Number(new URL(record.url).port), (url) =>
     describe(url).then(
       (response) => response.status < 500,
       () => false,
@@ -150,11 +153,11 @@ async function attachPersistent(
       verifyDescriptor(record, await response.json())
     })
     .catch((error) => {
-      tunnel.stop()
+      stop()
       throw error
     })
   return {
-    listener: { stop: () => tunnel.stop(), onExit: (cb) => tunnel.onExit(cb) },
+    listener: { stop, onExit: (cb) => tunnel.onExit(cb) },
     url,
     username: record.username,
     password: record.password,
@@ -169,10 +172,52 @@ async function openTunnel(
   healthy: (url: string) => Promise<boolean>,
 ) {
   const binary = deps.binary ?? sshBinary()
-  const localPort = await allocatePort()
-  const tunnel = spawnTunnel(binary, deps.controlDir, targetFor(config), localPort, remotePort, {
-    onLine: deps.onLine,
-    signal: deps.signal,
+  const directory = await mkdtemp(join(deps.controlDir, "f-"))
+  const socketPath = join(directory, "s")
+  const sockets = new Set<ReturnType<typeof createConnection>>()
+  const proxy = createServer((socket) => {
+    const upstream = createConnection(socketPath)
+    sockets.add(socket)
+    sockets.add(upstream)
+    socket.on("error", () => upstream.destroy())
+    upstream.on("error", () => socket.destroy())
+    socket.on("close", () => sockets.delete(socket))
+    upstream.on("close", () => sockets.delete(upstream))
+    socket.pipe(upstream).pipe(socket)
+  })
+  const dispose = () => {
+    if (proxy.listening) proxy.close()
+    for (const socket of sockets) socket.destroy()
+  }
+  let tunnel: ReturnType<typeof spawnTunnel>
+  let localPort: number
+  try {
+    localPort = await new Promise<number>((resolve, reject) => {
+      proxy.once("error", reject)
+      proxy.listen(0, "127.0.0.1", () => {
+        proxy.removeListener("error", reject)
+        const address = proxy.address()
+        if (!address || typeof address === "string") return reject(new Error("Failed to bind tunnel proxy"))
+        resolve(address.port)
+      })
+    })
+    deps.onReservedPort?.(localPort)
+    tunnel = spawnTunnel(binary, deps.controlDir, targetFor(config), socketPath, remotePort, {
+      onLine: deps.onLine,
+      signal: deps.signal,
+    })
+  } catch (error) {
+    dispose()
+    await rm(directory, { recursive: true, force: true })
+    throw error
+  }
+  const stop = () => {
+    dispose()
+    tunnel.stop()
+  }
+  tunnel.onExit(() => {
+    dispose()
+    void rm(directory, { recursive: true, force: true }).catch(() => undefined)
   })
 
   const url = `http://127.0.0.1:${localPort}`
@@ -194,13 +239,13 @@ async function openTunnel(
   try {
     await Promise.race([health, timedOut, exited])
   } catch (error) {
-    tunnel.stop()
+    stop()
     throw error
   } finally {
     clearTimeout(timeout!)
     startup.abort()
   }
-  return { tunnel, url }
+  return { tunnel, url, stop }
 }
 
 async function ensureRemote(binary: string, controlDir: string, target: SshTarget, deps: SshConnectionDeps) {
@@ -254,22 +299,6 @@ async function installForgeRemote(config: SshServerConfig, deps: SshConnectionDe
 
 function sshDest(config: SshServerConfig) {
   return `${config.user ? config.user + "@" : ""}${config.host}`
-}
-
-function allocatePort() {
-  return new Promise<number>((resolve, reject) => {
-    const server = createServer()
-    server.on("error", reject)
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address()
-      if (typeof address !== "object" || !address) {
-        server.close()
-        reject(new Error("Failed to get port"))
-        return
-      }
-      server.close(() => resolve(address.port))
-    })
-  })
 }
 
 /**

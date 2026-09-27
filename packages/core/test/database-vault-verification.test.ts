@@ -100,6 +100,80 @@ describe("VaultVerification", () => {
     }
   })
 
+  test("rejects wrong same-ID key before WAL setup or migrating an older schema", async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "forge.db")
+    await seed(filename)
+
+    // Reverse the latest migration, including its journal entry, to represent a valid
+    // previous-version database with encrypted contents and pending DDL.
+    const native = new SQLite(filename)
+    native.run("DROP INDEX session_task_parent_wave_idx")
+    native.run("DROP INDEX session_task_actor_claim_actor_idx")
+    native.run("DROP INDEX session_task_operation_actor_idx")
+    native.run("ALTER TABLE session_task_actor_claim DROP COLUMN actor_item")
+    native.run("ALTER TABLE session_task_operation DROP COLUMN actor_item")
+    native.run("ALTER TABLE session_task DROP COLUMN actor_item")
+    native.run("ALTER TABLE session_task DROP COLUMN wave")
+    native.run("ALTER TABLE session_task DROP COLUMN orchestrate")
+    native.run(
+      "CREATE UNIQUE INDEX session_task_actor_claim_actor_idx ON session_task_actor_claim (actor_session_id, actor_assistant_message_id, actor_tool_call_id)",
+    )
+    native.run(
+      "CREATE UNIQUE INDEX session_task_operation_actor_idx ON session_task_operation (actor_session_id, actor_assistant_message_id, actor_tool_call_id)",
+    )
+    native.run("DELETE FROM migration WHERE id = '20260924132422_session-task-fleet'")
+    native.run("PRAGMA journal_mode = DELETE")
+    const snapshot = () => ({
+      schema: native
+        .query("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name")
+        .all(),
+      credential: native.query("SELECT id, value FROM credential").all(),
+      account: native.query("SELECT id, access_token, refresh_token FROM account").all(),
+      storage: native.query("SELECT scope, key, value FROM storage_state ORDER BY scope, key").all(),
+      version: native.query("PRAGMA user_version").get(),
+      journal: native.query("PRAGMA journal_mode").get(),
+    })
+    const before = snapshot()
+    expect(
+      native.query("SELECT name FROM pragma_table_info('session_task') WHERE name = 'actor_item'").get(),
+    ).toBeNull()
+
+    const release = await Database.acquireOwnerLock(filename, { mode: "quick-connect", keyID: wrong.keyID, key: wrong })
+    try {
+      const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(Database.layerFromPath(filename))))
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("the key is incorrect")
+      expect(snapshot()).toEqual(before)
+    } finally {
+      release()
+      native.close()
+    }
+
+    const rightRelease = await Database.acquireOwnerLock(filename, {
+      mode: "quick-connect",
+      keyID: right.keyID,
+      key: right,
+    })
+    try {
+      expect(
+        Exit.isSuccess(await Effect.runPromiseExit(Effect.scoped(Layer.build(Database.layerFromPath(filename))))),
+      ).toBe(true)
+    } finally {
+      rightRelease()
+    }
+    const upgraded = new SQLite(filename, { readonly: true })
+    expect(
+      upgraded.query("SELECT name FROM pragma_table_info('session_task') WHERE name = 'actor_item'").get(),
+    ).toEqual({ name: "actor_item" })
+    expect(
+      upgraded
+        .query("SELECT value FROM storage_state WHERE scope = 'internal/database-verification' AND key = 'sentinel'")
+        .get(),
+    ).toBeDefined()
+    upgraded.close()
+  })
+
   test("replaces a tombstoned sentinel instead of reading it back", async () => {
     await using tmp = await tmpdir()
     const filename = path.join(tmp.path, "forge.db")

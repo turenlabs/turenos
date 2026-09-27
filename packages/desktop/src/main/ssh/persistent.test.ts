@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { createServer } from "node:net"
 import type { SshServerConfig } from "../../preload/types"
 import { createSshServersController } from "./servers"
 import {
@@ -120,7 +121,7 @@ describe("connectSshRemote with a persistent server", () => {
     for (const fn of cleanup.splice(0).reverse()) await fn()
   })
 
-  const attachThrough = async (fetch: (request: Request) => Response) => {
+  const attachThrough = async (fetch: (request: Request) => Response, onReservedPort?: (port: number) => void) => {
     const dir = await mkdtemp(join(tmpdir(), "forge-persistent-attach-"))
     cleanup.push(() => rm(dir, { recursive: true, force: true }))
     const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch })
@@ -140,11 +141,14 @@ const forward = args.indexOf("-L")
 const stdin = forward === -1 ? await Bun.stdin.text() : ""
 appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, stdin }) + "\\n")
 if (forward !== -1) {
-  const [, local, , remote] = args[forward + 1].split(":")
+  const spec = args[forward + 1]
+  const separator = spec.lastIndexOf(":127.0.0.1:")
+  const local = spec.slice(0, separator)
+  const remote = spec.slice(separator + ":127.0.0.1:".length)
   createServer((socket) => {
     const upstream = connect(Number(remote), "127.0.0.1")
     socket.pipe(upstream).pipe(socket)
-  }).listen(Number(local), "127.0.0.1")
+  }).listen(local)
 } else if (stdin.includes("FORGE_ATTACH")) {
   console.log("FORGE_ATTACH readable " + ${JSON.stringify(JSON.stringify(attach))})
 }
@@ -161,6 +165,7 @@ if (forward !== -1) {
       appVersion: "1.0.0",
       corsOrigins: () => [],
       onPrompt: async () => null,
+      onReservedPort,
     })
     return { connection, log, key, attach }
   }
@@ -200,6 +205,33 @@ if (forward !== -1) {
     expect(Date.now() - started).toBeLessThan(10_000)
     // The stopped tunnel spawns `ssh -O cancel`; let it run before the fake binary is removed.
     await Bun.sleep(200)
+  }, 30_000)
+
+  test("keeps the authenticated loopback port reserved while ssh starts", async () => {
+    const competitor = createServer((request) => request.destroy())
+    let intercepted = 0
+    competitor.on("connection", () => intercepted++)
+    let attempted: Promise<string> | undefined
+    const setup = await attachThrough(
+      () => Response.json({ serverID: "srv_1", mode: "persistent" }),
+      (port) => {
+        attempted = new Promise((resolve) => {
+          competitor.once("error", (error: NodeJS.ErrnoException) => resolve(error.code ?? "unknown"))
+          competitor.listen(port, "127.0.0.1", () => resolve("competing listener bound"))
+        })
+      },
+    )
+    try {
+      const connection = await setup.connection
+      expect(await attempted).toBe("EADDRINUSE")
+      expect(intercepted).toBe(0)
+      const exited = new Promise<void>((resolve) => connection.listener.onExit(() => resolve()))
+      connection.listener.stop()
+      await exited
+      await Bun.sleep(100)
+    } finally {
+      if (competitor.listening) competitor.close()
+    }
   }, 30_000)
 
   test("a subscriber added after tunnel exit still observes the exit", async () => {

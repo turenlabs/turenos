@@ -9,6 +9,7 @@ import { Global } from "../global"
 import { Flag } from "../flag/flag"
 import { basename, dirname, isAbsolute, join, resolve } from "path"
 import { chmod, realpath } from "node:fs/promises"
+import { existsSync } from "node:fs"
 import { DatabaseMigration } from "./migration"
 import { InstallationChannel } from "../installation/version"
 import { makeGlobalNode } from "../effect/app-node"
@@ -47,6 +48,19 @@ export function layerFromPath(filename: string) {
         return yield* Effect.die(
           new Error("A persistent server's database opens only inside that server, which holds its owner lock"),
         )
+      // The SQLite write connection enables WAL on open. Authenticate an existing file through
+      // a read-only connection before that PRAGMA, migrations, or identity/owner writes run.
+      const existing = filename !== ":memory:" && existsSync(filename)
+      const inspected = existing
+        ? yield* Effect.gen(function* () {
+            const reader = yield* openReadonly(filename)
+            yield* ServerOwner.validate(reader, ownerContext ?? ServerOwner.environmentContext())
+            if (!ownerContext?.key) return undefined
+            const vault = SecretVault.make(ownerContext.key)
+            const databaseUUID = yield* VaultVerification.databaseUUID(reader)
+            return yield* VaultVerification.check(reader, databaseUUID, vault)
+          }).pipe(Effect.scoped)
+        : undefined
       const primary = yield* openDatabase({ filename })
       yield* primary.run("PRAGMA journal_mode = WAL")
       yield* primary.run("PRAGMA synchronous = FULL")
@@ -54,7 +68,7 @@ export function layerFromPath(filename: string) {
       yield* primary.run("PRAGMA busy_timeout = 5000")
       yield* primary.run("PRAGMA cache_size = -64000")
       yield* primary.run("PRAGMA foreign_keys = ON")
-      yield* ServerOwner.validate(primary, ownerContext ?? ServerOwner.environmentContext())
+      if (!existing) yield* ServerOwner.validate(primary, ownerContext ?? ServerOwner.environmentContext())
       yield* DatabaseMigration.apply(primary)
       yield* primary.run(sql`
         INSERT INTO storage_state (scope, key, value, revision, deleted, time_created, time_updated)
@@ -71,7 +85,7 @@ export function layerFromPath(filename: string) {
         return yield* Effect.die(new Error("Database identity record is missing or invalid"))
       if (ownerContext?.key) {
         const vault = SecretVault.make(ownerContext.key)
-        yield* VaultVerification.verify(primary, databaseIdentity.value, vault)
+        yield* VaultVerification.verify(primary, databaseIdentity.value, vault, inspected)
         yield* ServerOwner.claim(primary, { ...ownerContext, keyID: vault.keyID })
       }
       yield* primary.run("PRAGMA wal_checkpoint(PASSIVE)")

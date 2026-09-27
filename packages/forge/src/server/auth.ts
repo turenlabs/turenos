@@ -3,12 +3,19 @@ export * as ServerAuth from "./auth"
 import { ConfigService } from "@/effect/config-service"
 import { Flag } from "@turenlabs/core/flag/flag"
 import { createHash, timingSafeEqual } from "node:crypto"
-import { Config as EffectConfig, Context, Option, Redacted } from "effect"
+import { Config as EffectConfig, Context, Layer, Option, Redacted } from "effect"
 
 export type Credentials = {
   password?: string
   username?: string
 }
+
+export class ListenerCredentials extends Context.Service<ListenerCredentials, Credentials>()(
+  "@forge/ListenerCredentials",
+) {}
+
+export const listenerLayer = (credentials: Credentials) =>
+  Layer.succeed(ListenerCredentials)(ListenerCredentials.of(credentials))
 
 export type DecodedCredentials = {
   readonly username: string
@@ -39,20 +46,11 @@ function safeEqual(a: string, b: string) {
   return timingSafeEqual(digest(a), digest(b))
 }
 
-let configured: Credentials | undefined
-
-/** Installs listener credentials loaded from protected host configuration rather than the environment. */
-export function configure(credentials: Credentials | undefined) {
-  const previous = configured
-  configured = credentials
-  return previous
-}
-
 export function header(credentials?: Credentials) {
-  const password = credentials?.password ?? configured?.password ?? Flag.FORGE_SERVER_PASSWORD
+  const password = credentials?.password ?? Flag.FORGE_SERVER_PASSWORD
   if (!password) return undefined
 
-  const username = credentials?.username ?? configured?.username ?? Flag.FORGE_SERVER_USERNAME ?? "forge"
+  const username = credentials?.username ?? Flag.FORGE_SERVER_USERNAME ?? "forge"
   return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`
 }
 
