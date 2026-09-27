@@ -129,12 +129,6 @@ export type PromptInputControls = {
   newLayoutDesigns: boolean
 }
 
-export function createPromptInputHistory(): PromptInputHistory {
-  const [normal, setNormal] = createStore<PromptHistoryState>({ entries: [] })
-  const [shell, setShell] = createStore<PromptHistoryState>({ entries: [] })
-  return createPromptInputHistoryStore(normal, setNormal, shell, setShell)
-}
-
 type PromptHistoryState = { entries: PromptHistoryStoredEntry[] }
 
 function createPromptInputHistoryStore(

@@ -53,14 +53,6 @@ export type RepositoryError =
   | UnsupportedLocalRepositoryError
   | InvalidRepositoryBranchError
 
-export function isRepositoryError(error: unknown): error is RepositoryError {
-  return (
-    error instanceof InvalidRepositoryReferenceError ||
-    error instanceof UnsupportedLocalRepositoryError ||
-    error instanceof InvalidRepositoryBranchError
-  )
-}
-
 function normalizeRepositoryInput(input: string) {
   return input
     .trim()

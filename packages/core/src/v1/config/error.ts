@@ -32,8 +32,3 @@ export const DirectoryTypoError = NamedError.create("ConfigDirectoryTypoError", 
   dir: Schema.String,
   suggestion: Schema.String,
 })
-
-export const RemoteAuthError = NamedError.create("ConfigRemoteAuthError", {
-  url: Schema.String,
-  remote: Schema.String,
-})

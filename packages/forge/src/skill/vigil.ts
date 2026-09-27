@@ -114,10 +114,6 @@ export function target(platform: NodeJS.Platform = process.platform, arch: NodeJ
   return targets[`${platform}-${arch}` as keyof typeof targets]
 }
 
-export function resetInstallState() {
-  installing = undefined
-}
-
 export async function ensure() {
   if (installing) return installing
   const selected = target()

@@ -214,16 +214,6 @@ export async function measureSessionLoad(input: {
   }
 }
 
-/** Time `JSON.parse` alone over the same page texts the loader would receive. */
-export function measureParse(pages: readonly string[]) {
-  const started = now()
-  let messages = 0
-  pages.forEach((text) => {
-    messages += (JSON.parse(text) as SessionMessage[]).length
-  })
-  return { ms: now() - started, messages }
-}
-
 export function formatStages(label: string, result: StageResult, extra?: Record<string, string | number>) {
   const t = result.timings
   const row = (name: string, value: number) => `  ${name.padEnd(9)} ${value.toFixed(1).padStart(9)} ms`

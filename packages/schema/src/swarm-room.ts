@@ -67,9 +67,6 @@ export const Kind = Schema.Literals([
 ])
 export type Kind = typeof Kind.Type
 
-/** Kinds that carry coordination authority and must pass a head CAS check. */
-export const coordinationKinds = ["plan", "claim", "release", "decision", "correction"] as const
-
 export const ActorType = Schema.Literals(["leader", "worker", "human", "system"])
 export type ActorType = typeof ActorType.Type
 

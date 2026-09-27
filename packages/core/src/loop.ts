@@ -46,7 +46,6 @@ export type EventTriggerConfig = FileChangeConfig | SessionEndConfig
 
 export const FILE_CHANGE_DEBOUNCE_DEFAULT_MS = 1_000
 export const FILE_CHANGE_DEBOUNCE_MAX_MS = 60_000
-export const EVENT_TRIGGER_TYPES: ReadonlyArray<EventTriggerConfig["type"]> = ["file-change", "session-end"]
 
 /** Per-step overrides; omitted fields inherit the Automation's own agent and model. */
 export type StepExecution = {
