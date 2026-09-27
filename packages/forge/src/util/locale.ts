@@ -1,7 +1,3 @@
-export function titlecase(value: string) {
-  return value.replace(/\b\w/g, (character) => character.toUpperCase())
-}
-
 export function time(input: number): string {
   return new Date(input).toLocaleTimeString(undefined, { timeStyle: "short" })
 }
@@ -47,20 +43,11 @@ export function truncate(value: string, length: number): string {
   return value.slice(0, length - 1) + "…"
 }
 
-export function truncateLeft(value: string, length: number): string {
-  if (value.length <= length) return value
-  return "…" + value.slice(-(length - 1))
-}
-
 export function truncateMiddle(value: string, maxLength = 35): string {
   if (value.length <= maxLength) return value
   const start = Math.ceil((maxLength - 1) / 2)
   const end = Math.floor((maxLength - 1) / 2)
   return value.slice(0, start) + "…" + value.slice(-end)
-}
-
-export function pluralize(count: number, singular: string, plural: string): string {
-  return (count === 1 ? singular : plural).replace("{}", count.toString())
 }
 
 export * as Locale from "./locale"

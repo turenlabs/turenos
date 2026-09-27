@@ -26,10 +26,6 @@ export function targetForConfig(config: SshServerConfig): SshTarget {
   }
 }
 
-export function sshServerIdToRestart(servers: { config: SshServerConfig }[], id: string) {
-  return servers.find((item) => item.config.id === id)?.config.id
-}
-
 export function clearSshHostState(
   probes: Record<string, SshHostProbe>,
   forgeChecks: Record<string, SshForgeCheck>,

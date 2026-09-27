@@ -71,17 +71,6 @@ export function expectOk<T>(response: JsonRpcResponse<T>) {
   return response.result as T
 }
 
-export function selectConfigOption(options: SessionConfigOption[] | null | undefined, id: string) {
-  return options?.find(
-    (option): option is Extract<SessionConfigOption, { type: "select" }> =>
-      option.id === id && option.type === "select",
-  )
-}
-
-export function firstAlternateValue(option: Extract<SessionConfigOption, { type: "select" }>) {
-  return flattenSelectOptions(option).find((item) => item.value !== option.currentValue)?.value
-}
-
 export function flattenSelectOptions(option: Extract<SessionConfigOption, { type: "select" }>) {
   return option.options.flatMap((item): SessionConfigSelectOption[] => ("value" in item ? [item] : item.options))
 }

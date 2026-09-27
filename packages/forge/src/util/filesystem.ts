@@ -1,12 +1,11 @@
 import { chmod, mkdir, readFile, stat as statFile, writeFile } from "fs/promises"
 import { createWriteStream, existsSync, statSync } from "fs"
 import { realpathSync } from "fs"
-import { dirname, isAbsolute, join, resolve as pathResolve, win32 } from "path"
+import { dirname, join, resolve as pathResolve, win32 } from "path"
 import { Readable } from "stream"
 import { pipeline } from "stream/promises"
 import { Glob } from "@turenlabs/core/util/glob"
 import { FSUtil } from "@turenlabs/core/fs-util"
-import { fileURLToPath } from "url"
 
 // Fast sync version for metadata checks
 export async function exists(p: string): Promise<boolean> {
@@ -47,11 +46,6 @@ export async function readJson<T = unknown>(p: string): Promise<T> {
 
 export async function readBytes(p: string): Promise<Buffer> {
   return readFile(p)
-}
-
-export async function readArrayBuffer(p: string): Promise<ArrayBuffer> {
-  const buf = await readFile(p)
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
 }
 
 function isEnoent(e: unknown): e is { code: "ENOENT" } {
@@ -142,12 +136,6 @@ export function resolve(p: string): string {
     if (isEnoent(e)) return normalizePath(resolved)
     throw e
   }
-}
-
-export function resolveFilePath(root: string, file: string): string {
-  const raw = file.startsWith("file://") ? fileURLToPath(file) : file
-  if (isAbsolute(raw)) return raw
-  return pathResolve(root, raw)
 }
 
 export function windowsPath(p: string): string {

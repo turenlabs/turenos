@@ -13,9 +13,6 @@ export const DEFAULT_TOOL_OUTPUT_DAYS = 14
  */
 export const MAX_DAYS = 3650
 
-/** `0` is the explicit opt-out, which is why both fields are `NonNegativeInt` rather than positive. */
-export const DISABLED = 0
-
 // Deliberately unbounded beyond `NonNegativeInt`: `Config.loadFile` drops any document it cannot
 // decode, so a `Schema` range check on a user-facing value would silently delete the rest of the
 // user's config on a typo. Ranges are clamped in `retention.ts` instead.

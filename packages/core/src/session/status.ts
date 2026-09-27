@@ -149,7 +149,3 @@ export const fromRow = (row: {
       return { type: "idle" }
   }
 }
-
-/** True when this process wrote the status and still owes it a settlement. */
-export const isOwned = (row: { readonly status: string | null; readonly status_owner: string | null }) =>
-  row.status_owner === owner && (row.status === "busy" || row.status === "retry")
