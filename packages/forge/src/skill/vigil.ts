@@ -93,9 +93,9 @@ const reviewedSkillDigests = new Set([
   // turenlabs/test-strategy
   "9ef7b51f553db3f1b86cef791e07f6122ea9f5babc6350e08343a8ceff8bb161",
   // turenlabs/threat-hunter
-  "1b61adcde5fc79f6df0e5fbfeff617e89533a0570f8895715c25877dbd25fb19",
+  "229620ac7a88024c5f835289662c767eab431c4241e0dcaa61cd9bd944476aae",
   // turenlabs/threat-intel-brief
-  "bf5b82ca07e89e3cf1fc1c4407714edde5a4226abd391f9f6089d97156b3f70f",
+  "45d4928637734ace303ff0812eccfd7a7f37df50a7acf4ecebbcbc14d0154ef6",
   // turenlabs/threat-model-review
   "f38101c4cc5f44271bff2af3586876ce3b58aeb31997644606b774874f178a91",
   // turenlabs/vulnerability-analyst

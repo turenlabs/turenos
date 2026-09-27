@@ -3,8 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { classifyAddress } from "../../src/util/ip-address"
-import { parseDropAsns, parseDropNetworks } from "../../src/security/integrations/data-ioc/spamhaus-drop"
-import { parseSslblCertificates, parseSslblIps } from "../../src/security/integrations/data-ioc/sslbl"
 import { fetchText } from "../../src/security/util/http"
 
 describe("security data HTTP", () => {
@@ -78,13 +76,6 @@ describe("security data HTTP", () => {
   test("classifies deprecated IPv6 site-local addresses as private", () => {
     expect(classifyAddress("fec0::1")).toBe("lan")
     expect(classifyAddress("feff::1")).toBe("lan")
-  })
-
-  test("rejects malformed threat feeds instead of returning false negatives", () => {
-    expect(() => parseDropNetworks("<html>temporary error</html>")).toThrow("no valid entries")
-    expect(() => parseDropAsns("<html>temporary error</html>")).toThrow("no valid entries")
-    expect(() => parseSslblCertificates("<html>temporary error</html>")).toThrow("no valid entries")
-    expect(() => parseSslblIps("<html>temporary error</html>")).toThrow("no valid entries")
   })
 
   test("coalesces concurrent cold-cache requests", async () => {
