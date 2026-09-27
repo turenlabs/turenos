@@ -39,14 +39,25 @@ redirecting root's work:
 
 ### Known limits
 
+- **One shared server per host.** A host runs at most one persistent server, and it has no per-user logins. Every
+  member of `turenos-operators` attaches with the same attach-record password and shares one set of provider
+  credentials, one session history, and the service account's files. People who need separate credentials or data use
+  separate Unix accounts with quick connect, on a host that hasn't been promoted.
+- **Operator access runs code as the service account.** The attach record grants the whole API, including terminals and
+  agent tools, and those run as the service account. Add only users you would trust with that account.
+- **No quick connect on a promoted host.** Every SSH user's desktop checks for the attach record first. Operators
+  attach to the shared server; any other user gets a conflict instead of a private quick-connect server. Falling back
+  would restart the quick-connect database the host was promoted from and split its data.
 - **Other local users and the port.** The listener is a loopback TCP port, so while the service is down another local
   user could bind it and collect the password from a client that connects. The desktop checks the descriptor's server
   ID and mode, but only after it has sent credentials. Quick connect has the same limit. A Unix-socket listener with
   group permissions would remove it.
 - **Credentials inside the service.** `$CREDENTIALS_DIRECTORY` is readable by the service account, and so by agent
   tools, as described under Scope.
-- **`forge` commands run by tools.** Tools inherit the pinned `FORGE_DB` and persistent mode. A `forge` CLI command
-  run by a tool passes the owner check and can open the database. `forge serve` still fails on the owner lock.
+- **`forge` commands run by tools.** Tools inherit the pinned `FORGE_DB` and persistent mode. In persistent mode a
+  database opens only in the process that holds its owner lock, so a `forge` command a tool runs fails before it can
+  migrate or write the live database. This guards against accidents, not against a tool: it can clear the
+  environment, and it can already read the service account's files.
 
 ## Contracts
 
@@ -79,12 +90,13 @@ sudo forge persistent install --user alice --apply \
 
 `install --apply` does the following:
 
-1. Generates a 32-byte key and a key ID exactly once. It writes the recovery copy (`0400`) and the non-secret key ID to
+1. Stops an installed service, then creates or takes back the `/var/lib/turenos-server` data root (owned by the
+   service user, `0700`) with pinned XDG directories and `FORGE_DB`, away from the default path that the legacy
+   quick-connect shim uses. An import is copied and promoted here.
+2. Generates a 32-byte key and a key ID exactly once. It writes the recovery copy (`0400`) and the non-secret key ID to
    `/etc/credstore/forge-secret-vault-key-id`, then encrypts the key into
    `/etc/credstore.encrypted/forge-secret-vault-key` through `systemd-creds encrypt` on stdin.
-2. Generates the HTTP password and encrypts it as `forge-server-password`.
-3. Creates the `/var/lib/turenos-server` data root (owned by the service user, `0700`) with pinned XDG directories and
-   `FORGE_DB`, away from the default path that the legacy quick-connect shim uses.
+3. Generates the HTTP password and encrypts it as `forge-server-password`.
 4. Writes `/etc/turenos/attach.json` (`0640 root:turenos-operators`, creating the group if needed) and
    `/etc/systemd/system/turenos.service`, then enables and restarts the service.
 5. Waits for `/global/server` and checks the server ID, key ID, and mode.
@@ -139,8 +151,9 @@ blob to another machine.
 A missing credential, wrong key bytes, several key IDs, a database owned by another server, or a key or password in the
 environment all stop startup before the server accepts work.
 
-If a newly installed service doesn't become healthy, `install` prints the last journal lines, then stops and disables
-the service so it doesn't keep restarting. It doesn't touch a service that was already installed. Preflight refuses a
+If a step fails before the restart, `install` starts a service that was running again. If a newly installed service
+doesn't become healthy, `install` prints the last journal lines, then stops and disables the service so it doesn't keep
+restarting. It doesn't disable a service that was already installed. Preflight refuses a
 port another process holds (quick connect prefers 4096, so the default here is 4097) and a data root that belongs to
 another account. The unit restarts the service on failure. Each restart
 fails the same way until the operator fixes the cause.

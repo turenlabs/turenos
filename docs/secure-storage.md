@@ -69,12 +69,13 @@ owned by another server stops startup. None of these cases creates a key or fall
   this release on two current binaries can't both write one database.
 - **Owner record.** `internal/server-owner` records the server ID, key ID, mode (`quick-connect` or `persistent`), pid,
   and start time. Every database open checks it before migrations run, including CLI commands that don't take the lock.
-  A persistent record refuses every process except the configured persistent server. A quick-connect database becomes
-  persistent only through explicit promotion (`forge persistent install --import-db`).
+  A persistent record requires the configured persistent mode and server ID. A quick-connect database becomes
+  persistent only through explicit promotion by `forge persistent install`.
 - **Verification.** When the lock carries the key, the database layer verifies the key right after migrations, before
-  any service reads or writes a secret. `Auth` runs the same check for other entry points. The check scans every sealed
+  any service reads or writes a secret. `Auth` runs the same check for other entry points; when the database layer has
+  already checked the same key ID, `Auth` only decrypts the sentinel to confirm the key bytes. The check scans every sealed
   store: `storage_state` (auth, MCP auth, extensions, security proxy), `credential`, `account`, `control_account`, and
-  `session_share`. It refuses more than one key ID and opens one value per store and scope. On the first successful
+  `session_share`. It refuses more than one key ID and opens every sealed value. On the first successful
   start it seals a sentinel bound to the database UUID. Every later start decrypts that sentinel. As a result, wrong key
   bytes under the correct key ID fail even when the provider-credentials record is empty.
 

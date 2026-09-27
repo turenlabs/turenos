@@ -1,21 +1,25 @@
 # SSH remote servers
 
 TurenOS Desktop can run a full TurenOS backend on another machine and use it as if it were local.
-The Desktop main process drives the system `ssh` client, installs and supervises `forge serve` on
-the remote host, and forwards the remote listener to a loopback port on this machine. The renderer
+The Desktop main process drives the system `ssh` client and forwards the remote listener to a
+loopback port on this machine. For quick connect it installs and supervises `forge serve` on the
+remote host; for a managed persistent server it attaches to the host's existing service. The renderer
 then talks to that loopback URL through the ordinary generated HTTP/SSE client — nothing in the app
 or server layers knows the connection is remote.
 
 This is a Desktop-only feature that needs an `ssh` client on the desktop machine; the code carries
 `win32` branches (`ssh.exe`, a `%TEMP%` control directory, hidden windows) alongside the POSIX path.
-The remote needs an SSH server and a POSIX shell; the managed installer supports Linux and macOS
-remote binaries. Native Windows remote startup is not implemented by this shim. The desktop starts
-a Forge server on remote loopback without requiring an additional network-facing application port.
+The remote needs an SSH server and a POSIX shell; the quick-connect installer supports Linux and
+macOS remote binaries. Native Windows remote startup is not implemented by this shim. Both SSH
+paths use a Forge server on remote loopback without an additional network-facing application port.
 
 Implementation lives in [`packages/desktop/src/main/ssh`](../packages/desktop/src/main/ssh) with
 the UI in [`packages/app/src/ssh`](../packages/app/src/ssh).
 
 ## Shape
+
+The diagram shows quick connect. The [managed persistent path](#managed-persistent-servers)
+reaches an existing service through its attach record.
 
 ```mermaid
 flowchart LR
@@ -43,21 +47,21 @@ flowchart LR
 The remote server binds loopback only. Its sole reachable path is the SSH forward, and every request
 on that forward still carries HTTP Basic auth.
 
-## Compared with adding a server by URL
+## Quick connect compared with adding a server by URL
 
 Desktop can also reach a remote backend the plain way: run `forge serve` on a reachable port and add
 it as an `http` server connection. The SSH path exists because that alternative pushes real work onto
 the operator.
 
-|                    | SSH remote                                                                                        | Server added by URL                                                                                                                                                               |
-| ------------------ | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Inbound exposure   | None. The remote binds `127.0.0.1` on a kernel-assigned port.                                     | A listening port must be reachable from the desktop.                                                                                                                              |
-| Transport security | Encrypted, with host-key identity, by construction.                                               | `normalizeServerUrl` turns a bare `host:port` into `http://`, so Basic credentials and all session traffic cross the network in cleartext unless the operator fronts it with TLS. |
-| Credentials        | Minted per start on the remote, kept memory-only on the desktop, re-read on every connect.        | `username`/`password` are persisted with the connection in the renderer's `server.v3` store.                                                                                      |
-| Authentication     | Reuses existing SSH keys, agent, 2FA, and `known_hosts`. No new secret to distribute.             | A shared password the operator invents and distributes.                                                                                                                           |
+|                    | SSH quick connect                                                                                                                               | Server added by URL                                                                                                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Inbound exposure   | None. The remote binds `127.0.0.1` on a kernel-assigned port.                                                                                   | A listening port must be reachable from the desktop.                                                                                                                              |
+| Transport security | Encrypted, with host-key identity, by construction.                                                                                             | `normalizeServerUrl` turns a bare `host:port` into `http://`, so Basic credentials and all session traffic cross the network in cleartext unless the operator fronts it with TLS. |
+| Credentials        | Minted per start on the remote, kept memory-only on the desktop, re-read on every connect.                                                      | `username`/`password` are persisted with the connection in the renderer's `server.v3` store.                                                                                      |
+| Authentication     | Reuses existing SSH keys, agent, 2FA, and `known_hosts`. No new secret to distribute.                                                           | A shared password the operator invents and distributes.                                                                                                                           |
 | Setup              | Name a host you can already `ssh` into. forge is installed if missing and started for you; version mismatches are reported for explicit update. | Install forge on the host, pick a port, open it through the firewall, invent and distribute a password, and arrange TLS.                                                          |
-| Lifecycle          | Installs, version-checks, daemonizes, health-checks, and auto-reconnects.                         | Someone else runs, updates, and supervises the server.                                                                                                                            |
-| Per-request cost   | One authenticated connection, multiplexed, `ControlPersist=10m` — auth is paid once.              | HTTP clients may reuse connections; no SSH authentication or tunnel overhead.                                                                                                                          |
+| Lifecycle          | Installs, version-checks, daemonizes, health-checks, and auto-reconnects.                                                                       | Someone else runs, updates, and supervises the server.                                                                                                                            |
+| Per-request cost   | One authenticated connection, multiplexed, `ControlPersist=10m` — auth is paid once.                                                            | HTTP clients may reuse connections; no SSH authentication or tunnel overhead.                                                                                                     |
 
 The honest trade is throughput. Tunneling is not faster than talking to a port directly: traffic is
 encrypted, crosses an extra process hop on both ends, and is subject to the SSH channel's own flow
@@ -74,7 +78,8 @@ a reverse proxy, shared by several users, or running somewhere the user has no s
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `runtime.ts`           | All `ssh` process work: target parsing, `ssh -G` resolution, control master, pty prompt detection, remote command execution, remote file writes, tunnel spawn. | [`runtime.ts`](../packages/desktop/src/main/ssh/runtime.ts)       |
 | `shim.ts`              | The POSIX `sh` lifecycle script written to the remote as `~/.forge/bin/forge-remote`, plus parsing of its state line.                                          | [`shim.ts`](../packages/desktop/src/main/ssh/shim.ts)             |
-| `connection.ts`        | One full connect: master → refresh shim → `ensure` (installing forge if missing) → tunnel → health. Also graceful remote stop.                                 | [`connection.ts`](../packages/desktop/src/main/ssh/connection.ts) |
+| `connection.ts`        | One full connect: master → attach probe → managed attach or quick-connect shim and `ensure` → tunnel → health. Also graceful quick-connect stop.               | [`connection.ts`](../packages/desktop/src/main/ssh/connection.ts) |
+| `persistent.ts`        | Managed persistent servers: the attach probe script, attach record parsing, attach classification, and the descriptor check.                                   | [`persistent.ts`](../packages/desktop/src/main/ssh/persistent.ts) |
 | `servers.ts`           | The controller: persisted server list, per-server runtime state, prompts, jobs, reconnect backoff, and the public API surface.                                 | [`servers.ts`](../packages/desktop/src/main/ssh/servers.ts)       |
 | `policy.ts`            | Pure helpers: config construction from a resolved target, cached-state clearing, IPC input validation.                                                         | [`policy.ts`](../packages/desktop/src/main/ssh/policy.ts)         |
 | `startup.ts`           | Pure policy: which servers auto-start, reconnect backoff schedule, health polling, post-install version assertion.                                             | [`startup.ts`](../packages/desktop/src/main/ssh/startup.ts)       |
@@ -152,7 +157,7 @@ so two pty masters never race one socket.
 
 ## The remote shim
 
-Before anything else, the connect writes [`shim.ts`](../packages/desktop/src/main/ssh/shim.ts)'s
+Once the [attach probe](#managed-persistent-servers) finds no managed server, the connect writes [`shim.ts`](../packages/desktop/src/main/ssh/shim.ts)'s
 script to `$HOME/.forge/bin/forge-remote` (mode 0755) via `cat` over the master. It is rewritten on
 every connect so an outdated copy self-heals, and it is plain POSIX `sh` because a remote may not
 have `bash`. It owns four subcommands:
@@ -244,18 +249,25 @@ checks for one **before** it writes the shim or runs `ensure`:
 
 1. It sends [`REMOTE_ATTACH_PROBE_SCRIPT`](../packages/desktop/src/main/ssh/persistent.ts) over the control master on
    stdin. The script contains no secrets. It reports whether `/etc/turenos/attach.json` (Linux system service,
-   `0640 root:turenos-operators`) exists and is readable.
+   `0640 root:turenos-operators`) exists and is readable. A `/etc/turenos` this user cannot search reports unreadable,
+   never missing.
 2. `classifyAttach` turns the report into one of three results:
 
-   | Result | Meaning | Action |
-   | --- | --- | --- |
-   | `attach-existing` | A well-formed attach record names a loopback listener | Tunnel to it. No shim write, no `ensure`, no key sent |
-   | `start-quick-connect` | No record, and the target was never persistent | Today's quick-connect path |
-   | `conflict` | Record unreadable or malformed, a saved persistent target has no record, or the record names a different server | Fail closed with an actionable message |
+   | Result                | Meaning                                                                                                         | Action                                                |
+   | --------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+   | `attach-existing`     | A well-formed attach record names a loopback listener                                                           | Tunnel to it. No shim write, no `ensure`, no key sent |
+   | `start-quick-connect` | No record, and the target was never persistent                                                                  | Today's quick-connect path                            |
+   | `conflict`            | Record unreadable or malformed, a saved persistent target has no record, or the record names a different server | Fail closed with an actionable message                |
 
 3. For `attach-existing`, the desktop opens the tunnel to the record's port and reads the authenticated
    `GET /global/server` descriptor. It keeps the connection only if the descriptor's `serverID` matches the record and
    `mode` is `persistent`. A rejected request fails at once rather than waiting out the health timeout.
+
+The probe runs for every SSH user, so a promoted host offers no quick connect: members of `turenos-operators` attach to
+the shared server, and every other user gets the unreadable conflict. The probe reuses the ssh master, whose login keeps
+the groups it started with, so a user newly added to the group connects only after that master has been idle for
+`ControlPersist` (10 minutes) and a new login starts. See
+[Persistent server known limits](./persistent-server.md#known-limits).
 
 The first successful attach saves `persistent: { serverID }` on the `SshServerConfig`. The password is never
 saved in desktop storage; it is re-read from the attach record on every connect. After that:
@@ -265,7 +277,8 @@ saved in desktop storage; it is re-read from the attach record on every connect.
   expire through `ControlPersist`.
 - **Remove.** Removing the target deletes the saved entry and disconnects. Neither action runs `forge-remote stop`.
 - **Stop server.** Stopping or retiring the service is an operator action on the host (`systemctl stop turenos`).
-- **Updates.** Install and update actions are hidden, because the host's service setup owns the binary.
+- **Updates.** Install and update actions are hidden, and the SSH user's forge version isn't probed, because the host's
+  service setup owns the binary.
 
 Desktop shutdown (`stopAll`) disconnects only, as before.
 
@@ -313,6 +326,9 @@ aborts the previous through its `AbortController`.
 
 ## Attaching from the remote host
 
+This section describes a quick-connect server. A managed persistent server uses the host-owned
+attach record described above.
+
 The server the desktop starts is an ordinary `forge serve` with Basic auth, so anything running on
 the remote host as the same user can use it directly — a TUI, a script, or a second `forge`
 invocation. There is no separate API for this and none is needed.
@@ -348,11 +364,12 @@ The example uses an environment variable to keep the password out of command arg
 remote account and administrators remain trusted. This illustrates CLI attachment, not automatic
 `turen-tui` discovery.
 
-A remote-owned vault with independent startup and access from multiple desktops is not implemented
-yet. A second desktop with a different vault key cannot independently restart and unlock the
-existing vault; do not replace the key or delete stored secrets to work around a mismatch.
+A quick-connect server uses the first desktop's vault key. A second desktop with a different key
+cannot independently restart and unlock that database; do not replace the key or delete stored
+secrets to work around a mismatch. Use a managed persistent server for a host-owned key and
+independent clients.
 
-Four constraints shape any client built on this:
+Four constraints shape clients of a quick-connect server:
 
 - **Port and password rotate on every remote restart.** Resolve them at connect time; never cache
   them across restarts.
@@ -374,14 +391,15 @@ variables works unchanged against both a desktop-managed remote and a hand-run `
 
 ## Keychain and key material
 
-Two different keychains touch this path, and neither one stores the remote's credentials.
+For quick connect, two different keychains touch this path, and neither one stores the remote's
+credentials. Managed persistent servers use systemd encrypted credentials on the host instead.
 
 **The OS keychain, through the credential vault.** The desktop's root secret is a random 32-byte key
 wrapped by Electron `safeStorage` — the macOS Keychain item `Forge Safe Storage`, Windows DPAPI, or
 libsecret/KWallet on Linux — and stored in `forge.settings` as `{version, keyID, wrappedKey}`. It is
 unwrapped once at startup by
 [`loadCredentialSecretKey`](../packages/desktop/src/main/secret-key.ts), so keychain prompts (if any)
-happen at app launch, never per connect. A remote host has no keychain of its own: the SSH connect
+happen at app launch, never per connect. A quick-connect remote has no key source of its own: the SSH connect
 ships `FORGE_SECRET_VAULT_KEY_ID` and the base64 key into the remote `ensure` command, and the
 headless server reads exactly those two variables in
 [`secret-vault.ts`](../packages/core/src/secret-vault.ts), deleting them from `process.env` as the
@@ -404,12 +422,12 @@ in-app prompt collects the passphrase, writes it to the pty, and drops it — it
 so the same passphrase is requested on the next connect. Loading the key into the agent, not
 TurenOS, is what makes that prompt go away.
 
-**The remote's HTTP password is not keychain material.** It is minted per start on the remote, kept
+**The quick-connect HTTP password is not keychain material.** It is minted per start on the remote, kept
 0600 in `~/.forge/run/server.auth`, returned over the SSH channel, and held only in main-process
 memory and the mirrored renderer state. It is never written to local storage, and a remote restart
 mints a new one.
 
-**Key material never reaches argv.** The `ensure` call is the only step that carries the vault key,
+**Quick-connect key material never reaches argv.** The `ensure` call is the only step that carries the vault key,
 and it is delivered the way the WSL backend delivers it — as a short script on stdin, built by
 `remoteEnsureScript` and piped to `sh -s`:
 
@@ -432,7 +450,7 @@ from `process.env` when it initializes, limiting subsequent child-process inheri
 protect the key from the remote account or root: connecting trusts that host with the desktop vault
 key, and clearing environment variables is not a guarantee of erasing the initial process environment.
 
-## Security properties
+## Quick-connect security properties
 
 - The remote listener binds `127.0.0.1` with a kernel-assigned port and is reachable only through
   the SSH forward from the desktop. Other processes on the remote can reach loopback too, so
@@ -448,6 +466,9 @@ key, and clearing environment variables is not a guarantee of erasing the initia
 - Renderer IPC arrives through `TrustedIpc` and is validated before use.
 
 ## Operating notes
+
+The shim, state files, and generated password notes below apply to quick connect. Managed
+persistent servers use the host service and attach record instead.
 
 - Directory browsing lists the current folder first and requests child listings only when expanded.
   The first expansion of an uncached folder waits for a server response.
@@ -478,4 +499,7 @@ canonicalization, prompt detection, and `ssh -G` handling;
 against fixtures (daemonize, reattach, stale pidfile, checksum rejection);
 [`servers.test.ts`](../packages/desktop/src/main/ssh/servers.test.ts) drives the controller through
 its test seams for add/remove, prompt round-trips, reconnect backoff, late-connection discard, and
-install version enforcement.
+install version enforcement;
+[`persistent.test.ts`](../packages/desktop/src/main/ssh/persistent.test.ts) runs the real attach
+probe script, attaches through a fake `ssh` without sending the vault key, and checks that
+disconnecting never stops a persistent server.
