@@ -2043,7 +2043,17 @@ class Interpreter<R> {
     const data = boundedData(value, "console.table argument")
     const columns = this.consoleTableColumns(columnsArgument, node)
     const rows = this.consoleTableRows(data, columns)
-    const keys = columns ?? Array.from(new Set(rows.flatMap((row) => Object.keys(row.values))))
+    const keys =
+      columns ??
+      Array.from(
+        rows.reduce(
+          (keys, row) => {
+            Object.keys(row.values).forEach((key) => keys.add(key))
+            return keys
+          },
+          new Set<string>(),
+        ),
+      )
     const header = ["(index)", ...keys].join("\t")
     return [
       header,

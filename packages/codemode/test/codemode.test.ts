@@ -309,6 +309,26 @@ describe("CodeMode console capture", () => {
     expect(result.logs).toStrictEqual(["(index)\twhen\tn\n0\t1970-01-01T00:00:00.000Z\tNaN"])
   })
 
+  test("console.table infers unique columns in first-seen order", async () => {
+    const result = await Effect.runPromise(
+      CodeMode.execute({
+        code: `
+        console.table([
+          { first: "a", shared: 1 },
+          { shared: 2, next: "b" },
+          { next: "c", last: true }
+        ])
+        return null
+      `,
+      }),
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.logs).toStrictEqual([
+      "(index)\tfirst\tshared\tnext\tlast\n0\ta\t1\t\t\n1\t\t2\tb\t\n2\t\t\tc\ttrue",
+    ])
+  })
+
   test("captures console.dir and console.table output", async () => {
     const result = await Effect.runPromise(
       CodeMode.execute({
