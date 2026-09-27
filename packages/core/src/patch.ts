@@ -574,13 +574,16 @@ const splitMatch = (
   }
   return out
 }
-const normalize = (value: string) =>
-  value
+const ASCII_ONLY = /^[\x00-\x7f]*$/
+const normalize = (value: string) => {
+  if (ASCII_ONLY.test(value)) return value
+  return value
     .replace(/[‘’‚‛]/g, "'")
     .replace(/[“”„‟]/g, '"')
     .replace(/[‐‑‒–—―]/g, "-")
     .replace(/…/g, "...")
     .replace(/ /g, " ")
+}
 const splitBom = (text: string) =>
   text.startsWith("\uFEFF") ? { bom: true, text: text.slice(1) } : { bom: false, text }
 const stripHeredoc = (input: string) =>
