@@ -12,6 +12,7 @@ const expected = [
   "turenlabs/bandit",
   "turenlabs/batou",
   "turenlabs/bug-root-cause",
+  "turenlabs/capec",
   "turenlabs/certfr-misp",
   "turenlabs/chainguard-docs",
   "turenlabs/checkov",
@@ -48,6 +49,7 @@ const expected = [
   "turenlabs/kev",
   "turenlabs/linear",
   "turenlabs/lolbas",
+  "turenlabs/mcp-security-review",
   "turenlabs/microsoft-graph-enterprise",
   "turenlabs/microsoft-sentinel",
   "turenlabs/native-audit",
@@ -151,7 +153,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(16)
+    expect(skills.length).toBe(17)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0
@@ -159,6 +161,20 @@ describe("ExtensionCatalog", () => {
         return false
       }),
     ).toBe(true)
+  })
+
+  test("gates MCP review on exact-version evidence and bidirectional write fixes", () => {
+    const contribution = ExtensionCatalog.get("turenlabs/mcp-security-review")?.contributions[0]
+    if (contribution?.type !== "skill" || contribution.source.type !== "catalog") {
+      throw new Error("Expected MCP Security Review to be a catalog skill")
+    }
+    expect(contribution.source.content).toContain("server name and exact version or endpoint")
+    expect(contribution.source.content).toContain(
+      "Remove read-only tools mistakenly listed in `tools.write`; add every confirmed mutating tool that is intentionally allowed.",
+    )
+    expect(contribution.source.content).toContain(
+      "If this enforcement cannot be proven in the reviewed deployment, do not enable mutating tools",
+    )
   })
 
   test("rejects invalid or duplicate executable declarations", () => {

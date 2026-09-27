@@ -508,6 +508,7 @@
         "diff": "catalog:",
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
+        "fast-xml-parser": "5.7.3",
         "fuzzysort": "3.1.0",
         "gitlab-ai-provider": "6.11.1",
         "glob": "13.0.5",
