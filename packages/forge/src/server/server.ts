@@ -43,6 +43,10 @@ type ServerApp = {
 type ListenOptions = CorsOptions & {
   port: number
   hostname: string
+  /** Basic auth password. Defaults to FORGE_SERVER_PASSWORD, which listen moves from process.env into Flag. */
+  password?: string
+  /** Basic auth username. Defaults to FORGE_SERVER_USERNAME, then "forge". */
+  username?: string
   /** Opt out of refusing non-loopback binds without FORGE_SERVER_PASSWORD. */
   insecure?: boolean
   mdns?: boolean
@@ -89,9 +93,16 @@ export async function openapi() {
 export let url: URL | undefined
 
 export async function listen(opts: ListenOptions): Promise<Listener> {
+  const password = opts.password ?? process.env.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD
+  const username = opts.username ?? process.env.FORGE_SERVER_USERNAME ?? Flag.FORGE_SERVER_USERNAME
+  // Shells, PTYs, LSP and MCP servers inherit process.env. Left there, the password lets any
+  // agent-run command authenticate as the user, answer permission prompts, or disable them.
+  // Flag keeps it in memory so later listeners and in-process clients (ServerAuth.headers) still see it.
+  Flag.FORGE_SERVER_PASSWORD = password
+  Flag.FORGE_SERVER_USERNAME = username
+  delete process.env.FORGE_SERVER_PASSWORD
   // Binding a non-loopback interface exposes every privileged API on the LAN, so a
   // password is mandatory there unless the caller explicitly opts into insecure mode.
-  const password = process.env.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD
   if (!password && !opts.insecure && !isLoopbackHostname(opts.hostname)) {
     throw new Error(
       `Refusing to listen on ${opts.hostname} without FORGE_SERVER_PASSWORD. ` +
@@ -99,7 +110,7 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
     )
   }
   if (opts.credentialVault) SecretVault.configure(opts.credentialVault)
-  const listener = await Effect.runPromise(listenEffect(opts))
+  const listener = await Effect.runPromise(listenEffect({ ...opts, password, username }))
   return {
     hostname: listener.hostname,
     port: listener.port,
@@ -158,8 +169,20 @@ function listenerLayer(opts: ListenOptions, port: number) {
     // `ConfigProvider` snapshots `process.env` on first read and caches the
     // result on a module-singleton Reference; without overriding it here,
     // every later `Server.listen()` keeps observing that initial snapshot.
-    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv())),
+    // The auth credentials come from `listen()`, which removed the password from `process.env`.
+    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: listenerEnv(opts) }))),
   )
+}
+
+function listenerEnv(opts: ListenOptions) {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  )
+  return {
+    ...env,
+    ...(opts.password ? { FORGE_SERVER_PASSWORD: opts.password } : {}),
+    ...(opts.username ? { FORGE_SERVER_USERNAME: opts.username } : {}),
+  }
 }
 
 function startWithPortFallback(opts: ListenOptions) {

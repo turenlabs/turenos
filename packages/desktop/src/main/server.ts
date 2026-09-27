@@ -4,6 +4,7 @@ import { app, utilityProcess } from "electron"
 import type { Details } from "electron"
 import { resolveForgeCliEnv } from "./forge-cli"
 import { getLogger } from "./logging"
+import { withoutIpcSecrets } from "./sidecar-env"
 import { getUserShell, loadShellEnv } from "./shell-env"
 import { IS_DEV } from "./constants"
 import type { SidecarProfileMessage } from "./profiler/sidecar-profiler"
@@ -358,8 +359,10 @@ export async function checkHealth(url: string, password?: string | null): Promis
 }
 
 function createSidecarEnv(): Record<string, string> {
-  const env = Object.fromEntries(
-    Object.entries(process.env).flatMap(([key, value]) => (value === undefined ? [] : [[key, String(value)]])),
+  const env = withoutIpcSecrets(
+    Object.fromEntries(
+      Object.entries(process.env).flatMap(([key, value]) => (value === undefined ? [] : [[key, String(value)]])),
+    ),
   )
   delete env.DEBUG
   if (process.platform === "linux") delete env.LD_PRELOAD

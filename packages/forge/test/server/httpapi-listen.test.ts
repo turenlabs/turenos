@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url"
 import { Flag } from "@turenlabs/core/flag/flag"
 import { Effect } from "effect"
 import { Server } from "../../src/server/server"
+import { ServerAuth } from "../../src/server/auth"
 import { GlobalPaths } from "../../src/server/routes/instance/httpapi/groups/global"
 import { PtyPaths } from "../../src/server/routes/instance/httpapi/groups/pty"
 import { withTimeout } from "../../src/util/timeout"
@@ -443,6 +444,57 @@ describe("HttpApi Server.listen", () => {
       ws.close(1000)
     } finally {
       await stop(listener, "timed out cleaning up no-auth listener").catch(() => undefined)
+    }
+  })
+
+  test("removes the server password from the environment it passes to child processes", async () => {
+    Flag.FORGE_SERVER_PASSWORD = undefined
+    Flag.FORGE_SERVER_USERNAME = auth.username
+    process.env.FORGE_SERVER_PASSWORD = auth.password
+    process.env.FORGE_SERVER_USERNAME = auth.username
+    const listener = await Server.listen({ hostname: "127.0.0.1", port: 0 })
+    try {
+      // Shells, PTYs, LSP and MCP children inherit process.env; the password would let them drive the server.
+      expect(process.env.FORGE_SERVER_PASSWORD).toBeUndefined()
+      const health = new URL(GlobalPaths.health, listener.url)
+      expect((await fetch(health)).status).toBe(401)
+      expect((await fetch(health, { headers: { authorization: authorization() } })).status).toBe(200)
+    } finally {
+      await stop(listener, "timed out cleaning up scrubbed-environment listener")
+    }
+  })
+
+  test("keeps enforcing auth on later listeners after the password leaves the environment", async () => {
+    // Only the environment carries the password, as in the desktop sidecar, so nothing else can mask a lost credential.
+    Flag.FORGE_SERVER_PASSWORD = undefined
+    Flag.FORGE_SERVER_USERNAME = undefined
+    process.env.FORGE_SERVER_PASSWORD = auth.password
+    process.env.FORGE_SERVER_USERNAME = auth.username
+    const first = await Server.listen({ hostname: "127.0.0.1", port: 0 })
+    await stop(first, "timed out cleaning up first listener")
+    expect(process.env.FORGE_SERVER_PASSWORD).toBeUndefined()
+    const second = await Server.listen({ hostname: "127.0.0.1", port: 0 })
+    try {
+      const health = new URL(GlobalPaths.health, second.url)
+      expect((await fetch(health)).status).toBe(401)
+      expect((await fetch(health, { headers: { authorization: authorization() } })).status).toBe(200)
+    } finally {
+      await stop(second, "timed out cleaning up second listener")
+    }
+  })
+
+  test("gives in-process clients the credentials passed to listen", async () => {
+    Flag.FORGE_SERVER_PASSWORD = undefined
+    Flag.FORGE_SERVER_USERNAME = undefined
+    delete process.env.FORGE_SERVER_PASSWORD
+    const listener = await Server.listen({ hostname: "127.0.0.1", port: 0, ...auth })
+    try {
+      // Plugins and ACP authenticate their clients with ServerAuth.headers().
+      const response = await fetch(new URL(GlobalPaths.health, listener.url), { headers: ServerAuth.headers() })
+      expect(response.status).toBe(200)
+      expect(process.env.FORGE_SERVER_PASSWORD).toBeUndefined()
+    } finally {
+      await stop(listener, "timed out cleaning up explicit-credential listener")
     }
   })
 
