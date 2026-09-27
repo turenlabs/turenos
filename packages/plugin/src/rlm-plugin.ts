@@ -124,7 +124,14 @@ export function createRlmPlugin(options: RlmPluginOptions = {}): Plugin {
               const termScore = terms.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0)
               const score = termScore + (phrase.length > 0 && normalized.includes(phrase) ? terms.length : 0)
               if (score === 0) continue
-              retainTopRlmSearchResult(results, { line: index + 1, score, text: line }, limit)
+              const result = { line: index + 1, score, text: line }
+              if (results.length < limit) {
+                results.push(result)
+                siftUpRlmSearchResults(results, results.length - 1)
+                continue
+              }
+              if (compareRlmSearchResult(result, results[0]!) >= 0) continue
+              siftDownRlmSearchResults(results, result)
             }
 
             results.sort(compareRlmSearchResult)
@@ -191,16 +198,6 @@ type RlmSearchResult = { line: number; score: number; text: string }
 
 function compareRlmSearchResult(left: RlmSearchResult, right: RlmSearchResult) {
   return right.score - left.score || left.line - right.line
-}
-
-function retainTopRlmSearchResult(results: RlmSearchResult[], result: RlmSearchResult, limit: number) {
-  if (results.length === limit && compareRlmSearchResult(result, results[0]!) >= 0) return
-  if (results.length < limit) {
-    results.push(result)
-    siftUpRlmSearchResults(results, results.length - 1)
-    return
-  }
-  siftDownRlmSearchResults(results, result)
 }
 
 function siftUpRlmSearchResults(results: RlmSearchResult[], child: number) {
