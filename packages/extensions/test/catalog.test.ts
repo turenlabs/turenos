@@ -13,6 +13,7 @@ const expected = [
   "turenlabs/batou",
   "turenlabs/bug-root-cause",
   "turenlabs/capec",
+  "turenlabs/cert-eu",
   "turenlabs/certfr-misp",
   "turenlabs/chainguard-docs",
   "turenlabs/checkov",
@@ -788,6 +789,9 @@ describe("ExtensionCatalog", () => {
     }
     expect(ExtensionCatalog.dataEndpoint("security:kev")).toBe(
       "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json",
+    )
+    expect(ExtensionCatalog.dataEndpoint("security:cert-eu", "feed")).toBe(
+      "https://cert.europa.eu/publications/security-advisories-rss",
     )
     expect(ExtensionCatalog.dataEndpoint("security:hibp", "passwords")).toBe(
       "https://api.pwnedpasswords.com/range",

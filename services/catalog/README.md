@@ -43,9 +43,10 @@ Each manifest is one JSON file holding a single extension whose contributions sh
 
 ## Current Sources
 
-The catalog contains 24 cybersecurity data sources:
+The catalog contains 25 cybersecurity data sources:
 
 - CISA Known Exploited Vulnerabilities
+- CERT-EU Security Advisories
 - CIRCL Hashlookup
 - deps.dev
 - ENISA EUVD

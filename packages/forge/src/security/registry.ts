@@ -23,6 +23,7 @@ import { Gtfobins } from "./integrations/data-community/gtfobins"
 import { Scorecard } from "./integrations/data-community/scorecard"
 import { CertFrMisp } from "./integrations/data-certfr/certfr-misp"
 import { DatadogMalicious } from "./integrations/data-supply/datadog-malicious"
+import { CertEu } from "./integrations/cert-eu"
 import { PhishingDatabase } from "./integrations/data-ti-open/phishing-database"
 import { TorExit } from "./integrations/data-ti-open/tor-exit"
 import { TweetFeed } from "./integrations/data-ti-open/tweetfeed"
@@ -99,6 +100,7 @@ const implementations: readonly Integration[] = [
   Lolbas,
   Gtfobins,
   Scorecard,
+  CertEu,
   CertFrMisp,
   DatadogMalicious,
   PhishingDatabase,
