@@ -336,11 +336,12 @@ export const sortKev = (items: ReadonlyArray<KevItem>, sort?: string, order?: In
       return [...items].sort((a, b) => sign * a.cveID.localeCompare(b.cveID))
     case "name":
       return [...items].sort((a, b) => sign * a.name.localeCompare(b.name))
-    case "vendor":
-      return items
-        .map((item) => ({ item, key: `${item.vendor} / ${item.product}` }))
-        .sort((a, b) => sign * a.key.localeCompare(b.key) || b.item.dateAdded - a.item.dateAdded)
-        .map((entry) => entry.item)
+    case "vendor": {
+      // Cache the composite key instead of rebuilding it for every comparison.
+      const sorted = items.map((item) => ({ item, key: `${item.vendor} / ${item.product}` }))
+      sorted.sort((a, b) => sign * a.key.localeCompare(b.key) || b.item.dateAdded - a.item.dateAdded)
+      return sorted.map((entry) => entry.item)
+    }
     case "dateAdded":
       return [...items].sort((a, b) => sign * (a.dateAdded - b.dateAdded))
     case "dueDate":
