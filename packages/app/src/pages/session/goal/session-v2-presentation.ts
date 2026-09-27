@@ -335,26 +335,22 @@ export function isSessionV2ToolStub(part: Part): boolean {
  * part keeps its body when it carries the same or a settled status.
  */
 export function mergeSessionV2Parts(current: readonly Part[] | undefined, incoming: Part[]): Part[] {
-  // Index only after actual scans show enough remaining stub lookups to repay the build.
+  // Large, dense stub batches repay building the lookup index; unrelated incoming parts do not.
   const considerIndex =
     current !== undefined && current.length >= 32 && incoming.length > 1 && current.length * incoming.length > 4_096
-  let scannedParts = 0
-  let scannedStubs = 0
-  let consideredIndex = false
-  let useIndex = false
-  let currentIndices: { byID: Map<string, number>; byCallID: Map<string, number> } | undefined
-  return incoming.map((part, index) => {
-    if (part.type !== "tool" || !isSessionV2ToolStub(part)) return part
-    if (useIndex && !currentIndices) {
-      const byID = new Map<string, number>()
-      const byCallID = new Map<string, number>()
-      current?.forEach((item, storedIndex) => {
-        if (!byID.has(item.id)) byID.set(item.id, storedIndex)
-        if (item.type === "tool" && !byCallID.has(item.callID)) byCallID.set(item.callID, storedIndex)
-      })
-      currentIndices = { byID, byCallID }
-    }
+  const stubCount = considerIndex ? incoming.filter((part) => isSessionV2ToolStub(part)).length : 0
+  const currentIndices =
+    stubCount >= 16 && (current?.length ?? 0) * stubCount > 4_096
+      ? { byID: new Map<string, number>(), byCallID: new Map<string, number>() }
+      : undefined
+  if (currentIndices) current?.forEach((part, index) => {
+    if (!currentIndices.byID.has(part.id)) currentIndices.byID.set(part.id, index)
+    if (part.type === "tool" && !currentIndices.byCallID.has(part.callID))
+      currentIndices.byCallID.set(part.callID, index)
+  })
 
+  return incoming.map((part) => {
+    if (part.type !== "tool" || !isSessionV2ToolStub(part)) return part
     let existing: Part | undefined
     if (currentIndices) {
       const idIndex = currentIndices.byID.get(part.id)
@@ -366,24 +362,10 @@ export function mergeSessionV2Parts(current: readonly Part[] | undefined, incomi
             ? idIndex
             : Math.min(idIndex, callIDIndex)
       existing = existingIndex === undefined ? undefined : current?.[existingIndex]
-    } else if (!considerIndex) {
+    } else {
       existing = current?.find(
         (item) => item.id === part.id || (item.type === "tool" && item.callID === part.callID),
       )
-    } else {
-      scannedStubs += 1
-      existing = current?.find((item) => {
-        scannedParts += 1
-        return item.id === part.id || (item.type === "tool" && item.callID === part.callID)
-      })
-      if (!consideredIndex && current && scannedParts > current.length * 2) {
-        consideredIndex = true
-        const remainingStubCount = incoming
-          .slice(index + 1)
-          .filter((candidate) => isSessionV2ToolStub(candidate)).length
-        const averageScanned = scannedParts / scannedStubs
-        useIndex = averageScanned > 16 && remainingStubCount * averageScanned > current.length * 2
-      }
     }
     if (existing?.type !== "tool") return part
     if (isSessionV2ToolStub(existing) || existing.state.status === "pending") return part
