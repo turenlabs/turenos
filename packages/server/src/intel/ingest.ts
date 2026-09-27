@@ -337,11 +337,10 @@ export const sortKev = (items: ReadonlyArray<KevItem>, sort?: string, order?: In
     case "name":
       return [...items].sort((a, b) => sign * a.name.localeCompare(b.name))
     case "vendor":
-      return [...items].sort(
-        (a, b) =>
-          sign * `${a.vendor} / ${a.product}`.localeCompare(`${b.vendor} / ${b.product}`) ||
-          b.dateAdded - a.dateAdded,
-      )
+      return items
+        .map((item) => ({ item, key: `${item.vendor} / ${item.product}` }))
+        .sort((a, b) => sign * a.key.localeCompare(b.key) || b.item.dateAdded - a.item.dateAdded)
+        .map((entry) => entry.item)
     case "dateAdded":
       return [...items].sort((a, b) => sign * (a.dateAdded - b.dateAdded))
     case "dueDate":
