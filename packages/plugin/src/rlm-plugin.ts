@@ -116,9 +116,7 @@ export function createRlmPlugin(options: RlmPluginOptions = {}): Plugin {
             const terms = tokenize(args.query)
             const phrase = args.query.trim().toLowerCase()
             const limit = Math.min(args.limit ?? maxSearchResults, maxSearchResults)
-            const compare = (left: { line: number; score: number; text: string }, right: typeof left) =>
-              right.score - left.score || left.line - right.line
-            const results: Array<{ line: number; score: number; text: string }> = []
+            const results: RlmSearchResult[] = []
 
             for (let index = 0; index < target.lines.length; index++) {
               const line = target.lines[index]!
@@ -126,34 +124,10 @@ export function createRlmPlugin(options: RlmPluginOptions = {}): Plugin {
               const termScore = terms.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0)
               const score = termScore + (phrase.length > 0 && normalized.includes(phrase) ? terms.length : 0)
               if (score === 0) continue
-              const result = { line: index + 1, score, text: line }
-              if (results.length < limit) {
-                results.push(result)
-                let child = results.length - 1
-                while (child > 0) {
-                  const parent = (child - 1) >> 1
-                  if (compare(results[parent]!, result) >= 0) break
-                  results[child] = results[parent]!
-                  child = parent
-                }
-                results[child] = result
-                continue
-              }
-
-              if (score <= results[0]!.score) continue
-              let parent = 0
-              while (parent * 2 + 1 < results.length) {
-                const left = parent * 2 + 1
-                const right = left + 1
-                const worse = right < results.length && compare(results[right]!, results[left]!) > 0 ? right : left
-                if (compare(result, results[worse]!) >= 0) break
-                results[parent] = results[worse]!
-                parent = worse
-              }
-              results[parent] = result
+              retainTopRlmSearchResult(results, { line: index + 1, score, text: line }, limit)
             }
 
-            results.sort(compare)
+            results.sort(compareRlmSearchResult)
 
             return {
               title: `RLM search: ${results.length} match${results.length === 1 ? "" : "es"}`,
@@ -212,6 +186,46 @@ export function createRlmPlugin(options: RlmPluginOptions = {}): Plugin {
 }
 
 export const RlmPlugin = createRlmPlugin()
+
+type RlmSearchResult = { line: number; score: number; text: string }
+
+function compareRlmSearchResult(left: RlmSearchResult, right: RlmSearchResult) {
+  return right.score - left.score || left.line - right.line
+}
+
+function retainTopRlmSearchResult(results: RlmSearchResult[], result: RlmSearchResult, limit: number) {
+  if (results.length === limit && compareRlmSearchResult(result, results[0]!) >= 0) return
+  if (results.length < limit) {
+    results.push(result)
+    siftUpRlmSearchResults(results, results.length - 1)
+    return
+  }
+  siftDownRlmSearchResults(results, result)
+}
+
+function siftUpRlmSearchResults(results: RlmSearchResult[], child: number) {
+  const result = results[child]!
+  while (child > 0) {
+    const parent = (child - 1) >> 1
+    if (compareRlmSearchResult(results[parent]!, result) >= 0) break
+    results[child] = results[parent]!
+    child = parent
+  }
+  results[child] = result
+}
+
+function siftDownRlmSearchResults(results: RlmSearchResult[], result: RlmSearchResult) {
+  let parent = 0
+  while (parent * 2 + 1 < results.length) {
+    const left = parent * 2 + 1
+    const right = left + 1
+    const worse = right < results.length && compareRlmSearchResult(results[right]!, results[left]!) > 0 ? right : left
+    if (compareRlmSearchResult(result, results[worse]!) >= 0) break
+    results[parent] = results[worse]!
+    parent = worse
+  }
+  results[parent] = result
+}
 
 export default RlmPlugin
 
