@@ -25,8 +25,9 @@ const stores: Store[] = [
   {
     name: "storage",
     table: "storage_state",
-    query: sql`SELECT scope, key, value FROM storage_state WHERE deleted = 0 AND value LIKE ${PREFIX + "%"}`,
-    locate: (row) => [{ scope: row.scope!, key: row.key!, value: row.value! }],
+    // `SELECT *` because inspectFile reads unmigrated databases that predate the `deleted` column.
+    query: sql`SELECT * FROM storage_state WHERE value LIKE ${PREFIX + "%"}`,
+    locate: (row) => (Number(row.deleted ?? 0) ? [] : [{ scope: row.scope!, key: row.key!, value: row.value! }]),
   },
   {
     name: "credential",
@@ -93,21 +94,17 @@ export function inspect(db: Database.Primary, databaseUUID: string | undefined, 
     const sealed = yield* scan(db)
     const keyIDs = new Set<string>()
     const counts = new Map<string, number>()
-    const samples = new Map<string, Sealed>()
     for (const value of sealed) {
       if (!vault.isSealed(value.value))
         return yield* Effect.die(new Error(`Malformed sealed storage value in store ${value.store} (${value.scope})`))
       keyIDs.add(value.value.slice(PREFIX.length).split(":")[0]!)
       counts.set(value.store, (counts.get(value.store) ?? 0) + 1)
-      if (value.scope === verificationScope) continue
-      const sample = `${value.store}\0${value.scope}`
-      if (!samples.has(sample)) samples.set(sample, value)
     }
     const opened = new Map<string, boolean>()
-    for (const [id, value] of samples) {
-      const store = id.split("\0")[0]!
+    for (const value of sealed) {
+      if (value.scope === verificationScope) continue
       const exit = yield* Effect.exit(vault.open(value.scope, value.key, value.value))
-      opened.set(store, (opened.get(store) ?? true) && Exit.isSuccess(exit))
+      opened.set(value.store, (opened.get(value.store) ?? true) && Exit.isSuccess(exit))
     }
     const stored = sealed.find((value) => value.scope === verificationScope && value.key === verificationKey)
     const verification: Report["verification"] = !stored
@@ -167,21 +164,34 @@ export function verify(db: Database.Primary, databaseUUID: string, vault: Secret
         sql`
         INSERT INTO storage_state (scope, key, value, revision, deleted, time_created, time_updated)
         VALUES (${verificationScope}, ${verificationKey}, ${sealed}, 1, 0, ${now}, ${now})
-        ON CONFLICT(scope, key) DO NOTHING
+        ON CONFLICT(scope, key) DO UPDATE SET
+          value = excluded.value,
+          revision = storage_state.revision + 1,
+          deleted = 0,
+          time_updated = excluded.time_updated
+        WHERE storage_state.deleted = 1
       `,
       )
       .pipe(Effect.orDie)
-    const stored = yield* db
-      .get<{ value: string }>(
-        sql`
-        SELECT value FROM storage_state WHERE scope = ${verificationScope} AND key = ${verificationKey}
-      `,
-      )
-      .pipe(Effect.orDie)
-    if (!stored || !(yield* sentinelMatches(vault, stored.value, databaseUUID)))
+    if (!(yield* sentinelValid(db, databaseUUID, vault)))
       return yield* Effect.die(
         new Error("Database secret verification failed; the configured key or database is incorrect"),
       )
+  })
+}
+
+/** Whether the vault opens this database's sentinel, which only key bytes that passed `verify` sealed. */
+export function sentinelValid(db: Database.Primary, databaseUUID: string, vault: SecretVault.Interface) {
+  return Effect.gen(function* () {
+    const stored = yield* db
+      .get<{ value: string }>(
+        sql`
+        SELECT value FROM storage_state
+        WHERE scope = ${verificationScope} AND key = ${verificationKey} AND deleted = 0
+      `,
+      )
+      .pipe(Effect.orDie)
+    return stored !== undefined && (yield* sentinelMatches(vault, stored.value, databaseUUID))
   })
 }
 

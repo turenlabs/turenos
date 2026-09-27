@@ -26,6 +26,8 @@ type OwnerContext = ServerOwner.Context & { key?: SecretVault.Key }
 export interface Interface {
   db: DatabaseShape
   databaseUUID: string
+  /** The key ID this layer verified against every sealed store, when the owner lock carried the key */
+  verifiedKeyID?: string
 }
 
 export class Service extends Context.Service<Service, Interface>()("@forge/v2/storage/Database") {}
@@ -38,6 +40,13 @@ export function layerFromPath(filename: string) {
   return Layer.effect(
     Service,
     Effect.gen(function* () {
+      const ownerContext = yield* Effect.promise(() => currentOwnerContext(filename))
+      // Agent tools inherit the service's persistent environment; a `forge` they run must not
+      // open, let alone migrate, the live database underneath the server that owns it.
+      if (!ownerContext && filename !== ":memory:" && ServerOwner.mode() === "persistent")
+        return yield* Effect.die(
+          new Error("A persistent server's database opens only inside that server, which holds its owner lock"),
+        )
       const primary = yield* openDatabase({ filename })
       yield* primary.run("PRAGMA journal_mode = WAL")
       yield* primary.run("PRAGMA synchronous = FULL")
@@ -45,7 +54,6 @@ export function layerFromPath(filename: string) {
       yield* primary.run("PRAGMA busy_timeout = 5000")
       yield* primary.run("PRAGMA cache_size = -64000")
       yield* primary.run("PRAGMA foreign_keys = ON")
-      const ownerContext = yield* Effect.promise(() => currentOwnerContext(filename))
       yield* ServerOwner.validate(primary, ownerContext ?? ServerOwner.environmentContext())
       yield* DatabaseMigration.apply(primary)
       yield* primary.run(sql`
@@ -83,11 +91,13 @@ export function layerFromPath(filename: string) {
       )
       yield* Effect.addFinalizer(() => checkpoint(primary, filename))
       yield* protectDatabaseFiles(filename)
-      if (!readers.length) return Service.of({ db: primary, databaseUUID: databaseIdentity.value })
+      const verifiedKeyID = ownerContext?.key?.keyID
+      if (!readers.length) return Service.of({ db: primary, databaseUUID: databaseIdentity.value, verifiedKeyID })
 
       const cursor = { value: 0 }
       return Service.of({
         databaseUUID: databaseIdentity.value,
+        verifiedKeyID,
         db: EffectDrizzleSqlite.withReplicas(primary, [readers[0], ...readers.slice(1)], (replicas) => {
           const reader = replicas[cursor.value]
           cursor.value = (cursor.value + 1) % replicas.length

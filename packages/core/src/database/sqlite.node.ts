@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs"
 import { DatabaseSync, type SQLInputValue } from "node:sqlite"
 import { drizzle } from "drizzle-orm/node-sqlite"
 import * as Context from "effect/Context"
@@ -148,6 +149,9 @@ const nativeLayer = (config: Config) =>
   Layer.effect(
     Sqlite.Native,
     Effect.gen(function* () {
+      // node:sqlite has no create flag and would open a missing file by creating an empty database.
+      if (config.create === false && config.filename !== ":memory:" && !existsSync(config.filename))
+        throw new Error(`unable to open database file: ${config.filename}`)
       const native = new DatabaseSync(config.filename, {
         readOnly: config.readonly,
         timeout: config.timeout,

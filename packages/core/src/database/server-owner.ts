@@ -46,10 +46,7 @@ export function read(db: Database.Primary) {
       SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'storage_state'
     `)
     if (!table) return undefined
-    // This runs before migrations, so the table may predate its `deleted` column.
-    const tombstones = yield* db.get<{ name: string }>(sql`
-      SELECT name FROM pragma_table_info('storage_state') WHERE name = 'deleted'
-    `)
+    const tombstones = yield* hasTombstones(db)
     const stored = yield* db.get<{ value: string }>(sql`
       SELECT value FROM storage_state WHERE scope = ${scope} AND key = ${key} ${tombstones ? sql`AND deleted = 0` : sql``}
     `)
@@ -111,19 +108,28 @@ export function promote(db: Database.Primary, input: { serverID: string; keyID: 
 function write(db: Database.Primary, record: Record) {
   return Effect.gen(function* () {
     const now = Date.now()
+    // A new row takes the column default (not deleted); only a replaced tombstone needs reviving.
+    const tombstones = yield* hasTombstones(db)
     yield* db
       .run(
         sql`
-        INSERT INTO storage_state (scope, key, value, revision, deleted, time_created, time_updated)
-        VALUES (${scope}, ${key}, ${JSON.stringify(record)}, 1, 0, ${now}, ${now})
+        INSERT INTO storage_state (scope, key, value, revision, time_created, time_updated)
+        VALUES (${scope}, ${key}, ${JSON.stringify(record)}, 1, ${now}, ${now})
         ON CONFLICT(scope, key) DO UPDATE SET
           value = excluded.value,
           revision = storage_state.revision + 1,
-          deleted = 0,
+          ${tombstones ? sql`deleted = 0,` : sql``}
           time_updated = excluded.time_updated
       `,
       )
       .pipe(Effect.orDie)
     return record
   })
+}
+
+// Owner records are read and written before migrations, so the table may predate its `deleted` column.
+function hasTombstones(db: Database.Primary) {
+  return db
+    .get<{ name: string }>(sql`SELECT name FROM pragma_table_info('storage_state') WHERE name = 'deleted'`)
+    .pipe(Effect.map(Boolean))
 }

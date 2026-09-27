@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import SQLite from "bun:sqlite"
 import path from "node:path"
+import { sql } from "drizzle-orm"
 import { Cause, Effect, Exit, Layer } from "effect"
 import { Database } from "@turenlabs/core/database/database"
 import { VaultVerification } from "@turenlabs/core/database/vault-verification"
@@ -62,6 +64,27 @@ describe("VaultVerification", () => {
     if (Exit.isFailure(again)) expect(Cause.pretty(again.cause)).toContain("Database secret verification failed")
   })
 
+  test("checks every envelope when a store contains several secrets in one scope", async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "forge.db")
+    await seed(filename)
+    await Effect.gen(function* () {
+      const { db } = yield* Database.Service
+      yield* db
+        .insert(CredentialTable)
+        .values({
+          id: "cred_2" as never,
+          label: "other",
+          value: yield* SecretVault.make(wrong).seal("credential", "cred_2", "secret"),
+        })
+        .run()
+    }).pipe(Effect.provide(Database.layerFromPath(filename)), Effect.scoped, Effect.runPromise)
+
+    const exit = await start(filename, right)
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("credential")
+  })
+
   test("verifies inside the database layer when the owner lock carries the key", async () => {
     await using tmp = await tmpdir()
     const filename = path.join(tmp.path, "forge.db")
@@ -75,6 +98,39 @@ describe("VaultVerification", () => {
     } finally {
       release()
     }
+  })
+
+  test("replaces a tombstoned sentinel instead of reading it back", async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "forge.db")
+    await seed(filename)
+    expect(Exit.isSuccess(await start(filename, right))).toBe(true)
+    await Effect.gen(function* () {
+      const { db } = yield* Database.Service
+      const stale = yield* SecretVault.make(wrong).seal("internal/database-verification", "sentinel", "stale")
+      yield* db.run(
+        sql`UPDATE storage_state SET deleted = 1, value = ${stale} WHERE scope = 'internal/database-verification' AND key = 'sentinel'`,
+      )
+    }).pipe(Effect.provide(Database.layerFromPath(filename)), Effect.scoped, Effect.runPromise)
+
+    expect(Exit.isSuccess(await start(filename, right))).toBe(true)
+    expect(Exit.isSuccess(await start(filename, right))).toBe(true)
+  })
+
+  test("inspects a database that predates storage tombstones", async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "forge.db")
+    const native = new SQLite(filename)
+    native.run(
+      "CREATE TABLE storage_state (scope TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, revision INTEGER NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, PRIMARY KEY (scope, key))",
+    )
+    const sealed = await Effect.runPromise(SecretVault.make(right).seal("auth", "provider", "secret"))
+    native.run("INSERT INTO storage_state VALUES ('auth', 'provider', ?, 1, 0, 0)", [sealed])
+    native.close()
+
+    const report = await VaultVerification.inspectFile(filename, right)
+    expect(report.keyIDs).toEqual(["host-key"])
+    expect(report.stores).toEqual([{ store: "storage", sealed: 1, opened: true }])
   })
 
   test("reports stores and key IDs without writing", async () => {

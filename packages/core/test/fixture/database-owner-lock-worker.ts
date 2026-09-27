@@ -5,7 +5,7 @@ const filename = process.argv[2]
 const readyFile = process.argv[3]
 if (!filename || !readyFile) throw new Error("Database filename and ready-file path are required")
 
-const release = await Database.acquireOwnerLock(filename)
+// Held until the test kills this process, so the lock is released only by process exit.
+await Database.acquireOwnerLock(filename)
 await writeFile(readyFile, String(process.pid))
-await Bun.sleep(750)
-release()
+setInterval(() => undefined, 60_000)

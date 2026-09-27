@@ -17,30 +17,36 @@ describe("Database owner lock", () => {
     const readyFile = path.join(tmp.path, "ready")
     const worker = fileURLToPath(new URL("./fixture/database-owner-lock-worker.ts", import.meta.url))
     const child = Bun.spawn([process.execPath, worker, filename, readyFile], { stdout: "ignore", stderr: "pipe" })
-    let ready = false
-    for (let attempt = 0; attempt < 500 && !ready; attempt++) {
-      try {
-        await access(readyFile)
-        ready = true
-      } catch {
-        await Bun.sleep(10)
+    try {
+      let ready = false
+      for (let attempt = 0; attempt < 500 && !ready && child.exitCode === null; attempt++) {
+        try {
+          await access(readyFile)
+          ready = true
+        } catch {
+          await Bun.sleep(10)
+        }
       }
-    }
-    if (!ready) {
-      const exitCode = await child.exited
-      const stderr = await new Response(child.stderr).text()
-      throw new Error(`owner-lock worker did not acquire the lock (exit ${exitCode}): ${stderr}`)
-    }
+      if (!ready) {
+        child.kill("SIGKILL")
+        const exitCode = await child.exited
+        const stderr = await new Response(child.stderr).text()
+        throw new Error(`owner-lock worker did not acquire the lock (exit ${exitCode}): ${stderr}`)
+      }
 
-    const error = await Database.acquireOwnerLock(filename).then(
-      (release) => {
-        release()
-        return undefined
-      },
-      (cause) => cause,
-    )
-    expect(error).toMatchObject({ message: `Database is already owned by another server: ${filename}` })
-    expect(await child.exited).toBe(0)
+      const error = await Database.acquireOwnerLock(filename).then(
+        (release) => {
+          release()
+          return undefined
+        },
+        (cause) => cause,
+      )
+      expect(error).toMatchObject({ message: `Database is already owned by another server: ${filename}` })
+    } finally {
+      // An abrupt exit, not a release, is what frees the lock below.
+      child.kill("SIGKILL")
+      await child.exited
+    }
 
     const release = await Database.acquireOwnerLock(filename)
     release()
@@ -65,7 +71,7 @@ describe("Database owner lock", () => {
     release()
   })
 
-  test("reads the owner record from storage_state created before tombstones", async () => {
+  test("reads and promotes an owner record from storage_state created before tombstones", async () => {
     await using tmp = await tmpdir()
     const filename = path.join(tmp.path, "instance.sqlite")
     const raw = new SQLite(filename)
@@ -83,6 +89,47 @@ describe("Database owner lock", () => {
       }).pipe(Effect.scoped),
     )
     expect(owner).toMatchObject({ serverID: "old-server", mode: "quick-connect" })
+
+    const promoted = await Effect.runPromise(
+      Effect.gen(function* () {
+        const db = yield* Database.openExisting(filename)
+        yield* ServerOwner.promote(db, { serverID: "persistent-server", keyID: "old-key" })
+        return yield* ServerOwner.read(db)
+      }).pipe(Effect.scoped),
+    )
+    expect(promoted).toMatchObject({ serverID: "persistent-server", mode: "persistent" })
+  })
+
+  test("a process in persistent mode without the owner lock never opens the database", async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "instance.sqlite")
+    const original = { mode: process.env.FORGE_SERVER_MODE, id: process.env.FORGE_SERVER_ID }
+    process.env.FORGE_SERVER_MODE = "persistent"
+    process.env.FORGE_SERVER_ID = "persistent-server"
+    try {
+      const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(Database.layerFromPath(filename))))
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("holds its owner lock")
+      expect(
+        await access(filename).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(false)
+
+      const release = await Database.acquireOwnerLock(filename, { mode: "persistent", serverID: "persistent-server" })
+      try {
+        const opened = await Effect.runPromiseExit(Effect.scoped(Layer.build(Database.layerFromPath(filename))))
+        expect(Exit.isSuccess(opened)).toBe(true)
+      } finally {
+        release()
+      }
+    } finally {
+      if (original.mode === undefined) delete process.env.FORGE_SERVER_MODE
+      else process.env.FORGE_SERVER_MODE = original.mode
+      if (original.id === undefined) delete process.env.FORGE_SERVER_ID
+      else process.env.FORGE_SERVER_ID = original.id
+    }
   })
 
   test("checks a persistent owner before database migrations", async () => {
