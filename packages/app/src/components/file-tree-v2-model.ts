@@ -13,6 +13,8 @@ export type FileTreeV2Row = {
 }
 
 export function normalizeFileTreeV2Path(value: string) {
+  if (!value.includes("\\") && !value.startsWith("/") && !value.endsWith("/") && !value.includes("//")) return value
+
   return value
     .replaceAll("\\", "/")
     .replace(/^\/+|\/+$/g, "")
