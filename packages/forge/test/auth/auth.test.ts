@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import path from "node:path"
+import { sql } from "drizzle-orm"
 import { Database } from "@turenlabs/core/database/database"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { FSUtil } from "@turenlabs/core/fs-util"
@@ -6,6 +8,7 @@ import { Storage } from "@turenlabs/core/storage"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Scope } from "effect"
 import { Auth } from "../../src/auth"
+import { tmpdir } from "../fixture/fixture"
 
 type LegacyFile = { content: string | undefined; reads: number }
 
@@ -111,6 +114,44 @@ describe("Auth", () => {
         if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("Database secret verification failed")
       }),
     )
+  })
+
+  test("reuses the database layer's full check for the same key bytes, but not for other bytes under its ID", async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "forge.db")
+    const key = { keyID: "host-key", key: new Uint8Array(32).fill(7) }
+    const release = await Database.acquireOwnerLock(filename, { mode: "quick-connect", keyID: key.keyID, key })
+    try {
+      await Effect.gen(function* () {
+        const database = Context.get(yield* Layer.build(Database.layerFromPath(filename)), Database.Service)
+        // Written after the layer's check, so only a second full scan would see this second key ID.
+        const foreign = yield* SecretVault.make({ keyID: "other-key", key: new Uint8Array(32).fill(8) }).seal(
+          "auth",
+          "other",
+          "secret",
+        )
+        yield* Database.primary(database.db).run(
+          sql`INSERT INTO storage_state (scope, key, value, revision, time_created, time_updated) VALUES ('auth', 'other', ${foreign}, 1, 0, 0)`,
+        )
+        const auth = (vaultKey: SecretVault.Key) =>
+          Effect.exit(
+            Layer.build(
+              Layer.fresh(
+                LayerNode.compile(Auth.node, [
+                  [Database.node, Layer.succeed(Database.Service, database)],
+                  [SecretVault.node, SecretVault.layer(vaultKey)],
+                ]),
+              ),
+            ),
+          )
+        expect(Exit.isSuccess(yield* auth(key))).toBe(true)
+        const wrong = yield* auth({ keyID: key.keyID, key: new Uint8Array(32).fill(9) })
+        expect(Exit.isFailure(wrong)).toBe(true)
+        if (Exit.isFailure(wrong)) expect(Cause.pretty(wrong.cause)).toContain("multiple key IDs")
+      }).pipe(Effect.scoped, Effect.runPromise)
+    } finally {
+      release()
+    }
   })
 
   test("rejects ciphertext that cannot open using the configured vault", async () => {

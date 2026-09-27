@@ -3,7 +3,7 @@ export * as PersistentLinux from "./linux"
 import { spawn } from "node:child_process"
 import { randomBytes, randomUUID } from "node:crypto"
 import { constants } from "node:fs"
-import { chmod, lchown, lstat, mkdir, open, readFile, realpath, rename, stat } from "node:fs/promises"
+import { chmod, lchown, link, lstat, mkdir, open, readFile, realpath, rename, stat, unlink } from "node:fs/promises"
 import { createServer } from "node:net"
 import { dirname, join } from "node:path"
 
@@ -143,7 +143,6 @@ export function installed(text: string | undefined) {
     user: line(/^User=(\S+)$/m),
     dataRoot: dataHome ? dirname(dataHome) : undefined,
     port: port ? Number(port) : undefined,
-    forgeBin: line(/^ExecStart=(\S+) serve /m),
   }
 }
 
@@ -196,6 +195,8 @@ export function evaluate(facts: Facts, plan: Plan) {
   const existingID = installed(facts.existingUnit).serverID
   if (facts.existingUnit !== undefined && existingID !== plan.serverID)
     problems.push(`${plan.unitPath} already exists for a different server; it was left untouched`)
+  if (facts.serviceActive && facts.existingUnit === undefined)
+    problems.push(`${defaults.serviceName} is active without ${plan.unitPath}; refusing to stop an unknown service`)
   const ownPort =
     facts.serviceActive && existingID === plan.serverID && installed(facts.existingUnit).port === plan.port
   if (facts.portInUse && !ownPort) problems.push(`127.0.0.1:${plan.port} is already in use; choose another --port`)
@@ -278,7 +279,7 @@ const layout = ["data", "data/forge", "config", "state", "cache"]
 
 function databaseFiles(dataRoot: string) {
   const database = databasePath(dataRoot)
-  return [database, `${database}-wal`, `${database}-shm`]
+  return [database, `${database}-wal`, `${database}-shm`, `${database}-journal`]
 }
 
 /**
@@ -343,24 +344,41 @@ export function newPassword() {
 
 export async function encryptCredential(runner: Runner, credstoreEncrypted: string, name: string, value: string) {
   await mkdir(credstoreEncrypted, { recursive: true, mode: 0o700 })
-  const result = await runner(
-    "systemd-creds",
-    ["encrypt", `--name=${name}`, "-", join(credstoreEncrypted, name)],
-    value,
-  )
-  if (result.code !== 0) throw new Error(`systemd-creds encrypt ${name} failed: ${result.stderr.trim()}`)
+  if (!(await writableOnlyByRoot(credstoreEncrypted)))
+    throw new Error(`${credstoreEncrypted} must be writable only by root`)
+  const destination = join(credstoreEncrypted, name)
+  const staging = `${destination}.${randomUUID()}.tmp`
+  try {
+    const result = await runner("systemd-creds", ["encrypt", `--name=${name}`, "-", staging], value)
+    if (result.code !== 0) throw new Error(`systemd-creds encrypt ${name} failed: ${result.stderr.trim()}`)
+    await chmod(staging, 0o600)
+    // Linking publishes the complete blob without replacing a credential another install wrote.
+    await link(staging, destination)
+  } finally {
+    await unlink(staging).catch(() => undefined)
+  }
 }
 
 /** Encrypted blobs are useless without the host key, but keep them root-only like the rest of the store. */
 export async function protectCredentials(credstoreEncrypted: string) {
+  if (!(await writableOnlyByRoot(credstoreEncrypted)))
+    throw new Error(`${credstoreEncrypted} must be writable only by root`)
   for (const name of [credentials.key, credentials.password]) {
     const path = join(credstoreEncrypted, name)
-    if ((await lstat(path).catch(() => undefined))?.isFile()) await chmod(path, 0o600)
+    const info = await lstat(path).catch(() => undefined)
+    if (!info) continue
+    if (!info.isFile() || info.nlink !== 1) throw new Error(`${path} is not a regular file with one link`)
+    await chmod(path, 0o600)
   }
 }
 
 export async function decryptCredential(runner: Runner, credstoreEncrypted: string, name: string) {
-  const result = await runner("systemd-creds", ["decrypt", `--name=${name}`, join(credstoreEncrypted, name), "-"])
+  if (!(await writableOnlyByRoot(credstoreEncrypted)))
+    throw new Error(`${credstoreEncrypted} must be writable only by root`)
+  const path = join(credstoreEncrypted, name)
+  const info = await lstat(path)
+  if (!info.isFile() || info.nlink !== 1) throw new Error(`${path} is not a regular file with one link`)
+  const result = await runner("systemd-creds", ["decrypt", `--name=${name}`, path, "-"])
   if (result.code !== 0) throw new Error(`systemd-creds decrypt ${name} failed: ${result.stderr.trim()}`)
   return result.stdout.trim()
 }
@@ -373,6 +391,7 @@ export async function writeRestricted(
   owner?: { uid: number; gid: number },
 ) {
   await mkdir(dirname(path), { recursive: true, mode: 0o755 })
+  if (!(await writableOnlyByRoot(dirname(path)))) throw new Error(`${dirname(path)} must be writable only by root`)
   const staging = `${path}.${process.pid}.tmp`
   const handle = await open(staging, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, mode)
   try {

@@ -1,5 +1,5 @@
 import type { Argv } from "yargs"
-import { readFile, realpath, stat } from "node:fs/promises"
+import { chmod, lstat, readFile, realpath, stat } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { Effect } from "effect"
 import { sql } from "drizzle-orm"
@@ -91,20 +91,27 @@ function keyFromText(text: string) {
   return { keyID: keyID.trim(), encoded: key.trim(), key: parseKey(keyID.trim(), key.trim()).key }
 }
 
-function assertOpens(
-  report: Awaited<ReturnType<typeof VaultVerification.inspectFile>>,
-  keyID: string,
-  label: string,
-  serverID?: string,
-) {
+function assertOpens(report: Awaited<ReturnType<typeof VaultVerification.inspectFile>>, keyID: string, label: string) {
   if (report.keyIDs.length > 1) throw refuse(`${label} contains secrets sealed by multiple key IDs`)
   if (report.keyIDs.length === 1 && report.keyIDs[0] !== keyID)
     throw refuse(`${label} belongs to key ${report.keyIDs[0]}, not ${keyID}`)
   const failed = report.stores.filter((store) => !store.opened).map((store) => store.store)
   if (failed.length || report.verification === "invalid")
     throw refuse(`the key cannot open ${label}${failed.length ? ` (${failed.join(", ")})` : ""}`)
+}
+
+/** Setup may only take over data that no other persistent server owns. */
+function assertOwner(
+  report: Awaited<ReturnType<typeof VaultVerification.inspectFile>>,
+  label: string,
+  serverID?: string,
+) {
   if (report.owner?.mode === "persistent" && report.owner.serverID !== serverID)
-    throw refuse(`${label} is already owned by persistent server ${report.owner.serverID}`)
+    throw refuse(
+      `${label} is already owned by persistent server ${report.owner.serverID}` +
+        // An install that failed after promoting the data never wrote its unit, so a re-run generates a new ID.
+        (serverID ? `; if an earlier install was interrupted, re-run with --server-id ${report.owner.serverID}` : ""),
+    )
 }
 
 function printSummary(target: PersistentLinux.Plan, notes: string[]) {
@@ -174,9 +181,25 @@ const InstallCommand = cmd<{}, InstallArgs>({
 
     const { key, fresh } = await resolveKey(args, facts, target)
     const importDB = await importSource(args["import-db"])
-    await prepareData(target, facts, key, importDB)
-    const password = await writeCredentials(target, facts, key, fresh ? args["recovery-file"] : undefined)
-    await writeAttachAndUnit(target, password)
+    // The service is stopped before root works in its data root; any failure before the restart
+    // below brings a previously running service back rather than leaving it down.
+    const service = PersistentLinux.defaults.serviceName
+    // Preflight refuses an active service without this unit, so the unit covers every running case.
+    if (facts.existingUnit) {
+      const stopped = await PersistentLinux.run("systemctl", ["stop", service])
+      if (stopped.code !== 0) throw refuse(`could not stop ${service}: ${stopped.stderr.trim()}`)
+    }
+    const password = await Promise.resolve()
+      .then(async () => {
+        await prepareData(target, facts, key, importDB)
+        const password = await writeCredentials(target, facts, key, fresh ? args["recovery-file"] : undefined)
+        await writeAttachAndUnit(target, password)
+        return password
+      })
+      .catch(async (error) => {
+        if (facts.serviceActive) await PersistentLinux.run("systemctl", ["start", service])
+        throw error
+      })
     const descriptor = await startService(target, facts, password)
     if (descriptor.keyID !== key.keyID) throw refuse(`service reports key ${descriptor.keyID}, expected ${key.keyID}`)
     console.log(`\nPersistent server ${descriptor.serverID} is running with key ${descriptor.keyID}.`)
@@ -211,6 +234,14 @@ async function resolveKey(args: InstallArgs, facts: PersistentLinux.Facts, targe
   // Another account able to write the directory could swap the file before it is moved into place.
   if (!(await PersistentLinux.writableOnlyByRoot(dirname(resolve(args["recovery-file"])))))
     throw refuse("--recovery-file must be in a directory writable only by root, such as /root")
+  // Installing replaces the path, which could destroy the only copy of an earlier key.
+  if (
+    await lstat(args["recovery-file"]).then(
+      () => true,
+      () => false,
+    )
+  )
+    throw refuse(`${args["recovery-file"]} already exists; refusing to replace it`)
   const generated = PersistentLinux.newKey()
   return { key: keyFromText(`${generated.keyID}\n${generated.key}`), fresh: true }
 }
@@ -233,9 +264,9 @@ async function importSource(path: string | undefined) {
 }
 
 /**
- * Imports or checks the database and records this server as its owner. The service is stopped and
- * its data root taken back first, so nothing the service account plants there can redirect root's
- * writes or ownership changes; a failure restarts a service that was running.
+ * Imports or checks the database and records this server as its owner. With the service stopped,
+ * the data root is taken back first, so nothing the service account plants there can redirect
+ * root's writes or ownership changes.
  */
 async function prepareData(
   target: PersistentLinux.Plan,
@@ -243,18 +274,11 @@ async function prepareData(
   key: Key,
   importDB: string | undefined,
 ) {
-  const service = PersistentLinux.defaults.serviceName
-  if (facts.serviceActive) await PersistentLinux.run("systemctl", ["stop", service])
+  await PersistentLinux.claimDataRoot(target.dataRoot)
   try {
-    await PersistentLinux.claimDataRoot(target.dataRoot)
-    try {
-      await placeDatabase(target, facts, key, importDB)
-    } finally {
-      await PersistentLinux.releaseDataRoot(target.dataRoot, facts.user!)
-    }
-  } catch (error) {
-    if (facts.serviceActive) await PersistentLinux.run("systemctl", ["start", service])
-    throw error
+    await placeDatabase(target, facts, key, importDB)
+  } finally {
+    await PersistentLinux.releaseDataRoot(target.dataRoot, facts.user!)
   }
 }
 
@@ -267,7 +291,9 @@ async function placeDatabase(
   const database = PersistentLinux.databasePath(target.dataRoot)
   if (importDB) {
     if (facts.database) throw refuse(`${database} already exists; refusing to overwrite it`)
-    assertOpens(await VaultVerification.inspectFile(importDB, key), key.keyID, importDB)
+    const source = await VaultVerification.inspectFile(importDB, key)
+    assertOpens(source, key.keyID, importDB)
+    assertOwner(source, importDB)
     const release = await Database.acquireOwnerLock(importDB)
     try {
       await Effect.gen(function* () {
@@ -280,7 +306,8 @@ async function placeDatabase(
   }
   if (!importDB && facts.database) {
     const report = await VaultVerification.inspectFile(database, key)
-    assertOpens(report, key.keyID, database, target.serverID)
+    assertOpens(report, key.keyID, database)
+    assertOwner(report, database, target.serverID)
     // A re-run over this server's own database leaves its owner record as it is.
     if (report.owner?.mode === "persistent") return
   }
@@ -343,6 +370,9 @@ async function writeAttachAndUnit(target: PersistentLinux.Plan, password: string
     uid: 0,
     gid,
   })
+  // Created under root's umask; a hardened 027 or 077 would hide the record from the operator group,
+  // and clients read an untraversable directory as "no persistent server here".
+  await chmod(dirname(target.attachPath), 0o755)
   await PersistentLinux.writeRestricted(target.unitPath, PersistentLinux.unit(target), 0o644)
 }
 

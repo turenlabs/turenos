@@ -69,7 +69,12 @@ const layer = Layer.effect(
     const database = yield* Database.Service
     const db = Database.primary(database.db)
     yield* ServerOwner.validate(db, { ...ServerOwner.environmentContext(), keyID: vault.keyID })
-    yield* VaultVerification.verify(db, database.databaseUUID, vault)
+    // `forge serve` already scanned every sealed store while opening the database; its sentinel then
+    // proves this vault holds the same key bytes without decrypting everything a second time.
+    const verified =
+      database.verifiedKeyID === vault.keyID &&
+      (yield* VaultVerification.sentinelValid(db, database.databaseUUID, vault))
+    if (!verified) yield* VaultVerification.verify(db, database.databaseUUID, vault)
     yield* claimVault(storage, vault)
 
     const legacy = { pending: yield* importLegacy(storage, fsys, vault) }

@@ -16,7 +16,7 @@ export type Options = {
 /**
  * Validates persistent-mode inputs, installs the vault key and listener credentials, and takes
  * the database owner lock. It must run before any layer that can open the database, so the
- * owner check and key verification precede migrations and every secret read.
+ * owner check precedes migrations and key verification precedes every secret read.
  */
 export async function acquire(opts: Options) {
   const mode = ServerOwner.mode()

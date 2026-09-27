@@ -65,7 +65,6 @@ describe("PersistentLinux", () => {
       user: "turen",
       dataRoot: "/var/lib/turenos",
       port: 4096,
-      forgeBin: "/usr/local/bin/forge",
     })
     expect(PersistentLinux.installed(undefined).serverID).toBeUndefined()
   })
@@ -76,6 +75,9 @@ describe("PersistentLinux", () => {
     ])
     const running = { ...facts, portInUse: true, serviceActive: true, existingUnit: PersistentLinux.unit(plan) }
     expect(PersistentLinux.evaluate(running, plan).problems).toEqual([])
+    expect(PersistentLinux.evaluate({ ...facts, serviceActive: true }, plan).problems).toContain(
+      "turenos.service is active without /etc/systemd/system/turenos.service; refusing to stop an unknown service",
+    )
     expect(PersistentLinux.evaluate(running, { ...plan, port: 4099 }).problems).toEqual([
       "127.0.0.1:4099 is already in use; choose another --port",
     ])
@@ -110,6 +112,16 @@ describe("PersistentLinux", () => {
     )
   })
 
+  test("the data root cannot redirect root through a planted rollback journal", async () => {
+    await using tmp = await tmpdir()
+    const root = path.join(tmp.path, "server")
+    await mkdir(path.dirname(PersistentLinux.databasePath(root)), { recursive: true })
+    await symlink(path.join(tmp.path, "target"), `${PersistentLinux.databasePath(root)}-journal`)
+    await expect(PersistentLinux.claimDataRoot(root).catch((error: Error) => error.message)).resolves.toContain(
+      "forge.db-journal is not a regular file",
+    )
+  })
+
   test("the attach record names the loopback listener", () => {
     expect(JSON.parse(PersistentLinux.attachRecord(plan, "pw"))).toEqual({
       version: 1,
@@ -118,6 +130,26 @@ describe("PersistentLinux", () => {
       username: "forge",
       password: "pw",
     })
+  })
+
+  test("root setup refuses managed files in a directory another account owns", async () => {
+    await using tmp = await tmpdir()
+    let invoked = false
+    const runner: PersistentLinux.Runner = async () => {
+      invoked = true
+      return { code: 0, stdout: "", stderr: "" }
+    }
+
+    await expect(PersistentLinux.writeRestricted(path.join(tmp.path, "attach.json"), "secret", 0o640)).rejects.toThrow(
+      "must be writable only by root",
+    )
+    await expect(PersistentLinux.encryptCredential(runner, tmp.path, "test-key", "secret")).rejects.toThrow(
+      "must be writable only by root",
+    )
+    await expect(PersistentLinux.decryptCredential(runner, tmp.path, "test-key")).rejects.toThrow(
+      "must be writable only by root",
+    )
+    expect(invoked).toBe(false)
   })
 
   test("preflight refuses unsupported hosts and foreign units without falling back", () => {

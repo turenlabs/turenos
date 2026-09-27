@@ -1,6 +1,6 @@
 import type { Argv } from "yargs"
 import { Effect, Layer, ManagedRuntime } from "effect"
-import { cmd, type WithDoubleDash } from "./cmd"
+import { cmd } from "./cmd"
 import { withNetworkOptions, resolveNetworkOptions, type NetworkOptions } from "../network"
 import { loadSecretVaultKey, selectedSource, sources } from "../secret-vault-key"
 import { loadServerPassword } from "../server-password"
@@ -16,8 +16,7 @@ export const ServeCommand = cmd<{}, ServeArgs>({
       describe: "where to load the secret vault key (defaults to FORGE_SECRET_VAULT_KEY_SOURCE)",
     })) as never,
   describe: "starts a headless forge server",
-  async handler(rawArgs) {
-    const args = rawArgs as unknown as WithDoubleDash<ServeArgs>
+  async handler(args) {
     // The key and protected password load before anything can open the database;
     // Server.listen then takes the owner lock before building its graph.
     const keySource = selectedSource(process.env, args["key-source"])
@@ -43,7 +42,11 @@ export const ServeCommand = cmd<{}, ServeArgs>({
           console.log("Warning: FORGE_SERVER_PASSWORD is not set; server is unsecured.")
         }
         const opts = yield* resolveNetworkOptions(args, password)
-        const server = yield* Effect.promise(() => Server.listen({ ...opts, keySource, credentialVault, serverAuth }))
+        // Without an explicit source the key comes from the environment; Server.listen would
+        // otherwise report any passed key as desktop-supplied.
+        const server = yield* Effect.promise(() =>
+          Server.listen({ ...opts, keySource: keySource ?? "env", credentialVault, serverAuth }),
+        )
         console.log(`forge server listening on http://${server.hostname}:${server.port}`)
 
         yield* Effect.never
