@@ -81,6 +81,8 @@ export function decodeFilePath(input: string) {
 }
 
 export function encodeFilePath(filepath: string): string {
+  if (!/[^-A-Za-z0-9._~\/]/.test(filepath)) return filepath
+
   // Normalize Windows paths: convert backslashes to forward slashes
   let normalized = filepath.replace(/\\/g, "/")
 
