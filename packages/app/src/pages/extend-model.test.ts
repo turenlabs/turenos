@@ -113,6 +113,8 @@ describe("filterExtensionItems", () => {
         ["turenlabs/grafana-cloud-security", "observability"],
         ["turenlabs/incident-io", "incident-response"],
         ["turenlabs/sentry", "observability"],
+        ["turenlabs/capec", "security-knowledge"],
+        ["turenlabs/mcp-security-review", "application-security"],
       ].map(([id, category]) => [extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id } }), category]),
     ).toEqual([
       ["security-operations", "security-operations"],
@@ -128,6 +130,8 @@ describe("filterExtensionItems", () => {
       ["observability", "observability"],
       ["incident-response", "incident-response"],
       ["observability", "observability"],
+      ["security-knowledge", "security-knowledge"],
+      ["application-security", "application-security"],
     ])
     expect(extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id: "turenlabs/euvd" } })).toBe(
       "vulnerability-intelligence",
