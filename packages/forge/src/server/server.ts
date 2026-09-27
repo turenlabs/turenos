@@ -19,6 +19,7 @@ import { startScheduler } from "@turenlabs/server/intel/scheduler"
 import { lazy } from "@/util/lazy"
 import { Flag } from "@turenlabs/core/flag/flag"
 import { isLoopbackHostname } from "./shared/local-request"
+import { ServerAuth } from "./auth"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 import { SecurityProxyStore } from "@turenlabs/core/security-proxy"
 import { SecurityProxyRuntime } from "@turenlabs/core/security-proxy-runtime"
@@ -93,14 +94,10 @@ export async function openapi() {
 export let url: URL | undefined
 
 export async function listen(opts: ListenOptions): Promise<Listener> {
-  const password = opts.password ?? process.env.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD
+  // The desktop sidecar calls listen without entering the CLI, so claim the password here too.
+  const password = ServerAuth.claimPassword(opts.password)
   const username = opts.username ?? process.env.FORGE_SERVER_USERNAME ?? Flag.FORGE_SERVER_USERNAME
-  // Shells, PTYs, LSP and MCP servers inherit process.env. Left there, the password lets any
-  // agent-run command authenticate as the user, answer permission prompts, or disable them.
-  // Flag keeps it in memory so later listeners and in-process clients (ServerAuth.headers) still see it.
-  Flag.FORGE_SERVER_PASSWORD = password
   Flag.FORGE_SERVER_USERNAME = username
-  delete process.env.FORGE_SERVER_PASSWORD
   // Binding a non-loopback interface exposes every privileged API on the LAN, so a
   // password is mandatory there unless the caller explicitly opts into insecure mode.
   if (!password && !opts.insecure && !isLoopbackHostname(opts.hostname)) {
