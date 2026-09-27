@@ -2048,7 +2048,7 @@ class Interpreter<R> {
       Array.from(
         rows.reduce(
           (keys, row) => {
-            Object.keys(row.values).forEach((key) => keys.add(key))
+            for (const key of Object.keys(row.values)) keys.add(key)
             return keys
           },
           new Set<string>(),
