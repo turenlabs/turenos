@@ -121,12 +121,13 @@ describe("LoopScheduler extractStepOutput", () => {
 
   test("ignores turns after the next user message", () => {
     const output = extractStepOutput([
-      assistant("msg_step", [text("part-1", "step output")], { completed }),
+      assistant("msg_step", [text("part-1", "step output")], { completed, files: ["step.md"] }),
       user("msg_u1"),
-      assistant("msg_later", [text("part-1", "later chatter")], { completed }),
+      assistant("msg_later", [text("part-1", "later chatter")], { completed, files: ["later.md"] }),
     ])
 
     expect(output.text).toBe("step output")
+    expect(output.artifacts).toEqual([{ type: "changed", path: "step.md" }])
   })
 
   test("decodes JSON output while leaving prose as text", () => {
