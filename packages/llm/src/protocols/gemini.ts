@@ -265,21 +265,21 @@ const lowerMessages = Effect.fn("Gemini.lowerMessages")(function* (request: LLMR
         continue
       }
       const content: ReadonlyArray<ToolContent> = part.result.value
-      const text = content.filter((item) => item.type === "text").map((item) => item.text)
-      parts.push({
-        functionResponse: {
-          name: part.name,
-          response: {
-            name: part.name,
-            content: text.join("\n"),
-          },
-        },
-      })
+      const text: string[] = []
+      const response = {
+        name: part.name,
+        response: { name: part.name, content: "" },
+      }
+      parts.push({ functionResponse: response })
       for (const item of content) {
-        if (item.type === "text") continue
+        if (item.type === "text") {
+          text.push(item.text)
+          continue
+        }
         const media = yield* ProviderShared.validateToolFile("Gemini", item, MEDIA_MIMES)
         parts.push({ inlineData: { mimeType: media.mime, data: media.base64 } })
       }
+      response.response.content = text.join("\n")
     }
     contents.push({ role: "user", parts })
   }
