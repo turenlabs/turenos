@@ -536,7 +536,8 @@ export default function LegacyLayout(props: ParentProps) {
     const root = meta?.worktree
     if (!root) return
 
-    return projects.find((p) => p.worktree === root)
+    const rootKey = pathKey(root)
+    return projects.find((p) => pathKey(p.worktree) === rootKey)
   })
 
   const [autoselecting] = createResource(async () => {
@@ -551,7 +552,8 @@ export default function LegacyLayout(props: ParentProps) {
       if (!last) return
       await openProject(last, true)
     } else {
-      const next = list.find((project) => project.worktree === last) ?? list[0]
+      const lastKey = pathKey(last ?? "")
+      const next = list.find((project) => pathKey(project.worktree) === lastKey) ?? list[0]
       if (!next) return
       await openProject(next.worktree, true)
     }
@@ -580,6 +582,15 @@ export default function LegacyLayout(props: ParentProps) {
   const workspaceLabel = (directory: string, branch?: string, projectId?: string) =>
     workspaceName(directory, projectId, branch) ?? branch ?? getFilename(directory)
 
+  // Expanded flags may be persisted under any historical spelling of the
+  // directory; match stored keys canonically so a respelled directory keeps
+  // its expansion state.
+  const expandedFor = (directory: string, fallback?: boolean) => {
+    const key = pathKey(directory)
+    const entry = Object.entries(store.workspaceExpanded).find(([stored]) => pathKey(stored) === key)
+    return entry?.[1] ?? fallback
+  }
+
   const workspaceSetting = createMemo(() => {
     const project = currentProject()
     if (!project) return false
@@ -594,7 +605,7 @@ export default function LegacyLayout(props: ParentProps) {
 
     const activeDir = currentDir()
     return workspaceIds(project).filter((directory) => {
-      const expanded = store.workspaceExpanded[directory] ?? directory === project.worktree
+      const expanded = expandedFor(directory, pathKey(directory) === pathKey(project.worktree))
       const active = pathKey(directory) === pathKey(activeDir)
       return expanded || active
     })
@@ -823,7 +834,7 @@ export default function LegacyLayout(props: ParentProps) {
     const current = currentProject()?.worktree
     const fallback = currentDir() ? projectRoot(currentDir()) : undefined
     const active = current ?? fallback
-    const index = active ? projects.findIndex((project) => project.worktree === active) : -1
+    const index = active ? projects.findIndex((project) => pathKey(project.worktree) === pathKey(active)) : -1
 
     const target =
       index === -1
@@ -1170,9 +1181,9 @@ export default function LegacyLayout(props: ParentProps) {
   function syncSessionRoute(directory: string, id: string, root = activeProjectRoot(directory)) {
     rememberSessionRoute(directory, id, root)
     notification.session.markViewed(id)
-    const expanded = untrack(() => store.workspaceExpanded[directory])
+    const expanded = untrack(() => expandedFor(directory))
     if (expanded === false) {
-      setStore("workspaceExpanded", directory, true)
+      setStore("workspaceExpanded", pathKey(directory), true)
     }
     requestAnimationFrame(() => scrollToSession(id, `${directory}:${id}`))
     return root
@@ -1182,7 +1193,8 @@ export default function LegacyLayout(props: ParentProps) {
     if (!directory) return
     const root = projectRoot(directory)
     server.projects.touch(root)
-    const project = layout.projects.list().find((item) => item.worktree === root)
+    const rootKey = pathKey(root)
+    const project = layout.projects.list().find((item) => pathKey(item.worktree) === rootKey)
     let dirs = project
       ? effectiveWorkspaceOrder(root, [root, ...(project.sandboxes ?? [])], store.workspaceOrder[root])
       : [root]
@@ -1385,7 +1397,7 @@ export default function LegacyLayout(props: ParentProps) {
   }
 
   const deleteWorkspace = async (root: string, directory: string, leaveDeletedWorkspace = false) => {
-    if (directory === root) return
+    if (pathKey(directory) === pathKey(root)) return
 
     const current = currentDir()
     const currentKey = pathKey(current)
@@ -1419,12 +1431,12 @@ export default function LegacyLayout(props: ParentProps) {
     serverSync().set(
       "project",
       produce((draft) => {
-        const project = draft.find((item) => item.worktree === root)
+        const project = draft.find((item) => pathKey(item.worktree) === pathKey(root))
         if (!project) return
-        project.sandboxes = (project.sandboxes ?? []).filter((sandbox) => sandbox !== directory)
+        project.sandboxes = (project.sandboxes ?? []).filter((sandbox) => pathKey(sandbox) !== deletedKey)
       }),
     )
-    setStore("workspaceOrder", root, (order) => (order ?? []).filter((workspace) => workspace !== directory))
+    setStore("workspaceOrder", root, (order) => (order ?? []).filter((workspace) => pathKey(workspace) !== deletedKey))
 
     layout.projects.close(directory)
     layout.projects.open(root)
@@ -1433,19 +1445,19 @@ export default function LegacyLayout(props: ParentProps) {
 
     const nextCurrent = currentDir()
     const nextKey = pathKey(nextCurrent)
-    const project = layout.projects.list().find((item) => item.worktree === root)
+    const project = layout.projects.list().find((item) => pathKey(item.worktree) === pathKey(root))
     const dirs = project
       ? effectiveWorkspaceOrder(root, [root, ...(project.sandboxes ?? [])], store.workspaceOrder[root])
       : [root]
     const valid = dirs.some((item) => pathKey(item) === nextKey)
 
-    if (params.dir && projectRoot(nextCurrent) === root && !valid) {
+    if (params.dir && pathKey(projectRoot(nextCurrent)) === pathKey(root) && !valid) {
       navigateWithSidebarReset(`/${base64Encode(root)}/session`)
     }
   }
 
   const resetWorkspace = async (root: string, directory: string) => {
-    if (directory === root) return
+    if (pathKey(directory) === pathKey(root)) return
     setBusy(directory, true)
 
     const progress = showToast({
@@ -1706,7 +1718,7 @@ export default function LegacyLayout(props: ParentProps) {
 
         if (server.projects.last() !== root) server.projects.touch(root)
 
-        const changed = session !== activeRoute.session || dir !== activeRoute.directory
+        const changed = session !== activeRoute.session || pathKey(dir) !== pathKey(activeRoute.directory)
         if (changed) {
           activeRoute.session = session
           activeRoute.directory = dir
@@ -1864,8 +1876,9 @@ export default function LegacyLayout(props: ParentProps) {
     setBusy(created.directory, true)
     WorktreeState.pending(serverSDK().scope, created.directory)
     setStore("workspaceExpanded", key, true)
-    if (key !== created.directory) {
-      setStore("workspaceExpanded", created.directory, true)
+    const createdKey = pathKey(created.directory)
+    if (createdKey !== key) {
+      setStore("workspaceExpanded", createdKey, true)
     }
     setStore("workspaceOrder", project.worktree, (prev) => {
       const existing = prev ?? []
@@ -1896,8 +1909,8 @@ export default function LegacyLayout(props: ParentProps) {
     setEditor,
     InlineEditor,
     isBusy,
-    workspaceExpanded: (directory, local) => store.workspaceExpanded[directory] ?? local,
-    setWorkspaceExpanded: (directory, value) => setStore("workspaceExpanded", directory, value),
+    workspaceExpanded: (directory, local) => expandedFor(directory, local) ?? local,
+    setWorkspaceExpanded: (directory, value) => setStore("workspaceExpanded", pathKey(directory), value),
     showResetWorkspaceDialog: (root, directory) =>
       dialog.show(() => <DialogResetWorkspace root={root} directory={directory} />),
     showDeleteWorkspaceDialog: (root, directory) =>

@@ -7,6 +7,7 @@ import { useModels } from "@/context/models"
 import { useSettings } from "@/context/settings"
 import { isRemovedProvider } from "@/hooks/provider-visibility"
 import { Persist, persisted } from "@/utils/persist"
+import { pathKey } from "@/utils/path-key"
 import { hasCustomAgent, resolveAgent } from "./local-agent"
 import {
   carryModelVariant,
@@ -37,7 +38,7 @@ type Saved = {
 const WORKSPACE_KEY = "__workspace__"
 const handoff = new Map<string, State>()
 
-const handoffKey = (scope: ServerScope, dir: string, id: string) => ScopedKey.from(scope, dir, id)
+const handoffKey = (scope: ServerScope, dir: string, id: string) => ScopedKey.from(scope, pathKey(dir), id)
 
 const migrate = (value: unknown) => {
   if (!value || typeof value !== "object") return { session: {} }
@@ -483,7 +484,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const key = handoffKey(serverSDK().scope, dir, session)
           handoff.set(key, next)
 
-          if (dir === sdk().directory) {
+          if (pathKey(dir) === pathKey(sdk().directory)) {
             setSaved("session", session, next)
           }
 

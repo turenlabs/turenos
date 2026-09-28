@@ -11,6 +11,7 @@ import { base64Encode } from "@turenlabs/core/util/encode"
 import { decode64 } from "@/utils/base64"
 import { EventSessionError } from "@turenlabs/sdk/v2"
 import { Persist, persisted } from "@/utils/persist"
+import { pathKey } from "@/utils/path-key"
 import { playSoundById } from "@/utils/sound"
 import { useGlobal } from "./global"
 import { ServerConnection, useServer } from "./server"
@@ -331,7 +332,7 @@ function createServerNotificationState(input: {
     const activeSession = currentSession()
     if (!activeSession) return false
     if (!sessionID) return false
-    if (activeDirectory && directory !== activeDirectory) return false
+    if (activeDirectory && pathKey(directory) !== pathKey(activeDirectory)) return false
     return sessionID === activeSession
   }
 
@@ -447,30 +448,31 @@ function createServerNotificationState(input: {
     },
     project: {
       all(directory: string) {
-        return index.project.all[directory] ?? empty
+        return index.project.all[pathKey(directory)] ?? empty
       },
       unseen(directory: string) {
-        return index.project.unseen[directory] ?? empty
+        return index.project.unseen[pathKey(directory)] ?? empty
       },
       unseenCount(directory: string) {
-        return index.project.unseenCount[directory] ?? 0
+        return index.project.unseenCount[pathKey(directory)] ?? 0
       },
       unseenHasError(directory: string) {
-        return index.project.unseenHasError[directory] ?? false
+        return index.project.unseenHasError[pathKey(directory)] ?? false
       },
       markViewed(directory: string) {
-        const unseen = index.project.unseen[directory] ?? empty
+        const key = pathKey(directory)
+        const unseen = index.project.unseen[key] ?? empty
         if (!unseen.length) return
 
         const sessions = [
           ...new Set(unseen.flatMap((notification) => (notification.session ? [notification.session] : []))),
         ]
         batch(() => {
-          setStore("list", (n) => n.directory === directory && !n.viewed, "viewed", true)
-          updateUnseen("project", directory, [])
+          setStore("list", (n) => pathKey(n.directory ?? "") === key && !n.viewed, "viewed", true)
+          updateUnseen("project", key, [])
           sessions.forEach((session) => {
             const next = (index.session.unseen[session] ?? empty).filter(
-              (notification) => notification.directory !== directory,
+              (notification) => pathKey(notification.directory ?? "") !== key,
             )
             updateUnseen("session", session, next)
           })

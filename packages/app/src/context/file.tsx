@@ -2,6 +2,7 @@ import { batch, createEffect, createMemo, onCleanup } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { createSimpleContext } from "@turenlabs/ui/context"
 import { showToast } from "@/utils/toast"
+import { pathKey } from "@/utils/path-key"
 import { useParams } from "@solidjs/router"
 import { base64Encode } from "@turenlabs/core/util/encode"
 import { getFilename } from "@turenlabs/core/util/path"
@@ -183,7 +184,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       const promise = sdk()
         .client.file.read({ path: file })
         .then((x) => {
-          if (scope() !== directory) return
+          if (pathKey(scope()) !== pathKey(directory)) return
           const content = x.data
           setLoaded(file, content)
 
@@ -192,7 +193,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
           evictContent(new Set([file]))
         })
         .catch((e) => {
-          if (scope() !== directory) return
+          if (pathKey(scope()) !== pathKey(directory)) return
           setLoadError(file, errorMessage(e, language.t("error.chain.unknown")))
         })
         .finally(() => {
