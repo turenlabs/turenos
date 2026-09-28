@@ -4,7 +4,7 @@ export const WORKFLOW = `TurenOS tool workflow:
 - For non-trivial repository exploration, begin with one broad search across all plausible locations instead of serial path guesses. If a search misses, widen its root or pattern rather than trying nearby paths one by one.
 - When available, prefer Glob, Grep, and Read for file discovery, content search, and targeted reads. Do not use a serial chain of Shell ls/find/grep/cat probes when a specialized tool can answer directly.
 - Issue genuinely independent searches, reads, and diagnostics together in the same response so they can run in parallel. Keep dependent work and conflicting writes sequential.
-- If currently available subagent tools would materially help, use them to spawn disjoint, bounded work early in the first exploration wave and in parallel within any advertised limit. Do not delegate trivial lookups or duplicate work; otherwise continue directly.
+- If currently available subagent tools would materially help, use them to spawn disjoint, bounded work early in the first exploration wave and in parallel within any advertised limit. Do not delegate trivial lookups, duplicate work, work whose next step depends on the result, or work where two workers would edit the same files; otherwise continue directly.
 - Treat the current tool catalog and dynamic subagent guidance as authoritative. Once the evidence is sufficient, stop exploring and proceed with the requested work.`
 
 export type ToolCall = {
