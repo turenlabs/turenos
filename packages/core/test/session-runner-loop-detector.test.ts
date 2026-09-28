@@ -95,6 +95,24 @@ describe("session runner loop detector", () => {
     expect(feed(`${prose(40)}\n${looping(300)}`)).toBe(true)
   })
 
+  test("expires trigrams that cross the sliding-window boundary", () => {
+    const detector = SessionRunnerLoopDetector.make()
+    let state = 1
+    const pattern = Array.from({ length: 178 }, () => {
+      state = (state * 48271) % 2147483647
+      return `w${state % 59}`
+    })
+    const prefix = Array.from({ length: 50 }, (_, i) => `prefix${i}`)
+    const repeated = Array.from({ length: 350 }, (_, i) => pattern[i % pattern.length])
+    const continuation = Array.from({ length: 200 }, (_, i) => pattern[(350 + i) % pattern.length])
+    const observe = (words: string[]) => detector.observe(`${words.join(" ")} `)
+
+    expect(observe([...prefix, ...repeated])).toBe(false)
+    expect(
+      Array.from({ length: 4 }, (_, i) => observe(continuation.slice(i * 50, i * 50 + 50))).filter(Boolean),
+    ).toHaveLength(1)
+  })
+
   test("reports once, so the turn is ended a single time", () => {
     const detector = SessionRunnerLoopDetector.make()
     const trips = looping(300)
