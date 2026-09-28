@@ -80,6 +80,8 @@ const reviewedSkillDigests = new Set([
   "9a2b0ee0b3b04c486022045245f005335526f962759c1c2981dc494004535bb0",
   // turenlabs/mcp-security-review
   "10faa037347373b3a73f4988cd6b885835e079ac41478c69d6811e1fbed37ee9",
+  // turenlabs/agentic-prompt-injection-review
+  "09255af23e4eed0e5d9b200897a6c99fecea29e6018ec43a7fc8f8a302af7920",
   // turenlabs/incident-evidence-triage
   "24d2c42d7b2d26c48960842ead85f7be515b6a357b34369a4af999c1a8f8de26",
   // turenlabs/incident-responder
