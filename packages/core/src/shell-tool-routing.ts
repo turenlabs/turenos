@@ -184,9 +184,11 @@ const grepWorkspaceSearch = (args: ReadonlyArray<string>, cwd: string) => {
 }
 
 const findWorkspaceSearch = (args: ReadonlyArray<string>, cwd: string) => {
-  const roots = args.filter((arg) => !arg.startsWith("-") && !new Set(["!", "(", ")"]).has(arg))
-  if (roots.length === 0) return true
-  return workspaceTarget(cwd, roots[0]!)
+  const root = args.find(
+    (arg) => !arg.startsWith("-") && arg !== "!" && arg !== "(" && arg !== ")",
+  )
+  if (root === undefined) return true
+  return workspaceTarget(cwd, root)
 }
 
 const searchRecommendation = (
