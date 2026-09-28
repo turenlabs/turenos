@@ -19,6 +19,7 @@ import {
   importKeyForFile,
   rankFiles,
   computeMap,
+  renderStructure,
 } from "../../src/tool/repo_map"
 import { SessionID, MessageID } from "../../src/session/schema"
 import { TestInstance } from "../fixture/fixture"
@@ -134,6 +135,15 @@ describe("tool.repo_map helpers", () => {
         expect.arrayContaining(["src/index.ts", "src/widely-used.ts"]),
       )
       expect(ranked[2]!.rel).toBe("src/filler.ts")
+    }),
+  )
+
+  it.effect("renderStructure preserves its output budget boundaries", () =>
+    Effect.sync(() => {
+      expect(renderStructure(["alpha/file.ts"], 10)).toBe("")
+      expect(renderStructure(["alpha/file.ts"], 11)).toBe("alpha/ (1)")
+      expect(renderStructure(["alpha/file.ts", "beta/file.ts"], 19)).toBe("alpha/ (1)")
+      expect(renderStructure(["alpha/file.ts", "beta/file.ts"], 20)).toBe("alpha/ (1)\nbeta/ (1)")
     }),
   )
 
