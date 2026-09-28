@@ -277,19 +277,33 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
   let providerRetrySafe = true
   let stepStarted = false
   let stepSettlement: StepSettlement | undefined
+  let nextAssistantMessageID = input.assistantMessageID
+  let snapshot = input.snapshot
 
   const startAssistant = Effect.fnUntraced(function* () {
     if (assistantMessageID !== undefined) return assistantMessageID
-    assistantMessageID = input.assistantMessageID ?? SessionMessage.ID.create()
+    assistantMessageID = nextAssistantMessageID ?? SessionMessage.ID.create()
     assistantActive = true
     yield* events.publish(SessionEvent.Step.Started, {
       ...input,
       assistantMessageID,
       timestamp: yield* timestamp,
-      snapshot: input.snapshot,
+      snapshot,
     })
     return assistantMessageID
   })
+
+  /**
+   * Starts a new assistant message at the next content frame. For a transport that folds user
+   * input into its own loop mid-turn (Claude Code): the caller has already closed the current
+   * message, and promotes the input between the two.
+   */
+  const segment = (next: string | undefined) => {
+    assistantMessageID = undefined
+    assistantActive = false
+    nextAssistantMessageID = undefined
+    snapshot = next
+  }
   const currentAssistantMessageID = () =>
     assistantMessageID === undefined
       ? Effect.die("Tool event before assistant step start")
@@ -657,6 +671,7 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
     unsettledToolNames: () => [...tools.values()].filter((tool) => !tool.settled).map((tool) => tool.name),
     stepSettlement: () => stepSettlement,
     startAssistant,
+    segment,
     assistantMessageID: assistantMessageIDForTool,
   }
 }

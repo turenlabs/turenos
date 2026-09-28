@@ -55,6 +55,32 @@ so the private MCP request cannot be diverted through a configured proxy.
 When TurenOS disables tools for a turn, such as after the maximum agent step, it does not register or configure an MCP
 server. Claude still receives `--tools ""`, so the no-tools policy remains effective.
 
+## Mid-turn Steering
+
+One TurenOS provider turn is one `claude -p` run, which can make many model requests and tool calls. So that a steer
+does not wait for the whole run, TurenOS keeps stdin open on tool-enabled turns and uses the CLI's own mid-turn queue,
+the path interactive Claude Code uses for a message typed while it works:
+
+- The bridge accepts steers only after `system/init` advertises both `msg_lifecycle_v1` and
+  `interrupt_cancel_queued_v1`. Older CLIs keep boundary delivery.
+- The runner polls for pending steers and hands each eligible one to the CLI as a default-priority `user` message with
+  a bridge-generated uuid. Eligible means a plain text prompt for the running agent and model. Commands, goals,
+  attachments, and a different agent or model hold the queue for the boundary, so steers keep admission order.
+- The CLI folds the message in after its current tool calls finish and before its next model request, and reports
+  `command_lifecycle` `started`. Only then does the runner promote the input. It ends the current assistant step with no
+  usage, since the CLI reports the run's usage once on the final step, and opens a new one. The transcript shows the
+  steer where the model read it.
+- A steer written during a final answer with no tool calls is not folded in. The CLI takes it off its queue within a
+  millisecond of the run's `result` to start a second turn, too soon for `cancel_async_message`. So at the `result`,
+  if any steer is unfolded, the bridge sends `interrupt` with `cancel_queued: true` and closes stdin. The interrupt
+  aborts that turn before the model reads the steer, and the bridge accepts the CLI's resulting exit code 1. The steer
+  stays pending and promotes at the next provider-turn boundary.
+- An input cancelled in TurenOS while the run continues is withdrawn with `cancel_async_message`. If the CLI folds it
+  in before the cancel lands, the model has read it, so the runner promotes it anyway and the cancellation does not
+  stand.
+- The step that ends at a fold records no usage, so reverting to a steer subtracts the whole run's tokens from the
+  Session totals. Claude Code runs report no cost, so this affects token counts only.
+
 ## Capability Boundary
 
 Each MCP endpoint:

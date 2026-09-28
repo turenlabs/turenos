@@ -1,6 +1,6 @@
 export * as SessionInput from "./input"
 
-import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne } from "drizzle-orm"
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm"
 import { Cause, DateTime, Effect, Schema } from "effect"
 import { Admitted, CommandIntent, Delivery, OutboxItem, Source, Status } from "@turenlabs/schema/session-input"
 import type { Database } from "../database/database"
@@ -756,6 +756,62 @@ export const promoteSteers = Effect.fn("SessionInput.promoteSteers")(function* (
     .all()
     .pipe(Effect.orDie)
   return yield* publish(db, events, sessionID, rows, onPromoted)
+})
+
+/**
+ * Pending steers in admission order. `plain` marks the ones a running provider can take mid-turn:
+ * a command or goal admission carries more than model-visible text, so it waits for the boundary.
+ */
+export const pendingSteers = Effect.fn("SessionInput.pendingSteers")(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+) {
+  const rows = yield* db
+    .select({ input: SessionInputTable, kind: SessionMessageIdentityTable.kind })
+    .from(SessionInputTable)
+    .leftJoin(SessionMessageIdentityTable, eq(SessionMessageIdentityTable.id, SessionInputTable.id))
+    .where(
+      and(
+        eq(SessionInputTable.session_id, sessionID),
+        isNull(SessionInputTable.promoted_seq),
+        isNull(SessionInputTable.time_cancelled),
+        eq(SessionInputTable.delivery, "steer"),
+      ),
+    )
+    .orderBy(asc(SessionInputTable.admitted_seq))
+    .all()
+    .pipe(Effect.orDie)
+  return rows.map((row) => ({
+    input: fromRow(row.input),
+    plain: row.kind === "prompt" && row.input.command === null,
+  }))
+})
+
+/**
+ * Promotes inputs a provider already delivered to the model mid-turn. A cancellation that raced
+ * the delivery cannot stand: the model has read the input, so the transcript records it.
+ */
+export const promote = Effect.fn("SessionInput.promote")(function* (
+  db: DatabaseService,
+  events: EventV2.Interface,
+  sessionID: SessionSchema.ID,
+  ids: ReadonlyArray<SessionMessage.ID>,
+) {
+  if (ids.length === 0) return 0
+  const delivered = and(
+    eq(SessionInputTable.session_id, sessionID),
+    inArray(SessionInputTable.id, [...ids]),
+    isNull(SessionInputTable.promoted_seq),
+  )
+  yield* db.update(SessionInputTable).set({ time_cancelled: null }).where(delivered).run().pipe(Effect.orDie)
+  const rows = yield* db
+    .select()
+    .from(SessionInputTable)
+    .where(delivered)
+    .orderBy(asc(SessionInputTable.admitted_seq))
+    .all()
+    .pipe(Effect.orDie)
+  return yield* publish(db, events, sessionID, rows)
 })
 
 const MAX_QUEUE_PROMOTE_BATCH = 32
