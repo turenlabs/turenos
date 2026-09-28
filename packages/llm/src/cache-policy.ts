@@ -91,16 +91,20 @@ const lastDurableUserIndex = (messages: ReadonlyArray<Message>): number => {
 const cacheable = (part: ContentPart) =>
   part.type === "text" || part.type === "media" || (part.type === "tool-result" && !part.providerExecuted)
 
+const markedMessage = (target: Message, hint: CacheHint) => {
+  if (target.content.length === 0) return undefined
+  const markAt = target.content.findLastIndex(cacheable)
+  if (markAt < 0) return undefined
+  const existing = target.content[markAt]!
+  if ("cache" in existing && existing.cache) return undefined
+  const nextContent = target.content.map((part, i) => (i === markAt ? ({ ...part, cache: hint } as ContentPart) : part))
+  return new Message({ ...target, content: nextContent })
+}
+
 const markMessageAt = (messages: ReadonlyArray<Message>, index: number, hint: CacheHint): ReadonlyArray<Message> => {
   if (index < 0 || index >= messages.length) return messages
-  const target = messages[index]!
-  if (target.content.length === 0) return messages
-  const markAt = target.content.findLastIndex(cacheable)
-  if (markAt < 0) return messages
-  const existing = target.content[markAt]!
-  if ("cache" in existing && existing.cache) return messages
-  const nextContent = target.content.map((part, i) => (i === markAt ? ({ ...part, cache: hint } as ContentPart) : part))
-  const next = new Message({ ...target, content: nextContent })
+  const next = markedMessage(messages[index]!, hint)
+  if (!next) return messages
   // Single pass over `messages`, substituting the one updated entry. Long
   // conversations call this on every request, so avoid `.map()` here — its
   // closure dispatch and identity copies show up in profiling.
@@ -118,9 +122,15 @@ const markMessages = (
   if (strategy === "latest-user-message") return markMessageAt(messages, lastDurableUserIndex(messages), hint)
   if (strategy === "latest-assistant") return markMessageAt(messages, lastIndexOfRole(messages, "assistant"), hint)
   const start = Math.max(0, messages.length - strategy.tail)
-  let next = messages
-  for (let i = start; i < messages.length; i++) next = markMessageAt(next, i, hint)
-  return next
+  let next: Array<Message> | undefined
+  for (let i = start; i < messages.length; i++) {
+    const marked = markedMessage(messages[i]!, hint)
+    if (!marked) continue
+    // A tail may cover many messages; defer the conversation copy until needed.
+    if (!next) next = messages.slice()
+    next[i] = marked
+  }
+  return next ?? messages
 }
 
 export const applyCachePolicy = (request: LLMRequest): LLMRequest => {
