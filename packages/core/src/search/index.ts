@@ -613,7 +613,21 @@ const makeLayer = (load: PotionLoader) =>
           for (let d = 0; d < dim; d++) dot += th.vecs[off + d]! * v[d]!
           scores[i] = dot / qn
         }
-        const idx = [...scores.keys()].sort((a, b) => scores[b]! - scores[a]!).slice(0, 6)
+        const idx: number[] = []
+        for (let i = 0; i < scores.length; i++) {
+          const score = scores[i]
+          if (Number.isNaN(score)) {
+            // Keep the original stable-sort behavior when invalid embeddings break score ordering.
+            idx.length = 0
+            idx.push(...[...scores.keys()].sort((a, b) => scores[b] - scores[a]).slice(0, 6))
+            break
+          }
+          let position = 0
+          while (position < idx.length && !(score > scores[idx[position]])) position++
+          if (position === 6) continue
+          idx.splice(position, 0, i)
+          if (idx.length > 6) idx.pop()
+        }
         for (const i of idx) {
           const s = scores[i]!
           const st = stem(th.vocab[i]!)
