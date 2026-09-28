@@ -90,6 +90,8 @@ const reviewedSkillDigests = new Set([
   "17f0fc432154a9631087010bd58c30152ecd4f4cbbf9ae3ca821d02b3cb343aa",
   // turenlabs/technical-security-blog
   "aab1c54a3c1909c00d4cfcb69e9d2a5cfec1c763abcfab384db3aed8e34f1831",
+  // turenlabs/tenant-isolation-review
+  "d65f450502a2ae5dc46db90e98f99f8af9ffc732b875a0f4105a6e3443ddb54e",
   // turenlabs/test-strategy
   "9ef7b51f553db3f1b86cef791e07f6122ea9f5babc6350e08343a8ceff8bb161",
   // turenlabs/threat-hunter
