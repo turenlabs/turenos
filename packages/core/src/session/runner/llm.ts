@@ -12,7 +12,7 @@ import {
 import { ProviderShared } from "@turenlabs/llm/protocols"
 import { LobbySession } from "@turenlabs/schema/lobby-session"
 import { createHash } from "node:crypto"
-import { Cause, Clock, DateTime, Effect, FiberSet, Layer, Option, Scope, Semaphore, Stream } from "effect"
+import { Cause, Clock, DateTime, Effect, FiberSet, Layer, Option, Schedule, Scope, Semaphore, Stream } from "effect"
 import { AgentV2 } from "../../agent"
 import { AgentGuidance } from "../../agent/guidance"
 import { Config } from "../../config"
@@ -163,6 +163,33 @@ export const TOOL_CONCURRENCY_LIMIT = 8
 const TOOL_STALL_NOTICE_DELAY = "30 seconds"
 /** Repeats while any call stays pending; the running transcript shows the wait growing. */
 const TOOL_STALL_NOTICE_INTERVAL = "60 seconds"
+/** How often a Claude Code turn looks for steers to hand the running CLI. Small next to a tool call. */
+const STEER_POLL_INTERVAL = "250 millis"
+
+/**
+ * The text a steer shows the model, or undefined when the running Claude Code CLI cannot take it
+ * as-is: attachments need the boundary's materialization, and another agent or model needs a new
+ * turn. Text parts render as `toLLMMessages` renders them after a restart.
+ */
+const steerText = (input: SessionInput.Admitted, agent: AgentV2.ID, model: ModelV2.Ref) => {
+  if (input.prompt.files?.length || input.prompt.agents?.length) return undefined
+  if (input.agent !== undefined && input.agent !== agent) return undefined
+  if (
+    input.model !== undefined &&
+    (input.model.providerID !== model.providerID ||
+      input.model.id !== model.id ||
+      (input.model.variant ?? "default") !== (model.variant ?? "default"))
+  )
+    return undefined
+  const text =
+    input.prompt.parts === undefined
+      ? input.prompt.text
+      : input.prompt.parts
+          .filter((part) => !part.ignored && part.text.length > 0)
+          .map((part) => part.text)
+          .join("\n")
+  return text.length > 0 ? text : undefined
+}
 
 /**
  * What the Claude CLI is told when it calls `update_goal`, whose real settlement is deferred to
@@ -853,11 +880,18 @@ const layer = Layer.effect(
         Effect.fail(new Error("Claude Code MCP tool execution started before the provider turn"))
       let todoUpdated = false
       let substantiveWork = false
+      // Claude Code runs its own agent loop inside this one provider turn, so a steer would otherwise
+      // wait for the whole run. The handle lets it reach the running CLI instead.
+      const steering =
+        modelRef.providerID === ClaudeCodeCLI.ID && claudeTools.length > 0 && toolMaterialization
+          ? ClaudeCodeMcp.makeSteering()
+          : undefined
       const claudeMcpToken =
         claudeTools.length > 0 && toolMaterialization
           ? yield* ClaudeCodeMcp.register({
               definitions: claudeTools,
               execute: (call) => Effect.suspend(() => executeClaudeTool(call)),
+              steering,
             })
           : undefined
       const promptCacheKey = /^ses_[0-9a-f]{64}$/.test(session.id) ? session.id.slice(4) : session.id
@@ -1094,7 +1128,8 @@ const layer = Layer.effect(
             ? accountGoal(session.id, accountedGoalAtStart, providerTurnID, usage)
             : getGoal(session.id),
       })
-      const startSnapshot = yield* snapshots.capture()
+      // Advances when a mid-turn steer closes one assistant message and opens the next.
+      let startSnapshot = yield* snapshots.capture()
       yield* startupPhase("snapshot_captured", { captured: startSnapshot !== undefined })
       // From here on the publisher owns failure reporting for this turn. Provisionally: the
       // publisher only opens the durable step on the first content frame, so if the turn ends
@@ -1125,6 +1160,57 @@ const layer = Layer.effect(
           }),
         )
       })
+      // The CLI folded these steers in after its last tool batch, so the transcript records each
+      // one between the output before it and the output that answers it. Called with the permit.
+      const foldSteers = Effect.fnUntraced(function* (folded: ReadonlyArray<string>) {
+        yield* publisher.flush()
+        if (publisher.hasAssistantStarted()) {
+          const snapshot = yield* snapshots.capture()
+          const files =
+            startSnapshot && snapshot
+              ? yield* snapshots
+                  .files({ from: startSnapshot, to: snapshot })
+                  .pipe(Effect.catch(() => Effect.succeed(undefined)))
+              : undefined
+          // The CLI reports the run's usage once, on the final step; this one carries none of it.
+          const unmeasured = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+          yield* events.publish(SessionEvent.Step.Ended, {
+            sessionID: session.id,
+            timestamp: yield* DateTime.now,
+            assistantMessageID: yield* publisher.startAssistant(),
+            finish: "tool-calls",
+            model: modelRef,
+            cost: 0,
+            tokens: unmeasured,
+            billed: unmeasured,
+            snapshot,
+            files,
+          })
+          publisher.segment(snapshot)
+          startSnapshot = snapshot
+        }
+        const ids = folded.map((id) => SessionMessage.ID.make(id))
+        if ((yield* SessionInput.promote(db, events, session.id, ids)) > 0) currentStep = 1
+      })
+      const offerSteers = Effect.fnUntraced(function* (handle: ClaudeCodeMcp.Steering) {
+        const pending = yield* SessionInput.pendingSteers(db, session.id)
+        // Cancelled after it reached the CLI: withdraw it before the CLI folds it in.
+        for (const id of handle.inFlight()) if (!pending.some((entry) => entry.input.id === id)) handle.retract(id)
+        for (const entry of pending) {
+          const text = entry.plain ? steerText(entry.input, agent.id, modelRef) : undefined
+          // The first steer the CLI cannot take holds the rest, so steers keep admission order.
+          if (text === undefined) return
+          handle.offer({ id: entry.input.id, text })
+        }
+      })
+      if (steering)
+        yield* offerSteers(steering).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Claude Code steer offer failed", { cause: Cause.pretty(cause) }),
+          ),
+          Effect.repeat(Schedule.spaced(STEER_POLL_INTERVAL)),
+          Effect.forkScoped,
+        )
       if (claudeMcpToken && toolMaterialization) {
         executeClaudeTool = (call) =>
           Effect.uninterruptibleMask((restore) =>
@@ -1183,7 +1269,15 @@ const layer = Layer.effect(
                 // Forked detached because the bridge's teardown awaits every
                 // active MCP call: awaiting the interrupt from inside one of
                 // those calls would deadlock on our own settlement.
-                if (isUserDeclined(settlement.cause)) yield* Effect.forkDetach(control.interrupt(session.id))
+                // Interrupting drops the drain's pending wake, so a steer that
+                // dismissed a question needs a wake of its own to be delivered.
+                if (isUserDeclined(settlement.cause))
+                  yield* Effect.forkDetach(
+                    control.interrupt(session.id).pipe(
+                      Effect.andThen(SessionInput.hasPending(db, session.id, "steer")),
+                      Effect.flatMap((steered) => (steered ? control.wake(session.id) : Effect.void)),
+                    ),
+                  )
                 const result = {
                   type: "error" as const,
                   value: ToolVisibleError.make(Cause.squash(settlement.cause)),
@@ -1249,6 +1343,13 @@ const layer = Layer.effect(
                 })
               }
               if (overflowFailure || retryableProviderFailure || publisher.hasProviderError()) return
+              // The Claude Code bridge's fold marker: the steers it reports must promote before the
+              // content that answers them, so the marker is handled in stream order.
+              if (steering && event.type === "step-start" && event.index > 0) {
+                const folded = steering.take()
+                if (folded.length > 0) yield* withPublication(foldSteers(folded))
+                return
+              }
               if (event.type === "text-delta" && loop.observe(event.text)) {
                 // Terminal, not retryable: the same request reproduces the same degenerate output,
                 // and the turn has already spent most of its output budget saying nothing. Publishing

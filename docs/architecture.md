@@ -239,7 +239,10 @@ Session V2 separates durable admission from model execution:
    boundary, and settle through the Tool Registry. After all calls settle, the runner reloads
    history and decides whether to continue.
 7. A queued input is promoted at the next safe provider-turn boundary. Steers take precedence over
-   queued inputs. User input can therefore join an active drain without waiting for idle.
+   queued inputs. User input can therefore join an active drain without waiting for idle. The
+   Claude Code CLI runs a whole agent loop inside one provider turn, so eligible steers are written
+   to the running CLI and promoted when it confirms folding them in (see
+   `claude-code-tool-routing.md`).
 
 ```mermaid
 flowchart LR
