@@ -23,6 +23,7 @@ import { MemorySchema } from "./schema"
 // `(`, `:`, `-`) and the MATCH expression cannot be injected into. `assertTerm`
 // below re-checks that at the boundary rather than trusting this by inspection.
 const WORD = /[A-Za-z0-9_]+/g
+const SIMPLE_WORD = /^[a-z]+$/
 const TERM = /^[A-Za-z0-9_]+$/
 
 /** Shortest term the index will store or search for. Single characters are pure noise. */
@@ -31,6 +32,10 @@ export const MIN_TERM_LENGTH = 2
 export function tokenize(input: string): string[] {
   const out: string[] = []
   for (const raw of input.match(WORD) ?? []) {
+    if (SIMPLE_WORD.test(raw)) {
+      if (raw.length >= MIN_TERM_LENGTH) out.push(raw)
+      continue
+    }
     const whole = raw.toLowerCase()
     if (whole.length >= MIN_TERM_LENGTH) out.push(whole)
     for (const part of split(raw)) {
