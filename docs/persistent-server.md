@@ -27,7 +27,9 @@ redirecting root's work:
   data root itself must not be a symlink.
 - **Taking the data root back.** Before working in it, `install` stops the service and makes the data root and every
   managed directory in it root-owned `0700`. It refuses any managed directory or database file that is a symlink or a
-  hard link. When it finishes, it hands ownership back with `lchown`, which never follows links.
+  hard link. It retains handles to claimed directories and hands them back through those handles, children before
+  parents. A rejected layout does not enter ownership cleanup; a partial claim releases only directories it acquired.
+  Database files are checked and handed back through open handles while their parent directories remain protected.
 - **Service binary and recovery copy.** The binary the unit runs (`--forge-bin`, default: the running `forge`, resolved
   through links) must be a root-owned file in directories only root can write, since it receives the key and
   password. The `--recovery-file` directory must also be writable only by root.
@@ -139,7 +141,8 @@ Every `--import-*` source must sit in a directory another account cannot write, 
 as root follows the WAL, SHM, and lock file names beside a database and changes the ownership of what it opens, and a
 tree copy must not have entries swapped under it. `--import-db` verifies the key against the source, then takes the
 source's owner lock, which refuses a server still running on it. It copies the database with `VACUUM INTO` into the
-pinned data root and leaves the original untouched as rollback material. Finally it **promotes** the copy: the owner
+pinned data root and leaves the original untouched as rollback material. It applies pending schema migrations to the
+verified destination, then **promotes** the copy: the owner
 record becomes `persistent` for the new server ID. Older quick-connect binaries don't take the owner lock, so always
 stop the daemon first. Because the promoted data lives outside the default path, an older desktop can only start a
 separate, empty quick-connect server. It can never open the promoted database.

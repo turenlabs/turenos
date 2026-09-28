@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path"
 import { Effect } from "effect"
 import { sql } from "drizzle-orm"
 import { Database } from "@turenlabs/core/database/database"
+import { DatabaseMigration } from "@turenlabs/core/database/migration"
 import { VaultVerification } from "@turenlabs/core/database/vault-verification"
 import { ServerOwner } from "@turenlabs/core/database/server-owner"
 import { cmd } from "./cmd"
@@ -296,21 +297,16 @@ async function importSource(path: string | undefined) {
  * root's writes or ownership changes.
  */
 async function prepareData(target: PersistentLinux.Plan, facts: PersistentLinux.Facts, key: Key, imports: Imports) {
-  // The claim itself can fail partway (a planted link found on the second check), so the release
-  // covers it too; releasing what a failed claim never took is harmless.
-  try {
-    await PersistentLinux.claimDataRoot(target.dataRoot)
+  await PersistentLinux.withDataRoot(target.dataRoot, facts.user!, async () => {
     await placeDatabase(target, facts, key, imports.db)
     if (imports.data)
       await PersistentLinux.importTree(imports.data, join(target.dataRoot, "data", "forge"), facts.user!)
     if (imports.config)
       await PersistentLinux.importTree(imports.config, join(target.dataRoot, "config", "forge"), facts.user!)
-  } finally {
-    await PersistentLinux.releaseDataRoot(target.dataRoot, facts.user!)
-  }
+  })
 }
 
-async function placeDatabase(
+export async function placeDatabase(
   target: PersistentLinux.Plan,
   facts: PersistentLinux.Facts,
   key: Key,
@@ -350,7 +346,10 @@ async function placeDatabase(
   )
     return
   await Effect.gen(function* () {
-    yield* ServerOwner.promote(yield* Database.openExisting(database), { serverID: target.serverID, keyID: key.keyID })
+    const db = yield* Database.openExisting(database)
+    // Only the verified destination is migrated; older backups may not have storage_state yet.
+    yield* DatabaseMigration.apply(db)
+    yield* ServerOwner.promote(db, { serverID: target.serverID, keyID: key.keyID })
   }).pipe(Effect.scoped, Effect.runPromise)
 }
 

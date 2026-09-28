@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { lstat, mkdir, symlink, writeFile } from "node:fs/promises"
+import { lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises"
 import { Effect } from "effect"
 import { sql } from "drizzle-orm"
 import { Database } from "@turenlabs/core/database/database"
+import { DatabaseMigration } from "@turenlabs/core/database/migration"
+import { migrations } from "@turenlabs/core/database/migration.gen"
 import { ServerOwner } from "@turenlabs/core/database/server-owner"
 import { VaultVerification } from "@turenlabs/core/database/vault-verification"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 import { PersistentLinux } from "@/persistent/linux"
+import { placeDatabase } from "@/cli/cmd/persistent"
 import { tmpdir } from "../fixture/fixture"
 
 const plan: PersistentLinux.Plan = {
@@ -107,9 +110,21 @@ describe("PersistentLinux", () => {
     const root = path.join(tmp.path, "server")
     await mkdir(path.join(root, "data"), { recursive: true })
     await symlink(tmp.path, path.join(root, "data", "forge"))
-    await expect(PersistentLinux.claimDataRoot(root).catch((error: Error) => error.message)).resolves.toContain(
-      "refusing to follow it",
-    )
+    const before = await lstat(path.join(root, "data"))
+    let invoked = false
+    await expect(
+      PersistentLinux.withDataRoot(root, { uid: process.getuid!(), gid: process.getgid!() }, async () => {
+        invoked = true
+      }),
+    ).rejects.toThrow("refusing to follow it")
+    expect(invoked).toBe(false)
+    const after = await lstat(path.join(root, "data"))
+    expect([after.uid, after.gid, after.mode, after.ctimeMs]).toEqual([
+      before.uid,
+      before.gid,
+      before.mode,
+      before.ctimeMs,
+    ])
   })
 
   test("the data root cannot redirect root through a planted rollback journal", async () => {
@@ -117,9 +132,11 @@ describe("PersistentLinux", () => {
     const root = path.join(tmp.path, "server")
     await mkdir(path.dirname(PersistentLinux.databasePath(root)), { recursive: true })
     await symlink(path.join(tmp.path, "target"), `${PersistentLinux.databasePath(root)}-journal`)
-    await expect(PersistentLinux.claimDataRoot(root).catch((error: Error) => error.message)).resolves.toContain(
-      "forge.db-journal is not a regular file",
-    )
+    await expect(
+      PersistentLinux.withDataRoot(root, { uid: process.getuid!(), gid: process.getgid!() }, async () => {
+        throw new Error("must not run")
+      }),
+    ).rejects.toThrow("forge.db-journal is not a regular file")
   })
 
   test("the attach record names the loopback listener", () => {
@@ -181,13 +198,55 @@ describe("PersistentLinux", () => {
     expect(evaluated.notes[0]).toContain("interrupted setup")
   })
 
-  test("releasing a data root a failed claim never created is harmless", async () => {
-    await using tmp = await tmpdir()
-    const root = path.join(tmp.path, "missing")
-    await expect(
-      PersistentLinux.releaseDataRoot(root, { uid: process.getuid!(), gid: process.getgid!() }),
-    ).resolves.toBeUndefined()
-  })
+  test.skipIf(process.platform !== "linux" || process.getuid?.() !== 0)(
+    "the scoped data root releases directories and new database files after work fails",
+    async () => {
+      await using tmp = await tmpdir()
+      const root = path.join(tmp.path, "server")
+      const owner = { uid: 65534, gid: 65534 }
+      await expect(
+        PersistentLinux.withDataRoot(root, owner, async () => {
+          for (const dir of ["", "data", "data/forge", "config", "config/forge", "state", "cache"]) {
+            const info = await lstat(path.join(root, dir))
+            expect(info.uid).toBe(0)
+            expect(info.mode & 0o777).toBe(0o700)
+          }
+          await writeFile(PersistentLinux.databasePath(root), "fixture")
+          throw new Error("work failed")
+        }),
+      ).rejects.toThrow("work failed")
+      for (const file of [
+        "",
+        "data",
+        "data/forge",
+        "data/forge/forge.db",
+        "config",
+        "config/forge",
+        "state",
+        "cache",
+      ]) {
+        const info = await lstat(path.join(root, file))
+        expect([info.uid, info.gid]).toEqual([owner.uid, owner.gid])
+      }
+    },
+  )
+
+  test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "a failed ownership claim closes without handing unclaimed directories to another account",
+    async () => {
+      await using tmp = await tmpdir()
+      const root = path.join(tmp.path, "server")
+      await mkdir(root, { mode: 0o750 })
+      const before = await lstat(root)
+      await expect(
+        PersistentLinux.withDataRoot(root, { uid: 65534, gid: 65534 }, async () => {
+          throw new Error("must not run")
+        }),
+      ).rejects.toThrow()
+      const after = await lstat(root)
+      expect([after.uid, after.gid, after.mode]).toEqual([before.uid, before.gid, before.mode])
+    },
+  )
 
   // The copy itself runs as root and is exercised by script/persistent-e2e.ts; here only the refusal
   // of a staging directory another account can write is checked, without touching the destination.
@@ -206,7 +265,8 @@ describe("PersistentLinux", () => {
   test("an imported quick-connect database is copied read-only, verified, and promoted", async () => {
     await using tmp = await tmpdir()
     const source = path.join(tmp.path, "quick.db")
-    const target = path.join(tmp.path, "pinned.db")
+    const target = PersistentLinux.databasePath(tmp.path)
+    await mkdir(path.dirname(target), { recursive: true })
     const key = { keyID: "desktop-key", key: new Uint8Array(32).fill(3) }
     await Effect.gen(function* () {
       const database = yield* Database.Service
@@ -220,13 +280,14 @@ describe("PersistentLinux", () => {
     const wrong = await VaultVerification.inspectFile(source, { keyID: "desktop-key", key: new Uint8Array(32).fill(4) })
     expect(wrong.verification).toBe("invalid")
 
-    await Effect.gen(function* () {
-      const db = yield* Database.openReadonly(source)
-      yield* db.run(sql`VACUUM INTO ${target}`).pipe(Effect.orDie)
-    }).pipe(Effect.scoped, Effect.runPromise)
-    await Effect.gen(function* () {
-      yield* ServerOwner.promote(yield* Database.openExisting(target), { serverID: "srv_test", keyID: key.keyID })
-    }).pipe(Effect.scoped, Effect.runPromise)
+    const before = await readFile(source)
+    await placeDatabase(
+      { ...plan, dataRoot: tmp.path },
+      facts,
+      { ...key, encoded: Buffer.from(key.key).toString("base64") },
+      source,
+    )
+    expect(await readFile(source)).toEqual(before)
 
     const release = await Database.acquireOwnerLock(target, {
       mode: "persistent",
@@ -242,5 +303,59 @@ describe("PersistentLinux", () => {
     } finally {
       release()
     }
+  })
+
+  test("an import migrates a pre-storage_state destination without modifying its source", async () => {
+    await using tmp = await tmpdir()
+    const source = path.join(tmp.path, "legacy.db")
+    const target = PersistentLinux.databasePath(tmp.path)
+    const key = { keyID: "legacy-key", key: new Uint8Array(32).fill(3) }
+    await writeFile(source, "")
+    await mkdir(path.dirname(target), { recursive: true })
+    await Effect.gen(function* () {
+      const db = yield* Database.openExisting(source)
+      yield* DatabaseMigration.applyOnly(
+        db,
+        migrations.filter((migration) => migration.id < "20260721162622_storage_state"),
+      )
+      expect(yield* db.get(sql`SELECT name FROM sqlite_master WHERE name = 'storage_state'`)).toBeUndefined()
+      const sealed = yield* SecretVault.make(key).seal("credential", "legacy-credential", "fixture-secret")
+      yield* db.run(sql`
+        INSERT INTO credential (id, label, value, time_created, time_updated)
+        VALUES ('legacy-credential', 'legacy', ${JSON.stringify(sealed)}, 0, 0)
+      `)
+    }).pipe(Effect.scoped, Effect.runPromise)
+
+    const before = await readFile(source)
+    await expect(
+      placeDatabase(
+        { ...plan, dataRoot: tmp.path },
+        facts,
+        { keyID: key.keyID, key: new Uint8Array(32).fill(4), encoded: Buffer.alloc(32, 4).toString("base64") },
+        source,
+      ),
+    ).rejects.toThrow("cannot open")
+    expect(await lstat(target).catch(() => undefined)).toBeUndefined()
+    await placeDatabase(
+      { ...plan, dataRoot: tmp.path },
+      facts,
+      { ...key, encoded: Buffer.from(key.key).toString("base64") },
+      source,
+    )
+    expect(await readFile(source)).toEqual(before)
+    expect((await VaultVerification.inspectFile(target, key)).stores).toContainEqual({
+      store: "credential",
+      sealed: 1,
+      opened: true,
+    })
+    await Effect.gen(function* () {
+      const db = yield* Database.openReadonly(target)
+      expect(yield* ServerOwner.read(db)).toMatchObject({
+        mode: "persistent",
+        serverID: plan.serverID,
+        keyID: key.keyID,
+      })
+      expect(yield* db.get(sql`SELECT count(*) AS count FROM migration`)).toEqual({ count: migrations.length })
+    }).pipe(Effect.scoped, Effect.runPromise)
   })
 })

@@ -17,6 +17,7 @@ import {
   rename,
   stat,
   unlink,
+  type FileHandle,
 } from "node:fs/promises"
 import { createServer } from "node:net"
 import { dirname, join } from "node:path"
@@ -298,7 +299,7 @@ export async function writableOnlyByRoot(path: string) {
   }
 }
 
-const layout = ["data", "data/forge", "config", "state", "cache"]
+const layout = ["data", "data/forge", "config", "config/forge", "state", "cache"]
 
 function databaseFiles(dataRoot: string) {
   const database = databasePath(dataRoot)
@@ -310,50 +311,74 @@ function databaseFiles(dataRoot: string) {
  * writable only by root and the root itself root-owned 0700, the account cannot plant or swap links
  * that would redirect root's writes or ownership changes elsewhere. Stop the service first.
  */
-export async function claimDataRoot(dataRoot: string) {
+export async function withDataRoot<T>(dataRoot: string, owner: { uid: number; gid: number }, work: () => Promise<T>) {
   const root = await lstat(dataRoot).catch(() => undefined)
   if (root && !root.isDirectory()) throw new Error(`${dataRoot} is not a directory; refusing to follow it`)
-  // Checked before claiming to fail without changing anything, and again after, once nothing can change it.
-  await checkLayout(dataRoot, false)
-  if (!root) await mkdir(dataRoot, { mode: 0o700 })
-  await lchown(dataRoot, 0, 0)
-  await chmod(dataRoot, 0o700)
-  // A service process can keep a directory open below the root and still create entries in it,
-  // and SQLite running as root follows its WAL, SHM, and journal names and chowns what it opens.
-  // Top-down, so each parent is root-owned before its child is examined.
-  for (const dir of layout) {
-    const path = join(dataRoot, dir)
-    if (!(await lstat(path).catch(() => undefined))?.isDirectory()) continue
-    await lchown(path, 0, 0)
-    await chmod(path, 0o700)
+  // A rejected initial layout has acquired nothing and must not enter ownership cleanup.
+  await checkLayout(dataRoot)
+  const directories: Array<{ handle: FileHandle; claimed: boolean }> = []
+  try {
+    // Hold every parent root-owned until its children are released. Retained directory
+    // descriptors do not allow the service account to mutate a root-owned 0700 directory.
+    for (const path of [dataRoot, ...layout.map((dir) => join(dataRoot, dir))]) {
+      await mkdir(path, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "EEXIST") throw error
+      })
+      const entry = {
+        handle: await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW),
+        claimed: false,
+      }
+      directories.push(entry)
+      await entry.handle.chown(0, 0)
+      entry.claimed = true
+      await entry.handle.chmod(0o700)
+    }
+    await checkLayout(dataRoot)
+    try {
+      return await work()
+    } finally {
+      // SQLite may have created files. Check the opened object while its parents are
+      // still protected; never change ownership through a rejected link or pathname.
+      for (const path of databaseFiles(dataRoot)) {
+        const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(
+          (error: NodeJS.ErrnoException) => {
+            if (error.code !== "ENOENT") throw error
+            return undefined
+          },
+        )
+        if (!handle) continue
+        try {
+          const info = await handle.stat()
+          if (!info.isFile() || info.nlink !== 1)
+            throw new Error(`${path} is not a regular file with a single link; refusing to release it`)
+          await handle.chown(owner.uid, owner.gid)
+        } finally {
+          await handle.close()
+        }
+      }
+    }
+  } finally {
+    try {
+      // Only successfully claimed directories are restored, through their original
+      // handles. A partial claim never re-traverses an untrusted descendant.
+      for (const entry of directories.toReversed()) if (entry.claimed) await entry.handle.chown(owner.uid, owner.gid)
+    } finally {
+      await Promise.all(directories.map((entry) => entry.handle.close()))
+    }
   }
-  await checkLayout(dataRoot, true)
 }
 
-async function checkLayout(dataRoot: string, create: boolean) {
+async function checkLayout(dataRoot: string) {
   for (const dir of layout) {
     const path = join(dataRoot, dir)
     const info = await lstat(path).catch(() => undefined)
     if (info && !info.isDirectory()) throw new Error(`${path} is not a directory; refusing to follow it`)
-    if (!info && create) await mkdir(path, { mode: 0o700 })
   }
   for (const file of databaseFiles(dataRoot)) {
     const info = await lstat(file).catch(() => undefined)
     if (info && (!info.isFile() || info.nlink > 1))
       throw new Error(`${file} is not a regular file with a single link; refusing to follow it`)
   }
-}
-
-/**
- * Hands the data root back to the service account. `lchown` never follows a link. Runs after a
- * claim that failed partway too, so it tolerates a root that was never created.
- */
-export async function releaseDataRoot(dataRoot: string, owner: { uid: number; gid: number }) {
-  for (const path of [...layout.map((dir) => join(dataRoot, dir)), ...databaseFiles(dataRoot)]) {
-    const info = await lstat(path).catch(() => undefined)
-    if (info?.isDirectory() || info?.isFile()) await lchown(path, owner.uid, owner.gid)
-  }
-  if (await lstat(dataRoot).catch(() => undefined)) await lchown(dataRoot, owner.uid, owner.gid)
 }
 
 // Regenerable or transient state that an import leaves behind, next to the database files.
@@ -388,17 +413,14 @@ export async function importTree(source: string, destination: string, owner: { u
       errorOnExist: true,
       force: false,
     })
+    await chownTree(join(destination, entry), owner)
   }
-  await chownTree(destination, owner)
 }
 
 async function chownTree(root: string, owner: { uid: number; gid: number }) {
+  if ((await lstat(root)).isDirectory())
+    for (const entry of await readdir(root)) await chownTree(join(root, entry), owner)
   await lchown(root, owner.uid, owner.gid)
-  for (const entry of await readdir(root, { withFileTypes: true })) {
-    const path = join(root, entry.name)
-    if (entry.isDirectory()) await chownTree(path, owner)
-    else await lchown(path, owner.uid, owner.gid)
-  }
 }
 
 export function newServerID() {
