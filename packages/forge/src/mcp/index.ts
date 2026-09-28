@@ -43,6 +43,7 @@ import { McpIntegration } from "./integration"
 import { McpCaBundle } from "./ca-bundle"
 import { McpRuntime } from "./runtime"
 import { ExtensionRuntime } from "@turenlabs/core/extension"
+import { ExtensionObservation } from "@/extension/observation"
 import { Storage } from "@turenlabs/core/storage"
 import { ExtensionCatalog } from "@turenlabs/extensions"
 import { SecurityRegistry } from "@/security/registry"
@@ -141,6 +142,59 @@ interface PendingOAuth {
 const pendingOAuthTransports = new Map<string, PendingOAuth>()
 const PENDING_OAUTH_TTL_MS = 10 * 60 * 1000
 const authenticationLocks = new Map<string, Semaphore.Semaphore>()
+
+const STDERR_TAIL_BYTES = 8 * 1024
+const OUTPUT_LINE_BYTES = 500
+const OUTPUT_MAX_LINES = 100
+const stderrTails = new WeakMap<object, () => string>()
+
+/**
+ * `stderr: "pipe"` buffers into a PassThrough nobody reads: the child's stderr
+ * is dropped, so a process that exits with a useful message surfaces only as
+ * "Connection closed" — and an unread pipe can stall a chatty server. Drain it
+ * into a bounded tail so failures can quote what the server actually said, and
+ * into the per-server output ring so Extensions can show recent server output.
+ * The tail is keyed by transport *and* client because the SDK clears
+ * `client.transport` before `onclose` fires.
+ */
+function captureStderr(transport: StdioClientTransport, append?: (line: string) => void) {
+  const stream = transport.stderr
+  if (!stream) return
+  let buffered = ""
+  let pending = ""
+  stream.on("data", (chunk: Buffer | string) => {
+    const text = chunk.toString("utf8")
+    buffered = (buffered + text).slice(-STDERR_TAIL_BYTES)
+    const lines = (pending + text).split("\n")
+    pending = lines.pop() ?? ""
+    for (const line of lines) append?.(line)
+  })
+  stream.on("end", () => {
+    append?.(pending)
+    pending = ""
+  })
+  stderrTails.set(transport, () => buffered)
+}
+
+function recordOutput(state: State, name: string, line: string) {
+  const trimmed = line.trimEnd().slice(0, OUTPUT_LINE_BYTES)
+  if (!trimmed) return
+  const buffer = (state.output[name] ??= [])
+  buffer.push(trimmed)
+  if (buffer.length > OUTPUT_MAX_LINES) buffer.splice(0, buffer.length - OUTPUT_MAX_LINES)
+}
+
+function stderrDetail(source: object | undefined) {
+  const tail = source ? stderrTails.get(source)?.().trim() : undefined
+  if (!tail) return ""
+  const lines = tail
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-3)
+    .join(" | ")
+  return ` — server reported: ${lines}`
+}
 const authenticationLock = (name: string) => {
   const current = authenticationLocks.get(name)
   if (current) return current
@@ -240,6 +294,8 @@ interface State {
   clients: Record<string, MCPClient>
   defs: Record<string, MCPToolDef[]>
   instructions: Record<string, string>
+  /** Bounded recent stderr/log lines per server — survives process exit so failures stay diagnosable. */
+  output: Record<string, string[]>
   managedRetry: Record<string, number>
   jobs: FiberMap.FiberMap<string, void, never>
 }
@@ -273,6 +329,8 @@ export interface McpTool {
 
 export interface Interface {
   readonly status: () => Effect.Effect<Record<string, Status>>
+  /** Recent server stderr/log lines, redacted — diagnostics for the Extensions UI. */
+  readonly log: (name: string) => Effect.Effect<readonly string[]>
   readonly configuration: (name: string) => Effect.Effect<McpConfig.Info | undefined>
   readonly clients: () => Effect.Effect<Record<string, MCPClient>>
   readonly instructions: () => Effect.Effect<ServerInstructions[]>
@@ -390,7 +448,11 @@ const layer = (allowUnmanaged: boolean) =>
             Effect.tryPromise({
               try: () => {
                 const client = createClient(directory)
-                return withTimeout(client.connect(t), timeout).then(() => client)
+                return withTimeout(client.connect(t), timeout).then(() => {
+                  const tail = stderrTails.get(t)
+                  if (tail) stderrTails.set(client, tail)
+                  return client
+                })
               },
               catch: (e) => (e instanceof Error ? e : new Error(String(e))),
             }),
@@ -532,6 +594,7 @@ const layer = (allowUnmanaged: boolean) =>
       const connectLocal = Effect.fn("MCP.connectLocal")(function* (
         key: string,
         mcp: McpConfig.Info & { type: "local" },
+        s?: State,
       ) {
         const baseDir = yield* InstanceState.directory
         const managed = isManagedSecurityMcp(mcp)
@@ -576,6 +639,7 @@ const layer = (allowUnmanaged: boolean) =>
               : localProcessEnvironment(key, mcp, environment, process.env, managed),
           ),
         })
+        captureStderr(transport, s ? (line) => recordOutput(s, key, line) : undefined)
 
         const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
         return yield* connectTransport(transport, connectTimeout).pipe(
@@ -588,14 +652,8 @@ const layer = (allowUnmanaged: boolean) =>
             }),
           ),
           Effect.catch((error) => {
-            const msg = runtime
-              ? McpRuntime.redactDiagnostic(
-                  error instanceof Error ? error.message : String(error),
-                  Object.values(McpRuntime.secretsFor(mcp)),
-                )
-              : error instanceof Error
-                ? error.message
-                : String(error)
+            const raw = (error instanceof Error ? error.message : String(error)) + stderrDetail(transport)
+            const msg = McpRuntime.redactDiagnostic(raw, Object.values(McpRuntime.secretsFor(mcp)))
             return (managed ? security(SecurityRegistry.redactValue(msg)) : Effect.succeed(msg)).pipe(
               Effect.map((error) => ({
                 client: undefined,
@@ -607,7 +665,7 @@ const layer = (allowUnmanaged: boolean) =>
       })
 
       const create = Effect.fn("MCP.create")(
-        function* (key: string, mcp: McpConfig.Info) {
+        function* (key: string, mcp: McpConfig.Info, s?: State) {
           if (mcp.enabled === false) {
             return DISABLED_RESULT
           }
@@ -617,7 +675,7 @@ const layer = (allowUnmanaged: boolean) =>
           const connection: ConnectionResult =
             mcp.type === "remote"
               ? yield* connectRemote(key, mcp as McpConfig.Info & { type: "remote" })
-              : yield* connectLocal(key, mcp as McpConfig.Info & { type: "local" })
+              : yield* connectLocal(key, mcp as McpConfig.Info & { type: "local" }, s)
           const mcpClient = connection.client
           const status = connection.status
 
@@ -651,7 +709,7 @@ const layer = (allowUnmanaged: boolean) =>
                 return Effect.tryPromise(() => mcpClient.close()).pipe(Effect.ignore, Effect.andThen(Effect.interrupt))
               }
               const error = Cause.squash(cause)
-              const message = error instanceof Error ? error.message : String(error)
+              const message = (error instanceof Error ? error.message : String(error)) + stderrDetail(mcpClient)
               const failure = isManagedSecurityMcp(mcp)
                 ? security(SecurityRegistry.redactValue(message))
                 : mcp.type === "remote"
@@ -722,10 +780,15 @@ const layer = (allowUnmanaged: boolean) =>
           delete s.clients[name]
           delete s.defs[name]
           delete s.instructions[name]
-          s.status[name] = { status: "failed", error: "Connection closed" }
+          const detail = stderrDetail(client)
+          const configured = s.config[name]
+          const secrets = configured ? Object.values(McpRuntime.secretsFor(configured)) : []
+          const error = McpRuntime.redactDiagnostic(`Connection closed${detail}`, secrets)
+          s.status[name] = { status: "failed", error }
           bridge.fork(
             Effect.logWarning("MCP connection closed", { server: name }).pipe(
               Effect.andThen(events.publish(ToolsChanged, { server: name })),
+              Effect.andThen(observeManaged(s, name)),
               Effect.ignore,
             ),
           )
@@ -775,6 +838,13 @@ const layer = (allowUnmanaged: boolean) =>
         name: string,
         params: LoggingMessageNotification["params"],
       ) {
+        const text =
+          typeof params.data === "string"
+            ? params.data
+            : params.data === undefined
+              ? ""
+              : JSON.stringify(params.data)
+        for (const line of text.split("\n")) recordOutput(state, name, `[${params.level}] ${line}`)
         const remoteEntry = state.config[name]?.type === "remote" ? yield* auth.get(name) : undefined
         const fields = {
           server: name,
@@ -848,6 +918,7 @@ const layer = (allowUnmanaged: boolean) =>
             clients: {},
             defs: {},
             instructions: {},
+            output: {},
             managedRetry: {},
             jobs: yield* FiberMap.make<string, void, never>(),
           }
@@ -880,7 +951,7 @@ const layer = (allowUnmanaged: boolean) =>
                   yield* FiberMap.run(
                     s.jobs,
                     `managed:${key}`,
-                    create(key, effective).pipe(
+                    create(key, effective, s).pipe(
                       Effect.tap((result) =>
                         Effect.sync(() => {
                           if (!result.mcpClient) {
@@ -911,13 +982,14 @@ const layer = (allowUnmanaged: boolean) =>
                         }),
                       ),
                       Effect.andThen(events.publish(ToolsChanged, { server: key })),
+                      Effect.andThen(observeManaged(s, key)),
                     ),
                     { startImmediately: true },
                   )
                   return
                 }
 
-                const result = yield* create(key, effective)
+                const result = yield* create(key, effective, s)
                 s.status[key] = result.status
                 if (result.mcpClient) {
                   if (
@@ -983,6 +1055,41 @@ const layer = (allowUnmanaged: boolean) =>
         return Effect.tryPromise(() => client.close()).pipe(Effect.ignore, Effect.andThen(closeNetwork))
       }
 
+      /**
+       * Persist the aggregated runtime state of a managed MCP's extension so the
+       * Extensions UI reflects post-reconcile transitions — `extension.list` has
+       * no instance context and cannot read this per-directory state directly.
+       */
+      const observeManaged = Effect.fnUntraced(
+        function* (s: State, name: string) {
+          const definition = McpIntegration.definition(name)
+          if (!definition) return
+          const manifest = McpIntegration.contribution(definition.id).manifest
+          const desired = yield* extensions.desired(manifest.id)
+          if (!desired?.enabled) return
+          const observed = ExtensionObservation.runtimeObservation(
+            manifest.contributions.flatMap((contribution) =>
+              contribution.type === "mcp" ? [s.status[contribution.id]] : [],
+            ),
+          )
+          const secrets = Object.values(McpRuntime.secretsFor(s.config[name] ?? {}))
+          const log =
+            observed.status === "failed"
+              ? (s.output[name] ?? [])
+                  .slice(-25)
+                  .map((line) => McpRuntime.redactDiagnostic(line, secrets))
+              : undefined
+          yield* ExtensionObservation.write(manifest.id, {
+            revision: desired.revision,
+            status: observed.status,
+            ...(observed.detail ? { detail: observed.detail } : {}),
+            ...(log?.length ? { log } : {}),
+          }).pipe(Effect.provideService(Storage.Service, storage))
+        },
+        // Best-effort UI bookkeeping — never break a connect/crash path.
+        Effect.catchCause((cause) => Effect.logWarning("MCP extension observation write failed", { cause })),
+      )
+
       const storeClient = Effect.fnUntraced(function* (
         s: State,
         name: string,
@@ -1008,6 +1115,7 @@ const layer = (allowUnmanaged: boolean) =>
         // `tools/list_changed` does. Consumers that cache a listing (the V2 tool registry)
         // only re-read on this event, so it has to cover both.
         yield* events.publish(ToolsChanged, { server: name }).pipe(Effect.ignore)
+        yield* observeManaged(s, name)
         return s.status[name]
       })
 
@@ -1053,7 +1161,7 @@ const layer = (allowUnmanaged: boolean) =>
               yield* FiberMap.run(
                 s.jobs,
                 `managed:${definition.id}`,
-                create(definition.id, entry).pipe(
+                create(definition.id, entry, s).pipe(
                   Effect.flatMap((result) =>
                     Effect.gen(function* () {
                       if (!(yield* extensions.enabled(manifest.id))) {
@@ -1064,6 +1172,7 @@ const layer = (allowUnmanaged: boolean) =>
                       if (!result.mcpClient) {
                         s.status[definition.id] = result.status
                         yield* events.publish(ToolsChanged, { server: definition.id }).pipe(Effect.ignore)
+                        yield* observeManaged(s, definition.id)
                         return
                       }
                       yield* storeClient(
@@ -1096,6 +1205,12 @@ const layer = (allowUnmanaged: boolean) =>
         }
 
         return result
+      })
+
+      const log = Effect.fn("MCP.log")(function* (name: string) {
+        const s = yield* InstanceState.get(state)
+        const secrets = Object.values(McpRuntime.secretsFor(s.config[name] ?? {}))
+        return (s.output[name] ?? []).map((line) => McpRuntime.redactDiagnostic(line, secrets))
       })
 
       const clients = Effect.fn("MCP.clients")(function* () {
@@ -1143,11 +1258,12 @@ const layer = (allowUnmanaged: boolean) =>
 
       const createAndStore = Effect.fn("MCP.createAndStore")(function* (name: string, mcp: McpConfig.Info) {
         const s = yield* InstanceState.get(state)
-        const result = yield* create(name, mcp)
+        const result = yield* create(name, mcp, s)
 
         s.status[name] = result.status
         if (!result.mcpClient) {
           yield* events.publish(ToolsChanged, { server: name }).pipe(Effect.ignore)
+          yield* observeManaged(s, name)
           return result.status
         }
 
@@ -1179,7 +1295,7 @@ const layer = (allowUnmanaged: boolean) =>
           instructions: s.instructions[name],
         }
         s.config[name] = effective
-        const created = yield* create(name, effective)
+        const created = yield* create(name, effective, s)
         let candidate = created.status
         if (created.mcpClient && created.defs) {
           candidate = yield* storeClient(
@@ -1725,6 +1841,7 @@ const layer = (allowUnmanaged: boolean) =>
 
       return Service.of({
         status,
+        log,
         configuration: getMcpConfig,
         clients,
         instructions,

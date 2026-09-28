@@ -351,7 +351,22 @@ function remoteConfiguration(
 }
 
 export function redactRemoteError(entry: McpConfig.Remote, error: unknown, secrets: readonly string[] = []) {
-  return redactMcpValue(entry, error instanceof Error ? error.message : String(error), secrets) as string
+  return redactMcpValue(entry, remoteErrorMessage(error instanceof Error ? error.message : String(error)), secrets) as string
+}
+
+// The MCP SDK reports transport failures as "SSE error: Non-200 status code
+// (404)" or "Error POSTing to endpoint (HTTP 404): ..." — accurate for a log,
+// useless in the Extensions dialog. Normalize HTTP-status failures into what
+// the server actually did before redaction scrubs header values out of it.
+function remoteErrorMessage(message: string) {
+  const match = /Non-200 status code \((\d{3})\)|\(HTTP (\d{3})\)/.exec(message)
+  const code = Number(match?.[1] ?? match?.[2])
+  if (!code) return message
+  if (code === 401 || code === 403)
+    return `The MCP server rejected the credentials (HTTP ${code}). Check the authentication configured for this server.`
+  if (code === 404)
+    return "The MCP server refused the connection (HTTP 404). Check the server URL and credentials."
+  return `The MCP server responded with HTTP ${code} instead of completing the connection.`
 }
 
 export function redactMcpResult(

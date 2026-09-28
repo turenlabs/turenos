@@ -459,6 +459,28 @@ describe("extensionAction", () => {
     })
   })
 
+  test("offers a reconnect for a failed-but-enabled extension, not just Disable", () => {
+    const failed = { ...mcp, status: "failed" as const }
+    expect(extensionAction(failed, {})).toEqual({
+      label: "Retry",
+      missingRequired: false,
+      payload: { enabled: true, connect: true },
+    })
+    // A draft still takes precedence — saving new values reconciles anyway.
+    const base = mcp.manifest.contributions[0]
+    if (!base || base.type !== "mcp") throw new Error("Expected MCP fixture")
+    const writable = {
+      ...failed,
+      manifest: {
+        ...failed.manifest,
+        contributions: [{ ...base, tools: { allow: ["notion-search", "notion-update"], write: ["notion-update"] } }],
+      },
+    }
+    expect(extensionAction(writable, { "turenlabs/notion:writeTools": "enabled" })?.label).toBe("Save")
+    // Failed while disabled stays an ordinary Enable.
+    expect(extensionAction({ ...mcp, enabled: false, status: "failed" }, {})?.label).toBe("Enable")
+  })
+
   test("allows unavailable or needs-install extensions to be disabled but not enabled", () => {
     for (const status of ["unavailable", "needs-install"] as const) {
       expect(extensionAction({ ...mcp, status }, {})).toEqual({

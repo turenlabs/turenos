@@ -1,6 +1,8 @@
+import path from "node:path"
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { ExtensionCatalog } from "@turenlabs/extensions"
+import { Global } from "@turenlabs/core/global"
 import { McpPackageRuntime } from "../../src/mcp/package-runtime"
 import { McpRuntime } from "../../src/mcp/runtime"
 
@@ -137,5 +139,41 @@ describe("managed MCP packages", () => {
         ),
       ),
     ).toBeUndefined()
+  })
+
+  test("a user's own falcon-mcp install does not own the managed alias", async () => {
+    const item = mcpItem("crowdstrike-falcon")
+    // Someone who already ran falcon-mcp themselves (uvx, pip, Claude Desktop
+    // config) cannot collide with the managed slot: ownership requires the
+    // exact pinned recipe, so their entry triggers "Conflicting MCP runtime
+    // configuration" instead of being silently adopted or overwritten.
+    const handInstalled = { type: "local" as const, command: ["falcon-mcp", "--read-only"], enabled: true }
+    const uvxInstalled = {
+      type: "local" as const,
+      command: ["uvx", "falcon-mcp@0.19.0", "--read-only"],
+      enabled: true,
+      timeout: 120_000,
+    }
+    expect(McpPackageRuntime.owns(item, handInstalled)).toBe(false)
+    expect(McpPackageRuntime.owns(item, uvxInstalled)).toBe(false)
+    expect(McpPackageRuntime.owns(item, undefined)).toBe(true)
+
+    // Ownership is stricter than config shape: the command must name the
+    // managed uv binary itself, not just any recipe-shaped entry.
+    const executable = path.join(Global.Path.bin, `uv-0.12.6${process.platform === "win32" ? ".exe" : ""}`)
+    const managed = await Effect.runPromise(
+      McpPackageRuntime.configuration(
+        item,
+        {},
+        { FALCON_CLIENT_ID: "client", FALCON_CLIENT_SECRET: "secret" },
+        { ensureUv: async () => executable },
+      ),
+    )
+    if (!managed) throw new Error("Falcon package runtime was unavailable")
+    expect(McpPackageRuntime.matches(item, managed)).toBe(true)
+    expect(
+      McpPackageRuntime.owns(item, { ...managed, environment: { FALCON_DEBUG: "1" } }),
+    ).toBe(false)
+    expect(McpPackageRuntime.owns(item, { ...managed, timeout: 30_000 })).toBe(false)
   })
 })
