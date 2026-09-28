@@ -151,6 +151,10 @@ describe("session.llm-native.request", () => {
         ],
       },
       {
+        role: "system",
+        content: "second system from messages",
+      },
+      {
         role: "assistant",
         content: [
           { type: "reasoning", text: "thinking", providerOptions: { openai: { encryptedContent: "secret" } } },
@@ -220,6 +224,7 @@ describe("session.llm-native.request", () => {
     expect(request.system).toEqual([
       { type: "text", text: "agent system" },
       { type: "text", text: "system from messages" },
+      { type: "text", text: "second system from messages" },
     ])
     expect(request.generation).toMatchObject({
       temperature: 0.2,
