@@ -613,22 +613,7 @@ const makeLayer = (load: PotionLoader) =>
           for (let d = 0; d < dim; d++) dot += th.vecs[off + d]! * v[d]!
           scores[i] = dot / qn
         }
-        const idx: number[] = []
-        for (let i = 0; i < scores.length; i++) {
-          const score = scores[i]
-          if (Number.isNaN(score)) {
-            // Keep the original stable-sort behavior when invalid embeddings break score ordering.
-            idx.length = 0
-            idx.push(...[...scores.keys()].sort((a, b) => scores[b] - scores[a]).slice(0, 6))
-            break
-          }
-          let position = 0
-          while (position < idx.length && !(score > scores[idx[position]])) position++
-          if (position === 6) continue
-          idx.splice(position, 0, i)
-          if (idx.length > 6) idx.pop()
-        }
-        for (const i of idx) {
+        for (const i of topSixScoreIndexes(scores)) {
           const s = scores[i]!
           const st = stem(th.vocab[i]!)
           if (s < 0.55 || seen.has(st) || !chunkLex.inverted.has(st)) continue
@@ -785,6 +770,23 @@ const makeLayer = (load: PotionLoader) =>
     })
   }),
   )
+
+function topSixScoreIndexes(scores: Float64Array) {
+  const indexes: number[] = []
+  for (let i = 0; i < scores.length; i++) {
+    const score = scores[i]
+    if (Number.isNaN(score)) {
+      // Match stable-sort behavior because NaN scores do not have a total ordering.
+      return [...scores.keys()].sort((a, b) => scores[b] - scores[a]).slice(0, 6)
+    }
+    let position = 0
+    while (position < indexes.length && !(score > scores[indexes[position]])) position++
+    if (position === 6) continue
+    indexes.splice(position, 0, i)
+    if (indexes.length > 6) indexes.pop()
+  }
+  return indexes
+}
 
 export const layerWith = (load: PotionLoader) => makeLayer(load)
 
