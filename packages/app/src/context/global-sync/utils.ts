@@ -1,4 +1,4 @@
-import type { Agent, Project, ProviderListResponse } from "@turenlabs/sdk/v2/client"
+import type { Agent, ProviderListResponse } from "@turenlabs/sdk/v2/client"
 import { NormalizedProviderListResponse } from "@turenlabs/session-ui/context"
 export { pathKey as directoryKey, type PathKey as DirectoryKey } from "@/utils/path-key"
 
@@ -35,17 +35,5 @@ export function normalizeProviderList(input: ProviderListResponse): NormalizedPr
           ] as const,
       ),
     ),
-  }
-}
-
-export function sanitizeProject(project: Project) {
-  if (!project.icon?.url && !project.icon?.override) return project
-  return {
-    ...project,
-    icon: {
-      ...project.icon,
-      url: undefined,
-      override: undefined,
-    },
   }
 }

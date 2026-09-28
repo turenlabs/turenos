@@ -50,6 +50,9 @@ function workerURL() {
   if (packaged && fs.existsSync(packaged)) return pathToFileURL(packaged)
   const executable = path.join(path.dirname(process.execPath), "ripgrep-wasm-worker.js")
   if (fs.existsSync(executable)) return pathToFileURL(executable)
+  // Unpackaged desktop builds copy the worker into a ripgrep-wasm/ directory beside the bundled chunks.
+  const bundled = new URL("./ripgrep-wasm/ripgrep-wasm-worker.js", import.meta.url)
+  if (bundled.protocol === "file:" && fs.existsSync(bundled)) return bundled
   const extension = import.meta.url.endsWith(".ts") ? "ts" : "js"
   return new URL(`./ripgrep-wasm-worker.${extension}`, import.meta.url)
 }
@@ -62,12 +65,13 @@ const workerFailed = <T extends { status: number; err?: string }>(results: T[]) 
 export function startPool(
   size = Math.max(2, Math.min(10, os.cpus().length || 8)),
   ready: Promise<Api> | Api = instantiate(nodeFs),
+  url: URL = workerURL(),
 ): Pool {
   // Workers stay unref'd while idle so an unused pool never keeps a short-lived
   // CLI process alive; post() refs a worker for the duration of each job —
   // pending promises alone don't hold the event loop open.
   const workers = Array.from({ length: size }, () => {
-    const w = new Worker(workerURL())
+    const w = new Worker(url)
     w.unref?.()
     return w
   })
@@ -75,6 +79,18 @@ export function startPool(
   // One map per worker: an error/exit drains only that worker's jobs — a dead
   // worker must not poison in-flight requests running on healthy siblings.
   const inflight = new Map<Worker, Map<number, (out: any) => void>>()
+  // A worker that already died never answers again, so later jobs must fail
+  // immediately instead of waiting forever for a reply.
+  const dead = new Map<Worker, string>()
+  const failedResult = (id: number, err: string) => ({
+    id,
+    status: -1,
+    err,
+    bytes: new Uint8Array(0),
+    paths: [],
+    counts: [],
+    rflags: 1,
+  })
   for (const w of workers) {
     const jobs = new Map<number, (out: any) => void>()
     inflight.set(w, jobs)
@@ -83,20 +99,21 @@ export function startPool(
       jobs.delete(e.id)
     })
     const drain = (err: string) => {
+      if (!dead.has(w)) dead.set(w, err)
       for (const [id, resolve] of jobs) {
         jobs.delete(id)
-        resolve({ id, status: -1, err, bytes: new Uint8Array(0), paths: [], counts: [], rflags: 1 })
+        resolve(failedResult(id, err))
       }
     }
     w.on("error", (err) => drain(String(err)))
-    w.on("exit", (code) => {
-      if (code !== 0) drain(`worker exited with code ${code}`)
-    })
+    w.on("exit", (code) => drain(`worker exited with code ${code}`))
   }
   let stopped = false
   const post = <T>(w: Worker, msg: object): Promise<T> =>
     new Promise((resolve) => {
       const id = nextId++
+      const err = dead.get(w)
+      if (err !== undefined) return resolve(failedResult(id, err) as T)
       inflight.get(w)!.set(id, (out: any) => {
         w.unref?.()
         resolve(out)

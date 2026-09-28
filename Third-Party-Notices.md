@@ -107,9 +107,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@chevrotain/utils` | `11.0.3` | Apache-2.0 | [source](git://github.com/Chevrotain/chevrotain.git) |
 | `@clack/core` | `1.0.0-alpha.1` | MIT | [source](git+https://github.com/bombshell-dev/clack.git) |
 | `@clack/prompts` | `1.0.0-alpha.1` | MIT | [source](git+https://github.com/bombshell-dev/clack.git) |
-| `@corvu/dialog` | `0.2.4` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
-| `@corvu/drawer` | `0.2.4` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
-| `@corvu/utils` | `0.3.2` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `@corvu/utils` | `0.4.2` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `@dnd-kit/abstract` | `0.5.0` | MIT | [source](https://github.com/clauderic/dnd-kit) |
 | `@dnd-kit/collision` | `0.5.0` | MIT | [source](https://github.com/clauderic/dnd-kit) |
@@ -313,7 +310,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@solid-primitives/keyed` | `1.5.3` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
 | `@solid-primitives/map` | `0.4.13` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
 | `@solid-primitives/media` | `2.3.3` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
-| `@solid-primitives/memo` | `1.5.0` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
 | `@solid-primitives/props` | `3.2.3` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
 | `@solid-primitives/refs` | `1.1.3` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
 | `@solid-primitives/resize-observer` | `2.1.3` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
@@ -901,14 +897,11 @@ Each row identifies a resolved package and version, its declared license, and it
 | `socket.io-parser` | `4.2.7` | MIT | [source](git+https://github.com/socketio/socket.io.git) |
 | `socks` | `2.8.9` | MIT | [source](git+https://github.com/JoshGlazebrook/socks.git) |
 | `socks-proxy-agent` | `8.0.5` | MIT | [source](https://github.com/TooTallNate/proxy-agents.git) |
-| `solid-dismissible` | `0.1.1` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
-| `solid-focus-trap` | `0.1.9` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `solid-js` | `1.9.15` | MIT | [source](https://github.com/solidjs/solid) |
 | `solid-list` | `0.3.0` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `solid-presence` | `0.1.8` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `solid-presence` | `0.2.0` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `solid-prevent-scroll` | `0.1.10` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
-| `solid-transition-size` | `0.1.4` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `sonic-boom` | `4.2.1` | MIT | [source](git+https://github.com/pinojs/sonic-boom.git) |
 | `sort-keys` | `1.1.2` | MIT | [source](sindresorhus/sort-keys) |
 | `sort-keys-length` | `1.0.1` | MIT | [source](kevva/sort-keys-length) |
@@ -1026,6 +1019,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `zustand` | `4.5.7` | MIT | [source](git+https://github.com/pmndrs/zustand.git) |
 | `zwitch` | `2.0.4` | MIT | [source](wooorm/zwitch) |
 
-Inventory total: **1004 resolved packages**.
+Inventory total: **997 resolved packages**.
 
 This file is regenerated during the desktop prebuild. Do not edit generated inventory content by hand.

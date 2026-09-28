@@ -238,15 +238,6 @@ export const configuration = Effect.fn("McpIntegration.configuration")(function*
   }
 })
 
-export function persistedConfiguration(id: ID, entry: McpConfig.Info, enabled: boolean): McpConfig.Info {
-  if (entry.type === "remote") return { ...entry, enabled }
-  if (McpPackageRuntime.managedPackage(contribution(id).item)) {
-    return McpPackageRuntime.persisted(contribution(id).item, entry, enabled)
-  }
-  if (id !== "onepassword") throw new TypeError(`${id} does not support a local MCP configuration`)
-  return { type: "local", command: [entry.command[0] ?? "1password-mcp"], enabled }
-}
-
 export function matches(id: ID, entry: McpConfig.Info | undefined, onePasswordCommand?: string) {
   if (!ownsConfiguration(id, entry)) return false
   if (!entry) return true

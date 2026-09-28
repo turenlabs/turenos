@@ -23,26 +23,8 @@ export const testInstanceStoreLayer = LayerNode.compile(InstanceStore.node, [
   [InstanceStore.bootstrapNode, noopBootstrap],
 ])
 
-export async function provideTestInstance<R>(input: {
-  directory: string
-  init?: Effect.Effect<void>
-  fn: (ctx: InstanceContext) => R
-}) {
-  const ctx = await InstanceRuntime.load({ directory: input.directory })
-  try {
-    if (input.init) await Effect.runPromise(input.init.pipe(Effect.provideService(InstanceRef, ctx)))
-    return await input.fn(ctx)
-  } finally {
-    await InstanceRuntime.disposeInstance(ctx)
-  }
-}
-
 export async function withTestInstance<R>(input: { directory: string; fn: (ctx: InstanceContext) => R }) {
   return input.fn(await InstanceRuntime.load({ directory: input.directory }))
-}
-
-export async function reloadTestInstance(input: { directory: string }) {
-  return InstanceRuntime.reloadInstance(input)
 }
 
 export async function disposeAllInstances() {

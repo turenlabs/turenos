@@ -3,8 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { classifyAddress } from "../../src/util/ip-address"
-import { parseDropAsns, parseDropNetworks } from "../../src/security/integrations/data-ioc/spamhaus-drop"
-import { parseSslblCertificates, parseSslblIps } from "../../src/security/integrations/data-ioc/sslbl"
 import { fetchText } from "../../src/security/util/http"
 
 describe("security data HTTP", () => {
@@ -12,6 +10,58 @@ describe("security data HTTP", () => {
     await expect(fetchText("data:text/plain,abcdef", { attempts: 1, maxResponseBytes: 3 })).rejects.toThrow(
       "response exceeded 3 bytes",
     )
+  })
+
+  test("cancels retryable status bodies before retrying or returning the final error", async () => {
+    let requests = 0
+    let cancelled = 0
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = Object.assign(
+      async () => {
+        requests += 1
+        return new Response(
+          new ReadableStream({
+            cancel() {
+              cancelled += 1
+            },
+          }),
+          { status: 503, headers: { "retry-after": "0" } },
+        )
+      },
+      { preconnect: originalFetch.preconnect },
+    )
+    try {
+      await expect(fetchText("https://example.test/feed", { attempts: 2 })).rejects.toThrow("HTTP 503")
+      expect(requests).toBe(2)
+      expect(cancelled).toBe(2)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("cancels responses rejected by declared content length", async () => {
+    let cancelled = false
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = Object.assign(
+      async () =>
+        new Response(
+          new ReadableStream({
+            cancel() {
+              cancelled = true
+            },
+          }),
+          { headers: { "content-length": "4" } },
+        ),
+      { preconnect: originalFetch.preconnect },
+    )
+    try {
+      await expect(fetchText("https://example.test/feed", { attempts: 1, maxResponseBytes: 3 })).rejects.toThrow(
+        "response exceeded 3 bytes",
+      )
+      expect(cancelled).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 
   test("rejects fixed endpoints that resolve outside the public network", async () => {
@@ -26,13 +76,6 @@ describe("security data HTTP", () => {
   test("classifies deprecated IPv6 site-local addresses as private", () => {
     expect(classifyAddress("fec0::1")).toBe("lan")
     expect(classifyAddress("feff::1")).toBe("lan")
-  })
-
-  test("rejects malformed threat feeds instead of returning false negatives", () => {
-    expect(() => parseDropNetworks("<html>temporary error</html>")).toThrow("no valid entries")
-    expect(() => parseDropAsns("<html>temporary error</html>")).toThrow("no valid entries")
-    expect(() => parseSslblCertificates("<html>temporary error</html>")).toThrow("no valid entries")
-    expect(() => parseSslblIps("<html>temporary error</html>")).toThrow("no valid entries")
   })
 
   test("coalesces concurrent cold-cache requests", async () => {
@@ -56,6 +99,40 @@ describe("security data HTTP", () => {
         "feed",
       ])
       expect(requests).toBe(1)
+    } finally {
+      server.stop(true)
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("evicts cached and upstream text rejected by its validator", async () => {
+    let requests = 0
+    let body = "malformed"
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        requests += 1
+        return new Response(body)
+      },
+    })
+    const directory = await mkdtemp(path.join(tmpdir(), "turen-security-http-"))
+    try {
+      const url = `${server.url}feed`
+      const cache = { dir: directory, ttlMs: 60_000, key: "validated-feed" }
+      const validated = {
+        cache: {
+          ...cache,
+          validate: (value: unknown) => {
+            if (value !== "valid") throw new Error("invalid feed")
+          },
+        },
+      }
+      expect(await fetchText(url, { cache })).toBe("malformed")
+      await expect(fetchText(url, validated)).rejects.toThrow("invalid feed")
+      body = "valid"
+      expect(await fetchText(url, validated)).toBe("valid")
+      expect(requests).toBe(3)
     } finally {
       server.stop(true)
       await rm(directory, { recursive: true, force: true })

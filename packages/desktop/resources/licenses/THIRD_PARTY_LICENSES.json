@@ -775,33 +775,6 @@
       ]
     },
     {
-      "name": "@corvu/dialog",
-      "version": "0.2.4",
-      "license": "MIT",
-      "source": "git+https://github.com/corvudev/corvu.git",
-      "licenseFiles": [
-        "LICENSE"
-      ]
-    },
-    {
-      "name": "@corvu/drawer",
-      "version": "0.2.4",
-      "license": "MIT",
-      "source": "git+https://github.com/corvudev/corvu.git",
-      "licenseFiles": [
-        "LICENSE"
-      ]
-    },
-    {
-      "name": "@corvu/utils",
-      "version": "0.3.2",
-      "license": "MIT",
-      "source": "git+https://github.com/corvudev/corvu.git",
-      "licenseFiles": [
-        "LICENSE"
-      ]
-    },
-    {
       "name": "@corvu/utils",
       "version": "0.4.2",
       "license": "MIT",
@@ -2530,15 +2503,6 @@
     {
       "name": "@solid-primitives/media",
       "version": "2.3.3",
-      "license": "MIT",
-      "source": "git+https://github.com/solidjs-community/solid-primitives.git",
-      "licenseFiles": [
-        "LICENSE"
-      ]
-    },
-    {
-      "name": "@solid-primitives/memo",
-      "version": "1.5.0",
       "license": "MIT",
       "source": "git+https://github.com/solidjs-community/solid-primitives.git",
       "licenseFiles": [
@@ -7811,24 +7775,6 @@
       ]
     },
     {
-      "name": "solid-dismissible",
-      "version": "0.1.1",
-      "license": "MIT",
-      "source": "git+https://github.com/corvudev/corvu.git",
-      "licenseFiles": [
-        "LICENSE"
-      ]
-    },
-    {
-      "name": "solid-focus-trap",
-      "version": "0.1.9",
-      "license": "MIT",
-      "source": "git+https://github.com/corvudev/corvu.git",
-      "licenseFiles": [
-        "LICENSE"
-      ]
-    },
-    {
       "name": "solid-js",
       "version": "1.9.15",
       "license": "MIT",
@@ -7867,15 +7813,6 @@
     {
       "name": "solid-prevent-scroll",
       "version": "0.1.10",
-      "license": "MIT",
-      "source": "git+https://github.com/corvudev/corvu.git",
-      "licenseFiles": [
-        "LICENSE"
-      ]
-    },
-    {
-      "name": "solid-transition-size",
-      "version": "0.1.4",
       "license": "MIT",
       "source": "git+https://github.com/corvudev/corvu.git",
       "licenseFiles": [

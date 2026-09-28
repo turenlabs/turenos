@@ -3,9 +3,11 @@ import { Effect } from "effect"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Ripgrep } from "@turenlabs/core/ripgrep"
 import { RipgrepWasm } from "@turenlabs/core/ripgrep/wasm"
+import { startPool, WASM_FLAGS } from "@turenlabs/core/ripgrep/wasm/runtime"
 
 // Force the spawned-rg path for the comparison service so both implementations
 // run side by side.
@@ -226,6 +228,24 @@ describe("ripgrep wasm fallback", () => {
       expect((await build()).enabled).toBe(false)
     } finally {
       delete process.env.FORGE_RIPGREP_WASM_ASSET
+    }
+  })
+
+  test("a worker that dies before its first job fails the job instead of hanging", async () => {
+    const pool = startPool(2, undefined, pathToFileURL(path.join(fixture, "missing-worker.js")))
+    // Let every worker fail to load before any job is posted.
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    try {
+      const outcome = await Promise.race([
+        pool.collect(fixture, [], WASM_FLAGS.hidden, 100, undefined).then(
+          () => "resolved",
+          (error: unknown) => String(error),
+        ),
+        new Promise<string>((resolve) => setTimeout(() => resolve("hung"), 5_000)),
+      ])
+      expect(outcome).toContain("ripgrep wasm worker failed")
+    } finally {
+      await pool.stop()
     }
   })
 })
