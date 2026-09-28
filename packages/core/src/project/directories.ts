@@ -4,6 +4,7 @@ import { and, asc, desc, eq, isNotNull, isNull, ne, or } from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
+import { FSUtil } from "../fs-util"
 import { AbsolutePath, optional } from "../schema"
 import { ProjectSchema } from "./schema"
 import { ProjectDirectoryTable } from "./sql"
@@ -90,13 +91,27 @@ const layer = Layer.effect(
     })
 
     const remove = Effect.fn("ProjectDirectories.remove")(function* (input: RemoveInput, tx?: Transaction) {
+      const hit = yield* (tx ?? db)
+        .delete(ProjectDirectoryTable)
+        .where(
+          and(
+            eq(ProjectDirectoryTable.project_id, input.projectID),
+            eq(ProjectDirectoryTable.directory, input.directory),
+          ),
+        )
+        .returning({ directory: ProjectDirectoryTable.directory })
+        .get()
+        .pipe(Effect.orDie)
+      if (hit || tx || process.platform !== "win32") return hit !== undefined
+      const match = yield* matchRow(input.projectID, (value) => FSUtil.samePath(value, input.directory))
+      if (!match) return false
       return (
-        (yield* (tx ?? db)
+        (yield* db
           .delete(ProjectDirectoryTable)
           .where(
             and(
               eq(ProjectDirectoryTable.project_id, input.projectID),
-              eq(ProjectDirectoryTable.directory, input.directory),
+              eq(ProjectDirectoryTable.directory, match.directory),
             ),
           )
           .returning({ directory: ProjectDirectoryTable.directory })
@@ -128,28 +143,59 @@ const layer = Layer.effect(
         .orderBy(desc(ProjectDirectoryTable.time_created), asc(ProjectDirectoryTable.project_id))
         .get()
         .pipe(Effect.orDie)
-      return row
-        ? { projectID: row.projectID, directory: row.directory, strategy: row.strategy ?? undefined }
+      if (row || process.platform !== "win32")
+        return row
+          ? { projectID: row.projectID, directory: row.directory, strategy: row.strategy ?? undefined }
+          : undefined
+      // A miss can still be the same directory under a different Windows
+      // spelling (letter case or NT prefix) stored before canonicalization.
+      const rows = yield* db
+        .select({
+          projectID: ProjectDirectoryTable.project_id,
+          directory: ProjectDirectoryTable.directory,
+          strategy: ProjectDirectoryTable.strategy,
+          created: ProjectDirectoryTable.time_created,
+        })
+        .from(ProjectDirectoryTable)
+        .all()
+        .pipe(Effect.orDie)
+      const match = rows
+        .filter((item) => FSUtil.samePath(item.directory, directory))
+        .sort((a, b) => b.created - a.created || a.projectID.localeCompare(b.projectID))[0]
+      return match
+        ? { projectID: match.projectID, directory: match.directory, strategy: match.strategy ?? undefined }
         : undefined
+    })
+
+    // A directory lookup can miss on Windows when the row was stored under a
+    // different spelling of the same path (letter case or NT prefix).
+    const matchRow = Effect.fnUntraced(function* (projectID: ProjectSchema.ID, where: (value: string) => boolean) {
+      const rows = yield* db
+        .select({ directory: ProjectDirectoryTable.directory, strategy: ProjectDirectoryTable.strategy })
+        .from(ProjectDirectoryTable)
+        .where(eq(ProjectDirectoryTable.project_id, projectID))
+        .all()
+        .pipe(Effect.orDie)
+      return rows.find((row) => where(row.directory))
     })
 
     const contains = Effect.fn("ProjectDirectories.contains")(function* (input: {
       projectID: ProjectSchema.ID
       directory: AbsolutePath
     }) {
-      return (
-        (yield* db
-          .select({ directory: ProjectDirectoryTable.directory })
-          .from(ProjectDirectoryTable)
-          .where(
-            and(
-              eq(ProjectDirectoryTable.project_id, input.projectID),
-              eq(ProjectDirectoryTable.directory, input.directory),
-            ),
-          )
-          .get()
-          .pipe(Effect.orDie)) !== undefined
-      )
+      const hit = yield* db
+        .select({ directory: ProjectDirectoryTable.directory })
+        .from(ProjectDirectoryTable)
+        .where(
+          and(
+            eq(ProjectDirectoryTable.project_id, input.projectID),
+            eq(ProjectDirectoryTable.directory, input.directory),
+          ),
+        )
+        .get()
+        .pipe(Effect.orDie)
+      if (hit || process.platform !== "win32") return hit !== undefined
+      return (yield* matchRow(input.projectID, (value) => FSUtil.samePath(value, input.directory))) !== undefined
     })
 
     const get = Effect.fn("ProjectDirectories.get")(function* (input: {
@@ -167,7 +213,12 @@ const layer = Layer.effect(
         )
         .get()
         .pipe(Effect.orDie)
-      return row ? { directory: row.directory, strategy: row.strategy ?? undefined } : undefined
+      const match =
+        row ??
+        (process.platform === "win32"
+          ? yield* matchRow(input.projectID, (value) => FSUtil.samePath(value, input.directory))
+          : undefined)
+      return match ? { directory: match.directory, strategy: match.strategy ?? undefined } : undefined
     })
 
     return Service.of({

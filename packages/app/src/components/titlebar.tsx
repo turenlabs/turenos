@@ -13,6 +13,7 @@ import { KeybindV2 } from "@turenlabs/ui/v2/keybind-v2"
 import { TooltipV2 } from "@turenlabs/ui/v2/tooltip-v2"
 import { sessionInteractionTrace } from "@/utils/session-interaction-trace"
 import { startupTrace } from "@/utils/startup-trace"
+import { pathKey } from "@/utils/path-key"
 
 import { LayoutRoute, useLayout } from "@/context/layout"
 import { usePlatform } from "@/context/platform"
@@ -365,7 +366,10 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
                   ? global
                       .ensureServerCtx(conn)
                       .projects.list()
-                      .find((item) => item.worktree === selection.directory)
+                      .find(
+                        (item) =>
+                          selection.directory !== undefined && pathKey(item.worktree) === pathKey(selection.directory),
+                      )
                   : undefined
                 if (conn && project) {
                   return { server: ServerConnection.key(conn), directory: project.worktree }

@@ -27,6 +27,7 @@ import { Worktree as WorktreeState } from "@/utils/worktree"
 import { buildRequestParts } from "./build-request-parts"
 import { setCursorPosition } from "./editor-dom"
 import { ScopedKey, type ServerScope } from "@/utils/server-scope"
+import { pathKey } from "@/utils/path-key"
 import { usePlatform } from "@/context/platform"
 import { promptAdmissionFor, timedRequest, type createPromptAdmission } from "./prompt-admission"
 import { createPromptSubmissionState } from "./submission-state"
@@ -544,7 +545,9 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       .list()
       .then(responseData)
       .then((items) =>
-        items.filter((item) => item.status === "active" && item.location.directory === sdk().directory),
+        items.filter(
+          (item) => item.status === "active" && pathKey(item.location.directory) === pathKey(sdk().directory),
+        ),
       )
       .catch((err: unknown) => {
         showToast({ title: "Could not stop loop", description: errorMessage(err) })
@@ -867,7 +870,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     }
     const worktreeSelection = input.newSessionWorktree?.() || "main"
 
-    let sessionDirectory = projectDirectory
+    let sessionDirectory: string = projectDirectory
     let client = submissionSDK.client
 
     if (isNewSession) {
@@ -954,7 +957,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           })
           return undefined
         })
-      if (created && created.directory !== sessionDirectory) {
+      if (created && pathKey(created.directory) !== pathKey(sessionDirectory)) {
         showToast({
           title: language.t("prompt.toast.sessionCreateFailed.title"),
           description: "The existing Session belongs to a different project. Your draft has been preserved.",

@@ -33,6 +33,7 @@ import { useSurfaceCommands } from "@/pages/session/use-surface-commands"
 import { useProviders } from "@/hooks/use-providers"
 import { useSettingsCommand, useSettingsDialog } from "@/components/settings-dialog"
 import { Persist, persisted } from "@/utils/persist"
+import { pathKey } from "@/utils/path-key"
 import { showToast } from "@/utils/toast"
 import createPresence from "solid-presence"
 import { useLocal } from "@/context/local"
@@ -121,7 +122,7 @@ export default function NewSessionPage() {
     if (!showWorkspaceBar()) return "main"
     if (store.worktree) return store.worktree
     const project = sync().project
-    if (project && sdk().directory !== project.worktree) return sdk().directory
+    if (project && pathKey(sdk().directory) !== pathKey(project.worktree)) return sdk().directory
     return "main"
   })
   const projectRoot = createMemo(() => sync().project?.worktree ?? sdk().directory)
@@ -212,7 +213,7 @@ export default function NewSessionPage() {
                             onChange={(value) =>
                               setStore(
                                 "worktree",
-                                value === "main" && sync().project?.worktree !== sdk().directory
+                                value === "main" && pathKey(sync().project?.worktree ?? "") !== pathKey(sdk().directory)
                                   ? sync().project?.worktree
                                   : value,
                               )

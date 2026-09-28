@@ -36,8 +36,8 @@ describe("normalizeAgentList", () => {
 
 describe("directoryKey", () => {
   test("normalizes slashes", () => {
-    expect(String(directoryKey("C:\\Repos\\sst\\opencode"))).toBe("C:/Repos/sst/opencode")
-    expect(String(directoryKey("C:/Repos/sst/opencode"))).toBe("C:/Repos/sst/opencode")
+    expect(String(directoryKey("C:\\Repos\\sst\\opencode"))).toBe("c:/repos/sst/opencode")
+    expect(String(directoryKey("C:/Repos/sst/opencode"))).toBe("c:/repos/sst/opencode")
   })
 
   test("preserves backslashes in posix paths", () => {
@@ -45,8 +45,13 @@ describe("directoryKey", () => {
   })
 
   test("trims trailing slashes without breaking roots", () => {
-    expect(String(directoryKey("C:/Repos/sst/opencode/"))).toBe("C:/Repos/sst/opencode")
-    expect(String(directoryKey("C:/"))).toBe("C:/")
+    expect(String(directoryKey("C:/Repos/sst/opencode/"))).toBe("c:/repos/sst/opencode")
+    expect(String(directoryKey("C:/"))).toBe("c:/")
     expect(String(directoryKey("/"))).toBe("/")
+  })
+
+  test("strips NT extended-length prefixes", () => {
+    expect(String(directoryKey("\\\\?\\C:\\Repos\\sst"))).toBe("c:/repos/sst")
+    expect(String(directoryKey("\\\\?\\UNC\\server\\share"))).toBe("//server/share")
   })
 })

@@ -1,7 +1,7 @@
 import { ScopedKey, type ServerScope } from "@/utils/server-scope"
+import { pathKey } from "@/utils/path-key"
 
-const normalize = (directory: string) => directory.replace(/[\\/]+$/, "")
-const key = (scope: ServerScope, directory: string) => ScopedKey.from(scope, normalize(directory))
+const key = (scope: ServerScope, directory: string) => ScopedKey.from(scope, pathKey(directory))
 
 type State =
   | {

@@ -1,5 +1,5 @@
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, inArray, sql } from "drizzle-orm"
 import { Database } from "@turenlabs/core/database/database"
 import { ProjectDirectoryTable, ProjectTable } from "@turenlabs/core/project/sql"
 import { ProjectDirectories } from "@turenlabs/core/project/directories"
@@ -245,8 +245,8 @@ const layer = Layer.effect(
       }
       if (
         projectID !== ProjectV2.ID.global &&
-        data.directory !== result.worktree &&
-        !result.sandboxes.includes(data.directory)
+        !FSUtil.samePath(data.directory, result.worktree) &&
+        !result.sandboxes.some((sandbox) => FSUtil.samePath(sandbox, data.directory))
       )
         result.sandboxes.push(data.directory)
       result.sandboxes = yield* Effect.forEach(
@@ -294,12 +294,33 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
 
       if (projectID !== ProjectV2.ID.global) {
-        yield* db
-          .update(SessionTable)
-          .set({ project_id: projectID })
-          .where(and(eq(SessionTable.project_id, ProjectV2.ID.global), eq(SessionTable.directory, data.directory)))
-          .run()
-          .pipe(Effect.orDie)
+        if (process.platform === "win32") {
+          // Sessions recorded under an older spelling of this directory (letter
+          // case or NT prefix) would miss a plain equality update.
+          const candidates = yield* db
+            .select({ id: SessionTable.id, directory: SessionTable.directory })
+            .from(SessionTable)
+            .where(eq(SessionTable.project_id, ProjectV2.ID.global))
+            .all()
+            .pipe(Effect.orDie)
+          const ids = candidates
+            .filter((candidate) => FSUtil.samePath(candidate.directory, data.directory))
+            .map((candidate) => candidate.id)
+          if (ids.length > 0)
+            yield* db
+              .update(SessionTable)
+              .set({ project_id: projectID })
+              .where(inArray(SessionTable.id, ids))
+              .run()
+              .pipe(Effect.orDie)
+        } else {
+          yield* db
+            .update(SessionTable)
+            .set({ project_id: projectID })
+            .where(and(eq(SessionTable.project_id, ProjectV2.ID.global), eq(SessionTable.directory, data.directory)))
+            .run()
+            .pipe(Effect.orDie)
+        }
       }
 
       yield* saveProjectDirectory({

@@ -6,6 +6,7 @@ import type { createServerSdkContext } from "./server-sdk"
 import type { createServerSyncContextInner } from "./server-sync"
 import type { State } from "./global-sync/types"
 import { Session as SessionSchema } from "@turenlabs/schema/session"
+import { pathKey } from "@/utils/path-key"
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 const sessionFields = new Set([
@@ -46,7 +47,7 @@ export const createDirSyncContext = (
 
   const index = (sessionID: string) => {
     const session = serverSync.session.get(sessionID)
-    if (!session || session.directory !== directory) return
+    if (!session || pathKey(session.directory) !== pathKey(directory)) return
     const [store, setStore] = current()
     const result = Binary.search(store.session, session.id, (item) => item.id)
     if (result.found) {
@@ -80,7 +81,7 @@ export const createDirSyncContext = (
       },
       get(sessionID: string) {
         const session = serverSync.session.get(sessionID)
-        if (session?.directory === directory) return session
+        if (session && pathKey(session.directory) === pathKey(directory)) return session
       },
       optimistic: {
         add(input: { directory?: string; sessionID: string; message: Message; parts: Part[] }) {

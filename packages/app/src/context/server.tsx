@@ -59,13 +59,14 @@ export function migrateCanonicalLocalServerState(value: unknown, canonicalLocalS
       const local = Array.isArray(projects.local) ? projects.local : []
       const worktrees = new Set(
         local.flatMap((project) =>
-          isRecord(project) && typeof project.worktree === "string" ? [project.worktree] : [],
+          isRecord(project) && typeof project.worktree === "string" ? [pathKey(project.worktree)] : [],
         ),
       )
       const migrated = previousProjects.filter((project) => {
         if (!isRecord(project) || typeof project.worktree !== "string") return true
-        if (worktrees.has(project.worktree)) return false
-        worktrees.add(project.worktree)
+        const key = pathKey(project.worktree)
+        if (worktrees.has(key)) return false
+        worktrees.add(key)
         return true
       })
       const nextProjects: Record<string, unknown> = { ...projects, local: [...local, ...migrated] }
@@ -117,11 +118,16 @@ export function createServerProjects<T extends ServerProjectState>(input: {
   const setStore = input.setStore as unknown as SetStoreFunction<ServerProjectState>
   const current = () => input.store.projects[input.scope()] ?? []
   const currentClosed = () => input.store.recentlyClosed?.[input.scope()] ?? []
+  const indexOf = (directory: string) => {
+    const key = pathKey(directory)
+    return current().findIndex((project) => pathKey(project.worktree) === key)
+  }
   const remove = (directory: string) => {
+    const key = pathKey(directory)
     setStore(
       "projects",
       input.scope(),
-      current().filter((project) => project.worktree !== directory),
+      current().filter((project) => pathKey(project.worktree) !== key),
     )
   }
   return {
@@ -139,7 +145,7 @@ export function createServerProjects<T extends ServerProjectState>(input: {
           closed.filter((worktree) => pathKey(worktree) !== key),
         )
       }
-      if (current().some((project) => project.worktree === directory)) return
+      if (indexOf(directory) !== -1) return
       setStore("projects", scope, [{ worktree: directory, expanded: true }, ...current()])
     },
     // User-initiated close: removes the project and records it in recently closed.
@@ -154,15 +160,15 @@ export function createServerProjects<T extends ServerProjectState>(input: {
       setStore("recentlyClosed", input.scope(), closed)
     },
     expand(directory: string) {
-      const index = current().findIndex((project) => project.worktree === directory)
+      const index = indexOf(directory)
       if (index !== -1) setStore("projects", input.scope(), index, "expanded", true)
     },
     collapse(directory: string) {
-      const index = current().findIndex((project) => project.worktree === directory)
+      const index = indexOf(directory)
       if (index !== -1) setStore("projects", input.scope(), index, "expanded", false)
     },
     move(directory: string, toIndex: number) {
-      const fromIndex = current().findIndex((project) => project.worktree === directory)
+      const fromIndex = indexOf(directory)
       if (fromIndex === -1 || fromIndex === toIndex) return
       const next = [...current()]
       const [item] = next.splice(fromIndex, 1)
@@ -173,7 +179,7 @@ export function createServerProjects<T extends ServerProjectState>(input: {
       return input.store.lastProject[input.scope()]
     },
     touch(directory: string) {
-      const index = current().findIndex((project) => project.worktree === directory)
+      const index = indexOf(directory)
       batch(() => {
         setStore("lastProject", input.scope(), directory)
         if (index <= 0) return

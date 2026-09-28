@@ -14,6 +14,7 @@ import { getAvatarColors, type LocalProject, useLayout } from "@/context/layout"
 import { useNotification } from "@/context/notification"
 import { usePermission } from "@/context/permission"
 import { messageAgentColor } from "@/utils/agent"
+import { pathKey } from "@/utils/path-key"
 import { sessionTitle } from "@/utils/session-title"
 import { sessionPermissionRequest } from "../session/composer/session-request-tree"
 import { childSessionOnPath, getProjectAvatarSource, hasProjectPermissions } from "./helpers"
@@ -35,7 +36,7 @@ export const ProjectIcon = (props: {
   const hasPermissions = createMemo(() =>
     dirs().some((directory) => {
       return hasProjectPermissions(serverSync().session.data.permission, (item) => {
-        if (serverSync().session.get(item.sessionID)?.directory !== directory) return false
+        if (pathKey(serverSync().session.get(item.sessionID)?.directory ?? "") !== pathKey(directory)) return false
         return !permission.autoResponds(item, directory)
       })
     }),
@@ -180,13 +181,14 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
 
   const warm = (span: number, priority: "high" | "low") => {
     const nav = props.navList?.()
-    const list = nav?.some((item) => item.id === props.session.id && item.directory === props.session.directory)
-      ? nav
-      : props.list
+    const sessionKey = pathKey(props.session.directory)
+    const matches = (item: { id: string; directory: string }) =>
+      item.id === props.session.id && pathKey(item.directory) === sessionKey
+    const list = nav?.some(matches) ? nav : props.list
 
     props.prefetchSession(props.session, priority)
 
-    const idx = list.findIndex((item) => item.id === props.session.id && item.directory === props.session.directory)
+    const idx = list.findIndex(matches)
     if (idx === -1) return
 
     for (let step = 1; step <= span; step++) {

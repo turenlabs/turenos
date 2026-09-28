@@ -10,6 +10,7 @@ import { useLayout, type LocalProject } from "@/context/layout"
 import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
 import { useNotification } from "@/context/notification"
+import { pathKey } from "@/utils/path-key"
 import { ProjectIcon, SessionItem, type SessionItemProps } from "./sidebar-items"
 import { displayName, sortedRootSessions } from "./helpers"
 
@@ -296,7 +297,9 @@ export const SortableProject = (props: {
   const label = (directory: string) => {
     const [data] = serverSync().child(directory, { bootstrap: false })
     const kind =
-      directory === props.project.worktree ? language.t("workspace.type.local") : language.t("workspace.type.sandbox")
+      pathKey(directory) === pathKey(props.project.worktree)
+        ? language.t("workspace.type.local")
+        : language.t("workspace.type.sandbox")
     const name = props.ctx.workspaceLabel(directory, data.vcs?.branch, props.project.id)
     return `${kind} : ${name}`
   }
@@ -305,7 +308,7 @@ export const SortableProject = (props: {
   const isWorking = createMemo(() =>
     dirs().some((directory) => {
       return Object.keys(serverSync().session.data.session_status).some((id) => {
-        if (serverSync().session.get(id)?.directory !== directory) return false
+        if (pathKey(serverSync().session.get(id)?.directory ?? "") !== pathKey(directory)) return false
         return serverSync().session.data.session_working(id)
       })
     }),

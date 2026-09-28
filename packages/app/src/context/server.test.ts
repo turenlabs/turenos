@@ -251,6 +251,32 @@ describe("createServerProjects", () => {
       dispose()
     })
   })
+
+  test("dedupes projects across Windows path spellings", () => {
+    createRoot((dispose) => {
+      const [scope] = createSignal(ServerScope.local)
+      const [store, setStore] = createStore({ projects: {}, lastProject: {}, recentlyClosed: {} })
+      const projects = createServerProjects({ scope, store, setStore })
+
+      projects.open("C:\\Repos\\Alpha")
+      projects.open("c:\\repos\\alpha")
+      projects.open("\\\\?\\C:\\Repos\\Alpha")
+      expect(projects.list()).toEqual([{ worktree: "C:\\Repos\\Alpha", expanded: true }])
+
+      projects.collapse("c:/repos/alpha")
+      expect(projects.list()).toEqual([{ worktree: "C:\\Repos\\Alpha", expanded: false }])
+
+      projects.touch("C:\\Repos\\Alpha\\")
+      expect(projects.last()).toBe("C:\\Repos\\Alpha\\")
+
+      projects.remove("c:/REPOS/ALPHA")
+      expect(projects.list()).toEqual([])
+
+      projects.close("\\\\?\\C:\\Repos\\Alpha")
+      expect(projects.recentlyClosed()).toEqual(["\\\\?\\C:\\Repos\\Alpha"])
+      dispose()
+    })
+  })
 })
 
 describe("migrateCanonicalLocalServerState", () => {
