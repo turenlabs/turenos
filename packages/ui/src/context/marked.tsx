@@ -462,6 +462,8 @@ function renderKatexToken(token: Tokens.Generic) {
 }
 
 function renderMathExpressions(html: string): string {
+  if (!html.includes("$$") && !html.includes("\\(")) return html
+
   // Split on code/pre/kbd tags to avoid processing their contents
   const codeBlockPattern = /(<(?:pre|code|kbd)[^>]*>[\s\S]*?<\/(?:pre|code|kbd)>)/gi
   const parts = html.split(codeBlockPattern)
