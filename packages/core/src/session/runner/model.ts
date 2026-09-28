@@ -271,7 +271,7 @@ const stringArrayOption = (body: Record<string, unknown>, ...keys: ReadonlyArray
   }
 }
 
-const REQUEST_CONTROL_KEYS = new Set([
+export const REQUEST_CONTROL_KEYS = new Set([
   "accessKeyId",
   "apiKey",
   "apiVersion",
