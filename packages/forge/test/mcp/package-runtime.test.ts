@@ -111,7 +111,7 @@ describe("managed MCP packages", () => {
         "--no-config",
         "--managed-python",
         "--exclude-newer",
-        "2026-09-01T17:25:08.325094Z",
+        "2026-09-01T17:26:00Z",
         "--from",
         "falcon-mcp==0.19.0",
         "falcon-mcp",
