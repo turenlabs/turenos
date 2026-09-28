@@ -45,6 +45,7 @@ type ClassifiedExtensionCategory = Exclude<ExtensionCategory, "all">
 // manifest descriptions. Unknown external entries deliberately remain Other.
 const categoryByExtensionID: Readonly<Record<string, ClassifiedExtensionCategory>> = {
   "turenlabs/euvd": "vulnerability-intelligence",
+  "turenlabs/cert-eu": "vulnerability-intelligence",
   "turenlabs/cwe": "vulnerability-intelligence",
   "turenlabs/epss": "vulnerability-intelligence",
   "turenlabs/kev": "vulnerability-intelligence",

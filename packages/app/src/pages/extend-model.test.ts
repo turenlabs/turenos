@@ -136,6 +136,9 @@ describe("filterExtensionItems", () => {
     expect(extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id: "turenlabs/euvd" } })).toBe(
       "vulnerability-intelligence",
     )
+    expect(extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id: "turenlabs/cert-eu" } })).toBe(
+      "vulnerability-intelligence",
+    )
     expect(extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id: "turenlabs/tweetfeed" } })).toBe(
       "threat-intelligence",
     )
