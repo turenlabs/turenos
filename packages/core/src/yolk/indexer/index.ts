@@ -227,9 +227,8 @@ export class CodeIndex {
     const seen = new Set<string>([symbol])
     const queue: ImpactNode[] = [{ symbol, distance: 0 }]
     const result: ImpactNode[] = []
-    while (queue.length > 0) {
-      const current = queue.shift()
-      if (!current) break
+    for (let cursor = 0; cursor < queue.length; cursor++) {
+      const current = queue[cursor]!
       for (const caller of reverse.get(current.symbol) ?? []) {
         if (seen.has(caller)) continue
         seen.add(caller)

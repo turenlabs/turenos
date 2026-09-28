@@ -257,6 +257,25 @@ test("recursive caller cycles never report the target as its own impact", async 
   expect(index.impact("cycle.first")).toEqual([{ symbol: "cycle.second", distance: 1 }])
 })
 
+test("impact traverses all caller levels in breadth-first distance order", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "yolk-impact-order-"))
+  await Bun.write(
+    path.join(root, "graph.ts"),
+    [
+      "export function target() { return true }",
+      "export function zDirect() { return target() }",
+      "export function aDirect() { return target() }",
+      "export function deep() { return aDirect() }",
+    ].join("\n"),
+  )
+  const index = await buildIndex(root)
+  expect(index.impact("graph.target")).toEqual([
+    { symbol: "graph.aDirect", distance: 1 },
+    { symbol: "graph.zDirect", distance: 1 },
+    { symbol: "graph.deep", distance: 2 },
+  ])
+})
+
 test("removed symbols retain caller evidence", async () => {
   const report = await compareSources(
     "shared.ts",
