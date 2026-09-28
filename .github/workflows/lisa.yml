@@ -22,6 +22,6 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: turenlabs/lisa@3f5c01002f6e209c2fc2ac2f45b7773ff329b47e # v1.1.0
+      - uses: turenlabs/lisa@ddf46407f42eac93ffbe99d754509e4a01cc611f # v1.2.0
         with:
           api-key: ${{ secrets.TYPESAFE_API_KEY }}
