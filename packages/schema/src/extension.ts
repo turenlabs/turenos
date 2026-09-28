@@ -230,6 +230,8 @@ export class Item extends Schema.Class<Item>("Extension.Item")({
   enabled: Schema.Boolean,
   status: RuntimeStatus,
   detail: optional(Schema.String),
+  /** Recent redacted MCP server output lines for the extension's servers. */
+  log: optional(Schema.Array(Schema.String)),
   installed: optional(Schema.Boolean),
   secretsSet: Schema.Record(Schema.String, Schema.Boolean),
   configurationSet: Schema.Record(Schema.String, Schema.Boolean),

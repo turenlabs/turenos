@@ -5026,6 +5026,7 @@ export type ExtensionItem = {
     | "failed"
     | "unavailable"
   detail?: string
+  log?: Array<string>
   installed?: boolean
   secretsSet: {
     [key: string]: boolean

@@ -225,6 +225,11 @@ export function redactDiagnostic(value: string, secrets: readonly (string | unde
     .filter((secret): secret is string => Boolean(secret))
     .toSorted((left, right) => right.length - left.length)
     .reduce((result, secret) => result.replaceAll(secret, "[REDACTED]"), value)
+    // "MCP error -32000: Connection closed" is transport jargon that pushes the
+    // server's own explanation below the fold. Lead with what happened instead.
+    .replace(/MCP error -32000:\s*Connection closed/gi, "The MCP server closed the connection unexpectedly")
+    .replace(/^Connection closed\b/i, "The MCP server closed the connection unexpectedly")
+    .replace(/\bMCP error -?\d+:\s*/g, "")
     .replace(
       /((?:password|secret|token|credential|private.?key|api.?key)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,}]+)/gi,
       "$1[REDACTED]",
@@ -555,12 +560,14 @@ async function resolveLocal(input: ResolveInput): Promise<ResolvedServer> {
   }
   const executable = await fs.realpath(server.executable).catch(() => undefined)
   const metadata = executable ? await fs.stat(executable).catch(() => undefined) : undefined
-  if (
-    !executable ||
-    !metadata ||
-    !metadata.isFile() ||
-    !trustedLocalExecutablePath(executable, input.home ?? os.homedir())
-  ) {
+  // The executable is compared post-realpath, so symlinked roots (e.g. XDG cache
+  // under macOS /var -> /private/var) would falsely reject trusted binaries —
+  // resolve each root the same way and keep the raw form as a fallback.
+  const roots = localExecutableRoots(input.home ?? os.homedir())
+  const resolvedRoots = new Set(
+    (await Promise.all(roots.map((root) => fs.realpath(root).catch(() => root)))).concat(roots),
+  )
+  if (!executable || !metadata || !metadata.isFile() || ![...resolvedRoots].some((root) => trusted(executable, root))) {
     throw new Error("Local MCP executable is outside the trusted local runtime roots.")
   }
   if ((metadata.mode & 0o022) !== 0 || (metadata.uid !== 0 && metadata.uid !== process.getuid?.())) {
@@ -630,8 +637,12 @@ function localExecutableRoots(home: string) {
   ]
 }
 
+function trusted(filename: string, root: string) {
+  return filename.startsWith(root + path.sep)
+}
+
 export function trustedLocalExecutablePath(filename: string, home = os.homedir()) {
-  return localExecutableRoots(home).some((root) => filename.startsWith(root + path.sep))
+  return localExecutableRoots(home).some((root) => trusted(filename, root))
 }
 
 async function boundedText(stream: Readable) {

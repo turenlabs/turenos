@@ -308,7 +308,10 @@ export function extensionAction(item: ExtensionItem, drafts: Readonly<Record<str
   if (extensionWriteTools(item).length > 0 && writeTools !== undefined) configuration.writeTools = writeTools
   const hasDraft = Object.keys(secrets).length > 0 || Object.keys(configuration).length > 0
   const recovering = item.status === "needs-auth" || item.status === "needs-config"
-  const enabled = recovering || hasDraft ? true : !item.enabled
+  // A failed-but-enabled extension (auth rejected, server crashed, package
+  // could not be prepared) only offered "Disable" — now it offers a reconnect.
+  const retrying = item.enabled === true && item.status === "failed"
+  const enabled = recovering || retrying || hasDraft ? true : !item.enabled
   const blocked = enabled && (item.status === "unavailable" || item.status === "needs-install")
   const missingRequired =
     enabled &&
@@ -319,7 +322,7 @@ export function extensionAction(item: ExtensionItem, drafts: Readonly<Record<str
       configurable.some((field) => field.required && !item.configurationSet[field.id] && !configuration[field.id]))
   const payload: ExtensionUpdate = {
     enabled,
-    ...(recovering ? { connect: true } : {}),
+    ...(recovering || retrying ? { connect: true } : {}),
     ...(Object.keys(secrets).length ? { secrets } : {}),
     ...(Object.keys(configuration).length ? { configuration } : {}),
   }
@@ -327,7 +330,7 @@ export function extensionAction(item: ExtensionItem, drafts: Readonly<Record<str
     payload,
     missingRequired,
     ...(blocked ? { blocked: true } : {}),
-    label: recovering ? "Connect" : hasDraft ? "Save" : item.enabled ? "Disable" : "Enable",
+    label: recovering ? "Connect" : hasDraft ? "Save" : retrying ? "Retry" : item.enabled ? "Disable" : "Enable",
   }
 }
 
