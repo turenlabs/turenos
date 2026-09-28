@@ -73,11 +73,28 @@ describe("sortKev", () => {
   ]
 
   test("sorts vendor/product pairs alphabetically", () => {
-    expect(sortKev(items, "vendor", "asc").map((item) => item.cveID)).toEqual([
+    const ascending = sortKev(items, "vendor", "asc")
+    expect(ascending.map((item) => item.cveID)).toEqual([
       "CVE-2026-3",
       "CVE-2026-1",
       "CVE-2026-2",
     ])
+    expect(sortKev(items, "vendor", "desc").map((item) => item.cveID)).toEqual([
+      "CVE-2026-2",
+      "CVE-2026-1",
+      "CVE-2026-3",
+    ])
+    expect(ascending[0]).toBe(items[2])
+    expect(items.map((item) => item.cveID)).toEqual(["CVE-2026-2", "CVE-2026-1", "CVE-2026-3"])
+  })
+
+  test("preserves feed order when vendor/product and date keys tie", () => {
+    const items = [
+      kev({ cveID: "CVE-2026-1", vendor: "same", product: "same", dateAdded: 10 }),
+      kev({ cveID: "CVE-2026-2", vendor: "same", product: "same", dateAdded: 10 }),
+    ]
+
+    expect(sortKev(items, "vendor", "asc")).toEqual(items)
   })
 
   test("keeps missing due dates last in both directions", () => {
