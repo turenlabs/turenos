@@ -35,32 +35,3 @@ export function testProviderConfig(llmUrl: string) {
     },
   }
 }
-
-export function testProviderConfigV2(llmUrl: string) {
-  return {
-    formatter: false,
-    lsp: false,
-    providers: {
-      test: {
-        name: "Test",
-        api: {
-          type: "aisdk" as const,
-          package: "@ai-sdk/openai-compatible",
-          url: llmUrl,
-        },
-        request: { body: { apiKey: "test-key" } },
-        models: {
-          "test-model": {
-            name: "Test Model",
-            capabilities: {
-              tools: true,
-              input: ["text"],
-              output: ["text"],
-            },
-            limit: { context: 100_000, output: 10_000 },
-          },
-        },
-      },
-    },
-  }
-}

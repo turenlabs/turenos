@@ -24,6 +24,7 @@ import { errorMessage } from "./util/error"
 import { Heap } from "./cli/heap"
 import { ProvidersCommand } from "./cli/cmd/providers"
 import { PluginCommand } from "./cli/cmd/plug"
+import { ServerAuth } from "./server/auth"
 
 const args = hideBin(process.argv)
 
@@ -66,6 +67,10 @@ const cli = yargs(args)
     }
 
     Heap.start()
+
+    // Every command can run agents whose children inherit process.env, and `forge run` serves
+    // them in-process without ever calling Server.listen.
+    ServerAuth.claimPassword()
 
     process.env.AGENT = "1"
     process.env.FORGE = "1"

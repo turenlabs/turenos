@@ -75,6 +75,13 @@ describe("automatic Harness reviewer replies", () => {
         document({ experimental: { harness_self_modification: true } }),
       ]),
     ).toBe(true)
+    expect(
+      harnessSelfModificationGloballyEnabled([
+        document({ experimental: { harness_self_modification: true } }),
+        directory,
+        document({ experimental: {} }),
+      ]),
+    ).toBe(true)
   })
 
   test("skips historical and location scans until globally enabled", async () => {

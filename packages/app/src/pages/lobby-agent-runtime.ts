@@ -2,6 +2,7 @@ import type { ForgeClient, SessionDurableEvent } from "@turenlabs/sdk/v2/client"
 import { LobbySession } from "@turenlabs/schema/lobby-session"
 import { assistantPublicText, type LobbyAgentSessionRuntime } from "./lobby-agent-controller"
 import { lobbyDiagnosticError, type LobbyDiagnosticFields, type LobbyDiagnosticLevel } from "./lobby-diagnostics"
+import { pathKey } from "@/utils/path-key"
 
 const LOBBY_AGENT_ID = "lobby"
 const lobbySessionMetadata = (input: {
@@ -70,7 +71,7 @@ export function createLobbyAgentSessionRuntime(input: {
           { sessionID: options.sessionID, metadata: { ...session.metadata, ...metadata } },
           { signal: options.signal },
         )
-      if (session.location.directory !== options.directory)
+      if (pathKey(session.location.directory) !== pathKey(options.directory))
         throw new Error("The saved lobby agent session belongs to another project directory.")
       if (session.agent !== LOBBY_AGENT_ID)
         await client.v2.session.switchAgent(

@@ -3,7 +3,7 @@ import { makePersisted, type AsyncStorage, type SyncStorage } from "@solid-primi
 import { checksum } from "@turenlabs/core/util/encode"
 import { createResource, type Accessor } from "solid-js"
 import type { SetStoreFunction, Store } from "solid-js/store"
-import { pathKey } from "@/utils/path-key"
+import { pathKey, stripNtPrefix } from "@/utils/path-key"
 import { ScopedKey, ServerScope, type ServerScope as ServerScopeValue } from "@/utils/server-scope"
 
 type InitType = Promise<string> | string | null
@@ -421,26 +421,53 @@ function windowStorage(windowID: string) {
   return `${WINDOW_STORAGE}.${safe}.dat`
 }
 
-function legacyWorkspaceStorage(dir: string) {
-  const storage = workspaceStorage(pathKey(dir))
-  const result = new Set<string>()
-  const raw = workspaceStorage(dir)
-  if (raw !== storage) result.add(raw)
+// The canonical form pathKey produced before it folded drive-letter case and
+// understood NT prefixes: separators collapsed, trailing slashes trimmed, case
+// preserved.
+function legacyCanonicalDir(value: string) {
+  const isWindows = value[1] === ":" || value.startsWith("\\\\")
+  const folded = isWindows ? value.replaceAll("\\", "/") : value
+  return folded.replace(/\/+$/, "")
+}
 
-  const key = pathKey(dir)
-  const drive = key.length >= 3 && key[1] === ":" && key[2] === "/"
-  if (drive) {
-    const backslash = workspaceStorage(key.replaceAll("/", "\\"))
-    if (backslash !== storage) result.add(backslash)
+// Workspace files written before case folding and `\\?\` handling live under
+// the old canonical spelling (and its backslash twin for drive paths).
+function legacyDirSpellings(dir: string) {
+  const result = new Set<string>([dir])
+  for (const base of new Set([dir, stripNtPrefix(dir)])) {
+    const canonical = legacyCanonicalDir(base)
+    if (!canonical) continue
+    result.add(canonical)
+    if (canonical[1] === ":") result.add(canonical.replaceAll("/", "\\"))
   }
-
-  if (result.size === 0) return
+  result.delete(pathKey(dir))
   return [...result]
 }
 
+function legacyStorageNamesFor(storage: string, spellings: string[], map: (value: string) => string) {
+  const names = spellings.map(map).filter((name) => name !== storage)
+  return names.length ? [...new Set(names)] : undefined
+}
+
 function serverWorkspaceTarget(scope: ServerScopeValue, dir: string, key: string, legacy?: string[]): PersistTarget {
-  if (scope !== ServerScope.local) return { storage: workspaceStorage(ScopedKey.from(scope, pathKey(dir))), key }
-  return { storage: workspaceStorage(pathKey(dir)), legacyStorageNames: legacyWorkspaceStorage(dir), key, legacy }
+  if (scope !== ServerScope.local) {
+    const storage = workspaceStorage(ScopedKey.from(scope, pathKey(dir)))
+    return {
+      storage,
+      legacyStorageNames: legacyStorageNamesFor(storage, legacyDirSpellings(dir), (value) =>
+        workspaceStorage(ScopedKey.from(scope, value)),
+      ),
+      key,
+      legacy,
+    }
+  }
+  const storage = workspaceStorage(pathKey(dir))
+  return {
+    storage,
+    legacyStorageNames: legacyStorageNamesFor(storage, legacyDirSpellings(dir), workspaceStorage),
+    key,
+    legacy,
+  }
 }
 
 function localStorageWithPrefix(prefix: string): SyncStorage {

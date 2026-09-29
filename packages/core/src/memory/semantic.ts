@@ -83,6 +83,7 @@ const makeLayer = (load: PotionLoader) =>
           const runtime = yield* loadRuntime()
           const ranked = yield* Effect.tryPromise({
             try: async () => {
+              const validDrawers = drawers.filter((drawer) => isValid(drawer, input))
               const current = new Map<Memory.DrawerID, Memory.Drawer>(
                 drawers.map((drawer) => [drawer.id, drawer] as const),
               )
@@ -90,7 +91,7 @@ const makeLayer = (load: PotionLoader) =>
                 if (!current.has(id)) indexed.delete(id)
               }
 
-              const missing = drawers.filter((drawer) => {
+              const missing = validDrawers.filter((drawer) => {
                 const existing = indexed.get(drawer.id)
                 return existing === undefined || existing.drawer.timeUpdated !== drawer.timeUpdated
               })
@@ -103,9 +104,9 @@ const makeLayer = (load: PotionLoader) =>
 
               const queryVector = runtime.embed([input.query.slice(0, MemorySchema.MAX_SEARCH_LENGTH)])[0]!
               const semanticScores = new Map<string, number>()
-              for (const drawer of drawers) {
+              for (const drawer of validDrawers) {
                 const candidate = indexed.get(drawer.id)
-                if (!candidate || !isValid(drawer, input)) continue
+                if (!candidate) continue
                 semanticScores.set(drawer.id, dot(candidate.vector, queryVector))
               }
 
@@ -116,8 +117,7 @@ const makeLayer = (load: PotionLoader) =>
                 1,
                 Math.min(Math.floor(input.limit ?? MemorySchema.DEFAULT_SEARCH_LIMIT), LEXICAL_LIMIT),
               )
-              return drawers
-                .filter((drawer) => isValid(drawer, input))
+              return validDrawers
                 .map((drawer) => ({
                   drawer,
                   score:

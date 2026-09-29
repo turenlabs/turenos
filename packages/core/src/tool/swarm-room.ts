@@ -13,9 +13,6 @@ export const postName = Contract.postToolName
 export const claimName = Contract.claimToolName
 export const waitName = Contract.waitToolName
 
-/** Tool names a parent may grant a spawned worker for room participation. */
-export const SubagentTools = [readName, postName, claimName, waitName] as const
-
 function roomFailure(error: Contract.Failure): ToolFailure {
   if (error instanceof Contract.ConflictError)
     return new ToolFailure({ message: `${error.message} Call ${readName} for the current head and retry.` })

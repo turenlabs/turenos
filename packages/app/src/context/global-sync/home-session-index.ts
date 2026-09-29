@@ -63,8 +63,11 @@ export function homeSessionIndexSessions(
 ) {
   if (!index) return []
   return (events?.entries ?? [])
-    .filter((entry) => entry.sequence > index.eventSequence)
-    .reduce((sessions, entry) => applyHomeSessionEvent(sessions, entry.event, now), index.sessions)
+    .reduce(
+      (sessions, entry) =>
+        entry.sequence > index.eventSequence ? applyHomeSessionEvent(sessions, entry.event, now) : sessions,
+      index.sessions,
+    )
     .filter((session) => !isSessionInactive(session, now))
 }
 

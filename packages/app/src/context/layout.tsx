@@ -452,7 +452,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const projectID = childStore.project
       const metadata = projectID
         ? serverSync().data.project.find((x) => x.id === projectID)
-        : serverSync().data.project.find((x) => x.worktree === project.worktree)
+        : serverSync().data.project.find((x) => pathKey(x.worktree) === pathKey(project.worktree))
 
       return enrichProject({
         project,
@@ -467,7 +467,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       for (const project of serverSync().data.project) {
         const sandboxes = project.sandboxes ?? []
         for (const sandbox of sandboxes) {
-          map.set(sandbox, project.worktree)
+          map.set(pathKey(sandbox), project.worktree)
         }
       }
       return map
@@ -484,7 +484,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const current = chain[chain.length - 1]
         if (!current) return directory
 
-        const next = map.get(current)
+        const next = map.get(pathKey(current))
         if (!next) return current
 
         if (visited.has(next)) return directory
@@ -497,18 +497,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     createEffect(() => {
       const projects = server.projects.list()
-      const seen = new Set(projects.map((project) => project.worktree))
+      const seen = new Set(projects.map((project) => pathKey(project.worktree)))
 
       batch(() => {
         for (const project of projects) {
           const root = rootFor(project.worktree)
-          if (root === project.worktree) continue
+          if (pathKey(root) === pathKey(project.worktree)) continue
 
           server.projects.remove(project.worktree)
 
-          if (!seen.has(root)) {
+          if (!seen.has(pathKey(root))) {
             server.projects.open(root)
-            seen.add(root)
+            seen.add(pathKey(root))
           }
 
           if (project.expanded) server.projects.expand(root)
@@ -614,7 +614,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         }),
         open(directory: string) {
           const root = rootFor(directory)
-          if (server.projects.list().find((x) => x.worktree === root)) return
+          if (server.projects.list().find((x) => pathKey(x.worktree) === pathKey(root))) return
           void serverSync().project.loadSessions(root)
           server.projects.open(root)
         },

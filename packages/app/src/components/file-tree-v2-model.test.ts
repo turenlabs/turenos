@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { buildFileTreeV2Model, flattenFileTreeV2, flattenLiveFileTreeV2 } from "./file-tree-v2-model"
+import {
+  buildFileTreeV2Model,
+  flattenFileTreeV2,
+  flattenLiveFileTreeV2,
+  normalizeFileTreeV2Path,
+} from "./file-tree-v2-model"
 import type { FileNode } from "@turenlabs/sdk/v2"
 
 describe("buildFileTreeV2Model", () => {
@@ -46,6 +51,10 @@ describe("buildFileTreeV2Model", () => {
 })
 
 describe("flattenLiveFileTreeV2", () => {
+  test("leaves a slash before a terminal line break unchanged", () => {
+    expect(normalizeFileTreeV2Path("src/\n")).toBe("src/\n")
+  })
+
   test("flattens live children using original paths for nested lookups", () => {
     const nodes: Record<string, FileNode[]> = {
       "": [
@@ -69,6 +78,26 @@ describe("flattenLiveFileTreeV2", () => {
       ["src/a.ts", "src/a.ts", 1],
       ["src/lib", "src/lib", 1],
       ["README.md", "README.md", 0],
+    ])
+  })
+
+  test("normalizes non-canonical paths while retaining original lookup paths", () => {
+    const directoryPath = "/src//"
+    const nodes: Record<string, FileNode[]> = {
+      "": [{ name: "src", path: directoryPath, absolute: "/repo/src", type: "directory", ignored: false }],
+      [directoryPath]: [
+        { name: "a.ts", path: "/src//a.ts/", absolute: "/repo/src/a.ts", type: "file", ignored: false },
+      ],
+    }
+
+    expect(
+      flattenLiveFileTreeV2(
+        (path) => nodes[path] ?? [],
+        () => true,
+      ).map(({ node }) => [node.path, node.originalPath]),
+    ).toEqual([
+      ["src", directoryPath],
+      ["src/a.ts", "/src//a.ts/"],
     ])
   })
 })

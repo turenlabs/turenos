@@ -40,6 +40,7 @@ const mcp = Layer.succeed(
   MCP.Service,
   MCP.Service.of({
     status: () => Effect.succeed({}),
+    log: () => Effect.succeed([]),
     configuration: () => Effect.succeed(undefined),
     clients: () => Effect.succeed({}),
     instructions: () => Effect.succeed([]),

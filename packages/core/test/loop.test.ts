@@ -315,6 +315,35 @@ describe("Loop", () => {
     }),
   )
 
+  it.effect("pause cancels claimed and running child runs so sessions stop draining", () =>
+    Effect.gen(function* () {
+      const loops = yield* Loop.Service
+      yield* loops.create(input("lop_pause_claimed"))
+      yield* loops.create(input("lop_pause_running"))
+      const claimed = yield* loops.runNow({ id: "lop_pause_claimed", owner: "owner" })
+      const running = yield* loops.runNow({ id: "lop_pause_running", owner: "owner" })
+      yield* loops.recordRunSession({ id: running.id, owner: "owner", sessionID: "session-1" })
+      yield* loops.startRun({ id: running.id, owner: "owner", sessionID: "session-1" })
+
+      yield* loops.pause("lop_pause_claimed")
+      yield* loops.pause("lop_pause_running")
+
+      expect((yield* loops.getRun({ id: claimed.id })).status).toBe("cancelled")
+      const stopped = yield* loops.getRun({ id: running.id })
+      expect(stopped.status).toBe("cancelled")
+      expect(stopped.lease).toBeUndefined()
+      expect(stopped.time.completed).toBeDefined()
+      // A cancelled run is fenced: it cannot restart under its old lease.
+      expect(
+        yield* loops
+          .startRun({ id: running.id, owner: "owner", sessionID: "session-1" })
+          .pipe(Effect.flip),
+      ).toBeInstanceOf(Loop.InvalidStateError)
+      // And no new work is admitted while the loop is paused.
+      expect(yield* loops.claimDue({ owner: "worker" })).toEqual([])
+    }),
+  )
+
   it.effect("creates manual runs and skips a manual overlap", () =>
     Effect.gen(function* () {
       const loops = yield* Loop.Service

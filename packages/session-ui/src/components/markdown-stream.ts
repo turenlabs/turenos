@@ -129,12 +129,25 @@ export function project(previous: Projection | undefined, text: string, live: bo
   // setext headings, lazy continuations). `start` slices the text instead of
   // joining raws because leading space tokens are dropped from block raws.
   const keep = Math.max(previous.blocks.length - 2, 0)
-  const kept = previous.blocks.slice(0, keep)
-  const start = kept.reduce((sum, block) => sum + block.raw.length, 0)
+  const boundary = previous.blocks.at(-2)
+  const tailStart = previous.text.length - (tail?.raw.length ?? 0)
+  const boundaryStart = tailStart - (boundary?.raw.length ?? 0)
+  const contiguousTail =
+    keep > 0 &&
+    boundary !== undefined &&
+    tail !== undefined &&
+    boundaryStart >= 0 &&
+    previous.text.startsWith(boundary.raw, boundaryStart) &&
+    previous.text.startsWith(tail.raw, tailStart)
+  const start =
+    keep === 0
+      ? 0
+      : contiguousTail
+        ? boundaryStart
+        : previous.blocks.slice(0, keep).reduce((sum, block) => sum + block.raw.length, 0)
   const region = text.slice(start)
   const regionBlocks = blocksFromTokens(marked.lexer(region), region)
-  const boundary = previous.blocks[keep]
-  if (!regionBlocks.length || (keep > 0 && regionBlocks[0]?.raw !== boundary?.raw))
+  if (!regionBlocks.length || (keep > 0 && regionBlocks[0]?.raw !== previous.blocks[keep]?.raw))
     return { text, blocks: stream(text, live) }
-  return { text, blocks: [...kept, ...regionBlocks] }
+  return { text, blocks: [...previous.blocks.slice(0, keep), ...regionBlocks] }
 }

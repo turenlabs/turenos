@@ -172,6 +172,7 @@ describe("plugin.codex", () => {
             "gpt-5.6-luna",
             "gpt-6-astra",
             "gpt-6-sol",
+            "gpt-6.1-sol",
             "gpt-6-luna",
             "gpt-5.7-pro",
             "gpt-5.3-codex-spark",
@@ -210,6 +211,7 @@ describe("plugin.codex", () => {
       "gpt-5.6-luna",
       "gpt-6-astra",
       "gpt-6-sol",
+      "gpt-6.1-sol",
       "gpt-6-luna",
     ]) {
       expect(models[id]?.limit).toEqual(limit)
@@ -226,6 +228,7 @@ describe("plugin.codex", () => {
     expect(apiModels["gpt-5.6-sol"]).toBeDefined()
     expect(apiModels["gpt-6-astra"]).toBeDefined()
     expect(apiModels["gpt-6-sol"]).toBeDefined()
+    expect(apiModels["gpt-6.1-sol"]).toBeDefined()
     expect(apiModels["gpt-6-luna"]).toBeDefined()
   })
 

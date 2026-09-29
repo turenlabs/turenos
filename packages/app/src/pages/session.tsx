@@ -111,6 +111,8 @@ import { useSessionHashScroll } from "@/pages/session/use-session-hash-scroll"
 import { Identifier } from "@/utils/id"
 import { diffs as list } from "@/utils/diffs"
 import { Persist, persisted } from "@/utils/persist"
+import { pathKey } from "@/utils/path-key"
+import { decode64 } from "@/utils/base64"
 import { extractPromptFromParts } from "@/utils/prompt"
 import { formatServerError, isLocalSessionNotFoundError, isSessionNotFoundError } from "@/utils/server-errors"
 import { DestinationLoading } from "@/components/destination-loading"
@@ -120,11 +122,7 @@ import { applySessionV2Revert, clearSessionV2Revert, stageSessionV2Revert } from
 import { createSessionLineage, nextSessionActivation, SESSION_ACTIVATION_MAX_AGE_MS } from "./session/session-lineage"
 import { createSessionGoalController } from "./session/goal/session-goal-controller"
 import { SessionGoalDock } from "./session/goal/session-goal-dock"
-import {
-  sessionPromptOutbox,
-  sessionPromptPending,
-  sessionPromptStartup,
-} from "./session/goal/session-prompt-state"
+import { sessionPromptOutbox, sessionPromptPending, sessionPromptStartup } from "./session/goal/session-prompt-state"
 import { promptAdmissionFor } from "@/components/prompt-input/prompt-admission"
 import { responseData } from "@/pages/loops/api"
 import { createSessionHarnessController } from "./session/harness/session-harness-controller"
@@ -343,7 +341,9 @@ function ResolvedTargetSessionRoute() {
   const workspaceIdentity = createMemo(() => {
     const value = directory()
     if (!value) return
-    return `${serverSDK().scope}\0${value}`
+    // Canonicalized so a differently-spelled same directory (case, separator,
+    // NT prefix) does not remount the workspace subtree and its terminal.
+    return `${serverSDK().scope}\0${pathKey(value)}`
   })
   const session = () => (
     <SDKProvider directory={targetDirectory}>
@@ -621,7 +621,7 @@ export default function Page() {
 
         if (pending.sessionID !== id) return
         layout.activation.clear(id)
-        if (pending.directory !== base64Encode(sdk().directory)) return
+        if (pathKey(decode64(pending.directory) ?? "") !== pathKey(sdk().directory)) return
 
         const from = pending.tabs
         if (from.all.length === 0 && !from.active) return
@@ -988,7 +988,7 @@ export default function Page() {
         })
         .then((diffs) => diffs.find((diff) => diff.file === file))
 
-    if (directory !== root) {
+    if (pathKey(directory) !== pathKey(root)) {
       try {
         const scoped = valid(await request(directory))
         if (scoped) return scoped
@@ -1007,7 +1007,7 @@ export default function Page() {
   const newSessionWorktree = createMemo(() => {
     if (store.newSessionWorktree === "create") return "create"
     const project = sync().project
-    if (project && sdk().directory !== project.worktree) return sdk().directory
+    if (project && pathKey(sdk().directory) !== pathKey(project.worktree)) return sdk().directory
     return "main"
   })
 
@@ -1156,7 +1156,7 @@ export default function Page() {
           todoFrame = undefined
           todoTimer = window.setTimeout(() => {
             todoTimer = undefined
-            if (sdk().directory !== dir || params.id !== id) return
+            if (pathKey(sdk().directory) !== pathKey(dir) || params.id !== id) return
             untrack(() => {
               void sync().session.todo(id, cached ? { force: true } : undefined)
             })
@@ -2465,7 +2465,12 @@ export default function Page() {
         subagents={settings.general.newLayoutDesigns() ? undefined : subagentDock()}
         liveDock={
           <Show when={newSessionDesign() && !!params.id}>
-            <SessionLiveDock view={liveView} onViewChange={setLiveDockView} agents={liveAgents} todos={composer.todos} />
+            <SessionLiveDock
+              view={liveView}
+              onViewChange={setLiveDockView}
+              agents={liveAgents}
+              todos={composer.todos}
+            />
           </Show>
         }
         promptInput={

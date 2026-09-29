@@ -3,6 +3,7 @@ import { DateTime } from "luxon"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useLanguage } from "@/context/language"
+import { pathKey } from "@/utils/path-key"
 import { Icon } from "@turenlabs/ui/icon"
 import { Mark } from "@turenlabs/ui/logo"
 import { getDirectory, getFilename } from "@turenlabs/core/util/path"
@@ -31,7 +32,7 @@ export function NewSessionView(props: NewSessionViewProps) {
   const isWorktree = createMemo(() => {
     const project = sync().project
     if (!project) return false
-    return sdk().directory !== project.worktree
+    return pathKey(sdk().directory) !== pathKey(project.worktree)
   })
 
   const label = (value: string) => {

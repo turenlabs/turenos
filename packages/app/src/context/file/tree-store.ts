@@ -1,5 +1,6 @@
 import { createStore, produce, reconcile } from "solid-js/store"
 import type { FileNode } from "@turenlabs/sdk/v2"
+import { pathKey } from "@/utils/path-key"
 
 type DirectoryState = {
   expanded: boolean
@@ -63,7 +64,7 @@ export function createFileTreeStore(options: TreeStoreOptions) {
     const promise = options
       .list(dir)
       .then((nodes) => {
-        if (options.scope() !== directory) return
+        if (pathKey(options.scope()) !== pathKey(directory)) return
         const prevChildren = tree.dir[dir]?.children ?? []
         const nextChildren = nodes.map((node) => node.path)
         const nextSet = new Set(nextChildren)
@@ -108,7 +109,7 @@ export function createFileTreeStore(options: TreeStoreOptions) {
         )
       })
       .catch((e) => {
-        if (options.scope() !== directory) return
+        if (pathKey(options.scope()) !== pathKey(directory)) return
         setTree(
           "dir",
           dir,

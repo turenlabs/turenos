@@ -575,12 +575,14 @@ const splitMatch = (
   return out
 }
 const normalize = (value: string) =>
-  value
-    .replace(/[‘’‚‛]/g, "'")
-    .replace(/[“”„‟]/g, '"')
-    .replace(/[‐‑‒–—―]/g, "-")
-    .replace(/…/g, "...")
-    .replace(/ /g, " ")
+  /[^\x00-\x7f]/.test(value)
+    ? value
+        .replace(/[‘’‚‛]/g, "'")
+        .replace(/[“”„‟]/g, '"')
+        .replace(/[‐‑‒–—―]/g, "-")
+        .replace(/…/g, "...")
+        .replace(/ /g, " ")
+    : value
 const splitBom = (text: string) =>
   text.startsWith("\uFEFF") ? { bom: true, text: text.slice(1) } : { bom: false, text }
 const stripHeredoc = (input: string) =>

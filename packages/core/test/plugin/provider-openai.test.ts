@@ -124,6 +124,19 @@ describe("OpenAIPlugin", () => {
         { tier: { type: "context", size: 272_000 }, input: 4, output: 15, cache: { read: 0.4, write: 5 } },
       ])
 
+      const sol61 = required(yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("gpt-6.1-sol")))
+      expect(sol61).toMatchObject({
+        name: "GPT-6.1 Sol",
+        api: { id: "gpt-6.1-sol", type: "aisdk", package: "@ai-sdk/openai" },
+        limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+        status: "active",
+        enabled: true,
+      })
+      expect(sol61.cost).toEqual([
+        { input: 2, output: 10, cache: { read: 0.2, write: 2.5 } },
+        { tier: { type: "context", size: 272_000 }, input: 4, output: 15, cache: { read: 0.4, write: 5 } },
+      ])
+
       const luna = required(yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("gpt-6-luna")))
       expect(luna).toMatchObject({
         name: "GPT-6 Luna",
@@ -137,7 +150,7 @@ describe("OpenAIPlugin", () => {
         { tier: { type: "context", size: 272_000 }, input: 0.2, output: 0.75, cache: { read: 0.02, write: 0.25 } },
       ])
 
-      for (const model of [sol, luna]) {
+      for (const model of [sol, sol61, luna]) {
         expect(model.variants.map((variant) => [variant.id, variant.body.reasoningEffort])).toEqual([
           ["low", "low"],
           ["medium", "medium"],

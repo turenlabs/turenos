@@ -6,6 +6,7 @@ import { useServer } from "@/context/server"
 import { useServerSync } from "@/context/server-sync"
 import { getProjectAvatarVariant } from "@/context/layout"
 import { enrichProject } from "@/context/project-enrich"
+import { pathKey } from "@/utils/path-key"
 import { displayName, getProjectAvatarSource } from "@/pages/layout/helpers"
 import { SettingsPageHeaderV2 } from "./page-header"
 import "./zoo.css"
@@ -57,7 +58,7 @@ export function SettingsZooV2() {
       const [childStore] = serverSync().child(open.worktree, { bootstrap: false })
       const metadata = childStore.project
         ? serverSync().data.project.find((x) => x.id === childStore.project)
-        : serverSync().data.project.find((x) => x.worktree === open.worktree)
+        : serverSync().data.project.find((x) => pathKey(x.worktree) === pathKey(open.worktree))
       const enriched = enrichProject({
         project: open,
         metadata,
@@ -128,7 +129,8 @@ export function SettingsZooV2() {
       const free = critters().filter((c) => !busy.has(c.key))
       if (free.length === 0) return
       const nearest = free.reduce((a, b) => {
-        const da = pos(a.key), db = pos(b.key)
+        const da = pos(a.key),
+          db = pos(b.key)
         const distA = (da.x - snack.x) ** 2 + (da.y - snack.y) ** 2
         const distB = (db.x - snack.x) ** 2 + (db.y - snack.y) ** 2
         return distA <= distB ? a : b

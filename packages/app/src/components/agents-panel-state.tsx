@@ -151,13 +151,19 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
       () => focusedServerCtx()?.projects.recentlyClosed() ?? layout.projects.recentlyClosed(),
     )
     const homedir = createMemo(() => focusedSync().data.path.home ?? "")
-    const selectedProject = createMemo(() => projects().find((project) => project.worktree === selection().directory))
-    const newSessionProject = createMemo(
-      () =>
+    const selectedProject = createMemo(() => {
+      const directory = selection().directory
+      if (!directory) return
+      return projects().find((project) => pathKey(project.worktree) === pathKey(directory))
+    })
+    const newSessionProject = createMemo(() => {
+      const last = focusedServerCtx()?.projects.last()
+      return (
         selectedProject() ??
-        projects().find((project) => project.worktree === focusedServerCtx()?.projects.last()) ??
-        projects()[0],
-    )
+        projects().find((project) => last !== undefined && pathKey(project.worktree) === pathKey(last)) ??
+        projects()[0]
+      )
+    })
     const canOpenNewSession = createMemo(() => {
       const conn = focusedServer()
       if (!conn || !newSessionProject()) return false
@@ -485,9 +491,7 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
       const route = layout.route()
       const target = ((): { key: ServerConnection.Key; directory?: string; id?: string } | undefined => {
         if (route.type === "draft") {
-          const draft = tabs.store.find(
-            (tab): tab is DraftTab => tab.type === "draft" && tab.draftID === route.draftID,
-          )
+          const draft = tabs.store.find((tab): tab is DraftTab => tab.type === "draft" && tab.draftID === route.draftID)
           if (!draft) return undefined
           return { key: route.server ?? server.key, directory: draft.directory, id: `draft:${route.draftID}` }
         }
@@ -516,7 +520,7 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
         if (current.server !== target.key) setSelection({ server: target.key })
         return
       }
-      if (current.server !== target.key || current.directory !== target.directory) {
+      if (current.server !== target.key || pathKey(current.directory ?? "") !== pathKey(target.directory)) {
         setSelection({ server: target.key, directory: target.directory })
       }
       appliedNavTab = target.id
@@ -554,7 +558,8 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
       const key = ServerConnection.key(conn)
       if (global.servers.health[key]?.healthy === false) return
       const ctx = global.ensureServerCtx(conn)
-      if (!ctx.projects.list().some((project) => project.worktree === directory)) return
+      const directoryKey = pathKey(directory)
+      if (!ctx.projects.list().some((project) => pathKey(project.worktree) === directoryKey)) return
       const next = toggleHomeProjectSelection(selection(), key, directory)
       if (next.directory) ctx.projects.touch(directory)
       setSelection(next)

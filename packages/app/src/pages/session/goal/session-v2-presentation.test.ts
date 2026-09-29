@@ -1120,6 +1120,44 @@ describe("lean tool stubs", () => {
     expect(merged[0] === undefined || isSessionV2ToolStub(merged[0])).toBe(false)
   })
 
+  test("preserves the earliest match when a stub matches by part ID and call ID", () => {
+    const part = presentTool("ses_goal", "msg_lean", {
+      type: "tool",
+      id: "call_base",
+      name: "read",
+      state: { status: "completed", input: { path: "big.txt" }, structured: {}, content: [] },
+      time: { created: 2, ran: 3, completed: 3 },
+    })
+    const byCallID = { ...part, id: "stored_call", callID: "incoming_call" }
+    const byID = { ...part, id: "incoming_id", callID: "stored_call" }
+    const stub = {
+      ...part,
+      id: "incoming_id",
+      callID: "incoming_call",
+      metadata: { ...part.metadata, truncated: { bytes: 90_000 } },
+    }
+    const current = [
+      byCallID,
+      byID,
+      ...Array.from({ length: 63 }, (_, index) => ({
+        ...part,
+        id: `stored_${index}`,
+        callID: `stored_call_${index}`,
+      })),
+    ]
+    const incoming = [
+      stub,
+      ...Array.from({ length: 63 }, (_, index) => ({
+        ...part,
+        id: `incoming_${index}`,
+        callID: `incoming_call_${index}`,
+        metadata: stub.metadata,
+      })),
+    ]
+
+    expect(mergeSessionV2Parts(current, incoming)[0]).toBe(byCallID)
+  })
+
   test("a stub still upgrades a pending part and a stub-refreshes a stub", () => {
     const stubPart = presentTool("ses_goal", "msg_lean", {
       type: "tool",

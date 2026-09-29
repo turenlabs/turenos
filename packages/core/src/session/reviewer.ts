@@ -435,10 +435,10 @@ export function harnessSelfModificationEnabled(entries: readonly Config.Entry[])
 
 export function harnessSelfModificationGloballyEnabled(entries: readonly Config.Entry[]) {
   return (
-    entries
-      .filter((entry): entry is Config.Document => entry.type === "document")
-      .findLast((entry) => entry.info.experimental?.harness_self_modification !== undefined)?.info.experimental
-      ?.harness_self_modification === true
+    entries.findLast(
+      (entry): entry is Config.Document =>
+        entry.type === "document" && entry.info.experimental?.harness_self_modification !== undefined,
+    )?.info.experimental?.harness_self_modification === true
   )
 }
 

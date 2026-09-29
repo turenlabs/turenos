@@ -3,7 +3,7 @@ export * as ExtensionManager from "./index"
 import { Extension } from "@turenlabs/schema"
 import { ExtensionCatalog } from "@turenlabs/extensions"
 import { ExtensionRuntime } from "@turenlabs/core/extension"
-import { Storage } from "@turenlabs/core/storage"
+import { ExtensionObservation } from "./observation"
 import { ToolVisibleError } from "@turenlabs/core/tool/visible-error"
 import { InstanceRef } from "@/effect/instance-ref"
 import { MCP } from "@/mcp"
@@ -15,8 +15,7 @@ import { SecurityRegistry } from "@/security/registry"
 import { SERVER_KEY } from "@/security/settings"
 import { Scanner } from "@/security/util/scanner"
 import { BATOU_ID, batouStatus, beginBatouDownload } from "@/security/batou-binary"
-import { NonNegativeInt } from "@turenlabs/core/schema"
-import { Cause, Effect, Exit, Option, Schema, Semaphore } from "effect"
+import { Cause, Effect, Exit, Option, Semaphore } from "effect"
 
 const updateLocks = new Map<string, Semaphore.Semaphore>()
 const updateLock = (id: string) => {
@@ -26,25 +25,8 @@ const updateLock = (id: string) => {
   updateLocks.set(id, created)
   return created
 }
-const observationScope = Storage.Scope.make("internal/extension-reconciliation")
-const Observation = Schema.Struct({
-  revision: NonNegativeInt,
-  status: Extension.RuntimeStatus,
-  detail: Schema.optional(Schema.String),
-})
-const decodeObservation = Schema.decodeUnknownOption(Schema.fromJsonString(Observation))
-const observationKey = (id: Extension.ID | string) => Storage.Key.make(String(id))
-
-const observation = Effect.fnUntraced(function* (id: Extension.ID | string) {
-  const storage = yield* Storage.Service
-  const stored = yield* storage.get({ scope: observationScope, key: observationKey(id) })
-  return stored ? Option.getOrUndefined(decodeObservation(stored.value)) : undefined
-})
-
-const observe = Effect.fnUntraced(function* (id: Extension.ID | string, value: typeof Observation.Type) {
-  const storage = yield* Storage.Service
-  yield* storage.set({ scope: observationScope, key: observationKey(id), value: JSON.stringify(value) })
-})
+const observation = ExtensionObservation.read
+const observe = ExtensionObservation.write
 
 const securityID = (adapter: string) =>
   adapter.startsWith("security:") ? adapter.slice("security:".length) : undefined
@@ -56,6 +38,7 @@ const catalogItem = (
     readonly status: Extension.RuntimeStatus
     readonly installed?: boolean
     readonly detail?: string
+    readonly log?: readonly string[]
     readonly secretsSet: Readonly<Record<string, boolean>>
     readonly configurationSet?: Readonly<Record<string, boolean>>
   },
@@ -182,6 +165,7 @@ const mcpItem = Effect.fn("Extension.mcpItem")(function* (
         : runtime?.detail
           ? { detail: runtime.detail }
           : {}),
+    ...(runtime?.log?.length ? { log: runtime.log } : {}),
     secretsSet,
     configurationSet: Object.fromEntries(Object.keys(configuration).map((name) => [name, true])),
   })
@@ -201,21 +185,7 @@ function missingMcpConfiguration(
     .find((field) => field.required && !configuration[field.id])
 }
 
-export function mcpRuntimeObservation(statuses: ReadonlyArray<MCP.Status | undefined>): {
-  readonly status: Extension.RuntimeStatus
-  readonly detail?: string
-} {
-  if (statuses.length === 0) return { status: "connecting" }
-  if (statuses.every((status) => status?.status === "connected")) return { status: "connected" }
-  if (statuses.some((status) => status?.status === "needs_auth" || status?.status === "needs_client_registration")) {
-    return { status: "needs-auth" }
-  }
-  const failed = statuses.find((status) => status?.status === "failed")
-  if (failed?.status === "failed") return { status: "failed", detail: ToolVisibleError.make(failed.error) }
-  if (statuses.some((status) => status === undefined)) return { status: "connecting" }
-  if (statuses.every((status) => status?.status === "disabled")) return { status: "disabled" }
-  return { status: "connecting" }
-}
+export const mcpRuntimeObservation = ExtensionObservation.runtimeObservation
 
 export const list = Effect.fn("Extension.list")(function* () {
   const activation = yield* ExtensionRuntime.Service
@@ -305,13 +275,18 @@ const updateMcp = Effect.fn("Extension.updateMcp")(function* (
   for (const contribution of contributions) {
     McpIntegration.setRuntimeEnabled(contribution.id, result.desired.enabled)
   }
-  const observeCurrent = (status: Extension.RuntimeStatus, detail?: string) =>
+  const observeCurrent = (status: Extension.RuntimeStatus, detail?: string, log?: readonly string[]) =>
     activation
       .desired(manifest.id)
       .pipe(
         Effect.flatMap((desired) =>
           desired?.revision === revision
-            ? observe(manifest.id, { revision, status, ...(detail ? { detail: ToolVisibleError.make(detail) } : {}) })
+            ? observe(manifest.id, {
+                revision,
+                status,
+                ...(detail ? { detail: ToolVisibleError.make(detail) } : {}),
+                ...(log?.length ? { log: log.map((line) => ToolVisibleError.make(line)) } : {}),
+              })
             : Effect.void,
         ),
       )
@@ -391,7 +366,12 @@ const updateMcp = Effect.fn("Extension.updateMcp")(function* (
       }
       const entry = yield* McpIntegration.configuration(id, configuration, secrets)
       if (!entry) {
-        yield* observeCurrent("failed", `${id} is unavailable on this server`)
+        yield* observeCurrent(
+          "failed",
+          McpPackageRuntime.managedPackage(contribution)
+            ? `${id} could not prepare its pinned package runtime`
+            : `${id} is unavailable on this server`,
+        )
         return
       }
       const current = yield* mcp.configuration(id)
@@ -428,9 +408,14 @@ const updateMcp = Effect.fn("Extension.updateMcp")(function* (
       return
     }
     const failed = results.find((item) => item.status.status === "failed")
+    const log =
+      failed && Option.isSome(instance)
+        ? yield* mcp.log(failed.id).pipe(Effect.catchCause(() => Effect.succeed([] as const)))
+        : []
     yield* observeCurrent(
       "failed",
       failed?.status.status === "failed" ? failed.status.error : "One or more MCP contributions could not be connected",
+      log,
     )
     return
   }).pipe(

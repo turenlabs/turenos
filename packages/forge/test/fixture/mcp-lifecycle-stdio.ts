@@ -9,10 +9,23 @@ if (process.argv.includes("--hang")) {
   await new Promise(() => {})
 }
 
+// Dies during startup like falcon-mcp does on rejected credentials: a useful
+// message on stderr, then a non-zero exit before the MCP handshake.
+if (process.argv.includes("--stderr-exit")) {
+  process.stderr.write("fixture-fatal: refusing to start without credentials\n", () => process.exit(7))
+  await new Promise(() => {})
+}
+
 const server = new Server({ name: "mcp-lifecycle-stdio", version: "1.0.0" }, { capabilities: { tools: {} } })
 
-server.setRequestHandler(ListToolsRequestSchema, () =>
-  Promise.resolve({
+server.setRequestHandler(ListToolsRequestSchema, () => {
+  // Survives the handshake, then crashes mid-session after the first tools/list.
+  if (process.argv.includes("--crash-after-list")) {
+    setTimeout(() => {
+      process.stderr.write("fixture-crash: exiting after tool list\n", () => process.exit(9))
+    }, 25)
+  }
+  return Promise.resolve({
     tools: [
       {
         name: "current_directory",
@@ -27,7 +40,7 @@ server.setRequestHandler(ListToolsRequestSchema, () =>
         inputSchema: { type: "object", properties: {} },
       },
     ],
-  }),
-)
+  })
+})
 
 await server.connect(new StdioServerTransport())
