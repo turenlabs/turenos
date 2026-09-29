@@ -4,186 +4,261 @@ Status: design, not implemented
 
 ## Problem
 
-An agent that finds and confirms a vulnerability in a project has nowhere durable to put it. The handoff engineering needs is: what is wrong, where, at which commit, how to reproduce it, a working proof of concept, and whether it has been fixed. Today that lands in one of three places, none of which fits:
+An agent that finds and confirms a vulnerability in a project has nowhere durable to put it. The handoff engineering needs is: what is wrong, where, at which commit, how to reproduce it, a working proof of concept, and whether it has been fixed. Today there is no project-level record with a lifecycle for that:
 
-- Memory (`packages/schema/src/memory.ts`) has `note`, `fact`, `decision`, and `observation` drawers. There is no severity, status, or attachment, and `memory_search` injects entries into unrelated sessions by relevance, which is exactly where a working exploit must not go.
-- Team board and swarm room notes (`packages/schema/src/team-board.ts`, `swarm-room.ts`) have a `finding` kind and an `evidence` field, but they are scoped to one run's root Session.
-- Scanner `Finding` values (`packages/forge/src/security/types.ts`) are shown to the model and discarded.
+- Memory (`packages/schema/src/memory.ts`) has `note`, `fact`, `decision`, and `observation` drawers with repo/path/commit/symbol anchors (`packages/core/src/memory/sql.ts`), but no severity, status, or attachments. `memory_search` is an explicit, permission-checked search over the current project, so a PoC stored there would be returned to any later task in the same project that searches for related terms.
+- Team board notes (`packages/schema/src/team-board.ts`, `evidence`) and swarm room entries (`packages/schema/src/swarm-room.ts`, `evidenceRefs`) have a `finding` kind but are scoped to one run's root Session.
+- Scanner results from the security MCP (`packages/forge/src/security/types.ts`) are retained only as ordinary tool output in session history and the tool-output store. There is no per-project finding record or triage state.
 
-Confirmed findings gives a manually confirmed vulnerability a durable, per-project record with a human-owned status and a PoC stored sealed, never returned to the model.
+Confirmed findings gives a manually confirmed vulnerability a durable, per-project record with a human-owned status and a sealed PoC that no agent tool returns.
 
 ## Non-goals
 
-Two earlier workbenches with their own finding tables were removed: the reversing workbench (`20260822133903_remove-reversing-workbench`: cases, findings, evidence) and the pentest workbench (`20260911132133_remove-pentest`: runs, executions, HTTP sessions, findings, evidence, reports, model usage). The pentest one was dropped as over-scoped. This design must not grow back into either.
+Two earlier workbenches with their own finding tables were removed: the reversing workbench (`20260822133903_remove-reversing-workbench`: cases, findings, evidence) and the pentest workbench (`20260911132133_remove-pentest`: runs, executions, HTTP sessions, findings, evidence, reports, model usage). This design must not grow back into either.
 
 - No runs, orchestration, swarm integration, HTTP session capture, or report generation beyond exporting one finding.
 - No scanner output. Recording scanner results is the findings ledger's job (`specs/findings-ledger.md`, shelved, in the `findings-ledger` worktree).
 - No sync, sharing, or multi-user triage. Findings are a local working record for one install.
 - No PoC execution by TurenOS, and no agent read access to stored PoCs, in v1.
-- No deployed targets (URLs, hosts). v1 findings are about code in the project repository.
+- No deployed targets (URLs, hosts), and no findings outside a Git repository. v1 findings are about code in the project repository.
 - No direct export to GitHub issues or advisories.
+- No binary PoC attachments. v1 attachments are UTF-8 text.
+- No protection against code running as the same OS user. See Threat model.
 
 ## Decisions
 
-| Question                       | Decision                                                                                                     |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| Separate domain or memory kind | Separate Core domain. Memory search would pull PoCs into context, and memory has no status lifecycle.        |
-| Agent read access to PoCs      | None in v1. No tool returns PoC content, whatever permission settings are.                                   |
-| PoC storage                    | Sealed with the existing secret vault (`SecretVault.sealBytes`).                                             |
-| Export                         | Markdown only (clipboard or file). GitHub private security advisories later; public issues never.            |
-| Target                         | Code only: project, commit, affected paths.                                                                  |
-| Who changes status             | Humans only, through the HTTP API. Agents draft findings and append notes, including "looks fixed" evidence. |
-| Scope                          | Per project (`project.id`).                                                                                  |
+| Question                       | Decision                                                                                                          |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Separate domain or memory kind | Separate Core domain. Memory has no lifecycle, and memory search would return PoCs to later tasks in the project. |
+| Agent read access to PoCs      | None in v1. No tool returns PoC content, whatever permission settings are.                                        |
+| PoC storage                    | Sealed with the existing secret vault (`SecretVault.sealBytes`). Other fields are plaintext.                      |
+| Export                         | Markdown only (clipboard or file). GitHub private security advisories later; public issues never.                 |
+| Target                         | Code only: a Git-backed project, a commit, repository-root-relative paths.                                        |
+| Who changes status             | Humans, through authenticated API routes. No agent tool changes status. Agents draft findings and append notes.   |
+| Scope                          | Per project (`project.id`), enforced on every lookup. The global non-Git project is rejected.                     |
+| Threat model                   | Agents acting through supported tools. Same-user code execution and direct database access are out of scope (v1). |
+
+## Threat model
+
+v1 guarantees that **no supported agent tool performs a human action**: confirming, transitioning, editing a non-draft finding, changing PoCs after drafting, deleting, reading PoC content, or exporting. That holds whatever the permission configuration, because none of those operations exists as a tool.
+
+It does not guarantee that a human performed an API call. Anything running as the same OS user can bypass the server:
+
+- An approved shell or PTY command, a local MCP server, or an in-process plugin (which receives an authenticated client, `packages/forge/src/plugin/index.ts`) runs with the user's authority.
+- The SQLite database is owner-writable, so such a process can change plaintext rows directly without the vault key.
+- A loopback server may run with no password, in which case the authorization middleware passes every request (`packages/forge/src/server/routes/instance/httpapi/middleware/authorization.ts`, `authorizationLayer`).
+
+The findings routes therefore **require server authentication even on loopback**: when no server password is configured, every findings route fails closed with an explanatory error instead of inheriting the pass-through. The desktop sidecar always configures a password, so the app is unaffected. This keeps an unauthenticated local process, including one an agent launches, from calling the routes on a passwordless `forge serve`. It does not stop a same-user process that can read the password from memory or edit the database. Containment of agent execution is a separate design.
+
+Actor, session, and project on every event are derived from the invocation context (tool context for agents, the authenticated route for humans), never from request fields.
+
+### Why human actions are routes, not asked tools
+
+`PermissionV2` turns every `ask` into `allow` when permission checks are disabled (`packages/core/src/permission.ts`, the `checks.enforced()` branch), and an `always` reply saves a rule for later calls. A tool gated only by a permission ask provides no guarantee for users who disable checks, so human actions are not tools at all.
 
 ## Architecture
 
-A Core domain in `packages/core/src/finding/` with Drizzle tables, a typed Location-scoped service, and agent tools registered through `Tools.Service` alongside the other built-ins. Human-only operations are HttpApi routes on the instance server, generated into `packages/client` with `bun run generate`. Public wire contracts live in `packages/schema/src/finding.ts`. This follows the Schema -> Core/Protocol -> Server dependency direction.
+- Wire contracts in `packages/schema/src/finding.ts`.
+- A Core domain in `packages/core/src/finding/`: Drizzle tables, a Location-scoped service, and the agent tools registered through `Tools.Service`.
+- Endpoint contracts in `packages/protocol/src/groups/finding.ts` and handlers in `packages/server/src/handlers/finding.ts`, following the `memory` group. Not only in the legacy Forge route tree. Regenerate `packages/client` with `bun run generate`.
 
-The agent-proposes, human-decides split follows the precedent of `agent_improvement_proposal` (`packages/core/src/agent/improvement.sql.ts`), with one difference: here no agent tool can move a finding out of `draft`, not even behind a permission ask.
+`agent_improvement_proposal` (`packages/core/src/agent/improvement.sql.ts`) is precedent for durable agent-authored records with revisions. It is not precedent for a human-only boundary: agents can adjudicate and apply those proposals through tools (`packages/core/src/tool/agent-improvement.ts`).
 
-### Why human-only operations are routes, not asked tools
-
-`PermissionV2` turns every `ask` into `allow` when permission checks are disabled (`packages/core/src/permission.ts`, the `checks.enforced()` branch), and an `always` reply saves a rule for later calls. A tool gated only by a permission ask therefore provides no guarantee for users who disable checks. Confirming, transitioning, deleting, and reading PoC content are not agent tools at all.
+All mutations follow the Storage contract (`specs/storage.md`): one serialized transaction per mutation, consistent reader snapshots, events published after commit.
 
 ## Data model
 
-Snake_case Drizzle columns. Timestamps are epoch milliseconds. All tables cascade on project delete.
+Snake_case Drizzle columns. Timestamps are epoch milliseconds. All tables cascade on project delete. Every limit below is enforced in the Core service as well as the wire schema, and measured in UTF-8 bytes.
 
 ### `finding`
 
 Current state of one finding.
 
-| Column              | Notes                                                                                 |
-| ------------------- | ------------------------------------------------------------------------------------- |
-| `id`                | ascending ID, `fnd_` prefix                                                           |
-| `project_id`        | FK `project.id`, cascade delete                                                       |
-| `title`             | 1..256 chars                                                                          |
-| `severity`          | `critical`, `high`, `medium`, `low`, `info`                                           |
-| `cwe`               | nullable, `CWE-<n>`                                                                   |
-| `summary`           | what is wrong, 1..16 KiB                                                              |
-| `impact`            | what an attacker gains, up to 16 KiB                                                  |
-| `repro_steps`       | ordered steps, up to 64 KiB                                                           |
-| `locations`         | JSON array of `{ path, start_line?, end_line?, symbol? }`, workspace-relative, max 50 |
-| `commit`            | commit SHA the finding was confirmed against                                          |
-| `dirty`             | boolean; working tree had uncommitted changes when drafted                            |
-| `status`            | see Status                                                                            |
-| `source`            | `agent` or `human` (who created it)                                                   |
-| `author_session_id` | nullable, set null on session delete                                                  |
-| `revision`          | integer, bumped on every change; used for compare-and-swap                            |
-| `time_created`      |                                                                                       |
-| `time_updated`      |                                                                                       |
+| Column              | Notes                                                                                   |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| `id`                | ascending ID, `fnd_` prefix                                                             |
+| `project_id`        | FK `project.id`, cascade delete; never the global project                               |
+| `title`             | single line, 1..256 bytes                                                               |
+| `severity`          | `critical`, `high`, `medium`, `low`, `info`                                             |
+| `cwe`               | nullable, `CWE-<n>`                                                                     |
+| `summary`           | what is wrong, 1..16 KiB                                                                |
+| `impact`            | what an attacker gains, up to 16 KiB                                                    |
+| `repro_steps`       | ordered steps, 1..64 KiB                                                                |
+| `locations`         | JSON array, max 50, of `{ path, start_line?, end_line?, symbol? }` (below)              |
+| `draft_commit`      | commit of the Location's repository when drafted, set by the server                     |
+| `draft_dirty`       | boolean; the working tree had uncommitted changes when drafted                          |
+| `status`            | see Status                                                                              |
+| `source`            | `agent` or `human` (who created it)                                                     |
+| `author_session_id` | nullable, set null on session delete                                                    |
+| `revision`          | integer, bumped by every mutation including PoC changes; compare-and-swap on all writes |
+| `deleted`           | boolean tombstone; see Deletion                                                         |
+| `time_created`      |                                                                                         |
+| `time_updated`      |                                                                                         |
+
+`locations[].path` is repository-root-relative (the same convention as memory's `anchor_path`), at most 1 KiB, normalized, with no `..` segments, no absolute paths, and no NUL. `symbol` is at most 256 bytes. `start_line <= end_line`, both positive. Paths are labels in v1; nothing reads files through them.
 
 ### `finding_event`
 
 Append-only history. Rows are never updated or deleted except by project cascade.
 
-| Column         | Notes                                                             |
-| -------------- | ----------------------------------------------------------------- |
-| `id`           | ascending ID                                                      |
-| `finding_id`   | FK `finding.id`, cascade delete                                   |
-| `type`         | `created`, `edited`, `status`, `note`, `poc_added`, `poc_removed` |
-| `actor`        | `agent` or `human`                                                |
-| `session_id`   | nullable; agent events record the session                         |
-| `from_status`  | nullable, for `status` events                                     |
-| `to_status`    | nullable, for `status` events                                     |
-| `body`         | reason, note text, or edit summary, up to 16 KiB, plain text      |
-| `commit`       | nullable; the commit a note or status change refers to            |
-| `time_created` |                                                                   |
+| Column         | Notes                                                                           |
+| -------------- | ------------------------------------------------------------------------------- |
+| `id`           | ascending ID                                                                    |
+| `finding_id`   | FK `finding.id`                                                                 |
+| `revision`     | the finding revision this event produced; unique with `finding_id`              |
+| `type`         | `created`, `edited`, `status`, `note`, `poc_added`, `poc_removed`, `deleted`    |
+| `actor`        | `agent` or `human`, from invocation context                                     |
+| `session_id`   | nullable; agent events record the session                                       |
+| `from_status`  | nullable, for `status` events                                                   |
+| `to_status`    | nullable, for `status` events                                                   |
+| `body`         | reason, note text, or edit summary, up to 16 KiB, plain text                    |
+| `commit`       | nullable; the commit a note or status change refers to                          |
+| `attestation`  | nullable JSON, for confirmation and verification events only (see Confirmation) |
+| `time_created` |                                                                                 |
 
-There is no user identity column in v1. The only human writer is the authenticated local user through the HTTP API. Add a user column when multi-user exists rather than storing a constant.
+Agent notes are limited to 200 per finding. There is no user identity column in v1; add one when multi-user exists rather than storing a constant.
 
 ### `finding_poc`
 
-Zero or more PoC attachments per finding.
+Zero to ten PoC attachments per finding, enforced inside the mutation transaction.
 
-| Column         | Notes                                                                    |
-| -------------- | ------------------------------------------------------------------------ |
-| `id`           | ascending ID                                                             |
-| `finding_id`   | FK `finding.id`, cascade delete                                          |
-| `filename`     | sanitized basename, 1..128 chars, no path separators                     |
-| `media_type`   | declared type, informational only                                        |
-| `bytes`        | plaintext size, at most 256 KiB                                          |
-| `sha256`       | hex digest of plaintext                                                  |
-| `sealed`       | `SecretVault.sealBytes("finding-poc", "<finding_id>/<poc_id>", content)` |
-| `source`       | `agent` or `human`                                                       |
-| `time_created` |                                                                          |
+| Column         | Notes                                                                            |
+| -------------- | -------------------------------------------------------------------------------- |
+| `id`           | ascending ID                                                                     |
+| `finding_id`   | FK `finding.id`                                                                  |
+| `filename`     | sanitized basename, 1..128 bytes, no path separators, no control characters      |
+| `bytes`        | plaintext size computed by the server, at most 256 KiB                           |
+| `sha256`       | hex digest of plaintext computed by the server                                   |
+| `sealed`       | `SecretVault.sealBytes("finding-poc", "<finding_id>/<poc_id>", content)`         |
+| `source`       | `agent` or `human`, from invocation context                                      |
+| `removed`      | boolean; removal hides the attachment, keeps the row for history and attestation |
+| `time_created` |                                                                                  |
 
-The vault derives a key per scope and binds scope and key as AES-GCM additional data, so a sealed value copied onto another finding's row fails to open. The 256 KiB cap sits well under the vault's 1 MiB value limit, so each PoC is one sealed value (no chunking). At most 10 PoCs per finding.
+Content must be valid UTF-8. There is no stored media type; downloads are always served as `text/plain; charset=utf-8` attachments.
 
-`finding_poc.sealed` is a new table holding vault envelopes. Open PR #172 adds `VaultVerification` (`packages/core/src/database/vault-verification.ts`), which checks every listed store before startup and states that a store missing from its list is never checked. Whichever lands second must add `finding_poc` to that list with scope `finding-poc` and key `<finding_id>/<id>`.
+The vault derives a key per scope and binds scope and key as AES-GCM additional data, so a sealed value copied onto another finding's row fails to open. 256 KiB fits in one sealed value under the vault's 1 MiB limit.
+
+PR #172 (closed, unmerged) proposed a startup check that opens one sealed value from every table holding vault envelopes, and noted that a table missing from its list is never checked. If that check or a successor lands, `finding_poc` must be registered in it.
+
+### Deletion
+
+Deleting a finding is human-only and soft: it sets `deleted`, drops the sealed content of its PoCs, and records a `deleted` event. The finding and its history remain for the audit trail and are hidden from default lists. Hard deletion happens only through project cascade. Deleting a row does not erase copies in transcripts, exports, or backups.
 
 ## Status
 
 ```text
-draft -> confirmed -> reported -> fixed -> verified_fixed
-draft | confirmed -> rejected
-fixed | verified_fixed | rejected -> reopened -> confirmed
+draft -> confirmed -> fixed -> verified_fixed
+confirmed -> reported -> fixed
+draft | confirmed | reported -> rejected
+fixed | verified_fixed | rejected -> confirmed   (reopen)
 ```
 
-- Every transition is human-only and requires a reason, recorded as a `status` event.
-- `fixed` and `verified_fixed` require a commit. `verified_fixed` means a human re-ran the reproduction against that commit.
-- Edits to a non-draft finding are human-only and recorded as `edited` events with a summary of the changed fields.
-- Transitions use `revision` for compare-and-swap, so two UI tabs cannot silently overwrite each other.
+- Every transition is human-only, requires a reason and the current `revision`, and is recorded as a `status` event in the same transaction that updates the row.
+- `reported` is optional, for findings handed to another team.
+- `fixed` and `verified_fixed` require a commit.
+
+### Confirmation
+
+Confirming binds the human decision to exactly what was reviewed. The `status` event's `attestation` records:
+
+- the finding `revision` the human was looking at (the request fails if it has moved),
+- the IDs and `sha256` of every non-removed PoC at that revision,
+- the commit the human confirms against. It defaults to `draft_commit`, and a draft with `draft_dirty` set cannot be confirmed until the human supplies a commit.
+
+Confirmation requires non-empty `repro_steps` and at least one PoC, or an explicit human reason recorded for why there is none.
+
+`verified_fixed` records the same attestation against the fixed commit, meaning a human re-ran the reproduction there.
+
+A human edit to `summary`, `impact`, `repro_steps`, `locations`, or PoCs after confirmation is recorded as `edited` and marks the attestation stale in the UI until the human re-confirms. Title, severity, and CWE edits do not.
 
 ## Agent tools
 
-Registered as Location-scoped built-ins. Normal permission handling applies to all of them; none of them can change status.
+Registered as Location-scoped built-ins with normal permission handling. The service resolves the project from the Location, rejects the global project, and filters every ID lookup by that project.
 
-- `finding_draft`: creates a `draft` finding with optional PoC attachments. The server fills `commit` and `dirty` from the Location's repository, not from agent input. Returns the finding ID.
-- `finding_list`: bounded list with filters on status, severity, and path prefix. Returns metadata only.
-- `finding_read`: returns one finding with its locations, repro steps, and event history. Each PoC appears only as `{ id, filename, bytes, sha256, source }`.
-- `finding_note`: appends a `note` event, optionally with a commit. This is how an agent reports "no longer reproduces at `<sha>`".
+- `finding_draft`: creates a `draft` with its PoC attachments in one call. The server fills `draft_commit` and `draft_dirty` from the Location's repository. Returns the finding ID. There is no later tool for adding PoCs; a human adds them through the UI.
+- `finding_list`: at most 50 results per page with a cursor, filtered by status, severity, and path prefix. Metadata only.
+- `finding_read`: one finding with its locations, repro steps, and the latest 50 events, with a cursor for older ones. Each PoC appears only as `{ id, filename, bytes, sha256, source }`.
+- `finding_note`: appends a `note` event, optionally with a commit, for example "no longer reproduces at `<sha>`".
 
-An agent may attach PoCs to a `draft` it authored in the same session. After that, PoC changes are human-only.
+Findings enter model context only through these tools. They are not an automatic context source and are not indexed by memory search.
 
-There is no agent tool to confirm, transition, edit a non-draft, delete, or read PoC content, and none is added when permission checks are disabled.
-
-`finding_list` and `finding_read` are not wired into memory search or any automatic context source. Findings enter model context only when an agent calls these tools.
+Text returned by `finding_read` is untrusted evidence, including after human confirmation. Confirmation validates a vulnerability claim, not any instructions embedded in its text.
 
 ### Interaction with secret-safe tool output
 
-Open PR #142 (`specs/secret-output-guard.md` on `secret-output-guard`) masks credentials in tool output as `[SECRET:v1:<rule>:<fingerprint>]` references. Two consequences:
+Open PR #142 (`specs/secret-output-guard.md` on `secret-output-guard`) masks supported credential formats in tool output as `[SECRET:v1:<rule>:<fingerprint>]` references. It is not general data-loss prevention: unknown formats and encodings pass through. Consequences here:
 
-- `finding_read` output passes through that guard like any tool output, so credentials in repro steps are masked for the model. The stored finding keeps the original text and the human UI shows it.
-- An agent that saw a credential only in masked form will write the reference, not the value, into a PoC. A PoC containing a reference does not work. `finding_draft` rejects PoC content and repro steps containing `[SECRET:v1:` with an explanatory error, matching #142's rejection of placeholders in mutation inputs. It never tries to resolve references back to originals.
+- `finding_read` output passes through that guard like any tool output. Credentials in narrative fields may be masked for the model; that is best effort, not a confidentiality guarantee for those fields.
+- An agent that saw a credential only in masked form will copy the reference, not the value, into a PoC, which then fails. `finding_draft` and `finding_note` reject input using #142's `containsPlaceholder` (it matches `[SECRET:v1`, including truncated markers), rather than a separate check.
+
+## Disclosure contract
+
+| Data                                       | Stored    | Agent tools return | Human UI and export |
+| ------------------------------------------ | --------- | ------------------ | ------------------- |
+| PoC content                                | sealed    | never              | yes                 |
+| Title, summary, impact, repro steps, notes | plaintext | yes                | yes                 |
+| Locations, commits, status, event metadata | plaintext | yes                | yes                 |
+| PoC metadata (filename, bytes, sha256)     | plaintext | yes                | yes                 |
+
+Narrative fields are model-readable by design, so repro steps must not contain live credentials: a PoC should take credentials from the operator's environment or use synthetic ones. The UI says so on the draft and confirm forms.
+
+Sealing protects only the attachment envelope. It does not protect:
+
+- the drafting session's own history, which contains the `finding_draft` arguments, including PoC content;
+- files an agent wrote while developing the PoC;
+- exports, and earlier backups or transcripts containing plaintext copies.
+
+Sensitive-path handling:
+
+- Validation and decryption errors on findings routes carry no request content. The existing schema-error middleware includes up to 1 KiB of the rejection reason in the response and logs (`packages/forge/src/server/routes/instance/httpapi/middleware/schema-error.ts`), so findings routes that accept PoC content or narrative must use content-free errors. A test must submit an invalid PoC containing a marker and assert the marker appears in no response or log line.
+- No request or response body from findings routes is logged.
+- PoC download and export responses set `Cache-Control: no-store` and `Content-Disposition: attachment`, with `X-Content-Type-Options: nosniff`.
+- Export is treated as a PoC read: human-only, authenticated, and recorded as an event.
 
 ## HTTP API and UI
 
-Routes under the instance HttpApi:
+Routes in the Protocol `finding` group, all requiring authentication (see Threat model), all scoped by project:
 
-- list findings; get a finding with its events and PoC metadata
+- list findings; get a finding with a page of events and PoC metadata
 - create a finding (human-authored)
 - edit a finding (compare-and-swap on `revision`)
-- transition status (reason required; commit required where noted)
-- add or remove a PoC; download a PoC (opens the sealed value)
+- transition status (reason required; attestation for confirmation and verification)
+- add or remove a PoC (compare-and-swap on `revision`); download a PoC
+- delete a finding (soft)
 - export a finding as markdown
 
-Minimal UI: a findings panel per project with status and severity filters, a detail view with the event timeline, and the status actions. Anything written by an agent is labelled as such.
+Minimal UI: a findings panel per project with status and severity filters, a detail view with the event timeline, and the status actions. Anything written by an agent is labelled as such, and a stale attestation is shown on the finding.
 
-PoC content is shown as escaped plain text in a monospace block, or offered as a download. There is no run button. No agent- or repository-controlled field is rendered as markdown or HTML, so a finding cannot load remote images, links, or scripts in the UI.
+PoC content is shown as escaped plain text in a monospace block, or offered as a download. There is no run button. No agent- or repository-controlled field is rendered as markdown or HTML in the UI.
 
 ## Export
 
-One finding to markdown: title, severity, CWE, status, commit, locations, summary, impact, repro steps, and PoCs inline as fenced code. Each fence is one backtick longer than the longest backtick run in its content, so a PoC cannot close its own fence and inject markdown into the report.
+Export writes one consistent snapshot of a finding (a single read transaction) as markdown for engineering. The report structure is generated by TurenOS; every field inside it is untrusted:
 
-Export includes the PoC content by design, since it is the engineering handoff. The UI states that the export contains working exploit material before copying or saving it.
+- Title, severity, CWE, status, commits, and locations are escaped as literal inline text, so they cannot produce links, images, HTML, or headings. Newlines in single-line fields are rejected at input.
+- Summary, impact, repro steps, and notes are emitted as fenced blocks, as are PoCs.
+- Each fence is backticks of length `max(3, longest backtick run in the content + 1)`, starts and ends on its own line, and has no info string derived from input.
+- The export header states that it contains working exploit material.
+
+Tests run exports containing HTML, remote image and link syntax, backtick runs, and multi-line titles through the markdown parser used for verification and assert no active element is produced.
 
 ## Security properties
 
-- **Stored PoCs are not returned to the model.** No tool returns PoC content, and findings are not an automatic context source. Two limits: the drafting session already holds the PoC, because its `finding_draft` call arguments are part of that session's durable history; and nothing stops an agent from writing a PoC to disk itself while working. Both are outside this feature.
-- **Human-only status.** Status changes, non-draft edits, and PoC reads are HTTP routes, not agent tools. This depends on agent processes not holding server credentials, which PR #144 fixed (`delete process.env.FORGE_SERVER_PASSWORD` in `packages/forge/src/server/auth.ts`). The implementation must add a regression test that an agent shell cannot call the findings routes.
-- **Repository-steered drafts.** A hostile repository can steer an agent into drafting a fake finding or attaching a destructive "PoC" that a human later runs. Drafts are inert until a human confirms them, agent authorship is always visible, and TurenOS never executes PoCs.
-- **Encrypted at rest.** PoCs often contain live tokens or cookies, and the database is copied by imports and backups. PoC content is sealed with the install's vault key; metadata is not.
-- **No silent history rewrite.** `finding_event` is append-only; `finding` holds only current state and every change to it emits an event.
-- **No public disclosure path.** v1 export is local markdown only. A direct GitHub integration must target private security advisories, never public issues.
-- **Bounded inputs.** Every text field and attachment has a size cap, and filenames are sanitized basenames.
+- **No agent tool performs a human action**, independent of permission settings. Human actions are authenticated routes that fail closed without a server password. Same-user code execution is out of scope; see Threat model.
+- **Stored PoCs are not returned to the model** by any tool. See Disclosure contract for what sealing does not cover.
+- **Human confirmation is bound to evidence**: a specific revision, PoC digest set, and commit.
+- **Repository-steered drafts.** A hostile repository can steer an agent into drafting a fake finding or attaching a destructive "PoC" that a human later runs. Drafts are inert until confirmed, agent authorship is always visible, TurenOS never executes PoCs, and finding text stays untrusted after confirmation.
+- **Project identity is grouping, not trust.** A project ID can be derived from repository configuration, and fresh clones of the same remote converge on it (`packages/core/src/project.ts`). A hostile repository claiming a known remote would see that project's findings through the agent tools. Opening a repository is already a trust decision; the UI shows which project a finding belongs to.
+- **History is append-only**, and every row change emits an event in the same transaction.
+- **No public disclosure path.** v1 export is local markdown only.
+- **Bounded storage and responses**: byte limits on every field, per-finding caps on PoCs and agent notes, and paginated reads.
 
 ## Rollout
 
-1. Schema contracts, Core tables, migration, and service with tests (status machine, compare-and-swap, cascade, seal/open round trip, cross-row seal swap fails).
-2. Agent tools: `finding_draft`, `finding_list`, `finding_read`, `finding_note`. Tests assert no tool output contains PoC bytes and no tool can change status, including with permission checks disabled.
-3. HttpApi routes, generated client, the agent-shell regression test, and the UI panel.
-4. Markdown export with fence sizing tests.
+1. Schema contracts, Core tables, migration, and service. Tests: status machine, attestation and staleness, compare-and-swap on edits and PoC changes, attachment and note caps under concurrency, soft delete, cascade, project predicates on every lookup (cross-project IDs, global project rejected, two worktrees of one repository), seal/open round trip, and cross-row seal swap failing.
+2. Agent tools. Tests: no tool output contains PoC bytes; no tool can change status, including with permission checks disabled; placeholder rejection; pagination bounds.
+3. Protocol group, server handlers, generated client, and UI panel. Tests: every route fails closed without a server password; no content in validation errors or logs; response headers; an agent shell command against a passwordless loopback server is refused.
+4. Markdown export with the escaping and fence tests above.
 
 Later, not in this design:
 
@@ -191,9 +266,9 @@ Later, not in this design:
 - Promoting a findings-ledger scanner finding into a confirmed finding.
 - GitHub private security advisory export.
 - Deployed targets (URLs, hosts) using the memory `engagement` wing as precedent.
+- Containment of agent execution, which would allow a stronger human-only guarantee.
 
 ## Open questions
 
-- Whether `finding_draft` should refuse, or only flag, drafting when the working tree is dirty.
-- Whether an agent should be able to attach additional PoCs to a human-confirmed finding as a proposal the human accepts, rather than only via notes.
-- Retention: whether `rejected` findings should be purged after N days, and whether their PoCs should be dropped sooner.
+- Whether `finding_draft` should refuse drafting on a dirty working tree, rather than requiring a commit at confirmation.
+- Retention for `rejected` and deleted findings, once the deletion contract has been used in practice.
