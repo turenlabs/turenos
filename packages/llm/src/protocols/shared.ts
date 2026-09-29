@@ -152,7 +152,10 @@ export const parseJson = (route: string, input: string, message: string) =>
  * (OpenAI Chat `system` content, OpenAI Responses `system` content, Gemini
  * `systemInstruction.parts[].text`).
  */
-export const joinText = (parts: ReadonlyArray<{ readonly text: string }>) => parts.map((part) => part.text).join("\n")
+export const joinText = (parts: ReadonlyArray<{ readonly text: string }>) => {
+  if (parts.length === 1) return parts[0]?.text ?? ""
+  return parts.map((part) => part.text).join("\n")
+}
 
 const escapeSystemUpdateText = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
