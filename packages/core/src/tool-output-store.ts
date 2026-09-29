@@ -166,13 +166,15 @@ const layer = Layer.effect(
       const outputLimits = yield* limits()
       const media = input.output.content.filter((item) => item.type === "file")
       const text = input.output.content.filter((item) => item.type === "text")
-      const joined =
+      const values =
         input.output.content.length === 0
-          ? yield* Effect.try({
-              try: () => JSON.stringify(input.output.structured, null, 2) ?? String(input.output.structured),
-              catch: (cause) => new StorageError({ operation: "encode", cause }),
-            })
-          : text.map((item) => item.text).join("")
+          ? [
+              yield* Effect.try({
+                try: () => JSON.stringify(input.output.structured, null, 2) ?? String(input.output.structured),
+                catch: (cause) => new StorageError({ operation: "encode", cause }),
+              }),
+            ]
+          : text.map((item) => item.text)
       // Joining separately safe text blocks can reconstruct a credential. Protect
       // the exact bytes retained and previewed, not only each incoming block.
       const protection =
@@ -184,27 +186,33 @@ const layer = Layer.effect(
               () => new StorageError({ operation: "encode", cause: new Error("Secret output protection unavailable") }),
             ),
           ))
-      const contextual = yield* Effect.try({
-        try: () => protection.text(joined),
+      const parts = yield* Effect.try({
+        try: () => protection.parts(values),
         catch: () =>
           new StorageError({ operation: "encode", cause: new Error("Secret output protection unavailable") }),
       })
+      const contextual = parts.join("")
       if (
         lineCount(contextual) <= outputLimits.maxLines &&
         Buffer.byteLength(contextual, "utf-8") <= outputLimits.maxBytes
       ) {
-        if (contextual === joined) return { output: input.output, outputPaths: [] }
-        // The redacted join replaces the first text block; attachments keep their order.
-        const first = input.output.content.findIndex((item) => item.type === "text")
+        if (parts.every((part, index) => part === values[index])) return { output: input.output, outputPaths: [] }
+        if (text.length === 0)
+          return {
+            output: { structured: input.output.structured, content: [{ type: "text" as const, text: contextual }] },
+            outputPaths: [],
+          }
+        // Each block keeps its own protected text, so attachments stay between the same text. A
+        // block whose text was wholly part of a credential starting earlier is dropped.
+        const protectedText = new Map(text.map((item, index) => [item, parts[index]]))
         return {
           output: {
             structured: input.output.structured,
-            content:
-              first === -1
-                ? [{ type: "text" as const, text: contextual }]
-                : input.output.content.flatMap((item, index): ToolOutput["content"][number][] =>
-                    item.type !== "text" ? [item] : index === first ? [{ type: "text", text: contextual }] : [],
-                  ),
+            content: input.output.content.flatMap((item): ToolOutput["content"][number][] => {
+              if (item.type !== "text") return [item]
+              const part = protectedText.get(item) ?? ""
+              return part === "" && item.text !== "" ? [] : [{ type: "text", text: part }]
+            }),
           },
           outputPaths: [],
         }

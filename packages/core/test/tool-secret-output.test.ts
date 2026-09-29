@@ -7,6 +7,7 @@ import { ToolInterceptor } from "@turenlabs/core/tool/interceptor"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
 import { Tool } from "@turenlabs/core/tool/tool"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { ExtensionRuntime } from "@turenlabs/core/extension"
 import { Extension } from "@turenlabs/schema"
 import { Database } from "@turenlabs/core/database/database"
@@ -113,8 +114,38 @@ describe("secret-safe tool settlement", () => {
       })
       const result = yield* settleTool(registry, call("ordered", "ordered"))
       expect(JSON.stringify(result).includes(secret)).toBe(false)
-      expect(result.output?.content.map((item) => item.type)).toEqual(["file", "text"])
-      expect(result.output?.content[1]).toMatchObject({ type: "text", text: expect.stringContaining("[SECRET:v1:") })
+      expect(result.output?.content).toEqual([
+        { type: "file", uri: `data:image/png;base64,${data}`, mime: "image/png" },
+        { type: "text", text: `before ${SecretRedaction.text(secret)}` },
+        { type: "text", text: " after" },
+      ])
+    }),
+  )
+  it.effect("keeps text after an attachment in order when a credential is split around it", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
+      yield* registry.register({
+        split: Tool.make({
+          description: "Return a credential split around an attachment",
+          input: Schema.Struct({}),
+          output: Schema.String,
+          execute: () => Effect.succeed("ok"),
+          toModelOutput: () => [
+            { type: "text", text: `before ${secret.slice(0, 12)}` },
+            { type: "file", mime: "image/png", data },
+            { type: "text", text: `${secret.slice(12)} after` },
+          ],
+        }),
+      })
+      const result = yield* settleTool(registry, call("split", "split"))
+      expect(JSON.stringify(result).includes(secret)).toBe(false)
+      expect(JSON.stringify(result).includes(secret.slice(12))).toBe(false)
+      expect(result.output?.content).toEqual([
+        { type: "text", text: `before ${SecretRedaction.text(secret)}` },
+        { type: "file", uri: `data:image/png;base64,${data}`, mime: "image/png" },
+        { type: "text", text: " after" },
+      ])
     }),
   )
 

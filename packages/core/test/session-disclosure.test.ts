@@ -26,6 +26,7 @@ test("request guard uses supplied known-value snapshot without touching transpor
   })
   const safe = SessionDisclosure.request(request, {
     text: (value) => value.replaceAll(known, "[known]"),
+    parts: (values) => values.map((value) => value.replaceAll(known, "[known]")),
     json: (value) => value,
   })
   expect(safe.messages[0].content).toEqual([{ type: "text", text: "[known]" }])

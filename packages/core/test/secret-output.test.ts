@@ -167,7 +167,7 @@ test("snapshots redact opaque provider values and refresh after rotation and del
     const output = yield* SecretOutput.Service
     const first = yield* output.snapshot()
     // Only redaction functions are exposed; no raw values are reachable from a snapshot.
-    expect(Object.keys(first).sort()).toEqual(["boundary", "json", "text"])
+    expect(Object.keys(first).sort()).toEqual(["boundary", "json", "parts", "text"])
     expect(Object.values(first).every((value) => typeof value === "function")).toBe(true)
     expect(first.text("value opaque.cobalt.river.42")).not.toContain("opaque.cobalt.river.42")
     expect(first.json({ nested: ["opaque.cobalt.river.42"] })).toEqual({

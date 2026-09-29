@@ -49,7 +49,7 @@ it.live("withholds capture when sanitization throws without stranding completion
       throw new Error(`synthetic sanitizer failure ${secret}`)
     }
     const sanitizer = spyOn(SecretRedaction, "compile").mockImplementation(() =>
-      Object.freeze({ text: fail, json: fail, boundary: fail }),
+      Object.freeze({ text: fail, parts: fail, json: fail, boundary: fail }),
     )
     yield* Effect.gen(function* () {
       const sessionID = `ses_failure_${randomUUID()}`

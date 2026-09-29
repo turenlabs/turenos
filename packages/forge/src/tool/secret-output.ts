@@ -9,6 +9,7 @@ export const WITHHELD = "[Tool output withheld: secret redaction failed]"
 /** Withholds every value: live output is never passed through unprotected. */
 const unavailable: SecretOutput.Snapshot = {
   text: () => WITHHELD,
+  parts: (values) => values.map(() => WITHHELD),
   json: () => ({ error: WITHHELD }),
   boundary: (value) => value.length,
 }

@@ -185,6 +185,26 @@ describe("SecretRedaction", () => {
     expect(SecretRedaction.text("ordinary text and ghp_example")).toBe("ordinary text and ghp_example")
     expect(SecretRedaction.text(`ghp_${"b".repeat(36)}`)).not.toBe(marker)
   })
+
+  test("protects split parts as one text but keeps each reference in the part where it starts", () => {
+    const marker = SecretRedaction.text(github)
+    // Spans three parts: the middle part is wholly consumed and the last keeps only its tail.
+    expect(SecretRedaction.parts(["a ", github.slice(0, 10), github.slice(10, 20), `${github.slice(20)} b`])).toEqual([
+      "a ",
+      marker,
+      "",
+      " b",
+    ])
+    expect(SecretRedaction.parts(["x ", github, " y", " z"])).toEqual(["x ", marker, " y", " z"])
+    // An existing reference split across parts stays whole in the part where it starts.
+    expect(SecretRedaction.parts([`${marker.slice(0, 9)}`, `${marker.slice(9)} tail`])).toEqual([marker, " tail"])
+    const plain = ["ordinary ", "", "text"]
+    expect(SecretRedaction.parts(plain)).toEqual(plain)
+    expect(SecretRedaction.parts([])).toEqual([])
+    expect(SecretRedaction.parts(["a ", github.slice(0, 10), `${github.slice(10)} b`]).join("")).toBe(
+      SecretRedaction.text(`a ${github} b`),
+    )
+  })
 })
 
 describe("SecretRedaction configured values", () => {

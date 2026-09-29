@@ -79,6 +79,7 @@ export function compile(secrets: readonly string[] = []) {
       : new RegExp(literals.map((secret) => secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g")
   return Object.freeze({
     text: (value: string) => guarded(() => redact(value, known)),
+    parts: (values: readonly string[]) => guarded(() => redactParts(values, known)),
     json: (value: unknown) => guarded(() => traverse(value, (part) => redact(part, known))),
     boundary: (value: string) => guarded(() => boundary(value, known, literals)),
   })
@@ -91,6 +92,10 @@ export function references(value: string) {
 
 export function text(value: string, secrets?: readonly string[]): string {
   return guarded(() => compile(secrets).text(value))
+}
+
+export function parts(values: readonly string[], secrets?: readonly string[]): string[] {
+  return guarded(() => compile(secrets).parts(values))
 }
 
 export function json(value: unknown, secrets?: readonly string[]): unknown {
@@ -110,26 +115,68 @@ function redact(value: string, known: RegExp | undefined): string {
   if (Buffer.byteLength(value, "utf8") > MAX_BYTES) throw failure()
   const spans = locate(value, known)
   if (spans.length === 0) return value
-  const chunks: string[] = []
+  const result = segments(value, spans)
+    .map((segment) => segment.text)
+    .join("")
+  if (Buffer.byteLength(result, "utf8") > MAX_BYTES) throw failure()
+  return result
+}
+
+/**
+ * Redacts `values` as one concatenated text, so a credential split across them is still found,
+ * and returns one protected string per value. Each reference lands in the value where its finding
+ * starts and the covered text is removed from the values it reaches into; unchanged text keeps its
+ * original value, so the order of whatever sits between the values is preserved.
+ */
+function redactParts(values: readonly string[], known: RegExp | undefined): string[] {
+  const joined = values.join("")
+  if (Buffer.byteLength(joined, "utf8") > MAX_BYTES) throw failure()
+  const spans = locate(joined, known)
+  if (spans.length === 0) return [...values]
+  let total = 0
+  const ends = values.map((value) => (total += value.length))
+  const owner = (offset: number) => ends.findIndex((end) => offset < end)
+  const result = values.map(() => "")
+  for (const segment of segments(joined, spans)) {
+    if (segment.atomic) {
+      result[owner(segment.start)] += segment.text
+      continue
+    }
+    const end = segment.start + segment.text.length
+    for (let start = segment.start; start < end; ) {
+      const index = owner(start)
+      const cut = Math.min(end, ends[index])
+      result[index] += joined.slice(start, cut)
+      start = cut
+    }
+  }
+  if (Buffer.byteLength(result.join(""), "utf8") > MAX_BYTES) throw failure()
+  return result
+}
+
+// The redacted text as source-ordered pieces: unchanged text, and atomic references that each
+// replace one union of findings starting at `start` in the original.
+function segments(value: string, spans: readonly Span[]) {
+  const result: { readonly start: number; readonly text: string; readonly atomic: boolean }[] = []
   // Repeated credentials share one keyed fingerprint per call.
   const references = new Map<string, string>()
   let offset = 0
   // UTF-16 length never exceeds UTF-8 bytes, so this lower bound can fail an expansion early.
   let length = 0
-  const push = (chunk: string) => {
-    length += chunk.length
+  const push = (start: number, text: string, atomic: boolean) => {
+    length += text.length
     if (length > MAX_BYTES) throw failure()
-    chunks.push(chunk)
+    result.push({ start, text, atomic })
   }
   for (const union of unions(spans)) {
-    push(value.slice(offset, union.start))
+    push(offset, value.slice(offset, union.start), false)
     offset = union.end
     // A reference that already covers everything it overlaps is kept, so redaction is idempotent.
     const kept = union.members.some(
       (span) => span.rule === undefined && span.start === union.start && span.end === union.end,
     )
     if (kept) {
-      push(value.slice(union.start, union.end))
+      push(union.start, value.slice(union.start, union.end), true)
       continue
     }
     const rule = label(union.members)
@@ -137,11 +184,9 @@ function redact(value: string, known: RegExp | undefined): string {
     const key = `${rule}\u0000${secret}`
     const reference = references.get(key) ?? placeholder(rule, secret)
     references.set(key, reference)
-    push(reference)
+    push(union.start, reference, true)
   }
-  push(value.slice(offset))
-  const result = chunks.join("")
-  if (Buffer.byteLength(result, "utf8") > MAX_BYTES) throw failure()
+  push(offset, value.slice(offset), false)
   return result
 }
 

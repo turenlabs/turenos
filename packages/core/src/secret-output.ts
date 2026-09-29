@@ -12,6 +12,8 @@ export class Error extends Schema.TaggedErrorClass<Error>()("SecretOutput.Error"
 
 export interface Snapshot {
   readonly text: (value: string) => string
+  /** Protects `values` as one joined text, returning one protected string per value in order. */
+  readonly parts: (values: readonly string[]) => string[]
   readonly json: (value: unknown) => unknown
   /** For streamed output: how much of `value` can be redacted and released now (0 holds it all). */
   readonly boundary?: (value: string) => number
