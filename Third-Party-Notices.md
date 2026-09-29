@@ -579,8 +579,8 @@ Each row identifies a resolved package and version, its declared license, and it
 | `fast-json-stringify` | `6.4.0` | MIT | [source](git+https://github.com/fastify/fast-json-stringify.git) |
 | `fast-json-stringify` | `7.0.1` | MIT | [source](git+https://github.com/fastify/fast-json-stringify.git) |
 | `fast-querystring` | `1.1.2` | MIT | [source](git+https://github.com/anonrig/fast-querystring.git) |
-| `fast-uri` | `3.1.6` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
-| `fast-uri` | `4.1.3` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
+| `fast-uri` | `3.1.7` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
+| `fast-uri` | `4.1.4` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
 | `fast-xml-builder` | `1.2.0` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-builder.git) |
 | `fast-xml-parser` | `5.7.3` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-parser.git) |
 | `fastdom` | `1.0.12` | MIT | [source](git://github.com/wilsonpage/fastdom.git) |
@@ -958,9 +958,9 @@ Each row identifies a resolved package and version, its declared license, and it
 | `typescript` | `5.8.2` | Apache-2.0 | [source](https://github.com/microsoft/TypeScript.git) |
 | `uint8array-extras` | `1.5.0` | MIT | [source](sindresorhus/uint8array-extras) |
 | `ulid` | `3.0.1` | MIT | [source](git+https://github.com/ulid/javascript.git) |
-| `undici` | `6.28.0` | MIT | [source](git+https://github.com/nodejs/undici.git) |
+| `undici` | `6.28.1` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `undici` | `7.29.1` | MIT | [source](git+https://github.com/nodejs/undici.git) |
-| `undici` | `8.10.1` | MIT | [source](git+https://github.com/nodejs/undici.git) |
+| `undici` | `8.10.2` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `undici-types` | `7.16.0` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `unist-util-is` | `6.0.1` | MIT | [source](syntax-tree/unist-util-is) |
 | `unist-util-position` | `5.0.0` | MIT | [source](syntax-tree/unist-util-position) |

@@ -5,7 +5,7 @@ import { Schema } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
-import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
+import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery, WorkspaceRoutingQueryFields } from "../middleware/workspace-routing"
 import { described } from "./metadata"
 
 const root = "/sync"
@@ -27,6 +27,18 @@ export const SessionPayload = Schema.Struct({
   sessionID: SessionID,
 })
 export const HistoryPayload = Schema.Record(Schema.String, NonNegativeInt)
+// `limit` pages the response so sync never materializes the whole event table in
+// memory. Clients that send it must re-request until a short page arrives.
+export const HistoryQuery = Schema.Struct({
+  ...WorkspaceRoutingQueryFields,
+  limit: Schema.optional(
+    Schema.NumberFromString.check(
+      Schema.isInt(),
+      Schema.isGreaterThanOrEqualTo(1),
+      Schema.isLessThanOrEqualTo(10_000),
+    ),
+  ),
+})
 export const HistoryEvent = Schema.Struct({
   id: EventV2.ID,
   aggregate_id: Schema.String,
@@ -81,7 +93,7 @@ export const SyncApi = HttpApi.make("sync")
           }),
         ),
         HttpApiEndpoint.post("history", SyncPaths.history, {
-          query: WorkspaceRoutingQuery,
+          query: HistoryQuery,
           payload: HistoryPayload,
           success: described(Schema.Array(HistoryEvent), "Sync events"),
           error: HttpApiError.BadRequest,

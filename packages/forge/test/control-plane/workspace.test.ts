@@ -734,7 +734,7 @@ describe("workspace CRUD", () => {
 
             expect(
               calls.map((call) => `${call.method} ${call.url.pathname}${call.url.search}${call.url.hash}`),
-            ).toEqual(["GET /base/global/event", "POST /base/sync/history"])
+            ).toEqual(["GET /base/global/event", "POST /base/sync/history?limit=500"])
             expect(calls[1].json).toEqual({})
             expect((yield* workspace.status()).find((item) => item.workspaceID === info.id)?.status).toBe("connected")
             expect(yield* workspace.isSyncing(info.id)).toBe(true)
@@ -987,15 +987,22 @@ describe("workspace CRUD", () => {
           }
           calls.push(call)
           if (call.url.pathname === "/warp-source/sync/history") {
-            return yield* HttpServerResponse.json([
-              {
-                id: `evt_${unique("warp-source-history")}`,
-                aggregate_id: historySessionID!,
-                seq: historyNextSeq,
-                type: "session.updated.1",
-                data: { sessionID: historySessionID!, info: historySession! },
-              },
-            ])
+            // Paged sync re-requests until the server reports nothing new, so a
+            // well-behaved upstream honors the posted sequence fence.
+            const state = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Number))(call.json ?? {})
+            return yield* HttpServerResponse.json(
+              historyNextSeq <= (state[historySessionID!] ?? -1)
+                ? []
+                : [
+                    {
+                      id: `evt_${unique("warp-source-history")}`,
+                      aggregate_id: historySessionID!,
+                      seq: historyNextSeq,
+                      type: "session.updated.1",
+                      data: { sessionID: historySessionID!, info: historySession! },
+                    },
+                  ],
+            )
           }
           if (call.url.pathname === "/warp-source/vcs/diff/raw") return HttpServerResponse.text("remote patch")
           if (call.url.pathname === "/warp-target/sync/replay")
@@ -1031,14 +1038,16 @@ describe("workspace CRUD", () => {
 
             expect(calls.map((call) => `${call.method} ${call.url.pathname}`)).toEqual([
               "POST /warp-source/sync/history",
+              "POST /warp-source/sync/history",
               "GET /warp-source/vcs/diff/raw",
               "POST /warp-target/vcs/apply",
               "POST /warp-target/sync/replay",
               "POST /warp-target/sync/steal",
             ])
             expect(calls[0].json).toEqual({ [session.id]: historyNextSeq - 1 })
-            expect(calls[2].json).toEqual({ patch: "remote patch" })
-            expect(calls[3].json).toMatchObject({
+            expect(calls[1].json).toEqual({ [session.id]: historyNextSeq })
+            expect(calls[3].json).toEqual({ patch: "remote patch" })
+            expect(calls[4].json).toMatchObject({
               directory: "remote-target-dir",
               events: [
                 {
@@ -1053,7 +1062,7 @@ describe("workspace CRUD", () => {
                 },
               ],
             })
-            expect(calls[4].json).toEqual({ sessionID: session.id })
+            expect(calls[5].json).toEqual({ sessionID: session.id })
             expect((yield* sessionSvc.get(session.id)).title).toBe("from source history")
             expect(yield* sessionSequenceOwner(session.id)).toBe(target.id)
           }),
@@ -1349,39 +1358,43 @@ describe("workspace sync state", () => {
           const url = new URL(req.url, "http://localhost")
           if (url.pathname === "/history/global/event") return HttpServerResponse.fromWeb(eventStreamResponse())
           if (url.pathname === "/history/sync/history") {
-            historyBodies.push(bodyText ? JSON.parse(bodyText) : undefined)
-            return HttpServerResponse.fromWeb(
-              Response.json([
-                {
-                  id: `evt_${unique("history-task")}`,
-                  aggregate_id: "tsk_remote_history_blocked",
-                  seq: 0,
-                  type: "session.next.task.updated.1",
-                  data: {
-                    sessionID: "ses_remote_task_root",
-                    taskID: "tsk_remote_history_blocked",
-                    task: {
-                      rootSessionID: "ses_remote_task_root",
-                      parentSessionID: "ses_remote_task_root",
-                      childSessionID: "ses_remote_task_child",
-                    },
+            const state = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Number))(bodyText ? JSON.parse(bodyText) : {})
+            historyBodies.push(state)
+            const upstream = [
+              {
+                id: `evt_${unique("history-task")}`,
+                aggregate_id: "tsk_remote_history_blocked",
+                seq: 0,
+                type: "session.next.task.updated.1",
+                data: {
+                  sessionID: "ses_remote_task_root",
+                  taskID: "tsk_remote_history_blocked",
+                  task: {
+                    rootSessionID: "ses_remote_task_root",
+                    parentSessionID: "ses_remote_task_root",
+                    childSessionID: "ses_remote_task_child",
                   },
                 },
-                {
-                  id: `evt_${unique("history-task-child")}`,
-                  aggregate_id: "ses_remote_task_child",
-                  seq: 0,
-                  type: "session.updated.1",
-                  data: {},
-                },
-                {
-                  id: `evt_${unique("history")}`,
-                  aggregate_id: historySessionID!,
-                  seq: historyNextSeq,
-                  type: "session.updated.1",
-                  data: { sessionID: historySessionID!, info: historySession! },
-                },
-              ]),
+              },
+              {
+                id: `evt_${unique("history-task-child")}`,
+                aggregate_id: "ses_remote_task_child",
+                seq: 0,
+                type: "session.updated.1",
+                data: {},
+              },
+              {
+                id: `evt_${unique("history")}`,
+                aggregate_id: historySessionID!,
+                seq: historyNextSeq,
+                type: "session.updated.1",
+                data: { sessionID: historySessionID!, info: historySession! },
+              },
+            ]
+            // Paged sync re-requests until nothing new arrives — honor the posted
+            // sequence fence like the real endpoint does.
+            return HttpServerResponse.fromWeb(
+              Response.json(upstream.filter((event) => event.seq > (state[event.aggregate_id] ?? -1))),
             )
           }
           return HttpServerResponse.text("unexpected", { status: 500 })
@@ -1413,7 +1426,16 @@ describe("workspace sync state", () => {
                   expect((yield* sessionSvc.get(session.id).pipe(Effect.orDie)).title).toBe("from history")
                 }),
               )
-              expect(historyBodies).toEqual([{ [session.id]: historyNextSeq - 1 }])
+              // Second page request carries the advanced fence: task-owned and
+              // durable aggregates advance too even though they never replay.
+              expect(historyBodies).toEqual([
+                { [session.id]: historyNextSeq - 1 },
+                {
+                  [session.id]: historyNextSeq,
+                  tsk_remote_history_blocked: 0,
+                  ses_remote_task_child: 0,
+                },
+              ])
               expect(yield* sessionSequence("tsk_remote_history_blocked")).toBeUndefined()
               expect(yield* sessionSequence("ses_remote_task_root")).toBeUndefined()
               expect(yield* sessionSequence("ses_remote_task_child")).toBeUndefined()
@@ -1435,6 +1457,83 @@ describe("workspace sync state", () => {
       )
     })
   })
+
+  it.live("sync history pages a large remote event log until drained", () => {
+    type PagedEvent = {
+      id: string
+      aggregate_id: string
+      seq: number
+      type: string
+      data: unknown
+    }
+    const historyRequests: { state: Record<string, number>; limit: string | null }[] = []
+    let remoteEvents: PagedEvent[] = []
+    return Effect.gen(function* () {
+      yield* HttpServer.serveEffect()(
+        Effect.gen(function* () {
+          const req = yield* HttpServerRequest.HttpServerRequest
+          const bodyText = yield* req.text
+          const url = new URL(req.url, "http://localhost")
+          if (url.pathname === "/paged/global/event")
+            return HttpServerResponse.fromWeb(eventStreamResponse())
+          if (url.pathname === "/paged/sync/history") {
+            const state = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Number))(bodyText ? JSON.parse(bodyText) : {})
+            const limit = url.searchParams.get("limit")
+            historyRequests.push({ state, limit })
+            const page = remoteEvents
+              .filter((event) => event.seq > (state[event.aggregate_id] ?? -1))
+              .slice(0, Number(limit ?? Number.MAX_SAFE_INTEGER))
+            return HttpServerResponse.fromWeb(Response.json(page))
+          }
+          return HttpServerResponse.text("unexpected", { status: 500 })
+        }),
+      )
+      const url = yield* serverUrl()
+      yield* provideTmpdirInstance(
+        () =>
+          Effect.gen(function* () {
+            const workspace = yield* Workspace.Service
+            const sessionSvc = yield* SessionNs.Service
+            const instance = yield* requireInstance
+            const type = unique("history-paged")
+            const info = workspaceInfo(instance.project.id, type)
+            yield* insertWorkspace(info)
+            registerAdapter(instance.project.id, type, remoteAdapter(`${url}/paged`).adapter)
+            const session = yield* sessionSvc.create({ title: "before paging" })
+            yield* attachSessionToWorkspace(session.id, info.id)
+            const baseSeq = ((yield* sessionSequence(session.id)) ?? -1) + 1
+            // More events than one SYNC_HISTORY_PAGE so the client must request
+            // follow-up pages while advancing its per-aggregate sequence fence.
+            remoteEvents = Array.from({ length: 505 }, (_, index) => ({
+              id: `evt_history_paged_${index}`,
+              aggregate_id: session.id,
+              seq: baseSeq + index,
+              type: "session.updated.1",
+              data: {
+                sessionID: session.id,
+                info: { ...session, workspaceID: info.id, title: `paged-${index}` },
+              },
+            }))
+
+            yield* workspace.startWorkspaceSyncing(instance.project.id)
+
+            yield* eventuallyEffect(
+              Effect.gen(function* () {
+                expect((yield* sessionSvc.get(session.id).pipe(Effect.orDie)).title).toBe("paged-504")
+              }),
+              15_000,
+            )
+            expect(historyRequests.every((request) => request.limit === "500")).toBe(true)
+            expect(historyRequests.length).toBe(3)
+            expect(historyRequests[0].state).toEqual({ [session.id]: baseSeq - 1 })
+            expect(historyRequests[1].state).toEqual({ [session.id]: baseSeq + 499 })
+            expect(historyRequests[2].state).toEqual({ [session.id]: baseSeq + 504 })
+            yield* workspace.remove(info.id)
+          }),
+        { git: true },
+      )
+    })
+  }, 30_000)
 
   it.live("SSE forwards non-heartbeat events and ignores heartbeats", () =>
     Effect.gen(function* () {
