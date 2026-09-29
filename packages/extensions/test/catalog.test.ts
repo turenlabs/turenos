@@ -65,6 +65,7 @@ const expected = [
   "turenlabs/secure-code-review",
   "turenlabs/semgrep-hosted",
   "turenlabs/sentry",
+  "turenlabs/slsa-provenance-review",
   "turenlabs/socket",
   "turenlabs/software-architecture-reviewer",
   "turenlabs/sonarqube-cloud-security",
@@ -153,7 +154,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(17)
+    expect(skills.length).toBe(18)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0
