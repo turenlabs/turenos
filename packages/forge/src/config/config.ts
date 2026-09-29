@@ -21,6 +21,7 @@ import { Config as ConfigV2 } from "@turenlabs/core/config"
 import { ConfigV1 } from "@turenlabs/core/v1/config/config"
 import { ConfigMcpLegacyV1 } from "@turenlabs/core/v1/config/mcp-legacy"
 import { ConfigPermissionV1 } from "@turenlabs/core/v1/config/permission"
+import { REQUEST_CONTROL_KEYS } from "@turenlabs/core/session/runner/model"
 import { ConfigAgent } from "./agent"
 import { ConfigCommand } from "./command"
 import { ConfigManaged } from "./managed"
@@ -309,7 +310,7 @@ const layer = Layer.effect(
 
         if (!Flag.FORGE_DISABLE_PROJECT_CONFIG) {
           for (const file of yield* ConfigPaths.files("forge", ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
-            yield* merge(file, yield* loadFile(file), "local")
+            yield* merge(file, withoutProviderRouting(yield* loadFile(file)), "local")
           }
         }
 
@@ -326,10 +327,17 @@ const layer = Layer.effect(
 
         for (const dir of directories) {
           if (dir.endsWith(".forge") || dir === Flag.FORGE_CONFIG_DIR) {
+            // `.forge` directories discovered inside the opened project are repository-controlled.
+            const repositoryOwned =
+              dir !== Global.Path.config &&
+              dir !== Flag.FORGE_CONFIG_DIR &&
+              dir !== path.join(Global.Path.home, ".forge") &&
+              containsPath(dir, ctx)
             for (const file of ["forge.json", "forge.jsonc"]) {
               const source = path.join(dir, file)
               yield* Effect.logDebug(`loading config from ${source}`)
-              yield* merge(source, yield* loadFile(source))
+              const loaded = yield* loadFile(source)
+              yield* merge(source, repositoryOwned ? withoutProviderRouting(loaded) : loaded)
               result.agent ??= {}
               result.mode ??= {}
             }
@@ -573,5 +581,70 @@ export const node = LayerNode.make({
   layer: layer,
   deps: [FSUtil.node, Env.node],
 })
+
+// Provider options a repository config may still set: request timing and cache hints. Everything
+// else in `options` can steer transport (baseURL, endpoint, fetch, headers, region, resourceName,
+// executable, ...) or carry credentials.
+const PROJECT_PROVIDER_OPTIONS = new Set(["timeout", "headerTimeout", "chunkTimeout", "setCacheKey"])
+
+/**
+ * Drops provider routing from a repository-controlled config document.
+ *
+ * Stored credentials are resolved by provider ID, so a cloned repository that could set a
+ * provider's endpoint, SDK package, headers, credential env names, or CLI executable could send
+ * the user's key to a host it chooses, load its own code as a provider SDK, or run a binary it
+ * ships. Those fields are honoured only from global, explicit (`FORGE_CONFIG*`), and managed config.
+ * Project documents keep names, model lists, limits, cost, variants, and request timing.
+ */
+function withoutProviderRouting(info: Info): Info {
+  if (!info.provider) return info
+  return {
+    ...info,
+    provider: Object.fromEntries(
+      Object.entries(info.provider).map(([id, provider]) => [
+        id,
+        definedOnly({
+          name: provider.name,
+          whitelist: provider.whitelist,
+          blacklist: provider.blacklist,
+          options:
+            provider.options &&
+            Object.fromEntries(Object.entries(provider.options).filter(([key]) => PROJECT_PROVIDER_OPTIONS.has(key))),
+          models:
+            provider.models &&
+            Object.fromEntries(
+              Object.entries(provider.models).map(([modelID, model]) => [
+                modelID,
+                definedOnly({
+                  ...model,
+                  provider: undefined,
+                  headers: undefined,
+                  options: model.options && withoutControlKeys(model.options),
+                  variants:
+                    model.variants &&
+                    Object.fromEntries(
+                      Object.entries(model.variants).map(([id, variant]) => [id, withoutControlKeys(variant)]),
+                    ),
+                }),
+              ]),
+            ),
+        }),
+      ]),
+    ),
+  }
+}
+
+// Per-call model options and variants stay (reasoning effort, thinking, ...) minus transport keys.
+function withoutControlKeys<T extends Record<string, unknown>>(options: T): T {
+  return Object.fromEntries(
+    Object.entries(options).filter(([key]) => key !== "headers" && !REQUEST_CONTROL_KEYS.has(key)),
+  ) as T
+}
+
+// Config documents are deep-merged, and an explicit `undefined` would erase the same field from
+// global config, so stripped fields must be absent rather than undefined.
+function definedOnly<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as T
+}
 
 export * as Config from "./config"
