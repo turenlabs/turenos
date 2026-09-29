@@ -463,12 +463,34 @@ const layer = Layer.effect(
     const pause = Effect.fn("Loop.pause")(function* (id: ID) {
       const current = yield* get(id)
       if (current.status !== "active") return yield* new InvalidStateError({ id, message: "Loop is not active" })
+      const now = Date.now()
       const row = yield* db
-        .update(LoopTable)
-        .set({ status: "paused", next_run_at: null, time_updated: Date.now() })
-        .where(and(eq(LoopTable.id, id), eq(LoopTable.status, "active")))
-        .returning()
-        .get()
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            const paused = yield* tx
+              .update(LoopTable)
+              .set({ status: "paused", next_run_at: null, time_updated: now })
+              .where(and(eq(LoopTable.id, id), eq(LoopTable.status, "active")))
+              .returning()
+              .get()
+            // A paused automation stops entirely: in-flight runs are cancelled so
+            // the owning scheduler interrupts their Sessions rather than letting
+            // them drain turns for hours after the Loop was switched off.
+            if (paused)
+              yield* tx
+                .update(LoopRunTable)
+                .set({
+                  status: "cancelled",
+                  lease_owner: null,
+                  lease_expires_at: null,
+                  time_updated: now,
+                  time_completed: now,
+                })
+                .where(and(eq(LoopRunTable.loop_id, id), inArray(LoopRunTable.status, ["claimed", "running"])))
+                .run()
+            return paused
+          }),
+        )
         .pipe(Effect.orDie)
       if (!row) return yield* new InvalidStateError({ id, message: "Loop changed concurrently" })
       return toInfo(row)
