@@ -116,5 +116,8 @@ describe("persistent forge serve", () => {
     expect(await failure(serve({ ...env, FORGE_SECRET_VAULT_KEY: key }))).toContain(
       "must not be set in the initial environment",
     )
+    expect(await failure(serve({ ...env, FORGE_SERVER_PASSWORD: password }))).toContain(
+      "must not be set in the initial environment: FORGE_SERVER_PASSWORD",
+    )
   }, 90_000)
 })
