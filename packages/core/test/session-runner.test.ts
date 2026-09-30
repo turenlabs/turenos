@@ -7046,7 +7046,8 @@ describe("SessionRunnerLLM Claude Code steering", () => {
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Start the refactor" }), resume: false })
       const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
-      while (requests.length === 0) yield* Effect.sleep("5 millis")
+      for (let attempt = 0; attempt < 300 && requests.length === 0; attempt += 1) yield* Effect.sleep("10 millis")
+      expect(requests.length).toBeGreaterThan(0)
       yield* session.prompt({ id: steerID, sessionID, prompt: Prompt.make({ text: "Use approach B instead" }) })
       return { session, run }
     })
@@ -7261,15 +7262,23 @@ describe("SessionRunnerLLM Claude Code steering", () => {
       response = fragmentFixture("text", "text-after-question", ["Doing that instead"]).completeEvents
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Ask before continuing" }), resume: false })
       const run = yield* session.resume(sessionID).pipe(Effect.exit, Effect.forkChild)
-      while ((yield* questions.list()).length === 0) yield* Effect.sleep("5 millis")
+      for (let attempt = 0; attempt < 300 && (yield* questions.list()).length === 0; attempt += 1)
+        yield* Effect.sleep("10 millis")
+      expect((yield* questions.list()).length).toBeGreaterThan(0)
 
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Do this instead" }) })
-      yield* Fiber.join(run)
+      yield* Fiber.join(run).pipe(Effect.timeout("5 seconds"))
       // The dismissal halts the parked turn; nothing but the steer itself is left to wake the Session.
       for (let attempt = 0; attempt < 300 && requests.length < 2; attempt++) yield* Effect.sleep("10 millis")
 
       expect(requests).toHaveLength(2)
       expect(userTexts(requests[1]!)).toContain("Do this instead")
+      // A coalesced follow-up drain can still be in flight when the assertions finish; scope
+      // teardown interrupts it and the interrupt can wedge mid-settle, so let it go idle first.
+      const execution = yield* SessionExecution.Service
+      for (let attempt = 0; attempt < 300 && (yield* execution.active).size !== 0; attempt += 1)
+        yield* Effect.sleep("10 millis")
+      expect((yield* execution.active).size).toBe(0)
     }),
   )
 })
