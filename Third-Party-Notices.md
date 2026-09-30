@@ -133,8 +133,8 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@fastify/merge-json-schemas` | `0.2.1` | MIT | [source](git+https://github.com/fastify/merge-json-schemas.git) |
 | `@fastify/proxy-addr` | `5.1.0` | MIT | [source](git+https://github.com/fastify/proxy-addr.git) |
 | `@fastify/rate-limit` | `10.3.0` | MIT | [source](git+https://github.com/fastify/fastify-rate-limit.git) |
-| `@ff-labs/fff-bin-linux-x64-gnu` | `0.9.4` | MIT | [source](git+https://github.com/dmtrKovalenko/fff.git) |
-| `@ff-labs/fff-bin-linux-x64-musl` | `0.9.4` | MIT | [source](git+https://github.com/dmtrKovalenko/fff.git) |
+| `@ff-labs/fff-bin-linux-arm64-gnu` | `0.9.4` | MIT | [source](git+https://github.com/dmtrKovalenko/fff.git) |
+| `@ff-labs/fff-bin-linux-arm64-musl` | `0.9.4` | MIT | [source](git+https://github.com/dmtrKovalenko/fff.git) |
 | `@ff-labs/fff-bun` | `0.9.4` | MIT | [source](git+https://github.com/dmtrKovalenko/fff.git) |
 | `@floating-ui/core` | `1.7.5` | MIT | [source](https://github.com/floating-ui/floating-ui.git) |
 | `@floating-ui/core` | `1.8.0` | MIT | [source](https://github.com/floating-ui/floating-ui.git) |
@@ -159,12 +159,12 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@leichtgewicht/ip-codec` | `2.0.5` | MIT | [source](git+https://github.com/martinheidegger/ip-codec.git) |
 | `@lukeed/ms` | `2.0.2` | MIT | [source](lukeed/ms) |
 | `@lydell/node-pty` | `1.2.0-beta.12` | MIT | [source](git://github.com/lydell/node-pty.git) |
-| `@lydell/node-pty-linux-x64` | `1.2.0-beta.12` | MIT | [source](git://github.com/lydell/node-pty.git) |
+| `@lydell/node-pty-linux-arm64` | `1.2.0-beta.12` | MIT | [source](git://github.com/lydell/node-pty.git) |
 | `@mermaid-js/parser` | `0.6.3` | MIT | [source](https://github.com/mermaid-js/mermaid.git) |
 | `@mermaid-js/parser` | `1.2.1` | MIT | [source](https://github.com/mermaid-js/mermaid.git) |
 | `@mixmark-io/domino` | `2.2.0` | BSD-2-Clause | [source](https://github.com/mixmark-io/domino.git) |
 | `@modelcontextprotocol/sdk` | `1.29.0` | MIT | [source](git+https://github.com/modelcontextprotocol/typescript-sdk.git) |
-| `@msgpackr-extract/msgpackr-extract-linux-x64` | `3.0.4` | MIT | [source](http://github.com/kriszyp/msgpackr-extract) |
+| `@msgpackr-extract/msgpackr-extract-linux-arm64` | `3.0.4` | MIT | [source](http://github.com/kriszyp/msgpackr-extract) |
 | `@nodable/entities` | `2.1.1` | MIT | [source](git+https://github.com/nodable/val-parsers.git) |
 | `@npmcli/agent` | `4.0.2` | ISC | [source](git+https://github.com/npm/agent.git) |
 | `@npmcli/arborist` | `9.4.0` | ISC | [source](git+https://github.com/npm/cli.git) |
@@ -215,8 +215,8 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@opentelemetry/sdk-trace-node` | `2.11.0` | Apache-2.0 | [source](open-telemetry/opentelemetry-js) |
 | `@opentelemetry/semantic-conventions` | `1.41.1` | Apache-2.0 | [source](open-telemetry/opentelemetry-js) |
 | `@parcel/watcher` | `2.5.1` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
-| `@parcel/watcher-linux-x64-glibc` | `2.5.1` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
-| `@parcel/watcher-linux-x64-musl` | `2.5.1` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
+| `@parcel/watcher-linux-arm64-glibc` | `2.5.1` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
+| `@parcel/watcher-linux-arm64-musl` | `2.5.1` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
 | `@pierre/diffs` | `1.2.10` | apache-2.0 | Not declared |
 | `@pierre/theme` | `1.0.3` | MIT | [source](https://github.com/pierrecomputer/theme) |
 | `@pierre/theming` | `0.0.1` | apache-2.0 | Not declared |
@@ -423,7 +423,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `body-parser` | `2.3.0` | MIT | [source](expressjs/body-parser) |
 | `bonjour-service` | `1.3.0` | MIT | [source](https://github.com/onlxltd/bonjour-service.git) |
 | `bowser` | `2.14.1` | MIT | [source](git+https://github.com/bowser-js/bowser.git) |
-| `brace-expansion` | `5.0.9` | MIT | [source](git+https://github.com/juliangruber/brace-expansion.git) |
+| `brace-expansion` | `5.0.12` | MIT | [source](git+https://github.com/juliangruber/brace-expansion.git) |
 | `braces` | `3.0.3` | MIT | [source](micromatch/braces) |
 | `browser-fs-access` | `0.29.1` | Apache-2.0 | [source](git+https://github.com/GoogleChromeLabs/browser-fs-access.git) |
 | `buffer-equal-constant-time` | `1.0.1` | BSD-3-Clause | [source](git@github.com:goinstant/buffer-equal-constant-time.git) |
@@ -579,8 +579,8 @@ Each row identifies a resolved package and version, its declared license, and it
 | `fast-json-stringify` | `6.4.0` | MIT | [source](git+https://github.com/fastify/fast-json-stringify.git) |
 | `fast-json-stringify` | `7.0.1` | MIT | [source](git+https://github.com/fastify/fast-json-stringify.git) |
 | `fast-querystring` | `1.1.2` | MIT | [source](git+https://github.com/anonrig/fast-querystring.git) |
-| `fast-uri` | `3.1.7` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
-| `fast-uri` | `4.1.4` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
+| `fast-uri` | `3.1.8` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
+| `fast-uri` | `4.1.5` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
 | `fast-xml-builder` | `1.2.0` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-builder.git) |
 | `fast-xml-parser` | `5.7.3` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-parser.git) |
 | `fastdom` | `1.0.12` | MIT | [source](git://github.com/wilsonpage/fastdom.git) |
@@ -650,7 +650,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `internmap` | `1.0.1` | ISC | [source](https://github.com/mbostock/internmap.git) |
 | `internmap` | `2.0.3` | ISC | [source](https://github.com/mbostock/internmap.git) |
 | `ioredis` | `5.11.0` | MIT | [source](git://github.com/luin/ioredis.git) |
-| `ip-address` | `10.7.0` | MIT | [source](https://github.com/beaugunderson/ip-address.git) |
+| `ip-address` | `10.7.1` | MIT | [source](https://github.com/beaugunderson/ip-address.git) |
 | `ipaddr.js` | `1.9.1` | MIT | [source](git://github.com/whitequark/ipaddr.js) |
 | `ipaddr.js` | `2.4.0` | MIT | [source](git://github.com/whitequark/ipaddr.js) |
 | `is-binary-path` | `2.1.0` | MIT | [source](sindresorhus/is-binary-path) |
