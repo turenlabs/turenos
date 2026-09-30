@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs"
+import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { app, utilityProcess } from "electron"
@@ -83,13 +85,22 @@ export async function spawnLocalServer(
   options: SpawnLocalServerOptions,
 ) {
   const sidecar = join(dirname(fileURLToPath(import.meta.url)), "sidecar.js")
+  // Node's diagnostic report lands inside the sidecar log root, so a fatal V8
+  // error captures the JS stack that was running instead of dying silently.
+  const reportDir = join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "forge", "log")
+  mkdirSync(reportDir, { recursive: true })
   const child = utilityProcess.fork(sidecar, [], {
     cwd: process.cwd(),
     env: createSidecarEnv(),
     // The default ~4GB V8 old-space ceiling is reached by large workspaces long
     // before the process is otherwise unhealthy — give the sidecar headroom so a
     // heavy turn transient survives instead of crashing the session mid-prompt.
-    execArgv: ["--max-old-space-size=8192"],
+    execArgv: [
+      "--max-old-space-size=8192",
+      "--report-on-fatalerror",
+      "--report-uncaught-exception",
+      `--report-directory=${reportDir}`,
+    ],
     serviceName: SIDECAR_SERVICE_NAME,
     stdio: "pipe",
   })

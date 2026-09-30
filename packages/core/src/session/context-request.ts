@@ -3,7 +3,7 @@ export * as SessionContextRequest from "./context-request"
 import { createHash } from "node:crypto"
 import { Message } from "@turenlabs/llm"
 import { eq } from "drizzle-orm"
-import { Effect, Schema } from "effect"
+import { Effect, Schema, Semaphore } from "effect"
 import type { Database } from "../database/database"
 import { SessionMessage } from "./message"
 import type { SessionSchema } from "./schema"
@@ -27,36 +27,47 @@ export const Frame = Schema.Struct({
 export type Reason = "initial" | "baseline" | "configuration" | "history" | "pressure"
 type DatabaseService = Database.Interface["db"]
 
+// Stored frames reach tens of MB on long sessions: the row text and its decoded
+// object graph coexist during read+decode, so bound how many frames can be live
+// at once or parallel drains multiply the transient into the V8 heap ceiling.
+const frameDecodes = Semaphore.makeUnsafe(2)
+
 export const prepare = Effect.fn("SessionContextRequest.prepare")(function* (
   db: DatabaseService,
   sessionID: SessionSchema.ID,
   input: { baselineSeq: number; identity: string; history: readonly Entry[] },
 ) {
   const sources = input.history.map((entry) => ({ seq: entry.seq, digest: digest(entry.message) }))
-  const stored = yield* db
-    .select()
-    .from(SessionContextRequestTable)
-    .where(eq(SessionContextRequestTable.session_id, sessionID))
-    .get()
-    .pipe(Effect.orDie)
-  if (!stored) return { generation: 1, reason: "initial" as Reason, frame: undefined, sources }
+  const loaded = yield* frameDecodes.withPermits(1)(
+    Effect.gen(function* () {
+      const stored = yield* db
+        .select()
+        .from(SessionContextRequestTable)
+        .where(eq(SessionContextRequestTable.session_id, sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      if (!stored) return undefined
+      const frame = yield* Schema.decodeUnknownEffect(Frame)(stored.data).pipe(Effect.orDie)
+      return { stored, frame }
+    }),
+  )
+  if (!loaded) return { generation: 1, reason: "initial" as Reason, frame: undefined, sources }
 
-  const frame = yield* Schema.decodeUnknownEffect(Frame)(stored.data).pipe(Effect.orDie)
   const reason: Reason | undefined =
-    stored.baseline_seq !== input.baselineSeq
+    loaded.stored.baseline_seq !== input.baselineSeq
       ? "baseline"
-      : stored.identity !== input.identity
+      : loaded.stored.identity !== input.identity
         ? "configuration"
-        : frame.sources.some((source, index) => {
+        : loaded.frame.sources.some((source, index) => {
               const current = sources[index]
               return current?.seq !== source.seq || current.digest !== source.digest
             })
           ? "history"
           : undefined
   return {
-    generation: stored.generation + (reason === undefined ? 0 : 1),
+    generation: loaded.stored.generation + (reason === undefined ? 0 : 1),
     reason,
-    frame: reason === undefined ? frame : undefined,
+    frame: reason === undefined ? loaded.frame : undefined,
     sources,
   }
 })

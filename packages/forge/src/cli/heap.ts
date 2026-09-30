@@ -25,10 +25,15 @@ export function start() {
 
     lock = true
     armed = false
-    const file = path.join(
-      Global.Path.log,
-      `heap-${process.pid}-${new Date().toISOString().replace(/[:.]/g, "")}.heapsnapshot`,
-    )
+    const stamp = new Date().toISOString().replace(/[:.]/g, "")
+    // The report is a small JSON (JS stack + heap stats) written synchronously;
+    // the heapsnapshot that follows is the expensive one and can still be lost
+    // if the process wedges or dies first, so write the report up front.
+    const report = path.join(Global.Path.log, `heap-report-${process.pid}-${stamp}.json`)
+    try {
+      process.report?.writeReport(report)
+    } catch {}
+    const file = path.join(Global.Path.log, `heap-${process.pid}-${stamp}.heapsnapshot`)
     await Promise.resolve()
       .then(() => writeHeapSnapshot(file))
       .catch(() => {})

@@ -208,7 +208,9 @@ function armStartupDiagnostics() {
     process.stderr.write(
       `[startup.sidecar] ${JSON.stringify({ event, elapsedMs: Math.round(performance.now() - startedAt), ...detail })}\n`,
     )
+  let ticks = 0
   const interval = setInterval(() => {
+    ticks++
     const now = performance.now()
     const elapsedMs = now - previousAt
     const cpu = process.cpuUsage(previousCPU)
@@ -216,21 +218,26 @@ function armStartupDiagnostics() {
     previousAt = now
     previousCPU = process.cpuUsage()
     previousUtilization = performance.eventLoopUtilization()
-    trace("sample", {
+    const detail = {
       cpuPercent: Math.round((((cpu.user + cpu.system) / 1_000) * 100) / elapsedMs),
       eventLoopPercent: Math.round(utilization.utilization * 100),
       eventLoopDelayMaxMs: Math.round(delay.max / 1_000_000),
       eventLoopDelayMeanMs: Number.isFinite(delay.mean) ? Math.round(delay.mean / 1_000_000) : undefined,
       rssMB: Math.round(process.memoryUsage().rss / 1_048_576),
-    })
+    }
+    // Samples are dense during startup, then go quiet: a steady-state heartbeat
+    // once a minute keeps an RSS trail without flooding the log, while any tick
+    // that observed a stall reports the block duration it survived. A wedged
+    // loop defers the tick itself, so the first sample after a synchronous block
+    // still lands with that block's delay.
+    if (now - startedAt < 60_000 || detail.eventLoopDelayMaxMs > 1_000 || ticks % 60 === 0) {
+      trace("sample", detail)
+    }
     delay.reset()
   }, 1_000)
   interval.unref()
-  const timeout = setTimeout(() => stop(), 60_000)
-  timeout.unref()
   const stop = () => {
     clearInterval(interval)
-    clearTimeout(timeout)
     delay.disable()
   }
   return { trace, stop }
