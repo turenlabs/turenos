@@ -3539,7 +3539,7 @@
     },
     {
       "name": "brace-expansion",
-      "version": "5.0.9",
+      "version": "5.0.12",
       "license": "MIT",
       "source": "git+https://github.com/juliangruber/brace-expansion.git",
       "licenseFiles": [
@@ -4936,7 +4936,7 @@
     },
     {
       "name": "fast-uri",
-      "version": "3.1.7",
+      "version": "3.1.8",
       "license": "BSD-3-Clause",
       "source": "git+https://github.com/fastify/fast-uri.git",
       "licenseFiles": [
@@ -4945,7 +4945,7 @@
     },
     {
       "name": "fast-uri",
-      "version": "4.1.4",
+      "version": "4.1.5",
       "license": "BSD-3-Clause",
       "source": "git+https://github.com/fastify/fast-uri.git",
       "licenseFiles": [
@@ -5569,7 +5569,7 @@
     },
     {
       "name": "ip-address",
-      "version": "10.7.0",
+      "version": "10.7.1",
       "license": "MIT",
       "source": "https://github.com/beaugunderson/ip-address.git",
       "licenseFiles": [
