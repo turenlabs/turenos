@@ -113,6 +113,11 @@ export class SubscriberOverflowError extends Schema.TaggedErrorClass<SubscriberO
   { capacity: Schema.Int },
 ) {}
 
+// A lagging subscriber applies backpressure to publishers instead of letting
+// every published event accumulate in process memory — unbounded PubSubs were a
+// heap-growth vector when a consumer stalled mid-failure.
+const PUBSUB_CAPACITY = 8192
+
 export const define = Event.define
 export const versionedType = Event.versionedType
 
@@ -171,14 +176,16 @@ export const allBounded = (events: Interface, capacity: number) =>
 
 export interface LayerOptions {
   readonly beforeAggregateRead?: (aggregateID: string) => Effect.Effect<void>
+  readonly subscriberCapacity?: number
 }
 
 export const layerWith = (options?: LayerOptions) =>
   Layer.effect(
     Service,
     Effect.gen(function* () {
+      const capacity = options?.subscriberCapacity ?? PUBSUB_CAPACITY
       const pubsub = {
-        all: yield* PubSub.unbounded<Payload>(),
+        all: yield* PubSub.bounded<Payload>(capacity),
         durable: new Map<string, Set<PubSub.PubSub<void>>>(),
         typed: new Map<string, PubSub.PubSub<Payload>>(),
       }
@@ -192,7 +199,7 @@ export const layerWith = (options?: LayerOptions) =>
         Effect.gen(function* () {
           const existing = pubsub.typed.get(definition.type)
           if (existing) return existing
-          const created = yield* PubSub.unbounded<Payload>()
+          const created = yield* PubSub.bounded<Payload>(capacity)
           pubsub.typed.set(definition.type, created)
           return created
         })

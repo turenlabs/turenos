@@ -20,8 +20,10 @@ export const httpApiLayer = servedRoutes.pipe(
 
 export function request(path: string, init?: RequestInit) {
   const url = new URL(path, "http://localhost")
-  return HttpClientRequest.fromWeb(new Request(url, init)).pipe(
-    HttpClientRequest.setUrl(url.pathname),
+  // Strip the query off the web Request — fromWeb would carry it into urlParams
+  // while setUrl re-adds it to the URL, sending duplicated params downstream.
+  return HttpClientRequest.fromWeb(new Request(url.origin + url.pathname, init)).pipe(
+    HttpClientRequest.setUrl(url.pathname + url.search),
     HttpClient.execute,
   )
 }
