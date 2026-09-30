@@ -2,7 +2,7 @@ import { describe, expect } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { LLMClient, LLMEvent, Model, type LLMClientShape, type LLMRequest } from "@turenlabs/llm"
+import { LLMClient, LLMEvent, Model, type LLMClientShape, type LLMError, type LLMRequest } from "@turenlabs/llm"
 import { OpenAIChat } from "@turenlabs/llm/protocols/openai-chat"
 import { AgentV2 } from "@turenlabs/core/agent"
 import { Config } from "@turenlabs/core/config"
@@ -47,11 +47,13 @@ import { ClaudeCodeCLI } from "@turenlabs/core/provider/claude-code"
 import { ClaudeCodeMcp } from "@turenlabs/core/session/runner/claude-code-mcp-namespace"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
-import { Effect, Layer, Schema, Stream } from "effect"
+import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import { testEffect } from "./lib/effect"
 
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { EventTable } from "@turenlabs/core/event/sql"
+import { SessionMessage } from "@turenlabs/core/session/message"
 import { ToolExecutionTable } from "@turenlabs/core/tool/execution.sql"
 
 const scratch = mkdtempSync(join(tmpdir(), "forge-session-secret-"))
@@ -83,12 +85,19 @@ const callBridge = (token: string) =>
     const mcp = yield* connect(token)
     for (const input of bridgeCalls.splice(0)) bridgeResults.push(yield* call(mcp, input))
   }).pipe(Effect.scoped)
+// When set, the next provider request is answered by this stream instead of `responses`.
+let respond: ((request: LLMRequest) => Stream.Stream<LLMEvent, LLMError>) | undefined
 const client = Layer.succeed(
   LLMClient.Service,
   LLMClient.Service.of({
     prepare: () => Effect.die("unused"),
     stream: ((request: LLMRequest) => {
       requests.push(request)
+      if (respond) {
+        const next = respond
+        respond = undefined
+        return next(request)
+      }
       const events = Stream.fromIterable(responses.shift() ?? [])
       const token = ClaudeCodeMcp.requestToken(request.metadata)
       if (!token || bridgeCalls.length === 0) return events
@@ -223,23 +232,33 @@ const harness = (extra: ReadonlyArray<readonly [unknown, unknown]> = []) => {
 }
 const endToEnd = harness()
 // Format detectors only, with an outage switch: exercises the runner's handling of an unavailable
-// credential snapshot without touching real credential storage.
+// credential snapshot without touching real credential storage. Text containing `unprotectable`
+// makes the guard throw, standing in for a value it cannot process.
 const protection = { available: true }
-const guarded = harness([
-  [
-    SecretOutput.node,
-    Layer.succeed(
-      SecretOutput.Service,
-      SecretOutput.Service.of({
-        snapshot: () =>
-          protection.available
-            ? Effect.succeed(SecretRedaction)
-            : Effect.fail(new SecretOutput.Error({ message: "Secret output protection unavailable" })),
-      }),
-    ),
-  ],
-])
+const unprotectable = "UNPROTECTABLE-MARKER"
+const refuse = <A>(value: A, apply: (value: A) => A) => {
+  if (JSON.stringify(value).includes(unprotectable)) throw new Error("Secret redaction failed")
+  return apply(value)
+}
+const guardedOutput = [
+  SecretOutput.node,
+  Layer.succeed(
+    SecretOutput.Service,
+    SecretOutput.Service.of({
+      snapshot: () =>
+        protection.available
+          ? Effect.succeed({
+              ...SecretRedaction,
+              text: (value: string) => refuse(value, (item) => SecretRedaction.text(item)),
+              json: (value: unknown) => refuse(value, (item) => SecretRedaction.json(item)),
+            })
+          : Effect.fail(new SecretOutput.Error({ message: "Secret output protection unavailable" })),
+    }),
+  ),
+] as const
+const guarded = harness([guardedOutput])
 const cli = harness([[SessionRunnerModel.node, modelsFor(ClaudeCodeCLI.ID)]])
+const guardedCli = harness([[SessionRunnerModel.node, modelsFor(ClaudeCodeCLI.ID)], guardedOutput])
 
 const turn = (input: unknown, id: string) => [
   [
@@ -509,6 +528,178 @@ describe("Session secret-safe tool output", () => {
         expect(record).not.toContain("AKIA")
       }
       expect(JSON.stringify(failed)).toMatch(/adapter crashed while holding \[SECRET:v1:known:[a-f0-9]{32}\]/)
+    }),
+  )
+
+  // A retryable provider error echoing request content becomes a durable `Retried` event and the
+  // projected retry status before the next attempt runs.
+  const retried = (id: SessionV2.ID) =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      return yield* database.db
+        .select({ data: EventTable.data })
+        .from(EventTable)
+        .where(
+          and(eq(EventTable.aggregate_id, id), eq(EventTable.type, EventV2.versionedType("session.next.retried", 1))),
+        )
+        .all()
+    })
+  const statusMessage = (id: SessionV2.ID) =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const row = yield* database.db
+        .select({ status: SessionTable.status, message: SessionTable.status_message })
+        .from(SessionTable)
+        .where(eq(SessionTable.id, id))
+        .get()
+      return row!
+    })
+  const retryOnce = (id: SessionV2.ID, message: string) =>
+    Effect.gen(function* () {
+      yield* prepare(id)
+      responses = [
+        [LLMEvent.stepStart({ index: 0 }), LLMEvent.providerError({ message, retryable: true })],
+        ...turn({}, "unused").slice(1),
+      ]
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID: id, prompt: Prompt.make({ text: "Say done" }), resume: false })
+      const running = yield* session.resume(id).pipe(Effect.forkChild)
+      while ((yield* retried(id)).length < 1) yield* Effect.yieldNow
+      // Read mid-wait: the projected status is what a second viewer sees during the backoff.
+      const waiting = yield* statusMessage(id)
+      yield* TestClock.adjust(60_000)
+      yield* Fiber.join(running)
+      expect(requests).toHaveLength(2)
+      return { events: yield* retried(id), waiting }
+    })
+
+  endToEnd.effect("retry diagnostics mask credentials in the durable event and projected status", () =>
+    Effect.gen(function* () {
+      const id = SessionV2.ID.make("ses_secret_retry")
+      const { events, waiting } = yield* retryOnce(id, `Overloaded while echoing credential=${secret}`)
+      const message = `Overloaded while echoing credential=${SecretRedaction.text(secret)}`
+      expect(events).toEqual([
+        {
+          data: expect.objectContaining({
+            attempt: 1,
+            error: { message, isRetryable: true, metadata: { reason: "ProviderStreamError", provider: "fake" } },
+          }),
+        },
+      ])
+      expect(waiting).toEqual({ status: "retry", message })
+      expect(message).toMatch(/credential=\[SECRET:v1:github:[a-f0-9]{32}\]$/)
+      for (const record of [events, waiting].map((value) => JSON.stringify(value))) {
+        expect(record).not.toContain(secret)
+        expect(record).not.toContain(secret.slice(4))
+      }
+    }),
+  )
+
+  guarded.effect("retry diagnostics the guard cannot process are replaced by fixed text", () =>
+    Effect.gen(function* () {
+      const id = SessionV2.ID.make("ses_secret_retry_withheld")
+      const { events, waiting } = yield* retryOnce(id, `Overloaded ${unprotectable} credential=${secret}`)
+      const withheld = "Secret output protection unavailable or failed; details withheld"
+      expect(events).toEqual([
+        { data: expect.objectContaining({ attempt: 1, error: { message: withheld, isRetryable: true } }) },
+      ])
+      expect(waiting).toEqual({ status: "retry", message: withheld })
+      for (const record of [events, waiting].map((value) => JSON.stringify(value))) {
+        expect(record).not.toContain(secret)
+        expect(record).not.toContain(unprotectable)
+      }
+    }),
+  )
+
+  // Plays the Claude Code bridge: records every steer written to its stdin. `fold` confirms the
+  // first one (the CLI folded it in); otherwise the CLI ends its turn without taking any.
+  const steerRun = (offers: ClaudeCodeMcp.SteerInput[], fold: boolean) =>
+    Effect.gen(function* () {
+      const offered = yield* Deferred.make<ClaudeCodeMcp.SteerInput>()
+      respond = (request) =>
+        Stream.unwrap(
+          Effect.gen(function* () {
+            const steering = ClaudeCodeMcp.steering(ClaudeCodeMcp.requestToken(request.metadata)!)!
+            steering.attach({
+              write: (steer) => {
+                offers.push(steer)
+                Deferred.doneUnsafe(offered, Effect.succeed(steer))
+                return true
+              },
+              retract: () => undefined,
+            })
+            const steer = fold
+              ? yield* Deferred.await(offered)
+              : yield* Deferred.await(offered).pipe(Effect.timeout("1500 millis"), Effect.option, Effect.as(undefined))
+            if (steer) steering.started(steer.id)
+            else steering.attach(undefined)
+            return Stream.fromIterable<LLMEvent>([
+              LLMEvent.stepStart({ index: 0 }),
+              ...(steer ? [LLMEvent.stepStart({ index: 1 })] : []),
+              LLMEvent.textStart({ id: "text-cli" }),
+              LLMEvent.textDelta({ id: "text-cli", text: "Done" }),
+              LLMEvent.textEnd({ id: "text-cli" }),
+              LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+              LLMEvent.finish({ reason: "stop" }),
+            ])
+          }),
+        )
+    })
+  const steerDuringTurn = (id: SessionV2.ID, text: string, fold: boolean) =>
+    Effect.gen(function* () {
+      yield* prepare(id)
+      const offers: ClaudeCodeMcp.SteerInput[] = []
+      yield* steerRun(offers, fold)
+      // A steer the CLI never took promotes at the next boundary, answered by the ordinary stub.
+      responses = turn({}, "unused").slice(1)
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID: id, prompt: Prompt.make({ text: "Start" }), resume: false })
+      const running = yield* session.resume(id).pipe(Effect.forkChild)
+      while (requests.length === 0) yield* Effect.sleep("5 millis")
+      const steerID = SessionMessage.ID.make(`msg_${id}_steer`)
+      yield* session.prompt({ id: steerID, sessionID: id, prompt: Prompt.make({ text }) })
+      yield* Fiber.join(running)
+      return { offers, steerID, status: yield* session.inputStatus({ sessionID: id, messageID: steerID }) }
+    })
+
+  guardedCli.live("live Claude Code steers are masked before they reach the CLI", () =>
+    Effect.gen(function* () {
+      const { offers, steerID, status } = yield* steerDuringTurn(
+        SessionV2.ID.make("ses_secret_steer"),
+        `Use credential=${secret} instead`,
+        true,
+      )
+      expect(offers).toEqual([{ id: steerID, text: `Use credential=${SecretRedaction.text(secret)} instead` }])
+      expect(offers[0]?.text).toMatch(/^Use credential=\[SECRET:v1:github:[a-f0-9]{32}\] instead$/)
+      expect(JSON.stringify(offers)).not.toContain(secret.slice(4))
+      // Folded in by the CLI and promoted as usual; one provider turn.
+      expect(status).toMatchObject({ status: "promoted" })
+      expect(requests).toHaveLength(1)
+    }),
+  )
+
+  guardedCli.live("a steer the guard cannot process is never offered and promotes at the boundary", () =>
+    Effect.gen(function* () {
+      const { offers, steerID, status } = yield* steerDuringTurn(
+        SessionV2.ID.make("ses_secret_steer_withheld"),
+        `Use ${unprotectable} credential=${secret}`,
+        false,
+      )
+      expect(offers).toEqual([])
+      expect(status).toMatchObject({ status: "promoted" })
+      // The boundary request guards the promoted steer as one withheld part.
+      expect(requests).toHaveLength(2)
+      const body = JSON.stringify(requests[1]?.messages)
+      expect(body).toContain(SessionDisclosure.WITHHELD)
+      expect(body).not.toContain(secret)
+      expect(body).not.toContain(unprotectable)
+      const database = yield* Database.Service
+      const rows = yield* database.db
+        .select()
+        .from(SessionMessageTable)
+        .where(eq(SessionMessageTable.id, steerID))
+        .all()
+      expect(rows).toHaveLength(1)
     }),
   )
 })

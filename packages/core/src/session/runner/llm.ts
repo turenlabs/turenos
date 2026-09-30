@@ -1187,13 +1187,30 @@ const layer = Layer.effect(
       // Tool-settle fibers from the failed attempt can still be publishing when this marker goes
       // out; the permit keeps the turn's event log single-ordered.
       const publishRetry = Effect.fnUntraced(function* (decision: SessionRunnerRetry.Decision) {
+        // Provider errors can echo request content back, and this diagnostic is durable and
+        // projected into the Session status. Without protection only the fixed fields survive.
+        const error = yield* protection.pipe(
+          Effect.flatMap((guard) =>
+            Effect.try({
+              try: () => guard.json(decision.error) as SessionEvent.RetryError,
+              catch: () => "unprotectable",
+            }),
+          ),
+          Effect.catch(() =>
+            Effect.succeed({
+              message: "Secret output protection unavailable or failed; details withheld",
+              isRetryable: decision.error.isRetryable,
+              ...(decision.error.statusCode === undefined ? {} : { statusCode: decision.error.statusCode }),
+            }),
+          ),
+        )
         yield* withPublication(
           events.publish(SessionEvent.Retried, {
             sessionID: session.id,
             timestamp: yield* DateTime.now,
             attempt: decision.attempt,
             delay: decision.delay,
-            error: decision.error,
+            error,
             ...(decision.action === undefined ? {} : { action: decision.action }),
           }),
         )
@@ -1234,8 +1251,22 @@ const layer = Layer.effect(
         const pending = yield* SessionInput.pendingSteers(db, session.id)
         // Cancelled after it reached the CLI: withdraw it before the CLI folds it in.
         for (const id of handle.inFlight()) if (!pending.some((entry) => entry.input.id === id)) handle.retract(id)
+        if (pending.length === 0) return
+        // The CLI reads a steer straight from stdin, outside the protected provider request. Without
+        // protection nothing is offered; the steers promote at the next boundary, whose request is
+        // protected part by part.
+        const guard = yield* protection.pipe(Effect.option)
+        if (Option.isNone(guard)) return
         for (const entry of pending) {
-          const text = entry.plain ? steerText(entry.input, agent.id, modelRef) : undefined
+          const raw = entry.plain ? steerText(entry.input, agent.id, modelRef) : undefined
+          const text =
+            raw === undefined
+              ? undefined
+              : Option.getOrUndefined(
+                  yield* Effect.try({ try: () => guard.value.text(raw), catch: () => "unprotectable" }).pipe(
+                    Effect.option,
+                  ),
+                )
           // The first steer the CLI cannot take holds the rest, so steers keep admission order.
           if (text === undefined) return
           handle.offer({ id: entry.input.id, text })
