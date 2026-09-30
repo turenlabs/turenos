@@ -29,6 +29,9 @@ export const SessionPayload = Schema.Struct({
 export const HistoryPayload = Schema.Record(Schema.String, NonNegativeInt)
 // `limit` pages the response so sync never materializes the whole event table in
 // memory. Clients that send it must re-request until a short page arrives.
+// Requests that omit `limit` get the same default page — an unbounded scan was
+// the packaged-sidecar OOM when the event table grew past ~400k rows.
+export const HISTORY_DEFAULT_LIMIT = 500
 export const HistoryQuery = Schema.Struct({
   ...WorkspaceRoutingQueryFields,
   limit: Schema.optional(
@@ -102,7 +105,7 @@ export const SyncApi = HttpApi.make("sync")
             identifier: "sync.history.list",
             summary: "List sync events",
             description:
-              "List sync events for all aggregates. Keys are aggregate IDs the client already knows about, values are the last known sequence ID. Events with seq > value are returned for those aggregates. Aggregates not listed in the input get their full history.",
+              "List sync events for all aggregates. Keys are aggregate IDs the client already knows about, values are the last known sequence ID. Events with seq > value are returned for those aggregates. Aggregates not listed in the input get their full history, paged: results are capped at `limit` events (default 500); resubmit with the returned per-aggregate state to continue.",
           }),
         ),
       )
