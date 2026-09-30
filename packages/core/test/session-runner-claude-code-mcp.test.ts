@@ -246,7 +246,18 @@ liveClaude(
         env: ClaudeCodeCLI.subscriptionEnvironment(),
         stdio: ["pipe", "pipe", "pipe"],
       })
-      child.stdin.end('Call spawn_agent with {"marker":"live"}, then reply exactly LIVE_MCP_OK.')
+      // The bridge's args select stream-json input, so the prompt travels as one user envelope.
+      child.stdin.end(
+        `${JSON.stringify({
+          type: "user",
+          message: {
+            role: "user",
+            content: [
+              { type: "text", text: 'Call spawn_agent with {"marker":"live"}, then reply exactly LIVE_MCP_OK.' },
+            ],
+          },
+        })}\n`,
+      )
       const exited = new Promise<number | null>((resolve, reject) => {
         child.once("error", reject)
         child.once("close", resolve)

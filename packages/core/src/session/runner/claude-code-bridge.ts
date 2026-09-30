@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { isContextOverflow, LLMError, LLMEvent, LLMRequest, TransportReason } from "@turenlabs/llm"
+import { ProviderShared } from "@turenlabs/llm/protocols"
 import { Endpoint, Protocol, Route, type RouteDefaultsInput, type TransportDef } from "@turenlabs/llm/route"
 import { Cause, Effect, Queue, Schema, Stream } from "effect"
 import { ClaudeCodeGuidance } from "../../claude-code-guidance"
@@ -145,26 +146,94 @@ const messageText = (message: LLMRequest["messages"][number]): string =>
     })
     .join("\n")
 
-/**
- * Claude Code owns its own conversation state, but TurenOS owns the session
- * timeline. Rather than resume a CLI-side session (deferred), every turn
- * replays the TurenOS transcript as a single prompt — the same shape the v1
- * adapter used for un-resumed turns.
- */
-export const prompt = (request: LLMRequest): string => {
-  const transcript = request.messages
-    .filter((message) => message.role !== "system")
-    .map((message) => `${message.role.toUpperCase()}:\n${messageText(message)}`)
-    .join("\n\n")
-  return bounded(transcript || "Continue.", PROMPT_LIMIT)
-}
+/** Chronological system updates keep the same visible wrapper every other route uses. */
+const replayText = (message: LLMRequest["messages"][number]): string =>
+  message.role === "system"
+    ? ProviderShared.wrapSystemUpdate(message.content.flatMap((part) => (part.type === "text" ? [part] : [])))
+    : `${message.role.toUpperCase()}:\n${messageText(message)}`
 
 const IMAGE_LIMIT = 8
 const IMAGE_BYTES_LIMIT = 8 * 1024 * 1024
+const OMITTED = "[Earlier transcript omitted by TurenOS: it exceeded the prompt limit.]"
 
 type ImageBlock = {
   readonly type: "image"
   readonly source: { readonly type: "base64"; readonly media_type: string; readonly data: string }
+}
+
+type ContentBlock = { readonly type: "text"; readonly text: string } | ImageBlock
+
+type ReplayGroup = {
+  readonly text: string
+  readonly images: ReadonlyArray<{ readonly mediaType: string; readonly data: string | Uint8Array }>
+}
+
+/**
+ * Claude Code owns its own conversation state, but TurenOS owns the session
+ * timeline. Rather than resume a CLI-side session (deferred), every turn
+ * replays the TurenOS transcript as one stream-json user message.
+ *
+ * The replay is split into append-only content blocks so consecutive turns share
+ * a cacheable prefix. The CLI marks only the message's last block for caching,
+ * and the API reuses an earlier turn's entry at a matching block boundary. Each
+ * user or system message is its own block and each run of assistant and tool
+ * messages is one, so a turn appends about two blocks and rewrites none. Images
+ * follow the block of the message that attached them for the same reason.
+ *
+ * One-turn runtime instructions are left out. The todo checkpoint alone arrives
+ * with every new human message, and a block missing from the next replay leaves
+ * that turn's cache entry unreachable.
+ */
+export const content = (request: LLMRequest): ContentBlock[] => {
+  const groups = withinPromptLimit(
+    replayGroups(
+      request.messages.filter((message) => record(message.metadata?.forge)?.internalContext !== "runtime"),
+    ).map((group) => ({
+      text: group.map(replayText).join("\n\n"),
+      images: group.flatMap((message) =>
+        message.content.flatMap((part) => (part.type === "media" && part.mediaType.startsWith("image/") ? [part] : [])),
+      ),
+    })),
+  )
+  if (groups.length === 0) return [{ type: "text", text: "Continue." }]
+  const admit = imageAdmission()
+  return groups.flatMap((group) => [{ type: "text" as const, text: group.text }, ...group.images.flatMap(admit)])
+}
+
+/** One stream-json user envelope: the transcript blocks plus attached images. */
+export const stdinEnvelope = (request: LLMRequest): string =>
+  `${JSON.stringify({ type: "user", message: { role: "user", content: content(request) } })}\n`
+
+const standalone = (message: LLMRequest["messages"][number]) => message.role === "user" || message.role === "system"
+
+/** Consecutive assistant and tool messages share a group; user and system messages stand alone. */
+const replayGroups = (messages: LLMRequest["messages"]) => {
+  const starts = messages.flatMap((message, index) =>
+    index === 0 || standalone(message) || standalone(messages[index - 1]) ? [index] : [],
+  )
+  return starts.map((start, index) => messages.slice(start, starts[index + 1]))
+}
+
+/**
+ * Drops the oldest groups, never the newest, until the replay fits the prompt
+ * limit. Only a single group that alone exceeds the limit is cut mid-text.
+ */
+const withinPromptLimit = (groups: ReadonlyArray<ReplayGroup>): ReadonlyArray<ReplayGroup> => {
+  const sizes = groups.map((group) => encoder.encode(group.text).byteLength)
+  const total = sizes.reduce((sum, size) => sum + size, 0)
+  if (total <= PROMPT_LIMIT) return groups
+  const budget = PROMPT_LIMIT - encoder.encode(OMITTED).byteLength
+  const excess = sizes.reduce(
+    (state, size) =>
+      state.remaining > budget ? { dropped: state.dropped + 1, remaining: state.remaining - size } : state,
+    { dropped: 0, remaining: total },
+  )
+  const dropped = Math.min(groups.length - 1, excess.dropped)
+  const kept = groups.slice(dropped)
+  return [
+    ...(dropped > 0 ? [{ text: OMITTED, images: [] }] : []),
+    ...(kept.length === 1 ? [{ ...kept[0], text: bounded(kept[0].text, budget) }] : kept),
+  ]
 }
 
 const imageData = (data: string | Uint8Array): string => {
@@ -174,33 +243,23 @@ const imageData = (data: string | Uint8Array): string => {
 }
 
 /**
- * Image parts travel as real content blocks beside the flattened transcript --
- * the CLI accepts them via `--input-format stream-json`. Bounded so one
- * pathological session cannot write an unbounded prompt to the child's stdin;
- * anything past the caps stays behind as the transcript's attachment note.
+ * Image parts travel as real content blocks -- the CLI accepts them via
+ * `--input-format stream-json`. Bounded so one pathological session cannot write
+ * an unbounded prompt to the child's stdin; once the caps are reached, every later
+ * image stays behind as the transcript's attachment note.
  */
-export const images = (request: LLMRequest): ImageBlock[] => {
-  const blocks: ImageBlock[] = []
-  let bytes = 0
-  for (const message of request.messages) {
-    for (const part of message.content) {
-      if (part.type !== "media" || !part.mediaType.startsWith("image/")) continue
-      const data = imageData(part.data)
-      const size = Math.floor(data.length * 0.75)
-      if (blocks.length >= IMAGE_LIMIT || bytes + size > IMAGE_BYTES_LIMIT) return blocks
-      bytes += size
-      blocks.push({ type: "image", source: { type: "base64", media_type: part.mediaType, data } })
-    }
+const imageAdmission = () => {
+  const admitted = { count: 0, bytes: 0, full: false }
+  return (part: ReplayGroup["images"][number]): ImageBlock[] => {
+    const data = imageData(part.data)
+    const size = Math.floor(data.length * 0.75)
+    admitted.full ||= admitted.count >= IMAGE_LIMIT || admitted.bytes + size > IMAGE_BYTES_LIMIT
+    if (admitted.full) return []
+    admitted.count++
+    admitted.bytes += size
+    return [{ type: "image", source: { type: "base64", media_type: part.mediaType, data } }]
   }
-  return blocks
 }
-
-/** One stream-json user envelope: the transcript as text plus attached images. */
-export const stdinEnvelope = (request: LLMRequest): string =>
-  `${JSON.stringify({
-    type: "user",
-    message: { role: "user", content: [{ type: "text", text: prompt(request) }, ...images(request)] },
-  })}\n`
 
 export const systemPrompt = (request: LLMRequest): string => {
   const workflow = ClaudeCodeMcp.requestToken(request.metadata) ? ClaudeCodeGuidance.WORKFLOW : ""
