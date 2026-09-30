@@ -354,6 +354,50 @@ describe("EventV2", () => {
     }),
   )
 
+  it.effect("backpressures publishers instead of buffering a stalled subscriber unboundedly", () =>
+    Effect.gen(function* () {
+      const eventLayer = EventV2.layerWith({ subscriberCapacity: 1 }).pipe(
+        Layer.provide(LayerNode.compile(Database.node)),
+      )
+      yield* Effect.gen(function* () {
+        const events = yield* EventV2.Service
+        const first = yield* Deferred.make<void>()
+        const release = yield* Deferred.make<void>()
+        const delivered = yield* Deferred.make<void>()
+        const seen: string[] = []
+        // A subscriber whose first callback blocks forever keeps exactly one
+        // slot free; with capacity 1 a third publish must suspend, not buffer.
+        yield* events.subscribe(Message).pipe(
+          Stream.runForEach((event) =>
+            Effect.gen(function* () {
+              seen.push(event.data.text)
+              if (event.data.text === "one") yield* Deferred.succeed(first, undefined)
+              if (event.data.text === "one") yield* Deferred.await(release)
+              if (event.data.text === "three") yield* Deferred.succeed(delivered, undefined)
+            }),
+          ),
+          Effect.forkScoped,
+        )
+        yield* Effect.yieldNow
+
+        yield* events.publish(Message, { text: "one" })
+        yield* Deferred.await(first)
+        yield* events.publish(Message, { text: "two" })
+        const published = yield* Deferred.make<void>()
+        const pending = yield* events
+          .publish(Message, { text: "three" })
+          .pipe(Effect.andThen(Deferred.succeed(published, undefined)), Effect.forkScoped)
+        yield* Effect.yieldNow
+        expect(Option.isNone(yield* Deferred.poll(published))).toBe(true)
+
+        yield* Deferred.succeed(release, undefined)
+        yield* Deferred.await(delivered)
+        yield* Fiber.join(pending)
+        expect(seen).toEqual(["one", "two", "three"])
+      }).pipe(Effect.provide(Layer.merge(LayerNode.compile(Database.node), eventLayer)))
+    }),
+  )
+
   it.effect("preserves observer interruption", () =>
     Effect.gen(function* () {
       const events = yield* EventV2.Service

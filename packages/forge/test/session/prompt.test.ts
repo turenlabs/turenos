@@ -51,7 +51,7 @@ import { Truncate } from "@/tool/truncate"
 import { CrossSpawnSpawner } from "@turenlabs/core/cross-spawn-spawner"
 import { Ripgrep } from "@turenlabs/core/ripgrep"
 import { Format } from "../../src/format"
-import { TestInstance } from "../fixture/fixture"
+import { TestInstance, trustedProviderConfig } from "../fixture/fixture"
 import { awaitWithTimeout, pollWithTimeout, testEffect } from "../lib/effect"
 import { reply, TestLLMServer } from "../lib/llm-server"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -338,6 +338,7 @@ const useServerConfig = Effect.fn("test.useServerConfig")(function* (config: Par
   const { directory: dir } = yield* TestInstance
   const llm = yield* TestLLMServer
   yield* writeConfig(dir, config)
+  if (config.provider) yield* trustedProviderConfig(dir, config.provider)
   return { dir, llm }
 })
 
