@@ -1421,34 +1421,38 @@ describe("workspace sync state", () => {
 
               yield* workspace.startWorkspaceSyncing(instance.project.id)
 
-              yield* eventuallyEffect(
-                Effect.gen(function* () {
-                  expect((yield* sessionSvc.get(session.id).pipe(Effect.orDie)).title).toBe("from history")
-                }),
-              )
-              // Second page request carries the advanced fence: task-owned and
-              // durable aggregates advance too even though they never replay.
-              expect(historyBodies).toEqual([
-                { [session.id]: historyNextSeq - 1 },
-                {
-                  [session.id]: historyNextSeq,
-                  tsk_remote_history_blocked: 0,
-                  ses_remote_task_child: 0,
-                },
-              ])
-              expect(yield* sessionSequence("tsk_remote_history_blocked")).toBeUndefined()
-              expect(yield* sessionSequence("ses_remote_task_root")).toBeUndefined()
-              expect(yield* sessionSequence("ses_remote_task_child")).toBeUndefined()
-              expect(
-                captured.events.some(
-                  (event) =>
-                    event.workspace === info.id &&
-                    event.payload.type === "session.updated" &&
-                    event.payload.properties.sessionID === session.id &&
-                    event.payload.properties.info.title === "from history",
-                ),
-              ).toBe(true)
-              yield* workspace.remove(info.id)
+              yield* Effect.gen(function* () {
+                yield* eventuallyEffect(
+                  Effect.gen(function* () {
+                    expect((yield* sessionSvc.get(session.id).pipe(Effect.orDie)).title).toBe("from history")
+                  }),
+                )
+                // The empty page that confirms the drained log is issued after the replay that
+                // lands the title; wait for it before asserting on the captured bodies.
+                yield* eventuallyEffect(Effect.sync(() => expect(historyBodies).toHaveLength(2)))
+                // Second page request carries the advanced fence: task-owned and
+                // durable aggregates advance too even though they never replay.
+                expect(historyBodies).toEqual([
+                  { [session.id]: historyNextSeq - 1 },
+                  {
+                    [session.id]: historyNextSeq,
+                    tsk_remote_history_blocked: 0,
+                    ses_remote_task_child: 0,
+                  },
+                ])
+                expect(yield* sessionSequence("tsk_remote_history_blocked")).toBeUndefined()
+                expect(yield* sessionSequence("ses_remote_task_root")).toBeUndefined()
+                expect(yield* sessionSequence("ses_remote_task_child")).toBeUndefined()
+                expect(
+                  captured.events.some(
+                    (event) =>
+                      event.workspace === info.id &&
+                      event.payload.type === "session.updated" &&
+                      event.payload.properties.sessionID === session.id &&
+                      event.payload.properties.info.title === "from history",
+                  ),
+                ).toBe(true)
+              }).pipe(Effect.ensuring(workspace.remove(info.id)))
             } finally {
               captured.dispose()
             }
@@ -1517,18 +1521,21 @@ describe("workspace sync state", () => {
 
             yield* workspace.startWorkspaceSyncing(instance.project.id)
 
-            yield* eventuallyEffect(
-              Effect.gen(function* () {
-                expect((yield* sessionSvc.get(session.id).pipe(Effect.orDie)).title).toBe("paged-504")
-              }),
-              15_000,
-            )
-            expect(historyRequests.every((request) => request.limit === "500")).toBe(true)
-            expect(historyRequests.length).toBe(3)
-            expect(historyRequests[0].state).toEqual({ [session.id]: baseSeq - 1 })
-            expect(historyRequests[1].state).toEqual({ [session.id]: baseSeq + 499 })
-            expect(historyRequests[2].state).toEqual({ [session.id]: baseSeq + 504 })
-            yield* workspace.remove(info.id)
+            yield* Effect.gen(function* () {
+              yield* eventuallyEffect(
+                Effect.gen(function* () {
+                  expect((yield* sessionSvc.get(session.id).pipe(Effect.orDie)).title).toBe("paged-504")
+                }),
+                15_000,
+              )
+              // The empty page that confirms the drained log is issued after the replay that
+              // lands the last title; wait for it before asserting on the captured requests.
+              yield* eventuallyEffect(Effect.sync(() => expect(historyRequests.length).toBe(3)))
+              expect(historyRequests.every((request) => request.limit === "500")).toBe(true)
+              expect(historyRequests[0].state).toEqual({ [session.id]: baseSeq - 1 })
+              expect(historyRequests[1].state).toEqual({ [session.id]: baseSeq + 499 })
+              expect(historyRequests[2].state).toEqual({ [session.id]: baseSeq + 504 })
+            }).pipe(Effect.ensuring(workspace.remove(info.id)))
           }),
         { git: true },
       )
