@@ -104,8 +104,6 @@ export const syncHandlers = HttpApiBuilder.group(InstanceHttpApi, "sync", (handl
         )
         .orderBy(asc(EventTable.aggregate_id), asc(EventTable.seq))
         .$dynamic()
-      // Omitting `limit` must not scan the whole table into memory — a limit-less
-      // request gets one default page and continues via the payload state map.
       const rows = yield* query.limit(ctx.query.limit ?? HISTORY_DEFAULT_LIMIT).all().pipe(Effect.orDie)
       return rows.filter(
         (event) => !protectedIDs.has(event.aggregate_id) && !SessionTaskV2.isDurableEventType(event.type),
