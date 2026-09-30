@@ -327,12 +327,11 @@ const layer = Layer.effect(
 
         for (const dir of directories) {
           if (dir.endsWith(".forge") || dir === Flag.FORGE_CONFIG_DIR) {
-            // `.forge` directories discovered inside the opened project are repository-controlled.
+            // Discovered `.forge` directories, including ancestors of non-Git projects, are untrusted.
             const repositoryOwned =
               dir !== Global.Path.config &&
               dir !== Flag.FORGE_CONFIG_DIR &&
-              dir !== path.join(Global.Path.home, ".forge") &&
-              containsPath(dir, ctx)
+              dir !== path.join(Global.Path.home, ".forge")
             for (const file of ["forge.json", "forge.jsonc"]) {
               const source = path.join(dir, file)
               yield* Effect.logDebug(`loading config from ${source}`)

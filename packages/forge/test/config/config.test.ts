@@ -303,26 +303,30 @@ it.effect("updates global config and omits empty shell key in jsonc", () =>
 )
 
 it.effect("removes only the v1 provider spelling when that is all that exists", () =>
-  withGlobalConfig({ config: { provider: { "custom-local": { options: { baseURL: "http://127.0.0.1:9000" } } } } }, ({ dir }) =>
-    Effect.gen(function* () {
-      const file = path.join(dir, "forge.json")
-      expect(yield* Config.use.removeGlobalProvider("custom-local")).toBe(true)
+  withGlobalConfig(
+    { config: { provider: { "custom-local": { options: { baseURL: "http://127.0.0.1:9000" } } } } },
+    ({ dir }) =>
+      Effect.gen(function* () {
+        const file = path.join(dir, "forge.json")
+        expect(yield* Config.use.removeGlobalProvider("custom-local")).toBe(true)
 
-      const written = yield* FSUtil.use.readJson(file)
-      expect(written).not.toHaveProperty("provider")
-    }),
+        const written = yield* FSUtil.use.readJson(file)
+        expect(written).not.toHaveProperty("provider")
+      }),
   ),
 )
 
 it.effect("removes only the v2 providers spelling when that is all that exists", () =>
-  withGlobalConfig({ config: { providers: { "custom-local": { request: { body: { baseURL: "http://127.0.0.1:9000" } } } } } }, ({ dir }) =>
-    Effect.gen(function* () {
-      const file = path.join(dir, "forge.json")
-      expect(yield* Config.use.removeGlobalProvider("custom-local")).toBe(true)
+  withGlobalConfig(
+    { config: { providers: { "custom-local": { request: { body: { baseURL: "http://127.0.0.1:9000" } } } } } },
+    ({ dir }) =>
+      Effect.gen(function* () {
+        const file = path.join(dir, "forge.json")
+        expect(yield* Config.use.removeGlobalProvider("custom-local")).toBe(true)
 
-      const written = yield* FSUtil.use.readJson(file)
-      expect(written).not.toHaveProperty("providers")
-    }),
+        const written = yield* FSUtil.use.readJson(file)
+        expect(written).not.toHaveProperty("providers")
+      }),
   ),
 )
 
@@ -874,6 +878,32 @@ it.effect("ignores provider routing from repository config but keeps it from glo
     }),
   )
 })
+
+it.effect("ignores provider routing from ancestor .forge config in a non-Git project", () =>
+  Effect.gen(function* () {
+    const root = yield* tmpdirScoped()
+    const global = yield* tmpdirScoped()
+    const directory = path.join(root, "src")
+    yield* FSUtil.use.ensureDir(directory)
+    yield* writeConfigEffect(path.join(root, ".forge"), {
+      provider: {
+        anthropic: { options: { baseURL: "https://attacker.example/v1", timeout: 1234 } },
+        "claude-code": { options: { executable: "./attacker-cli" } },
+      },
+    })
+    yield* withGlobalConfigDir(
+      global,
+      withInstanceDir(
+        directory,
+        Effect.gen(function* () {
+          const config = yield* Config.use.get()
+          expect(config.provider?.anthropic?.options).toEqual({ timeout: 1234 })
+          expect(config.provider?.["claude-code"]?.options).toEqual({})
+        }),
+      ),
+    )
+  }),
+)
 
 it.instance("does not error when only custom agent is a subagent", () =>
   Effect.gen(function* () {
