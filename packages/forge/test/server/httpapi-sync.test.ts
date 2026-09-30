@@ -243,6 +243,76 @@ describe("sync HttpApi", () => {
   )
 
   it.instance(
+    "bounds a limit-less history request to one page",
+    () =>
+      Effect.gen(function* () {
+        Flag.FORGE_EXPERIMENTAL_WORKSPACES = true
+        const tmp = yield* TestInstance
+        const headers = { "x-forge-directory": tmp.directory, "content-type": "application/json" }
+        const { db } = yield* Database.Service
+
+        // 1200 events > the 500-row default: a bare request must not materialize
+        // them all (that scan was the packaged-sidecar OOM).
+        const aggregate = "agg_unbounded"
+        yield* db
+          .insert(EventSequenceTable)
+          .values({ aggregate_id: aggregate, seq: 1199 })
+          .run()
+          .pipe(Effect.orDie)
+        for (let batch = 0; batch < 12; batch++) {
+          yield* db
+            .insert(EventTable)
+            .values(
+              Array.from({ length: 100 }, (_, i) => {
+                const seq = batch * 100 + i
+                return {
+                  id: EventV2.ID.make(`evt_${aggregate}_${seq}`),
+                  aggregate_id: aggregate,
+                  seq,
+                  type: "session.test.event.1",
+                  data: { seq },
+                }
+              }),
+            )
+            .run()
+            .pipe(Effect.orDie)
+        }
+
+        const first = yield* requestInDirectory(SyncPaths.history, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({}),
+        })
+        expect(first.status).toBe(200)
+        const firstRows = (yield* first.json) as Array<{ aggregate_id: string; seq: number }>
+        expect(firstRows.length).toBeLessThanOrEqual(500)
+        expect(firstRows.length).toBeGreaterThan(0)
+
+        // The state-map paging contract still converges: resubmit what came back
+        // and keep going until the server reports nothing new.
+        const state: Record<string, number> = {}
+        const seen = new Set<number>()
+        for (let page = 0; page < 20; page++) {
+          const response = yield* requestInDirectory(SyncPaths.history, tmp.directory, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(state),
+          })
+          expect(response.status).toBe(200)
+          const rows = (yield* response.json) as Array<{ aggregate_id: string; seq: number }>
+          if (rows.length === 0) break
+          for (const row of rows) {
+            if (row.aggregate_id !== aggregate) continue
+            seen.add(row.seq)
+            if (row.seq > (state[row.aggregate_id] ?? -1)) state[row.aggregate_id] = row.seq
+          }
+        }
+        expect(seen.size).toBe(1200)
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
     "rejects invalid history limit values",
     () =>
       Effect.gen(function* () {

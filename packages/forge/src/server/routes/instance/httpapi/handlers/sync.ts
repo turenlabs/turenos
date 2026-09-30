@@ -16,7 +16,7 @@ import { Effect, Scope } from "effect"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
-import { HistoryPayload, HistoryQuery, ReplayPayload, SessionPayload } from "../groups/sync"
+import { HISTORY_DEFAULT_LIMIT, HistoryPayload, HistoryQuery, ReplayPayload, SessionPayload } from "../groups/sync"
 
 export const syncHandlers = HttpApiBuilder.group(InstanceHttpApi, "sync", (handlers) =>
   Effect.gen(function* () {
@@ -104,9 +104,7 @@ export const syncHandlers = HttpApiBuilder.group(InstanceHttpApi, "sync", (handl
         )
         .orderBy(asc(EventTable.aggregate_id), asc(EventTable.seq))
         .$dynamic()
-      const rows = yield* (ctx.query.limit === undefined ? query : query.limit(ctx.query.limit))
-        .all()
-        .pipe(Effect.orDie)
+      const rows = yield* query.limit(ctx.query.limit ?? HISTORY_DEFAULT_LIMIT).all().pipe(Effect.orDie)
       return rows.filter(
         (event) => !protectedIDs.has(event.aggregate_id) && !SessionTaskV2.isDurableEventType(event.type),
       )
