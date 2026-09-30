@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.31",
+  "version": "1.0.34",
   "name": "@turenlabs/forge",
   "description": "TurenOS bundled security engineering runtime and CLI",
   "type": "module",
@@ -142,7 +142,7 @@
     "tree-sitter-powershell": "0.25.10",
     "turndown": "7.2.0",
     "ulid": "catalog:",
-    "undici": "8.10.1",
+    "undici": "8.10.2",
     "venice-ai-sdk-provider": "2.1.1",
     "vscode-jsonrpc": "8.2.1",
     "web-tree-sitter": "0.25.10",

@@ -22,7 +22,6 @@ export const ServeCommand = cmd<{}, ServeArgs>({
     const keySource = selectedSource(process.env, args["key-source"])
     const credentialVault = await loadSecretVaultKey(process.env, keySource)
     const password = await loadServerPassword()
-    const serverAuth = password ? { password } : undefined
 
     // Only config is needed here. Running under AppRuntime would build the whole app graph
     // (including MCP) a second time beside the listener's own graph.
@@ -45,7 +44,7 @@ export const ServeCommand = cmd<{}, ServeArgs>({
         // Without an explicit source the key comes from the environment; Server.listen would
         // otherwise report any passed key as desktop-supplied.
         const server = yield* Effect.promise(() =>
-          Server.listen({ ...opts, keySource: keySource ?? "env", credentialVault, serverAuth }),
+          Server.listen({ ...opts, keySource: keySource ?? "env", credentialVault, password }),
         )
         console.log(`forge server listening on http://${server.hostname}:${server.port}`)
 

@@ -5,7 +5,7 @@ import { Schema } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
-import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
+import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery, WorkspaceRoutingQueryFields } from "../middleware/workspace-routing"
 import { described } from "./metadata"
 
 const root = "/sync"
@@ -27,6 +27,21 @@ export const SessionPayload = Schema.Struct({
   sessionID: SessionID,
 })
 export const HistoryPayload = Schema.Record(Schema.String, NonNegativeInt)
+// `limit` pages the response so sync never materializes the whole event table in
+// memory. Clients that send it must re-request until a short page arrives.
+// Requests that omit `limit` get the same default page — an unbounded scan was
+// the packaged-sidecar OOM when the event table grew past ~400k rows.
+export const HISTORY_DEFAULT_LIMIT = 500
+export const HistoryQuery = Schema.Struct({
+  ...WorkspaceRoutingQueryFields,
+  limit: Schema.optional(
+    Schema.NumberFromString.check(
+      Schema.isInt(),
+      Schema.isGreaterThanOrEqualTo(1),
+      Schema.isLessThanOrEqualTo(10_000),
+    ),
+  ),
+})
 export const HistoryEvent = Schema.Struct({
   id: EventV2.ID,
   aggregate_id: Schema.String,
@@ -81,7 +96,7 @@ export const SyncApi = HttpApi.make("sync")
           }),
         ),
         HttpApiEndpoint.post("history", SyncPaths.history, {
-          query: WorkspaceRoutingQuery,
+          query: HistoryQuery,
           payload: HistoryPayload,
           success: described(Schema.Array(HistoryEvent), "Sync events"),
           error: HttpApiError.BadRequest,
@@ -90,7 +105,7 @@ export const SyncApi = HttpApi.make("sync")
             identifier: "sync.history.list",
             summary: "List sync events",
             description:
-              "List sync events for all aggregates. Keys are aggregate IDs the client already knows about, values are the last known sequence ID. Events with seq > value are returned for those aggregates. Aggregates not listed in the input get their full history.",
+              "List sync events for all aggregates. Keys are aggregate IDs the client already knows about, values are the last known sequence ID. Events with seq > value are returned for those aggregates. Aggregates not listed in the input get their full history, paged: results are capped at `limit` events (default 500); resubmit with the returned per-aggregate state to continue.",
           }),
         ),
       )

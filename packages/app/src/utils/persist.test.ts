@@ -271,12 +271,9 @@ describe("persist localStorage resilience", () => {
   })
 
   test("normalizer sanitizes values before migration writes them back", () => {
-    const result = persistTesting.normalize(
-      { value: "default" },
-      '{"value":"legacy"}',
-      undefined,
-      () => ({ value: "sanitized" }),
-    )
+    const result = persistTesting.normalize({ value: "default" }, '{"value":"legacy"}', undefined, () => ({
+      value: "sanitized",
+    }))
     expect(result).toBe('{"value":"sanitized"}')
   })
 
@@ -288,18 +285,56 @@ describe("persist localStorage resilience", () => {
     expect(/[:\\/]/.test(result)).toBeFalse()
   })
 
-  test("workspace target keeps raw path storage as legacy fallback", () => {
+  test("workspace target keeps raw and pre-fold canonical storage as legacy fallback", () => {
     const target = Persist.workspace("C:\\Users\\foo", "vcs")
 
-    expect(target.storage).toBe(persistTesting.workspaceStorage("C:/Users/foo"))
-    expect(target.legacyStorageNames).toEqual([persistTesting.workspaceStorage("C:\\Users\\foo")])
+    expect(target.storage).toBe(persistTesting.workspaceStorage("c:/users/foo"))
+    expect(target.legacyStorageNames).toEqual([
+      persistTesting.workspaceStorage("C:\\Users\\foo"),
+      persistTesting.workspaceStorage("C:/Users/foo"),
+    ])
   })
 
   test("workspace target keeps backslash storage as fallback for normalized Windows paths", () => {
     const target = Persist.workspace("C:/Users/foo", "vcs")
 
-    expect(target.storage).toBe(persistTesting.workspaceStorage("C:/Users/foo"))
-    expect(target.legacyStorageNames).toEqual([persistTesting.workspaceStorage("C:\\Users\\foo")])
+    expect(target.storage).toBe(persistTesting.workspaceStorage("c:/users/foo"))
+    expect(target.legacyStorageNames).toEqual([
+      persistTesting.workspaceStorage("C:/Users/foo"),
+      persistTesting.workspaceStorage("C:\\Users\\foo"),
+    ])
+  })
+
+  test("workspace target migrates storage written under the pre-fold canonical spelling", () => {
+    const target = Persist.workspace("C:\\Users\\foo", "vcs")
+    const oldName = persistTesting.workspaceStorage("C:/Users/foo")
+    storage.setItem(`${oldName}:${target.key}`, '{"value":7}')
+
+    const current = persistTesting.localStorageWithPrefix(target.storage!)
+    const legacyStores = target.legacyStorageNames!.map(persistTesting.localStorageWithPrefix)
+    const result = persistTesting.migrateLegacy({
+      current,
+      stores: legacyStores,
+      keys: [],
+      key: target.key,
+      defaults: { value: 1 },
+    })
+
+    expect(result).toBe('{"value":7}')
+    expect(storage.getItem(`${target.storage}:${target.key}`)).toBe('{"value":7}')
+    expect(storage.getItem(`${oldName}:${target.key}`)).toBeNull()
+  })
+
+  test("workspace target covers the unprefixed spelling for NT-prefixed input", () => {
+    const target = Persist.workspace("\\\\?\\C:\\Users\\foo", "vcs")
+
+    expect(target.storage).toBe(persistTesting.workspaceStorage("c:/users/foo"))
+    expect(target.legacyStorageNames).toEqual(
+      expect.arrayContaining([
+        persistTesting.workspaceStorage("C:\\Users\\foo"),
+        persistTesting.workspaceStorage("C:/Users/foo"),
+      ]),
+    )
   })
 
   test("migrates direct legacy keys into scoped storage", () => {

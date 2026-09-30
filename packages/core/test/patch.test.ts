@@ -31,6 +31,16 @@ describe("Patch", () => {
     expect(Patch.joinBom(update.content, update.bom)).toBe("\uFEFFnew\n")
   })
 
+  test("matches lines with typographic punctuation", () => {
+    expect(
+      Patch.derive(
+        "update.txt",
+        [{ oldLines: ['const message = "can\'t say - wow... done"'], newLines: ["const message = 'updated'"] }],
+        "const message = “can’t say — wow… done”\n",
+      ).content,
+    ).toBe("const message = 'updated'\n")
+  })
+
   test("matches EOF-anchored chunks from the end", () => {
     expect(
       Patch.derive(

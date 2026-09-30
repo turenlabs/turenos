@@ -54,7 +54,10 @@ artifacts back into this directory.
 - `managed` deployments carry the full package recipe in the manifest —
   pinned `package`/`version`, `cutoff` freshness timestamp, `command`,
   `args`, `platforms`, and `environment` bindings to declared
-  configuration/secrets. The generic uv-managed runner in
+  configuration/secrets. `cutoff` is passed to uv `--exclude-newer`, which
+  drops artifacts uploaded at or after it: set it strictly after the pinned
+  wheel's PyPI upload time, never equal to it, or the package cannot resolve
+  and the server exposes no tools. The generic uv-managed runner in
   `packages/forge/src/mcp/package-runtime.ts` executes them; no per-package
   runtime code is needed. Managed deployments are official-trust only.
 - New adapter IDs and non-managed `local` deployments require a separately

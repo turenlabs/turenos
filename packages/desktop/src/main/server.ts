@@ -4,6 +4,7 @@ import { app, utilityProcess } from "electron"
 import type { Details } from "electron"
 import { resolveForgeCliEnv } from "./forge-cli"
 import { getLogger } from "./logging"
+import { withoutIpcSecrets } from "./sidecar-env"
 import { getUserShell, loadShellEnv } from "./shell-env"
 import { IS_DEV } from "./constants"
 import type { SidecarProfileMessage } from "./profiler/sidecar-profiler"
@@ -85,6 +86,10 @@ export async function spawnLocalServer(
   const child = utilityProcess.fork(sidecar, [], {
     cwd: process.cwd(),
     env: createSidecarEnv(),
+    // The default ~4GB V8 old-space ceiling is reached by large workspaces long
+    // before the process is otherwise unhealthy — give the sidecar headroom so a
+    // heavy turn transient survives instead of crashing the session mid-prompt.
+    execArgv: ["--max-old-space-size=8192"],
     serviceName: SIDECAR_SERVICE_NAME,
     stdio: "pipe",
   })
@@ -358,8 +363,10 @@ export async function checkHealth(url: string, password?: string | null): Promis
 }
 
 function createSidecarEnv(): Record<string, string> {
-  const env = Object.fromEntries(
-    Object.entries(process.env).flatMap(([key, value]) => (value === undefined ? [] : [[key, String(value)]])),
+  const env = withoutIpcSecrets(
+    Object.fromEntries(
+      Object.entries(process.env).flatMap(([key, value]) => (value === undefined ? [] : [[key, String(value)]])),
+    ),
   )
   delete env.DEBUG
   if (process.platform === "linux") delete env.LD_PRELOAD
@@ -375,6 +382,9 @@ function createSidecarEnv(): Record<string, string> {
   )
   if (app.isPackaged) env.FORGE_VIGIL_PATH = join(process.resourcesPath, "vigil")
   if (!app.isPackaged) env.FORGE_DISABLE_CHANNEL_DB = "1"
+  // Packaged sidecars can't be re-run under a debugger after an OOM, so arm the
+  // heap-snapshot watchdog by default. The flag stays overridable to "0".
+  if (app.isPackaged) env.FORGE_AUTO_HEAP_SNAPSHOT ??= "1"
   return env
 }
 

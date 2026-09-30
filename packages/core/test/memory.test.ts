@@ -25,6 +25,7 @@ const provenance = { assertedBy: "tom", source: "agent" as const, sessionID: "se
 describe("Memory tokenize", () => {
   it.effect("emits the whole identifier alongside its parts", () =>
     Effect.sync(() => {
+      expect(MemoryTokenize.tokenize("plain lowercase words")).toEqual(["plain", "lowercase", "words"])
       expect(MemoryTokenize.tokenize("sessionRunner")).toEqual(["sessionrunner", "session", "runner"])
       expect(MemoryTokenize.tokenize("session_runner")).toEqual(["session_runner", "session", "runner"])
       expect(MemoryTokenize.tokenize("HTTPServer")).toEqual(["httpserver", "http", "server"])

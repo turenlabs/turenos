@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -39,6 +40,13 @@ const STDERR_LIMIT = 8 * 1024
 const TERMINATE_GRACE = 2_000
 const REAP_TIMEOUT = 3_000
 const TERMINAL_EXIT_GRACE = 1_000
+
+/**
+ * `system/init` capabilities a CLI needs before it takes mid-turn steers: `command_lifecycle`
+ * frames, which confirm a fold, and `cancel_queued` on interrupt, which withdraws a steer the run
+ * ended before folding in.
+ */
+const STEER_CAPABILITIES = ["msg_lifecycle_v1", "interrupt_cancel_queued_v1"]
 
 const API_ERROR_PREFIX = "API Error:"
 const MCP_TOOL_PREFIX = "mcp__forge__"
@@ -912,14 +920,43 @@ const launch = (input: {
     catch: (error) => transportError("spawn", error instanceof Error ? error.message : "Claude Code could not start"),
   })
 
-const writePrompt = (child: Child, value: string) => {
+/** Stays open only while the turn can steer; the CLI then exits after its result once TurenOS closes it. */
+const writePrompt = (child: Child, value: string, keepOpen: boolean) => {
   const stdin = child.proc.stdin
   if (!stdin) return
   stdin.on("error", () => {
     /* EPIPE when the child exits before the prompt is fully written */
   })
-  stdin.end(value)
+  if (keepOpen) stdin.write(value)
+  else stdin.end(value)
 }
+
+/**
+ * A mid-turn user message. Default priority: the CLI folds it in once the running tool calls
+ * finish, before its next model request, as interactive Claude Code does for a message typed
+ * while it works. The uuid is the bridge's own, so the CLI never sees TurenOS message IDs.
+ */
+const steerEnvelope = (uuid: string, text: string) =>
+  `${JSON.stringify({
+    type: "user",
+    uuid,
+    parent_tool_use_id: null,
+    message: { role: "user", content: [{ type: "text", text: bounded(text, PROMPT_LIMIT) }] },
+  })}\n`
+
+const cancelEnvelope = (uuid: string) =>
+  `${JSON.stringify({
+    type: "control_request",
+    request_id: randomUUID(),
+    request: { subtype: "cancel_async_message", message_uuid: uuid },
+  })}\n`
+
+const withdrawEnvelope = () =>
+  `${JSON.stringify({
+    type: "control_request",
+    request_id: randomUUID(),
+    request: { subtype: "interrupt", cancel_queued: true },
+  })}\n`
 
 const safeParse = (line: string): unknown => {
   try {
@@ -939,7 +976,12 @@ const safeParse = (line: string): unknown => {
  * the Effect side — an interruptible queue take — so an interrupted turn closes
  * the scope immediately and the release handler gets to kill the child.
  */
-const pump = (child: Child, promptText: string, queue: Queue.Queue<LLMEvent, LLMError | Cause.Done>) => {
+const pump = (
+  child: Child,
+  promptText: string,
+  queue: Queue.Queue<LLMEvent, LLMError | Cause.Done>,
+  steering?: ClaudeCodeMcp.Steering,
+) => {
   const state = adapterState()
   const stdoutDecoder = new TextDecoder()
   let buffer = ""
@@ -950,7 +992,67 @@ const pump = (child: Child, promptText: string, queue: Queue.Queue<LLMEvent, LLM
   const emit = (events: ReadonlyArray<LLMEvent>) => {
     for (const event of events) Queue.offerUnsafe(queue, event)
   }
+  // Bridge uuid -> TurenOS input ID for steers written to stdin and not yet folded in.
+  const written = new Map<string, string>()
+  let inputOpen = steering !== undefined
+  let withdrew = false
+  let folds = 0
+  const send = (value: string) => {
+    if (child.proc.stdin?.writable) child.proc.stdin.write(value)
+  }
+  const writer: ClaudeCodeMcp.SteerWriter = {
+    write: (input) => {
+      if (!inputOpen || !child.proc.stdin?.writable) return false
+      const uuid = randomUUID()
+      written.set(uuid, input.id)
+      send(steerEnvelope(uuid, input.text))
+      return true
+    },
+    // The mapping stays: should the CLI fold the steer in before the cancel lands, the model has
+    // read it and the runner must still record it.
+    retract: (id) => {
+      for (const [uuid, value] of written) if (value === id) send(cancelEnvelope(uuid))
+    },
+  }
+  const closeInput = () => {
+    if (!inputOpen) return
+    inputOpen = false
+    steering?.attach(undefined)
+    // A steer still queued when the run ends starts a second CLI turn TurenOS never records, and
+    // the CLI takes it off its queue within a millisecond of the result, too soon for
+    // cancel_async_message. An interrupt with cancel_queued aborts that turn before the model
+    // reads it. The steer stays pending and promotes at the next provider-turn boundary.
+    if (written.size > 0) {
+      withdrew = true
+      send(withdrawEnvelope())
+    }
+    written.clear()
+    child.proc.stdin?.end()
+  }
+  // The marker tells the runner to promote the folded input before the content that answers it.
+  const fold = (uuid: unknown) => {
+    if (typeof uuid !== "string") return
+    const id = written.get(uuid)
+    if (id === undefined) return
+    written.delete(uuid)
+    steering?.started(id)
+    emit([LLMEvent.stepStart({ index: ++folds })])
+  }
+  const steer = (message: Record<string, unknown>) => {
+    if (message.type === "system" && message.subtype === "init") {
+      // Without both, steers wait for the boundary.
+      const capabilities = Array.isArray(message.capabilities) ? message.capabilities : []
+      if (STEER_CAPABILITIES.every((capability) => capabilities.includes(capability))) steering?.attach(writer)
+      return
+    }
+    if (message.type === "command_lifecycle" && message.state === "started") return fold(message.command_uuid)
+    if (message.type !== "result") return
+    // A folded steer whose lifecycle frame was lost is still named on the result it shaped.
+    if (Array.isArray(message.user_message_uuids)) message.user_message_uuids.forEach(fold)
+    closeInput()
+  }
   const finish = (event?: LLMEvent) => {
+    closeInput()
     if (closed) return
     closed = true
     if (terminalTimer) clearTimeout(terminalTimer)
@@ -961,6 +1063,7 @@ const pump = (child: Child, promptText: string, queue: Queue.Queue<LLMEvent, LLM
     if (state.finished) return
     const parsed = record(safeParse(line))
     if (!parsed) throw new Error("Claude Code returned malformed stream-json output")
+    if (steering) steer(parsed)
     const events = toEvents(state, parsed)
     if (state.finished) {
       terminalEvents = events
@@ -1017,14 +1120,15 @@ const pump = (child: Child, promptText: string, queue: Queue.Queue<LLMEvent, LLM
         emit(terminalEvents)
         return finish()
       }
-      if (exit.code === 0 && exit.signal === null) {
+      // The withdrawal interrupt makes the CLI exit 1 after the turn it already completed.
+      if ((exit.code === 0 || withdrew) && exit.signal === null) {
         if (terminalEvents) emit(terminalEvents)
         return finish()
       }
     }
     finish(exitError({ ...exit, stderr: child.stderr }))
   })
-  writePrompt(child, promptText)
+  writePrompt(child, promptText, inputOpen)
 }
 
 const transport = (input: {
@@ -1054,7 +1158,8 @@ const transport = (input: {
           // turn kills the CLI and every process it spawned.
           (child) => Effect.promise(() => terminate(child)),
         )
-        yield* Effect.sync(() => pump(child, stdinEnvelope(prepared.request), queue))
+        const steering = token ? ClaudeCodeMcp.steering(token) : undefined
+        yield* Effect.sync(() => pump(child, stdinEnvelope(prepared.request), queue, steering))
       }).pipe(
         // `Stream.callback` forks this register effect and discards its exit: a
         // failure (or defect) that escapes here never reaches the consumer, and

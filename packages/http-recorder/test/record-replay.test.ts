@@ -183,6 +183,20 @@ describe("http-recorder", () => {
     })
   })
 
+  test("preserves JSON __proto__ fields while redacting nested secrets", () => {
+    const request = HttpRecorderInternal.Redactor.make().request({
+      method: "POST",
+      url: "https://example.test/path",
+      headers: { "content-type": "application/json" },
+      body: '{"__proto__":{"token":"secret","safe":"visible"}}',
+    })
+    const parsed = JSON.parse(request.body)
+
+    expect(request.body).toBe('{"__proto__":{"token":"[REDACTED]","safe":"visible"}}')
+    expect(Object.hasOwn(parsed, "__proto__")).toBe(true)
+    expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype)
+  })
+
   test("extends default header redaction and allow lists", () => {
     const redactor = HttpRecorderInternal.Redactor.make({
       headers: ["x-custom-token"],

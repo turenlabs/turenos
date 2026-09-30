@@ -9,7 +9,7 @@ import { ServerOwner } from "@turenlabs/core/database/server-owner"
 export type Options = {
   keySource?: Source
   credentialVault?: SecretVault.Key
-  serverAuth?: { password: string; username?: string }
+  password?: string
 }
 
 /**
@@ -25,7 +25,7 @@ export async function acquire(opts: Options) {
       throw new Error("persistent server requires the systemd-credentials secret vault key source")
     if (!opts.credentialVault) throw new Error("persistent server requires a host-loaded secret vault key")
     if (!process.env.FORGE_SERVER_ID) throw new Error("persistent server requires a stable FORGE_SERVER_ID")
-    if (!opts.serverAuth?.password) throw new Error("persistent server requires a protected HTTP password")
+    if (!opts.password) throw new Error("persistent server requires a protected HTTP password")
   }
   if (opts.credentialVault) SecretVault.configure(opts.credentialVault)
   const release = await Database.acquireOwnerLock(Database.path(), {

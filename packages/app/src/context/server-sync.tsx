@@ -485,8 +485,9 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
   const resolveProjectID = async (directory: string) => {
     const known = children.children[directoryKey(directory)]?.[0].project
     if (known) return known
+    const key = directoryKey(directory)
     const listed = globalStore.project.find(
-      (item) => item.worktree === directory || item.sandboxes?.includes(directory),
+      (item) => directoryKey(item.worktree) === key || item.sandboxes?.some((sandbox) => directoryKey(sandbox) === key),
     )
     if (listed) return listed.id
     const response = await sdkFor(directory).project.current()

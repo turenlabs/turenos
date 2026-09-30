@@ -96,6 +96,10 @@ describe("detectSshPrompt", () => {
     const prompt = detectSshPrompt("debug output\r\nuser@host's password: ")
     expect(prompt).not.toBeNull()
     expect(prompt!.kind).toBe("password")
+    expect(detectSshPrompt("user@host's password:\r")).toEqual({
+      kind: "password",
+      message: "user@host's password:",
+    })
   })
 
   test("detects passphrase prompts", () => {

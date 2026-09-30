@@ -17,8 +17,10 @@ import { PublicApi } from "./routes/instance/httpapi/public"
 import type { CorsOptions } from "@turenlabs/server/cors"
 import { startScheduler } from "@turenlabs/server/intel/scheduler"
 import { lazy } from "@/util/lazy"
+import { Heap } from "@/cli/heap"
 import { Flag } from "@turenlabs/core/flag/flag"
 import { isLoopbackHostname } from "./shared/local-request"
+import { ServerAuth } from "./auth"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 import { ServerOwnership } from "./ownership"
 import { ServerDescriptor } from "./descriptor"
@@ -48,6 +50,10 @@ type ServerApp = {
 type ListenOptions = CorsOptions & {
   port: number
   hostname: string
+  /** Basic auth password. Defaults to FORGE_SERVER_PASSWORD, which listen moves from process.env into Flag. */
+  password?: string
+  /** Basic auth username. Defaults to FORGE_SERVER_USERNAME, then "forge". */
+  username?: string
   /** Opt out of refusing non-loopback binds without FORGE_SERVER_PASSWORD. */
   insecure?: boolean
   mdns?: boolean
@@ -57,10 +63,6 @@ type ListenOptions = CorsOptions & {
     key: Uint8Array
   }
   keySource?: Source
-  serverAuth?: {
-    password: string
-    username?: string
-  }
   securityProxy?: (command: SecurityProxy.Command) => Promise<SecurityProxy.Result>
 }
 type ListenerState = {
@@ -100,22 +102,29 @@ export async function openapi() {
 export let url: URL | undefined
 
 export async function listen(opts: ListenOptions): Promise<Listener> {
+  // The desktop sidecar calls listen without entering the CLI, so claim the password here too.
+  const password = ServerAuth.claimPassword(opts.password)
+  const username = opts.username ?? process.env.FORGE_SERVER_USERNAME ?? Flag.FORGE_SERVER_USERNAME
+  Flag.FORGE_SERVER_USERNAME = username
+  // The desktop sidecar reaches listen() without passing the CLI middleware that
+  // arms this, so FORGE_AUTO_HEAP_SNAPSHOT has to be armed here or packaged
+  // processes can never self-capture a heap profile when memory climbs.
+  Heap.start()
   // Binding a non-loopback interface exposes every privileged API on the LAN, so a
   // password is mandatory there unless the caller explicitly opts into insecure mode.
-  const password = opts.serverAuth?.password ?? process.env.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD
   if (!password && !opts.insecure && !isLoopbackHostname(opts.hostname)) {
     throw new Error(
       `Refusing to listen on ${opts.hostname} without FORGE_SERVER_PASSWORD. ` +
         "Set FORGE_SERVER_PASSWORD, bind a loopback hostname, or pass --insecure to override.",
     )
   }
-  const releaseOwner = await ServerOwnership.acquire(opts)
+  const releaseOwner = await ServerOwnership.acquire({ ...opts, password })
   try {
     const facts: ServerDescriptor.ListenerFacts = {
       keySource: opts.keySource ?? (opts.credentialVault ? "desktop" : "env"),
       listener: "",
     }
-    const listener = await Effect.runPromise(listenEffect(opts, facts))
+    const listener = await Effect.runPromise(listenEffect({ ...opts, password, username }, facts))
     return {
       hostname: listener.hostname,
       port: listener.port,
@@ -171,9 +180,6 @@ const listenEffect = Effect.fn("Server.listen")(function* (opts: ListenOptions, 
 })
 
 function listenerLayer(opts: ListenOptions, port: number, facts: ServerDescriptor.ListenerFacts) {
-  const configEnv = Object.fromEntries(
-    Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-  )
   const secretVault = opts.credentialVault ? SecretVault.layer(opts.credentialVault) : SecretVault.runtime
   return HttpRouter.serve(
     HttpApiApp.createRoutes(
@@ -191,10 +197,7 @@ function listenerLayer(opts: ListenOptions, port: number, facts: ServerDescripto
           }
         : undefined,
       facts,
-      opts.serverAuth ?? {
-        password: configEnv.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD,
-        username: configEnv.FORGE_SERVER_USERNAME ?? Flag.FORGE_SERVER_USERNAME,
-      },
+      { password: opts.password, username: opts.username },
     ),
     {
       middleware: disposeMiddleware,
@@ -211,20 +214,20 @@ function listenerLayer(opts: ListenOptions, port: number, facts: ServerDescripto
     // `ConfigProvider` snapshots `process.env` on first read and caches the
     // result on a module-singleton Reference; without overriding it here,
     // every later `Server.listen()` keeps observing that initial snapshot.
-    Layer.provide(
-      ConfigProvider.layer(
-        ConfigProvider.fromEnv({
-          env: opts.serverAuth
-            ? {
-                ...configEnv,
-                FORGE_SERVER_PASSWORD: opts.serverAuth.password,
-                ...(opts.serverAuth.username ? { FORGE_SERVER_USERNAME: opts.serverAuth.username } : {}),
-              }
-            : configEnv,
-        }),
-      ),
-    ),
+    // The auth credentials come from `listen()`, which removed the password from `process.env`.
+    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: listenerEnv(opts) }))),
   )
+}
+
+function listenerEnv(opts: ListenOptions) {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  )
+  return {
+    ...env,
+    ...(opts.password ? { FORGE_SERVER_PASSWORD: opts.password } : {}),
+    ...(opts.username ? { FORGE_SERVER_USERNAME: opts.username } : {}),
+  }
 }
 
 function startWithPortFallback(opts: ListenOptions, facts: ServerDescriptor.ListenerFacts) {

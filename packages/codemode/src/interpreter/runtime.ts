@@ -2043,12 +2043,20 @@ class Interpreter<R> {
     const data = boundedData(value, "console.table argument")
     const columns = this.consoleTableColumns(columnsArgument, node)
     const rows = this.consoleTableRows(data, columns)
-    const keys = columns ?? Array.from(new Set(rows.flatMap((row) => Object.keys(row.values))))
+    const keys = columns ?? this.consoleTableInferredColumns(rows)
     const header = ["(index)", ...keys].join("\t")
     return [
       header,
       ...rows.map((row) => [row.index, ...keys.map((key) => this.formatConsoleTableCell(row.values[key]))].join("\t")),
     ].join("\n")
+  }
+
+  private consoleTableInferredColumns(rows: ReadonlyArray<{ readonly values: Record<string, unknown> }>) {
+    const columns = new Set<string>()
+    for (const row of rows) {
+      for (const key of Object.keys(row.values)) columns.add(key)
+    }
+    return Array.from(columns)
   }
 
   private consoleTableColumns(value: unknown, node: AstNode): ReadonlyArray<string> | undefined {

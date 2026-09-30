@@ -61,6 +61,14 @@ const displayStatus = (item: ExtensionItem) => {
   return statusLabel(item.status)
 }
 
+const statusTone = (item: ExtensionItem) => {
+  if (item.status === "failed" || item.status === "unavailable") return "danger"
+  if (item.status === "needs-auth" || item.status === "needs-config" || item.status === "needs-install")
+    return "warning"
+  if (activeStatus(item)) return "success"
+  return "muted"
+}
+
 const extensionIcon = (
   item: ExtensionItem,
 ): "workspace" | "terminal" | "archive" | "skills" | "status" | "branch" | "monitor" | "review" => {
@@ -570,14 +578,20 @@ function ExtensionField(props: {
   value: string
   required?: boolean
   configured?: boolean
+  /** Highlights a required-but-unset field when the extension is in a needs-* state. */
+  attention?: boolean
   placeholder?: string
   onInput: (value: string) => void
 }) {
+  const missing = () =>
+    props.required === true && props.configured !== true && props.attention === true && props.value.trim() === ""
   return (
     <label class="block text-[10px] text-v2-text-text-muted">
       {props.label}
       <Show when={props.required}>
-        <span class="ml-1">Required</span>
+        <span class="ml-1" classList={{ "text-v2-state-fg-warning": missing() }}>
+          Required
+        </span>
       </Show>
       <Show when={props.configured}>
         <span class="ml-1 text-v2-state-fg-success">Configured</span>
@@ -589,6 +603,7 @@ function ExtensionField(props: {
         placeholder={props.placeholder}
         onInput={(event) => props.onInput(event.currentTarget.value)}
         class="mt-1.5 h-9 w-full rounded-[7px] border-0 bg-v2-background-bg-layer-01 px-2.5 text-[12px] text-v2-text-text-base outline-none [box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-muted)] focus:[box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-focus)]"
+        classList={{ "[box-shadow:inset_0_0_0_1px_var(--v2-state-border-warning)]": missing() }}
       />
     </label>
   )
@@ -636,7 +651,13 @@ function ExtensionConfigDialog(props: {
               <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 <span>{extensionCategoryLabel(extensionCategory(props.item))}</span>
                 <span aria-hidden="true">·</span>
-                <span classList={{ "text-v2-state-fg-success": activeStatus(props.item) }}>
+                <span
+                  classList={{
+                    "text-v2-state-fg-success": statusTone(props.item) === "success",
+                    "text-v2-state-fg-danger": statusTone(props.item) === "danger",
+                    "text-v2-state-fg-warning": statusTone(props.item) === "warning",
+                  }}
+                >
                   {displayStatus(props.item)}
                 </span>
               </span>
@@ -715,6 +736,17 @@ function ExtensionConfigDialog(props: {
             )}
           </Show>
 
+          <Show when={props.item.log?.length}>
+            <details class="rounded-[8px] bg-v2-background-bg-layer-01 px-3 py-2.5 [box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-muted)]">
+              <summary class="cursor-pointer text-[11px] [font-weight:550] text-v2-text-text-muted">
+                Recent server output
+              </summary>
+              <pre class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[10px] leading-[1.5] text-v2-text-text-muted">
+                {props.item.log?.join("\n")}
+              </pre>
+            </details>
+          </Show>
+
           <Show when={props.item.mutable && (customerUrl() || configuration().length || declaredSecrets().length)}>
             <section data-component="extension-configuration" class="flex flex-col gap-3">
               <div>
@@ -730,6 +762,7 @@ function ExtensionConfigDialog(props: {
                   type="url"
                   value={props.secrets()[`${props.item.manifest.id}:endpoint`] ?? ""}
                   configured={props.item.configurationSet.endpoint}
+                  attention={props.item.status === "needs-config"}
                   placeholder="https://mcp.example.com"
                   onInput={(value) => props.updateSecret(props.item.manifest.id, "endpoint", value)}
                 />
@@ -742,6 +775,7 @@ function ExtensionConfigDialog(props: {
                     value={props.secrets()[`${props.item.manifest.id}:${field.id}`] ?? ""}
                     required={field.required}
                     configured={props.item.configurationSet[field.id]}
+                    attention={props.item.status === "needs-config"}
                     onInput={(value) => props.updateSecret(props.item.manifest.id, field.id, value)}
                   />
                 )}
@@ -755,6 +789,7 @@ function ExtensionConfigDialog(props: {
                     value={props.secrets()[`${props.item.manifest.id}:${secret.id}`] ?? ""}
                     required={secret.required}
                     configured={props.item.secretsSet[secret.id]}
+                    attention={props.item.status === "needs-auth"}
                     onInput={(value) => props.updateSecret(props.item.manifest.id, secret.id, value)}
                   />
                 )}

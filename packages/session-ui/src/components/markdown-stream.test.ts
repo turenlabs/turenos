@@ -187,6 +187,18 @@ describe("markdown stream", () => {
     expect(next.blocks.map((block) => block.raw).join("")).toBe(next.text)
   })
 
+  test("reprojects appended blocks after leading whitespace", () => {
+    const previous = project(
+      undefined,
+      ` \n\n${Array.from({ length: 32 }, (_, index) => `paragraph ${index}`).join("\n\n")}`,
+      true,
+    )
+    const next = project(previous, `${previous.text}\n\nfinal paragraph`, true)
+
+    expect(previous.blocks.length).toBeGreaterThan(2)
+    expect(next.blocks).toEqual(stream(next.text, true))
+  })
+
   test("splits a new block boundary that appears in the suffix", () => {
     const previous = project(undefined, "First paragraph", true)
     const next = project(previous, `${previous.text}\n\nSecond paragraph`, true)

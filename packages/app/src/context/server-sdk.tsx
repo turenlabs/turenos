@@ -9,6 +9,7 @@ import { useLanguage } from "./language"
 import { usePlatform } from "./platform"
 import { ServerConnection, useServer } from "./server"
 import { createRefCountMap } from "@/utils/refcount"
+import { pathKey } from "@/utils/path-key"
 import { useGlobal } from "./global"
 import { ServerScope } from "@/utils/server-scope"
 
@@ -50,7 +51,7 @@ export function coalesceServerEvents(events: QueuedServerEvent[]) {
     if (
       !previous ||
       previous.payload.type !== "message.part.delta" ||
-      previous.directory !== event.directory ||
+      pathKey(previous.directory) !== pathKey(event.directory) ||
       previous.payload.properties.messageID !== props.messageID ||
       previous.payload.properties.partID !== props.partID ||
       previous.payload.properties.field !== props.field
@@ -199,7 +200,9 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
             failures = 0
             streamErrorLogged = false
             if (event.payload.type !== "sync") {
-              const directory = event.directory ?? "global"
+              // Canonicalized so dir-scoped subscribers match regardless of how
+              // the server spelled this directory.
+              const directory = pathKey(event.directory ?? "global")
               const payload = event.payload as Event
               if (enqueueServerEvent(queue, { directory, payload })) schedule()
             }
@@ -278,7 +281,9 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
         baseUrl: server.http.url,
         fetch: platform.fetch,
         headers: server.http.password
-          ? { Authorization: `Basic ${authTokenFromCredentials({ username: server.http.username, password: server.http.password })}` }
+          ? {
+              Authorization: `Basic ${authTokenFromCredentials({ username: server.http.username, password: server.http.password })}`,
+            }
           : undefined,
       })
     },
@@ -305,7 +310,7 @@ export type ServerSDK = ServerSDKBase & {
 export function createServerSdkContext(server: ServerConnection.Any, scope: ServerScope): ServerSDK {
   const sdk = createServerSdkContextBase(server, scope)
   return Object.assign(sdk, {
-    ensureDirSdkContext: createRefCountMap((dir) => createDirSdkContext(dir, sdk)),
+    ensureDirSdkContext: createRefCountMap((dir) => createDirSdkContext(dir, sdk), undefined, pathKey),
   })
 }
 
@@ -330,7 +335,11 @@ type SDKEventMap = {
   [key in Event["type"]]: Extract<Event, { type: key }>
 }
 
-function createDirSdkContext(directory: string, serverSDK: ServerSDKBase) {
+function createDirSdkContext(input: string, serverSDK: ServerSDKBase) {
+  // One canonical spelling for every equivalent path: `sdk().directory` feeds
+  // session-state keys and storage names, so it must not depend on which
+  // spelling (case, separator, NT prefix) first created this context.
+  const directory = pathKey(input)
   const client = serverSDK.createClient({
     directory,
     throwOnError: true,

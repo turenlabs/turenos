@@ -76,34 +76,25 @@ export namespace Timeline {
         if (renderable(part, showReasoning)) assistantPartRefs.push({ messageID: message.id, messageIndex, part })
       })
     })
+    let assistantPartIndex = 0
+    const partItems = (groups: PartGroup[]) =>
+      groups.map((group) => {
+        const part = group.type === "part" ? assistantPartRefs[assistantPartIndex]?.part : undefined
+        assistantPartIndex += group.type === "part" ? 1 : group.refs.length
+        return { type: "part" as const, group, part }
+      })
     const assistantItems =
       interrupted && !compaction
         ? [
-            ...groupParts(assistantPartRefs.filter((ref) => ref.messageIndex <= interruptedMessageIndex)).map(
-              (group) => ({
-                type: "part" as const,
-                group,
-              }),
-            ),
+            ...partItems(groupParts(assistantPartRefs.filter((ref) => ref.messageIndex <= interruptedMessageIndex))),
             { type: "interrupted" as const },
-            ...groupParts(assistantPartRefs.filter((ref) => ref.messageIndex > interruptedMessageIndex)).map(
-              (group) => ({
-                type: "part" as const,
-                group,
-              }),
-            ),
+            ...partItems(groupParts(assistantPartRefs.filter((ref) => ref.messageIndex > interruptedMessageIndex))),
           ]
-        : groupParts(assistantPartRefs).map((group) => ({ type: "part" as const, group }))
+        : partItems(groupParts(assistantPartRefs))
 
     // Density (see density.ts). A turn is spaced independently of its neighbours:
     // every turn after the first opens with a TurnGap, so the previous turn's tail
     // can never leak into this one's rhythm and each turn's decisions stay local.
-    const partByRef = new Map(assistantPartRefs.map((ref) => [`${ref.messageID}:${ref.part.id}`, ref.part] as const))
-    const groupKind = (group: PartGroup) =>
-      assistantPartKind(
-        group,
-        group.type === "part" ? partByRef.get(`${group.ref.messageID}:${group.ref.partID}`) : undefined,
-      )
     let previousKind: TimelineRowKind | undefined
     const separate = (kind: TimelineRowKind) => {
       const value = separateFrom(previousKind, kind)
@@ -158,7 +149,7 @@ export namespace Timeline {
         new TimelineRow.AssistantPart({
           userMessageID: userMessage.id,
           group: item.group,
-          separate: separate(groupKind(item.group)),
+          separate: separate(assistantPartKind(item.group, item.part)),
         }),
       )
     })

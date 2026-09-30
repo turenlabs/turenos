@@ -1,7 +1,7 @@
 import { describe, expect } from "bun:test"
-import { LLM, LLMError, type LLMEvent } from "@turenlabs/llm"
+import { LLM, LLMError, ToolDefinition, type LLMEvent } from "@turenlabs/llm"
 import { LLMClient, RequestExecutor } from "@turenlabs/llm/route"
-import { DateTime, Effect, Fiber, Layer, Stream } from "effect"
+import { DateTime, Deferred, Effect, Fiber, Layer, Stream } from "effect"
 import { EventV2 } from "@turenlabs/core/event"
 import { createLLMEventPublisher } from "@turenlabs/core/session/runner/publish-llm-event"
 import { SessionV2 } from "@turenlabs/core/session"
@@ -1308,5 +1308,349 @@ describe("SessionRunner claude-code transport", () => {
         expect(survivors(marker)).toEqual([])
       }),
     8_000,
+  )
+})
+
+/**
+ * A scripted stand-in for `claude -p` that keeps reading stdin, so a test can drive the mid-turn
+ * steering handshake. `script` runs as a module body with `next()` (the next stdin line), `out()`
+ * (one stdout envelope) and `text()` (one streamed text block); every stdin line, then `EOF` when
+ * TurenOS closes stdin, lands in the log `stdin()` returns.
+ */
+const steeringCLI = (script: string) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "forge-claude-steer-"))
+  const executable = path.join(dir, "claude.mjs")
+  const log = path.join(dir, "stdin.log")
+  writeFileSync(
+    executable,
+    `#!${process.execPath}
+import { appendFileSync } from "node:fs"
+const lines = []
+let waiting
+let buffer = ""
+process.stdin.setEncoding("utf8")
+process.stdin.on("data", (chunk) => {
+  buffer += chunk
+  let newline
+  while ((newline = buffer.indexOf("\\n")) >= 0) {
+    const line = buffer.slice(0, newline)
+    buffer = buffer.slice(newline + 1)
+    appendFileSync(${JSON.stringify(log)}, line + "\\n")
+    if (!waiting) lines.push(line)
+    else {
+      const resolve = waiting
+      waiting = undefined
+      resolve(line)
+    }
+  }
+})
+process.stdin.on("end", () => {
+  appendFileSync(${JSON.stringify(log)}, "EOF\\n")
+  process.exit()
+})
+const next = () => new Promise((resolve) => (lines.length > 0 ? resolve(lines.shift()) : (waiting = resolve)))
+const out = (value) => process.stdout.write(JSON.stringify(value) + "\\n")
+const text = (uuid, value) => {
+  out({ type: "stream_event", uuid, event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } } })
+  out({ type: "stream_event", uuid, event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: value } } })
+  out({ type: "stream_event", uuid, event: { type: "content_block_stop", index: 0 } })
+}
+const init = (capabilities) => out({ type: "system", subtype: "init", capabilities })
+const steerable = ["msg_lifecycle_v1", "interrupt_cancel_queued_v1"]
+const result = (extra) => out({ type: "result", subtype: "success", is_error: false, result: "done", usage: {}, ...extra })
+${script}
+await new Promise(() => {})
+`,
+  )
+  chmodSync(executable, 0o755)
+  return {
+    executable,
+    stdin: () =>
+      readFileSync(log, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => (line === "EOF" ? line : JSON.parse(line))),
+  }
+}
+
+/** Streams one turn with a steering handle registered, as the runner does for tool-enabled turns. */
+const steered = (executable: string, steering: ClaudeCodeMcp.Steering) =>
+  Effect.gen(function* () {
+    const token = yield* ClaudeCodeMcp.register({
+      definitions: [],
+      execute: () => Effect.succeed({ type: "text", value: "unused" }),
+      steering,
+    })
+    const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel(executable))
+    return yield* LLM.stream(
+      LLM.request({
+        model,
+        system: "system context",
+        messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+        metadata: ClaudeCodeMcp.requestMetadata(token),
+      }),
+    ).pipe(
+      Stream.runCollect,
+      Effect.map((events) => Array.from(events)),
+    )
+  }).pipe(Effect.provide(layer))
+
+/** Offers one steer until the CLI's writer accepts it; returns whether it ever did. */
+const offerSteer = (steering: ClaudeCodeMcp.Steering) =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 150; attempt++) {
+      if (steering.offer({ id: "msg_steer", text: "Use approach B" })) return true
+      yield* Effect.sleep("20 millis")
+    }
+    return false
+  })
+
+describe("SessionRunner claude-code steering", () => {
+  it.live("folds a steer into the running CLI turn once the CLI confirms it", () =>
+    Effect.gen(function* () {
+      const cli = steeringCLI(`
+await next()
+init(steerable)
+text("before", "Working on A")
+const steer = JSON.parse(await next())
+out({ type: "command_lifecycle", command_uuid: steer.uuid, state: "queued" })
+out({ type: "command_lifecycle", command_uuid: steer.uuid, state: "started" })
+text("after", "Heard: " + steer.message.content[0].text)
+result({ user_message_uuids: [steer.uuid] })
+`)
+      const steering = ClaudeCodeMcp.makeSteering()
+      const run = yield* steered(cli.executable, steering).pipe(Effect.forkChild)
+      expect(yield* offerSteer(steering)).toBe(true)
+      const events = yield* Fiber.join(run)
+
+      expect(steering.take()).toEqual(["msg_steer"])
+      expect(
+        events.flatMap((event) =>
+          event.type === "text-delta" ? [event.text] : event.type === "step-start" ? [`step ${event.index}`] : [],
+        ),
+      ).toEqual(["step 0", "Working on A", "step 1", "Heard: Use approach B"])
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      const [, steer, eof] = cli.stdin()
+      // The CLI gets the bridge's own uuid and the default (queue-behind-tools) priority.
+      expect(steer).toEqual({
+        type: "user",
+        uuid: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        parent_tool_use_id: null,
+        message: { role: "user", content: [{ type: "text", text: "Use approach B" }] },
+      })
+      expect(eof).toBe("EOF")
+    }),
+  )
+
+  it.live("withdraws a steer the CLI has not folded in when its turn ends", () =>
+    Effect.gen(function* () {
+      // The real CLI takes a queued steer off its queue within a millisecond of the result, too soon
+      // for cancel_async_message, and exits 1 once the withdrawal interrupt aborts the turn it began.
+      const cli = steeringCLI(`
+await next()
+init(steerable)
+text("answer", "Finished A")
+const steer = JSON.parse(await next())
+out({ type: "command_lifecycle", command_uuid: steer.uuid, state: "queued" })
+result()
+out({ type: "command_lifecycle", command_uuid: steer.uuid, state: "started" })
+if (JSON.parse(await next()).request?.subtype === "interrupt") process.exitCode = 1
+`)
+      const steering = ClaudeCodeMcp.makeSteering()
+      const run = yield* steered(cli.executable, steering).pipe(Effect.forkChild)
+      expect(yield* offerSteer(steering)).toBe(true)
+      const events = yield* Fiber.join(run)
+
+      expect(steering.take()).toEqual([])
+      // Released for the boundary: nothing is in flight and the closed CLI takes nothing more.
+      expect(steering.inFlight()).toEqual([])
+      expect(steering.offer({ id: "msg_later", text: "late" })).toBe(false)
+      expect(events.some((event) => event.type === "step-start" && event.index > 0)).toBe(false)
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      expect(events.flatMap((event) => (event.type === "finish" ? [event.reason] : []))).toEqual(["stop"])
+      const [, , withdraw, eof] = cli.stdin()
+      expect(withdraw).toMatchObject({
+        type: "control_request",
+        request: { subtype: "interrupt", cancel_queued: true },
+      })
+      expect(eof).toBe("EOF")
+    }),
+  )
+
+  it.live("still reports a steer the CLI folded in after it was withdrawn", () =>
+    Effect.gen(function* () {
+      const cli = steeringCLI(`
+await next()
+init(steerable)
+const steer = JSON.parse(await next())
+await next()
+out({ type: "command_lifecycle", command_uuid: steer.uuid, state: "started" })
+text("after", "Heard it anyway")
+result({ user_message_uuids: [steer.uuid] })
+`)
+      const steering = ClaudeCodeMcp.makeSteering()
+      const run = yield* steered(cli.executable, steering).pipe(Effect.forkChild)
+      expect(yield* offerSteer(steering)).toBe(true)
+      steering.retract("msg_steer")
+      yield* Fiber.join(run)
+
+      // The model read it, so the runner must still be told to record it.
+      expect(steering.take()).toEqual(["msg_steer"])
+      const [, steer, cancel] = cli.stdin()
+      expect(cancel).toMatchObject({ request: { subtype: "cancel_async_message", message_uuid: steer.uuid } })
+    }),
+  )
+
+  it.live("never writes a steer to a CLI that cannot confirm or withdraw it", () =>
+    Effect.gen(function* () {
+      for (const capabilities of [[], ["msg_lifecycle_v1"]]) {
+        const cli = steeringCLI(`
+await next()
+init(${JSON.stringify(capabilities)})
+await new Promise((resolve) => setTimeout(resolve, 300))
+text("answer", "Finished A")
+result()
+`)
+        const steering = ClaudeCodeMcp.makeSteering()
+        const run = yield* steered(cli.executable, steering).pipe(Effect.forkChild)
+        // Offered for the run's whole life, so the window after `init` is covered.
+        let accepted = false
+        while (!accepted && run.pollUnsafe() === undefined) {
+          accepted = steering.offer({ id: "msg_steer", text: "Use approach B" })
+          yield* Effect.sleep("20 millis")
+        }
+        yield* Fiber.join(run)
+
+        expect(accepted).toBe(false)
+        expect(cli.stdin().slice(1)).toEqual(["EOF"])
+      }
+    }),
+  )
+
+  const liveClaude = process.env.FORGE_LIVE_CLAUDE === "1" ? it.live : it.live.skip
+
+  liveClaude(
+    "folds a steer into a real Claude print-mode turn after its running tool call",
+    () =>
+      Effect.gen(function* () {
+        const toolStarted = yield* Deferred.make<void>()
+        const steering = ClaudeCodeMcp.makeSteering()
+        const token = yield* ClaudeCodeMcp.register({
+          definitions: [
+            new ToolDefinition({
+              name: "wait_agents",
+              description: "Wait for background agents to finish",
+              inputSchema: { type: "object", properties: { marker: { type: "string" } }, required: ["marker"] },
+            }),
+          ],
+          execute: () =>
+            Deferred.succeed(toolStarted, undefined).pipe(
+              Effect.andThen(Effect.sleep("4 seconds")),
+              Effect.as({ type: "text" as const, value: "All agents finished." }),
+            ),
+          steering,
+        })
+        const catalog = catalogModel("claude")
+        const model = yield* SessionRunnerModel.fromCatalogModel(
+          ModelV2.Info.make({
+            ...catalog,
+            id: ModelV2.ID.make("haiku"),
+            api: { ...catalog.api, id: ModelV2.ID.make("haiku") },
+          }),
+        )
+        const run = yield* LLM.stream(
+          LLM.request({
+            model,
+            system: "Follow the user's latest instruction exactly.",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: 'Call wait_agents with {"marker":"live"} once. When it returns, reply with exactly OTTERS.',
+                  },
+                ],
+              },
+            ],
+            metadata: ClaudeCodeMcp.requestMetadata(token),
+          }),
+        ).pipe(
+          Stream.runCollect,
+          Effect.map((events) => Array.from(events)),
+          Effect.forkChild,
+        )
+        yield* Deferred.await(toolStarted).pipe(Effect.timeout("45 seconds"))
+        expect(
+          steering.offer({ id: "msg_live_steer", text: "Change of plan: do not say OTTERS. Reply with exactly OWLS." }),
+        ).toBe(true)
+        const events = yield* Fiber.join(run)
+
+        expect(steering.take()).toEqual(["msg_live_steer"])
+        expect(events.some((event) => event.type === "provider-error")).toBe(false)
+        const marker = events.findIndex((event) => event.type === "step-start" && event.index > 0)
+        expect(marker).toBeGreaterThan(0)
+        const answer = events
+          .slice(marker)
+          .flatMap((event) => (event.type === "text-delta" ? [event.text] : []))
+          .join("")
+        expect(answer).toContain("OWLS")
+      }).pipe(Effect.provide(layer)),
+    90_000,
+  )
+
+  liveClaude(
+    "withdraws a steer written during a real Claude print-mode final answer",
+    () =>
+      Effect.gen(function* () {
+        const steering = ClaudeCodeMcp.makeSteering()
+        const token = yield* ClaudeCodeMcp.register({
+          definitions: [],
+          execute: () => Effect.succeed({ type: "text", value: "unused" }),
+          steering,
+        })
+        const catalog = catalogModel("claude")
+        const model = yield* SessionRunnerModel.fromCatalogModel(
+          ModelV2.Info.make({
+            ...catalog,
+            id: ModelV2.ID.make("haiku"),
+            api: { ...catalog.api, id: ModelV2.ID.make("haiku") },
+          }),
+        )
+        let offered = false
+        const events = yield* LLM.stream(
+          LLM.request({
+            model,
+            system: "Follow the user's latest instruction exactly.",
+            messages: [
+              {
+                role: "user",
+                content: [{ type: "text", text: "Write a 150-word story about a river otter. No preamble." }],
+              },
+            ],
+            metadata: ClaudeCodeMcp.requestMetadata(token),
+          }),
+        ).pipe(
+          // The answer has no tool calls, so the CLI can only queue the steer as a new turn.
+          Stream.tap((event) =>
+            Effect.sync(() => {
+              if (offered || event.type !== "text-delta") return
+              offered = steering.offer({ id: "msg_live_late_steer", text: "Reply with exactly OWLS." })
+            }),
+          ),
+          Stream.runCollect,
+          Effect.map((events) => Array.from(events)),
+        )
+
+        expect(offered).toBe(true)
+        expect(steering.take()).toEqual([])
+        expect(steering.inFlight()).toEqual([])
+        expect(events.some((event) => event.type === "provider-error")).toBe(false)
+        expect(events.some((event) => event.type === "step-start" && event.index > 0)).toBe(false)
+        expect(events.flatMap((event) => (event.type === "text-delta" ? [event.text] : [])).join("")).not.toContain(
+          "OWLS",
+        )
+      }).pipe(Effect.provide(layer)),
+    90_000,
   )
 })

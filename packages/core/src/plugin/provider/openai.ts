@@ -54,6 +54,22 @@ const OPENAI_MODELS = [
     ],
   },
   {
+    id: "gpt-6.1-sol",
+    name: "GPT-6.1 Sol",
+    fallback: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+    cost: [
+      { input: 2, output: 10, cache: { read: 0.2, write: 2.5 } },
+      {
+        tier: { type: "context" as const, size: 272_000 },
+        input: 4,
+        output: 15,
+        cache: { read: 0.4, write: 5 },
+      },
+    ],
+  },
+  {
     id: "gpt-6-luna",
     name: "GPT-6 Luna",
     fallback: true,
@@ -262,7 +278,7 @@ export const OpenAIPlugin = define({
             model.limit = definition.limit
           })
         }
-        for (const id of ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]) {
+        for (const id of ["gpt-6-astra", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-luna"]) {
           evt.model.update(OPENAI_PROVIDER_ID, ModelV2.ID.make(id), (model) => {
             // Stateless turns need the encrypted reasoning to continue without discarding it.
             model.request.body.include ??= ["reasoning.encrypted_content"]

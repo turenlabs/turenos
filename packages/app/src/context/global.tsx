@@ -122,7 +122,7 @@ function createServerCtx(
     const projectID = childStore.project
     const metadata = projectID
       ? sync.data.project.find((x) => x.id === projectID)
-      : sync.data.project.find((x) => x.worktree === project.worktree)
+      : sync.data.project.find((x) => pathKey(x.worktree) === pathKey(project.worktree))
 
     return enrichProject({
       project,

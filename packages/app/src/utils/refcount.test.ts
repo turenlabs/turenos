@@ -44,6 +44,6 @@ describe("createRefCountMap", () => {
     first()
     expect(removed).toEqual([])
     second()
-    expect(removed).toEqual(["C:/repo"])
+    expect(removed).toEqual(["c:/repo"])
   })
 })

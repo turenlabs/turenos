@@ -115,15 +115,37 @@ describe("layout deep links", () => {
 describe("layout workspace helpers", () => {
   test("normalizes trailing slash in workspace key", () => {
     expect(String(pathKey("/tmp/demo///"))).toBe("/tmp/demo")
-    expect(String(pathKey("C:\\tmp\\demo\\\\"))).toBe("C:/tmp/demo")
+    expect(String(pathKey("C:\\tmp\\demo\\\\"))).toBe("c:/tmp/demo")
   })
 
   test("preserves posix and drive roots in workspace key", () => {
     expect(String(pathKey("/"))).toBe("/")
     expect(String(pathKey("///"))).toBe("/")
-    expect(String(pathKey("C:\\"))).toBe("C:/")
-    expect(String(pathKey("C://"))).toBe("C:/")
-    expect(String(pathKey("C:///"))).toBe("C:/")
+    expect(String(pathKey("C:\\"))).toBe("c:/")
+    expect(String(pathKey("C://"))).toBe("c:/")
+    expect(String(pathKey("C:///"))).toBe("c:/")
+  })
+
+  test("folds Windows drive paths case-insensitively", () => {
+    expect(pathKey("C:\\Users\\Tom\\Code")).toBe(pathKey("c:\\users\\tom\\code"))
+    expect(pathKey("C:/Users/Tom")).toBe(pathKey("c:\\Users\\Tom"))
+    expect(String(pathKey("D:\\Repo"))).toBe("d:/repo")
+  })
+
+  test("strips NT extended-length prefixes", () => {
+    expect(pathKey("\\\\?\\C:\\Users\\Tom")).toBe(pathKey("C:\\Users\\Tom"))
+    expect(pathKey("\\\\.\\C:\\Users\\Tom")).toBe(pathKey("C:\\Users\\Tom"))
+    expect(pathKey("\\??\\C:\\Users\\Tom")).toBe(pathKey("C:\\Users\\Tom"))
+    expect(pathKey("\\\\?\\UNC\\server\\share")).toBe(pathKey("\\\\server\\share"))
+  })
+
+  test("keeps POSIX path case", () => {
+    expect(pathKey("/Tmp/Foo")).not.toBe(pathKey("/tmp/foo"))
+  })
+
+  test("keeps UNC path case because some shares are case-sensitive", () => {
+    expect(pathKey("\\\\Server\\Share")).not.toBe(pathKey("\\\\server\\share"))
+    expect(String(pathKey("\\\\wsl$\\Ubuntu\\home\\me"))).toBe("//wsl$/Ubuntu/home/me")
   })
 
   test("keeps local first while preserving known order", () => {
@@ -296,6 +318,19 @@ describe("layout workspace helpers", () => {
     expect(
       sessionLocationName(
         { directory: "C:\\repos\\beta\\" },
+        { worktree: "C:/repos/alpha", sandboxes: ["C:\\repos\\beta"] },
+      ),
+    ).toBe("beta")
+    // Same directory under a different Windows spelling still resolves the sandbox.
+    expect(
+      sessionLocationName(
+        { directory: "c:\\REPOS\\beta" },
+        { worktree: "C:/repos/alpha", sandboxes: ["C:\\repos\\beta"] },
+      ),
+    ).toBe("beta")
+    expect(
+      sessionLocationName(
+        { directory: "\\\\?\\C:\\repos\\beta" },
         { worktree: "C:/repos/alpha", sandboxes: ["C:\\repos\\beta"] },
       ),
     ).toBe("beta")

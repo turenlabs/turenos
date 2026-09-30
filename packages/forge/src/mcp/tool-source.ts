@@ -74,6 +74,10 @@ const layer = Layer.effect(
       const capabilities = input.definitions
         ? input.definitions.map(definitionCapability)
         : Object.entries(listed ?? {}).map(([key, entry]) => capability(key, entry))
+      const definitionCounts = capabilities.reduce((counts, item) => {
+        counts.set(item.server, (counts.get(item.server) ?? 0) + 1)
+        return counts
+      }, new Map<string, number>())
       const servers = Object.entries(statuses).map(([id, status]) => ({
         id,
         status:
@@ -84,7 +88,7 @@ const layer = Layer.effect(
               : status.status === "connected" || status.status === "connecting" || status.status === "disabled"
                 ? status.status
                 : ("unknown" as const),
-        definitions: capabilities.filter((item) => item.server === id).length,
+        definitions: definitionCounts.get(id) ?? 0,
         ...(status.status === "failed" || status.status === "needs_client_registration"
           ? { detail: "MCP connection failed" }
           : {}),

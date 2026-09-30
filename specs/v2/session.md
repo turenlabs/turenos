@@ -177,7 +177,7 @@ Interceptors are bounded by a whole-phase budget rather than a per-plugin one, s
 
 Inbox delivery is explicit:
 
-- `steer` inputs promote at the next safe provider-turn boundary, including continuation inside the current drain.
+- `steer` inputs promote at the next safe provider-turn boundary, including continuation inside the current drain. The Claude Code CLI transport is the one exception, because its single provider turn spans the CLI's whole agent loop: on tool-enabled turns the runner writes each eligible steer to the running CLI's stdin, the CLI folds it in after its current tool calls, and the runner promotes it only when the CLI confirms the fold. The runner ends the current assistant step there and opens a new one, so the transcript records the steer where the model read it. A steer the CLI never confirms is withdrawn and promotes at the next boundary. See `docs/claude-code-tool-routing.md`.
 - `queue` inputs remain in a FIFO while the current drain requires continuation. After the next provider-turn boundary, including after in-flight tool calls settle, the runner promotes exactly one queued input, then reevaluates continuation before promoting another. Queue promotion is not idle-only and also applies while an active goal is continuing.
 
 Execution has two entry points:

@@ -762,7 +762,7 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
-  for (const id of ["gpt-5.2", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]) {
+  for (const id of ["gpt-5.2", "gpt-6-astra", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-luna"]) {
     it.effect(`requests encrypted reasoning by default for ${id}`, () =>
       Effect.gen(function* () {
         // The native OpenAI facade configures reasoning models stateless (store: false) with
