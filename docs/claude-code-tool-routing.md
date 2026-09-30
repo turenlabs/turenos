@@ -102,7 +102,9 @@ turn's cache entry at the matching block boundary instead of rewriting the whole
 - Each user message and each chronological system update is its own block, and each run of assistant and tool
   messages is one block. A turn normally appends two blocks and rewrites none.
 - System updates use the same `<system-update>` wrapper as every other provider route.
-- Images follow the block of the message that attached them.
+- PNG, JPEG, GIF, and WebP images, including screenshots in tool results, follow the block of the message that
+  attached them. Past eight images or 8 MiB, the newest are kept and older ones remain attachment notes; below those
+  limits, no earlier block changes. Other image types are noted as not forwarded.
 - When the replay exceeds the 4 MiB prompt limit, the oldest blocks are dropped first behind an omission notice.
 - One-turn runtime instructions (the todo checkpoint, harness guidance, and reflection and stream-recovery prompts) are
   not replayed. The todo checkpoint accompanies every new human message, and a block that is absent from the next
@@ -141,6 +143,11 @@ An authenticated MCP call is converted back into the normal TurenOS tool lifecyc
 2. The captured `ToolRegistry.Materialization` settles the call.
 3. TurenOS publishes the canonical result, structured output, and output paths.
 4. The MCP response returns the model-visible result, including interceptor notes, to Claude in the same `-p` run.
+
+Inline PNG, JPEG, GIF, and WebP images in a result, such as screenshots, return as MCP image content, up to eight
+images or 8 MiB per result. Other inline data becomes a short omission note, and file-backed attachments stay
+references. Claude echoes those images on stdout, so one stream-json line may be up to 20 MiB; the 8 MiB cap on output
+TurenOS records is unchanged.
 
 Claude's stream also reports its view of MCP tool calls and results. TurenOS suppresses those private `mcp__forge__*`
 envelopes because the registry path has already published the authoritative lifecycle. Without suppression, one

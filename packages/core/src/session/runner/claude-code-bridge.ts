@@ -32,6 +32,9 @@ const ROUTE_ID = "claude-code-cli"
 
 const PROMPT_LIMIT = 4 * 1024 * 1024
 const OUTPUT_LIMIT = 8 * 1024 * 1024
+// Echoed tool results may contain 8 MiB of images (about 10.7 MiB as base64)
+// alongside ordinary output and JSON framing. Keep transcript and total-stream caps separate.
+const OUTPUT_LINE_LIMIT = 20 * 1024 * 1024
 const RAW_OUTPUT_LIMIT = OUTPUT_LIMIT * 4
 const TOOL_RESULT_LIMIT = 2 * 1024 * 1024
 const ASSISTANT_TEXT_LIMIT = 64 * 1024
@@ -130,6 +133,8 @@ const bounded = (value: string, limit: number): string => {
   return decoder.decode(encoder.encode(value).slice(0, Math.max(0, limit - suffix.byteLength - 3))) + TRUNCATED
 }
 
+const FORWARDED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+
 /** Flattens one common-format message into the plain text Claude Code reads on stdin. */
 const messageText = (message: LLMRequest["messages"][number]): string =>
   message.content
@@ -137,11 +142,21 @@ const messageText = (message: LLMRequest["messages"][number]): string =>
       if (part.type === "text") return [part.text]
       if (part.type === "reasoning") return [`[reasoning]\n${part.text}`]
       if (part.type === "media")
-        return part.mediaType.startsWith("image/")
+        return FORWARDED_IMAGE_TYPES.includes(part.mediaType)
           ? [`[image ${part.filename ?? "attachment"} is attached to this conversation]`]
           : [`[${part.filename ?? "attachment"} is attached in TurenOS but is not forwarded to Claude Code]`]
       if (part.type === "tool-call") return [`[tool call ${part.name}] ${json(part.input)}`]
-      if (part.type === "tool-result") return [`[tool result ${part.name}] ${json(part.result.value)}`]
+      if (part.type === "tool-result") {
+        if (part.result.type !== "content") return [`[tool result ${part.name}] ${json(part.result.value)}`]
+        return [
+          `[tool result ${part.name}]`,
+          ...ClaudeCodeMcp.toCallToolResult(part.result).content.flatMap((item) => {
+            if (item.type === "text") return [item.text]
+            if (item.type === "image") return [`[image from ${part.name} is attached to this conversation]`]
+            return []
+          }),
+        ]
+      }
       return []
     })
     .join("\n")
@@ -191,13 +206,25 @@ export const content = (request: LLMRequest): ContentBlock[] => {
     ).map((group) => ({
       text: group.map(replayText).join("\n\n"),
       images: group.flatMap((message) =>
-        message.content.flatMap((part) => (part.type === "media" && part.mediaType.startsWith("image/") ? [part] : [])),
+        message.content.flatMap<ReplayGroup["images"][number]>((part) => {
+          if (part.type === "media" && part.mediaType.startsWith("image/")) return [part]
+          if (part.type !== "tool-result" || part.result.type !== "content") return []
+          return ClaudeCodeMcp.toCallToolResult(part.result).content.flatMap((item) =>
+            item.type === "image" ? [{ mediaType: item.mimeType, data: item.data }] : [],
+          )
+        }),
       ),
     })),
   )
   if (groups.length === 0) return [{ type: "text", text: "Continue." }]
   const admit = imageAdmission()
-  return groups.flatMap((group) => [{ type: "text" as const, text: group.text }, ...group.images.flatMap(admit)])
+  // At the image cap, keep the latest screenshots and attachments. Below the
+  // cap, reversing admission leaves every replay block byte-for-byte stable.
+  const selected = groups
+    .toReversed()
+    .map((group) => group.images.toReversed().flatMap(admit).toReversed())
+    .toReversed()
+  return groups.flatMap((group, index) => [{ type: "text" as const, text: group.text }, ...selected[index]])
 }
 
 /** One stream-json user envelope: the transcript blocks plus attached images. */
@@ -245,16 +272,15 @@ const imageData = (data: string | Uint8Array): string => {
 /**
  * Image parts travel as real content blocks -- the CLI accepts them via
  * `--input-format stream-json`. Bounded so one pathological session cannot write
- * an unbounded prompt to the child's stdin; once the caps are reached, every later
- * image stays behind as the transcript's attachment note.
+ * an unbounded prompt to the child's stdin. Omitted images remain attachment notes.
  */
 const imageAdmission = () => {
-  const admitted = { count: 0, bytes: 0, full: false }
+  const admitted = { count: 0, bytes: 0 }
   return (part: ReplayGroup["images"][number]): ImageBlock[] => {
+    if (!FORWARDED_IMAGE_TYPES.includes(part.mediaType)) return []
     const data = imageData(part.data)
-    const size = Math.floor(data.length * 0.75)
-    admitted.full ||= admitted.count >= IMAGE_LIMIT || admitted.bytes + size > IMAGE_BYTES_LIMIT
-    if (admitted.full) return []
+    const size = Buffer.byteLength(data, "base64")
+    if (admitted.count >= IMAGE_LIMIT || admitted.bytes + size > IMAGE_BYTES_LIMIT) return []
     admitted.count++
     admitted.bytes += size
     return [{ type: "image", source: { type: "base64", media_type: part.mediaType, data } }]
@@ -1147,7 +1173,7 @@ const pump = (
       rawBytes += chunk.byteLength
       if (rawBytes > RAW_OUTPUT_LIMIT) throw new Error("Claude Code raw output exceeded TurenOS's safety limit")
       buffer += stdoutDecoder.decode(chunk, { stream: true })
-      if (Buffer.byteLength(buffer, "utf8") > OUTPUT_LIMIT)
+      if (Buffer.byteLength(buffer, "utf8") > OUTPUT_LINE_LIMIT)
         throw new Error("Claude Code output line exceeded TurenOS's safety limit")
       let newline = buffer.indexOf("\n")
       while (newline >= 0) {

@@ -994,6 +994,171 @@ describe("SessionRunner claude-code transport", () => {
     }).pipe(Effect.provide(layer)),
   )
 
+  it.effect("describes unsupported image types as not forwarded and sends no image block for them", () =>
+    Effect.gen(function* () {
+      const executable = fakeCLI("")
+      const captured = path.join(path.dirname(executable), "stdin.json")
+      writeFileSync(
+        executable,
+        ["#!/bin/sh", `cat > ${JSON.stringify(captured)}`, `echo ${envelope(successResult)}`].join("\n") + "\n",
+      )
+      chmodSync(executable, 0o755)
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel(executable))
+      const request = LLM.request({
+        model,
+        system: "system context",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "compare these" },
+              { type: "media", mediaType: "image/svg+xml", data: "PHN2Zy8+", filename: "logo.svg" },
+              { type: "media", mediaType: "image/png", data: "aGVsbG8=", filename: "shot.png" },
+            ],
+          },
+        ],
+      })
+      yield* LLM.stream(request).pipe(Stream.runCollect)
+      const content = JSON.parse(readFileSync(captured, "utf8").trim()).message.content
+      expect(content[0].text).toContain("[logo.svg is attached in TurenOS but is not forwarded to Claude Code]")
+      expect(content[0].text).not.toContain("[image logo.svg")
+      expect(content[0].text).toContain("[image shot.png is attached to this conversation]")
+      expect(content.filter((block: { type: string }) => block.type === "image")).toEqual([
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "aGVsbG8=" } },
+      ])
+    }).pipe(Effect.provide(layer)),
+  )
+
+  it.effect("replays settled screenshot results as images", () =>
+    Effect.gen(function* () {
+      const executable = fakeCLI("")
+      const captured = path.join(path.dirname(executable), "stdin.json")
+      writeFileSync(
+        executable,
+        ["#!/bin/sh", `cat > ${JSON.stringify(captured)}`, `echo ${envelope(successResult)}`].join("\n") + "\n",
+      )
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel(executable))
+      const messages = [
+        Message.user("Take a screenshot and inspect it"),
+        Message.assistant([ToolCallPart.make({ id: "shot", name: "screenshot", input: {} })]),
+        Message.tool({
+          id: "shot",
+          name: "screenshot",
+          result: {
+            type: "content",
+            value: [
+              { type: "text", text: "Current screen" },
+              { type: "file", mime: "image/png", uri: "data:image/png;base64,aGVsbG8=" },
+              { type: "file", mime: "image/svg+xml", uri: "data:image/svg+xml;base64,PHN2Zy8+" },
+              { type: "file", mime: "application/pdf", name: "report.pdf", uri: "file:///report.pdf" },
+            ],
+          },
+        }),
+      ]
+      yield* LLM.stream(LLM.request({ model, messages })).pipe(Stream.runCollect)
+      const content = JSON.parse(readFileSync(captured, "utf8").trim()).message.content
+      expect(content.filter((block: { type: string }) => block.type === "image")).toEqual([
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "aGVsbG8=" } },
+      ])
+      expect(content[1].text).toContain("Current screen")
+      expect(content[1].text).toContain("[image from screenshot is attached to this conversation]")
+      expect(content[1].text).toContain("Inline image omitted")
+      expect(content[1].text).toContain("file:///report.pdf")
+      expect(content[1].text).not.toContain("data:")
+      expect(content[1].text).not.toContain("aGVsbG8=")
+      expect(
+        ClaudeCodeBridge.content(
+          LLM.request({ model, messages: [...messages, Message.user("Inspect it again")] }),
+        ).slice(0, content.length),
+      ).toEqual(content)
+    }).pipe(Effect.provide(layer)),
+  )
+
+  it.effect("accepts echoed MCP images at the decoded image byte limit", () =>
+    Effect.gen(function* () {
+      const executable = fakeCLI("")
+      const output = path.join(path.dirname(executable), "output.jsonl")
+      const result = ClaudeCodeMcp.toCallToolResult({
+        type: "content",
+        value: Array.from({ length: 2 }, () => ({
+          type: "file" as const,
+          mime: "image/png",
+          uri: `data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString("base64")}`,
+        })),
+      })
+      expect(result.content.every((item) => item.type === "image")).toBe(true)
+      writeFileSync(
+        output,
+        [
+          ...toolCallEnvelopes({ id: "shot", name: "mcp__forge__screenshot" }).filter((item) => item.type !== "user"),
+          {
+            type: "user",
+            message: {
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "shot",
+                  content: result.content.map((item) =>
+                    item.type === "image"
+                      ? { type: "image", source: { type: "base64", media_type: item.mimeType, data: item.data } }
+                      : item,
+                  ),
+                },
+              ],
+            },
+          },
+          successResult,
+        ]
+          .map((item) => JSON.stringify(item))
+          .join("\n") + "\n",
+      )
+      writeFileSync(executable, `#!/bin/sh\ncat > /dev/null\ncat ${JSON.stringify(output)}\n`)
+      const events = Array.from(yield* collect(executable))
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      expect(events.at(-1)).toMatchObject({ type: "finish", reason: "stop" })
+    }),
+  )
+
+  it.effect("shares replay image limits between attachments and screenshot results", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            Message.user([
+              { type: "text", text: "Original screenshot" },
+              { type: "media", mediaType: "image/png", data: "b2xk" },
+            ]),
+            Message.tool({
+              id: "shots",
+              name: "screenshot",
+              result: {
+                type: "content",
+                value: Array.from({ length: 2 }, () => ({
+                  type: "file",
+                  mime: "image/png",
+                  uri: `data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString("base64")}`,
+                })),
+              },
+            }),
+          ],
+        }),
+      )
+      const images = blocks.filter((block) => block.type === "image")
+      expect(images).toHaveLength(2)
+      expect(images.reduce((bytes, image) => bytes + Buffer.byteLength(image.source.data, "base64"), 0)).toBe(
+        8 * 1024 * 1024,
+      )
+      expect(
+        blocks
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("\n"),
+      ).not.toContain("data:")
+    }),
+  )
+
   it.effect("replays the transcript as append-only blocks so the next turn extends the cached prefix", () =>
     Effect.gen(function* () {
       const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
@@ -1102,14 +1267,13 @@ describe("SessionRunner claude-code transport", () => {
       )
       expect(blocks.map((block) => block.type)).toEqual([
         "text",
-        "image",
         "text",
         "text",
-        ...Array.from({ length: 7 }, () => "image" as const),
+        ...Array.from({ length: 8 }, () => "image" as const),
       ])
-      // The image past the cap stays behind as its attachment note.
-      expect(blocks[3]).toMatchObject({
-        text: expect.stringContaining("[image 7.png is attached to this conversation]"),
+      // The older image past the cap stays behind as its attachment note.
+      expect(blocks[0]).toMatchObject({
+        text: expect.stringContaining("[image a.png is attached to this conversation]"),
       })
     }),
   )
@@ -1127,10 +1291,32 @@ describe("SessionRunner claude-code transport", () => {
     }),
   )
 
+  it.effect("omits images belonging to discarded transcript messages", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            Message.user([
+              { type: "text", text: "x".repeat(5 * 1024 * 1024) },
+              { type: "media", mediaType: "image/png", data: "b2xk", filename: "old.png" },
+            ]),
+            Message.user([
+              { type: "text", text: "latest" },
+              { type: "media", mediaType: "image/png", data: "bmV3", filename: "new.png" },
+            ]),
+          ],
+        }),
+      )
+      expect(blocks.filter((block) => block.type === "image").map((block) => block.source.data)).toEqual(["bmV3"])
+    }),
+  )
+
   it.effect("bounds a raw stream-json line before parsing it", () =>
     Effect.gen(function* () {
       const events = Array.from(
-        yield* collect(fakeCLI(`awk 'BEGIN { for (i = 0; i < ${9 * 1024 * 1024}; i++) printf "x" }'`)),
+        yield* collect(fakeCLI(`awk 'BEGIN { for (i = 0; i < ${21 * 1024 * 1024}; i++) printf "x" }'`)),
       )
       expect(events.map((event) => event.type)).toEqual(["step-start", "provider-error"])
       expect(events.at(-1)).toMatchObject({
