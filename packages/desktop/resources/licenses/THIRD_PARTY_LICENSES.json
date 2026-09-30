@@ -4498,7 +4498,7 @@
     },
     {
       "name": "dompurify",
-      "version": "3.4.14",
+      "version": "3.4.16",
       "license": "(MPL-2.0 OR Apache-2.0)",
       "source": "git://github.com/cure53/DOMPurify.git",
       "licenseFiles": [

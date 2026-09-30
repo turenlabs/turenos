@@ -530,7 +530,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `dom-serializer` | `2.0.0` | MIT | [source](git://github.com/cheeriojs/dom-serializer.git) |
 | `domelementtype` | `2.3.0` | BSD-2-Clause | [source](git://github.com/fb55/domelementtype.git) |
 | `domhandler` | `5.0.3` | BSD-2-Clause | [source](git://github.com/fb55/domhandler.git) |
-| `dompurify` | `3.4.14` | (MPL-2.0 OR Apache-2.0) | [source](git://github.com/cure53/DOMPurify.git) |
+| `dompurify` | `3.4.16` | (MPL-2.0 OR Apache-2.0) | [source](git://github.com/cure53/DOMPurify.git) |
 | `domutils` | `3.2.2` | BSD-2-Clause | [source](git://github.com/fb55/domutils.git) |
 | `dot-prop` | `10.1.0` | MIT | [source](sindresorhus/dot-prop) |
 | `drizzle-orm` | `1.0.0-rc.2` | Apache-2.0 | [source](git+https://github.com/drizzle-team/drizzle-orm.git) |
