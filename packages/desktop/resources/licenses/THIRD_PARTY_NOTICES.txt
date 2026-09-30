@@ -24186,7 +24186,7 @@ programs and associated documentation files created by the
 Original Author, when distributed with the Software.
 
 --------------------------------------------------------------------------------
-brace-expansion@5.0.9
+brace-expansion@5.0.12
 License: MIT
 Source: git+https://github.com/juliangruber/brace-expansion.git
 
@@ -29582,7 +29582,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 --------------------------------------------------------------------------------
-fast-uri@3.1.7
+fast-uri@3.1.8
 License: BSD-3-Clause
 Source: git+https://github.com/fastify/fast-uri.git
 
@@ -29619,7 +29619,7 @@ The complete list of contributors can be found at:
 - https://github.com/garycourt/uri-js/graphs/contributors
 
 --------------------------------------------------------------------------------
-fast-uri@4.1.4
+fast-uri@4.1.5
 License: BSD-3-Clause
 Source: git+https://github.com/fastify/fast-uri.git
 
@@ -32319,7 +32319,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
-ip-address@10.7.0
+ip-address@10.7.1
 License: MIT
 Source: https://github.com/beaugunderson/ip-address.git
 

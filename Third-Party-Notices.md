@@ -423,7 +423,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `body-parser` | `2.3.0` | MIT | [source](expressjs/body-parser) |
 | `bonjour-service` | `1.3.0` | MIT | [source](https://github.com/onlxltd/bonjour-service.git) |
 | `bowser` | `2.14.1` | MIT | [source](git+https://github.com/bowser-js/bowser.git) |
-| `brace-expansion` | `5.0.9` | MIT | [source](git+https://github.com/juliangruber/brace-expansion.git) |
+| `brace-expansion` | `5.0.12` | MIT | [source](git+https://github.com/juliangruber/brace-expansion.git) |
 | `braces` | `3.0.3` | MIT | [source](micromatch/braces) |
 | `browser-fs-access` | `0.29.1` | Apache-2.0 | [source](git+https://github.com/GoogleChromeLabs/browser-fs-access.git) |
 | `buffer-equal-constant-time` | `1.0.1` | BSD-3-Clause | [source](git@github.com:goinstant/buffer-equal-constant-time.git) |
@@ -579,8 +579,8 @@ Each row identifies a resolved package and version, its declared license, and it
 | `fast-json-stringify` | `6.4.0` | MIT | [source](git+https://github.com/fastify/fast-json-stringify.git) |
 | `fast-json-stringify` | `7.0.1` | MIT | [source](git+https://github.com/fastify/fast-json-stringify.git) |
 | `fast-querystring` | `1.1.2` | MIT | [source](git+https://github.com/anonrig/fast-querystring.git) |
-| `fast-uri` | `3.1.7` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
-| `fast-uri` | `4.1.4` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
+| `fast-uri` | `3.1.8` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
+| `fast-uri` | `4.1.5` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
 | `fast-xml-builder` | `1.2.0` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-builder.git) |
 | `fast-xml-parser` | `5.7.3` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-parser.git) |
 | `fastdom` | `1.0.12` | MIT | [source](git://github.com/wilsonpage/fastdom.git) |
@@ -650,7 +650,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `internmap` | `1.0.1` | ISC | [source](https://github.com/mbostock/internmap.git) |
 | `internmap` | `2.0.3` | ISC | [source](https://github.com/mbostock/internmap.git) |
 | `ioredis` | `5.11.0` | MIT | [source](git://github.com/luin/ioredis.git) |
-| `ip-address` | `10.7.0` | MIT | [source](https://github.com/beaugunderson/ip-address.git) |
+| `ip-address` | `10.7.1` | MIT | [source](https://github.com/beaugunderson/ip-address.git) |
 | `ipaddr.js` | `1.9.1` | MIT | [source](git://github.com/whitequark/ipaddr.js) |
 | `ipaddr.js` | `2.4.0` | MIT | [source](git://github.com/whitequark/ipaddr.js) |
 | `is-binary-path` | `2.1.0` | MIT | [source](sindresorhus/is-binary-path) |
