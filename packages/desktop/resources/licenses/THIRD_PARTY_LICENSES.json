@@ -1003,14 +1003,14 @@
       ]
     },
     {
-      "name": "@ff-labs/fff-bin-linux-arm64-gnu",
+      "name": "@ff-labs/fff-bin-linux-x64-gnu",
       "version": "0.9.4",
       "license": "MIT",
       "source": "git+https://github.com/dmtrKovalenko/fff.git",
       "licenseFiles": []
     },
     {
-      "name": "@ff-labs/fff-bin-linux-arm64-musl",
+      "name": "@ff-labs/fff-bin-linux-x64-musl",
       "version": "0.9.4",
       "license": "MIT",
       "source": "git+https://github.com/dmtrKovalenko/fff.git",
@@ -1229,7 +1229,7 @@
       ]
     },
     {
-      "name": "@lydell/node-pty-linux-arm64",
+      "name": "@lydell/node-pty-linux-x64",
       "version": "1.2.0-beta.12",
       "license": "MIT",
       "source": "git://github.com/lydell/node-pty.git",
@@ -1274,7 +1274,7 @@
       ]
     },
     {
-      "name": "@msgpackr-extract/msgpackr-extract-linux-arm64",
+      "name": "@msgpackr-extract/msgpackr-extract-linux-x64",
       "version": "3.0.4",
       "license": "MIT",
       "source": "http://github.com/kriszyp/msgpackr-extract",
@@ -1729,7 +1729,7 @@
       ]
     },
     {
-      "name": "@parcel/watcher-linux-arm64-glibc",
+      "name": "@parcel/watcher-linux-x64-glibc",
       "version": "2.5.1",
       "license": "MIT",
       "source": "https://github.com/parcel-bundler/watcher.git",
@@ -1738,7 +1738,7 @@
       ]
     },
     {
-      "name": "@parcel/watcher-linux-arm64-musl",
+      "name": "@parcel/watcher-linux-x64-musl",
       "version": "2.5.1",
       "license": "MIT",
       "source": "https://github.com/parcel-bundler/watcher.git",

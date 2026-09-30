@@ -8213,14 +8213,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
-@ff-labs/fff-bin-linux-arm64-gnu@0.9.4
+@ff-labs/fff-bin-linux-x64-gnu@0.9.4
 License: MIT
 Source: git+https://github.com/dmtrKovalenko/fff.git
 
 The installed package did not include a top-level license or notice file.
 
 --------------------------------------------------------------------------------
-@ff-labs/fff-bin-linux-arm64-musl@0.9.4
+@ff-labs/fff-bin-linux-x64-musl@0.9.4
 License: MIT
 Source: git+https://github.com/dmtrKovalenko/fff.git
 
@@ -9408,7 +9408,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
-@lydell/node-pty-linux-arm64@1.2.0-beta.12
+@lydell/node-pty-linux-x64@1.2.0-beta.12
 License: MIT
 Source: git://github.com/lydell/node-pty.git
 
@@ -9600,7 +9600,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
-@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4
+@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4
 License: MIT
 Source: http://github.com/kriszyp/msgpackr-extract
 
@@ -13678,7 +13678,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
-@parcel/watcher-linux-arm64-glibc@2.5.1
+@parcel/watcher-linux-x64-glibc@2.5.1
 License: MIT
 Source: https://github.com/parcel-bundler/watcher.git
 
@@ -13706,7 +13706,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
-@parcel/watcher-linux-arm64-musl@2.5.1
+@parcel/watcher-linux-x64-musl@2.5.1
 License: MIT
 Source: https://github.com/parcel-bundler/watcher.git
 
