@@ -6,6 +6,8 @@ import { Config } from "../../config"
 import { ModelV2 } from "../../model"
 import { ProviderV2 } from "../../provider"
 import { REQUEST_CONTROL_KEYS } from "../../session/runner/model"
+import { ClaudeCodeCLI } from "../../provider/claude-code"
+import { MuseCodeCLI } from "../../provider/muse-code"
 
 export const Plugin = define({
   id: "config-provider",
@@ -153,5 +155,10 @@ function providerEnv(file: { readonly global: boolean }, provider: { readonly en
 
 function requestBody(file: { readonly global: boolean }, body: Readonly<Record<string, unknown>> | undefined) {
   if (file.global || body === undefined) return body
-  return Object.fromEntries(Object.entries(body).filter(([key]) => !REQUEST_CONTROL_KEYS.has(key)))
+  return Object.fromEntries(
+    Object.entries(body).filter(([key]) => !REQUEST_CONTROL_KEYS.has(key) && !CLI_LAUNCH_KEYS.has(key)),
+  )
 }
+
+// The Claude Code and Muse Code bridges spawn `executable` from the request body in `directory`.
+const CLI_LAUNCH_KEYS = new Set([ClaudeCodeCLI.EXECUTABLE_KEY, ClaudeCodeCLI.DIRECTORY_KEY, MuseCodeCLI.EXECUTABLE_KEY])
