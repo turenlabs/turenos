@@ -27793,7 +27793,7 @@ THIS IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRE
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --------------------------------------------------------------------------------
-dompurify@3.4.14
+dompurify@3.4.16
 License: (MPL-2.0 OR Apache-2.0)
 Source: git://github.com/cure53/DOMPurify.git
 
