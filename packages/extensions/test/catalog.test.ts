@@ -67,6 +67,7 @@ const expected = [
   "turenlabs/secure-code-review",
   "turenlabs/semgrep-hosted",
   "turenlabs/sentry",
+  "turenlabs/slsa-provenance-review",
   "turenlabs/socket",
   "turenlabs/software-architecture-reviewer",
   "turenlabs/sonarqube-cloud-security",
@@ -156,7 +157,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(20)
+    expect(skills.length).toBe(21)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0
@@ -178,6 +179,30 @@ describe("ExtensionCatalog", () => {
     expect(contribution.source.content).toContain(
       "If this enforcement cannot be proven in the reviewed deployment, do not enable mutating tools",
     )
+  })
+
+  test("bounds SLSA review to v1 file provenance and policy-approved parameters", () => {
+    const contribution = ExtensionCatalog.get("turenlabs/slsa-provenance-review")?.contributions[0]
+    if (contribution?.type !== "skill" || contribution.source.type !== "catalog") {
+      throw new Error("Expected SLSA Build Provenance Review to be a catalog skill")
+    }
+    expect(contribution.source.content).toContain("https://slsa.dev/provenance/v1")
+    expect(contribution.source.content).toContain(
+      "Do not use it for SLSA provenance v0.2 or other predicate versions, container image or npm package verification",
+    )
+    expect(contribution.source.content).toContain(
+      "any additional parameter requires the policy owner's explicit documented approval and rationale",
+    )
+    expect(contribution.source.content).toContain(
+      "Stop with `FAIL` for a digest/signature/source/builder mismatch or an external parameter not approved by policy",
+    )
+    expect(contribution.source.content).toContain("Stop with `INCONCLUSIVE` for v0.2")
+    expect(contribution.source.content).toContain(
+      "bounded, read-only invocation of an already-installed, trusted verifier",
+    )
+    expect(contribution.source.content).toContain("Never install or execute the artifact, build scripts, package hooks")
+    expect(contribution.source.content).toContain("Do not install or update a verifier")
+    expect(contribution.source.content).toContain("at most three verifier invocations")
   })
 
   test("grounds OAuth/OIDC review in role-specific evidence and primary standards", () => {

@@ -90,6 +90,8 @@ const reviewedSkillDigests = new Set([
   "7fa4e7460fc1eef51b1260dd7a5c00bc1702e67e057da00bba6ad10d08ea96e5",
   // turenlabs/secure-code-review
   "550415b8d5cf9256cef61a930c9439f88952ed14a9b73cd462390cd72d5fc3ce",
+  // turenlabs/slsa-provenance-review
+  "2db6cd93ec6dab38e005e622f1ebb13c172b10e569f58cd3d45aee795a9fd8e6",
   // turenlabs/software-architecture-reviewer
   "17f0fc432154a9631087010bd58c30152ecd4f4cbbf9ae3ca821d02b3cb343aa",
   // turenlabs/technical-security-blog
