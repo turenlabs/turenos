@@ -4979,7 +4979,7 @@
     },
     {
       "name": "fastify",
-      "version": "5.12.1",
+      "version": "5.12.5",
       "license": "MIT",
       "source": "git+https://github.com/fastify/fastify.git",
       "licenseFiles": [
@@ -5373,7 +5373,7 @@
     },
     {
       "name": "hono",
-      "version": "4.13.5",
+      "version": "4.13.7",
       "license": "MIT",
       "source": "git+https://github.com/honojs/hono.git",
       "licenseFiles": [
