@@ -85,6 +85,7 @@ const categoryByExtensionID: Readonly<Record<string, ClassifiedExtensionCategory
   "turenlabs/incident-evidence-triage": "incident-response",
   "turenlabs/mcp-security-review": "application-security",
   "turenlabs/oauth-security-review": "application-security",
+  "turenlabs/tenant-isolation-review": "application-security",
   "turenlabs/threat-model-review": "application-security",
   "turenlabs/technical-security-blog": "security-knowledge",
   "turenlabs/scorecard": "supply-chain",

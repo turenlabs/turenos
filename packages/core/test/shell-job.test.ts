@@ -6,10 +6,11 @@ import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { AppProcess } from "@turenlabs/core/process"
 import { ShellJob } from "@turenlabs/core/shell-job"
 import { Storage } from "@turenlabs/core/storage"
+import { SecretOutput } from "@turenlabs/core/secret-output"
 import { testEffect } from "./lib/effect"
 import { tmpdir } from "./fixture/tmpdir"
 
-const it = testEffect(LayerNode.compile(LayerNode.group([Storage.node, AppProcess.node])))
+const it = testEffect(LayerNode.compile(LayerNode.group([Storage.node, AppProcess.node, SecretOutput.node])))
 const session = () => `ses_shell_${randomUUID()}`
 const input = (app: AppProcess.Interface, sessionID: string, script: string, timeout = 5_000): ShellJob.Start => ({
   sessionID,

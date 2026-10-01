@@ -81,7 +81,7 @@ const reviewedSkillDigests = new Set([
   // turenlabs/mcp-security-review
   "10faa037347373b3a73f4988cd6b885835e079ac41478c69d6811e1fbed37ee9",
   // turenlabs/oauth-security-review
-  "7fa6f190f119b10695ac81d6da49d9b4e628de829ccec8a421dfa214e5b410fb",
+  "d307991659dbc428c58e045c57ed516b457b9a40f93c8574bdaa2fe27cf8b964",
   // turenlabs/incident-evidence-triage
   "24d2c42d7b2d26c48960842ead85f7be515b6a357b34369a4af999c1a8f8de26",
   // turenlabs/incident-responder
@@ -92,6 +92,8 @@ const reviewedSkillDigests = new Set([
   "17f0fc432154a9631087010bd58c30152ecd4f4cbbf9ae3ca821d02b3cb343aa",
   // turenlabs/technical-security-blog
   "aab1c54a3c1909c00d4cfcb69e9d2a5cfec1c763abcfab384db3aed8e34f1831",
+  // turenlabs/tenant-isolation-review
+  "7448474a095ca9bb9c7c47346a4e3fb43e25192357966e0fd58cdfc4223eec16",
   // turenlabs/test-strategy
   "9ef7b51f553db3f1b86cef791e07f6122ea9f5babc6350e08343a8ceff8bb161",
   // turenlabs/threat-hunter
@@ -259,7 +261,9 @@ async function runtimeComplete(config: Config, verifyNative = true) {
       return match ? [[match[2], match[1]] as const] : []
     }),
   )
-  const files = verifyNative ? [config.binary, config.library, config.model, config.metadata] : [config.model, config.metadata]
+  const files = verifyNative
+    ? [config.binary, config.library, config.model, config.metadata]
+    : [config.model, config.metadata]
   for (const filename of files) {
     const digest = expected.get(path.basename(filename))
     if (!digest || (await sha256File(filename)) !== digest) return false

@@ -1,3 +1,5 @@
+import { SessionTools } from "@/session/tools"
+import { SecretOutput } from "@turenlabs/core/secret-output"
 import { ConfigV1 } from "@turenlabs/core/v1/config/config"
 import { SessionV1 } from "@turenlabs/core/v1/session"
 import { Database } from "@turenlabs/core/database/database"
@@ -51,7 +53,7 @@ import { Truncate } from "@/tool/truncate"
 import { CrossSpawnSpawner } from "@turenlabs/core/cross-spawn-spawner"
 import { Ripgrep } from "@turenlabs/core/ripgrep"
 import { Format } from "../../src/format"
-import { TestInstance } from "../fixture/fixture"
+import { TestInstance, trustedProviderConfig } from "../fixture/fixture"
 import { awaitWithTimeout, pollWithTimeout, testEffect } from "../lib/effect"
 import { reply, TestLLMServer } from "../lib/llm-server"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -236,6 +238,7 @@ const promptRoot = LayerNode.group([
   CrossSpawnSpawner.node,
   RuntimeFlags.node,
   McpTool.sourceNode,
+  SecretOutput.node,
 ])
 
 function makePrompt(input?: { processor?: "blocking"; source?: Layer.Layer<McpTool.Source> }) {
@@ -338,6 +341,7 @@ const useServerConfig = Effect.fn("test.useServerConfig")(function* (config: Par
   const { directory: dir } = yield* TestInstance
   const llm = yield* TestLLMServer
   yield* writeConfig(dir, config)
+  if (config.provider) yield* trustedProviderConfig(dir, config.provider)
   return { dir, llm }
 })
 
@@ -533,6 +537,133 @@ it.instance("loop calls LLM and returns assistant message", () =>
     expect(JSON.stringify((yield* llm.inputs).at(-1))).toContain(McpTool.DISCOVERY_SYSTEM_PROMPT)
   }),
 )
+
+const guardTests = testEffect(
+  LayerNode.compile(promptRoot, [
+    [SessionSummary.node, summary],
+    [LSP.node, lsp],
+    [MCP.node, makeMcp()],
+    [Provider.node, localProvider],
+    [RuntimeFlags.node, runtimeFlags],
+    [LLM.node, Layer.mock(LLM.Service, {})],
+  ]),
+)
+
+;(process.platform === "win32" ? guardTests.instance.skip : guardTests.instance)(
+  "direct shell returns guarded output as well as storing it",
+  () =>
+    withSh(() =>
+      Effect.gen(function* () {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({})
+        const result = yield* prompt.shell({ sessionID: chat.id, agent: "build", command: "printf 'ghp_%036d' 0" })
+        expect(JSON.stringify(result.parts)).not.toContain(`ghp_${"0".repeat(36)}`)
+        expect(JSON.stringify(result.parts)).toContain("[SECRET:v1:")
+      }),
+    ),
+  { config: testConfig },
+  30_000,
+)
+
+for (const name of ["read", "mcp_search"] as const) {
+  guardTests.instance(
+    `final ${name} result redacts after plugin hooks`,
+    () =>
+      Effect.gen(function* () {
+        const { directory } = yield* TestInstance
+        const sessions = yield* Session.Service
+        const agents = yield* Agent.Service
+        const provider = yield* Provider.Service
+        const plugin = yield* Plugin.Service
+        const prompt = yield* SessionPrompt.Service
+        const session = yield* sessions.create({ permission: [{ permission: "*", pattern: "*", action: "allow" }] })
+        const seeded = yield* seed(session.id)
+        const agent = yield* agents.get("build")
+        if (!agent) throw new Error("missing build agent")
+        const secret = `ghp_${"H".repeat(36)}`
+        const registry = yield* ToolRegistry.Service
+        const streamed: SessionV1.ToolPart[] = []
+        const original = plugin.trigger
+        const trigger: Plugin.Interface["trigger"] = (hook, input, output) =>
+          Effect.gen(function* () {
+            const result = yield* original(hook, input, output)
+            if (hook === "tool.execute.after" && typeof output === "object" && output !== null)
+              Object.assign(output, { output: secret, title: secret, metadata: { nested: [secret] } })
+            return result
+          })
+
+        yield* writeText(path.join(directory, "safe.txt"), "safe")
+        const tools = yield* SessionTools.resolve({
+          agent,
+          session,
+          model: yield* provider.getModel(ref.providerID, ref.modelID),
+          processor: {
+            message: seeded.assistant,
+            updateToolCall: (_id, update) =>
+              Effect.sync(() => {
+                const part = update({
+                  type: "tool",
+                  id: PartID.ascending(),
+                  sessionID: session.id,
+                  messageID: seeded.assistant.id,
+                  tool: name,
+                  callID: "streamed",
+                  state: { status: "running", input: {}, time: { start: 1 } },
+                })
+                streamed.push(part)
+                return part
+              }),
+            completeToolCall: () => Effect.void,
+          },
+          bypassAgentCheck: true,
+          messages: [],
+          promptOps: { ...prompt, prompt: (input) => prompt.prompt(input).pipe(Effect.orDie) },
+        }).pipe(
+          Effect.provideService(Plugin.Service, { ...plugin, trigger }),
+          Effect.provideService(ToolRegistry.Service, {
+            ...registry,
+            tools: (input) =>
+              registry.tools(input).pipe(
+                Effect.map((items) =>
+                  items.map((item) =>
+                    item.id !== "read"
+                      ? item
+                      : {
+                          ...item,
+                          execute: (args, ctx) =>
+                            Effect.gen(function* () {
+                              yield* ctx.metadata({ title: secret, metadata: { nested: [secret] } })
+                              return yield* item.execute(args, ctx)
+                            }),
+                        },
+                  ),
+                ),
+              ),
+          }),
+        )
+        const execute = tools[name].execute
+        if (!execute) throw new Error("missing tool executor")
+        const result = yield* Effect.promise(() =>
+          Promise.resolve(
+            execute(name === "read" ? { filePath: path.join(directory, "safe.txt") } : {}, {
+              toolCallId: "secret-hook",
+              messages: [],
+              abortSignal: new AbortController().signal,
+            }),
+          ),
+        )
+        expect(JSON.stringify(result)).not.toContain(secret)
+        expect(JSON.stringify(result)).toContain("[SECRET:v1:")
+        if (name === "read") {
+          expect(streamed).toHaveLength(1)
+          expect(JSON.stringify(streamed)).not.toContain(secret)
+        }
+      }),
+    { config: testConfig },
+    30_000,
+  )
+}
 
 legacyBroker.instance("legacy prompt delegates MCP search and load to the V2 source", () =>
   Effect.gen(function* () {
@@ -2023,9 +2154,7 @@ unixNoLLMServer(
       Effect.gen(function* () {
         const { prompt, chat } = yield* boot()
 
-        const a = yield* prompt
-          .shell({ sessionID: chat.id, agent: "build", command: "sleep 5" })
-          .pipe(Effect.forkChild)
+        const a = yield* prompt.shell({ sessionID: chat.id, agent: "build", command: "sleep 5" }).pipe(Effect.forkChild)
         yield* waitForBusy(chat.id)
 
         const exit = yield* prompt.shell({ sessionID: chat.id, agent: "build", command: "echo hi" }).pipe(Effect.exit)
@@ -2037,7 +2166,7 @@ unixNoLLMServer(
         yield* prompt.cancel(chat.id)
         yield* Fiber.await(a)
       }),
-  ),
+    ),
   { git: true, config: testConfig },
   60_000,
 )

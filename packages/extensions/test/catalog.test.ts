@@ -71,6 +71,7 @@ const expected = [
   "turenlabs/sonarqube-cloud-security",
   "turenlabs/technical-security-blog",
   "turenlabs/tenable",
+  "turenlabs/tenant-isolation-review",
   "turenlabs/test-strategy",
   "turenlabs/threat-hunter",
   "turenlabs/threat-intel-brief",
@@ -154,7 +155,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(18)
+    expect(skills.length).toBe(19)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0
@@ -185,11 +186,20 @@ describe("ExtensionCatalog", () => {
     }
     expect(contribution.defaultEnabled).toBe(false)
     expect(contribution.requires).toEqual(["read", "grep", "glob", "lsp", "webfetch", "edit", "write", "bash"])
+    expect(contribution.source.content).toContain(
+      "Remain read-only unless the user explicitly authorizes a fix; writes and local tests require that explicit authorization.",
+    )
+    expect(contribution.source.content).toContain("otherwise provide the plan without writes or test execution")
     expect(contribution.source.content).toContain("RFC 9700 requires PKCE for public clients")
     expect(contribution.source.content).toContain("Never treat decoding a JWT as signature validation")
-    expect(contribution.source.content).toContain("If `azp` is present, verify it equals the client ID")
+    expect(contribution.source.content).toContain("validate it as specified by that extension")
+    expect(contribution.source.content).toContain("implementations without such extensions to ignore `azp`")
+    expect(contribution.source.content).toContain("do not require `azp` solely because `aud` has multiple values")
+    expect(contribution.source.content).toContain("that `aud` contains the client ID and no untrusted audiences")
+    expect(contribution.source.content).not.toContain("If `azp` is present, verify it equals the client ID")
+    expect(contribution.source.content).not.toContain("SHOULD require it when `aud` has multiple values")
     expect(contribution.source.content).toContain("never a clean bill of health")
-    expect(contribution.source.content).toContain("https://openid.net/specs/openid-connect-core-1_0.html")
+    expect(contribution.source.content).toContain("https://openid.net/specs/openid-connect-core-1_0-errata2.html")
   })
 
   test("rejects invalid or duplicate executable declarations", () => {
@@ -787,9 +797,12 @@ describe("ExtensionCatalog", () => {
     ).not.toThrow()
     expect(() =>
       ExtensionManifestPolicy.validateManifestPolicy(
-        officialManaged({}, {
-          configuration: [{ id: "region", label: "Region", required: true, default: "other", options: ["us", "eu"] }],
-        }),
+        officialManaged(
+          {},
+          {
+            configuration: [{ id: "region", label: "Region", required: true, default: "other", options: ["us", "eu"] }],
+          },
+        ),
       ),
     ).toThrow("must be one of its options")
   })
@@ -804,9 +817,7 @@ describe("ExtensionCatalog", () => {
     expect(ExtensionCatalog.dataEndpoint("security:kev")).toBe(
       "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json",
     )
-    expect(ExtensionCatalog.dataEndpoint("security:hibp", "passwords")).toBe(
-      "https://api.pwnedpasswords.com/range",
-    )
+    expect(ExtensionCatalog.dataEndpoint("security:hibp", "passwords")).toBe("https://api.pwnedpasswords.com/range")
     expect(() => ExtensionCatalog.dataEndpoint("security:hibp")).toThrow("address one by name")
     expect(() => ExtensionCatalog.dataEndpoint("security:kev", "missing")).toThrow("not declared")
 

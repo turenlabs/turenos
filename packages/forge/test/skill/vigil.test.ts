@@ -67,6 +67,21 @@ describe("Vigil skill scanner", () => {
       })) as typeof Process.run,
     })
     expect(result?.reviewed).toBe(true)
+    expect(Vigil.blockReason(result)).toBeUndefined()
+  })
+
+  test("marks the tenant-isolation catalog skill as reviewed", async () => {
+    const manifest = ExtensionCatalog.get("turenlabs/tenant-isolation-review")
+    if (!manifest) throw new Error("Tenant Isolation Review manifest is missing")
+    const result = await Vigil.scanManifest(manifest, {
+      ensure: async () => config,
+      run: (async () => ({
+        code: 0,
+        stdout: score("benign", -0.2, 0.0000019818544387817383),
+        stderr: Buffer.alloc(0),
+      })) as typeof Process.run,
+    })
+    expect(result?.reviewed).toBe(true)
   })
 
   test("stages the complete prompt package and removes it after a scan", async () => {
