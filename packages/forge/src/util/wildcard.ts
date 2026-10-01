@@ -3,6 +3,7 @@ import { sortBy, pipe } from "remeda"
 export function match(str: string, pattern: string) {
   if (str) str = str.replaceAll("\\", "/")
   if (pattern) pattern = pattern.replaceAll("\\", "/")
+  if (str === pattern) return true
   let escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, "\\$&") // escape special regex chars
     .replace(/\*/g, ".*") // * becomes .*
