@@ -57,13 +57,12 @@ Confirm before dispatching:
 gh run list --repo turenlabs/turenos --branch main --limit 2
 ```
 
-Confirm that both `test` and `typecheck` are green on the current `main` HEAD. The
-workflow's gate is weaker than that: it collects the conclusions of every `test` and
-`typecheck` check run, removes duplicates, and passes when the only conclusion left
-is `success`, so one green check with the other missing also passes. Commits
+Both `test` and `typecheck` must be green on the current `main` HEAD. The workflow
+checks each name separately and counts only the latest attempt of each, so a
+passing re-run replaces an earlier failure, but a missing check blocks. Commits
 merged after the bump are built and shipped in the release as long as they
-leave `VERSION` unchanged. If HEAD's checks are all missing, or any is still
-running or failed, the build, publish, and distribute jobs are skipped and the run still
+leave `VERSION` unchanged. If either check is missing, still running or failed
+on HEAD, the build, publish, and distribute jobs are skipped and the run still
 finishes green with nothing published, so check the run's job list rather than
 its overall status.
 

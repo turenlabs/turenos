@@ -7,8 +7,9 @@ verified assets to the public repository.
 1. Resolve the release source (public `main` HEAD at dispatch, or an existing
    draft's target commit), check that its `VERSION` equals the requested
    version, and validate repository identities and publishing access.
-2. Require the release source's public `test`/`typecheck` checks to be green. The gate passes when every
-   check run with either name succeeded, so it passes if only one of the two exists.
+2. Require the release source's public `test` and `typecheck` checks to be green. Each check name is
+   queried separately, and only its latest attempt counts, so a passing re-run replaces an earlier failure.
+   The gate passes only when both checks exist and every latest run of each succeeded.
 3. Check out `turenlabs/turenos` at the release commit, build every platform on
    private runners, and sign/notarize with private credentials.
 4. Create a public **draft** release and upload all signed assets to it.
