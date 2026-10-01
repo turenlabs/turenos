@@ -148,7 +148,9 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   // Exponential reconnect backoff: a down server shouldn't get an SSE attempt
   // every 250ms forever. Reset when a stream actually delivers an event.
   let failures = 0
-  const HEARTBEAT_TIMEOUT_MS = 15_000
+  // Server heartbeats land every 10s; keep several intervals of slack so a
+  // saturated sidecar that delays a write doesn't abort a healthy stream.
+  const HEARTBEAT_TIMEOUT_MS = 45_000
   let lastEventAt = Date.now()
   let heartbeat: ReturnType<typeof setTimeout> | undefined
   const resetHeartbeat = () => {

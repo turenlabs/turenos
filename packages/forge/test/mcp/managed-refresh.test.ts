@@ -44,19 +44,32 @@ const fixture = new Extension.Manifest({
 
 let extensionEnabled = true
 
+const runtimeOverride = (): [[typeof ExtensionRuntime.node, Layer.Layer<ExtensionRuntime.Service>]] => [
+  [
+    ExtensionRuntime.node,
+    Layer.mock(ExtensionRuntime.Service, {
+      manifests: () => Effect.succeed([...ExtensionCatalog.manifests, fixture]),
+      enabled: (id) => Effect.succeed(String(id) === String(fixture.id) && extensionEnabled),
+      configuration: () => Effect.succeed({}),
+      secret: () => Effect.succeed(undefined),
+      secretsSet: () => Effect.succeed({}),
+    }),
+  ],
+]
+
 const it = testEffect(
   LayerNode.compile(LayerNode.group([MCP.testNode, McpAuth.node, EventV2.node, CrossSpawnSpawner.node]), [
-    [
-      ExtensionRuntime.node,
-      Layer.mock(ExtensionRuntime.Service, {
-        manifests: () => Effect.succeed([...ExtensionCatalog.manifests, fixture]),
-        enabled: (id) => Effect.succeed(String(id) === String(fixture.id) && extensionEnabled),
-        configuration: () => Effect.succeed({}),
-        secret: () => Effect.succeed(undefined),
-        secretsSet: () => Effect.succeed({}),
-      }),
-    ],
+    ...runtimeOverride(),
   ]),
+)
+
+// No managed-retry cooldown so the flap check is deterministic: without the
+// credential gate, every tools() pass would re-attempt the connection.
+const itNoCooldown = testEffect(
+  LayerNode.compile(
+    LayerNode.group([MCP.testNodeWith(0), McpAuth.node, EventV2.node, CrossSpawnSpawner.node]),
+    [...runtimeOverride()],
+  ),
 )
 
 const NAME = "refresh-fixture"
@@ -125,6 +138,47 @@ it.instance("retries needs_auth only after OAuth tokens are committed", () =>
     yield* auth.set(NAME, { tokens: { accessToken: "fixture-token" } }, ENDPOINT)
     yield* mcp.tools()
     yield* awaitStatus(NAME, "failed")
+  }),
+)
+
+// Regression: a managed server whose stored credentials are rejected must park
+// on needs_auth, not flap connecting -> needs_auth on every tools() pass.
+itNoCooldown.instance("does not reconnect to needs_auth until credentials change", () =>
+  Effect.gen(function* () {
+    yield* restoreCatalog
+    yield* stopOAuthCallback
+    const server = yield* serveOAuthMcp({ advertise: "https://refresh-fixture.invalid", toolName: "fixture_tool" })
+    const origin = new globalThis.URL(server.url).origin
+    McpIntegration.setPolicyDependencies({
+      now: Date.now,
+      resolve: async () => ["93.184.216.34"],
+      request: (url, init) => fetch(new globalThis.URL(url.pathname + url.search, origin), init),
+    })
+    yield* Effect.addFinalizer(() => Effect.sync(() => McpIntegration.setPolicyDependencies(undefined)))
+
+    const mcp = yield* MCP.Service
+    const auth = yield* McpAuth.Service
+
+    yield* auth.set(NAME, { tokens: { accessToken: "stale-token" } }, ENDPOINT)
+    yield* mcp.tools()
+    yield* awaitStatus(NAME, "needs_auth")
+    yield* mcp.tools()
+    yield* awaitStatus(NAME, "needs_auth")
+    yield* Effect.sleep("250 millis")
+    const attempts = server.mcpRequests()
+
+    yield* mcp.tools()
+    yield* mcp.tools()
+    yield* Effect.sleep("250 millis")
+    expect(server.mcpRequests()).toBe(attempts)
+
+    // Fresh credentials (re-auth or a silent refresh) retry without the cooldown.
+    yield* auth.set(NAME, { tokens: { accessToken: "fresh-token" } }, ENDPOINT)
+    yield* mcp.tools()
+    yield* pollWithTimeout(
+      Effect.sync(() => (server.mcpRequests() > attempts ? (true as const) : undefined)),
+      "changed credentials did not trigger a reconnect",
+    )
   }),
 )
 
