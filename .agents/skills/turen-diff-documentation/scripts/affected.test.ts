@@ -114,4 +114,7 @@ test("stops instead of reporting nothing when the base doesn't exist", () =>
     const result = affected(root, "no-such-branch")
     expect(result.code).toBe(2)
     expect(result.output).toContain("failed")
+    const usage = affected(root, "main", "--head")
+    expect(usage.code).toBe(2)
+    expect(usage.output).toContain("usage: affected.ts")
   }))
