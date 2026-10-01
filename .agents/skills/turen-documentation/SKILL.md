@@ -109,7 +109,7 @@ Follow these on new pages, and fix old pages when you touch them rather than mas
 
 **New or changed page.** Place it with "Where documentation lives" and "Where a page goes". Follow "Read the code, then write". Update the indexes and catalog row, and link it from the package or area README if one covers the topic.
 
-**After a code change.** List what changed (`git diff --name-only <base>...HEAD`, plus renamed or removed symbols, flags, commands and config keys). Grep `docs/`, the READMEs and `AGENTS.md` files for each old name and path, re-read the new code, and correct every hit, or delete the claim if the thing is gone.
+**After a code change.** Follow [turen-diff-documentation](../turen-diff-documentation/SKILL.md). Its `affected.ts` maps the diff to the pages that cite changed, deleted or renamed files and to removed or new names, and the skill covers the behavior changes no name reveals. Re-read the new code behind each hit and correct it, or delete the claim if the thing is gone.
 
 **Restructure.** Build the full mapping (current path, new path, the rule that places it) and **show it to the user before moving anything**. On a branch with no other uncommitted docs edits, write the moves as `old -> new` lines relative to `docs/` in a scratch file outside the repository, then let the mover do the mechanical part. It refuses the whole list, before changing anything, if a source isn't a regular file, two moves share a target, a target exists, or a path leaves the repository. It prints the plan by default; with `--apply` it moves each file with `git mv` and rewrites relative links inside `docs/`, backticked path mentions, and `docs/` references in Markdown outside it, and lists references in code and config to fix by hand:
 

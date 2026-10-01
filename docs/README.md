@@ -190,7 +190,9 @@ These READMEs are short entry points into their area; their long-form documentat
 - **Checks.** After any docs change, run `bun .agents/skills/turen-documentation/scripts/check.ts docs`. It catches
   broken links, anchors and cited paths and unindexed pages; it can't tell whether a page is true. To move or rename
   pages, use `bun .agents/skills/turen-documentation/scripts/move.ts <moves-file>`, which rewrites every link the move
-  would break.
+  would break. Before a pull request, `bun .agents/skills/turen-diff-documentation/scripts/affected.ts` lists the pages
+  its diff can make wrong; the [`turen-diff-documentation`](../.agents/skills/turen-diff-documentation/SKILL.md) skill
+  is the full check.
 
 The complete method, including where a new page goes, page conventions, and templates, is
 [`.agents/skills/turen-documentation/SKILL.md`](../.agents/skills/turen-documentation/SKILL.md), with an audit method in

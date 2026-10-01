@@ -69,3 +69,7 @@ jobs:
       - name: Test context scripts
         working-directory: .agents/skills/turen-context/scripts
         run: bun test
+
+      - name: Test diff documentation scripts
+        working-directory: .agents/skills/turen-diff-documentation/scripts
+        run: bun test
