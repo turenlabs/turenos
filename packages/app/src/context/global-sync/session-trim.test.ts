@@ -25,6 +25,13 @@ test("takes the newest unique sessions in deterministic order", () => {
   expect(takeRecentSessions(sessions, 2, 100).map((item) => item.id)).toEqual(["a", "b"])
 })
 
+test("returns no recent sessions for zero or negative limits", () => {
+  const sessions = [session({ id: "recent", created: 200 })]
+
+  expect(takeRecentSessions(sessions, 0, 100)).toEqual([])
+  expect(takeRecentSessions(sessions, -1, 100)).toEqual([])
+})
+
 test("skips older candidates once the recent-session limit is full", () => {
   const sessions = [
     session({ id: "a", created: 400 }),
