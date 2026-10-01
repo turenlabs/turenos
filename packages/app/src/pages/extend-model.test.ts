@@ -140,7 +140,6 @@ describe("filterExtensionItems", () => {
       ["application-security", "application-security"],
       ["application-security", "application-security"],
       ["application-security", "application-security"],
-      ["application-security", "application-security"],
     ])
     expect(extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id: "turenlabs/euvd" } })).toBe(
       "vulnerability-intelligence",
