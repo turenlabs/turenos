@@ -14,15 +14,17 @@ libsecret/KWallet on Linux — and stored in `forge.settings` as `{version, keyI
 unwrapped once at startup by
 [`loadCredentialSecretKey`](../../../packages/desktop/src/main/secret-key.ts), so keychain prompts (if any)
 happen at app launch, never per connect. A quick-connect remote has no key source of its own: the SSH connect
-ships `FORGE_SECRET_VAULT_KEY_ID` and the base64 key into the remote `ensure` command, and the
-headless server reads exactly those two variables in
-[`secret-vault.ts`](../../../packages/core/src/secret-vault.ts), deleting them from `process.env` as the
-vault layer initializes. Without them, non-test startup fails rather than falling back to plaintext.
+ships `FORGE_SECRET_VAULT_KEY_ID` and the base64 key into the remote `ensure` command, and
+`forge serve` reads exactly those two variables at startup in
+[`secret-vault-key.ts`](../../../packages/forge/src/cli/secret-vault-key.ts), deleting them from `process.env`
+before the server starts. Without them, non-test startup fails rather than falling back to plaintext.
 
 The consequence is that a remote's sealed credentials belong to _this desktop's_ keychain item. The
-remote records the `keyID` it was first sealed with (`claimVault` in
-[`packages/forge/src/auth/index.ts`](../../../packages/forge/src/auth/index.ts)); connecting with a
-different key fails with `Stored credentials belong to another OS-protected key`. A second machine
+remote's database records the key it was first sealed with: its owner record holds the key ID
+([`server-owner.ts`](../../../packages/core/src/database/server-owner.ts)), and a sentinel sealed with the key
+proves the key bytes. Connecting with a different key fails when the database opens, before migrations, with
+`Database is owned by another quick-connect key` (or, for a database without an owner record,
+`Stored credentials belong to another OS-protected key`). A second machine
 therefore cannot silently adopt a remote that already holds credentials, and losing or rotating the
 desktop keychain item strands the remote's sealed data. See
 [Secure storage](../../systems/secure-storage.md) for the vault format and platform prompt behavior.

@@ -53,10 +53,12 @@ Four constraints shape clients of a quick-connect server:
   same host cannot read them, and loopback binding plus Basic auth leaves no other way in.
 - **Starting the server by hand needs a vault key.** Running `forge-remote ensure` without
   `FORGE_SECRET_VAULT_KEY_ID` and `FORGE_SECRET_VAULT_KEY` fails with
-  `Persistent secret storage requires an OS-protected key`, and supplying a _different_ key than the
-  one that sealed existing credentials fails with `Stored credentials belong to another
-OS-protected key`. For a host that must also work standalone, provision one stable key and point
-  the desktop at it too — the desktop honors those variables from its own environment
+  `Persistent secret storage requires an OS-protected key`. Supplying a _different_ key than the one
+  that owns the database fails when the database opens, before migrations, with
+  `Database is owned by another quick-connect key` (or, for a database without an owner record,
+  `Stored credentials belong to another OS-protected key`). For a host that must also work
+  standalone, promote it to a [persistent server](../persistent-server.md), or provision one stable
+  key and point the desktop at it too — the desktop honors those variables from its own environment
   ([`main/index.ts`](../../../packages/desktop/src/main/index.ts)) — accepting that this bypasses
   `safeStorage` on the desktop side.
 

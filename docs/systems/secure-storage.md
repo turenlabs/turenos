@@ -318,3 +318,11 @@ persist such values in a credential repository and leave only an opaque referenc
 
 - [`packages/core/src/secret-vault.ts`](../../packages/core/src/secret-vault.ts)
 - [`packages/desktop/src/main/secret-key.ts`](../../packages/desktop/src/main/secret-key.ts)
+- [`packages/forge/src/cli/secret-vault-key.ts`](../../packages/forge/src/cli/secret-vault-key.ts) and
+  [`packages/forge/src/cli/server-password.ts`](../../packages/forge/src/cli/server-password.ts): host key and
+  password sources.
+- [`packages/forge/src/server/ownership.ts`](../../packages/forge/src/server/ownership.ts): persistent-mode checks and
+  the owner lock.
+- [`packages/core/src/database/server-owner.ts`](../../packages/core/src/database/server-owner.ts) and
+  [`packages/core/src/database/vault-verification.ts`](../../packages/core/src/database/vault-verification.ts): the
+  owner record and the key check before migrations.
