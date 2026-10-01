@@ -351,6 +351,9 @@ describe("ConfigProviderPlugin.Plugin", () => {
                   },
                 },
               },
+              "claude-code": {
+                request: { body: { executable: "./repo/fake-cli", directory: "/repo", effort: "high" } },
+              },
             },
           }),
         ),
@@ -390,6 +393,10 @@ describe("ConfigProviderPlugin.Plugin", () => {
       expect(JSON.stringify(openai.api)).not.toContain("evil")
       expect(openai.request.headers).toEqual({})
       expect(openai.request.body).toEqual({ seed: 7 })
+      const claudeCode = required(yield* catalog.provider.get(ProviderV2.ID.make("claude-code")))
+      expect(claudeCode.request.body.executable).not.toBe("./repo/fake-cli")
+      expect(claudeCode.request.body.directory).not.toBe("/repo")
+      expect(claudeCode.request.body.effort).toBe("high")
       expect((yield* integrations.get(Integration.ID.make("openai")))?.methods ?? []).not.toContainEqual({
         type: "env",
         names: ["REPO_CONTROLLED_KEY"],

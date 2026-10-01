@@ -466,6 +466,31 @@ describe("createSessionGoalController", () => {
     expect(delays).toEqual([250, 500])
   })
 
+  test("default recovery budget spans a sidecar restart window", async () => {
+    const delays: number[] = []
+    const recovery = createSessionGoalRecovery({
+      wait: async (delay) => {
+        delays.push(delay)
+      },
+    })
+    let calls = 0
+    const result = await recovery.run({
+      scope: "local",
+      sessionID: "ses_restart",
+      resume: async () => {
+        calls++
+        // The sidecar takes ~10s to respawn and pass its health check; the
+        // default attempt budget has to outlast that or every crash reports
+        // "could not recover this session" while a retry would have succeeded.
+        if (calls <= 8) throw new Error("sidecar restarting")
+        return { status: "idle" as const }
+      },
+    })
+    expect(result).toEqual({ status: "idle" })
+    expect(calls).toBe(9)
+    expect(delays.reduce((sum, delay) => sum + delay, 0)).toBeGreaterThanOrEqual(10_000)
+  })
+
   test("coalesces in-flight probes and permits an explicit retry after persistent failure", async () => {
     const recovery = createSessionGoalRecovery({ attempts: 1 })
     let calls = 0
