@@ -115,15 +115,8 @@ export function createRlmPlugin(options: RlmPluginOptions = {}): Plugin {
             await authorize("rlm_context_search", target.id, context)
             const terms = tokenize(args.query)
             const phrase = args.query.trim().toLowerCase()
-            const results = target.lines
-              .flatMap((line, index) => {
-                const normalized = line.toLowerCase()
-                const termScore = terms.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0)
-                const score = termScore + (phrase.length > 0 && normalized.includes(phrase) ? terms.length : 0)
-                return score === 0 ? [] : [{ line: index + 1, score, text: line }]
-              })
-              .sort((left, right) => right.score - left.score || left.line - right.line)
-              .slice(0, Math.min(args.limit ?? maxSearchResults, maxSearchResults))
+            const limit = Math.min(args.limit ?? maxSearchResults, maxSearchResults)
+            const results = rankRlmSearchLines(target.lines, terms, phrase, limit)
 
             return {
               title: `RLM search: ${results.length} match${results.length === 1 ? "" : "es"}`,
@@ -182,6 +175,32 @@ export function createRlmPlugin(options: RlmPluginOptions = {}): Plugin {
 }
 
 export const RlmPlugin = createRlmPlugin()
+
+type RlmSearchResult = { line: number; score: number; text: string }
+
+function rankRlmSearchLines(lines: readonly string[], terms: readonly string[], phrase: string, limit: number) {
+  const resultsByScore = new Map<number, RlmSearchResult[]>()
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!
+    const normalized = line.toLowerCase()
+    const termScore = terms.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0)
+    const score = termScore + (phrase.length > 0 && normalized.includes(phrase) ? terms.length : 0)
+    if (score === 0) continue
+    const matches = resultsByScore.get(score)
+    if (matches === undefined) {
+      resultsByScore.set(score, [{ line: index + 1, score, text: line }])
+      continue
+    }
+    if (matches.length >= limit) continue
+    matches.push({ line: index + 1, score, text: line })
+  }
+
+  // Lines are scanned in order, so each score bucket already has the line-number tie-break.
+  return [...resultsByScore.entries()]
+    .sort(([left], [right]) => right - left)
+    .flatMap(([, matches]) => matches)
+    .slice(0, limit)
+}
 
 export default RlmPlugin
 

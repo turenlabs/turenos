@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { Option, Redacted } from "effect"
+import { ConfigProvider, Effect, Layer, Option, Redacted } from "effect"
 import { Flag } from "@turenlabs/core/flag/flag"
 import { ServerAuth } from "../../src/server/auth"
 
@@ -11,6 +11,7 @@ const original = {
 afterEach(() => {
   Flag.FORGE_SERVER_PASSWORD = original.FORGE_SERVER_PASSWORD
   Flag.FORGE_SERVER_USERNAME = original.FORGE_SERVER_USERNAME
+  delete process.env.FORGE_SERVER_PASSWORD
 })
 
 describe("ServerAuth", () => {
@@ -55,5 +56,22 @@ describe("ServerAuth", () => {
     expect(ServerAuth.required(config)).toBe(true)
     expect(ServerAuth.authorized({ username: "alice", password: Redacted.make("secret") }, config)).toBe(true)
     expect(ServerAuth.authorized({ username: "opencode", password: Redacted.make("secret") }, config)).toBe(false)
+  })
+
+  test("claimPassword removes the password from the environment but keeps auth enforced", async () => {
+    Flag.FORGE_SERVER_PASSWORD = undefined
+    process.env.FORGE_SERVER_PASSWORD = "claimed-secret"
+
+    expect(ServerAuth.claimPassword()).toBe("claimed-secret")
+    expect(process.env.FORGE_SERVER_PASSWORD).toBeUndefined()
+    expect(ServerAuth.header()).toBe(`Basic ${Buffer.from("forge:claimed-secret").toString("base64")}`)
+    // The in-process handler reads the environment after the claim; it must not see an unsecured server.
+    const config = await Effect.runPromise(
+      ServerAuth.Config.useSync((value) => value).pipe(
+        Effect.provide(ServerAuth.Config.layer.pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))),
+      ),
+    )
+    expect(ServerAuth.required(config)).toBe(true)
+    expect(ServerAuth.authorized({ username: "forge", password: Redacted.make("claimed-secret") }, config)).toBe(true)
   })
 })

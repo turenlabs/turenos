@@ -55,8 +55,67 @@ The subprocess environment also removes ambient Anthropic credentials and altern
 It preserves proxy configuration for provider traffic while adding `localhost`, `127.0.0.1`, and `::1` to `NO_PROXY`
 so the private MCP request cannot be diverted through a configured proxy.
 
+It also sets Claude Code variables that no flag expresses, overriding any inherited value:
+
+- `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` drops Claude Code's auto-memory prompt, about half of its system prompt, which
+  targets a Write tool the bridge never exposes. TurenOS memory tools and guidance are unaffected.
+- `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1` drops the per-turn git status snapshot. It precedes the replayed transcript,
+  so any file edit changed it and invalidated the next turn's cached transcript. TurenOS's own environment context still
+  reports whether the directory is a git repository, as it does for every provider.
+- `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS=0` keeps MCP calls synchronous. An inherited `CLAUDE_AUTO_BACKGROUND_TASKS=1`
+  would otherwise move a long call into a background task and let the run end before TurenOS settles it.
+- `CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH=65536` delivers TurenOS tool descriptions in full, as other providers receive
+  them, instead of truncating them at 2,048 characters.
+
 When TurenOS disables tools for a turn, such as after the maximum agent step, it does not register or configure an MCP
 server. Claude still receives `--tools ""`, so the no-tools policy remains effective.
+
+## Mid-turn steering
+
+One TurenOS provider turn is one `claude -p` run, which can make many model requests and tool calls. So that a steer
+does not wait for the whole run, TurenOS keeps stdin open on tool-enabled turns and uses the CLI's own mid-turn queue,
+the path interactive Claude Code uses for a message typed while it works:
+
+- The bridge accepts steers only after `system/init` advertises both `msg_lifecycle_v1` and
+  `interrupt_cancel_queued_v1`. Older CLIs keep boundary delivery.
+- The runner polls for pending steers and hands each eligible one to the CLI as a default-priority `user` message with
+  a bridge-generated uuid. Eligible means a plain text prompt for the running agent and model. Commands, goals,
+  attachments, and a different agent or model hold the queue for the boundary, so steers keep admission order.
+- The CLI folds the message in after its current tool calls finish and before its next model request, and reports
+  `command_lifecycle` `started`. Only then does the runner promote the input. It ends the current assistant step with no
+  usage, since the CLI reports the run's usage once on the final step, and opens a new one. The transcript shows the
+  steer where the model read it.
+- A steer written during a final answer with no tool calls is not folded in. The CLI takes it off its queue within a
+  millisecond of the run's `result` to start a second turn, too soon for `cancel_async_message`. So at the `result`,
+  if any steer is unfolded, the bridge sends `interrupt` with `cancel_queued: true` and closes stdin. The interrupt
+  aborts that turn before the model reads the steer, and the bridge accepts the CLI's resulting exit code 1. The steer
+  stays pending and promotes at the next provider-turn boundary.
+- An input cancelled in TurenOS while the run continues is withdrawn with `cancel_async_message`. If the CLI folds it
+  in before the cancel lands, the model has read it, so the runner promotes it anyway and the cancellation does not
+  stand.
+- The step that ends at a fold records no usage, so reverting to a steer subtracts the whole run's tokens from the
+  Session totals. Claude Code runs report no cost, so this affects token counts only.
+
+## Transcript replay and caching
+
+Each provider turn replays the TurenOS transcript as one stream-json user message. The CLI marks only that message's last
+content block for prompt caching, so the replay is split into append-only blocks. The next turn then reads the previous
+turn's cache entry at the matching block boundary instead of rewriting the whole transcript:
+
+- Each user message and each chronological system update is its own block, and each run of assistant and tool
+  messages is one block. A turn normally appends two blocks and rewrites none.
+- System updates use the same `<system-update>` wrapper as every other provider route.
+- PNG, JPEG, GIF, and WebP images, including screenshots in tool results, follow the block of the message that
+  attached them. Past eight images or 8 MiB, the newest are kept and older ones remain attachment notes; below those
+  limits, no earlier block changes. Other image types are noted as not forwarded.
+- When the replay exceeds the 4 MiB prompt limit, the oldest blocks are dropped first behind an omission notice.
+- One-turn runtime instructions (the todo checkpoint, harness guidance, and reflection and stream-recovery prompts) are
+  not replayed. The todo checkpoint accompanies every new human message, and a block that is absent from the next
+  replay leaves the turn's cache entry unreachable.
+
+A turn that carries a one-turn note, such as goal context or a current-task anchor, still does not produce a cross-turn
+hit for the turn after it, for the same reason. Do not add a TurenOS `cache_control` marker to compensate: the CLI
+already uses all four cache breakpoints on its follow-up requests, and a fifth makes the API reject the request.
 
 ## Capability boundary
 
@@ -87,6 +146,11 @@ An authenticated MCP call is converted back into the normal TurenOS tool lifecyc
 2. The captured `ToolRegistry.Materialization` settles the call.
 3. TurenOS publishes the canonical result, structured output, and output paths.
 4. The MCP response returns the model-visible result, including interceptor notes, to Claude in the same `-p` run.
+
+Inline PNG, JPEG, GIF, and WebP images in a result, such as screenshots, return as MCP image content, up to eight
+images or 8 MiB per result. Other inline data becomes a short omission note, and file-backed attachments stay
+references. Claude echoes those images on stdout, so one stream-json line may be up to 20 MiB; the 8 MiB cap on output
+TurenOS records is unchanged.
 
 Claude's stream also reports its view of MCP tool calls and results. TurenOS suppresses those private `mcp__forge__*`
 envelopes because the registry path has already published the authoritative lifecycle. Without suppression, one

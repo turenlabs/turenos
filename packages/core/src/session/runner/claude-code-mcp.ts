@@ -17,11 +17,82 @@ interface Bridge {
     readonly name: string
     readonly input: unknown
   }) => Effect.Effect<ToolResultValue, unknown>
+  readonly steering?: Steering
 }
 
 export class BridgeError extends Error {
   override readonly name = "ClaudeCodeMcp.BridgeError"
 }
+
+/** One durable steer, rendered as the text the model would read after a restart. */
+export interface SteerInput {
+  readonly id: string
+  readonly text: string
+}
+
+/** The transport's side of a steering handle: the running CLI's stdin. */
+export interface SteerWriter {
+  readonly write: (input: SteerInput) => boolean
+  readonly retract: (id: string) => void
+}
+
+/**
+ * Mid-turn steering for one Claude Code provider turn.
+ *
+ * The runner owns durable admission and promotion; the transport owns the CLI's
+ * stdin. The transport attaches a writer only while the CLI can confirm that it
+ * folded a message into the running turn, and reports each confirmation back.
+ * An input the CLI never confirms stays pending, so it promotes at the next
+ * provider-turn boundary exactly as it would without steering.
+ */
+export interface Steering {
+  /** Transport: install or remove the writer. Removal frees unconfirmed inputs for a later writer. */
+  readonly attach: (writer: SteerWriter | undefined) => void
+  /** Transport: the CLI folded this input into the running turn. */
+  readonly started: (id: string) => void
+  /** Runner: hand one input to the running CLI unless it already has it. */
+  readonly offer: (input: SteerInput) => boolean
+  /** Runner: withdraw an input the CLI has not folded in yet. */
+  readonly retract: (id: string) => void
+  /** Runner: inputs handed over and not yet folded in. */
+  readonly inFlight: () => ReadonlyArray<string>
+  /** Runner: inputs folded in since the last call, in fold order. */
+  readonly take: () => ReadonlyArray<string>
+}
+
+export const makeSteering = (): Steering => {
+  let writer: SteerWriter | undefined
+  const sent = new Set<string>()
+  const folded = new Set<string>()
+  const untaken: string[] = []
+  return {
+    attach: (next) => {
+      writer = next
+      if (next) return
+      for (const id of sent) if (!folded.has(id)) sent.delete(id)
+    },
+    started: (id) => {
+      if (folded.has(id)) return
+      folded.add(id)
+      untaken.push(id)
+    },
+    offer: (input) => {
+      if (!writer || sent.has(input.id) || folded.has(input.id)) return false
+      if (!writer.write(input)) return false
+      sent.add(input.id)
+      return true
+    },
+    retract: (id) => {
+      if (!sent.has(id) || folded.has(id)) return
+      writer?.retract(id)
+      sent.delete(id)
+    },
+    inFlight: () => [...sent].filter((id) => !folded.has(id)),
+    take: () => untaken.splice(0),
+  }
+}
+
+export const steering = (token: string) => bridges.get(token)?.steering
 
 export const register = Effect.fn("ClaudeCodeMcp.register")(function* (bridge: Bridge) {
   const token = randomUUID()
@@ -218,16 +289,28 @@ export const serve = Effect.fn("ClaudeCodeMcp.serve")(function* (token: string) 
   }
 })
 
-function toCallToolResult(result: ToolResultValue): CallToolResult {
+export function toCallToolResult(result: ToolResultValue): CallToolResult {
   if (result.type === "error") return { content: [{ type: "text", text: stringify(result.value) }], isError: true }
   if (result.type === "text") return { content: [{ type: "text", text: stringify(result.value) }] }
   if (result.type === "json") return { content: [{ type: "text", text: stringify(result.value) }] }
+  const images = { count: 0, bytes: 0 }
   return {
-    content: result.value.map((item: ToolContent) =>
-      item.type === "text"
-        ? { type: "text" as const, text: item.text }
-        : { type: "text" as const, text: `[file ${item.name ?? item.uri}] ${item.uri} (${item.mime})` },
-    ),
+    content: result.value.map((item: ToolContent) => {
+      if (item.type === "text") return { type: "text" as const, text: item.text }
+      const image = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(item.uri)
+      const bytes = image ? Buffer.byteLength(image[2], "base64") : 0
+      if (image && image[1] === item.mime && images.count < 8 && images.bytes + bytes <= 8 * 1024 * 1024) {
+        images.count++
+        images.bytes += bytes
+        return { type: "image" as const, mimeType: item.mime, data: image[2] }
+      }
+      if (item.uri.startsWith("data:"))
+        return {
+          type: "text" as const,
+          text: `[file ${item.name ?? "inline attachment"}] Inline image omitted: unsupported format, invalid encoding, or image limit.`,
+        }
+      return { type: "text" as const, text: `[file ${item.name ?? item.uri}] ${item.uri} (${item.mime})` }
+    }),
   }
 }
 

@@ -1,8 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { isContextOverflow, LLMError, LLMEvent, LLMRequest, TransportReason } from "@turenlabs/llm"
+import { ProviderShared } from "@turenlabs/llm/protocols"
 import { Endpoint, Protocol, Route, type RouteDefaultsInput, type TransportDef } from "@turenlabs/llm/route"
 import { Cause, Effect, Queue, Schema, Stream } from "effect"
 import { ClaudeCodeGuidance } from "../../claude-code-guidance"
@@ -30,6 +32,9 @@ const ROUTE_ID = "claude-code-cli"
 
 const PROMPT_LIMIT = 4 * 1024 * 1024
 const OUTPUT_LIMIT = 8 * 1024 * 1024
+// Echoed tool results may contain 8 MiB of images (about 10.7 MiB as base64)
+// alongside ordinary output and JSON framing. Keep transcript and total-stream caps separate.
+const OUTPUT_LINE_LIMIT = 20 * 1024 * 1024
 const RAW_OUTPUT_LIMIT = OUTPUT_LIMIT * 4
 const TOOL_RESULT_LIMIT = 2 * 1024 * 1024
 const ASSISTANT_TEXT_LIMIT = 64 * 1024
@@ -39,6 +44,13 @@ const STDERR_LIMIT = 8 * 1024
 const TERMINATE_GRACE = 2_000
 const REAP_TIMEOUT = 3_000
 const TERMINAL_EXIT_GRACE = 1_000
+
+/**
+ * `system/init` capabilities a CLI needs before it takes mid-turn steers: `command_lifecycle`
+ * frames, which confirm a fold, and `cancel_queued` on interrupt, which withdraws a steer the run
+ * ended before folding in.
+ */
+const STEER_CAPABILITIES = ["msg_lifecycle_v1", "interrupt_cancel_queued_v1"]
 
 const API_ERROR_PREFIX = "API Error:"
 const MCP_TOOL_PREFIX = "mcp__forge__"
@@ -121,6 +133,8 @@ const bounded = (value: string, limit: number): string => {
   return decoder.decode(encoder.encode(value).slice(0, Math.max(0, limit - suffix.byteLength - 3))) + TRUNCATED
 }
 
+const FORWARDED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+
 /** Flattens one common-format message into the plain text Claude Code reads on stdin. */
 const messageText = (message: LLMRequest["messages"][number]): string =>
   message.content
@@ -128,35 +142,125 @@ const messageText = (message: LLMRequest["messages"][number]): string =>
       if (part.type === "text") return [part.text]
       if (part.type === "reasoning") return [`[reasoning]\n${part.text}`]
       if (part.type === "media")
-        return part.mediaType.startsWith("image/")
+        return FORWARDED_IMAGE_TYPES.includes(part.mediaType)
           ? [`[image ${part.filename ?? "attachment"} is attached to this conversation]`]
           : [`[${part.filename ?? "attachment"} is attached in TurenOS but is not forwarded to Claude Code]`]
       if (part.type === "tool-call") return [`[tool call ${part.name}] ${json(part.input)}`]
-      if (part.type === "tool-result") return [`[tool result ${part.name}] ${json(part.result.value)}`]
+      if (part.type === "tool-result") {
+        if (part.result.type !== "content") return [`[tool result ${part.name}] ${json(part.result.value)}`]
+        return [
+          `[tool result ${part.name}]`,
+          ...ClaudeCodeMcp.toCallToolResult(part.result).content.flatMap((item) => {
+            if (item.type === "text") return [item.text]
+            if (item.type === "image") return [`[image from ${part.name} is attached to this conversation]`]
+            return []
+          }),
+        ]
+      }
       return []
     })
     .join("\n")
 
-/**
- * Claude Code owns its own conversation state, but TurenOS owns the session
- * timeline. Rather than resume a CLI-side session (deferred), every turn
- * replays the TurenOS transcript as a single prompt — the same shape the v1
- * adapter used for un-resumed turns.
- */
-export const prompt = (request: LLMRequest): string => {
-  const transcript = request.messages
-    .filter((message) => message.role !== "system")
-    .map((message) => `${message.role.toUpperCase()}:\n${messageText(message)}`)
-    .join("\n\n")
-  return bounded(transcript || "Continue.", PROMPT_LIMIT)
-}
+/** Chronological system updates keep the same visible wrapper every other route uses. */
+const replayText = (message: LLMRequest["messages"][number]): string =>
+  message.role === "system"
+    ? ProviderShared.wrapSystemUpdate(message.content.flatMap((part) => (part.type === "text" ? [part] : [])))
+    : `${message.role.toUpperCase()}:\n${messageText(message)}`
 
 const IMAGE_LIMIT = 8
 const IMAGE_BYTES_LIMIT = 8 * 1024 * 1024
+const OMITTED = "[Earlier transcript omitted by TurenOS: it exceeded the prompt limit.]"
 
 type ImageBlock = {
   readonly type: "image"
   readonly source: { readonly type: "base64"; readonly media_type: string; readonly data: string }
+}
+
+type ContentBlock = { readonly type: "text"; readonly text: string } | ImageBlock
+
+type ReplayGroup = {
+  readonly text: string
+  readonly images: ReadonlyArray<{ readonly mediaType: string; readonly data: string | Uint8Array }>
+}
+
+/**
+ * Claude Code owns its own conversation state, but TurenOS owns the session
+ * timeline. Rather than resume a CLI-side session (deferred), every turn
+ * replays the TurenOS transcript as one stream-json user message.
+ *
+ * The replay is split into append-only content blocks so consecutive turns share
+ * a cacheable prefix. The CLI marks only the message's last block for caching,
+ * and the API reuses an earlier turn's entry at a matching block boundary. Each
+ * user or system message is its own block and each run of assistant and tool
+ * messages is one, so a turn appends about two blocks and rewrites none. Images
+ * follow the block of the message that attached them for the same reason.
+ *
+ * One-turn runtime instructions are left out. The todo checkpoint alone arrives
+ * with every new human message, and a block missing from the next replay leaves
+ * that turn's cache entry unreachable.
+ */
+export const content = (request: LLMRequest): ContentBlock[] => {
+  const groups = withinPromptLimit(
+    replayGroups(
+      request.messages.filter((message) => record(message.metadata?.forge)?.internalContext !== "runtime"),
+    ).map((group) => ({
+      text: group.map(replayText).join("\n\n"),
+      images: group.flatMap((message) =>
+        message.content.flatMap<ReplayGroup["images"][number]>((part) => {
+          if (part.type === "media" && part.mediaType.startsWith("image/")) return [part]
+          if (part.type !== "tool-result" || part.result.type !== "content") return []
+          return ClaudeCodeMcp.toCallToolResult(part.result).content.flatMap((item) =>
+            item.type === "image" ? [{ mediaType: item.mimeType, data: item.data }] : [],
+          )
+        }),
+      ),
+    })),
+  )
+  if (groups.length === 0) return [{ type: "text", text: "Continue." }]
+  const admit = imageAdmission()
+  // At the image cap, keep the latest screenshots and attachments. Below the
+  // cap, reversing admission leaves every replay block byte-for-byte stable.
+  const selected = groups
+    .toReversed()
+    .map((group) => group.images.toReversed().flatMap(admit).toReversed())
+    .toReversed()
+  return groups.flatMap((group, index) => [{ type: "text" as const, text: group.text }, ...selected[index]])
+}
+
+/** One stream-json user envelope: the transcript blocks plus attached images. */
+export const stdinEnvelope = (request: LLMRequest): string =>
+  `${JSON.stringify({ type: "user", message: { role: "user", content: content(request) } })}\n`
+
+const standalone = (message: LLMRequest["messages"][number]) => message.role === "user" || message.role === "system"
+
+/** Consecutive assistant and tool messages share a group; user and system messages stand alone. */
+const replayGroups = (messages: LLMRequest["messages"]) => {
+  const starts = messages.flatMap((message, index) =>
+    index === 0 || standalone(message) || standalone(messages[index - 1]) ? [index] : [],
+  )
+  return starts.map((start, index) => messages.slice(start, starts[index + 1]))
+}
+
+/**
+ * Drops the oldest groups, never the newest, until the replay fits the prompt
+ * limit. Only a single group that alone exceeds the limit is cut mid-text.
+ */
+const withinPromptLimit = (groups: ReadonlyArray<ReplayGroup>): ReadonlyArray<ReplayGroup> => {
+  const sizes = groups.map((group) => encoder.encode(group.text).byteLength)
+  const total = sizes.reduce((sum, size) => sum + size, 0)
+  if (total <= PROMPT_LIMIT) return groups
+  const budget = PROMPT_LIMIT - encoder.encode(OMITTED).byteLength
+  const excess = sizes.reduce(
+    (state, size) =>
+      state.remaining > budget ? { dropped: state.dropped + 1, remaining: state.remaining - size } : state,
+    { dropped: 0, remaining: total },
+  )
+  const dropped = Math.min(groups.length - 1, excess.dropped)
+  const kept = groups.slice(dropped)
+  return [
+    ...(dropped > 0 ? [{ text: OMITTED, images: [] }] : []),
+    ...(kept.length === 1 ? [{ ...kept[0], text: bounded(kept[0].text, budget) }] : kept),
+  ]
 }
 
 const imageData = (data: string | Uint8Array): string => {
@@ -166,33 +270,22 @@ const imageData = (data: string | Uint8Array): string => {
 }
 
 /**
- * Image parts travel as real content blocks beside the flattened transcript --
- * the CLI accepts them via `--input-format stream-json`. Bounded so one
- * pathological session cannot write an unbounded prompt to the child's stdin;
- * anything past the caps stays behind as the transcript's attachment note.
+ * Image parts travel as real content blocks -- the CLI accepts them via
+ * `--input-format stream-json`. Bounded so one pathological session cannot write
+ * an unbounded prompt to the child's stdin. Omitted images remain attachment notes.
  */
-export const images = (request: LLMRequest): ImageBlock[] => {
-  const blocks: ImageBlock[] = []
-  let bytes = 0
-  for (const message of request.messages) {
-    for (const part of message.content) {
-      if (part.type !== "media" || !part.mediaType.startsWith("image/")) continue
-      const data = imageData(part.data)
-      const size = Math.floor(data.length * 0.75)
-      if (blocks.length >= IMAGE_LIMIT || bytes + size > IMAGE_BYTES_LIMIT) return blocks
-      bytes += size
-      blocks.push({ type: "image", source: { type: "base64", media_type: part.mediaType, data } })
-    }
+const imageAdmission = () => {
+  const admitted = { count: 0, bytes: 0 }
+  return (part: ReplayGroup["images"][number]): ImageBlock[] => {
+    if (!FORWARDED_IMAGE_TYPES.includes(part.mediaType)) return []
+    const data = imageData(part.data)
+    const size = Buffer.byteLength(data, "base64")
+    if (admitted.count >= IMAGE_LIMIT || admitted.bytes + size > IMAGE_BYTES_LIMIT) return []
+    admitted.count++
+    admitted.bytes += size
+    return [{ type: "image", source: { type: "base64", media_type: part.mediaType, data } }]
   }
-  return blocks
 }
-
-/** One stream-json user envelope: the transcript as text plus attached images. */
-export const stdinEnvelope = (request: LLMRequest): string =>
-  `${JSON.stringify({
-    type: "user",
-    message: { role: "user", content: [{ type: "text", text: prompt(request) }, ...images(request)] },
-  })}\n`
 
 export const systemPrompt = (request: LLMRequest): string => {
   const workflow = ClaudeCodeMcp.requestToken(request.metadata) ? ClaudeCodeGuidance.WORKFLOW : ""
@@ -912,14 +1005,43 @@ const launch = (input: {
     catch: (error) => transportError("spawn", error instanceof Error ? error.message : "Claude Code could not start"),
   })
 
-const writePrompt = (child: Child, value: string) => {
+/** Stays open only while the turn can steer; the CLI then exits after its result once TurenOS closes it. */
+const writePrompt = (child: Child, value: string, keepOpen: boolean) => {
   const stdin = child.proc.stdin
   if (!stdin) return
   stdin.on("error", () => {
     /* EPIPE when the child exits before the prompt is fully written */
   })
-  stdin.end(value)
+  if (keepOpen) stdin.write(value)
+  else stdin.end(value)
 }
+
+/**
+ * A mid-turn user message. Default priority: the CLI folds it in once the running tool calls
+ * finish, before its next model request, as interactive Claude Code does for a message typed
+ * while it works. The uuid is the bridge's own, so the CLI never sees TurenOS message IDs.
+ */
+const steerEnvelope = (uuid: string, text: string) =>
+  `${JSON.stringify({
+    type: "user",
+    uuid,
+    parent_tool_use_id: null,
+    message: { role: "user", content: [{ type: "text", text: bounded(text, PROMPT_LIMIT) }] },
+  })}\n`
+
+const cancelEnvelope = (uuid: string) =>
+  `${JSON.stringify({
+    type: "control_request",
+    request_id: randomUUID(),
+    request: { subtype: "cancel_async_message", message_uuid: uuid },
+  })}\n`
+
+const withdrawEnvelope = () =>
+  `${JSON.stringify({
+    type: "control_request",
+    request_id: randomUUID(),
+    request: { subtype: "interrupt", cancel_queued: true },
+  })}\n`
 
 const safeParse = (line: string): unknown => {
   try {
@@ -939,7 +1061,12 @@ const safeParse = (line: string): unknown => {
  * the Effect side — an interruptible queue take — so an interrupted turn closes
  * the scope immediately and the release handler gets to kill the child.
  */
-const pump = (child: Child, promptText: string, queue: Queue.Queue<LLMEvent, LLMError | Cause.Done>) => {
+const pump = (
+  child: Child,
+  promptText: string,
+  queue: Queue.Queue<LLMEvent, LLMError | Cause.Done>,
+  steering?: ClaudeCodeMcp.Steering,
+) => {
   const state = adapterState()
   const stdoutDecoder = new TextDecoder()
   let buffer = ""
@@ -950,7 +1077,67 @@ const pump = (child: Child, promptText: string, queue: Queue.Queue<LLMEvent, LLM
   const emit = (events: ReadonlyArray<LLMEvent>) => {
     for (const event of events) Queue.offerUnsafe(queue, event)
   }
+  // Bridge uuid -> TurenOS input ID for steers written to stdin and not yet folded in.
+  const written = new Map<string, string>()
+  let inputOpen = steering !== undefined
+  let withdrew = false
+  let folds = 0
+  const send = (value: string) => {
+    if (child.proc.stdin?.writable) child.proc.stdin.write(value)
+  }
+  const writer: ClaudeCodeMcp.SteerWriter = {
+    write: (input) => {
+      if (!inputOpen || !child.proc.stdin?.writable) return false
+      const uuid = randomUUID()
+      written.set(uuid, input.id)
+      send(steerEnvelope(uuid, input.text))
+      return true
+    },
+    // The mapping stays: should the CLI fold the steer in before the cancel lands, the model has
+    // read it and the runner must still record it.
+    retract: (id) => {
+      for (const [uuid, value] of written) if (value === id) send(cancelEnvelope(uuid))
+    },
+  }
+  const closeInput = () => {
+    if (!inputOpen) return
+    inputOpen = false
+    steering?.attach(undefined)
+    // A steer still queued when the run ends starts a second CLI turn TurenOS never records, and
+    // the CLI takes it off its queue within a millisecond of the result, too soon for
+    // cancel_async_message. An interrupt with cancel_queued aborts that turn before the model
+    // reads it. The steer stays pending and promotes at the next provider-turn boundary.
+    if (written.size > 0) {
+      withdrew = true
+      send(withdrawEnvelope())
+    }
+    written.clear()
+    child.proc.stdin?.end()
+  }
+  // The marker tells the runner to promote the folded input before the content that answers it.
+  const fold = (uuid: unknown) => {
+    if (typeof uuid !== "string") return
+    const id = written.get(uuid)
+    if (id === undefined) return
+    written.delete(uuid)
+    steering?.started(id)
+    emit([LLMEvent.stepStart({ index: ++folds })])
+  }
+  const steer = (message: Record<string, unknown>) => {
+    if (message.type === "system" && message.subtype === "init") {
+      // Without both, steers wait for the boundary.
+      const capabilities = Array.isArray(message.capabilities) ? message.capabilities : []
+      if (STEER_CAPABILITIES.every((capability) => capabilities.includes(capability))) steering?.attach(writer)
+      return
+    }
+    if (message.type === "command_lifecycle" && message.state === "started") return fold(message.command_uuid)
+    if (message.type !== "result") return
+    // A folded steer whose lifecycle frame was lost is still named on the result it shaped.
+    if (Array.isArray(message.user_message_uuids)) message.user_message_uuids.forEach(fold)
+    closeInput()
+  }
   const finish = (event?: LLMEvent) => {
+    closeInput()
     if (closed) return
     closed = true
     if (terminalTimer) clearTimeout(terminalTimer)
@@ -961,6 +1148,7 @@ const pump = (child: Child, promptText: string, queue: Queue.Queue<LLMEvent, LLM
     if (state.finished) return
     const parsed = record(safeParse(line))
     if (!parsed) throw new Error("Claude Code returned malformed stream-json output")
+    if (steering) steer(parsed)
     const events = toEvents(state, parsed)
     if (state.finished) {
       terminalEvents = events
@@ -985,7 +1173,7 @@ const pump = (child: Child, promptText: string, queue: Queue.Queue<LLMEvent, LLM
       rawBytes += chunk.byteLength
       if (rawBytes > RAW_OUTPUT_LIMIT) throw new Error("Claude Code raw output exceeded TurenOS's safety limit")
       buffer += stdoutDecoder.decode(chunk, { stream: true })
-      if (Buffer.byteLength(buffer, "utf8") > OUTPUT_LIMIT)
+      if (Buffer.byteLength(buffer, "utf8") > OUTPUT_LINE_LIMIT)
         throw new Error("Claude Code output line exceeded TurenOS's safety limit")
       let newline = buffer.indexOf("\n")
       while (newline >= 0) {
@@ -1017,14 +1205,15 @@ const pump = (child: Child, promptText: string, queue: Queue.Queue<LLMEvent, LLM
         emit(terminalEvents)
         return finish()
       }
-      if (exit.code === 0 && exit.signal === null) {
+      // The withdrawal interrupt makes the CLI exit 1 after the turn it already completed.
+      if ((exit.code === 0 || withdrew) && exit.signal === null) {
         if (terminalEvents) emit(terminalEvents)
         return finish()
       }
     }
     finish(exitError({ ...exit, stderr: child.stderr }))
   })
-  writePrompt(child, promptText)
+  writePrompt(child, promptText, inputOpen)
 }
 
 const transport = (input: {
@@ -1054,7 +1243,8 @@ const transport = (input: {
           // turn kills the CLI and every process it spawned.
           (child) => Effect.promise(() => terminate(child)),
         )
-        yield* Effect.sync(() => pump(child, stdinEnvelope(prepared.request), queue))
+        const steering = token ? ClaudeCodeMcp.steering(token) : undefined
+        yield* Effect.sync(() => pump(child, stdinEnvelope(prepared.request), queue, steering))
       }).pipe(
         // `Stream.callback` forks this register effect and discards its exit: a
         // failure (or defect) that escapes here never reaches the consumer, and

@@ -15,7 +15,11 @@ export type DecodedCredentials = {
 }
 
 export class Config extends ConfigService.Service<Config>()("@forge/ServerAuthConfig", {
-  password: EffectConfig.string("FORGE_SERVER_PASSWORD").pipe(EffectConfig.option),
+  // `claimPassword` moves the password out of the environment, so fall back to where it went.
+  password: EffectConfig.string("FORGE_SERVER_PASSWORD").pipe(
+    EffectConfig.option,
+    EffectConfig.map((password) => Option.orElse(password, () => Option.fromNullishOr(Flag.FORGE_SERVER_PASSWORD))),
+  ),
   username: EffectConfig.string("FORGE_SERVER_USERNAME").pipe(EffectConfig.withDefault("forge")),
 }) {}
 
@@ -31,6 +35,18 @@ export function authorized(credentials: DecodedCredentials, config: Info) {
     credentials.username === config.username &&
     Redacted.value(credentials.password) === config.password.value
   )
+}
+
+/**
+ * Moves the server password from `process.env` into `Flag`, where in-process clients and the
+ * server still find it. Agent shells, PTYs, LSP and MCP servers inherit `process.env`; left there,
+ * the password lets any agent-run command authenticate as the user, answer permission prompts,
+ * or disable them.
+ */
+export function claimPassword(password = process.env.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD) {
+  Flag.FORGE_SERVER_PASSWORD = password
+  delete process.env.FORGE_SERVER_PASSWORD
+  return password
 }
 
 export function header(credentials?: Credentials) {

@@ -288,19 +288,18 @@ const CONTINUE_AFTER_MANUAL_CHECKPOINT = `Act on the most recent user instructio
 
 /** Translate projected V2 Session history into canonical @turenlabs/llm context. */
 export const toLLMMessages = (messages: readonly SessionMessage.Message[], model: Model) => {
-  const lowered = messages.flatMap((message) => toLLMMessage(message, model))
-  const checkpointIndex = messages.findLastIndex((message) => message.type === "compaction")
-  if (checkpointIndex === -1) return lowered
-  const checkpoint = messages[checkpointIndex]
-  if (checkpoint?.type !== "compaction") return lowered
-  const continued = messages
-    .slice(checkpointIndex + 1)
-    .some(
-      (message) =>
-        message.type === "assistant" &&
-        DateTime.toEpochMillis(message.time.created) > DateTime.toEpochMillis(checkpoint.time.created),
-    )
-  if (continued) return lowered
+  let checkpoint: SessionMessage.Compaction | undefined
+  let continued = false
+  const lowered = messages.flatMap((message) => {
+    if (message.type === "compaction") {
+      checkpoint = message
+      continued = false
+    } else if (checkpoint && message.type === "assistant") {
+      continued ||= DateTime.toEpochMillis(message.time.created) > DateTime.toEpochMillis(checkpoint.time.created)
+    }
+    return toLLMMessage(message, model)
+  })
+  if (!checkpoint || continued) return lowered
   return [
     ...lowered,
     Message.make({

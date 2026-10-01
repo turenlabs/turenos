@@ -83,5 +83,4 @@ export const CassetteSchema = Schema.Struct({
 })
 export type Cassette = Schema.Schema.Type<typeof CassetteSchema>
 
-export const decodeCassette = Schema.decodeUnknownSync(CassetteSchema)
 export const encodeCassette = Schema.encodeSync(CassetteSchema)

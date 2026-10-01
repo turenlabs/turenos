@@ -454,18 +454,36 @@ const layer: Layer.Layer<Service, never, Requirements> = Layer.effect(
                 yield* remove(op.file)
               })
 
-              const clash = (a: string, b: string) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`)
-
               for (let i = 0; i < ops.length; ) {
                 const first = ops[i]!
                 const run = [first]
+                const paths = new Set([first.rel])
+                const parents = new Set<string>()
+                const addParents = (value: string) => {
+                  const parts = value.split("/")
+                  let prefix = ""
+                  for (let k = 0; k < parts.length - 1; k++) {
+                    prefix = prefix ? `${prefix}/${parts[k]}` : parts[k]!
+                    parents.add(prefix)
+                  }
+                }
+                addParents(first.rel)
                 let j = i + 1
                 // Only batch adjacent files when their paths cannot affect each other.
                 while (j < ops.length && run.length < 100) {
                   const next = ops[j]!
                   if (next.hash !== first.hash) break
-                  if (run.some((item) => clash(item.rel, next.rel))) break
+                  const parts = next.rel.split("/")
+                  let prefix = ""
+                  let conflict = paths.has(next.rel) || parents.has(next.rel)
+                  for (let k = 0; !conflict && k < parts.length - 1; k++) {
+                    prefix = prefix ? `${prefix}/${parts[k]}` : parts[k]!
+                    conflict = paths.has(prefix)
+                  }
+                  if (conflict) break
                   run.push(next)
+                  paths.add(next.rel)
+                  addParents(next.rel)
                   j += 1
                 }
 

@@ -23,6 +23,7 @@ import { decode64 } from "@/utils/base64"
 import { Schema } from "effect"
 import type { ServerConnection } from "@/context/server"
 import { sessionHref } from "@/utils/session-route"
+import { pathKey } from "@/utils/path-key"
 import { useServerSync } from "@/context/server-sync"
 
 export const BinaryInspectorContext = createContext<{
@@ -43,6 +44,14 @@ export function DirectoryDataProvider(
   const sync = useSync()
   const serverSync = useServerSync()
   const directory = () => (typeof props.directory === "function" ? props.directory() : props.directory)
+  // Keyed remounts must survive a respelled same directory (case, separator,
+  // NT prefix); keep the first spelling seen for each canonical directory.
+  const stableDirectory = createMemo((prev: string | undefined) => {
+    const value = directory()
+    if (!value) return
+    if (prev && pathKey(prev) === pathKey(value)) return prev
+    return value
+  })
   const [binarySnapshot, setBinarySnapshot] = createSignal<BinarySnapshot>()
   const binaryInspector = { snapshot: binarySnapshot, close: () => setBinarySnapshot(undefined) }
   createEffect(on(() => [params.id, directory(), props.server?.()], binaryInspector.close))
@@ -78,7 +87,7 @@ export function DirectoryDataProvider(
   })
 
   return (
-    <Show when={directory()} keyed>
+    <Show when={stableDirectory()} keyed>
       {(directory) => (
         <DataProvider
           data={sync().data}

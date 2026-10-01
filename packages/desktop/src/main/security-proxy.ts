@@ -2,6 +2,7 @@ import { BrowserWindow, WebContentsView, net, session } from "electron"
 import { randomUUID } from "node:crypto"
 import { SecurityProxy } from "@turenlabs/schema/security-proxy"
 import { ProxyPolicy } from "@turenlabs/protocol/proxy-policy"
+import { createCaptureQueue } from "./capture-queue"
 
 const LIMIT = ProxyPolicy.BODY_LIMIT
 // Held traffic waits long enough for a human or an agent turn to decide; it still expires by drop, never by silent forward.
@@ -787,7 +788,28 @@ export function createSecurityProxyController(deps: {
         if (!generation.closed) fatal(generation, new Error("Capture debugger detached; target destroyed"))
       })
       // Preserve CDP event order without holding the event queue on user decisions.
-      let events = Promise.resolve()
+      // Backlog pressure drops capture events instead of destroying the browser:
+      // a busy page loses history records, not the target.
+      const capture = createCaptureQueue({
+        run: (method, params, sessionID) => onMessage(generation, method, params, sessionID),
+        error: (error: unknown) => fatal(generation, error),
+        drop: (method, params, sessionID, dropped) => {
+          // A paused request blocks the page until answered; capture may drop but the fetch must settle.
+          if (method === "Fetch.requestPaused") {
+            const requestID = text(record(params).requestId)
+            const contents = generation.view.webContents
+            if (requestID && !contents.isDestroyed()) {
+              void contents.debugger
+                .sendCommand("Fetch.failRequest", { requestId: requestID, errorReason: "Aborted" }, sessionID)
+                .catch(() => undefined)
+            }
+          }
+          report(
+            generation,
+            new Error(`Capture dropped ${dropped} ${dropped === 1 ? "event" : "events"} under backlog pressure`),
+          )
+        },
+      })
       view.webContents.debugger.on("message", (_event, method, params: unknown, sessionID) => {
         if (
           generation.closed ||
@@ -803,16 +825,8 @@ export function createSecurityProxyController(deps: {
           ].includes(method)
         )
           return
-        if (generation.tasks.size >= 64) {
-          fatal(generation, new Error("Capture backlog exceeded; target destroyed"))
-          return
-        }
-        events = events
-          .then(() => onMessage(generation, method, params, sessionID || undefined))
-          .catch((error: unknown) => {
-            fatal(generation, error)
-          })
-        track(generation, events)
+        capture.push(method, params, sessionID || undefined)
+        track(generation, capture.pending)
       })
       await cdp(generation, "Network.enable", {
         maxTotalBufferSize: 16 * LIMIT,

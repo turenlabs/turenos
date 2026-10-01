@@ -42,10 +42,6 @@ export function userAgent(client = "cli") {
 
 export const USER_AGENT = userAgent()
 
-export function isPreview() {
-  return InstallationChannel !== "prod"
-}
-
 export function isLocal() {
   return InstallationChannel === "local"
 }

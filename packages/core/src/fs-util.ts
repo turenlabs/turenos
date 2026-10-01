@@ -263,6 +263,21 @@ export namespace FSUtil {
       .replace(/^\/mnt\/([a-zA-Z])(?:\/|$)/, (_, drive) => `${drive.toUpperCase()}:/`)
   }
 
+  // Windows accepts many spellings of one directory (`C:\Foo`, `c:\foo`,
+  // `\\?\C:\Foo`); NTFS compares case-insensitively after dropping NT prefixes.
+  export function samePath(a: string, b: string) {
+    if (a === b) return true
+    if (process.platform !== "win32") return false
+    const clean = (value: string) =>
+      value
+        .replace(/^\\\\\?\\UNC\\/, "\\\\")
+        .replace(/^\\\\\?\\|^\\\\\.\\|^\\\?\?\\/, "")
+        .replaceAll("\\", "/")
+        .replace(/\/+$/, "")
+        .toLowerCase()
+    return clean(a) === clean(b)
+  }
+
   export function overlaps(a: string, b: string) {
     return contains(a, b) || contains(b, a)
   }

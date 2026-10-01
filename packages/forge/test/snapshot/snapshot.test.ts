@@ -238,6 +238,25 @@ it.instance(
 )
 
 it.instance(
+  "revert handles file and descendant path conflicts",
+  Effect.gen(function* () {
+    const tmp = yield* bootstrap()
+    const snapshot = yield* Snapshot.Service
+    yield* write(`${tmp.path}/conflict/child.txt`, "original")
+    const before = yield* snapshot.track()
+    expect(before).toBeTruthy()
+    yield* rm(`${tmp.path}/conflict`)
+    yield* write(`${tmp.path}/conflict`, "replacement")
+    const patch = yield* snapshot.patch(before!)
+    expect(patch.files).toContain(fwd(tmp.path, "conflict"))
+    expect(patch.files).toContain(fwd(tmp.path, "conflict", "child.txt"))
+    yield* snapshot.revert([patch])
+    expect(yield* readText(`${tmp.path}/conflict/child.txt`)).toBe("original")
+  }),
+  { git: true },
+)
+
+it.instance(
   "special characters in filenames",
   withTrackedSnapshot(({ tmp, snapshot, before }) =>
     Effect.gen(function* () {

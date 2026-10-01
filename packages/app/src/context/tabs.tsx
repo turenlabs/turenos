@@ -8,6 +8,7 @@ import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { useIsRouting } from "@/hooks/use-is-routing"
 import { usePlatform } from "./platform"
 import { uuid } from "@/utils/uuid"
+import { pathKey } from "@/utils/path-key"
 import { SessionTabsRemovedDetail } from "@/components/titlebar-session-events"
 import { createTabMemory } from "./tab-memory"
 import {
@@ -216,7 +217,10 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
             const member = previous.tabs[tabIndex]
             if (!member || tabKey(tab) !== tabKey(member) || tab.server !== member.server) return true
             if (tab.type === "session" || member.type === "session") return tab.type !== member.type
-            return tab.directory !== member.directory || tab.worktree !== member.worktree
+            return (
+              pathKey(tab.directory) !== pathKey(member.directory) ||
+              pathKey(tab.worktree ?? "") !== pathKey(member.worktree ?? "")
+            )
           })
         })
       if (groupsChanged) setGroups(() => next)
@@ -529,7 +533,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
         const key = tabKey(tab)
         const next = { title: session.title, directory: session.directory }
         const current = info[key]
-        if (current?.title === next.title && current.directory === next.directory) return
+        if (current?.title === next.title && pathKey(current.directory ?? "") === pathKey(next.directory)) return
         setInfo(key, next)
       },
       select: navigateTab,

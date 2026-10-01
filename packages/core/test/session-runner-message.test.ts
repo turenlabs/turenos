@@ -245,6 +245,41 @@ Recent work
     expect(messages.at(-1)?.content).toEqual([{ type: "text", text: expect.stringContaining("memory_write") }])
   })
 
+  test("only treats a newer assistant message after the latest checkpoint as continuation", () => {
+    const assistant = SessionMessage.Assistant.make({
+      id: id("after_checkpoint"),
+      type: "assistant",
+      agent: "build",
+      model: { id: ModelV2.ID.make("model"), providerID: ProviderV2.ID.make("provider") },
+      content: [],
+      time: { created: DateTime.makeUnsafe(1), completed: DateTime.makeUnsafe(1) },
+    })
+    const first = SessionMessage.Compaction.make({
+      id: id("first_checkpoint"),
+      type: "compaction",
+      reason: "auto",
+      summary: "Earlier work",
+      recent: "Recent work",
+      time: { created },
+    })
+    const latest = SessionMessage.Compaction.make({
+      id: id("latest_checkpoint"),
+      type: "compaction",
+      reason: "auto",
+      summary: "Later work",
+      recent: "Latest work",
+      time: { created: DateTime.makeUnsafe(2) },
+    })
+
+    expect(JSON.stringify(toLLMMessages([first, assistant], model))).not.toContain("Resume immediately")
+    expect(
+      toLLMMessages([first, assistant, latest], model).at(-1)?.content,
+    ).toEqual([{ type: "text", text: expect.stringContaining("Resume immediately") }])
+    expect(
+      toLLMMessages([first, { ...assistant, time: { created, completed: created } }], model).at(-1)?.content,
+    ).toEqual([{ type: "text", text: expect.stringContaining("Resume immediately") }])
+  })
+
   test("ships the durable-fact ledger alongside the summary and the resume directive", () => {
     const messages = toLLMMessages(
       [

@@ -783,6 +783,55 @@ it.instance("local stdio timeout terminates the real server process", () =>
   }),
 )
 
+it.instance("quotes local server stderr when the process dies before connecting", () =>
+  Effect.gen(function* () {
+    const mcp = yield* MCP.Service
+    const result = yield* mcp.add("dead-stdio", {
+      type: "local",
+      command: [process.execPath, stdioFixture, "--stderr-exit"],
+    })
+
+    expect(statusName(result.candidate, "dead-stdio")).toBe("failed")
+    // Capture before toMatchObject: bun replaces matched fields with the
+    // asymmetric matcher object, corrupting later reads.
+    const error = result.candidate?.status === "failed" ? String(result.candidate.error) : ""
+    expect(result.candidate).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("fixture-fatal: refusing to start without credentials"),
+    })
+    // The SDK's transport jargon is rewritten before it reaches the user.
+    expect(error).not.toContain("MCP error")
+    expect(error).toContain("closed the connection")
+    expect(yield* mcp.log("dead-stdio")).toContain("fixture-fatal: refusing to start without credentials")
+  }),
+)
+
+it.instance("quotes local server stderr when a connected process crashes", () =>
+  Effect.gen(function* () {
+    const mcp = yield* MCP.Service
+    yield* mcp.add("crashing-stdio", {
+      type: "local",
+      command: [process.execPath, stdioFixture, "--crash-after-list"],
+    })
+
+    const status = yield* pollWithTimeout(
+      Effect.gen(function* () {
+        const current = (yield* mcp.status())["crashing-stdio"]
+        return current?.status === "failed" ? current : undefined
+      }),
+      "crashing stdio server did not reach failed",
+    )
+    const error = status.status === "failed" ? String(status.error) : ""
+    expect(status).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("fixture-crash: exiting after tool list"),
+    })
+    expect(error).not.toContain("MCP error")
+    expect(error).toContain("server reported:")
+    expect(yield* mcp.log("crashing-stdio")).toContain("fixture-crash: exiting after tool list")
+  }),
+)
+
 it.instance("remote timeout aborts both real HTTP transport attempts", () =>
   Effect.gen(function* () {
     const server = yield* hangingLifecycleServer()

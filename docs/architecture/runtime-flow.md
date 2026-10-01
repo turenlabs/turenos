@@ -66,8 +66,10 @@ Session V2 separates durable admission from model execution. The normative contr
    boundary, and settle through the Tool Registry. After all calls settle, the runner reloads
    history and decides whether to continue.
 7. Admitted inputs become visible user messages at the next safe provider-turn boundary, so user
-   input can join an active drain without waiting for idle. Delivery decides how
-   (`packages/core/src/session/input.ts`):
+   input can join an active drain without waiting for idle. The Claude Code CLI runs a whole agent
+   loop inside one provider turn, so eligible steers are written to the running CLI and promoted when
+   it confirms folding them in (see [Claude Code tool routing](../providers/claude-code/tool-routing.md)).
+   Delivery decides how (`packages/core/src/session/input.ts`):
    - **Steer** (the default for prompts): every pending steer is promoted at the boundary, and steers
      always go before queued inputs.
    - **Queue**: one queued user input is promoted per boundary, after in-flight tool calls settle, and

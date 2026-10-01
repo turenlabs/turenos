@@ -17,6 +17,7 @@ import { diffs as cleanDiffs, message as cleanMessage } from "@/utils/diffs"
 import { sessionNotFoundError } from "@/utils/server-errors"
 import { rootSession } from "@/utils/session-route"
 import { dropSessionCaches, pickSessionCacheEvictions, SESSION_CACHE_LIMIT } from "./global-sync/session-cache"
+import { pathKey } from "@/utils/path-key"
 import { retainStreamedText, streamedText } from "./global-sync/part-snapshot"
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
@@ -514,8 +515,10 @@ export function createServerSession(client: ForgeClient) {
       }
       const statusOwner = statusDirectories.get(sessionID)
       if (
-        (statusOwner?.directory === directory && statusOwner.revision <= snapshotRevision) ||
-        (!statusOwner && data.info[sessionID]?.directory === directory)
+        (statusOwner &&
+          pathKey(statusOwner.directory) === pathKey(directory) &&
+          statusOwner.revision <= snapshotRevision) ||
+        (!statusOwner && pathKey(data.info[sessionID]?.directory ?? "") === pathKey(directory))
       )
         stale.add(sessionID)
     }

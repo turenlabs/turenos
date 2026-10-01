@@ -107,9 +107,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@chevrotain/utils` | `11.0.3` | Apache-2.0 | [source](git://github.com/Chevrotain/chevrotain.git) |
 | `@clack/core` | `1.0.0-alpha.1` | MIT | [source](git+https://github.com/bombshell-dev/clack.git) |
 | `@clack/prompts` | `1.0.0-alpha.1` | MIT | [source](git+https://github.com/bombshell-dev/clack.git) |
-| `@corvu/dialog` | `0.2.4` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
-| `@corvu/drawer` | `0.2.4` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
-| `@corvu/utils` | `0.3.2` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `@corvu/utils` | `0.4.2` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `@dnd-kit/abstract` | `0.5.0` | MIT | [source](https://github.com/clauderic/dnd-kit) |
 | `@dnd-kit/collision` | `0.5.0` | MIT | [source](https://github.com/clauderic/dnd-kit) |
@@ -313,7 +310,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@solid-primitives/keyed` | `1.5.3` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
 | `@solid-primitives/map` | `0.4.13` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
 | `@solid-primitives/media` | `2.3.3` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
-| `@solid-primitives/memo` | `1.5.0` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
 | `@solid-primitives/props` | `3.2.3` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
 | `@solid-primitives/refs` | `1.1.3` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
 | `@solid-primitives/resize-observer` | `2.1.3` | MIT | [source](git+https://github.com/solidjs-community/solid-primitives.git) |
@@ -427,7 +423,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `body-parser` | `2.3.0` | MIT | [source](expressjs/body-parser) |
 | `bonjour-service` | `1.3.0` | MIT | [source](https://github.com/onlxltd/bonjour-service.git) |
 | `bowser` | `2.14.1` | MIT | [source](git+https://github.com/bowser-js/bowser.git) |
-| `brace-expansion` | `5.0.9` | MIT | [source](git+https://github.com/juliangruber/brace-expansion.git) |
+| `brace-expansion` | `5.0.12` | MIT | [source](git+https://github.com/juliangruber/brace-expansion.git) |
 | `braces` | `3.0.3` | MIT | [source](micromatch/braces) |
 | `browser-fs-access` | `0.29.1` | Apache-2.0 | [source](git+https://github.com/GoogleChromeLabs/browser-fs-access.git) |
 | `buffer-equal-constant-time` | `1.0.1` | BSD-3-Clause | [source](git@github.com:goinstant/buffer-equal-constant-time.git) |
@@ -534,7 +530,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `dom-serializer` | `2.0.0` | MIT | [source](git://github.com/cheeriojs/dom-serializer.git) |
 | `domelementtype` | `2.3.0` | BSD-2-Clause | [source](git://github.com/fb55/domelementtype.git) |
 | `domhandler` | `5.0.3` | BSD-2-Clause | [source](git://github.com/fb55/domhandler.git) |
-| `dompurify` | `3.4.14` | (MPL-2.0 OR Apache-2.0) | [source](git://github.com/cure53/DOMPurify.git) |
+| `dompurify` | `3.4.16` | (MPL-2.0 OR Apache-2.0) | [source](git://github.com/cure53/DOMPurify.git) |
 | `domutils` | `3.2.2` | BSD-2-Clause | [source](git://github.com/fb55/domutils.git) |
 | `dot-prop` | `10.1.0` | MIT | [source](sindresorhus/dot-prop) |
 | `drizzle-orm` | `1.0.0-rc.2` | Apache-2.0 | [source](git+https://github.com/drizzle-team/drizzle-orm.git) |
@@ -583,8 +579,8 @@ Each row identifies a resolved package and version, its declared license, and it
 | `fast-json-stringify` | `6.4.0` | MIT | [source](git+https://github.com/fastify/fast-json-stringify.git) |
 | `fast-json-stringify` | `7.0.1` | MIT | [source](git+https://github.com/fastify/fast-json-stringify.git) |
 | `fast-querystring` | `1.1.2` | MIT | [source](git+https://github.com/anonrig/fast-querystring.git) |
-| `fast-uri` | `3.1.6` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
-| `fast-uri` | `4.1.3` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
+| `fast-uri` | `3.1.8` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
+| `fast-uri` | `4.1.5` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
 | `fast-xml-builder` | `1.2.0` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-builder.git) |
 | `fast-xml-parser` | `5.7.3` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-parser.git) |
 | `fastdom` | `1.0.12` | MIT | [source](git://github.com/wilsonpage/fastdom.git) |
@@ -654,7 +650,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `internmap` | `1.0.1` | ISC | [source](https://github.com/mbostock/internmap.git) |
 | `internmap` | `2.0.3` | ISC | [source](https://github.com/mbostock/internmap.git) |
 | `ioredis` | `5.11.0` | MIT | [source](git://github.com/luin/ioredis.git) |
-| `ip-address` | `10.7.0` | MIT | [source](https://github.com/beaugunderson/ip-address.git) |
+| `ip-address` | `10.7.1` | MIT | [source](https://github.com/beaugunderson/ip-address.git) |
 | `ipaddr.js` | `1.9.1` | MIT | [source](git://github.com/whitequark/ipaddr.js) |
 | `ipaddr.js` | `2.4.0` | MIT | [source](git://github.com/whitequark/ipaddr.js) |
 | `is-binary-path` | `2.1.0` | MIT | [source](sindresorhus/is-binary-path) |
@@ -901,14 +897,11 @@ Each row identifies a resolved package and version, its declared license, and it
 | `socket.io-parser` | `4.2.7` | MIT | [source](git+https://github.com/socketio/socket.io.git) |
 | `socks` | `2.8.9` | MIT | [source](git+https://github.com/JoshGlazebrook/socks.git) |
 | `socks-proxy-agent` | `8.0.5` | MIT | [source](https://github.com/TooTallNate/proxy-agents.git) |
-| `solid-dismissible` | `0.1.1` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
-| `solid-focus-trap` | `0.1.9` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `solid-js` | `1.9.15` | MIT | [source](https://github.com/solidjs/solid) |
 | `solid-list` | `0.3.0` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `solid-presence` | `0.1.8` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `solid-presence` | `0.2.0` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `solid-prevent-scroll` | `0.1.10` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
-| `solid-transition-size` | `0.1.4` | MIT | [source](git+https://github.com/corvudev/corvu.git) |
 | `sonic-boom` | `4.2.1` | MIT | [source](git+https://github.com/pinojs/sonic-boom.git) |
 | `sort-keys` | `1.1.2` | MIT | [source](sindresorhus/sort-keys) |
 | `sort-keys-length` | `1.0.1` | MIT | [source](kevva/sort-keys-length) |
@@ -965,9 +958,9 @@ Each row identifies a resolved package and version, its declared license, and it
 | `typescript` | `5.8.2` | Apache-2.0 | [source](https://github.com/microsoft/TypeScript.git) |
 | `uint8array-extras` | `1.5.0` | MIT | [source](sindresorhus/uint8array-extras) |
 | `ulid` | `3.0.1` | MIT | [source](git+https://github.com/ulid/javascript.git) |
-| `undici` | `6.28.0` | MIT | [source](git+https://github.com/nodejs/undici.git) |
+| `undici` | `6.28.1` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `undici` | `7.29.1` | MIT | [source](git+https://github.com/nodejs/undici.git) |
-| `undici` | `8.10.1` | MIT | [source](git+https://github.com/nodejs/undici.git) |
+| `undici` | `8.10.2` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `undici-types` | `7.16.0` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `unist-util-is` | `6.0.1` | MIT | [source](syntax-tree/unist-util-is) |
 | `unist-util-position` | `5.0.0` | MIT | [source](syntax-tree/unist-util-position) |
@@ -1026,6 +1019,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `zustand` | `4.5.7` | MIT | [source](git+https://github.com/pmndrs/zustand.git) |
 | `zwitch` | `2.0.4` | MIT | [source](wooorm/zwitch) |
 
-Inventory total: **1004 resolved packages**.
+Inventory total: **997 resolved packages**.
 
 This file is regenerated during the desktop prebuild. Do not edit generated inventory content by hand.

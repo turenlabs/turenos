@@ -1,10 +1,11 @@
 import { EventStreamCodec } from "@smithy/eventstream-codec"
 import { fromUtf8, toUtf8 } from "@smithy/util-utf8"
 import { describe, expect } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Stream } from "effect"
 import { CacheHint, LLM, Message, ToolCallPart, ToolChoice } from "../../src"
 import { LLMClient } from "../../src/route"
 import { AmazonBedrock } from "../../src/providers"
+import { BedrockEventStream } from "../../src/protocols/bedrock-event-stream"
 import * as BedrockConverse from "../../src/protocols/bedrock-converse"
 import { it } from "../lib/effect"
 import { fixedResponse } from "../lib/http"
@@ -266,6 +267,31 @@ describe("Bedrock Converse route", () => {
         outputTokens: 2,
         totalTokens: 7,
       })
+    }),
+  )
+
+  it.effect("preserves an incomplete frame when its Buffer source chunk is reused", () =>
+    Effect.gen(function* () {
+      const complete = Buffer.from(
+        eventFrame("contentBlockDelta", { contentBlockIndex: 0, delta: { text: "Hello" } }),
+      )
+      const partial = eventFrame("contentBlockDelta", { contentBlockIndex: 0, delta: { text: "!" } })
+      const head = Buffer.concat([complete, partial.subarray(0, 8)])
+      const chunks = Stream.concat(
+        Stream.fromIterable([head]),
+        Stream.fromEffect(
+          Effect.sync(() => {
+            head.fill(0, complete.length)
+            return partial.subarray(8)
+          }),
+        ),
+      )
+      const decoded = yield* Stream.runCollect(BedrockEventStream.framing("test").frame(chunks))
+
+      expect(decoded).toEqual([
+        { contentBlockDelta: { contentBlockIndex: 0, delta: { text: "Hello" } } },
+        { contentBlockDelta: { contentBlockIndex: 0, delta: { text: "!" } } },
+      ])
     }),
   )
 

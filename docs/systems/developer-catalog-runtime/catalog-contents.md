@@ -4,7 +4,7 @@ The built-in catalog inventory as of 2026-09-25 is defined by the manifests in `
 
 ## Data sources
 
-The catalog contains 23 data sources: 21 cybersecurity sources served by `security:` adapters and two web-search
+The catalog contains 24 data sources: 22 cybersecurity sources served by `security:` adapters and two web-search
 sources served by `websearch:` adapters.
 
 Cybersecurity sources:
@@ -22,6 +22,7 @@ Cybersecurity sources:
 - Have I Been Pwned
 - LOLBAS
 - MITRE ATT&CK
+- MITRE CAPEC
 - MITRE CWE
 - MITRE D3FEND
 - NVD
@@ -49,7 +50,7 @@ behavior and obtain a source-specific rights review before new storage or redist
 
 ## Skills and subagents
 
-The catalog contains eleven downloadable skills plus the built-in Customize TurenOS skill, whose `embedded` source ships
+The catalog contains twelve downloadable skills plus the built-in Customize TurenOS skill, whose `embedded` source ships
 with TurenOS and is not downloaded or scanned by Vigil:
 
 - Secure Code Review
@@ -60,6 +61,7 @@ with TurenOS and is not downloaded or scanned by Vigil:
 - Threat Intelligence Brief
 - Detection Engineering Review
 - Incident Evidence Triage
+- MCP Security Review
 - Technical Security Blog
 - Threat Model Review
 - IaC Config Review

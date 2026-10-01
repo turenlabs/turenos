@@ -113,6 +113,8 @@ describe("filterExtensionItems", () => {
         ["turenlabs/grafana-cloud-security", "observability"],
         ["turenlabs/incident-io", "incident-response"],
         ["turenlabs/sentry", "observability"],
+        ["turenlabs/capec", "security-knowledge"],
+        ["turenlabs/mcp-security-review", "application-security"],
       ].map(([id, category]) => [extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id } }), category]),
     ).toEqual([
       ["security-operations", "security-operations"],
@@ -128,6 +130,8 @@ describe("filterExtensionItems", () => {
       ["observability", "observability"],
       ["incident-response", "incident-response"],
       ["observability", "observability"],
+      ["security-knowledge", "security-knowledge"],
+      ["application-security", "application-security"],
     ])
     expect(extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id: "turenlabs/euvd" } })).toBe(
       "vulnerability-intelligence",
@@ -453,6 +457,28 @@ describe("extensionAction", () => {
       blocked: true,
       payload: { enabled: false },
     })
+  })
+
+  test("offers a reconnect for a failed-but-enabled extension, not just Disable", () => {
+    const failed = { ...mcp, status: "failed" as const }
+    expect(extensionAction(failed, {})).toEqual({
+      label: "Retry",
+      missingRequired: false,
+      payload: { enabled: true, connect: true },
+    })
+    // A draft still takes precedence — saving new values reconciles anyway.
+    const base = mcp.manifest.contributions[0]
+    if (!base || base.type !== "mcp") throw new Error("Expected MCP fixture")
+    const writable = {
+      ...failed,
+      manifest: {
+        ...failed.manifest,
+        contributions: [{ ...base, tools: { allow: ["notion-search", "notion-update"], write: ["notion-update"] } }],
+      },
+    }
+    expect(extensionAction(writable, { "turenlabs/notion:writeTools": "enabled" })?.label).toBe("Save")
+    // Failed while disabled stays an ordinary Enable.
+    expect(extensionAction({ ...mcp, enabled: false, status: "failed" }, {})?.label).toBe("Enable")
   })
 
   test("allows unavailable or needs-install extensions to be disabled but not enabled", () => {

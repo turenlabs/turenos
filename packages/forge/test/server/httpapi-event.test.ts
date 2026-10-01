@@ -119,6 +119,50 @@ describe("event HttpApi", () => {
   }
 
   itShared.instance(
+    "survives an event burst without dropping the subscriber",
+    () =>
+      Effect.gen(function* () {
+        const { directory } = yield* TestInstance
+        const { reader } = yield* openEventStream(directory)
+        expect(yield* readEvent(reader)).toMatchObject({ type: "server.connected", properties: {} })
+
+        const events = yield* EventV2.Service
+        // A healthy client can lag a burst while the event loop is busy; the
+        // subscriber bound absorbs it instead of failing the stream and forcing
+        // a full UI resync on reconnect.
+        const burst = 2048
+        for (let i = 0; i < burst; i++) {
+          Effect.runSync(
+            events.publish(Flood, { text: `burst-${i}` }, { location: { directory: AbsolutePath.make(directory) } }),
+          )
+        }
+
+        const collected = yield* awaitWithTimeout(
+          Effect.gen(function* () {
+            let seen = countOccurrences(yield* Queue.takeAll(reader), "test\\.flood")
+            while (seen < burst) {
+              const chunk = yield* Queue.take(reader).pipe(
+                Effect.timeoutOrElse({ duration: "10 seconds", orElse: () => Effect.fail(new Error("stalled")) }),
+              )
+              seen += (new TextDecoder().decode(chunk).match(/test\.flood/g) ?? []).length
+            }
+            return seen
+          }),
+          "event stream did not deliver the burst",
+          "15 seconds",
+        )
+        expect(collected).toBeGreaterThanOrEqual(burst)
+
+        // The stream is still live — no reconnect storm, no tab refresh.
+        Effect.runSync(
+          events.publish(Flood, { text: "after" }, { location: { directory: AbsolutePath.make(directory) } }),
+        )
+        expect(yield* readEvent(reader)).toMatchObject({ type: "test.flood" })
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  itShared.instance(
     "terminates a stalled event stream instead of buffering events without bound",
     () =>
       Effect.gen(function* () {
@@ -131,7 +175,7 @@ describe("event HttpApi", () => {
         // cannot interleave with the SSE consumer: a stalled subscriber's queue
         // fills to capacity and the stream is dropped rather than growing
         // without bound.
-        for (let i = 0; i < 512; i++) {
+        for (let i = 0; i < 9216; i++) {
           Effect.runSync(
             events.publish(Flood, { text: `flood-${i}` }, { location: { directory: AbsolutePath.make(directory) } }),
           )
@@ -146,7 +190,7 @@ describe("event HttpApi", () => {
         // an error or a close — the client reconnects either way.
         const delivered = Exit.isSuccess(collected) ? countOccurrences(collected.value, '"test\\.flood"') : 0
         expect(delivered).toBeGreaterThan(0)
-        expect(delivered).toBeLessThanOrEqual(300)
+        expect(delivered).toBeLessThanOrEqual(8300)
 
         // The subscriber was dropped, not the server: a fresh connection still works.
         const reconnect = yield* openEventStream(directory)
@@ -186,14 +230,14 @@ describe("event HttpApi", () => {
       // GlobalBus.emit is synchronous, so the flood cannot interleave with the
       // SSE consumer: the subscriber queue fills to capacity and the stream is
       // dropped rather than growing without bound.
-      for (let i = 0; i < 512; i++) {
+      for (let i = 0; i < 9216; i++) {
         GlobalBus.emit("event", { directory: "flood", payload: { type: "test.flood" } })
       }
 
       yield* awaitWithTimeout(Deferred.await(terminated), "global event stream never terminated", "10 seconds")
       const delivered = countOccurrences(yield* Queue.takeAll(reader), "test\\.flood")
       expect(delivered).toBeGreaterThan(0)
-      expect(delivered).toBeLessThanOrEqual(300)
+      expect(delivered).toBeLessThanOrEqual(8300)
     }),
   )
 })

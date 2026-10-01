@@ -48,6 +48,9 @@ import { SessionExecutionControl } from "@turenlabs/core/session/execution-contr
 import { SessionRunCoordinator } from "@turenlabs/core/session/run-coordinator"
 import { SessionRunner } from "@turenlabs/core/session/runner"
 import * as SessionRunnerLLM from "@turenlabs/core/session/runner/llm"
+import { ClaudeCodeMcp } from "@turenlabs/core/session/runner/claude-code-mcp-namespace"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
 import { SessionRunnerRetry } from "@turenlabs/core/session/runner/retry"
 import { SessionStatus } from "@turenlabs/core/session/status"
@@ -106,6 +109,8 @@ import { location as locationFixture } from "./fixture/location"
 import { agentHost, host } from "./plugin/host"
 
 const requests: LLMRequest[] = []
+let requestCount = 0
+let captureRequests = true
 const discoveryContextPrefix = "Additional built-in capabilities —"
 let response: LLMEvent[] = []
 let responses: LLMEvent[][] | undefined
@@ -127,10 +132,13 @@ const client = Layer.succeed(
   LLMClient.Service.of({
     prepare: () => Effect.die("unused"),
     stream: ((request: LLMRequest) => {
-      requests.push({
-        ...request,
-        system: request.system.filter((part) => !part.text.startsWith(discoveryContextPrefix)),
-      })
+      requestCount++
+      if (captureRequests) {
+        requests.push({
+          ...request,
+          system: request.system.filter((part) => !part.text.startsWith(discoveryContextPrefix)),
+        })
+      }
       if (responseStream) {
         const stream = responseStream
         responseStream = undefined
@@ -514,6 +522,8 @@ const insertSession = (id: SessionV2.ID) =>
 const setup = Effect.gen(function* () {
   const { db } = yield* Database.Service
   requests.length = 0
+  requestCount = 0
+  captureRequests = true
   response = []
   systemBaseline = "Initial context"
   systemRemoved = false
@@ -6976,5 +6986,373 @@ describe("SessionRunnerLLM provider retry", () => {
       expect(runtimeIndex).toBeGreaterThanOrEqual(0)
       expect(userIndex).toBeGreaterThan(runtimeIndex)
     }),
+  )
+})
+
+describe("SessionRunnerLLM Claude Code steering", () => {
+  // Any route works: the scripted client stands in for the transport. The provider ID is what
+  // makes the runner treat the turn as a Claude Code run.
+  const claudeModel = Model.make({ id: "opus", provider: "claude-code", route: OpenAIChat.route })
+  const steerID = SessionMessage.ID.make("msg_claude_code_steer")
+
+  /**
+   * Plays the Claude Code bridge: attaches a writer to the turn's steering handle, emits output,
+   * then hands the first steer the runner offers to `after`, whose events end the turn.
+   */
+  const claudeRun = (input: {
+    readonly offered: Deferred.Deferred<ClaudeCodeMcp.SteerInput>
+    readonly retracted?: Deferred.Deferred<string>
+    readonly after: (steering: ClaudeCodeMcp.Steering, steer: ClaudeCodeMcp.SteerInput) => Effect.Effect<LLMEvent[]>
+  }) =>
+    Stream.unwrap(
+      Effect.sync(() => {
+        const token = ClaudeCodeMcp.requestToken(requests.at(-1)?.metadata)
+        const steering = token === undefined ? undefined : ClaudeCodeMcp.steering(token)
+        if (!steering) throw new Error("The Claude Code turn registered no steering handle")
+        steering.attach({
+          write: (steer) => {
+            Deferred.doneUnsafe(input.offered, Effect.succeed(steer))
+            return true
+          },
+          retract: (id) => {
+            if (input.retracted) Deferred.doneUnsafe(input.retracted, Effect.succeed(id))
+          },
+        })
+        return Stream.concat(
+          Stream.fromIterable([
+            LLMEvent.stepStart({ index: 0 }),
+            LLMEvent.textStart({ id: "text-before-steer" }),
+            LLMEvent.textDelta({ id: "text-before-steer", text: "Working on approach A" }),
+            LLMEvent.textEnd({ id: "text-before-steer" }),
+          ]),
+          Stream.unwrap(
+            Deferred.await(input.offered).pipe(
+              Effect.flatMap((steer) => input.after(steering, steer)),
+              Effect.map(Stream.fromIterable),
+            ),
+          ),
+        )
+      }),
+    )
+
+  const finalText = (id: string, text: string) => [
+    LLMEvent.textStart({ id }),
+    LLMEvent.textDelta({ id, text }),
+    LLMEvent.textEnd({ id }),
+    LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+    LLMEvent.finish({ reason: "stop" }),
+  ]
+
+  /** Starts a Claude Code turn on `first`, then admits a steer once the provider request is out. */
+  const startRun = (first: Stream.Stream<LLMEvent, LLMError>, next: LLMEvent[] = []) =>
+    Effect.gen(function* () {
+      yield* setup
+      currentModel = claudeModel
+      responseStream = first
+      response = next
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Start the refactor" }), resume: false })
+      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
+      for (let attempt = 0; attempt < 300 && requests.length === 0; attempt += 1) yield* Effect.sleep("10 millis")
+      expect(requests.length).toBeGreaterThan(0)
+      yield* session.prompt({ id: steerID, sessionID, prompt: Prompt.make({ text: "Use approach B instead" }) })
+      return { session, run }
+    })
+
+  it.live("folds a steer into the running CLI turn between the output before and after it", () =>
+    Effect.gen(function* () {
+      const offered = yield* Deferred.make<ClaudeCodeMcp.SteerInput>()
+      const { session, run } = yield* startRun(
+        claudeRun({
+          offered,
+          // The bridge reports the fold, then emits its marker ahead of the answering content.
+          after: (steering, steer) =>
+            Effect.sync(() => {
+              steering.started(steer.id)
+              return [LLMEvent.stepStart({ index: 1 }), ...finalText("text-after-steer", "Switched to approach B")]
+            }),
+        }),
+      )
+
+      expect(yield* Deferred.await(offered).pipe(Effect.timeout("5 seconds"))).toEqual({
+        id: steerID,
+        text: "Use approach B instead",
+      })
+      yield* Fiber.join(run)
+
+      expect(requests).toHaveLength(1)
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Start the refactor" },
+        { type: "assistant", finish: "tool-calls", content: [{ type: "text", text: "Working on approach A" }] },
+        { type: "user", id: steerID, text: "Use approach B instead" },
+        { type: "assistant", finish: "stop", content: [{ type: "text", text: "Switched to approach B" }] },
+      ])
+      expect(yield* session.inputStatus({ sessionID, messageID: steerID })).toMatchObject({ status: "promoted" })
+    }),
+  )
+
+  it.live("promotes a steer the CLI never folded in at the next boundary", () =>
+    Effect.gen(function* () {
+      const offered = yield* Deferred.make<ClaudeCodeMcp.SteerInput>()
+      const { session, run } = yield* startRun(
+        claudeRun({
+          offered,
+          // The CLI ended its turn before folding the steer in; the bridge detaches at the result.
+          after: (steering) =>
+            Effect.sync(() => {
+              steering.attach(undefined)
+              return finalText("text-first-answer", "Finished approach A")
+            }),
+        }),
+        fragmentFixture("text", "text-boundary-answer", ["Now on approach B"]).completeEvents,
+      )
+
+      yield* Deferred.await(offered).pipe(Effect.timeout("5 seconds"))
+      yield* Fiber.join(run)
+
+      expect(requests).toHaveLength(2)
+      expect(userTexts(requests[1]!)).toContain("Use approach B instead")
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Start the refactor" },
+        { type: "assistant", content: [{ type: "text", text: "Working on approach A" }, { type: "text" }] },
+        { type: "user", id: steerID, text: "Use approach B instead" },
+        { type: "assistant", content: [{ type: "text", text: "Now on approach B" }] },
+      ])
+    }),
+  )
+
+  it.live("withdraws a steer cancelled after it reached the CLI", () =>
+    Effect.gen(function* () {
+      const offered = yield* Deferred.make<ClaudeCodeMcp.SteerInput>()
+      const retracted = yield* Deferred.make<string>()
+      const { session, run } = yield* startRun(
+        claudeRun({
+          offered,
+          retracted,
+          after: () => Deferred.await(retracted).pipe(Effect.as(finalText("text-uncancelled", "Stayed on approach A"))),
+        }),
+      )
+
+      yield* Deferred.await(offered).pipe(Effect.timeout("5 seconds"))
+      expect(yield* session.cancelPendingInput({ sessionID, messageID: steerID })).toBe(true)
+      expect(yield* Deferred.await(retracted).pipe(Effect.timeout("5 seconds"))).toBe(steerID)
+      yield* Fiber.join(run)
+
+      expect(requests).toHaveLength(1)
+      expect(yield* session.inputStatus({ sessionID, messageID: steerID })).toMatchObject({ status: "cancelled" })
+      expect((yield* session.context(sessionID)).filter((message) => message.type === "user")).toHaveLength(1)
+    }),
+  )
+
+  it.live("records a steer the CLI folded in before its cancellation landed", () =>
+    Effect.gen(function* () {
+      const offered = yield* Deferred.make<ClaudeCodeMcp.SteerInput>()
+      const cancelled = yield* Deferred.make<void>()
+      const { session, run } = yield* startRun(
+        claudeRun({
+          offered,
+          // The CLI dequeued the steer before the withdrawal reached it.
+          after: (steering, steer) =>
+            Deferred.await(cancelled).pipe(
+              Effect.map(() => {
+                steering.started(steer.id)
+                return [LLMEvent.stepStart({ index: 1 }), ...finalText("text-after-steer", "Switched to approach B")]
+              }),
+            ),
+        }),
+      )
+
+      yield* Deferred.await(offered).pipe(Effect.timeout("5 seconds"))
+      expect(yield* session.cancelPendingInput({ sessionID, messageID: steerID })).toBe(true)
+      yield* Deferred.succeed(cancelled, undefined)
+      yield* Fiber.join(run)
+
+      expect(yield* session.inputStatus({ sessionID, messageID: steerID })).toMatchObject({ status: "promoted" })
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Start the refactor" },
+        { type: "assistant", content: [{ type: "text", text: "Working on approach A" }] },
+        { type: "user", id: steerID, text: "Use approach B instead" },
+        { type: "assistant", content: [{ type: "text", text: "Switched to approach B" }] },
+      ])
+    }),
+  )
+
+  it.live("holds a plain steer behind an earlier command steer for the boundary", () =>
+    Effect.gen(function* () {
+      yield* setup
+      currentModel = claudeModel
+      const offers: ClaudeCodeMcp.SteerInput[] = []
+      const admitted = yield* Deferred.make<void>()
+      responseStream = Stream.unwrap(
+        Effect.gen(function* () {
+          const steering = ClaudeCodeMcp.steering(ClaudeCodeMcp.requestToken(requests.at(-1)?.metadata)!)!
+          steering.attach({
+            write: (steer) => {
+              offers.push(steer)
+              return true
+            },
+            retract: () => undefined,
+          })
+          // Several poll intervals after both steers are admitted, the CLI ends its turn.
+          yield* Deferred.await(admitted)
+          yield* Effect.sleep("1 second")
+          steering.attach(undefined)
+          return Stream.fromIterable([LLMEvent.stepStart({ index: 0 }), ...finalText("text-first", "Done with A")])
+        }),
+      )
+      response = fragmentFixture("text", "text-boundary", ["Handled both"]).completeEvents
+      const session = yield* SessionV2.Service
+      const { db } = yield* Database.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Start the refactor" }), resume: false })
+      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
+      while (requests.length === 0) yield* Effect.sleep("5 millis")
+      yield* SessionInput.admit(db, yield* EventV2.Service, {
+        id: SessionMessage.ID.make("msg_claude_code_command"),
+        sessionID,
+        prompt: Prompt.make({ text: "Review the diff" }),
+        delivery: "steer",
+        command: SessionInput.CommandIntent.make({ command: "review", arguments: "" }),
+        kind: "command",
+        location: (yield* session.get(sessionID)).location,
+      })
+      yield* session.prompt({ id: steerID, sessionID, prompt: Prompt.make({ text: "Use approach B instead" }) })
+      yield* Deferred.succeed(admitted, undefined)
+      yield* Fiber.join(run)
+
+      expect(offers).toEqual([])
+      expect(requests).toHaveLength(2)
+      expect(userTexts(requests[1]!).slice(-2)).toEqual(["Review the diff", "Use approach B instead"])
+    }),
+  )
+
+  it.live("delivers the steer that dismissed a question the CLI was waiting on", () =>
+    Effect.gen(function* () {
+      yield* setup
+      currentModel = claudeModel
+      const session = yield* SessionV2.Service
+      const registry = yield* ToolRegistry.Service
+      const questions = yield* QuestionV2.Service
+      yield* registry.register({
+        question: Tool.make({
+          description: "Ask the user",
+          input: Schema.Struct({}),
+          output: Schema.Struct({}),
+          execute: (_, context) =>
+            questions.ask({ sessionID: context.sessionID, questions: [] }).pipe(Effect.as({}), Effect.orDie),
+        }),
+      })
+      // The CLI reaches TurenOS tools over the turn's private MCP server and blocks on each reply.
+      responseStream = Stream.unwrap(
+        Effect.gen(function* () {
+          const server = yield* ClaudeCodeMcp.serve(ClaudeCodeMcp.requestToken(requests.at(-1)?.metadata)!).pipe(
+            Effect.orDie,
+          )
+          const client = new Client({ name: "forge-test", version: "1" })
+          yield* Effect.acquireRelease(
+            Effect.promise(() =>
+              client.connect(
+                new StreamableHTTPClientTransport(new URL(server.url), {
+                  requestInit: { headers: { Authorization: server.authorization } },
+                }),
+              ),
+            ),
+            () => Effect.promise(() => client.close()),
+          )
+          return Stream.concat(
+            Stream.make(LLMEvent.stepStart({ index: 0 })),
+            Stream.fromEffect(Effect.promise(() => client.callTool({ name: "question", arguments: {} }))).pipe(
+              Stream.drain,
+            ),
+          )
+        }),
+      )
+      response = fragmentFixture("text", "text-after-question", ["Doing that instead"]).completeEvents
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Ask before continuing" }), resume: false })
+      const run = yield* session.resume(sessionID).pipe(Effect.exit, Effect.forkChild)
+      for (let attempt = 0; attempt < 300 && (yield* questions.list()).length === 0; attempt += 1)
+        yield* Effect.sleep("10 millis")
+      expect((yield* questions.list()).length).toBeGreaterThan(0)
+
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Do this instead" }) })
+      yield* Fiber.join(run).pipe(Effect.timeout("5 seconds"))
+      // The dismissal halts the parked turn; nothing but the steer itself is left to wake the Session.
+      for (let attempt = 0; attempt < 300 && requests.length < 2; attempt++) yield* Effect.sleep("10 millis")
+
+      expect(requests).toHaveLength(2)
+      expect(userTexts(requests[1]!)).toContain("Do this instead")
+      // A coalesced follow-up drain can still be in flight when the assertions finish; scope
+      // teardown interrupts it and the interrupt can wedge mid-settle, so let it go idle first.
+      const execution = yield* SessionExecution.Service
+      for (let attempt = 0; attempt < 300 && (yield* execution.active).size !== 0; attempt += 1)
+        yield* Effect.sleep("10 millis")
+      expect((yield* execution.active).size).toBe(0)
+    }),
+  )
+})
+
+describe("SessionRunnerLLM soak", () => {
+  it.live("sustained tool-call turns do not retain memory per drain", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Soak" }),
+        resume: false,
+      })
+
+      const TURNS = 300
+      const payload = "x".repeat(20 * 1024)
+      responses = Array.from({ length: TURNS }, (_, i) => [
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.toolCall({ id: `soak-${i}`, name: "echo", input: { text: payload } }),
+        LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+        LLMEvent.finish({ reason: "tool-calls" }),
+      ])
+      responses.push(fragmentFixture("text", "soak-final", ["done"]).completeEvents)
+
+      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
+      captureRequests = false
+      const samples: Array<{ turn: number; rss: number; heapUsed: number }> = []
+      const sampler = yield* Effect.gen(function* () {
+        while (true) {
+          samples.push({
+            turn: requestCount,
+            rss: process.memoryUsage().rss,
+            heapUsed: process.memoryUsage().heapUsed,
+          })
+          yield* Effect.sleep("250 millis")
+        }
+      }).pipe(Effect.forkChild)
+
+      yield* Fiber.join(run)
+      yield* Fiber.interrupt(sampler)
+      captureRequests = true
+      expect(requestCount).toBe(TURNS + 1)
+
+      // Let GC settle, then measure the retained delta. A leak grows linearly
+      // with turns; a healthy drain ratchets a little and flattens.
+      yield* Effect.sleep("500 millis")
+      Bun.gc(true)
+      const after = process.memoryUsage()
+      const first = samples[0]
+      const last = samples.at(-1)!
+      const mid = samples[Math.floor(samples.length / 2)]
+      console.log(
+        `SOAK samples n=${samples.length} turn0 rss=${(first.rss / 1048576).toFixed(0)}MB heap=${(first.heapUsed / 1048576).toFixed(0)}MB` +
+          ` mid(t=${mid.turn}) rss=${(mid.rss / 1048576).toFixed(0)}MB heap=${(mid.heapUsed / 1048576).toFixed(0)}MB` +
+          ` last(t=${last.turn}) rss=${(last.rss / 1048576).toFixed(0)}MB heap=${(last.heapUsed / 1048576).toFixed(0)}MB` +
+          ` settled rss=${(after.rss / 1048576).toFixed(0)}MB heap=${(after.heapUsed / 1048576).toFixed(0)}MB`,
+      )
+      // Log the slope so the leak rate per turn is greppable.
+      const slopeMB = (last.heapUsed - first.heapUsed) / 1048576 / Math.max(last.turn - first.turn, 1)
+      console.log(`SOAK heap slope ${slopeMB.toFixed(3)}MB/turn`)
+      // Per-turn retention must stay near zero: RSS may swell under churn (V8
+      // holds freed pages), but post-GC heap has to settle. A healthy drain
+      // settles ~100MB here; per-turn retention pushed it past 1.8GB in the
+      // incident regression.
+      expect(after.heapUsed).toBeLessThan(512 * 1048576)
+    }),
+    120_000,
   )
 })

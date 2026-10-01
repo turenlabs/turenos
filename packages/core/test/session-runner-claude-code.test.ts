@@ -1,7 +1,7 @@
 import { describe, expect } from "bun:test"
-import { LLM, LLMError, type LLMEvent } from "@turenlabs/llm"
+import { LLM, LLMError, Message, ToolCallPart, ToolDefinition, type LLMEvent } from "@turenlabs/llm"
 import { LLMClient, RequestExecutor } from "@turenlabs/llm/route"
-import { DateTime, Effect, Fiber, Layer, Stream } from "effect"
+import { DateTime, Deferred, Effect, Fiber, Layer, Stream } from "effect"
 import { EventV2 } from "@turenlabs/core/event"
 import { createLLMEventPublisher } from "@turenlabs/core/session/runner/publish-llm-event"
 import { SessionV2 } from "@turenlabs/core/session"
@@ -407,6 +407,9 @@ describe("SessionRunner claude-code transport", () => {
         HTTPS_PROXY: "http://proxy.example",
         NO_PROXY: "internal.example,localhost",
         no_proxy: "legacy.example",
+        CLAUDE_AUTO_BACKGROUND_TASKS: "1",
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: "0",
+        CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS: "120000",
       })
 
       expect(env).toMatchObject({
@@ -415,6 +418,11 @@ describe("SessionRunner claude-code transport", () => {
         CLAUDE_AGENT_SDK_CLIENT_APP: "forge",
         CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "forge",
         MCP_TOOL_TIMEOUT: "610000",
+        // Inherited values cannot re-enable ambient memory or background MCP settlement.
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+        CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1",
+        CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS: "0",
+        CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH: "65536",
       })
       expect(Object.keys(env).filter((name) => name.startsWith("ANTHROPIC_"))).toEqual([])
       expect(Object.keys(env).filter((name) => name.startsWith("CLAUDE_CODE_USE_"))).toEqual([])
@@ -986,10 +994,329 @@ describe("SessionRunner claude-code transport", () => {
     }).pipe(Effect.provide(layer)),
   )
 
+  it.effect("describes unsupported image types as not forwarded and sends no image block for them", () =>
+    Effect.gen(function* () {
+      const executable = fakeCLI("")
+      const captured = path.join(path.dirname(executable), "stdin.json")
+      writeFileSync(
+        executable,
+        ["#!/bin/sh", `cat > ${JSON.stringify(captured)}`, `echo ${envelope(successResult)}`].join("\n") + "\n",
+      )
+      chmodSync(executable, 0o755)
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel(executable))
+      const request = LLM.request({
+        model,
+        system: "system context",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "compare these" },
+              { type: "media", mediaType: "image/svg+xml", data: "PHN2Zy8+", filename: "logo.svg" },
+              { type: "media", mediaType: "image/png", data: "aGVsbG8=", filename: "shot.png" },
+            ],
+          },
+        ],
+      })
+      yield* LLM.stream(request).pipe(Stream.runCollect)
+      const content = JSON.parse(readFileSync(captured, "utf8").trim()).message.content
+      expect(content[0].text).toContain("[logo.svg is attached in TurenOS but is not forwarded to Claude Code]")
+      expect(content[0].text).not.toContain("[image logo.svg")
+      expect(content[0].text).toContain("[image shot.png is attached to this conversation]")
+      expect(content.filter((block: { type: string }) => block.type === "image")).toEqual([
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "aGVsbG8=" } },
+      ])
+    }).pipe(Effect.provide(layer)),
+  )
+
+  it.effect("replays settled screenshot results as images", () =>
+    Effect.gen(function* () {
+      const executable = fakeCLI("")
+      const captured = path.join(path.dirname(executable), "stdin.json")
+      writeFileSync(
+        executable,
+        ["#!/bin/sh", `cat > ${JSON.stringify(captured)}`, `echo ${envelope(successResult)}`].join("\n") + "\n",
+      )
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel(executable))
+      const messages = [
+        Message.user("Take a screenshot and inspect it"),
+        Message.assistant([ToolCallPart.make({ id: "shot", name: "screenshot", input: {} })]),
+        Message.tool({
+          id: "shot",
+          name: "screenshot",
+          result: {
+            type: "content",
+            value: [
+              { type: "text", text: "Current screen" },
+              { type: "file", mime: "image/png", uri: "data:image/png;base64,aGVsbG8=" },
+              { type: "file", mime: "image/svg+xml", uri: "data:image/svg+xml;base64,PHN2Zy8+" },
+              { type: "file", mime: "application/pdf", name: "report.pdf", uri: "file:///report.pdf" },
+            ],
+          },
+        }),
+      ]
+      yield* LLM.stream(LLM.request({ model, messages })).pipe(Stream.runCollect)
+      const content = JSON.parse(readFileSync(captured, "utf8").trim()).message.content
+      expect(content.filter((block: { type: string }) => block.type === "image")).toEqual([
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "aGVsbG8=" } },
+      ])
+      expect(content[1].text).toContain("Current screen")
+      expect(content[1].text).toContain("[image from screenshot is attached to this conversation]")
+      expect(content[1].text).toContain("Inline image omitted")
+      expect(content[1].text).toContain("file:///report.pdf")
+      expect(content[1].text).not.toContain("data:")
+      expect(content[1].text).not.toContain("aGVsbG8=")
+      expect(
+        ClaudeCodeBridge.content(
+          LLM.request({ model, messages: [...messages, Message.user("Inspect it again")] }),
+        ).slice(0, content.length),
+      ).toEqual(content)
+    }).pipe(Effect.provide(layer)),
+  )
+
+  it.effect("accepts echoed MCP images at the decoded image byte limit", () =>
+    Effect.gen(function* () {
+      const executable = fakeCLI("")
+      const output = path.join(path.dirname(executable), "output.jsonl")
+      const result = ClaudeCodeMcp.toCallToolResult({
+        type: "content",
+        value: Array.from({ length: 2 }, () => ({
+          type: "file" as const,
+          mime: "image/png",
+          uri: `data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString("base64")}`,
+        })),
+      })
+      expect(result.content.every((item) => item.type === "image")).toBe(true)
+      writeFileSync(
+        output,
+        [
+          ...toolCallEnvelopes({ id: "shot", name: "mcp__forge__screenshot" }).filter((item) => item.type !== "user"),
+          {
+            type: "user",
+            message: {
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "shot",
+                  content: result.content.map((item) =>
+                    item.type === "image"
+                      ? { type: "image", source: { type: "base64", media_type: item.mimeType, data: item.data } }
+                      : item,
+                  ),
+                },
+              ],
+            },
+          },
+          successResult,
+        ]
+          .map((item) => JSON.stringify(item))
+          .join("\n") + "\n",
+      )
+      writeFileSync(executable, `#!/bin/sh\ncat > /dev/null\ncat ${JSON.stringify(output)}\n`)
+      const events = Array.from(yield* collect(executable))
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      expect(events.at(-1)).toMatchObject({ type: "finish", reason: "stop" })
+    }),
+  )
+
+  it.effect("shares replay image limits between attachments and screenshot results", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            Message.user([
+              { type: "text", text: "Original screenshot" },
+              { type: "media", mediaType: "image/png", data: "b2xk" },
+            ]),
+            Message.tool({
+              id: "shots",
+              name: "screenshot",
+              result: {
+                type: "content",
+                value: Array.from({ length: 2 }, () => ({
+                  type: "file",
+                  mime: "image/png",
+                  uri: `data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString("base64")}`,
+                })),
+              },
+            }),
+          ],
+        }),
+      )
+      const images = blocks.filter((block) => block.type === "image")
+      expect(images).toHaveLength(2)
+      expect(images.reduce((bytes, image) => bytes + Buffer.byteLength(image.source.data, "base64"), 0)).toBe(
+        8 * 1024 * 1024,
+      )
+      expect(
+        blocks
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("\n"),
+      ).not.toContain("data:")
+    }),
+  )
+
+  it.effect("replays the transcript as append-only blocks so the next turn extends the cached prefix", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const run = (tag: string) => [
+        Message.assistant([ToolCallPart.make({ id: `call-${tag}`, name: "read", input: { filePath: `${tag}.ts` } })]),
+        Message.tool({ id: `call-${tag}`, name: "read", result: { type: "text", value: `contents of ${tag}` } }),
+        Message.assistant(`answer ${tag}`),
+      ]
+      const first = [Message.user("first question"), ...run("a"), Message.user("second question")]
+      const before = ClaudeCodeBridge.content(LLM.request({ model, messages: first }))
+      const after = ClaudeCodeBridge.content(
+        LLM.request({ model, messages: [...first, ...run("b"), Message.user("third question")] }),
+      )
+
+      expect(before).toEqual([
+        { type: "text", text: "USER:\nfirst question" },
+        {
+          type: "text",
+          text: 'ASSISTANT:\n[tool call read] {"filePath":"a.ts"}\n\nTOOL:\n[tool result read] "contents of a"\n\nASSISTANT:\nanswer a',
+        },
+        { type: "text", text: "USER:\nsecond question" },
+      ])
+      // The previous turn's whole replay is a block prefix of this one, and only two blocks follow it.
+      expect(after.slice(0, before.length)).toEqual(before)
+      expect(after).toHaveLength(before.length + 2)
+    }),
+  )
+
+  it.effect("forwards chronological system updates instead of dropping them", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("hello"),
+            Message.system("These instructions replace all previously loaded ambient instructions."),
+            Message.user("next"),
+          ],
+        }),
+      )
+      expect(blocks).toEqual([
+        { type: "text", text: "USER:\nhello" },
+        {
+          type: "text",
+          text: "<system-update>\nThese instructions replace all previously loaded ambient instructions.\n</system-update>",
+        },
+        { type: "text", text: "USER:\nnext" },
+      ])
+    }),
+  )
+
+  it.effect("leaves one-turn runtime instructions out so the next turn still extends the cached prefix", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      // The runner inserts runtime instructions before each new human message, then never replays them.
+      const runtime = (tag: string) =>
+        Message.make({
+          role: "system",
+          content: `<todo_checkpoint>${tag}</todo_checkpoint>`,
+          metadata: { forge: { internalContext: "runtime" } },
+        })
+      const history = [Message.user("first question"), Message.assistant("answer")]
+      const before = ClaudeCodeBridge.content(
+        LLM.request({ model, messages: [...history, runtime("a"), Message.user("second question")] }),
+      )
+      const after = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            ...history,
+            Message.user("second question"),
+            Message.assistant("answer two"),
+            runtime("b"),
+            Message.user("third question"),
+          ],
+        }),
+      )
+
+      expect(JSON.stringify([before, after])).not.toContain("todo_checkpoint")
+      expect(after.slice(0, before.length)).toEqual(before)
+    }),
+  )
+
+  it.effect("keeps each image beside the message that attached it and still caps the count", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const image = (name: string) => ({
+        type: "media" as const,
+        mediaType: "image/png",
+        data: "aGVsbG8=",
+        filename: name,
+      })
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            { role: "user", content: [{ type: "text", text: "first" }, image("a.png")] },
+            Message.assistant("seen"),
+            {
+              role: "user",
+              content: [{ type: "text", text: "more" }, ...Array.from({ length: 8 }, (_, i) => image(`${i}.png`))],
+            },
+          ],
+        }),
+      )
+      expect(blocks.map((block) => block.type)).toEqual([
+        "text",
+        "text",
+        "text",
+        ...Array.from({ length: 8 }, () => "image" as const),
+      ])
+      // The older image past the cap stays behind as its attachment note.
+      expect(blocks[0]).toMatchObject({
+        text: expect.stringContaining("[image a.png is attached to this conversation]"),
+      })
+    }),
+  )
+
+  it.effect("drops the oldest transcript first when the replay exceeds the prompt limit", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const old = "x".repeat(3 * 1024 * 1024)
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({ model, messages: [Message.user(old), Message.assistant(old), Message.user("latest question")] }),
+      )
+      expect(blocks).toHaveLength(3)
+      expect(blocks[0]).toMatchObject({ text: expect.stringContaining("Earlier transcript omitted") })
+      expect(blocks.at(-1)).toEqual({ type: "text", text: "USER:\nlatest question" })
+    }),
+  )
+
+  it.effect("omits images belonging to discarded transcript messages", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            Message.user([
+              { type: "text", text: "x".repeat(5 * 1024 * 1024) },
+              { type: "media", mediaType: "image/png", data: "b2xk", filename: "old.png" },
+            ]),
+            Message.user([
+              { type: "text", text: "latest" },
+              { type: "media", mediaType: "image/png", data: "bmV3", filename: "new.png" },
+            ]),
+          ],
+        }),
+      )
+      expect(blocks.filter((block) => block.type === "image").map((block) => block.source.data)).toEqual(["bmV3"])
+    }),
+  )
+
   it.effect("bounds a raw stream-json line before parsing it", () =>
     Effect.gen(function* () {
       const events = Array.from(
-        yield* collect(fakeCLI(`awk 'BEGIN { for (i = 0; i < ${9 * 1024 * 1024}; i++) printf "x" }'`)),
+        yield* collect(fakeCLI(`awk 'BEGIN { for (i = 0; i < ${21 * 1024 * 1024}; i++) printf "x" }'`)),
       )
       expect(events.map((event) => event.type)).toEqual(["step-start", "provider-error"])
       expect(events.at(-1)).toMatchObject({
@@ -1308,5 +1635,349 @@ describe("SessionRunner claude-code transport", () => {
         expect(survivors(marker)).toEqual([])
       }),
     8_000,
+  )
+})
+
+/**
+ * A scripted stand-in for `claude -p` that keeps reading stdin, so a test can drive the mid-turn
+ * steering handshake. `script` runs as a module body with `next()` (the next stdin line), `out()`
+ * (one stdout envelope) and `text()` (one streamed text block); every stdin line, then `EOF` when
+ * TurenOS closes stdin, lands in the log `stdin()` returns.
+ */
+const steeringCLI = (script: string) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "forge-claude-steer-"))
+  const executable = path.join(dir, "claude.mjs")
+  const log = path.join(dir, "stdin.log")
+  writeFileSync(
+    executable,
+    `#!${process.execPath}
+import { appendFileSync } from "node:fs"
+const lines = []
+let waiting
+let buffer = ""
+process.stdin.setEncoding("utf8")
+process.stdin.on("data", (chunk) => {
+  buffer += chunk
+  let newline
+  while ((newline = buffer.indexOf("\\n")) >= 0) {
+    const line = buffer.slice(0, newline)
+    buffer = buffer.slice(newline + 1)
+    appendFileSync(${JSON.stringify(log)}, line + "\\n")
+    if (!waiting) lines.push(line)
+    else {
+      const resolve = waiting
+      waiting = undefined
+      resolve(line)
+    }
+  }
+})
+process.stdin.on("end", () => {
+  appendFileSync(${JSON.stringify(log)}, "EOF\\n")
+  process.exit()
+})
+const next = () => new Promise((resolve) => (lines.length > 0 ? resolve(lines.shift()) : (waiting = resolve)))
+const out = (value) => process.stdout.write(JSON.stringify(value) + "\\n")
+const text = (uuid, value) => {
+  out({ type: "stream_event", uuid, event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } } })
+  out({ type: "stream_event", uuid, event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: value } } })
+  out({ type: "stream_event", uuid, event: { type: "content_block_stop", index: 0 } })
+}
+const init = (capabilities) => out({ type: "system", subtype: "init", capabilities })
+const steerable = ["msg_lifecycle_v1", "interrupt_cancel_queued_v1"]
+const result = (extra) => out({ type: "result", subtype: "success", is_error: false, result: "done", usage: {}, ...extra })
+${script}
+await new Promise(() => {})
+`,
+  )
+  chmodSync(executable, 0o755)
+  return {
+    executable,
+    stdin: () =>
+      readFileSync(log, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => (line === "EOF" ? line : JSON.parse(line))),
+  }
+}
+
+/** Streams one turn with a steering handle registered, as the runner does for tool-enabled turns. */
+const steered = (executable: string, steering: ClaudeCodeMcp.Steering) =>
+  Effect.gen(function* () {
+    const token = yield* ClaudeCodeMcp.register({
+      definitions: [],
+      execute: () => Effect.succeed({ type: "text", value: "unused" }),
+      steering,
+    })
+    const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel(executable))
+    return yield* LLM.stream(
+      LLM.request({
+        model,
+        system: "system context",
+        messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+        metadata: ClaudeCodeMcp.requestMetadata(token),
+      }),
+    ).pipe(
+      Stream.runCollect,
+      Effect.map((events) => Array.from(events)),
+    )
+  }).pipe(Effect.provide(layer))
+
+/** Offers one steer until the CLI's writer accepts it; returns whether it ever did. */
+const offerSteer = (steering: ClaudeCodeMcp.Steering) =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 150; attempt++) {
+      if (steering.offer({ id: "msg_steer", text: "Use approach B" })) return true
+      yield* Effect.sleep("20 millis")
+    }
+    return false
+  })
+
+describe("SessionRunner claude-code steering", () => {
+  it.live("folds a steer into the running CLI turn once the CLI confirms it", () =>
+    Effect.gen(function* () {
+      const cli = steeringCLI(`
+await next()
+init(steerable)
+text("before", "Working on A")
+const steer = JSON.parse(await next())
+out({ type: "command_lifecycle", command_uuid: steer.uuid, state: "queued" })
+out({ type: "command_lifecycle", command_uuid: steer.uuid, state: "started" })
+text("after", "Heard: " + steer.message.content[0].text)
+result({ user_message_uuids: [steer.uuid] })
+`)
+      const steering = ClaudeCodeMcp.makeSteering()
+      const run = yield* steered(cli.executable, steering).pipe(Effect.forkChild)
+      expect(yield* offerSteer(steering)).toBe(true)
+      const events = yield* Fiber.join(run)
+
+      expect(steering.take()).toEqual(["msg_steer"])
+      expect(
+        events.flatMap((event) =>
+          event.type === "text-delta" ? [event.text] : event.type === "step-start" ? [`step ${event.index}`] : [],
+        ),
+      ).toEqual(["step 0", "Working on A", "step 1", "Heard: Use approach B"])
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      const [, steer, eof] = cli.stdin()
+      // The CLI gets the bridge's own uuid and the default (queue-behind-tools) priority.
+      expect(steer).toEqual({
+        type: "user",
+        uuid: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        parent_tool_use_id: null,
+        message: { role: "user", content: [{ type: "text", text: "Use approach B" }] },
+      })
+      expect(eof).toBe("EOF")
+    }),
+  )
+
+  it.live("withdraws a steer the CLI has not folded in when its turn ends", () =>
+    Effect.gen(function* () {
+      // The real CLI takes a queued steer off its queue within a millisecond of the result, too soon
+      // for cancel_async_message, and exits 1 once the withdrawal interrupt aborts the turn it began.
+      const cli = steeringCLI(`
+await next()
+init(steerable)
+text("answer", "Finished A")
+const steer = JSON.parse(await next())
+out({ type: "command_lifecycle", command_uuid: steer.uuid, state: "queued" })
+result()
+out({ type: "command_lifecycle", command_uuid: steer.uuid, state: "started" })
+if (JSON.parse(await next()).request?.subtype === "interrupt") process.exitCode = 1
+`)
+      const steering = ClaudeCodeMcp.makeSteering()
+      const run = yield* steered(cli.executable, steering).pipe(Effect.forkChild)
+      expect(yield* offerSteer(steering)).toBe(true)
+      const events = yield* Fiber.join(run)
+
+      expect(steering.take()).toEqual([])
+      // Released for the boundary: nothing is in flight and the closed CLI takes nothing more.
+      expect(steering.inFlight()).toEqual([])
+      expect(steering.offer({ id: "msg_later", text: "late" })).toBe(false)
+      expect(events.some((event) => event.type === "step-start" && event.index > 0)).toBe(false)
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      expect(events.flatMap((event) => (event.type === "finish" ? [event.reason] : []))).toEqual(["stop"])
+      const [, , withdraw, eof] = cli.stdin()
+      expect(withdraw).toMatchObject({
+        type: "control_request",
+        request: { subtype: "interrupt", cancel_queued: true },
+      })
+      expect(eof).toBe("EOF")
+    }),
+  )
+
+  it.live("still reports a steer the CLI folded in after it was withdrawn", () =>
+    Effect.gen(function* () {
+      const cli = steeringCLI(`
+await next()
+init(steerable)
+const steer = JSON.parse(await next())
+await next()
+out({ type: "command_lifecycle", command_uuid: steer.uuid, state: "started" })
+text("after", "Heard it anyway")
+result({ user_message_uuids: [steer.uuid] })
+`)
+      const steering = ClaudeCodeMcp.makeSteering()
+      const run = yield* steered(cli.executable, steering).pipe(Effect.forkChild)
+      expect(yield* offerSteer(steering)).toBe(true)
+      steering.retract("msg_steer")
+      yield* Fiber.join(run)
+
+      // The model read it, so the runner must still be told to record it.
+      expect(steering.take()).toEqual(["msg_steer"])
+      const [, steer, cancel] = cli.stdin()
+      expect(cancel).toMatchObject({ request: { subtype: "cancel_async_message", message_uuid: steer.uuid } })
+    }),
+  )
+
+  it.live("never writes a steer to a CLI that cannot confirm or withdraw it", () =>
+    Effect.gen(function* () {
+      for (const capabilities of [[], ["msg_lifecycle_v1"]]) {
+        const cli = steeringCLI(`
+await next()
+init(${JSON.stringify(capabilities)})
+await new Promise((resolve) => setTimeout(resolve, 300))
+text("answer", "Finished A")
+result()
+`)
+        const steering = ClaudeCodeMcp.makeSteering()
+        const run = yield* steered(cli.executable, steering).pipe(Effect.forkChild)
+        // Offered for the run's whole life, so the window after `init` is covered.
+        let accepted = false
+        while (!accepted && run.pollUnsafe() === undefined) {
+          accepted = steering.offer({ id: "msg_steer", text: "Use approach B" })
+          yield* Effect.sleep("20 millis")
+        }
+        yield* Fiber.join(run)
+
+        expect(accepted).toBe(false)
+        expect(cli.stdin().slice(1)).toEqual(["EOF"])
+      }
+    }),
+  )
+
+  const liveClaude = process.env.FORGE_LIVE_CLAUDE === "1" ? it.live : it.live.skip
+
+  liveClaude(
+    "folds a steer into a real Claude print-mode turn after its running tool call",
+    () =>
+      Effect.gen(function* () {
+        const toolStarted = yield* Deferred.make<void>()
+        const steering = ClaudeCodeMcp.makeSteering()
+        const token = yield* ClaudeCodeMcp.register({
+          definitions: [
+            new ToolDefinition({
+              name: "wait_agents",
+              description: "Wait for background agents to finish",
+              inputSchema: { type: "object", properties: { marker: { type: "string" } }, required: ["marker"] },
+            }),
+          ],
+          execute: () =>
+            Deferred.succeed(toolStarted, undefined).pipe(
+              Effect.andThen(Effect.sleep("4 seconds")),
+              Effect.as({ type: "text" as const, value: "All agents finished." }),
+            ),
+          steering,
+        })
+        const catalog = catalogModel("claude")
+        const model = yield* SessionRunnerModel.fromCatalogModel(
+          ModelV2.Info.make({
+            ...catalog,
+            id: ModelV2.ID.make("haiku"),
+            api: { ...catalog.api, id: ModelV2.ID.make("haiku") },
+          }),
+        )
+        const run = yield* LLM.stream(
+          LLM.request({
+            model,
+            system: "Follow the user's latest instruction exactly.",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: 'Call wait_agents with {"marker":"live"} once. When it returns, reply with exactly OTTERS.',
+                  },
+                ],
+              },
+            ],
+            metadata: ClaudeCodeMcp.requestMetadata(token),
+          }),
+        ).pipe(
+          Stream.runCollect,
+          Effect.map((events) => Array.from(events)),
+          Effect.forkChild,
+        )
+        yield* Deferred.await(toolStarted).pipe(Effect.timeout("45 seconds"))
+        expect(
+          steering.offer({ id: "msg_live_steer", text: "Change of plan: do not say OTTERS. Reply with exactly OWLS." }),
+        ).toBe(true)
+        const events = yield* Fiber.join(run)
+
+        expect(steering.take()).toEqual(["msg_live_steer"])
+        expect(events.some((event) => event.type === "provider-error")).toBe(false)
+        const marker = events.findIndex((event) => event.type === "step-start" && event.index > 0)
+        expect(marker).toBeGreaterThan(0)
+        const answer = events
+          .slice(marker)
+          .flatMap((event) => (event.type === "text-delta" ? [event.text] : []))
+          .join("")
+        expect(answer).toContain("OWLS")
+      }).pipe(Effect.provide(layer)),
+    90_000,
+  )
+
+  liveClaude(
+    "withdraws a steer written during a real Claude print-mode final answer",
+    () =>
+      Effect.gen(function* () {
+        const steering = ClaudeCodeMcp.makeSteering()
+        const token = yield* ClaudeCodeMcp.register({
+          definitions: [],
+          execute: () => Effect.succeed({ type: "text", value: "unused" }),
+          steering,
+        })
+        const catalog = catalogModel("claude")
+        const model = yield* SessionRunnerModel.fromCatalogModel(
+          ModelV2.Info.make({
+            ...catalog,
+            id: ModelV2.ID.make("haiku"),
+            api: { ...catalog.api, id: ModelV2.ID.make("haiku") },
+          }),
+        )
+        let offered = false
+        const events = yield* LLM.stream(
+          LLM.request({
+            model,
+            system: "Follow the user's latest instruction exactly.",
+            messages: [
+              {
+                role: "user",
+                content: [{ type: "text", text: "Write a 150-word story about a river otter. No preamble." }],
+              },
+            ],
+            metadata: ClaudeCodeMcp.requestMetadata(token),
+          }),
+        ).pipe(
+          // The answer has no tool calls, so the CLI can only queue the steer as a new turn.
+          Stream.tap((event) =>
+            Effect.sync(() => {
+              if (offered || event.type !== "text-delta") return
+              offered = steering.offer({ id: "msg_live_late_steer", text: "Reply with exactly OWLS." })
+            }),
+          ),
+          Stream.runCollect,
+          Effect.map((events) => Array.from(events)),
+        )
+
+        expect(offered).toBe(true)
+        expect(steering.take()).toEqual([])
+        expect(steering.inFlight()).toEqual([])
+        expect(events.some((event) => event.type === "provider-error")).toBe(false)
+        expect(events.some((event) => event.type === "step-start" && event.index > 0)).toBe(false)
+        expect(events.flatMap((event) => (event.type === "text-delta" ? [event.text] : [])).join("")).not.toContain(
+          "OWLS",
+        )
+      }).pipe(Effect.provide(layer)),
+    90_000,
   )
 })

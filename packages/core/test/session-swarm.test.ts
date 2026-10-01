@@ -44,7 +44,9 @@ describe("SessionSwarm.normalize", () => {
       {
         text: "@swarm compare <vendor> & ours\n\nsynthetic context",
         parts: [
-          { id: "prt_swarm_visible", text: "@swarm compare <vendor> & ours" },
+          { id: "prt_swarm_blank", text: " \n" },
+          { id: "prt_swarm_visible", text: "@swarm" },
+          { id: "prt_swarm_objective", text: "compare <vendor> & ours" },
           { id: "prt_swarm_existing_synthetic", text: "synthetic context", synthetic: true },
         ],
       },
@@ -57,6 +59,20 @@ describe("SessionSwarm.normalize", () => {
       objective: "compare <vendor> & ours",
     })
     expect(guidance?.text).toContain("compare &lt;vendor&gt; &amp; ours")
+  })
+
+  test("does not parse hidden text or later requests after an ordinary leading part", () => {
+    const input = {
+      text: "ordinary request\n\n@swarm audit later",
+      parts: [
+        { id: "prt_swarm_visible", text: "ordinary request" },
+        { id: "prt_swarm_later", text: "@swarm audit later" },
+        { id: "prt_swarm_ignored", text: "@swarm audit everything", ignored: true },
+        { id: "prt_swarm_synthetic", text: "@swarm audit everything", synthetic: true },
+      ],
+    }
+
+    expect(SessionSwarm.normalize(input, SessionMessage.ID.make("msg_swarm_hidden"))).toBe(input)
   })
 
   test("marks invalid invocations and forbids dispatch", () => {

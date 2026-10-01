@@ -335,11 +335,38 @@ export function isSessionV2ToolStub(part: Part): boolean {
  * part keeps its body when it carries the same or a settled status.
  */
 export function mergeSessionV2Parts(current: readonly Part[] | undefined, incoming: Part[]): Part[] {
+  // Large, dense stub batches repay building the lookup index; unrelated incoming parts do not.
+  const considerIndex =
+    current !== undefined && current.length >= 32 && incoming.length > 1 && current.length * incoming.length > 4_096
+  const stubCount = considerIndex ? incoming.filter((part) => isSessionV2ToolStub(part)).length : 0
+  const currentIndices =
+    stubCount >= 16 && (current?.length ?? 0) * stubCount > 4_096
+      ? { byID: new Map<string, number>(), byCallID: new Map<string, number>() }
+      : undefined
+  if (currentIndices) current?.forEach((part, index) => {
+    if (!currentIndices.byID.has(part.id)) currentIndices.byID.set(part.id, index)
+    if (part.type === "tool" && !currentIndices.byCallID.has(part.callID))
+      currentIndices.byCallID.set(part.callID, index)
+  })
+
   return incoming.map((part) => {
     if (part.type !== "tool" || !isSessionV2ToolStub(part)) return part
-    const existing = current?.find(
-      (item) => item.id === part.id || (item.type === "tool" && item.callID === part.callID),
-    )
+    let existing: Part | undefined
+    if (currentIndices) {
+      const idIndex = currentIndices.byID.get(part.id)
+      const callIDIndex = currentIndices.byCallID.get(part.callID)
+      const existingIndex =
+        idIndex === undefined
+          ? callIDIndex
+          : callIDIndex === undefined
+            ? idIndex
+            : Math.min(idIndex, callIDIndex)
+      existing = existingIndex === undefined ? undefined : current?.[existingIndex]
+    } else {
+      existing = current?.find(
+        (item) => item.id === part.id || (item.type === "tool" && item.callID === part.callID),
+      )
+    }
     if (existing?.type !== "tool") return part
     if (isSessionV2ToolStub(existing) || existing.state.status === "pending") return part
     if (existing.state.status === part.state.status) return existing

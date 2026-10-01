@@ -372,6 +372,28 @@ describe("applyCachePolicy", () => {
     }),
   )
 
+  test("tail placement skips messages that cannot receive a new cache marker", () => {
+    const outsideTail = Message.user("outside tail")
+    const reasoningOnly = Message.assistant([{ type: "reasoning", text: "thinking" }])
+    const manuallyCached = Message.user([
+      { type: "text", text: "already cached", cache: new CacheHint({ type: "ephemeral" }) },
+    ])
+    const uncached = Message.user("needs marker")
+    const request = LLM.request({
+      model: anthropicModel,
+      messages: [outsideTail, reasoningOnly, manuallyCached, uncached],
+      cache: { messages: { tail: 3 } },
+    })
+    const original = request.messages
+    const updated = applyCachePolicy(request)
+
+    expect(updated.messages[0]?.content[0]).not.toHaveProperty("cache")
+    expect(updated.messages[1]?.content[0]).not.toHaveProperty("cache")
+    expect(updated.messages[2]?.content[0]).toMatchObject({ cache: { type: "ephemeral" } })
+    expect(updated.messages[3]?.content[0]).toHaveProperty("cache")
+    expect(original[3]?.content[0]).not.toHaveProperty("cache")
+  })
+
   it.effect("'latest-assistant' marks the last assistant message", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare(

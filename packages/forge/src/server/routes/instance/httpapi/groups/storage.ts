@@ -14,8 +14,6 @@ export const MAX_STORAGE_REPLACE_ENTRIES = 10_000
 export const MAX_STORAGE_REPLACE_BYTES = 256 * 1024 * 1024
 export const MAX_STORAGE_BATCH_ENTRIES = 20_005
 export const MAX_STORAGE_BATCH_BYTES = 2 * 1024 * 1024
-export const STORAGE_PUBLIC_SCOPE_PREFIXES = ["desktop/store/"] as const
-export const STORAGE_PUBLIC_MIGRATION_PREFIXES = ["desktop.electron-store.", "desktop.legacy."] as const
 
 const StorageScope = Storage.Scope.check(
   Schema.isPattern(/^desktop\/store\//),

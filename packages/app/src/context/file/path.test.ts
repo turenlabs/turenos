@@ -239,6 +239,13 @@ describe("encodeFilePath", () => {
       expect(result).toContain("%E6%96%87%E6%A1%A3")
     })
 
+    test("should encode trailing line terminators", () => {
+      expect(encodeFilePath("src/file.ts\n")).toBe("src/file.ts%0A")
+      expect(encodeFilePath("src/file.ts\r")).toBe("src/file.ts%0D")
+      expect(encodeFilePath("src/file.ts\u2028")).toBe("src/file.ts%E2%80%A8")
+      expect(encodeFilePath("src/file.ts\u2029")).toBe("src/file.ts%E2%80%A9")
+    })
+
     test("should handle already normalized Windows path", () => {
       // Path that's already been normalized (has / before drive letter)
       const alreadyNormalized = "/D:/path/file.txt"

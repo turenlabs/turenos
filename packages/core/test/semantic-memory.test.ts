@@ -83,4 +83,49 @@ describe("Semantic memory", () => {
       expect(results[0]?.drawer.title).toBe("target")
     }).pipe(Effect.provide(layer))
   })
+
+  it.effect("does not embed expired drawers", () => {
+    const embedded: string[] = []
+    const load = (_options: PotionLoadOptions) =>
+      Promise.resolve<PotionRuntime>({
+        ...runtime,
+        embed: (texts) => {
+          embedded.push(...texts)
+          return runtime.embed(texts)
+        },
+      })
+    const database = AppNodeBuilder.build(LayerNode.group([Database.node, Memory.node]), [
+      [Database.node, Database.layerFromPath(":memory:")],
+    ])
+    const layer = MemorySemantic.layerWith(load).pipe(Layer.provideMerge(database), Layer.provideMerge(config))
+
+    return Effect.gen(function* () {
+      const memory = yield* Memory.Service
+      const semantic = yield* MemorySemantic.Service
+      const wing = yield* memory.wing({ kind: "project", key: "semantic-expired-test", name: "Semantic expired test" })
+      const room = yield* memory.room({ wingID: wing.id, slug: "general", name: "General" })
+      const expired = yield* memory.write({
+        wingID: wing.id,
+        roomID: room.id,
+        title: "expired",
+        body: "semantic-expired",
+        provenance: { assertedBy: "test", source: "agent" },
+      })
+      yield* memory.write({
+        wingID: wing.id,
+        roomID: room.id,
+        title: "target",
+        body: "semantic-target",
+        supersedes: expired.id,
+        provenance: { assertedBy: "test", source: "agent" },
+      })
+
+      const results = yield* semantic.search({ query: "unmatched concept", wings: [wing.id], limit: 1 })
+
+      expect(results.map((item) => item.drawer.title)).toEqual(["target"])
+      expect(embedded).toHaveLength(2)
+      expect(embedded).toContain("target\nsemantic-target")
+      expect(embedded).not.toContain("expired\nsemantic-expired")
+    }).pipe(Effect.provide(layer))
+  })
 })
