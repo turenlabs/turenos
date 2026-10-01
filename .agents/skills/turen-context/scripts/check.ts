@@ -2,8 +2,9 @@
 // Audits the repository's AGENTS.md files, the instructions coding agents load while developing TurenOS.
 // Checks only what a script can prove: load budget per directory chain, pointers from ancestors, size, stray
 // @mentions, backticked paths and package scripts that don't resolve, broken links, and the CLAUDE.md shim Claude Code
-// needs to read AGENTS.md at all. Whether a rule is true comes from reading the code. The rules live in lib/:
-// instructions.ts (per-file checks), paths.ts, commands.ts and claude.ts.
+// needs to read AGENTS.md at all, plus the frontmatter and root pointer of each skill in .agents/skills/. Whether a rule
+// is true comes from reading the code. The rules live in lib/: instructions.ts (per-file checks), paths.ts,
+// commands.ts, claude.ts and skills.ts.
 // Exits 1 when any error is found. Read-only.
 //
 // usage: bun .agents/skills/turen-context/scripts/check.ts [repo-root]
@@ -14,6 +15,7 @@ import type { Level } from "./lib/findings"
 import { git } from "./lib/git"
 import { fileFindings } from "./lib/instructions"
 import { chainBytes, loadRepo } from "./lib/repo"
+import { skillFindings } from "./lib/skills"
 
 const start = path.resolve(process.argv[2] ?? ".")
 // The checker reads git's file list; outside a repository it would find nothing and report clean.
@@ -22,7 +24,11 @@ if (git(start, "rev-parse", "--show-toplevel") === undefined) {
   process.exit(2)
 }
 const repo = loadRepo(start)
-const findings = [...repo.graded.flatMap((file) => fileFindings(repo, file)), ...claudeFindings(repo)]
+const findings = [
+  ...repo.graded.flatMap((file) => fileFindings(repo, file)),
+  ...claudeFindings(repo),
+  ...skillFindings(repo),
+]
 
 console.log(`# AGENTS.md audit: ${repo.graded.length} files under ${repo.root}`)
 if (repo.vendored.length > 0) {
