@@ -27,6 +27,7 @@ import * as Stream from "effect/Stream"
 import { Command } from "../command"
 import { pathToFileURL, fileURLToPath } from "url"
 import { Config } from "@/config/config"
+import { SecretOutput } from "@turenlabs/core/secret-output"
 import { ConfigMarkdown } from "@/config/markdown"
 import { SessionSummary } from "./summary"
 import { NamedError } from "@turenlabs/core/util/error"
@@ -143,6 +144,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const status = yield* SessionStatus.Service
     const sessions = yield* Session.Service
+    const secretOutput = yield* SecretOutput.Service
     const agents = yield* Agent.Service
     const provider = yield* Provider.Service
     const processor = yield* SessionProcessor.Service
@@ -577,7 +579,7 @@ const layer = Layer.effect(
                   metadata: { output },
                   output,
                 }
-                yield* sessions.updatePart(part)
+                Object.assign(part, yield* sessions.updatePart(part))
               }
             }),
           )
@@ -1274,6 +1276,7 @@ const layer = Layer.effect(
               promptOps,
             }).pipe(
               Effect.provideService(Plugin.Service, plugin),
+              Effect.provideService(SecretOutput.Service, secretOutput),
               Effect.provideService(Permission.Service, permission),
               Effect.provideService(ToolRegistry.Service, registry),
               Effect.provideService(MCP.Service, mcp),
@@ -1666,6 +1669,7 @@ export const node = LayerNode.make({
   service: Service,
   layer: layer,
   deps: [
+    SecretOutput.node,
     SessionStatus.node,
     Session.node,
     Agent.node,

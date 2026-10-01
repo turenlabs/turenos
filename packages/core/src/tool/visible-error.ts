@@ -1,10 +1,36 @@
 export * as ToolVisibleError from "./visible-error"
 
+import { SecretRedaction } from "../secret-redaction"
+
 export const MAX_LENGTH = 4_096
 
-export function make(value: unknown) {
-  const source = value instanceof Error ? value.message : String(value)
-  const redacted = source
+/**
+ * `protect` masks configured values and detected formats on the complete original message. The
+ * substitutions and length cap below then run only between the references it produced: applied
+ * first, they rewrote part of a configured value (a composite's `AKIA…` half) so the guard could no
+ * longer match the whole, and the cap could cut a credential before the guard saw it.
+ */
+export function make(value: unknown, protect: (text: string) => string = (text) => text) {
+  const source = protect(value instanceof Error ? value.message : String(value))
+  const segments: string[] = []
+  let offset = 0
+  for (const reference of SecretRedaction.references(source)) {
+    segments.push(substitute(source.slice(offset, reference.start)), source.slice(reference.start, reference.end))
+    offset = reference.end
+  }
+  segments.push(substitute(source.slice(offset)))
+  const redacted = segments.join("").trim()
+  if (redacted.length <= MAX_LENGTH) return redacted || "Tool execution failed"
+  const limit = MAX_LENGTH - 22
+  // Never leave half a reference behind the cut.
+  const cut =
+    SecretRedaction.references(redacted).find((reference) => reference.start < limit && reference.end > limit)?.start ??
+    limit
+  return `${redacted.slice(0, cut)}… [error truncated]`
+}
+
+function substitute(text: string) {
+  return text
     .replace(
       /-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/gi,
       "[redacted credential]",
@@ -28,9 +54,6 @@ export function make(value: unknown) {
     .replace(/\b[A-Za-z]:[\\/][^\s"'<>]+/g, "[redacted path]")
     .replace(/(^|[\s("'`=:\[])\/(?!\/)(?:[^\s"'<>()[\]{}/]+\/)+[^\s"'<>()[\]{}/]+/gm, "$1[redacted path]")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
-    .trim()
-  if (redacted.length <= MAX_LENGTH) return redacted || "Tool execution failed"
-  return `${redacted.slice(0, MAX_LENGTH - 22)}… [error truncated]`
 }
 
 function redactCredentialUrl(value: string) {

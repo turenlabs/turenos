@@ -14,14 +14,15 @@ artifacts back into this directory.
 - `manifests/skills/` — prompt-only skills and fixed-profile subagents (`skill:<id>`)
 - `manifests/mcp/` — hosted, customer-url, managed-package, and local MCP
   definitions (`mcp:<id>`)
-- `manifests/tools/` — packaged WASM tool entries
-- `docs/` — feed license notes and the skill quality rubric
+- `manifests/tools/` — security scanner integrations (`security:<id>` adapters
+  that run declared host `commands`) and the built-in Yolk integration
+- Feed license notes and the skill quality rubric live in `docs/systems/developer-catalog-runtime/`.
 
 ## Workflow
 
 1. Edit or add a manifest under `manifests/<type>/`.
 2. Run `bun run generate` from `packages/extensions` and commit the regenerated
-   `src/generated.ts`. CI runs `bun run check` and fails on stale output.
+   `packages/extensions/src/generated.ts`. CI runs `bun run check` and fails on stale output.
 3. Editing a skill manifest changes its install digest: update
    `reviewedSkillDigests` in `packages/forge/src/skill/vigil.ts` by hashing
    `JSON.stringify(manifest)` of each catalog-sourced skill in
@@ -39,7 +40,7 @@ artifacts back into this directory.
   single source of truth for where data comes from; runtime adapters never
   hardcode origins.
 - Skills carry bounded inline `source.content` (no secrets, commands,
-  configuration, or tool policies) and meet `docs/skill-quality.md`.
+  configuration, or tool policies) and meet `docs/systems/developer-catalog-runtime/skill-quality.md`.
 - MCP contributions declare deployment, authentication, explicit tool
   allowlists, and any secrets/configuration up front. Wildcard policies are
   prohibited.
@@ -47,8 +48,9 @@ artifacts back into this directory.
   cancels, or deletes anything upstream in `tools.write`, even when its name
   passes the validator's mutating-name check (`execute_*`, `publish_*`,
   `cancel_*`, and `run_*` do). Managed MCP contributions hide `tools.write`
-  until the user turns on Allow write tools, and their calls default to asking
-  for approval. A tool missing from `tools.write` is exposed read-only with no
+  until the user turns on Allow write tools, and their calls are configured as
+  `ask` (which prompts only while Enforce permission checks is on; it is off by
+  default, and `ask` then resolves to `allow`). A tool missing from `tools.write` is exposed read-only with no
   prompt. Any new adapter or contribution type that can write must keep the
   same opt-in default and must not grant write access from the manifest alone.
 - `managed` deployments carry the full package recipe in the manifest —

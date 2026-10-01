@@ -170,6 +170,27 @@ describe("SessionShell", () => {
     }),
   )
 
+  it.live("redacts recognizable credentials before the shell settlement is persisted", () =>
+    Effect.gen(function* () {
+      const { db } = yield* setup
+      const messageID = SessionMessage.ID.make("msg_shell_secret")
+      // The command builds the credential, so only captured output can carry it.
+      const token = `ghp_${"0".repeat(36)}`
+      yield* start(messageID, "printf 'token=ghp_%036d\\n' 0; exit 3")
+      const completed = yield* wait(db, messageID)
+      expect(completed.exitCode).toBe(3)
+      expect(completed.output).not.toContain(token)
+      expect(completed.output).toMatch(/token=\[SECRET:v1:github:[a-f0-9]{32}\]/)
+      const events = yield* db
+        .select()
+        .from(EventTable)
+        .where(eq(EventTable.aggregate_id, sessionID))
+        .all()
+        .pipe(Effect.orDie)
+      expect(JSON.stringify(events)).not.toContain(token)
+    }),
+  )
+
   it.live("treats timeout as retry identity and records a bounded terminal timeout", () =>
     Effect.gen(function* () {
       const { db } = yield* setup

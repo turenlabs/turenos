@@ -15,6 +15,8 @@ import type { Config } from "../config"
 import type { EventV2 } from "../event"
 import { SessionEvent } from "./event"
 import { SessionMessage } from "./message"
+import type { SecretOutput } from "../secret-output"
+import { SessionDisclosure } from "./disclosure"
 import { SessionSchema } from "./schema"
 import { Token } from "../util/token"
 import { toLLMMessages } from "./runner/to-llm-message"
@@ -380,6 +382,7 @@ export const FailureReason = Schema.Literals([
   "providerFailed",
   "emptySummary",
   "invalidSummary",
+  "protectionUnavailable",
 ])
 export type FailureReason = typeof FailureReason.Type
 
@@ -393,6 +396,7 @@ const FAILURE_MESSAGE: Record<FailureReason, string> = {
   providerFailed: "The model failed while writing the summary",
   emptySummary: "The model returned an empty summary",
   invalidSummary: "The model returned an incomplete or malformed summary",
+  protectionUnavailable: "Secret output protection is unavailable, so history was not sent for summarization",
 }
 
 export class FailedError extends Schema.TaggedErrorClass<FailedError>()("SessionCompaction.FailedError", {
@@ -421,6 +425,8 @@ export type Summarizer = {
 }
 
 type Dependencies = {
+  /** Protection for everything this compaction sends or checkpoints; acquired once per run. */
+  readonly disclosure: Effect.Effect<SecretOutput.Snapshot, SecretOutput.Error>
   readonly events: Pick<EventV2.Interface, "publish">
   readonly llm: {
     readonly stream: (request: LLMRequest) => Stream.Stream<LLMEvent, LLMError>
@@ -511,7 +517,14 @@ export const serializeToolOutput = (state: SessionMessage.ToolStateCompleted) =>
       ? ""
       : JSON.stringify(state.structured)
 
-export const serializeMessage = (message: SessionMessage.Message) => {
+const identity = (value: string) => value
+
+/**
+ * `protect` runs on each raw field before any elision, so a cut can only split an already-masked
+ * reference, never a credential the guard would have recognized whole. Token estimation leaves it
+ * as the identity.
+ */
+export const serializeMessage = (message: SessionMessage.Message, protect: (value: string) => string = identity) => {
   if (message.type === "user") {
     const files = message.files?.map((file) => `[Attached ${file.mime}: ${file.name ?? file.uri}]`) ?? []
     const agents = message.agents?.map((agent) => `[Agent: ${agent.name}]`) ?? []
@@ -523,14 +536,16 @@ export const serializeMessage = (message: SessionMessage.Message) => {
             .map((part) => part.text)
             .filter(Boolean)
             .join("\n")
-    return [...(text ? [`[User]: ${text}`] : []), ...files, ...agents].join("\n")
+    return [...(text ? [`[User]: ${protect(text)}`] : []), ...files, ...agents].join("\n")
   }
   if (message.type === "assistant") {
     return message.content
       .flatMap((part) => {
-        if (part.type === "text") return [`[Assistant]: ${part.text}`]
-        if (part.type === "reasoning") return part.text ? [`[Assistant reasoning]: ${part.text}`] : []
-        const input = typeof part.state.input === "string" ? part.state.input : JSON.stringify(part.state.input)
+        if (part.type === "text") return [`[Assistant]: ${protect(part.text)}`]
+        if (part.type === "reasoning") return part.text ? [`[Assistant reasoning]: ${protect(part.text)}`] : []
+        const input = protect(
+          typeof part.state.input === "string" ? part.state.input : JSON.stringify(part.state.input),
+        )
         if (part.state.status === "completed") {
           const output =
             part.provider?.executed === true && part.state.result !== undefined
@@ -538,7 +553,7 @@ export const serializeMessage = (message: SessionMessage.Message) => {
               : serializeToolOutput(part.state)
           return [
             `[Assistant tool call]: ${part.name}(${input})`,
-            `[Tool result]: ${elide(output, toolOutputBudget(part.name), TOOL_ELISION)}`,
+            `[Tool result]: ${elide(protect(output), toolOutputBudget(part.name), TOOL_ELISION)}`,
           ]
         }
         if (part.state.status === "error") {
@@ -552,17 +567,17 @@ export const serializeMessage = (message: SessionMessage.Message) => {
                   : JSON.stringify(part.state.structured)
           return [
             `[Assistant tool call]: ${part.name}(${input})`,
-            `[Tool error]: ${part.state.error.message}${evidence ? `\n${elide(evidence, toolOutputBudget(part.name), TOOL_ELISION)}` : ""}`,
+            `[Tool error]: ${protect(part.state.error.message)}${evidence ? `\n${elide(protect(evidence), toolOutputBudget(part.name), TOOL_ELISION)}` : ""}`,
           ]
         }
         return [`[Assistant tool call]: ${part.name}(${input})`]
       })
       .join("\n")
   }
-  if (message.type === "system") return `[System update]: ${message.text}`
-  if (message.type === "synthetic") return `[Synthetic context]: ${message.text}`
+  if (message.type === "system") return `[System update]: ${protect(message.text)}`
+  if (message.type === "synthetic") return `[Synthetic context]: ${protect(message.text)}`
   if (message.type === "shell")
-    return `[Shell]: ${message.command}\n[Status]: ${message.status ?? "unknown"}${message.exitCode === undefined ? "" : ` (exit ${message.exitCode})`}${message.error ? `\n[Error]: ${message.error}` : ""}\n${elide(message.output, TOOL_OUTPUT_MAX_CHARS, TOOL_ELISION)}`
+    return `[Shell]: ${protect(message.command)}\n[Status]: ${message.status ?? "unknown"}${message.exitCode === undefined ? "" : ` (exit ${message.exitCode})`}${message.error ? `\n[Error]: ${protect(message.error)}` : ""}\n${elide(protect(message.output), TOOL_OUTPUT_MAX_CHARS, TOOL_ELISION)}`
   return ""
 }
 
@@ -1002,11 +1017,12 @@ const tailStart = (items: readonly Item[], options: { readonly tokens: number; r
 export const select = (
   entries: readonly Entry[],
   options: { readonly tokens: number; readonly turns: number; readonly preserveCurrentTurn?: boolean },
+  protect: (value: string) => string = identity,
 ): { readonly head: string; readonly recent: string; readonly throughSeq?: number } | undefined => {
   const items: Item[] = []
   for (const entry of entries) {
     if (entry.message.type === "compaction") continue
-    const text = serializeMessage(entry.message)
+    const text = serializeMessage(entry.message, protect)
     if (!text) continue
     // Wire cost, not the bounded summarization view. `tailStart` decides what stays OUT of the
     // summary, and everything it keeps is replayed whole by `toLLMMessage` — so measuring the
@@ -1417,6 +1433,7 @@ export const make = (dependencies: Dependencies) => {
     head: string,
     model: Model,
     context: number,
+    guard: SecretOutput.Snapshot,
   ) {
     const output = Math.min(
       model.defaults?.generation?.maxTokens ??
@@ -1437,15 +1454,18 @@ export const make = (dependencies: Dependencies) => {
     let failed = false
     const completed = yield* dependencies.llm
       .stream(
-        LLM.request({
-          model,
-          // The extractor's own system prompt replaces the summarizer's: the compaction agent's
-          // prompt describes writing a structured summary, which is the wrong instruction here.
-          system: LEDGER_SYSTEM,
-          messages: [Message.user(`${LEDGER_PROMPT}${elide(head, budget * CHARS_PER_TOKEN)}${LEDGER_PROMPT_SUFFIX}`)],
-          tools: [],
-          generation: { maxTokens: output },
-        }),
+        SessionDisclosure.request(
+          LLM.request({
+            model,
+            // The extractor's own system prompt replaces the summarizer's: the compaction agent's
+            // prompt describes writing a structured summary, which is the wrong instruction here.
+            system: LEDGER_SYSTEM,
+            messages: [Message.user(`${LEDGER_PROMPT}${elide(head, budget * CHARS_PER_TOKEN)}${LEDGER_PROMPT_SUFFIX}`)],
+            tools: [],
+            generation: { maxTokens: output },
+          }),
+          guard,
+        ),
       )
       .pipe(
         Stream.runForEach((event) =>
@@ -1522,6 +1542,17 @@ export const make = (dependencies: Dependencies) => {
           ? FALLBACK_OVERFLOW_CONTEXT
           : undefined
     if (context === undefined) return yield* decline(input, "unknownContextWindow", mode)
+    // Everything below -- the summary and ledger prompts, the persisted `recent` tail and a
+    // fallback excerpt -- is built from text protected before it is elided.
+    const guard = yield* dependencies.disclosure.pipe(Effect.option)
+    if (guard._tag === "None") return yield* decline(input, "protectionUnavailable", mode)
+    const protect = (value: string) => {
+      try {
+        return guard.value.text(value)
+      } catch {
+        return SessionDisclosure.WITHHELD
+      }
+    }
     const retainedBudget = input.request
       ? Math.max(
           0,
@@ -1534,12 +1565,16 @@ export const make = (dependencies: Dependencies) => {
             REQUEST_MARGIN_TOKENS,
         )
       : config.tokens
-    const selected = select(input.entries, {
-      // A keep budget at or above the context would leave nothing to summarize.
-      tokens: Math.min(config.tokens, Math.floor(context / 2), retainedBudget),
-      turns: config.turns,
-      preserveCurrentTurn: mode === "auto",
-    })
+    const selected = select(
+      input.entries,
+      {
+        // A keep budget at or above the context would leave nothing to summarize.
+        tokens: Math.min(config.tokens, Math.floor(context / 2), retainedBudget),
+        turns: config.turns,
+        preserveCurrentTurn: mode === "auto",
+      },
+      protect,
+    )
     const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
     if (!selected || selected.head.length === 0) return yield* decline(input, "emptyConversation", mode)
     // Resolve before fitting: the hidden compaction agent may use a much smaller model than the
@@ -1579,8 +1614,9 @@ export const make = (dependencies: Dependencies) => {
     const fitTo = (maxChars: number) =>
       fitPrompt(
         {
-          previousSummary: previousSummary?.type === "compaction" ? previousSummary.summary : undefined,
-          priorRecent: previousSummary?.type === "compaction" ? previousSummary.recent : undefined,
+          // Checkpoints written before protection existed can hold raw text, and these are elided too.
+          previousSummary: previousSummary?.type === "compaction" ? protect(previousSummary.summary) : undefined,
+          priorRecent: previousSummary?.type === "compaction" ? protect(previousSummary.recent) : undefined,
           head: selected.head,
         },
         maxChars,
@@ -1628,13 +1664,16 @@ export const make = (dependencies: Dependencies) => {
       let summaryOpeningChecked = false
       const completed = yield* dependencies.llm
         .stream(
-          LLM.request({
-            model: summaryModel,
-            system: summarizer.system,
-            messages: [Message.user(prompt)],
-            tools: [],
-            generation: { maxTokens: summaryOutput },
-          }),
+          SessionDisclosure.request(
+            LLM.request({
+              model: summaryModel,
+              system: summarizer.system,
+              messages: [Message.user(prompt)],
+              tools: [],
+              generation: { maxTokens: summaryOutput },
+            }),
+            guard.value,
+          ),
         )
         .pipe(
           Stream.runForEach((event) =>
@@ -1642,7 +1681,8 @@ export const make = (dependencies: Dependencies) => {
               if (LLMEvent.is.providerError(event)) {
                 providerFailed = true
                 contextOverflow ||= isContextOverflowFailure(event)
-                failure ??= event.message
+                // Kept for a durable failure detail and fallback checkpoint, both elided later.
+                failure ??= protect(event.message)
               }
               if (LLMEvent.is.finish(event)) finishReason = event.reason
               if (!LLMEvent.is.textDelta(event)) return
@@ -1667,7 +1707,7 @@ export const make = (dependencies: Dependencies) => {
           Effect.catchTag("LLM.Error", (error) => {
             providerFailed = true
             contextOverflow ||= isContextOverflowFailure(error)
-            failure ??= error.message
+            failure ??= protect(error.message)
             return Effect.succeed(false)
           }),
           Effect.catchDefect((defect) =>
@@ -1700,7 +1740,7 @@ export const make = (dependencies: Dependencies) => {
       result.summary.trim().length === 0 && (result.providerFailed || !result.completed)
     const extraction = config.ledger
       ? yield* Deferred.await(extractionReady).pipe(
-          Effect.andThen(extract(input.sessionID, selected.head, summaryModel, summaryContext)),
+          Effect.andThen(extract(input.sessionID, selected.head, summaryModel, summaryContext, guard.value)),
           Effect.forkChild({ startImmediately: true }),
         )
       : undefined

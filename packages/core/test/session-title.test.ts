@@ -1,3 +1,4 @@
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { describe, expect } from "bun:test"
 import { eq } from "drizzle-orm"
 import { LLMError, LLMEvent, LLMResponse, Model, TransportReason, type LLMRequest } from "@turenlabs/llm"
@@ -99,6 +100,7 @@ const harness = Effect.fnUntraced(function* (options: {
   const resolvedVariants: (ModelV2.VariantID | undefined)[] = []
   const resolveOptions: (SessionRunnerModel.ResolveOptions | undefined)[] = []
   const titler = SessionRunnerTitle.make({
+    disclosure: Effect.succeed(SecretRedaction),
     agents,
     events: yield* EventV2.Service,
     llm: {
@@ -192,6 +194,21 @@ describe("SessionRunnerTitle", () => {
       const db = (yield* Database.Service).db
       const types = (yield* db.select({ type: EventTable.type }).from(EventTable).all()).map((row) => row.type)
       expect(types).toContain("session.next.title.updated.1")
+    }),
+  )
+
+  it.effect("redacts the opening prompt before trimming it to the title budget", () =>
+    Effect.gen(function* () {
+      const { requests, titler } = yield* harness({ generate: () => Effect.succeed(answer("Credential rotation")) })
+      const token = `ghp_${"Zq9".repeat(12)}`
+      // The credential straddles the 4k title budget: truncating first leaves an unrecognizable prefix.
+      const session = yield* seed({ text: `${"word ".repeat(796)}${token} please rotate it` })
+
+      yield* titler.ensure(session.id)
+
+      expect(requests).toHaveLength(1)
+      const sent = JSON.stringify(requests[0]!.messages)
+      expect(sent).not.toContain(token.slice(0, 12))
     }),
   )
 

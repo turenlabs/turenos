@@ -1259,6 +1259,101 @@ describe("tool.shell truncation", () => {
       }),
     ),
   )
+  ;(process.platform === "win32" ? it.live.skip : it.live)(
+    "live previews never publish a credential that is still arriving",
+    () =>
+      runIn(
+        projectRoot,
+        Effect.gen(function* () {
+          const token = `ghp_${"0".repeat(35)}7`
+          const previews: string[] = []
+          // The first write carries every character but the last; the pause lets it arrive alone.
+          const result = yield* run(
+            { command: "printf 'ghp_%035d' 0; sleep 0.2; printf '7\\n'; sleep 0.2" },
+            {
+              ...ctx,
+              metadata: (input) =>
+                Effect.sync(() => {
+                  const output = (input.metadata as { output?: string })?.output
+                  if (output) previews.push(output)
+                }),
+            },
+          )
+          expect(previews.join("\n")).not.toContain(token.slice(0, -1))
+          expect(result.output).not.toContain(token.slice(0, -1))
+          expect(JSON.stringify(result.metadata)).not.toContain(token.slice(0, -1))
+          expect(result.output).toMatch(/\[SECRET:v1:github:[a-f0-9]{32}\]/)
+        }),
+      ),
+  )
+  ;(process.platform === "win32" ? it.live.skip : it.live)(
+    "the final tail is taken from protected output, never cutting through a credential",
+    () =>
+      runIn(
+        projectRoot,
+        Effect.gen(function* () {
+          const limits = yield* (yield* Truncate.Service).limits()
+          // `ghp_` + 36 characters, then filler that pushes the token across the final byte-tail cut.
+          const code =
+            "process.stdout.write(String.fromCharCode(103,104,112,95)+String.fromCharCode(65,98,55,99).repeat(9)+String.fromCharCode(32)+String.fromCharCode(122).repeat(Number(Bun.argv[1])));setTimeout(()=>{},300)"
+          const result = yield* run({ command: `${bin} -e ${evalarg(code)} ${limits.maxBytes - 20}` })
+          mustTruncate(result)
+          const fragment = "Ab7c".repeat(3)
+          expect(result.output).not.toContain(fragment)
+          expect(JSON.stringify(result.metadata)).not.toContain(fragment)
+          const saved = yield* (yield* FSUtil.Service).readFileString(
+            (result.metadata as { outputPath?: string }).outputPath!,
+          )
+          expect(saved).not.toContain(fragment)
+          expect(saved).toMatch(/^\[SECRET:v1:github:[a-f0-9]{32}\] z/)
+        }),
+      ),
+  )
+  ;(process.platform === "win32" ? it.live.skip : it.live)(
+    "the saved file keeps supplementary characters intact across separately written releases",
+    () =>
+      runIn(
+        projectRoot,
+        Effect.gen(function* () {
+          // Sized so an earlier release point fell between the two UTF-16 halves of the emoji.
+          const code =
+            "const a=String.fromCharCode(97);process.stdout.write(a.repeat(200000));setTimeout(()=>{process.stdout.write(a.repeat(58047)+String.fromCodePoint(128512)+String.fromCharCode(98).repeat(4095));setTimeout(()=>{},300)},300)"
+          const result = yield* run({ command: `${bin} -e ${evalarg(code)}` })
+          mustTruncate(result)
+          const saved = yield* (yield* FSUtil.Service).readFileString(
+            (result.metadata as { outputPath?: string }).outputPath!,
+          )
+          expect(saved).not.toContain("�")
+          expect(saved).toBe(`${"a".repeat(258047)}😀${"b".repeat(4095)}`)
+        }),
+      ),
+    30_000,
+  )
+  ;(process.platform === "win32" ? it.live.skip : it.live)(
+    "protects credentials streamed into the saved file after truncation starts",
+    () =>
+      runIn(
+        projectRoot,
+        Effect.gen(function* () {
+          // The command builds the credential, so only captured output carries it; it is printed
+          // after the capture passes the byte limit and the tool starts streaming to disk.
+          const token = `ghp_${"0".repeat(35)}7`
+          const result = yield* run({
+            // The pause lets the stream consumer drain before exit; see the note in ShellTool.run.
+            command:
+              "i=0; while [ $i -lt 1500 ]; do printf 'line %04d padding padding padding padding\\n' $i; i=$((i+1)); done; printf 'late token=ghp_%036d\\n' 7; sleep 0.5",
+          })
+          mustTruncate(result)
+          const filepath = (result.metadata as { outputPath?: string }).outputPath
+          expect(filepath).toBeTruthy()
+          const saved = yield* (yield* FSUtil.Service).readFileString(filepath!)
+          expect(saved).not.toContain(token)
+          expect(saved).toMatch(/late token=\[SECRET:v1:github:[a-f0-9]{32}\]/)
+          expect(saved).toContain("line 0000 padding")
+          expect(saved).toContain("line 1499 padding")
+        }),
+      ),
+  )
 
   it.live("full output is saved to file when truncated", () =>
     runIn(

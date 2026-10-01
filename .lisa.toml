@@ -8,6 +8,11 @@ ignore = [
   "packages/sdk/openapi.json",
 ]
 
+# Complexity findings on this repo have been borderline (51-59%) and mostly hit idiomatic Effect
+# service/layer wiring, so this check needs 70% to fail. Other checks keep the default threshold.
+[checks]
+complexity = 0.7
+
 # Asked once about the whole pull request: its title, description, and a summary of every
 # changed file and directory. A single chunk of the diff cannot show these.
 [[questions]]
