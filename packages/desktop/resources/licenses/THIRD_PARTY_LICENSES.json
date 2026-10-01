@@ -5373,7 +5373,7 @@
     },
     {
       "name": "hono",
-      "version": "4.13.7",
+      "version": "4.13.9",
       "license": "MIT",
       "source": "git+https://github.com/honojs/hono.git",
       "licenseFiles": [
