@@ -27,17 +27,17 @@ bun .agents/skills/turen-diff-documentation/scripts/affected.ts <base>          
 bun .agents/skills/turen-diff-documentation/scripts/affected.ts --head <rev>         # a commit or branch that isn't checked out
 ```
 
-The diff runs from the merge base, so commits that landed on the base after the branch point don't count. Fetch the base first. To check a GitHub pull request without checking it out, run `git fetch origin pull/<number>/head:pr-<number>` and pass `--head pr-<number>`. If the base has moved or renamed docs since the branch point, merge it first; the map reads the docs as they are at the head of the diff.
+The diff runs from the merge base, so commits that landed on the base after the branch point don't count. Fetch the base first. To check a GitHub pull request without checking it out, run `git fetch origin pull/<number>/head:pr-<number>` and pass `--head pr-<number>`. If the base has moved or renamed docs since the branch point, merge it first and commit the merge; the map reads the docs as they are at the head of the diff, and until the merge is committed the merge base is still the old one, so the map lists every change the base brought in.
 
 The script reads git only and prints:
 
-| Section                       | Meaning                                                                                                                                                                                                         |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stale references              | Markdown citing a file or folder the diff deleted or renamed, or naming an env var, CLI option, export or upper-case constant the diff removed from all code. Wrong today. The script exits 1 while any remain. |
-| Pages citing changed code     | Pages whose cited source files changed, with each changed constant. Any claim near the citation may now be wrong.                                                                                               |
-| Changed constants             | Old and new values. Pages usually state the value (`5 minutes`, `16 MiB`), not the name, so search for the old value too.                                                                                       |
-| New env vars and CLI options  | Names the diff introduced that no Markdown mentions.                                                                                                                                                            |
-| Markdown changed in this diff | Every docs, spec, README and `AGENTS.md` edit in the diff. Each edited claim needs the same verification as old text.                                                                                           |
+| Section                       | Meaning                                                                                                                                                                                                          |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stale references              | Markdown citing a file or folder the diff deleted or renamed, or naming an env var, CLI option, export or upper-case constant the diff removed from all code. Wrong today. The script exits 1 while any remain.  |
+| Pages citing changed code     | Pages whose cited source files changed, with each changed constant. Any claim near the citation may now be wrong.                                                                                                |
+| Changed constants             | Old and new values. Pages usually state the value (`5 minutes`, `16 MiB`), not the name, so search for the old value too.                                                                                        |
+| New env vars and CLI options  | Names the diff introduced that no Markdown mentions. Any `FORGE_*` or `TUREN_*` token counts, including marker strings a script prints, so confirm each name is read from the environment before documenting it. |
+| Markdown changed in this diff | Every docs, spec, README and `AGENTS.md` edit in the diff. Each edited claim needs the same verification as old text.                                                                                            |
 
 It searches all tracked and new Markdown except vendored trees and generated notices. It skips tests, lockfiles and generated code when collecting names, so it misses names those files introduce.
 
