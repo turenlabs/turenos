@@ -2356,7 +2356,15 @@ it.instance(
 
 it.effect("retired opencode stays hidden while opencode-go loads with a credential", () =>
   Effect.gen(function* () {
-    const noneDir = yield* tmpdirScoped()
+    const listIn = (directory: string) =>
+      Provider.use
+        .list()
+        .pipe(provideInstanceEffect(directory))
+        .pipe(Effect.provide(instanceStoreLayer), Effect.provide(AppNodeBuilder.build(CrossSpawnSpawner.node)))
+
+    // The keyed project's provider config is mirrored into global config by the fixture, so list
+    // the unkeyed project before that config exists.
+    const none = yield* listIn(yield* tmpdirScoped())
     const keyedDir = yield* tmpdirScoped({
       config: {
         provider: {
@@ -2366,13 +2374,6 @@ it.effect("retired opencode stays hidden while opencode-go loads with a credenti
       },
     })
 
-    const listIn = (directory: string) =>
-      Provider.use
-        .list()
-        .pipe(provideInstanceEffect(directory))
-        .pipe(Effect.provide(instanceStoreLayer), Effect.provide(AppNodeBuilder.build(CrossSpawnSpawner.node)))
-
-    const none = yield* listIn(noneDir)
     const keyed = yield* listIn(keyedDir)
 
     expect(none[ProviderV2.ID.opencode]).toBeUndefined()

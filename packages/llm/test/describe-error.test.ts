@@ -30,6 +30,13 @@ describe("describeError", () => {
     expect(describeError(wrapper)).toBe("boom")
   })
 
+  test("deduplicates message and code values while retaining first-seen order", () => {
+    const inner = Object.assign(new Error("ECONNRESET"), { code: "fetch failed" })
+    const outer = Object.assign(new Error("fetch failed"), { code: "ECONNRESET", cause: inner })
+
+    expect(describeError(outer)).toBe("fetch failed: ECONNRESET")
+  })
+
   test("terminates on a self-referential chain", () => {
     const loop: { message: string; cause?: unknown } = new Error("looped")
     loop.cause = loop

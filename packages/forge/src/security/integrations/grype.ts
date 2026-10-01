@@ -8,7 +8,7 @@ import { Scanner } from "../util/scanner"
  * as a single integration ("grype") with two tools. The binaries are separate
  * and detected independently.
  *
- * Deliberate deviation from CONVENTIONS.md (per integration spec): a missing
+ * Deliberate deviation from docs/development/security-integrations.md (per integration spec): a missing
  * binary returns a structured `{ installed: false, installHint }` result
  * instead of throwing, so agents can relay install instructions; findings are
  * capped at 100 (not 50) with a truncation note.

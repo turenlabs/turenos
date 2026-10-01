@@ -32,7 +32,13 @@ const it = testEffect(
   AppNodeBuilder.build(
     LayerNode.group([ToolRegistry.node, ToolInterceptor.node, SessionToolProvider.node, YolkTool.node]),
     [
-      [ExtensionRuntime.node, Layer.mock(ExtensionRuntime.Service, { enabled: () => Effect.succeed(true) })],
+      [
+        ExtensionRuntime.node,
+        Layer.mock(ExtensionRuntime.Service, {
+          enabled: () => Effect.succeed(true),
+          manifests: () => Effect.succeed([]),
+        }),
+      ],
       [
         Location.node,
         Layer.succeed(
