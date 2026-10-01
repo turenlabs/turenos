@@ -29719,7 +29719,7 @@ Source: git://github.com/wilsonpage/fastdom.git
 The installed package did not include a top-level license or notice file.
 
 --------------------------------------------------------------------------------
-fastify@5.12.1
+fastify@5.12.5
 License: MIT
 Source: git+https://github.com/fastify/fastify.git
 
@@ -31732,7 +31732,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 --------------------------------------------------------------------------------
-hono@4.13.5
+hono@4.13.9
 License: MIT
 Source: git+https://github.com/honojs/hono.git
 

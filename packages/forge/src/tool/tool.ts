@@ -7,6 +7,7 @@ import type { Permission } from "../permission"
 import type { SessionID, MessageID } from "../session/schema"
 import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 
 interface Metadata {
   [key: string]: any
@@ -32,6 +33,24 @@ export class InvalidArgumentsError extends Schema.TaggedErrorClass<InvalidArgume
     return `The ${this.tool} tool was called with invalid arguments: ${this.detail}.\nPlease rewrite the input so it satisfies the expected schema.`
   }
 }
+
+/**
+ * Raised before a mutating tool runs with a masked secret reference in its input -- writing one
+ * back would replace the real credential in source -- or with input the check cannot inspect.
+ * Like {@link InvalidArgumentsError}, its `message` is the model-facing tool error.
+ */
+export class MaskedInputError extends Schema.TaggedErrorClass<MaskedInputError>()("ToolMaskedInputError", {
+  tool: Schema.String,
+  inspected: Schema.Boolean,
+}) {
+  override get message() {
+    return this.inspected
+      ? `The ${this.tool} tool input contains a masked secret reference ([SECRET:v1:...]). References are not source text: leave the credential unchanged, or re-read a narrower range and edit around it.`
+      : `The ${this.tool} tool input could not be checked for masked secret references, so nothing was executed. Send plain, smaller input.`
+  }
+}
+
+const MUTATING = new Set(["edit", "write", "apply_patch", "bash"])
 
 export type Context<M extends Metadata = Metadata> = {
   sessionID: SessionID
@@ -118,6 +137,13 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           ...(ctx.callID ? { "tool.call_id": ctx.callID } : {}),
         }
         return Effect.gen(function* () {
+          if (MUTATING.has(id)) {
+            const checked = yield* Effect.try({
+              try: () => (SecretRedaction.containsPlaceholder(args) ? "masked" : "clear"),
+              catch: () => "uninspectable" as const,
+            }).pipe(Effect.catch((unchecked) => Effect.succeed(unchecked)))
+            if (checked !== "clear") return yield* new MaskedInputError({ tool: id, inspected: checked === "masked" })
+          }
           const decoded = yield* decode(args).pipe(
             Effect.mapError(
               (error) =>
