@@ -115,6 +115,7 @@ describe("filterExtensionItems", () => {
         ["turenlabs/sentry", "observability"],
         ["turenlabs/capec", "security-knowledge"],
         ["turenlabs/mcp-security-review", "application-security"],
+        ["turenlabs/oauth-security-review", "application-security"],
         ["turenlabs/tenant-isolation-review", "application-security"],
       ].map(([id, category]) => [extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id } }), category]),
     ).toEqual([
@@ -132,6 +133,7 @@ describe("filterExtensionItems", () => {
       ["incident-response", "incident-response"],
       ["observability", "observability"],
       ["security-knowledge", "security-knowledge"],
+      ["application-security", "application-security"],
       ["application-security", "application-security"],
       ["application-security", "application-security"],
     ])

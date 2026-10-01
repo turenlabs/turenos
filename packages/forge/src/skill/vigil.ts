@@ -80,6 +80,8 @@ const reviewedSkillDigests = new Set([
   "9a2b0ee0b3b04c486022045245f005335526f962759c1c2981dc494004535bb0",
   // turenlabs/mcp-security-review
   "10faa037347373b3a73f4988cd6b885835e079ac41478c69d6811e1fbed37ee9",
+  // turenlabs/oauth-security-review
+  "d307991659dbc428c58e045c57ed516b457b9a40f93c8574bdaa2fe27cf8b964",
   // turenlabs/incident-evidence-triage
   "24d2c42d7b2d26c48960842ead85f7be515b6a357b34369a4af999c1a8f8de26",
   // turenlabs/incident-responder
@@ -259,7 +261,9 @@ async function runtimeComplete(config: Config, verifyNative = true) {
       return match ? [[match[2], match[1]] as const] : []
     }),
   )
-  const files = verifyNative ? [config.binary, config.library, config.model, config.metadata] : [config.model, config.metadata]
+  const files = verifyNative
+    ? [config.binary, config.library, config.model, config.metadata]
+    : [config.model, config.metadata]
   for (const filename of files) {
     const digest = expected.get(path.basename(filename))
     if (!digest || (await sha256File(filename)) !== digest) return false
