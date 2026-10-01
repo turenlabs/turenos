@@ -229,7 +229,7 @@ function reconcileObservation(
   entries: ReadonlyArray<Entry>,
   previous: Snapshot,
 ): { readonly _tag: "Unchanged" } | Updated | { readonly _tag: "Replace" } {
-  const keys = new Set(entries.map((entry) => entry.key))
+  const keys = new Set<string>(entries.map((entry) => entry.key))
   const comparisons = new Map<Key, Compared>()
   for (const entry of entries) {
     if (entry._tag === "Unavailable") continue
@@ -241,7 +241,8 @@ function reconcileObservation(
   }
   const previousKeys = Object.keys(previous).sort()
   for (const key of previousKeys) {
-    if (keys.has(Key.make(key))) continue
+    const previousKey = Key.make(key)
+    if (keys.has(previousKey)) continue
     if (previous[key].removed === undefined) return { _tag: "Replace" }
   }
 
@@ -271,7 +272,7 @@ function reconcileObservation(
     snapshot[entry.key] = rendered.snapshot
   }
   for (const key of previousKeys) {
-    if (keys.has(Key.make(key))) continue
+    if (keys.has(key)) continue
     const removed = previous[key].removed
     if (removed === undefined) throw new Error(`Missing removal rendering for system context source ${key}`)
     updates.push(removed)

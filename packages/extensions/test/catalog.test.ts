@@ -71,6 +71,7 @@ const expected = [
   "turenlabs/sonarqube-cloud-security",
   "turenlabs/technical-security-blog",
   "turenlabs/tenable",
+  "turenlabs/tenant-isolation-review",
   "turenlabs/test-strategy",
   "turenlabs/threat-hunter",
   "turenlabs/threat-intel-brief",
@@ -154,7 +155,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(18)
+    expect(skills.length).toBe(19)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0
@@ -773,9 +774,12 @@ describe("ExtensionCatalog", () => {
     ).not.toThrow()
     expect(() =>
       ExtensionManifestPolicy.validateManifestPolicy(
-        officialManaged({}, {
-          configuration: [{ id: "region", label: "Region", required: true, default: "other", options: ["us", "eu"] }],
-        }),
+        officialManaged(
+          {},
+          {
+            configuration: [{ id: "region", label: "Region", required: true, default: "other", options: ["us", "eu"] }],
+          },
+        ),
       ),
     ).toThrow("must be one of its options")
   })
@@ -790,9 +794,7 @@ describe("ExtensionCatalog", () => {
     expect(ExtensionCatalog.dataEndpoint("security:kev")).toBe(
       "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json",
     )
-    expect(ExtensionCatalog.dataEndpoint("security:hibp", "passwords")).toBe(
-      "https://api.pwnedpasswords.com/range",
-    )
+    expect(ExtensionCatalog.dataEndpoint("security:hibp", "passwords")).toBe("https://api.pwnedpasswords.com/range")
     expect(() => ExtensionCatalog.dataEndpoint("security:hibp")).toThrow("address one by name")
     expect(() => ExtensionCatalog.dataEndpoint("security:kev", "missing")).toThrow("not declared")
 

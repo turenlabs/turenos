@@ -43,6 +43,7 @@ let listener: EventV2.Subscriber | undefined
 
 const extensions = Layer.mock(ExtensionRuntime.Service, {
   enabled: () => Effect.succeed(activation.enabled),
+  manifests: () => Effect.succeed([]),
 })
 
 const events = Layer.mock(EventV2.Service, {
@@ -108,7 +109,9 @@ const search = (registry: ToolRegistry.Interface, input: typeof CodeSearchTool.I
 
 const seed = async (dir: string) => {
   const write = (rel: string, content: string) =>
-    fs.mkdir(path.join(dir, path.dirname(rel)), { recursive: true }).then(() => fs.writeFile(path.join(dir, rel), content))
+    fs
+      .mkdir(path.join(dir, path.dirname(rel)), { recursive: true })
+      .then(() => fs.writeFile(path.join(dir, rel), content))
 
   await write(
     "src/core/coordinator.ts",
@@ -238,7 +241,10 @@ describe("code_search", () => {
         withSearch(tmp.path, offline, (registry) =>
           Effect.gen(function* () {
             yield* Effect.promise(() => seed(tmp.path))
-            const hits = yield* search(registry, { queries: ["session title generation"], path: RelativePath.make("docs") })
+            const hits = yield* search(registry, {
+              queries: ["session title generation"],
+              path: RelativePath.make("docs"),
+            })
             expect(hits.length).toBeGreaterThan(0)
             expect(hits.every((hit) => hit.path.startsWith("docs/"))).toBe(true)
           }),
@@ -309,9 +315,7 @@ describe("code_search", () => {
             yield* search(registry, { queries: ["zebra locator"] })
 
             const file = path.join(tmp.path, "src/core/coordinator.ts")
-            yield* Effect.promise(() =>
-              fs.appendFile(file, "\nexport function zebraLocator() { return 1 }\n"),
-            )
+            yield* Effect.promise(() => fs.appendFile(file, "\nexport function zebraLocator() { return 1 }\n"))
             yield* listener!(updated(tmp.path, "src/core/coordinator.ts"))
 
             const hits = yield* search(registry, { queries: ["zebra locator"] })

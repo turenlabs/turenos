@@ -1,4 +1,6 @@
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
+import { ToolOutput } from "@/tool/secret-output"
+import { SecretOutput } from "@turenlabs/core/secret-output"
 import { PermissionV1 } from "@turenlabs/core/v1/permission"
 import { Slug } from "@turenlabs/core/util/slug"
 import { SessionV1 } from "@turenlabs/core/v1/session"
@@ -535,6 +537,7 @@ const layer: Layer.Layer<
   | EventV2Bridge.Service
   | SessionTaskV2.Service
   | Loop.Service
+  | SecretOutput.Service
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -542,6 +545,7 @@ const layer: Layer.Layer<
     const database = yield* Database.Service
     const background = yield* BackgroundJob.Service
     const events = yield* EventV2Bridge.Service
+    const secretOutput = yield* SecretOutput.Service
     const flags = yield* RuntimeFlags.Service
     const tasks = yield* SessionTaskV2.Service
     const loops = yield* Loop.Service
@@ -781,6 +785,21 @@ const layer: Layer.Layer<
     const updatePart = <T extends SessionV1.Part>(part: T): Effect.Effect<T> =>
       Effect.gen(function* () {
         yield* assertLegacyMutation(part.sessionID)
+        // Tool state carries output; the part's own `metadata` is opaque provider data (signatures,
+        // item IDs) replayed to the provider, and is left byte-for-byte intact.
+        if (part.type === "tool") {
+          const guard = yield* secretOutput.snapshot().pipe(Effect.option)
+          const stored =
+            guard._tag === "None"
+              ? yield* getPart({ sessionID: part.sessionID, messageID: part.messageID, partID: part.id })
+              : undefined
+          part = Object.assign({}, part, {
+            state:
+              guard._tag === "Some"
+                ? ToolOutput.state(part.state, guard.value)
+                : ToolOutput.withheld(part.state, stored?.type === "tool" ? stored.state : undefined),
+          })
+        }
         yield* events.publish(
           SessionV1.Event.PartUpdated,
           {
@@ -1178,7 +1197,15 @@ function listByProject(
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [BackgroundJob.node, RuntimeFlags.node, Database.node, EventV2Bridge.node, SessionTaskV2.node, Loop.node],
+  deps: [
+    BackgroundJob.node,
+    RuntimeFlags.node,
+    Database.node,
+    EventV2Bridge.node,
+    SessionTaskV2.node,
+    Loop.node,
+    SecretOutput.node,
+  ],
 })
 
 export * as Session from "./session"

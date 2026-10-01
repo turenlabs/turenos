@@ -1,3 +1,4 @@
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { describe, expect } from "bun:test"
 import { DateTime, Effect, Schema, Stream } from "effect"
 import { asc, eq } from "drizzle-orm"
@@ -548,6 +549,7 @@ describe("SessionProjector", () => {
 
       const events = yield* EventV2.Service
       const compaction = SessionCompaction.make({
+        disclosure: Effect.succeed(SecretRedaction),
         events,
         llm: { stream: () => Stream.empty },
         config: Effect.succeed([

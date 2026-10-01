@@ -1,4 +1,4 @@
-# Lint, dependency audit, and license checks. test.yml owns the complete test matrix.
+# Lint, dependency audit, license, and docs checks. test.yml owns the complete test matrix.
 name: pr
 
 on:
@@ -43,3 +43,33 @@ jobs:
 
       - name: Audit dependencies
         run: bun audit
+
+  docs:
+    name: docs
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'blacksmith-4vcpu-ubuntu-2404' }}
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      # Code changes break docs too (cited paths, links into docs/), so this runs on every PR.
+      - name: Check docs
+        run: bun .agents/skills/turen-documentation/scripts/check.ts docs
+
+      - name: Check AGENTS.md files
+        run: bun .agents/skills/turen-context/scripts/check.ts
+
+      - name: Test documentation scripts
+        working-directory: .agents/skills/turen-documentation/scripts
+        run: bun test
+
+      - name: Test context scripts
+        working-directory: .agents/skills/turen-context/scripts
+        run: bun test
+
+      - name: Test diff documentation scripts
+        working-directory: .agents/skills/turen-diff-documentation/scripts
+        run: bun test

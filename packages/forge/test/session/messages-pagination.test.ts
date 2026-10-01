@@ -650,6 +650,17 @@ describe("Session.findMessage", () => {
     ),
   )
 
+  it.instance("finds the last user message when newer assistant messages exist", () =>
+    withSession(({ session, sessionID }) =>
+      Effect.gen(function* () {
+        const uid = yield* addUser(sessionID)
+        yield* addAssistant(sessionID, uid)
+        const result = yield* session.findMessage(sessionID, (message) => message.info.role === "user")
+        expect(Option.isSome(result) ? result.value.info.id : undefined).toBe(uid)
+      }),
+    ),
+  )
+
   it.instance("fails with NotFoundError for non-existent session", () =>
     Effect.gen(function* () {
       const session = yield* SessionNs.Service

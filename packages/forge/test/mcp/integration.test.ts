@@ -140,12 +140,17 @@ describe("managed MCP integrations", () => {
     expect(aggregate.text).toContain("test://two (image/png, 6 MB) exceeds the attachment budget")
 
     const counted = SessionTools.formatMcpResourceContent("fixture", "test://root", {
-      contents: Array.from({ length: 33 }, (_, index) => ({
-        uri: `test://${index}`,
-        mimeType: "image/png",
-        blob: "AAAA",
-      })),
+      contents: [
+        null,
+        "invalid",
+        ...Array.from({ length: 33 }, (_, index) => ({
+          uri: `test://${index}`,
+          mimeType: "image/png",
+          blob: "AAAA",
+        })),
+      ],
     })
+    expect(counted.contents).toBe(33)
     expect(counted.attachments).toHaveLength(32)
     expect(counted.text).toContain("test://32 (image/png, 3 B) exceeds the attachment budget")
   })
