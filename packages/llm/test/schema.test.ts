@@ -84,3 +84,12 @@ describe("LLM.Usage", () => {
     expect(new Usage({}).visibleOutputTokens).toBe(0)
   })
 })
+
+describe("ProviderShared.joinText", () => {
+  test("joins no, one, or multiple text parts", () => {
+    expect(ProviderShared.joinText([])).toBe("")
+    expect(ProviderShared.joinText([{ text: "only" }])).toBe("only")
+    expect(ProviderShared.joinText([{ text: "first" }, { text: "second" }])).toBe("first\nsecond")
+    expect(ProviderShared.joinText(new Array(1))).toBe("")
+  })
+})

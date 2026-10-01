@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { PermissionRequest, Session } from "@turenlabs/sdk/v2/client"
-import { trimSessions } from "./session-trim"
+import { takeRecentSessions, trimSessions } from "./session-trim"
 
 const session = (input: { id: string; parentID?: string; created: number; updated?: number; archived?: number }) =>
   ({
@@ -12,6 +12,35 @@ const session = (input: { id: string; parentID?: string; created: number; update
       archived: input.archived,
     },
   }) as Session
+
+test("takes the newest unique sessions in deterministic order", () => {
+  const sessions = [
+    session({ id: "c", created: 200 }),
+    session({ id: "b", created: 300 }),
+    session({ id: "a", created: 300 }),
+    session({ id: "a", created: 400 }),
+    session({ id: "stale", created: 100 }),
+  ]
+
+  expect(takeRecentSessions(sessions, 2, 100).map((item) => item.id)).toEqual(["a", "b"])
+})
+
+test("returns no recent sessions for zero or negative limits", () => {
+  const sessions = [session({ id: "recent", created: 200 })]
+
+  expect(takeRecentSessions(sessions, 0, 100)).toEqual([])
+  expect(takeRecentSessions(sessions, -1, 100)).toEqual([])
+})
+
+test("skips older candidates once the recent-session limit is full", () => {
+  const sessions = [
+    session({ id: "a", created: 400 }),
+    session({ id: "b", created: 300 }),
+    session({ id: "c", created: 200 }),
+  ]
+
+  expect(takeRecentSessions(sessions, 2, 100).map((item) => item.id)).toEqual(["a", "b"])
+})
 
 describe("trimSessions", () => {
   test("keeps base roots and recent roots beyond the limit", () => {
