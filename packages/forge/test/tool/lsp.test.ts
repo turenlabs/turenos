@@ -1,12 +1,12 @@
 import { PermissionV1 } from "@turenlabs/core/v1/permission"
-import { afterEach, describe, expect } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Effect, Layer } from "effect"
 import path from "path"
 import { Agent } from "../../src/agent/agent"
 import { CrossSpawnSpawner } from "@turenlabs/core/cross-spawn-spawner"
 import { FSUtil } from "@turenlabs/core/fs-util"
-import { LSP } from "@/lsp/lsp"
+import { __test, LSP, type Symbol } from "@/lsp/lsp"
 import { Permission } from "../../src/permission"
 import { MessageID, SessionID } from "../../src/session/schema"
 import { Tool } from "@/tool/tool"
@@ -17,6 +17,25 @@ import { testEffect } from "../lib/effect"
 
 afterEach(async () => {
   await disposeAllInstances()
+})
+
+const symbol = (name: string, kind: Symbol["kind"]): Symbol => ({
+  name,
+  kind,
+  location: {
+    uri: "file:///workspace.ts",
+    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+  },
+})
+
+describe("LSP workspace symbols", () => {
+  test("keeps server order and stops after the first ten supported kinds", () => {
+    const symbols = Array.from({ length: 33 }, (_, index) => symbol(`symbol-${index}`, index % 3 === 1 ? 12 : 1))
+
+    expect(__test.firstWorkspaceSymbols(symbols).map((item) => item.name)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `symbol-${index * 3 + 1}`),
+    )
+  })
 })
 
 const ctx = {
