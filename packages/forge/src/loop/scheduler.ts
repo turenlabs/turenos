@@ -66,8 +66,12 @@ const layer = Layer.effect(
 
       const cancellation = Effect.gen(function* () {
         yield* Effect.sleep(CANCELLATION_INTERVAL)
-        if ((yield* loops.getRun({ id: run.id })).status === "cancelled")
-          return yield* Effect.fail(new RunCancelledError())
+        const status = (yield* loops.getRun({ id: run.id })).status
+        if (status === "cancelled") return yield* Effect.fail(new RunCancelledError())
+        // Another owner's claimDue can mark this run stale when our lease lapses
+        // during a stall; waiting for the next heartbeat (~1m) would leave the
+        // Session draining turns against a run that no longer exists.
+        if (status === "stale") return yield* Effect.fail(new LeaseLostError(status))
       }).pipe(
         Effect.mapError((error) => (error instanceof RunCancelledError ? error : new LeaseLostError(error))),
         Effect.catchDefect((defect) => Effect.fail(new LeaseLostError(defect))),

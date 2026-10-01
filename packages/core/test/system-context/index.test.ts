@@ -317,4 +317,16 @@ describe("SystemContext", () => {
       expect(() => decodeSnapshot({ "core/date": { value: "date", removed: "" } })).toThrow()
     }),
   )
+
+  it.effect("validates previous snapshot keys during reconciliation", () =>
+    Effect.sync(() => {
+      expect(() =>
+        Effect.runSync(
+          SystemContext.reconcile(SystemContext.empty, {
+            invalid: { value: "stored", removed: "Removed" },
+          }),
+        ),
+      ).toThrow()
+    }),
+  )
 })

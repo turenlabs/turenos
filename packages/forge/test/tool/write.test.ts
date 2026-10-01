@@ -1,6 +1,6 @@
 import { afterEach, describe, expect } from "bun:test"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
-import { Effect, Layer } from "effect"
+import { Cause, Effect, Layer } from "effect"
 import path from "path"
 import fs from "fs/promises"
 import { WriteTool } from "../../src/tool/write"
@@ -59,6 +59,34 @@ const run = Effect.fn("WriteToolTest.run")(function* (
 })
 
 describe("tool.write", () => {
+  it.instance("rejects secret placeholders without changing the file", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const filepath = path.join(test.directory, "protected.txt")
+      yield* Effect.promise(() => Bun.write(filepath, "original"))
+      const exit = yield* run({ filePath: filepath, content: `[SECRET:v1:github:${"a".repeat(32)}]` }).pipe(Effect.exit)
+      expect(exit._tag).toBe("Failure")
+      // The model sees this text as the tool error, so it must say what to do instead.
+      if (exit._tag === "Failure") {
+        const message = String(Cause.squash(exit.cause))
+        expect(message).toContain("masked secret reference")
+        expect(message).not.toContain("approved secret-aware workflow")
+      }
+      expect(yield* Effect.promise(() => Bun.file(filepath).text())).toBe("original")
+    }),
+  )
+  it.instance("refuses input it cannot inspect for masked references without writing", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const filepath = path.join(test.directory, "uninspectable.txt")
+      const cycle: Record<string, unknown> = {}
+      cycle.self = cycle
+      const exit = yield* run({ filePath: filepath, content: cycle } as never).pipe(Effect.exit)
+      expect(exit._tag).toBe("Failure")
+      if (exit._tag === "Failure") expect(String(Cause.squash(exit.cause))).toContain("could not be checked")
+      expect(yield* Effect.promise(() => Bun.file(filepath).exists())).toBe(false)
+    }),
+  )
   describe("new file creation", () => {
     it.instance("writes content to new file", () =>
       Effect.gen(function* () {

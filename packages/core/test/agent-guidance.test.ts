@@ -76,6 +76,10 @@ describe("AgentGuidance", () => {
       const selected = yield* context.agents.select()
       const generation = yield* SystemContext.initialize(yield* context.guidance.load(selected))
 
+      expect(generation.baseline).toContain("<when_to_delegate>")
+      expect(generation.baseline).toContain("two or more independent lanes")
+      expect(generation.baseline).toContain("Do not delegate a lookup you can finish in a few tool calls")
+      expect(generation.baseline).toContain("Brief every child completely")
       expect(generation.baseline).toContain("<subagent_workflow>")
       expect(generation.baseline).toContain("independent exploration or research assignments in the same provider turn")
       expect(generation.baseline).toContain("returns after admission, not after child completion")
@@ -151,6 +155,7 @@ describe("AgentGuidance", () => {
       const generation = yield* SystemContext.initialize(yield* context.guidance.load({ agent: selected, sessionID }))
 
       expect(generation.baseline).toContain("maximum subagent depth")
+      expect(generation.baseline).not.toContain("<when_to_delegate>")
       expect(generation.baseline).toContain("Team coordination remains available")
       expect(generation.baseline).toContain(`<tool>${SwarmRoomTool.postName}</tool>`)
       expect(generation.baseline).toContain(`<tool>${SwarmRoomTool.readName}</tool>`)

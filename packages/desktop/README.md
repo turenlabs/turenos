@@ -35,5 +35,5 @@ beta process, preserves the previous bundle under `/tmp`, verifies `app.asar`
 and CLI hashes, checks the installed signature, and probes the authenticated
 sidecar with an ephemeral beta-only password.
 
-See [the architecture guide](../../docs/architecture.md) for the full Desktop,
+See [the architecture guide](../../docs/architecture/README.md) for the full Desktop,
 renderer, sidecar, and WSL topology.

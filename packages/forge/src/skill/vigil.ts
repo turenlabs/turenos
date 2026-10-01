@@ -87,11 +87,13 @@ const reviewedSkillDigests = new Set([
   // turenlabs/secure-code-review
   "550415b8d5cf9256cef61a930c9439f88952ed14a9b73cd462390cd72d5fc3ce",
   // turenlabs/slsa-provenance-review
-  "f8fd069c6e38034d55aba34d4558637e60ed26f42df5c01d736d322f51072a48",
+  "2db6cd93ec6dab38e005e622f1ebb13c172b10e569f58cd3d45aee795a9fd8e6",
   // turenlabs/software-architecture-reviewer
   "17f0fc432154a9631087010bd58c30152ecd4f4cbbf9ae3ca821d02b3cb343aa",
   // turenlabs/technical-security-blog
   "aab1c54a3c1909c00d4cfcb69e9d2a5cfec1c763abcfab384db3aed8e34f1831",
+  // turenlabs/tenant-isolation-review
+  "7448474a095ca9bb9c7c47346a4e3fb43e25192357966e0fd58cdfc4223eec16",
   // turenlabs/test-strategy
   "9ef7b51f553db3f1b86cef791e07f6122ea9f5babc6350e08343a8ceff8bb161",
   // turenlabs/threat-hunter
@@ -259,7 +261,9 @@ async function runtimeComplete(config: Config, verifyNative = true) {
       return match ? [[match[2], match[1]] as const] : []
     }),
   )
-  const files = verifyNative ? [config.binary, config.library, config.model, config.metadata] : [config.model, config.metadata]
+  const files = verifyNative
+    ? [config.binary, config.library, config.model, config.metadata]
+    : [config.model, config.metadata]
   for (const filename of files) {
     const digest = expected.get(path.basename(filename))
     if (!digest || (await sha256File(filename)) !== digest) return false
