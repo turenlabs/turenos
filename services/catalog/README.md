@@ -1,6 +1,6 @@
 # Built-in extension catalog
 
-`services/catalog` is the canonical source for TurenOS's built-in extension catalog: curated cybersecurity data sources, prompt-only skills and fixed-profile subagents, MCP server definitions, and packaged security tools. Everything here ships inside the monorepo — there is no remote catalog service.
+`services/catalog` is the canonical source for TurenOS's built-in extension catalog: curated cybersecurity data sources, prompt-only skills and fixed-profile subagents, MCP server definitions, and packaged security tools. Everything here ships inside the monorepo - there is no remote catalog service.
 
 The catalog holds manifests, not binaries or credentials. MCP entries are hosted endpoints or pinned install recipes (`managed` entries name the package, version, and command that the uv-managed runtime installs and runs); tool entries bind security scanners that run a host executable the user installs (Bandit, Trivy, Gitleaks, and others; Batou is downloaded on first enable) or the built-in Yolk integration. No manifest can add arbitrary HTTP endpoints, provider credentials, or permission rules.
 

@@ -116,6 +116,8 @@ describe("filterExtensionItems", () => {
         ["turenlabs/capec", "security-knowledge"],
         ["turenlabs/mcp-security-review", "application-security"],
         ["turenlabs/slsa-provenance-review", "supply-chain"],
+        ["turenlabs/agentic-prompt-injection-review", "application-security"],
+        ["turenlabs/oauth-security-review", "application-security"],
         ["turenlabs/tenant-isolation-review", "application-security"],
       ].map(([id, category]) => [extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id } }), category]),
     ).toEqual([
@@ -135,6 +137,8 @@ describe("filterExtensionItems", () => {
       ["security-knowledge", "security-knowledge"],
       ["application-security", "application-security"],
       ["supply-chain", "supply-chain"],
+      ["application-security", "application-security"],
+      ["application-security", "application-security"],
       ["application-security", "application-security"],
     ])
     expect(extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id: "turenlabs/euvd" } })).toBe(

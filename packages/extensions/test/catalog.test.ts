@@ -4,6 +4,7 @@ import { ExtensionCatalog, ExtensionManifestPolicy } from "@turenlabs/extensions
 import { Schema } from "effect"
 
 const expected = [
+  "turenlabs/agentic-prompt-injection-review",
   "turenlabs/atlassian-security-context",
   "turenlabs/attack",
   "turenlabs/automox",
@@ -55,6 +56,7 @@ const expected = [
   "turenlabs/native-audit",
   "turenlabs/notion",
   "turenlabs/nvd",
+  "turenlabs/oauth-security-review",
   "turenlabs/onepassword",
   "turenlabs/opengrep",
   "turenlabs/osv",
@@ -155,7 +157,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(19)
+    expect(skills.length).toBe(21)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0
@@ -201,6 +203,29 @@ describe("ExtensionCatalog", () => {
     expect(contribution.source.content).toContain("Never install or execute the artifact, build scripts, package hooks")
     expect(contribution.source.content).toContain("Do not install or update a verifier")
     expect(contribution.source.content).toContain("at most three verifier invocations")
+  })
+
+  test("grounds OAuth/OIDC review in role-specific evidence and primary standards", () => {
+    const contribution = ExtensionCatalog.get("turenlabs/oauth-security-review")?.contributions[0]
+    if (contribution?.type !== "skill" || contribution.source.type !== "catalog") {
+      throw new Error("Expected OAuth/OIDC Security Review to be a catalog skill")
+    }
+    expect(contribution.defaultEnabled).toBe(false)
+    expect(contribution.requires).toEqual(["read", "grep", "glob", "lsp", "webfetch", "edit", "write", "bash"])
+    expect(contribution.source.content).toContain(
+      "Remain read-only unless the user explicitly authorizes a fix; writes and local tests require that explicit authorization.",
+    )
+    expect(contribution.source.content).toContain("otherwise provide the plan without writes or test execution")
+    expect(contribution.source.content).toContain("RFC 9700 requires PKCE for public clients")
+    expect(contribution.source.content).toContain("Never treat decoding a JWT as signature validation")
+    expect(contribution.source.content).toContain("validate it as specified by that extension")
+    expect(contribution.source.content).toContain("implementations without such extensions to ignore `azp`")
+    expect(contribution.source.content).toContain("do not require `azp` solely because `aud` has multiple values")
+    expect(contribution.source.content).toContain("that `aud` contains the client ID and no untrusted audiences")
+    expect(contribution.source.content).not.toContain("If `azp` is present, verify it equals the client ID")
+    expect(contribution.source.content).not.toContain("SHOULD require it when `aud` has multiple values")
+    expect(contribution.source.content).toContain("never a clean bill of health")
+    expect(contribution.source.content).toContain("https://openid.net/specs/openid-connect-core-1_0-errata2.html")
   })
 
   test("rejects invalid or duplicate executable declarations", () => {

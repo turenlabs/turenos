@@ -55,6 +55,21 @@ describe("Vigil skill scanner", () => {
     )
   })
 
+  test("admits the reviewed OAuth/OIDC catalog skill digest", async () => {
+    const manifest = ExtensionCatalog.get("turenlabs/oauth-security-review")
+    if (!manifest) throw new Error("OAuth/OIDC Security Review manifest is missing")
+    const result = await Vigil.scanManifest(manifest, {
+      ensure: async () => config,
+      run: (async () => ({
+        code: 0,
+        stdout: score("malicious", 0.9, 0.1),
+        stderr: Buffer.alloc(0),
+      })) as typeof Process.run,
+    })
+    expect(result?.reviewed).toBe(true)
+    expect(Vigil.blockReason(result)).toBeUndefined()
+  })
+
   test("marks the tenant-isolation catalog skill as reviewed", async () => {
     const manifest = ExtensionCatalog.get("turenlabs/tenant-isolation-review")
     if (!manifest) throw new Error("Tenant Isolation Review manifest is missing")

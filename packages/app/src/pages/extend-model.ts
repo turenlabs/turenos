@@ -85,6 +85,8 @@ const categoryByExtensionID: Readonly<Record<string, ClassifiedExtensionCategory
   "turenlabs/iac-config-review": "cloud-security",
   "turenlabs/incident-evidence-triage": "incident-response",
   "turenlabs/mcp-security-review": "application-security",
+  "turenlabs/agentic-prompt-injection-review": "application-security",
+  "turenlabs/oauth-security-review": "application-security",
   "turenlabs/tenant-isolation-review": "application-security",
   "turenlabs/threat-model-review": "application-security",
   "turenlabs/technical-security-blog": "security-knowledge",
