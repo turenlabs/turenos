@@ -99,3 +99,13 @@ Regression tests use synthetic credentials and isolated storage. They cover:
 Separate tests verify normal media and optional-field compatibility, failure behavior, and interruption.
 
 These tests do not claim a secret-bearing wire capture for every runtime or a live external-provider audit. Run tests from their package directories; the repository root deliberately refuses test execution.
+
+## Source
+
+- [`packages/core/src/secret-redaction.ts`](../../packages/core/src/secret-redaction.ts): detectors, references, budgets, and the mutation check.
+- [`packages/core/src/secret-output.ts`](../../packages/core/src/secret-output.ts): per-operation snapshots of configured credentials.
+- [`packages/core/src/tool/registry.ts`](../../packages/core/src/tool/registry.ts) and [`packages/core/src/tool-output-store.ts`](../../packages/core/src/tool-output-store.ts): tool settlement and overflow retention.
+- [`packages/core/src/session/disclosure.ts`](../../packages/core/src/session/disclosure.ts) and [`packages/core/src/session/runner/llm.ts`](../../packages/core/src/session/runner/llm.ts): model requests.
+- [`packages/core/src/shell-job.ts`](../../packages/core/src/shell-job.ts) and [`packages/core/src/session/shell.ts`](../../packages/core/src/session/shell.ts): shell jobs and direct shell.
+- [`packages/forge/src/tool/secret-output.ts`](../../packages/forge/src/tool/secret-output.ts), [`packages/forge/src/session/disclosure.ts`](../../packages/forge/src/session/disclosure.ts), and [`packages/forge/src/tool/shell.ts`](../../packages/forge/src/tool/shell.ts): the legacy Forge paths.
+- [`specs/secret-output-guard.md`](../../specs/secret-output-guard.md): the design contract.

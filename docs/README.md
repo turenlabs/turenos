@@ -76,6 +76,8 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
     captures, macros, .NET IL, archives, and packer evidence.
   - [Secure storage](./systems/secure-storage.md): encrypting credentials and sensitive files with the OS-protected
     Secret Vault.
+  - [Secret output protection](./systems/secret-output-protection.md): masking credentials in tool output and model
+    requests, the boundaries it covers, and how it fails closed.
   - [Legacy session shares](./systems/legacy-shares.md): revoking public share links created by older builds.
   - [Batou write scanning](./systems/batou.md): the opt-in SAST scanner that can block agent file writes.
   - [Intel feeds](./systems/intel-feeds.md): the vulnerability and security-news feeds every server polls for the Home
