@@ -10,7 +10,7 @@ Agents re-investigate what earlier runs already found, refuted, or checked. Team
 - A room is unique per root Session and created on first access (`packages/core/src/team/room.sql.ts`, `SwarmRoom.open` in `packages/core/src/team/room.ts`). A later `@swarm` in the same root Session reuses the room and records the new objective; a new root Session starts with an empty room.
 - The coordinator reads the room before planning (`packages/core/src/session/swarm.ts`), and `board_read` "prevents repeating a sibling's work" (`packages/core/src/tool/team-board.ts`). Both cover only the current team.
 
-Memory persists per project with wing scope, temporal validity, provenance, anchors, and search (`docs/memory.md`). Its kinds are `note`, `fact`, `decision`, and `observation`. It can describe a refutation or a clean check in prose, but has no typed investigation scope, evidence lineage, observation revision, or applicability, and there is no swarm-specific memory consultation.
+Memory persists per project with wing scope, temporal validity, provenance, anchors, and search (`docs/systems/memory.md`). Its kinds are `note`, `fact`, `decision`, and `observation`. It can describe a refutation or a clean check in prose, but has no typed investigation scope, evidence lineage, observation revision, or applicability, and there is no swarm-specific memory consultation.
 
 Prior work is a small project knowledge record of investigation outcomes, including negative results, that a new session, child session, or `@swarm` receives before it starts probing.
 
