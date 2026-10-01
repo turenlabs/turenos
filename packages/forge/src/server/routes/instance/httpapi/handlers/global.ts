@@ -44,7 +44,11 @@ function parseBody(body: string) {
 // stream in process memory — the unbounded callback queue here was a heap-growth
 // vector. Matches EventV2.allBounded semantics: drop the offer, then fail the
 // stream with SubscriberOverflowError so the client resyncs on reconnect.
-const subscriberCapacity = 256
+// The bound must also absorb normal bursts — a busy event loop starves the SSE
+// writer while hundreds of events publish per tick, and at 256 a healthy client
+// disconnected mid-burst, visibly refreshing every tab on reconnect. Match the
+// EventV2 pubsub bound (8192) so only a genuinely stalled consumer overflows.
+const subscriberCapacity = 8192
 
 function eventResponse() {
   return Effect.gen(function* () {

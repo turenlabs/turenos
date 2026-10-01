@@ -29,9 +29,9 @@ Leaves own resolution, permission, and side-effect ordering. Translate only expe
 
 ## Registration
 
-Built-ins register through `Tools.Service.register({ [name]: tool })`. Application tools register through `ApplicationTools.Service.register(...)`, exposed publicly as `opencode.tools.register(...)`.
+Built-ins register through `Tools.Service.register({ [name]: tool })`. Application tools register through `ApplicationTools.Service.register(...)`, exposed publicly as `tools.register(...)` on the `@turenlabs/sdk-next` host (`packages/sdk-next/src/forge.ts`).
 
-`mcp.ts` registers MCP-hosted tools the same way, one scoped generation at a time, re-registering when a server's listing changes. It is built but **not yet wired into a served graph** — see `specs/v2/session.md` for why the trigger has to be demand-driven rather than Location boot. It owns only the translation — server listing to canonical tool, `tools/call` result to model output. The MCP client, its child processes and its OAuth state stay behind `McpTool.Source`, which is a **global** node: `buildLocationServiceMap` builds Location-scoped layers under `Layer.fresh`, so a Location-scoped source would construct one MCP service, and therefore one child process per configured server, per open directory. The Location scope is passed as an explicit `directory` argument instead.
+`mcp.ts` registers MCP-hosted tools the same way, one scoped generation at a time, re-registering when a server's listing changes. `McpTool.node` is in the Location graph (`location-services.ts`) and registers per-Session MCP tools through `SessionToolProvider` when a turn assembles its tools, not at Location boot (see `specs/v2/session.md`). It owns only the translation — server listing to canonical tool, `tools/call` result to model output. The MCP client, its child processes and its OAuth state stay behind `McpTool.Source`, which is a **global** node: `buildLocationServiceMap` builds Location-scoped layers under `Layer.fresh`, so a Location-scoped source would construct one MCP service, and therefore one child process per configured server, per open directory. The Location scope is passed as an explicit `directory` argument instead.
 
 Both are scoped:
 
@@ -62,16 +62,15 @@ Producer capture limits are separate. For example, Bash keeps `AppProcess.maxOut
 
 ## Current Gaps
 
-- Plugin boot has not been redesigned to register canonical tools through `Tools.Service`; do not redesign it as part of leaf migrations. V1 additionally discovers user-authored tools by globbing `{tool,tools}/*.{js,ts}` and dynamically importing them; V2 has no equivalent.
-- Tool definitions carry no plugin transform. V1 fires `tool.definition` per definition; the V2 analogue would be `registry.ts` `materialize`, but V1's contract is in-place mutation of a loosely typed bag. Needs a contract, not a port. No plugin implements it today.
+- Plugin tools don't register through `Tools.Service`; don't redesign plugin boot as part of a leaf migration.
+- There is no V2 `tool.definition` plugin hook. Don't port V1's in-place mutation into `materialize`; it needs a typed contract first.
+- Session results still expose managed `outputPaths`; hiding them needs an opaque managed-output reference design.
 
 ## Execution Interceptors
 
-`interceptor.ts` owns `tool.execute.before`/`.after`. It is a Location-scoped registration store, not a hook bus: `ToolRegistry.settleRegistration` runs it because the registry owns the one boundary where a call resolves, the same way `AISDK` runs its own hooks at provider construction. There is no `trigger` and nothing outside `registry.ts` calls it.
+`interceptor.ts` owns the `before`, `after`, `finalize` and `turnComplete` tool hooks. It is a Location-scoped registration store, not a hook bus: `ToolRegistry.settleRegistration` runs it because the registry owns the one boundary where a call resolves, the same way `AISDK` runs its own hooks at provider construction. There is no `trigger` and nothing outside `registry.ts` calls it.
 
 - `before` sees the **raw** provider arguments, before the input schema decodes them. It may deny (terminal; the call never executes and the reason becomes the tool error) or replace the arguments (composes in registration order; the replacement is re-decoded through the tool's own schema, so an invalid one fails the call rather than reaching `execute`).
-- `after` sees the settled result after execution, encoding and bounding. It is read-only except for `notes`, which append advisory text to the model-visible output. Notes are dropped for denied and failed calls.
+- `after` sees the settled result after execution, encoding and bounding. It is read-only except for `notes`, which append advisory text to the model-visible output, including error results. Notes are dropped for denied calls.
 - An interceptor that throws, dies, or exceeds its phase budget has no opinion and the call proceeds. Interruption still propagates.
-- Both phases run for every call that reaches a real registration, including subagent calls, which share the parent's Location. They do not run for unknown or stale tool names, because nothing executes there.
-- MCP tool registration is built and tested but not enabled; it needs a demand-driven trigger before it can be wired into a served graph.
-- The public Session result shape currently exposes managed `outputPaths`; full storage encapsulation requires a future opaque managed-output reference design.
+- `before` and `after` run for every call that reaches a real registration, including subagent calls, which share the parent's Location. They do not run for unknown or stale tool names, because nothing executes there.

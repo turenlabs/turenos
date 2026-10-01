@@ -8,6 +8,8 @@ import { ToolVisibleError } from "../../tool/visible-error"
 import { SessionCreation } from "../creation"
 import { SessionEvent } from "../event"
 import { SessionMessage } from "../message"
+import type { SecretOutput } from "../../secret-output"
+import { SessionDisclosure } from "../disclosure"
 import { SessionSchema } from "../schema"
 import { SessionStore } from "../store"
 import { SessionRunnerModel } from "./model"
@@ -21,6 +23,7 @@ import { SessionRunnerModel } from "./model"
  * Session whose titling fails keeps its placeholder name and is titled by the next turn instead.
  */
 export interface Dependencies {
+  readonly disclosure: Effect.Effect<SecretOutput.Snapshot, SecretOutput.Error>
   readonly agents: AgentV2.Interface
   readonly events: EventV2.Interface
   readonly llm: Pick<LLMClientShape, "generate">
@@ -107,17 +110,25 @@ export const make = (dependencies: Dependencies): Interface => {
           }
         : session
     const resolved = yield* dependencies.models.resolve(titleSession, selection.info.request, { defaultVariant: false })
+    // Protect the whole prompt before trimming it: a credential cut at the budget boundary would
+    // no longer be recognizable. An unprotectable prompt simply leaves the Session untitled.
+    const guard = yield* dependencies.disclosure
+    const safe = yield* Effect.try({ try: () => guard.text(prompt), catch: () => "unprotectable" }).pipe(Effect.option)
+    if (safe._tag === "None") return
     // `generate`, not `stream`: nobody is watching a title arrive, and one awaited response is one
     // fewer thing that can stall half-consumed. No tools are offered, which matches the agent's
     // ruleset and removes any chance of this turning into a loop.
     const response = yield* dependencies.llm.generate(
-      LLM.request({
-        model: resolved.model,
-        system: selection.info.system,
-        messages: [Message.user(`Generate a title for this conversation:\n${prompt.slice(0, MAX_PROMPT_CHARS)}`)],
-        tools: [],
-        generation: { maxTokens: MAX_OUTPUT_TOKENS },
-      }),
+      SessionDisclosure.request(
+        LLM.request({
+          model: resolved.model,
+          system: selection.info.system,
+          messages: [Message.user(`Generate a title for this conversation:\n${safe.value.slice(0, MAX_PROMPT_CHARS)}`)],
+          tools: [],
+          generation: { maxTokens: MAX_OUTPUT_TOKENS },
+        }),
+        guard,
+      ),
     )
     const title = clean(response.text)
     if (!title)

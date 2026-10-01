@@ -1,3 +1,4 @@
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { describe, expect, test } from "bun:test"
 import {
   InvalidRequestReason,
@@ -1155,6 +1156,7 @@ describe("fitPrompt", () => {
 describe("settings", () => {
   const engine = (compaction: Record<string, unknown>) =>
     SessionCompaction.make({
+      disclosure: Effect.succeed(SecretRedaction),
       events: { publish: () => Effect.succeed(undefined) } as never,
       llm: { stream: () => Stream.empty },
       config: Effect.succeed(configWith(compaction)),
@@ -1204,6 +1206,7 @@ describe("settings", () => {
 
   test("later documents win per field", () => {
     const layered = SessionCompaction.make({
+      disclosure: Effect.succeed(SecretRedaction),
       events: { publish: () => Effect.succeed(undefined) } as never,
       llm: { stream: () => Stream.empty },
       config: Effect.succeed([
@@ -1223,6 +1226,7 @@ describe("settings", () => {
     // *previous* scenario's settings, which shipped a wrong A/B table before this regression.
     let prune = true
     const live = SessionCompaction.make({
+      disclosure: Effect.succeed(SecretRedaction),
       events: { publish: () => Effect.succeed(undefined) } as never,
       llm: { stream: () => Stream.empty },
       config: Effect.sync(() => configWith({ prune })),
@@ -1284,6 +1288,7 @@ const engine = (options: {
     published,
     requests,
     compaction: SessionCompaction.make({
+      disclosure: Effect.succeed(SecretRedaction),
       events: {
         publish: ((definition: { type: string }, data: Record<string, unknown>) =>
           Effect.sync(() => {
@@ -1326,6 +1331,65 @@ describe("compaction outcomes", () => {
     const ended = harness.published.at(-1)!.data
     expect(ended["messageID"]).toBe(started["messageID"])
     expect(ended["text"]).toBe(VALID_SUMMARY)
+  })
+
+  test("redacts history before eliding it, so a cut credential never reaches the summarizer", async () => {
+    const token = `ghp_${"Kx7".repeat(12)}`
+    // The bash budget keeps ~977 leading characters, so this credential straddles the elision cut.
+    const output = `${"o".repeat(959)} ${token} ${"p".repeat(3_000)}`
+    const harness = engine({ events: [delta(VALID_SUMMARY)] })
+    const outcome = await Effect.runPromise(
+      harness.compaction.compact({
+        sessionID,
+        entries: [
+          entry(user("u-cut", "check the environment")),
+          entry(assistant("a-cut", [tool({ id: "call-cut", name: "bash", output })])),
+        ],
+        model: model({ context: 200_000 }),
+      }),
+    )
+    expect(outcome).toEqual({ ok: true })
+    expect(harness.requests.length).toBeGreaterThan(0)
+    for (const request of harness.requests) expect(JSON.stringify(request.messages)).not.toContain(token.slice(0, 12))
+    expect(JSON.stringify(harness.published)).not.toContain(token.slice(0, 12))
+  })
+
+  test("a fallback checkpoint excerpts protected history, never a cut credential", async () => {
+    const token = `ghp_${"Wq4".repeat(12)}`
+    const overflow = () =>
+      new LLMError({
+        module: "test",
+        method: "stream",
+        reason: new InvalidRequestReason({
+          message: `prompt too long near ${token}`,
+          classification: "context-overflow",
+        }),
+      })
+    const harness = engine({
+      events: [],
+      failures: [overflow(), overflow(), overflow(), overflow()],
+      config: configWith({ ledger: false }),
+    })
+    // The 12k excerpt keeps ~6k leading characters; this run of credentials spans that cut.
+    const text = `${"x ".repeat(2_950)}${`${token} `.repeat(12)}${"y".repeat(800_000)}`
+    const sessionModel = model({ context: 200_000, output: 10_000 })
+    const compacted = await Effect.runPromise(
+      harness.compaction.compactAfterOverflow({
+        sessionID,
+        entries: [
+          entry(user("fallback_cut_u", "summarize")),
+          entry(assistant("fallback_cut_a", [{ type: "text", id: "fallback_cut_text", text }])),
+          entry(user("fallback_cut_pending", "current instruction")),
+        ],
+        model: sessionModel,
+        request: LLM.request({ model: sessionModel, messages: [Message.user("current instruction")] }),
+      }),
+    )
+    expect(compacted).toBe(true)
+    const ended = harness.published.find((event) => event.type === "session.next.compaction.ended")
+    expect(ended?.data["text"]).toContain("written by TurenOS, not by a model")
+    expect(JSON.stringify(harness.published)).not.toContain(token.slice(0, 12))
+    for (const request of harness.requests) expect(JSON.stringify(request.messages)).not.toContain(token.slice(0, 12))
   })
 
   test("every declined path reports a distinguishable reason", async () => {
@@ -1630,6 +1694,7 @@ describe("compaction outcomes", () => {
     const published: { readonly type: string; readonly data: Record<string, unknown> }[] = []
     const sizes: number[] = []
     const compaction = SessionCompaction.make({
+      disclosure: Effect.succeed(SecretRedaction),
       events: {
         publish: ((definition: { type: string }, data: Record<string, unknown>) =>
           Effect.sync(() => {
@@ -2123,6 +2188,7 @@ describe("the ledger on the durable checkpoint", () => {
         const summaryRelease = yield* Deferred.make<void>()
         const extractionStarted = yield* Deferred.make<void>()
         const compaction = SessionCompaction.make({
+          disclosure: Effect.succeed(SecretRedaction),
           events: { publish: (() => Effect.void) as never } as never,
           llm: {
             stream: (request) => {
@@ -2170,6 +2236,7 @@ describe("the ledger on the durable checkpoint", () => {
         const extractionStarted = yield* Deferred.make<void>()
         const extractionInterrupted = yield* Deferred.make<void>()
         const compaction = SessionCompaction.make({
+          disclosure: Effect.succeed(SecretRedaction),
           events: { publish: (() => Effect.void) as never } as never,
           llm: {
             stream: (request) => {
@@ -2207,6 +2274,7 @@ describe("the ledger on the durable checkpoint", () => {
         const extractionStarted = yield* Deferred.make<void>()
         const published: Published[] = []
         const compaction = SessionCompaction.make({
+          disclosure: Effect.succeed(SecretRedaction),
           events: {
             publish: ((definition: { type: string }, data: Record<string, unknown>) =>
               Effect.sync(() => {
@@ -2306,6 +2374,7 @@ describe("compaction agent", () => {
 describe("prune wiring", () => {
   const engineWith = (compaction: Record<string, unknown>) =>
     SessionCompaction.make({
+      disclosure: Effect.succeed(SecretRedaction),
       events: { publish: () => Effect.succeed(undefined) } as never,
       llm: { stream: () => Stream.empty },
       config: Effect.succeed(configWith(compaction)),

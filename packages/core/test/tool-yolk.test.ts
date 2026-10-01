@@ -53,7 +53,10 @@ const layer = AppNodeBuilder.build(
     [YolkAnalyzer.node, analyzer],
     [
       ExtensionRuntime.node,
-      Layer.mock(ExtensionRuntime.Service, { enabled: () => Effect.succeed(activation.enabled) }),
+      Layer.mock(ExtensionRuntime.Service, {
+        enabled: () => Effect.succeed(activation.enabled),
+        manifests: () => Effect.succeed([]),
+      }),
     ],
     [
       Location.node,
