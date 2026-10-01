@@ -22,6 +22,11 @@ import { Flag } from "@turenlabs/core/flag/flag"
 import { isLoopbackHostname } from "./shared/local-request"
 import { ServerAuth } from "./auth"
 import { SecretVault } from "@turenlabs/core/secret-vault"
+import { ServerOwnership } from "./ownership"
+import { ServerDescriptor } from "./descriptor"
+import { ServerOwner } from "@turenlabs/core/database/server-owner"
+import { Database } from "@turenlabs/core/database/database"
+import type { Source } from "@/cli/secret-vault-key"
 import { SecurityProxyStore } from "@turenlabs/core/security-proxy"
 import { SecurityProxyRuntime } from "@turenlabs/core/security-proxy-runtime"
 import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
@@ -57,6 +62,7 @@ type ListenOptions = CorsOptions & {
     keyID: string
     key: Uint8Array
   }
+  keySource?: Source
   securityProxy?: (command: SecurityProxy.Command) => Promise<SecurityProxy.Result>
 }
 type ListenerState = {
@@ -66,6 +72,7 @@ type ListenerState = {
   http: ListenerServer
   websockets: WebSocketTracker.Interface
   securityProxy: SecurityProxyStore.Interface
+  database: Database.Interface
 }
 type EffectListener = Omit<Listener, "stop"> & {
   stop: (close?: boolean) => Effect.Effect<void>
@@ -111,14 +118,29 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
         "Set FORGE_SERVER_PASSWORD, bind a loopback hostname, or pass --insecure to override.",
     )
   }
-  if (opts.credentialVault) SecretVault.configure(opts.credentialVault)
-  const listener = await Effect.runPromise(listenEffect({ ...opts, password, username }))
-  return {
-    hostname: listener.hostname,
-    port: listener.port,
-    url: listener.url,
-    stop: (close?: boolean) => runListenerStop(listener.stop(close)),
-    securityProxy: listener.securityProxy,
+  const releaseOwner = await ServerOwnership.acquire({ ...opts, password })
+  try {
+    const facts: ServerDescriptor.ListenerFacts = {
+      keySource: opts.keySource ?? (opts.credentialVault ? "desktop" : "env"),
+      listener: "",
+    }
+    const listener = await Effect.runPromise(listenEffect({ ...opts, password, username }, facts))
+    return {
+      hostname: listener.hostname,
+      port: listener.port,
+      url: listener.url,
+      stop: async (close?: boolean) => {
+        try {
+          await runListenerStop(listener.stop(close))
+        } finally {
+          releaseOwner()
+        }
+      },
+      securityProxy: listener.securityProxy,
+    }
+  } catch (error) {
+    releaseOwner()
+    throw error
   }
 }
 
@@ -128,42 +150,63 @@ export async function runListenerStop(effect: Effect.Effect<void, unknown>) {
   throw Cause.squash(exit.cause)
 }
 
-const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unknown> = Effect.fn("Server.listen")(
-  function* (opts: ListenOptions) {
-    const state = yield* startWithPortFallback(opts)
-    // Intel feeds have no layer node, so the listener owns the 6h poll tick
-    // (stopped with the listener scope). Skipped under the test runner so
-    // server tests stay hermetic: no real feed traffic, no shared-state writes.
-    const intelScheduler = process.env.NODE_ENV === "test" ? undefined : startScheduler()
-    if (intelScheduler) {
-      yield* Scope.addFinalizer(
-        state.scope,
-        Effect.sync(() => intelScheduler.stop()),
-      )
-    }
-    const address = yield* tcpAddress(state)
-    const listenerUrl = makeURL(opts.hostname, address.port)
-    const unpublishMdns = yield* setupMdns(opts, address.port, state.scope)
-    url = listenerUrl
+const listenEffect = Effect.fn("Server.listen")(function* (opts: ListenOptions, facts: ServerDescriptor.ListenerFacts) {
+  const state = yield* startWithPortFallback(opts, facts)
+  // Intel feeds have no layer node, so the listener owns the 6h poll tick
+  // (stopped with the listener scope). Skipped under the test runner so
+  // server tests stay hermetic: no real feed traffic, no shared-state writes.
+  const intelScheduler = process.env.NODE_ENV === "test" ? undefined : startScheduler()
+  if (intelScheduler) {
+    yield* Scope.addFinalizer(
+      state.scope,
+      Effect.sync(() => intelScheduler.stop()),
+    )
+  }
+  const address = yield* tcpAddress(state)
+  const listenerUrl = makeURL(opts.hostname, address.port)
+  const unpublishMdns = yield* setupMdns(opts, address.port, state.scope)
+  url = listenerUrl
+  facts.listener = listenerUrl.toString()
+  if (ServerOwner.mode() === "persistent" && !(yield* ServerDescriptor.read(state.database, facts)))
+    return yield* Effect.die(new Error("persistent server started without an owner record"))
 
-    return {
-      hostname: opts.hostname,
-      port: address.port,
-      url: listenerUrl,
-      stop: yield* makeStop(state, unpublishMdns, listenerUrl),
-      securityProxy: (command: SecurityProxy.StoreCommand) => Effect.runPromise(state.securityProxy.execute(command)),
-    }
-  },
-)
+  return {
+    hostname: opts.hostname,
+    port: address.port,
+    url: listenerUrl,
+    stop: yield* makeStop(state, unpublishMdns, listenerUrl),
+    securityProxy: (command: SecurityProxy.StoreCommand) => Effect.runPromise(state.securityProxy.execute(command)),
+  }
+})
 
-function listenerLayer(opts: ListenOptions, port: number) {
+function listenerLayer(opts: ListenOptions, port: number, facts: ServerDescriptor.ListenerFacts) {
   const secretVault = opts.credentialVault ? SecretVault.layer(opts.credentialVault) : SecretVault.runtime
-    return HttpRouter.serve(HttpApiApp.createRoutes(opts, undefined, secretVault, opts.securityProxy ? { execute: (command) => Effect.tryPromise({ try: () => opts.securityProxy!(command), catch: (error) => new SecurityProxyRuntime.Error(error instanceof Error ? error.message : String(error)) }) } : undefined), {
-    middleware: disposeMiddleware,
-    disableLogger: true,
-    disableListenLog: true,
-  }).pipe(
+  return HttpRouter.serve(
+    HttpApiApp.createRoutes(
+      opts,
+      undefined,
+      secretVault,
+      opts.securityProxy
+        ? {
+            execute: (command) =>
+              Effect.tryPromise({
+                try: () => opts.securityProxy!(command),
+                catch: (error) =>
+                  new SecurityProxyRuntime.Error(error instanceof Error ? error.message : String(error)),
+              }),
+          }
+        : undefined,
+      facts,
+      { password: opts.password, username: opts.username },
+    ),
+    {
+      middleware: disposeMiddleware,
+      disableLogger: true,
+      disableListenLog: true,
+    },
+  ).pipe(
     Layer.provideMerge(AppNodeBuilder.build(WebSocketTracker.node)),
+    Layer.provideMerge(AppNodeBuilder.build(Database.node)),
     Layer.provideMerge(AppNodeBuilder.build(SecurityProxyStore.node, [[SecretVault.node, secretVault]])),
     Layer.provideMerge(serverLayer({ port, hostname: opts.hostname })),
     // Install a fresh `ConfigProvider` per listener so `Config.string(...)`
@@ -187,11 +230,11 @@ function listenerEnv(opts: ListenOptions) {
   }
 }
 
-function startWithPortFallback(opts: ListenOptions) {
-  if (opts.port !== 0) return startListener(opts, opts.port)
+function startWithPortFallback(opts: ListenOptions, facts: ServerDescriptor.ListenerFacts) {
+  if (opts.port !== 0) return startListener(opts, opts.port, facts)
   // Match the legacy listener port-resolution behavior: explicit `0` prefers
   // 4096 first, then any free port.
-  return startListener(opts, 4096).pipe(Effect.catch(() => startListener(opts, 0)))
+  return startListener(opts, 4096, facts).pipe(Effect.catch(() => startListener(opts, 0, facts)))
 }
 
 /**
@@ -221,11 +264,11 @@ function startWithPortFallback(opts: ListenOptions) {
  * expensive for MCP, which spawns a child process per configured server, so
  * `checkSingleMcp` reports it rather than letting it double silently.
  */
-function startListener(opts: ListenOptions, port: number) {
+function startListener(opts: ListenOptions, port: number, facts: ServerDescriptor.ListenerFacts) {
   const scope = Scope.makeUnsafe()
   const memoMap = Layer.makeMemoMapUnsafe()
   const startedAt = performance.now()
-  return Layer.buildWithMemoMap(listenerLayer(opts, port), memoMap, scope).pipe(
+  return Layer.buildWithMemoMap(listenerLayer(opts, port, facts), memoMap, scope).pipe(
     Effect.provide(HttpApiApp.context),
     Effect.tap(() => startupTrace("listener-layer-ready", startedAt)),
     Effect.tap(() => checkSingleMcp(memoMap)),
@@ -238,6 +281,7 @@ function startListener(opts: ListenOptions, port: number) {
         http: Context.get(ctx, ListenerServerService),
         websockets: Context.get(ctx, WebSocketTracker.Service),
         securityProxy: Context.get(ctx, SecurityProxyStore.Service),
+        database: Context.get(ctx, Database.Service),
       }),
     ),
   )

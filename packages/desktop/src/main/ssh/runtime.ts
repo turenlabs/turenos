@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdir } from "node:fs/promises"
+import { lstat, mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import * as pty from "@lydell/node-pty"
@@ -366,10 +366,17 @@ export async function ensureMaster(
   },
 ): Promise<SshMaster> {
   await mkdir(controlDir, { recursive: true, mode: 0o700 })
-  const cp = controlPath(controlDir, target)
-  const pending = (masterLocks.get(cp) ?? Promise.resolve()).then(() =>
-    acquireMaster(binary, cp, target, opts),
+  // A foreign owner of this predictable /tmp path could replace the forward's socket
+  // underneath its private child directory and collect the attach-record password.
+  const info = await lstat(controlDir)
+  if (
+    !info.isDirectory() ||
+    (process.platform !== "win32" &&
+      (typeof process.getuid !== "function" || info.uid !== process.getuid() || (info.mode & 0o077) !== 0))
   )
+    throw new Error(`SSH control directory must be owned by this user and private: ${controlDir}`)
+  const cp = controlPath(controlDir, target)
+  const pending = (masterLocks.get(cp) ?? Promise.resolve()).then(() => acquireMaster(binary, cp, target, opts))
   const stored = pending.catch(() => undefined)
   masterLocks.set(cp, stored)
   try {
@@ -522,7 +529,9 @@ export async function runRemote(
   const cp = controlPath(controlDir, target)
   const result = await runSsh(binary, [...sshArgs(target, { controlPath: cp }), remote], opts)
   if (result.code !== 0) {
-    throw new Error(summarizeSshOutput(result.stderr || result.stdout) || `Remote command failed on ${sshDestination(target)}`)
+    throw new Error(
+      summarizeSshOutput(result.stderr || result.stdout) || `Remote command failed on ${sshDestination(target)}`,
+    )
   }
   return result
 }
@@ -569,7 +578,8 @@ export function remotePlatformTarget(platform: string | null) {
   if (!platform) return null
   const [os, arch] = platform.toLowerCase().split("-")
   const osName = os === "darwin" ? "darwin" : os === "linux" ? "linux" : null
-  const archName = arch === "x86_64" || arch === "amd64" ? "x64" : arch === "arm64" || arch === "aarch64" ? "arm64" : null
+  const archName =
+    arch === "x86_64" || arch === "amd64" ? "x64" : arch === "arm64" || arch === "aarch64" ? "arm64" : null
   if (!osName || !archName) return null
   return `${osName}-${archName}`
 }
@@ -634,23 +644,22 @@ export async function streamForgeBinary(
 
 export type SshTunnel = {
   child: ChildProcess
-  localPort: number
   stderrTail: () => string
   stop: () => void
   onExit: (cb: (code: number | null, signal: NodeJS.Signals | null) => void) => void
 }
 
-/** Opens the local forward over the master: `ssh -S cp -L 127.0.0.1:L:127.0.0.1:R`. */
+/** Opens a private local socket forward over the master; the desktop owns the public loopback port. */
 export function spawnTunnel(
   binary: string,
   controlDir: string,
   target: SshTarget,
-  localPort: number,
+  socketPath: string,
   remotePort: number,
   opts: { onLine?: (text: string) => void; signal?: AbortSignal } = {},
 ): SshTunnel {
   const cp = controlPath(controlDir, target)
-  const spec = `127.0.0.1:${localPort}:127.0.0.1:${remotePort}`
+  const spec = `${socketPath}:127.0.0.1:${remotePort}`
   const child = spawn(
     binary,
     [
@@ -666,11 +675,14 @@ export function spawnTunnel(
       "-L",
       spec,
       // A multiplexed "-N" session exits immediately - there is no command
-      // channel to hold. Hold one open with a remote sleep so this child's
-      // exit still signals a dropped connection.
-      "while :; do sleep 86400; done",
+      // channel to hold. Hold one open so this child's exit still signals a
+      // dropped connection. It reads the open stdin pipe, so the remote side
+      // exits when the channel closes; a command that ignores stdin outlives
+      // the tunnel and keeps its session, until the host's MaxSessions limit
+      // refuses every new tunnel on the shared master.
+      "cat >/dev/null",
     ],
-    { stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
+    { stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
   )
   let stderr = ""
   const collect = (chunk: Buffer) => {
@@ -684,6 +696,7 @@ export function spawnTunnel(
   }
   child.stdout.on("data", collect)
   child.stderr.on("data", collect)
+  let exited: { code: number | null; signal: NodeJS.Signals | null } | undefined
   const onAbort = () => {
     try {
       child.kill()
@@ -692,25 +705,35 @@ export function spawnTunnel(
     }
   }
   opts.signal?.addEventListener("abort", onAbort, { once: true })
-  child.once("exit", () => {
+  child.once("exit", (code, signal) => {
+    exited = { code, signal }
     opts.signal?.removeEventListener("abort", onAbort)
     // Forwards registered through the mux persist on the master even after the
     // session that created them ends - release the listener explicitly or the
-    // local port stays bound (and the next connect cannot re-register it).
+    // private socket stays bound (and the next connect cannot re-register it).
     try {
-      spawn(binary, ["-o", "BatchMode=yes", "-S", cp, "-O", "cancel", "-L", spec, sshDestination(target)], {
-        stdio: "ignore",
-        windowsHide: true,
-      }).unref()
+      const cancel = spawn(
+        binary,
+        ["-o", "BatchMode=yes", "-S", cp, "-O", "cancel", "-L", spec, sshDestination(target)],
+        {
+          stdio: "ignore",
+          windowsHide: true,
+        },
+      )
+      cancel.on("error", () => undefined)
+      cancel.unref()
     } catch {
       /* master may already be gone */
     }
   })
   return {
     child,
-    localPort,
     stderrTail: () => stderr,
     stop: onAbort,
-    onExit: (cb) => child.once("exit", cb),
+    onExit: (cb) => {
+      const settled = exited
+      if (settled) return queueMicrotask(() => cb(settled.code, settled.signal))
+      child.once("exit", cb)
+    },
   }
 }

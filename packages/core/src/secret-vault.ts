@@ -39,7 +39,7 @@ export const layer = (options: Key) => {
   return Layer.succeed(Service, Service.of(make(options)))
 }
 
-function make(options: Key): Interface {
+export function make(options: Key): Interface {
   const root = Buffer.from(options.key)
   // Separate key material from encryption, including the installation key identity.
   const fingerprintKey = Buffer.from(

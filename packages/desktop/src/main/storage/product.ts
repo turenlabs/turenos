@@ -388,8 +388,23 @@ function isSshServers(value: unknown): value is SshServerConfig[] {
         item.id.startsWith("ssh:") &&
         "host" in item &&
         typeof item.host === "string" &&
-        item.host.length > 0,
+        item.host.length > 0 &&
+        (!("persistent" in item) ||
+          item.persistent === null ||
+          item.persistent === undefined ||
+          isPersistentTarget(item.persistent)),
     )
+  )
+}
+
+function isPersistentTarget(value: unknown) {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "serverID" in value &&
+    typeof value.serverID === "string" &&
+    value.serverID.length > 0 &&
+    !("password" in value)
   )
 }
 

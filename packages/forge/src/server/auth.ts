@@ -2,12 +2,20 @@ export * as ServerAuth from "./auth"
 
 import { ConfigService } from "@/effect/config-service"
 import { Flag } from "@turenlabs/core/flag/flag"
-import { Config as EffectConfig, Context, Option, Redacted } from "effect"
+import { createHash, timingSafeEqual } from "node:crypto"
+import { Config as EffectConfig, Context, Layer, Option, Redacted } from "effect"
 
 export type Credentials = {
   password?: string
   username?: string
 }
+
+export class ListenerCredentials extends Context.Service<ListenerCredentials, Credentials>()(
+  "@forge/ListenerCredentials",
+) {}
+
+export const listenerLayer = (credentials: Credentials) =>
+  Layer.succeed(ListenerCredentials)(ListenerCredentials.of(credentials))
 
 export type DecodedCredentials = {
   readonly username: string
@@ -30,11 +38,16 @@ export function required(config: Info) {
 }
 
 export function authorized(credentials: DecodedCredentials, config: Info) {
-  return (
-    Option.isSome(config.password) &&
-    credentials.username === config.username &&
-    Redacted.value(credentials.password) === config.password.value
-  )
+  if (Option.isNone(config.password)) return false
+  // Compare fixed-length digests so response time doesn't reveal how much of a guess matched.
+  const username = safeEqual(credentials.username, config.username)
+  const password = safeEqual(Redacted.value(credentials.password), config.password.value)
+  return username && password
+}
+
+function safeEqual(a: string, b: string) {
+  const digest = (value: string) => createHash("sha256").update(value).digest()
+  return timingSafeEqual(digest(a), digest(b))
 }
 
 /**

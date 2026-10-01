@@ -1,21 +1,27 @@
 # SSH remote servers
 
 TurenOS Desktop can run a full TurenOS backend on another machine and use it as if it were local.
-The Desktop main process drives the system `ssh` client, installs and supervises `forge serve` on
-the remote host, and forwards the remote listener to a loopback port on this machine. The renderer
+The Desktop main process drives the system `ssh` client and forwards the remote listener to a
+loopback port on this machine. For quick connect it installs and supervises `forge serve` on the
+remote host; for a [managed persistent server](./managed-persistent.md) it attaches to the host's
+existing service. The renderer
 then talks to that loopback URL through the ordinary generated HTTP/SSE client — nothing in the app
 or server layers knows the connection is remote.
 
 This is a Desktop-only feature that needs an `ssh` client on the desktop machine; the code carries
 `win32` branches (`ssh.exe`, a `%TEMP%` control directory, hidden windows) alongside the POSIX path.
-The remote needs an SSH server and a POSIX shell; the managed installer supports Linux and macOS
-remote binaries. Native Windows remote startup is not implemented by this shim. The desktop starts
-a TurenOS server (`forge serve`) on remote loopback without requiring an additional network-facing application port.
+The remote needs an SSH server and a POSIX shell; the quick-connect installer supports Linux and
+macOS remote binaries. Native Windows remote startup is not implemented by this shim. Both SSH paths
+use a TurenOS server (`forge serve`) on remote loopback without an additional network-facing
+application port.
 
 Implementation lives in [`packages/desktop/src/main/ssh`](../../../packages/desktop/src/main/ssh) with
 the UI in [`packages/app/src/ssh`](../../../packages/app/src/ssh).
 
 ## Shape
+
+The diagram shows quick connect. The [managed persistent path](./managed-persistent.md) reaches an existing service
+through its attach record.
 
 ```mermaid
 flowchart LR
@@ -43,13 +49,13 @@ flowchart LR
 The remote server binds loopback only. Its sole reachable path is the SSH forward, and every request
 on that forward still carries HTTP Basic auth.
 
-## Compared with adding a server by URL
+## Quick connect compared with adding a server by URL
 
 Desktop can also reach a remote backend the plain way: run `forge serve` on a reachable port and add
 it as an `http` server connection. The SSH path exists because that alternative pushes real work onto
 the operator.
 
-|                    | SSH remote                                                                                                                                      | Server added by URL                                                                                                                                                               |
+|                    | SSH quick connect                                                                                                                               | Server added by URL                                                                                                                                                               |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Inbound exposure   | None. The remote binds `127.0.0.1` on a kernel-assigned port.                                                                                   | A listening port must be reachable from the desktop.                                                                                                                              |
 | Transport security | Encrypted, with host-key identity, by construction.                                                                                             | `normalizeServerUrl` turns a bare `host:port` into `http://`, so Basic credentials and all session traffic cross the network in cleartext unless the operator fronts it with TLS. |
@@ -74,7 +80,8 @@ a reverse proxy, shared by several users, or running somewhere the user has no s
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `runtime.ts`           | All `ssh` process work: target parsing, `ssh -G` resolution, control master, pty prompt detection, remote command execution, remote file writes, tunnel spawn. | [`runtime.ts`](../../../packages/desktop/src/main/ssh/runtime.ts)       |
 | `shim.ts`              | The POSIX `sh` lifecycle script written to the remote as `~/.forge/bin/forge-remote`, plus parsing of its state line.                                          | [`shim.ts`](../../../packages/desktop/src/main/ssh/shim.ts)             |
-| `connection.ts`        | One full connect: master → refresh shim → `ensure` (installing forge if missing) → tunnel → health. Also graceful remote stop.                                 | [`connection.ts`](../../../packages/desktop/src/main/ssh/connection.ts) |
+| `connection.ts`        | One full connect: master → attach probe → managed attach or quick-connect shim and `ensure` → tunnel → health. Also graceful quick-connect stop.               | [`connection.ts`](../../../packages/desktop/src/main/ssh/connection.ts) |
+| `persistent.ts`        | Managed persistent servers: the attach probe script, attach record parsing, attach classification, and the descriptor check.                                   | [`persistent.ts`](../../../packages/desktop/src/main/ssh/persistent.ts) |
 | `servers.ts`           | The controller: persisted server list, per-server runtime state, prompts, jobs, reconnect backoff, and the public API surface.                                 | [`servers.ts`](../../../packages/desktop/src/main/ssh/servers.ts)       |
 | `policy.ts`            | Pure helpers: config construction from a resolved target, cached-state clearing, IPC input validation.                                                         | [`policy.ts`](../../../packages/desktop/src/main/ssh/policy.ts)         |
 | `startup.ts`           | Pure policy: which servers auto-start, reconnect backoff schedule, health polling, post-install version assertion.                                             | [`startup.ts`](../../../packages/desktop/src/main/ssh/startup.ts)       |
@@ -92,6 +99,11 @@ key. `initialize()` runs at startup and connects every persisted server;
 
 [Connecting to the host](./connection.md) covers host identity, authentication, connection multiplexing, and the
 tunnel with its readiness checks.
+
+## Managed persistent servers
+
+[Managed persistent servers](./managed-persistent.md) covers how a connect detects a host promoted to a
+[persistent server](../persistent-server.md) and attaches to it without starting a server or sending a key.
 
 ## Installing and running on the remote
 
@@ -132,6 +144,8 @@ the connection.
 
 The first two notes apply to every server; they matter most on remote hosts, where a slow link makes
 directory listings visible and a non-interactive SSH login often leaves user bin directories off `PATH`.
+The notes about the shim, its state files and logs, and the generated password apply to quick connect; a managed
+persistent server uses the host service and attach record instead.
 
 - Directory browsing lists the current folder first and requests child listings only when expanded.
   The first expansion of an uncached folder waits for a server response.
@@ -163,4 +177,7 @@ canonicalization, prompt detection, and `ssh -G` handling;
 against fixtures (daemonize, reattach, stale pidfile, checksum rejection);
 [`servers.test.ts`](../../../packages/desktop/src/main/ssh/servers.test.ts) drives the controller through
 its test seams for add/remove, prompt round-trips, reconnect backoff, late-connection discard, and
-install version enforcement.
+install version enforcement;
+[`persistent.test.ts`](../../../packages/desktop/src/main/ssh/persistent.test.ts) runs the real attach
+probe script, attaches through a fake `ssh` without sending the vault key, and checks that
+disconnecting never stops a persistent server.

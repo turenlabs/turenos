@@ -20,6 +20,8 @@ import { ServerAuth } from "@/server/auth"
 import { RootHttpApi } from "../api"
 import { isLocalRequest } from "@/server/shared/local-request"
 import { GlobalUpgradeInput } from "../groups/global"
+import { Database } from "@turenlabs/core/database/database"
+import { ServerDescriptor } from "@/server/descriptor"
 
 function eventData(data: unknown): Sse.Event {
   return {
@@ -99,6 +101,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
     const bridge = yield* EffectBridge.make()
     const locations = yield* LocationServiceMap.Service
     const reviewer = yield* Effect.serviceOption(SessionReviewer.Service)
+    const database = yield* Database.Service
 
     const invalidateLocations = Effect.fn("GlobalHttpApi.invalidateLocations")(function* () {
       const refs = yield* RcMap.keys(locations.rcMap)
@@ -107,6 +110,12 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
 
     const health = Effect.fn("GlobalHttpApi.health")(function* () {
       return { healthy: true as const, version: InstallationVersion }
+    })
+
+    const server = Effect.fn("GlobalHttpApi.server")(function* () {
+      const info = yield* ServerDescriptor.read(database)
+      if (!info) return yield* new HttpApiError.NotFound({})
+      return info
     })
 
     const event = Effect.fn("GlobalHttpApi.event")(function* () {
@@ -209,6 +218,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
 
     return handlers
       .handle("health", health)
+      .handle("server", server)
       .handleRaw("event", event)
       .handle("configGet", configGet)
       .handle("configUpdate", configUpdate)

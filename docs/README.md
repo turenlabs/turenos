@@ -106,7 +106,9 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 ## Operations
 
 - [SSH remote servers](./operations/ssh-remote/README.md): driving the system `ssh` client to install, supervise, and tunnel a
-  remote TurenOS backend from Desktop.
+  remote TurenOS backend from Desktop, or to attach to a host's persistent server.
+- [Persistent server](./operations/persistent-server.md): one host-owned server and vault key that every client
+  attaches to, with systemd setup, key import, and recovery.
 - [WSL backends](./operations/wsl.md): running the Desktop's backend inside a WSL distro on Windows.
 - [Releases](./operations/releases/README.md): the operator checklist for cutting a release (version bump, dispatch,
   verification, and recovery), with [automated releases](./operations/releases/automation.md) and

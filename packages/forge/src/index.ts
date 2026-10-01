@@ -24,7 +24,9 @@ import { errorMessage } from "./util/error"
 import { Heap } from "./cli/heap"
 import { ProvidersCommand } from "./cli/cmd/providers"
 import { PluginCommand } from "./cli/cmd/plug"
+import { PersistentCommand } from "./cli/cmd/persistent"
 import { ServerAuth } from "./server/auth"
+import { ServerMode } from "./server/mode"
 
 const args = hideBin(process.argv)
 
@@ -68,6 +70,9 @@ const cli = yargs(args)
 
     Heap.start()
 
+    // A persistent server must refuse secrets in its initial environment, so check before
+    // claimPassword removes FORGE_SERVER_PASSWORD and hides it from the later checks.
+    ServerMode.assertNoSecretsInEnvironment()
     // Every command can run agents whose children inherit process.env, and `forge run` serves
     // them in-process without ever calling Server.listen.
     ServerAuth.claimPassword()
@@ -89,6 +94,7 @@ const cli = yargs(args)
   .command(UpgradeCommand)
   .command(UninstallCommand)
   .command(ServeCommand)
+  .command(PersistentCommand)
   .command(ModelsCommand)
   .command(StatsCommand)
   .command(ExportCommand)

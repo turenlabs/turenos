@@ -92,6 +92,8 @@ import type {
   GlobalPermissionChecksGetResponses,
   GlobalPermissionChecksUpdateErrors,
   GlobalPermissionChecksUpdateResponses,
+  GlobalServerErrors,
+  GlobalServerResponses,
   GlobalUpgradeErrors,
   GlobalUpgradeResponses,
   InstanceDisposeErrors,
@@ -1461,6 +1463,18 @@ export class Global extends HeyApiClient {
   public health<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalHealthResponses, GlobalHealthErrors, ThrowOnError>({
       url: "/global/health",
+      ...options,
+    })
+  }
+
+  /**
+   * Get server descriptor
+   *
+   * Get the non-secret identity of this server: server ID, data identity, key ID, mode, key source, listener, and version.
+   */
+  public server<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalServerResponses, GlobalServerErrors, ThrowOnError>({
+      url: "/global/server",
       ...options,
     })
   }

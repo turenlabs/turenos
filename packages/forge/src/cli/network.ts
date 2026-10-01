@@ -61,11 +61,14 @@ function networkArgs() {
   return process.argv.slice(2, separator === -1 ? undefined : separator)
 }
 
-export const resolveNetworkOptions = Effect.fn("Cli.resolveNetworkOptions")(function* (args: NetworkOptions) {
+export const resolveNetworkOptions = Effect.fn("Cli.resolveNetworkOptions")(function* (
+  args: NetworkOptions,
+  serverPassword?: string,
+) {
   const { Config } = yield* Effect.promise(() => import("@/config/config"))
   const config = yield* Config.Service.use((cfg) => cfg.getGlobal())
   const resolved = resolveNetworkOptionsNoConfig(args, config)
-  if (!Flag.FORGE_SERVER_PASSWORD && !args.insecure && !isLoopbackHostname(resolved.hostname)) {
+  if (!(serverPassword ?? Flag.FORGE_SERVER_PASSWORD) && !args.insecure && !isLoopbackHostname(resolved.hostname)) {
     return yield* fail(
       `Refusing to listen on ${resolved.hostname} without FORGE_SERVER_PASSWORD. ` +
         "Set FORGE_SERVER_PASSWORD, bind a loopback hostname, or pass --insecure to override.",

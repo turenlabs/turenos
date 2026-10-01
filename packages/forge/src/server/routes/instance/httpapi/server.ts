@@ -86,6 +86,7 @@ import { Loop } from "@turenlabs/core/loop"
 import { lazy } from "@/util/lazy"
 import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@turenlabs/server/cors"
 import { ServerAuth } from "@/server/auth"
+import { ServerDescriptor } from "@/server/descriptor"
 import { InstanceHttpApi, RootHttpApi } from "./api"
 import { Api } from "@turenlabs/server/api"
 import { PublicApi } from "./public"
@@ -298,10 +299,18 @@ export function createRoutes(
   sessionExecution: SessionExecutionReplacement = SessionExecutionLocal.node,
   secretVault = SecretVault.ephemeral,
   securityProxy?: SecurityProxyRuntime.Interface,
+  descriptor?: ServerDescriptor.ListenerFacts,
+  credentials?: ServerAuth.Credentials,
 ): Layer.Layer<never, EffectConfig.ConfigError, RouteRequirements> {
   const secretVaultReplacement = [[SecretVault.node, secretVault]] as const
   const securityProxyReplacement = [
-    [SecurityProxyRuntime.node, SecurityProxyRuntime.layer(securityProxy?.execute ?? (() => Effect.fail(new SecurityProxyRuntime.Error("The desktop Security Browser is unavailable"))))],
+    [
+      SecurityProxyRuntime.node,
+      SecurityProxyRuntime.layer(
+        securityProxy?.execute ??
+          (() => Effect.fail(new SecurityProxyRuntime.Error("The desktop Security Browser is unavailable"))),
+      ),
+    ],
   ] as const
   // Reaching `MCP.Service` costs a full V1 `InstanceBootstrap.run` for the Location's
   // directory, so this may only be wired because registration is demand-driven: the
@@ -331,7 +340,7 @@ export function createRoutes(
       corsVaryFix,
       fenceLayer,
       cors(corsOptions),
-        traceStartupLayer(
+      traceStartupLayer(
         "move-session-graph",
         AppNodeBuilderV1.build(MoveSession.node, [[LocationServiceMap.node, locationServiceMapV2]]),
       ),
@@ -373,6 +382,8 @@ export function createRoutes(
         ]),
       ),
     ),
+    Layer.provide(ServerDescriptor.layer(descriptor ?? { keySource: "unknown", listener: "" })),
+    Layer.provide(ServerAuth.listenerLayer(credentials ?? {})),
     // Must stay last: layers provided later in this pipe build beneath earlier ones,
     // so Observability must come after every service graph. Otherwise eagerly forked
     // fibers (e.g. the ModelsDev background refresh) capture Effect's default stdout logger.

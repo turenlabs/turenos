@@ -13,6 +13,16 @@ const GlobalHealth = Schema.Struct({
   version: Schema.String,
 })
 
+export const GlobalServerDescriptor = Schema.Struct({
+  serverID: Schema.String,
+  dataIdentity: Schema.Struct({ databasePath: Schema.String, databaseUUID: Schema.String }),
+  keyID: Schema.String,
+  mode: Schema.Union([Schema.Literal("quick-connect"), Schema.Literal("persistent")]),
+  keySource: Schema.String,
+  listener: Schema.String,
+  version: Schema.String,
+})
+
 const SyncEventSchemas = EventManifest.Latest.values()
   .flatMap((definition) => {
     if (!definition.durable) return []
@@ -68,6 +78,7 @@ const GlobalUpgradeResult = Schema.Union([
 
 export const GlobalPaths = {
   health: "/global/health",
+  server: "/global/server",
   event: "/global/event",
   config: "/global/config",
   permissionChecks: "/global/permission-checks",
@@ -85,6 +96,17 @@ export const GlobalApi = HttpApi.make("global").add(
           identifier: "global.health",
           summary: "Get health",
           description: "Get health information about the TurenOS server.",
+        }),
+      ),
+      HttpApiEndpoint.get("server", GlobalPaths.server, {
+        success: described(GlobalServerDescriptor, "Server descriptor"),
+        error: HttpApiError.NotFound,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "global.server",
+          summary: "Get server descriptor",
+          description:
+            "Get the non-secret identity of this server: server ID, data identity, key ID, mode, key source, listener, and version.",
         }),
       ),
       HttpApiEndpoint.get("event", GlobalPaths.event, {

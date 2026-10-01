@@ -36,8 +36,9 @@ configuration.
 The `server.*` defaults come from the global [configuration](./configuration.md); a flag given on the command line
 always wins.
 
-Like `forge serve`, the process needs `FORGE_SECRET_VAULT_KEY_ID` and `FORGE_SECRET_VAULT_KEY` outside tests; see
-[Secure storage](./secure-storage.md). Models, agents, and permissions come from the normal
+Outside tests the process needs `FORGE_SECRET_VAULT_KEY_ID` and `FORGE_SECRET_VAULT_KEY` in its environment; unlike
+`forge serve`, it has no `--key-source`, so it can't load a key from systemd credentials or run as a persistent server.
+See [Secure storage](./secure-storage.md). Models, agents, and permissions come from the normal
 [configuration](./configuration.md) of the session directory.
 
 ## Verification
@@ -53,6 +54,10 @@ bun test test/acp test/cli/acp
 - `authenticate` only checks that the method is `forge-login` and returns success; it performs no login itself. With
   the `terminal-auth` capability the editor is pointed at `forge auth login`.
 - The command handler returns when stdin ends, so the editor controls the process lifetime by closing stdin.
+- The embedded server takes the database owner lock without waiting, like every `Server.listen` caller. A second
+  `forge acp`, or a `forge serve` or Desktop sidecar already running on the same database, makes it fail at startup
+  with `Database is already owned by another server`. It also fails with `FORGE_SERVER_MODE=persistent` set, and on a
+  database a persistent server owns.
 
 ## Source
 
@@ -62,4 +67,5 @@ bun test test/acp test/cli/acp
 - [`packages/forge/src/acp/permission.ts`](../../packages/forge/src/acp/permission.ts)
 - [`packages/forge/src/acp/event.ts`](../../packages/forge/src/acp/event.ts)
 - [`packages/forge/src/cli/network.ts`](../../packages/forge/src/cli/network.ts)
+- [`packages/forge/src/server/ownership.ts`](../../packages/forge/src/server/ownership.ts): the owner lock taken at startup
 - Tests: [`packages/forge/test/acp/`](../../packages/forge/test/acp/), [`packages/forge/test/cli/acp/`](../../packages/forge/test/cli/acp/)
