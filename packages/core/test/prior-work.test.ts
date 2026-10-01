@@ -4,13 +4,20 @@ import fs from "fs/promises"
 import path from "path"
 import { Agent } from "@turenlabs/schema/agent"
 import { Session } from "@turenlabs/schema/session"
-import { eq } from "drizzle-orm"
-import { Effect, Layer } from "effect"
+import { eq, sql } from "drizzle-orm"
+import { Cause, Effect, Exit, Layer } from "effect"
 import { Database } from "@turenlabs/core/database/database"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { Location } from "@turenlabs/core/location"
 import { PriorWork } from "@turenlabs/core/prior-work"
-import { PriorWorkEventTable, PriorWorkRevisionTable } from "@turenlabs/core/prior-work/sql"
+import {
+  PriorWorkEventTable,
+  PriorWorkIdempotencyTable,
+  PriorWorkOriginTable,
+  PriorWorkRecordTable,
+  PriorWorkRepositoryTable,
+  PriorWorkRevisionTable,
+} from "@turenlabs/core/prior-work/sql"
 import { Project } from "@turenlabs/core/project"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { SecretPlaceholder } from "@turenlabs/core/secret-placeholder"
@@ -281,6 +288,96 @@ describe("PriorWork repository binding", () => {
 
 describe("PriorWork records", () => {
   it.live(
+    "sanitizes storage defects and rolls back failed creates, adoptions, and revisions",
+    () =>
+      Effect.gen(function* () {
+        const tmp = yield* scratch
+        yield* Effect.promise(() => repository(tmp.path))
+        const database = yield* Database.Service
+        const db = Database.primary(database.db)
+        const tables = [
+          PriorWorkRepositoryTable,
+          PriorWorkRecordTable,
+          PriorWorkRevisionTable,
+          PriorWorkOriginTable,
+          PriorWorkEventTable,
+          PriorWorkIdempotencyTable,
+        ]
+        const baseline = yield* Effect.forEach(tables, (table) => db.select().from(table).all())
+        const marker = "STORAGE-CANARY-MARKER"
+        const request = { key: "STORAGE-KEY-MARKER", prepared: prepared({ summary: marker, detail: marker }) }
+        const adoption = {
+          ...request,
+          key: "STORAGE-ADOPT-KEY-MARKER",
+          origin: {
+            author: { actor: "agent", agent: "explore" },
+            source: "board_note",
+            source_id: "STORAGE-SOURCE-MARKER",
+            root_session_id: "ses_storage_root",
+            time_observed: 1_700_000_000_000,
+          },
+        }
+        // Exercise both initial writes and a later revision through the same SQL fault.
+        for (const phase of ["create", "revise"] as const) {
+          const current =
+            phase === "revise"
+              ? yield* at(tmp.path, (service) => service.record(request, agent("ses_storage")))
+              : undefined
+          const input = current
+            ? { ...request, key: "STORAGE-REVISE-KEY-MARKER", target: { id: current.id, head: 1 } }
+            : request
+          if (current) {
+            expect(current.replayed).toBe(false)
+            expect(current.revision).toBe(1)
+          }
+          yield* db.run(sql`CREATE TRIGGER prior_work_fault BEFORE INSERT ON prior_work_revision
+            BEGIN SELECT RAISE(ABORT, 'fault'); END`)
+          yield* Effect.gen(function* () {
+            const failures = yield* at(tmp.path, (service) =>
+              Effect.all([
+                service.record(input, agent("ses_storage")).pipe(Effect.exit),
+                service.adopt(adoption, agent("ses_storage")).pipe(Effect.exit),
+              ]),
+            )
+            failures.forEach((exit) => {
+              expect(Exit.isFailure(exit)).toBe(true)
+              if (!Exit.isFailure(exit)) return
+              expect(Cause.hasFails(exit.cause)).toBe(false)
+              const defect = exit.cause.reasons.find(Cause.isDieReason)?.defect
+              expect(defect).toBeInstanceOf(Error)
+              expect(defect instanceof Error && defect.message).toBe("Prior work storage unavailable")
+              for (const property of ["cause", "query", "params"]) {
+                expect(Object.getOwnPropertyNames(defect)).not.toContain(property)
+              }
+              for (const rendered of [Cause.pretty(exit.cause), JSON.stringify(exit)]) {
+                expect(rendered).not.toContain(marker)
+                expect(rendered).not.toMatch(
+                  /insert into|prior_work_revision|query|params|EffectDrizzleQueryError|fault/i,
+                )
+              }
+            })
+            if (!current) {
+              expect(yield* at(tmp.path, (service) => service.repository())).toBeUndefined()
+              expect(yield* Effect.forEach(tables, (table) => db.select().from(table).all())).toEqual(baseline)
+              return
+            }
+            expect((yield* at(tmp.path, (service) => service.get({ id: current.id }))).record.headRevision).toBe(1)
+          }).pipe(Effect.ensuring(db.run(sql`DROP TRIGGER prior_work_fault`).pipe(Effect.orDie)))
+          if (current) {
+            expect(yield* at(tmp.path, (service) => service.record(input, agent("ses_storage")))).toEqual({
+              id: current.id,
+              revision: 2,
+              replayed: false,
+            })
+          }
+        }
+        const adopted = yield* at(tmp.path, (service) => service.adopt(adoption, agent("ses_storage")))
+        expect(adopted.replayed).toBe(false)
+      }),
+    TIMEOUT,
+  )
+
+  it.live(
     "replays exact retries and rejects conflicting key reuse",
     () =>
       Effect.gen(function* () {
@@ -386,6 +483,17 @@ describe("PriorWork records", () => {
             agent("ses_reviewer"),
           ),
         )
+        const derived = yield* at(tmp.path, (service) =>
+          service.record(
+            {
+              prepared: prepared({
+                summary: "TOMBSTONE-DERIVED-MARKER",
+                derived_from: [{ record_id: claim.id, revision: 1 }],
+              }),
+            },
+            agent("ses_reviewer"),
+          ),
+        )
         yield* at(tmp.path, (service) => service.retract({ id: claim.id, reason: "RETRACTION-REASON-MARKER" }, agent()))
         expect((yield* at(tmp.path, (service) => service.get({ id: claim.id }))).record.state).toBe("retracted")
         yield* at(tmp.path, (service) => service.delete(claim.id, human))
@@ -396,6 +504,86 @@ describe("PriorWork records", () => {
         expect(tombstone.revision).toBeUndefined()
         const challenge = yield* at(tmp.path, (service) => service.get({ id: refutation.id }))
         expect(challenge.revision?.challenges).toEqual({ resolved: { record_id: claim.id, revision: 1 } })
+
+        const challenges = { resolved: { record_id: claim.id, revision: 1 } }
+        const revised = yield* at(tmp.path, (service) =>
+          service.record(
+            {
+              target: { id: refutation.id, head: 1 },
+              prepared: prepared({ kind: "refutation", summary: "TOMBSTONE-REFUTATION-EDIT-MARKER", challenges }),
+            },
+            agent("ses_reviewer"),
+          ),
+        )
+        expect(revised.revision).toBe(2)
+        expect((yield* at(tmp.path, (service) => service.get({ id: refutation.id }))).revision?.challenges).toEqual(
+          challenges,
+        )
+        expect((yield* at(tmp.path, (service) => service.get({ id: refutation.id, revision: 1 }))).revision).toEqual(
+          challenge.revision,
+        )
+        const derivedBefore = yield* at(tmp.path, (service) => service.get({ id: derived.id, revision: 1 }))
+        expect(
+          (yield* at(tmp.path, (service) =>
+            service.record(
+              {
+                target: { id: derived.id, head: 1 },
+                prepared: prepared({
+                  summary: "TOMBSTONE-DERIVED-EDIT-MARKER",
+                  derived_from: [{ record_id: claim.id, revision: 1 }],
+                }),
+              },
+              agent("ses_reviewer"),
+            ),
+          )).revision,
+        ).toBe(2)
+        expect((yield* at(tmp.path, (service) => service.get({ id: derived.id }))).revision?.derivedFrom).toEqual([
+          { record_id: claim.id, revision: 1 },
+        ])
+        expect((yield* at(tmp.path, (service) => service.get({ id: derived.id, revision: 1 }))).revision).toEqual(
+          derivedBefore.revision,
+        )
+
+        for (const input of [
+          { prepared: prepared({ kind: "refutation", summary: "TOMBSTONE-NEW-MARKER", challenges }) },
+          {
+            prepared: prepared({
+              summary: "TOMBSTONE-NEW-DERIVED-MARKER",
+              derived_from: [{ record_id: claim.id, revision: 1 }],
+            }),
+          },
+          {
+            target: { id: refutation.id, head: 2 },
+            prepared: prepared({
+              kind: "refutation",
+              summary: "TOMBSTONE-CHANGED-MARKER",
+              challenges: { resolved: { record_id: claim.id, revision: 99 } },
+            }),
+          },
+          {
+            target: { id: derived.id, head: 2 },
+            prepared: prepared({
+              summary: "TOMBSTONE-CHANGED-DERIVED-MARKER",
+              derived_from: [{ record_id: claim.id, revision: 99 }],
+            }),
+          },
+        ]) {
+          expect(
+            yield* at(tmp.path, (service) => service.record(input, agent("ses_reviewer"))).pipe(Effect.flip),
+          ).toBeInstanceOf(PriorWork.NotFound)
+        }
+        const edit = {
+          target: { id: refutation.id, head: 2 },
+          prepared: prepared({ kind: "refutation", summary: "TOMBSTONE-ACCESS-MARKER", challenges }),
+        }
+        expect(
+          yield* at(tmp.path, (service) => service.record(edit, agent("ses_intruder"))).pipe(Effect.flip),
+        ).toBeInstanceOf(PriorWork.Forbidden)
+        expect(
+          yield* at(tmp.path, (service) =>
+            service.record({ ...edit, target: { id: refutation.id, head: 1 } }, human),
+          ).pipe(Effect.flip),
+        ).toBeInstanceOf(PriorWork.Conflict)
 
         const rows = yield* Effect.gen(function* () {
           const database = yield* Database.Service
@@ -471,6 +659,105 @@ describe("PriorWork records", () => {
         expect(after.record.headRevision).toBe(2)
         expect(after.revision?.challenges).toEqual({ resolved: { record_id: claim.id, revision: 1 } })
         expect(after.revision?.summary).toBe("Login handler is not reachable unauthenticated")
+
+        yield* at(tmp.path, (service) =>
+          service.record(
+            { target: { id: claim.id, head: 1 }, prepared: prepared({ summary: "ADOPTION-TARGET-REVISED-MARKER" }) },
+            agent("ses_adopter"),
+          ),
+        )
+        const lateRequest = {
+          key: "ADOPTION-LATE-KEY-MARKER",
+          origin: origin("ADOPTION-LATE-SOURCE-MARKER"),
+          prepared: prepared({
+            kind: "refutation",
+            summary: "ADOPTION-LATE-REFUTATION-MARKER",
+            challenges: { unresolved: { source: "board_note", source_id: "tbn_claim" } },
+          }),
+        }
+        const late = yield* at(tmp.path, (service) => service.adopt(lateRequest, agent("ses_adopter")))
+        expect(late.revision).toBe(1)
+        const lateRecord = yield* at(tmp.path, (service) => service.get({ id: late.id }))
+        expect(lateRecord.revision?.challenges).toEqual({ resolved: { record_id: claim.id, revision: 1 } })
+        expect(lateRecord.record).toMatchObject({
+          author: before.record.author,
+          source: {
+            kind: "board_note",
+            source_id: "ADOPTION-LATE-SOURCE-MARKER",
+            root_session_id: Session.ID.make("ses_root_earlier"),
+          },
+          sourceSessionID: before.record.sourceSessionID,
+          timeObserved: before.record.timeObserved,
+        })
+        expect(lateRecord.revision?.recordedBy).toEqual(agent("ses_adopter"))
+        expect(yield* at(tmp.path, (service) => service.adopt(lateRequest, agent("ses_adopter")))).toEqual({
+          ...late,
+          replayed: true,
+        })
+        expect((yield* at(tmp.path, (service) => service.search({}))).items).toHaveLength(3)
+        const database = yield* Database.Service
+        expect(
+          yield* Database.primary(database.db)
+            .select()
+            .from(PriorWorkRevisionTable)
+            .where(eq(PriorWorkRevisionTable.record_id, late.id))
+            .all(),
+        ).toHaveLength(1)
+        const direct = yield* at(tmp.path, (service) =>
+          service.record(
+            {
+              prepared: prepared({
+                kind: "refutation",
+                summary: "ADOPTION-DIRECT-REFUTATION-MARKER",
+                challenges: { unresolved: { source: "board_note", source_id: "tbn_claim" } },
+              }),
+            },
+            agent("ses_adopter"),
+          ),
+        )
+        expect((yield* at(tmp.path, (service) => service.get({ id: direct.id }))).revision?.challenges).toEqual({
+          resolved: { record_id: claim.id, revision: 1 },
+        })
+
+        const other = path.join(tmp.path, "other")
+        yield* Effect.promise(() => clone(tmp.path, other))
+        yield* at(other, (service) => service.link(lateRecord.record.repositoryID, human))
+        const local = yield* at(other, (service) =>
+          service.record(
+            {
+              prepared: prepared({
+                kind: "refutation",
+                summary: "ADOPTION-BINDING-LOCAL-MARKER",
+                challenges: { unresolved: { source: "board_note", source_id: "tbn_claim" } },
+              }),
+            },
+            agent("ses_clone_adopter"),
+          ),
+        )
+        expect((yield* at(other, (service) => service.get({ id: local.id }))).revision?.challenges).toEqual({
+          unresolved: { source: "board_note", source_id: "tbn_claim" },
+        })
+        const localClaim = yield* at(other, (service) =>
+          service.adopt(
+            { origin: origin("tbn_claim"), prepared: prepared({ summary: "ADOPTION-LOCAL-TARGET-MARKER" }) },
+            agent("ses_clone_adopter"),
+          ),
+        )
+        const localLate = yield* at(other, (service) =>
+          service.record(
+            {
+              prepared: prepared({
+                kind: "refutation",
+                summary: "ADOPTION-LOCAL-LATE-MARKER",
+                challenges: { unresolved: { source: "board_note", source_id: "tbn_claim" } },
+              }),
+            },
+            agent("ses_clone_adopter"),
+          ),
+        )
+        expect((yield* at(other, (service) => service.get({ id: localLate.id }))).revision?.challenges).toEqual({
+          resolved: { record_id: localClaim.id, revision: 1 },
+        })
 
         const twice = yield* at(tmp.path, (service) =>
           service.adopt({ origin: origin("tbn_claim"), prepared: prepared() }, human),

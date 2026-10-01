@@ -104,11 +104,16 @@ const layer = Layer.effect(
       return { dev: info.value.dev, ino, birthtime } satisfies Incarnation
     })
 
+    // Drizzle failures retain query parameters; never expose them through a domain failure.
+    const storageFailure = () => Effect.die(new Error("Prior work storage unavailable"))
+
     const transact = <A, E>(body: (tx: Transaction) => Effect.Effect<A, E>) =>
-      db.transaction(body, { behavior: "immediate" }).pipe(Effect.catchTag("SqlError", Effect.die))
+      db
+        .transaction(body, { behavior: "immediate" })
+        .pipe(Effect.catchTag("SqlError", storageFailure), Effect.catchDefect(storageFailure))
 
     const read = <A, E>(body: (tx: Transaction) => Effect.Effect<A, E>) =>
-      db.transaction(body).pipe(Effect.catchTag("SqlError", Effect.die))
+      db.transaction(body).pipe(Effect.catchTag("SqlError", storageFailure), Effect.catchDefect(storageFailure))
 
     const findBinding = Effect.fn("PriorWork.findBinding")(function* (tx: Transaction, found: Incarnation | undefined) {
       if (!found) return undefined
@@ -203,29 +208,72 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
     })
 
-    // Lineage may only point at revisions the Location can read.
+    // Resolve known sources within the recording binding, then validate authorized lineage.
+    // Edits may retain an existing tombstone reference, but cannot invent a new one.
     const checkReferences = Effect.fn("PriorWork.checkReferences")(function* (
       tx: Transaction,
       repositories: readonly RepositoryID[],
       prepared: PriorWork.Prepared,
+      binding: RepositoryID,
+      previous?: RevisionRow,
     ) {
+      const source =
+        prepared.challenges && "unresolved" in prepared.challenges ? prepared.challenges.unresolved : undefined
+      const adopted = source
+        ? yield* tx
+            .select({ id: PriorWorkOriginTable.record_id })
+            .from(PriorWorkOriginTable)
+            .where(
+              and(
+                eq(PriorWorkOriginTable.repository_id, binding),
+                eq(PriorWorkOriginTable.source_kind, source.source),
+                eq(PriorWorkOriginTable.source_id, source.source_id),
+              ),
+            )
+            .get()
+            .pipe(Effect.orDie)
+        : undefined
+      const checked = adopted
+        ? { ...prepared, challenges: { resolved: { record_id: adopted.id, revision: 1 } } }
+        : prepared
       const references = [
-        ...(prepared.challenges && "resolved" in prepared.challenges
-          ? [{ ref: prepared.challenges.resolved, path: "prepared.challenges.resolved" }]
+        ...(checked.challenges && "resolved" in checked.challenges
+          ? [{ ref: checked.challenges.resolved, path: "prepared.challenges.resolved", challenge: true }]
           : []),
-        ...prepared.derived_from.map((ref, index) => ({ ref, path: `prepared.derived_from.${index}` })),
+        ...checked.derived_from.map((ref, index) => ({
+          ref,
+          path: `prepared.derived_from.${index}`,
+          challenge: false,
+        })),
+      ]
+      const previousReferences = [
+        ...(previous?.challenges && "resolved" in previous.challenges
+          ? [{ ref: previous.challenges.resolved, challenge: true }]
+          : []),
+        ...(previous?.derived_from ?? []).map((ref) => ({ ref, challenge: false })),
       ]
       yield* Effect.forEach(
         references,
         (item) =>
           Effect.gen(function* () {
-            yield* findRecord(tx, repositories, item.ref.record_id, item.path)
+            const record = yield* findRecord(tx, repositories, item.ref.record_id, item.path)
+            if (
+              record.state === "deleted" &&
+              previousReferences.some(
+                (entry) =>
+                  entry.challenge === item.challenge &&
+                  entry.ref.record_id === item.ref.record_id &&
+                  entry.ref.revision === item.ref.revision,
+              )
+            )
+              return undefined
             if (!(yield* findRevision(tx, item.ref.record_id, item.ref.revision)))
               return yield* new PriorWork.NotFound({ path: item.path })
             return undefined
           }),
         { discard: true },
       )
+      return adopted ? yield* parse(PriorWork.Prepared, checked) : checked
     })
 
     const replay = Effect.fn("PriorWork.replay")(function* (
@@ -465,7 +513,10 @@ const layer = Layer.effect(
       yield* requireModifier(record, actor)
       if (record.kind !== prepared.kind) return yield* new PriorWork.Forbidden({ reason: "kind_immutable" })
       if (record.head_revision !== target.head) return yield* new PriorWork.Conflict({ reason: "stale_head" })
-      return yield* append(tx, record, target.head, prepared, actor, now)
+      const previous = yield* findRevision(tx, record.id, target.head)
+      if (!previous) return yield* new PriorWork.Conflict({ reason: "stale_head" })
+      const checked = yield* checkReferences(tx, repositories, prepared, record.repository_id, previous)
+      return yield* append(tx, record, target.head, checked, actor, now)
     })
 
     return Service.of({
@@ -485,10 +536,12 @@ const layer = Layer.effect(
             const repositories = yield* authorized(tx, binding)
             const replayed = yield* replay(tx, repositories, actor, request.key, hash)
             if (replayed) return replayed
-            yield* checkReferences(tx, repositories, request.prepared)
+            const prepared = request.target
+              ? request.prepared
+              : yield* checkReferences(tx, repositories, request.prepared, binding)
             const written = request.target
-              ? yield* revise(tx, repositories, request.target, request.prepared, actor, now)
-              : yield* create(tx, binding, request.prepared, actor, liveOrigin(actor, now), now)
+              ? yield* revise(tx, repositories, request.target, prepared, actor, now)
+              : yield* create(tx, binding, prepared, actor, liveOrigin(actor, now), now)
             yield* remember(tx, actor, request.key, hash, written, now)
             return written
           }),
@@ -506,7 +559,7 @@ const layer = Layer.effect(
             const repositories = yield* authorized(tx, binding)
             const replayed = yield* replay(tx, repositories, actor, request.key, hash)
             if (replayed) return replayed
-            yield* checkReferences(tx, repositories, request.prepared)
+            const prepared = yield* checkReferences(tx, repositories, request.prepared, binding)
             const existing = yield* tx
               .select({ id: PriorWorkOriginTable.record_id })
               .from(PriorWorkOriginTable)
@@ -523,7 +576,7 @@ const layer = Layer.effect(
             const written = yield* create(
               tx,
               binding,
-              request.prepared,
+              prepared,
               actor,
               {
                 author: request.origin.author,
