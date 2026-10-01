@@ -14,11 +14,39 @@ import { CrossSpawnSpawner } from "@turenlabs/core/cross-spawn-spawner"
 import { SessionProjector } from "@turenlabs/core/session/projector"
 import { Shell } from "@turenlabs/core/shell"
 import { FSUtil } from "@turenlabs/core/fs-util"
+import { McpTool } from "@turenlabs/core/tool/mcp"
+import { ExtensionRuntime } from "@turenlabs/core/extension"
 import { GlobalPaths } from "../../src/server/routes/instance/httpapi/groups/global"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
+import { Agent } from "../../src/agent/agent"
+import { BackgroundJob } from "../../src/background/job"
+import { Command } from "../../src/command"
+import { Config } from "../../src/config/config"
+import { Env } from "../../src/env"
+import { Format } from "../../src/format"
+import { Git } from "../../src/git"
+import { Image } from "../../src/image/image"
+import { Instruction } from "../../src/session/instruction"
+import { LLM } from "../../src/session/llm"
+import { MessageV2 } from "../../src/session/message-v2"
+import { Permission } from "../../src/permission"
+import { Plugin } from "../../src/plugin"
+import { Question } from "../../src/question"
 import { Session } from "../../src/session/session"
+import { SessionCompaction } from "../../src/session/compaction"
+import { SessionProcessor } from "../../src/session/processor"
 import { SessionPrompt } from "../../src/session/prompt"
+import { SessionRevert } from "../../src/session/revert"
+import { SessionRunState } from "../../src/session/run-state"
+import { SessionStatus } from "../../src/session/status"
 import { SessionSummary } from "../../src/session/summary"
+import { Skill } from "../../src/skill"
+import { Snapshot } from "../../src/snapshot"
+import { SystemPrompt } from "../../src/session/system"
+import { Todo } from "../../src/session/todo"
+import { ToolRegistry } from "../../src/tool/registry"
+import { Truncate } from "../../src/tool/truncate"
+import { Ripgrep } from "@turenlabs/core/ripgrep"
 import { Provider } from "../../src/provider/provider"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
 import { MCP } from "../../src/mcp"
@@ -107,27 +135,62 @@ const providerNode = LayerNode.make({
   deps: [testLLMServerNode],
 })
 
+// Mirror of prompt.test.ts's promptRoot — the full drain graph. Dropping
+// nodes here lets transitive deps resolve through ambient discovery (real
+// provider auth), which passes on dev machines and dies in CI with
+// ProviderNoProvidersError.
+const promptRoot = LayerNode.group([
+  SessionPrompt.node,
+  Session.node,
+  SessionProjector.node,
+  MessageV2.node,
+  Snapshot.node,
+  LLM.node,
+  Env.node,
+  Agent.node,
+  Command.node,
+  Permission.node,
+  Plugin.node,
+  Config.node,
+  Provider.node,
+  LSP.node,
+  MCP.node,
+  FSUtil.node,
+  BackgroundJob.node,
+  SessionStatus.node,
+  SessionRunState.node,
+  Database.node,
+  EventV2Bridge.node,
+  Question.node,
+  Todo.node,
+  ToolRegistry.node,
+  Skill.node,
+  ExtensionRuntime.node,
+  Git.node,
+  Ripgrep.node,
+  Format.node,
+  Truncate.node,
+  SessionProcessor.node,
+  Image.node,
+  SessionCompaction.node,
+  SessionRevert.node,
+  Instruction.node,
+  SystemPrompt.node,
+  CrossSpawnSpawner.node,
+  RuntimeFlags.node,
+  McpTool.sourceNode,
+  testLLMServerNode,
+])
+
 const stack = Layer.mergeAll(
   httpApiLayer,
-  AppNodeBuilder.build(
-    LayerNode.group([
-      SessionPrompt.node,
-      Session.node,
-      SessionProjector.node,
-      Database.node,
-      EventV2Bridge.node,
-      CrossSpawnSpawner.node,
-      FSUtil.node,
-      testLLMServerNode,
-    ]),
-    [
-      [SessionSummary.node, summary],
-      [LSP.node, lsp],
-      [MCP.node, mcp],
-      [Provider.node, providerNode],
-      [RuntimeFlags.node, RuntimeFlags.layer({ experimentalEventSystem: true })],
-    ],
-  ),
+  AppNodeBuilder.build(promptRoot, [
+    [SessionSummary.node, summary],
+    [LSP.node, lsp],
+    [MCP.node, mcp],
+    [Provider.node, providerNode],
+    [RuntimeFlags.node, RuntimeFlags.layer({ experimentalEventSystem: true })],
+  ]),
 )
 
 // Shared memoMap so the drain's EventV2 publications reach the HTTP SSE route.
@@ -366,6 +429,7 @@ describe("event stream under agent workload", () => {
             "10 seconds",
           )
         }),
+        { config: { formatter: false, lsp: false } },
       ),
     120_000,
   )
