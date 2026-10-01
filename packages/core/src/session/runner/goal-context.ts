@@ -36,5 +36,10 @@ The full objective was supplied at the start of this bounded goal turn. If compa
 </goal_loop_reminder>`
 
 function escapeXml(value: string) {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+  // A single pass keeps the ampersands in generated entities from being escaped again.
+  return value.replace(/[&<>]/g, (character) => {
+    if (character === "&") return "&amp;"
+    if (character === "<") return "&lt;"
+    return "&gt;"
+  })
 }
