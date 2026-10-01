@@ -10,12 +10,13 @@ import { and } from "drizzle-orm"
 import { eq } from "drizzle-orm"
 import { lte } from "drizzle-orm"
 import { not } from "drizzle-orm"
+import { notInArray } from "drizzle-orm"
 import { or } from "drizzle-orm"
 import { Effect, Scope } from "effect"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
-import { HistoryPayload, ReplayPayload, SessionPayload } from "../groups/sync"
+import { HISTORY_DEFAULT_LIMIT, HistoryPayload, HistoryQuery, ReplayPayload, SessionPayload } from "../groups/sync"
 
 export const syncHandlers = HttpApiBuilder.group(InstanceHttpApi, "sync", (handlers) =>
   Effect.gen(function* () {
@@ -78,20 +79,33 @@ export const syncHandlers = HttpApiBuilder.group(InstanceHttpApi, "sync", (handl
       return { sessionID: ctx.payload.sessionID }
     })
 
-    const history = Effect.fn("SyncHttpApi.history")(function* (ctx: { payload: typeof HistoryPayload.Type }) {
+    const history = Effect.fn("SyncHttpApi.history")(function* (ctx: {
+      payload: typeof HistoryPayload.Type
+      query: typeof HistoryQuery.Type
+    }) {
       const exclude = Object.entries(ctx.payload)
       const protectedIDs = yield* SessionTaskV2.protectedAggregateIDs(db)
-      return (yield* db
+      // `NOT IN (..., NULL)` never matches TRUE, so nullable task fields must be
+      // dropped before the exclusion lands in SQL or every row would vanish.
+      const protectedAggregates = [...protectedIDs].filter((id): id is string => typeof id === "string")
+      // Exclusions live in the WHERE clause, not the JS filter: rows the filter
+      // would drop must not consume a `limit` page, or paging never converges.
+      const query = db
         .select()
         .from(EventTable)
         .where(
-          exclude.length > 0
-            ? not(or(...exclude.map(([id, seq]) => and(eq(EventTable.aggregate_id, id), lte(EventTable.seq, seq))))!)
-            : undefined,
+          and(
+            exclude.length > 0
+              ? not(or(...exclude.map(([id, seq]) => and(eq(EventTable.aggregate_id, id), lte(EventTable.seq, seq))))!)
+              : undefined,
+            notInArray(EventTable.type, [...SessionTaskV2.DURABLE_EVENT_TYPES]),
+            protectedAggregates.length > 0 ? notInArray(EventTable.aggregate_id, protectedAggregates) : undefined,
+          ),
         )
-        .orderBy(asc(EventTable.seq))
-        .all()
-        .pipe(Effect.orDie)).filter(
+        .orderBy(asc(EventTable.aggregate_id), asc(EventTable.seq))
+        .$dynamic()
+      const rows = yield* query.limit(ctx.query.limit ?? HISTORY_DEFAULT_LIMIT).all().pipe(Effect.orDie)
+      return rows.filter(
         (event) => !protectedIDs.has(event.aggregate_id) && !SessionTaskV2.isDurableEventType(event.type),
       )
     })

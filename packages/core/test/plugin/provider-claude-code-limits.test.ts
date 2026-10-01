@@ -1,3 +1,4 @@
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { describe, expect } from "bun:test"
 import { DateTime, Effect, Stream } from "effect"
 import { LLMEvent, type LLMRequest, type Model as LLMModel } from "@turenlabs/llm"
@@ -208,6 +209,7 @@ describe("the window the plugin publishes is the window compaction budgets again
 
   const gate = (model: LLMModel, promptTokens: number) => {
     const compaction = SessionCompaction.make({
+      disclosure: Effect.succeed(SecretRedaction),
       events: { publish: (() => Effect.succeed({})) as never } as never,
       llm: {
         stream: () =>

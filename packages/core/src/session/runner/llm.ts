@@ -50,6 +50,8 @@ import { SessionMessage } from "../message"
 import { SessionTodo } from "../todo"
 import { SessionTodoGuidance } from "../todo-guidance"
 import { ProviderPrompt } from "../provider-prompt"
+import { SecretOutput } from "../../secret-output"
+import { SessionDisclosure } from "../disclosure"
 import { SessionSchema } from "../schema"
 import { SessionStatus } from "../status"
 import { SessionTable } from "../sql"
@@ -274,6 +276,19 @@ function goalTokenDelta(tokens: GoalTokens | undefined) {
 }
 
 /**
+ * Error text for durable records and model replies. The complete original message is protected
+ * first: ToolVisibleError's own rewriting and length cap would otherwise hide part of a configured
+ * value from the guard. Without protection the details are withheld, never passed through.
+ */
+const visibleError = (protection: Effect.Effect<SecretOutput.Snapshot, SecretOutput.Error>, error: unknown) =>
+  protection.pipe(
+    Effect.flatMap((guard) =>
+      Effect.try({ try: () => ToolVisibleError.make(error, guard.text), catch: () => "unprotectable" }),
+    ),
+    Effect.catch(() => Effect.succeed("Secret output protection unavailable or failed; details withheld")),
+  )
+
+/**
  * The harness as instructions, not as an inventory.
  *
  * A tool listed in the tool schema is easy to walk past: when the model already knows a familiar way
@@ -311,6 +326,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const events = yield* EventV2.Service
     const llm = yield* LLMClient.Service
+    const secretOutput = yield* SecretOutput.Service
     const agents = yield* AgentV2.Service
     const agentGuidance = yield* AgentGuidance.Service
     const toolSnapshots = yield* SessionToolSnapshot.Service
@@ -372,6 +388,7 @@ const layer = Layer.effect(
       return { model: resolved?.model, system: selection.info?.system } satisfies SessionCompaction.Summarizer
     })
     const compaction = SessionCompaction.make({
+      disclosure: secretOutput.snapshot(),
       events,
       llm,
       // The Effect, not a captured array: compaction re-reads config per call, so `compaction`
@@ -379,7 +396,14 @@ const layer = Layer.effect(
       config: config.entries(),
       summarizer: compactionSummarizer,
     })
-    const title = SessionRunnerTitle.make({ agents, events, llm, models, store })
+    const title = SessionRunnerTitle.make({
+      agents,
+      events,
+      llm,
+      models,
+      store,
+      disclosure: secretOutput.snapshot(),
+    })
     /**
      * The scope background work is forked into, and the reason it has to be this one. `Effect.fork`
      * would attach the fiber to the drain, which ends the instant the run does; the per-turn scope
@@ -441,7 +465,7 @@ const layer = Layer.effect(
         sessionID,
         timestamp: yield* DateTime.now,
         assistantMessageID,
-        error: { type: "unknown", message: ToolVisibleError.make(failure) },
+        error: { type: "unknown", message: yield* visibleError(secretOutput.snapshot(), failure) },
       })
     })
     const recordUnstartedInterruption = Effect.fnUntraced(function* (sessionID: SessionSchema.ID) {
@@ -1135,13 +1159,27 @@ const layer = Layer.effect(
       // publisher only opens the durable step on the first content frame, so if the turn ends
       // with the step never opened, the settlement block below hands the responsibility back.
       markTurnRecorded(session.id)
-      const publisher = createLLMEventPublisher(events, {
-        sessionID: session.id,
-        assistantMessageID: providerTurnID,
-        agent: agent.id,
-        model: modelRef,
-        snapshot: startSnapshot,
-      })
+      // One protection snapshot per turn, shared by every provider attempt, publication and CLI
+      // tool reply. Local tool settlements acquire their own when they run.
+      const protection = SecretOutput.reuse(secretOutput)
+      const publisher = createLLMEventPublisher(
+        events,
+        {
+          sessionID: session.id,
+          assistantMessageID: providerTurnID,
+          agent: agent.id,
+          model: modelRef,
+          snapshot: startSnapshot,
+        },
+        protection,
+      )
+      const visible = (error: unknown) => visibleError(protection, error)
+      // The CLI receives these replies directly, outside durable publication.
+      const protectReply = (result: ToolResultValue) =>
+        protection.pipe(
+          Effect.map((guard) => SessionDisclosure.safeResult(result, guard)),
+          Effect.catch(() => Effect.succeed({ type: "error" as const, value: SessionDisclosure.WITHHELD })),
+        )
       const withPublication = Semaphore.makeUnsafe(1).withPermit
       const toolTurnIDs = new Set<SessionMessage.ID>()
       const publish = (event: LLMEvent, outputPaths: ReadonlyArray<string> = []) =>
@@ -1149,13 +1187,30 @@ const layer = Layer.effect(
       // Tool-settle fibers from the failed attempt can still be publishing when this marker goes
       // out; the permit keeps the turn's event log single-ordered.
       const publishRetry = Effect.fnUntraced(function* (decision: SessionRunnerRetry.Decision) {
+        // Provider errors can echo request content back, and this diagnostic is durable and
+        // projected into the Session status. Without protection only the fixed fields survive.
+        const error = yield* protection.pipe(
+          Effect.flatMap((guard) =>
+            Effect.try({
+              try: () => guard.json(decision.error) as SessionEvent.RetryError,
+              catch: () => "unprotectable",
+            }),
+          ),
+          Effect.catch(() =>
+            Effect.succeed({
+              message: "Secret output protection unavailable or failed; details withheld",
+              isRetryable: decision.error.isRetryable,
+              ...(decision.error.statusCode === undefined ? {} : { statusCode: decision.error.statusCode }),
+            }),
+          ),
+        )
         yield* withPublication(
           events.publish(SessionEvent.Retried, {
             sessionID: session.id,
             timestamp: yield* DateTime.now,
             attempt: decision.attempt,
             delay: decision.delay,
-            error: decision.error,
+            error,
             ...(decision.action === undefined ? {} : { action: decision.action }),
           }),
         )
@@ -1196,8 +1251,22 @@ const layer = Layer.effect(
         const pending = yield* SessionInput.pendingSteers(db, session.id)
         // Cancelled after it reached the CLI: withdraw it before the CLI folds it in.
         for (const id of handle.inFlight()) if (!pending.some((entry) => entry.input.id === id)) handle.retract(id)
+        if (pending.length === 0) return
+        // The CLI reads a steer straight from stdin, outside the protected provider request. Without
+        // protection nothing is offered; the steers promote at the next boundary, whose request is
+        // protected part by part.
+        const guard = yield* protection.pipe(Effect.option)
+        if (Option.isNone(guard)) return
         for (const entry of pending) {
-          const text = entry.plain ? steerText(entry.input, agent.id, modelRef) : undefined
+          const raw = entry.plain ? steerText(entry.input, agent.id, modelRef) : undefined
+          const text =
+            raw === undefined
+              ? undefined
+              : Option.getOrUndefined(
+                  yield* Effect.try({ try: () => guard.value.text(raw), catch: () => "unprotectable" }).pipe(
+                    Effect.option,
+                  ),
+                )
           // The first steer the CLI cannot take holds the rest, so steers keep admission order.
           if (text === undefined) return
           handle.offer({ id: entry.input.id, text })
@@ -1278,10 +1347,14 @@ const layer = Layer.effect(
                       Effect.flatMap((steered) => (steered ? control.wake(session.id) : Effect.void)),
                     ),
                   )
-                const result = {
-                  type: "error" as const,
-                  value: ToolVisibleError.make(Cause.squash(settlement.cause)),
-                }
+                // Every call the CLI started gets a durable terminal result: nothing else settles
+                // a CLI tool call, so re-raising an interruption left it running forever.
+                const result = yield* protectReply({
+                  type: "error",
+                  value: Cause.hasInterruptsOnly(settlement.cause)
+                    ? "Tool execution interrupted"
+                    : `Tool execution failed: ${yield* visible(Cause.squash(settlement.cause))}`,
+                })
                 yield* publish(LLMEvent.toolResult({ id: call.id, name: call.name, result }))
                 return result
               }
@@ -1295,7 +1368,7 @@ const layer = Layer.effect(
                   }),
                   settlement.value.outputPaths ?? [],
                 )
-                return settlement.value.result
+                return yield* protectReply(settlement.value.result)
               }
               if (call.name === "todowrite") todoUpdated = true
               yield* publish(
@@ -1307,7 +1380,7 @@ const layer = Layer.effect(
                 }),
                 settlement.value.outputPaths ?? [],
               )
-              return settlement.value.result
+              return yield* protectReply(settlement.value.result)
             }),
           )
       }
@@ -1323,7 +1396,10 @@ const layer = Layer.effect(
       // request; re-running a `Stream` value built once would replay whatever the first call
       // produced, which for a rate limit means retrying the rate limit rather than the request.
       let providerAttemptNumber = 0
-      const providerAttempt = Effect.suspend(() => {
+      const providerAttempt = Effect.gen(function* () {
+        // Typed, not a defect: an unavailable snapshot fails this attempt before any provider
+        // request, and the settlement below still records a visible terminal step.
+        const guard = yield* protection
         providerAttemptNumber += 1
         const attempt = providerAttemptNumber
         const providerStartedAt = Date.now()
@@ -1331,7 +1407,7 @@ const layer = Layer.effect(
         // Fresh per attempt: a retry issues a new provider request, so repetition measured against
         // the abandoned one must not carry into it.
         const loop = SessionRunnerLoopDetector.make()
-        const stream = llm.stream(wireRequest).pipe(
+        const stream = llm.stream(SessionDisclosure.request(wireRequest, guard)).pipe(
           Stream.runForEach((event) =>
             Effect.gen(function* () {
               if (firstProviderEvent) {
@@ -1442,7 +1518,7 @@ const layer = Layer.effect(
           ),
           Effect.ensuring(withPublication(publisher.flush())),
         )
-        return startupPhase("provider_request_started", { attempt }).pipe(Effect.andThen(stream))
+        return yield* startupPhase("provider_request_started", { attempt }).pipe(Effect.andThen(stream))
       })
 
       // Provider retry. Bounded here rather than in `RequestExecutor` because this is the layer
@@ -1546,9 +1622,7 @@ const layer = Layer.effect(
           }
           if (overflowRecoveryFailure) {
             yield* withPublication(
-              publisher.failAssistant(
-                `Provider context recovery failed: ${ToolVisibleError.make(overflowRecoveryFailure)}`,
-              ),
+              publisher.failAssistant(`Provider context recovery failed: ${yield* visible(overflowRecoveryFailure)}`),
             )
           } else if (overflowFailure && stream._tag === "Success") {
             // If the provider emitted an overflow frame and then the stream itself failed, the later
@@ -1602,7 +1676,7 @@ const layer = Layer.effect(
               publisher.failUnsettledTools("Provider stream failed before the tool returned", true),
             )
             yield* withPublication(
-              publisher.failAssistant(`Provider stream failed: ${ToolVisibleError.make(Cause.squash(stream.cause))}`),
+              publisher.failAssistant(`Provider stream failed: ${yield* visible(Cause.squash(stream.cause))}`),
             )
           }
           if (toolMaterialization) {
@@ -1641,9 +1715,7 @@ const layer = Layer.effect(
           }
           if (regularSettled._tag === "Failure" && !Cause.hasInterrupts(regularSettled.cause) && !userDeclined) {
             const failure = Cause.squash(regularSettled.cause)
-            yield* withPublication(
-              publisher.failUnsettledTools(`Tool execution failed: ${ToolVisibleError.make(failure)}`),
-            )
+            yield* withPublication(publisher.failUnsettledTools(`Tool execution failed: ${yield* visible(failure)}`))
           }
           const stepSettlement = publisher.stepSettlement()
           if (
@@ -1710,9 +1782,7 @@ const layer = Layer.effect(
           const settled = regularSettled._tag === "Failure" ? regularSettled : goalUpdatesSettled
           if (goalUpdatesSettled._tag === "Failure" && !Cause.hasInterrupts(goalUpdatesSettled.cause)) {
             const failure = Cause.squash(goalUpdatesSettled.cause)
-            yield* withPublication(
-              publisher.failUnsettledTools(`Goal update failed: ${ToolVisibleError.make(failure)}`),
-            )
+            yield* withPublication(publisher.failUnsettledTools(`Goal update failed: ${yield* visible(failure)}`))
           }
           if (stepSettlement && !publisher.hasProviderError() && !turnInterrupted) {
             const endSnapshot = yield* snapshots.capture()
@@ -2096,6 +2166,7 @@ export const node = makeLocationNode({
   deps: [
     EventV2.node,
     llmClient,
+    SecretOutput.node,
     AgentV2.node,
     AgentGuidance.node,
     SessionToolSnapshot.node,
