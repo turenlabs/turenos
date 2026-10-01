@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import { Extension } from "@turenlabs/schema"
 import { Vigil } from "../../src/skill/vigil"
 import type { Process } from "../../src/util/process"
@@ -52,6 +53,20 @@ describe("Vigil skill scanner", () => {
     expect(Vigil.skillDigest(new Extension.Manifest({ ...manifest, description: "Changed description" }))).not.toBe(
       Vigil.skillDigest(manifest),
     )
+  })
+
+  test("marks the tenant-isolation catalog skill as reviewed", async () => {
+    const manifest = ExtensionCatalog.get("turenlabs/tenant-isolation-review")
+    if (!manifest) throw new Error("Tenant Isolation Review manifest is missing")
+    const result = await Vigil.scanManifest(manifest, {
+      ensure: async () => config,
+      run: (async () => ({
+        code: 0,
+        stdout: score("benign", -0.2, 0.0000019818544387817383),
+        stderr: Buffer.alloc(0),
+      })) as typeof Process.run,
+    })
+    expect(result?.reviewed).toBe(true)
   })
 
   test("stages the complete prompt package and removes it after a scan", async () => {
