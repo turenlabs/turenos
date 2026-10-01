@@ -90,6 +90,11 @@ sudo forge persistent install --user alice --apply \
   --recovery-file /root/turenos-recovery.key
 ```
 
+`--data-root` (default `/var/lib/turenos-server`) and `--port` (default 4097) choose the pinned data root and the
+loopback listener port; preflight asks for one of them when the default belongs to another account or is in use. On a
+re-run they default to the installed unit's values, and moving an installed server to another data root or account
+is refused.
+
 `install --apply` does the following:
 
 1. Stops an installed service, then creates or takes back the `/var/lib/turenos-server` data root (owned by the
@@ -150,12 +155,15 @@ separate, empty quick-connect server. It can never open the promoted database.
 An import that is interrupted leaves a partial data root; remove it (`rm -rf /var/lib/turenos-server`) and run the
 import again. The staged copies and the original data are untouched.
 
-**Restoring a persistent server's backup** (on the same or a new host) uses the same commands with the backup's own
-server ID: a backup keeps its `persistent` owner record, and `--import-db` refuses it under any other ID, naming the
-ID to pass as `--server-id`. Import the original key with `--key-stdin`. Never copy a TPM-bound or host-bound
-credential blob to another machine.
+**Restoring a persistent server's backup** uses the same commands with the backup's own server ID: a backup keeps its
+`persistent` owner record, and `--import-db` refuses it under any other ID, naming the ID to pass as `--server-id`. An
+import only goes into a data root with no database, so on the original host remove the old data root first. On a new
+host, import the original key with `--key-stdin`. A host that still has its vault key credential refuses `--key-stdin`
+and reuses the installed key instead, so there leave `--key-stdin` out; the backup must have been sealed with that key.
+Never copy a TPM-bound or host-bound credential blob to another machine.
 
 ```sh
+# On a new host
 printf '%s\n%s\n' "$KEY_ID" "$KEY_BASE64" | sudo forge persistent install --user alice --apply \
   --key-stdin --server-id srv_... --import-db /root/turenos-restore/forge.db --import-data /root/turenos-restore
 ```

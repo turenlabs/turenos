@@ -47,8 +47,10 @@ key cannot read secrets sealed with the stored one.
 ### Host-owned key sources (persistent servers)
 
 A persistent server loads its own key on the host. `forge serve --key-source <source>` (or
-`FORGE_SECRET_VAULT_KEY_SOURCE`) selects the source. `serve` loads it, installs it with `SecretVault.configure`, and takes
-the database owner lock before `AppRuntime` builds any layer that can open the database:
+`FORGE_SECRET_VAULT_KEY_SOURCE`) selects the source; without one, `serve` uses the environment bootstrap. `serve`
+loads the key and builds only a configuration runtime. `Server.listen` then installs the key with
+`SecretVault.configure` and takes the database owner lock (`ServerOwnership.acquire`) before it builds the listener's
+layer graph, the first one that can open the database:
 
 - `systemd-credentials` reads the base64 key and key ID from the `forge-secret-vault-key` and
   `forge-secret-vault-key-id` credentials in `$CREDENTIALS_DIRECTORY`. Persistent mode requires this source.
@@ -57,9 +59,10 @@ the database owner lock before `AppRuntime` builds any layer that can open the d
 A macOS Keychain source is not implemented yet. It is waiting on the stage 0 LaunchDaemon test.
 
 Set `FORGE_SERVER_MODE=persistent` and a stable, non-secret `FORGE_SERVER_ID` for a persistent server. The HTTP password
-comes from the systemd credential named by `FORGE_SERVER_PASSWORD_CREDENTIAL`. `serve` passes the password only to the
-listener's in-memory auth configuration and
-to `ServerAuth.configure`, which the in-process plugin SDK client uses. The password is never added to `process.env`.
+comes from the systemd credential named by `FORGE_SERVER_PASSWORD_CREDENTIAL`. `serve` passes it to `Server.listen`,
+which keeps it in memory only: `ServerAuth.claimPassword` stores it in the in-process flag (removing any
+`FORGE_SERVER_PASSWORD` from `process.env`), and `ServerAuth.listenerLayer` gives it to the listener's auth check and to
+the in-process plugin SDK client. The password is never added to `process.env`.
 Persistent startup refuses to start if the vault key or the HTTP password appears in the initial environment. It also
 refuses an `env` key source or a missing server ID.
 
@@ -72,8 +75,10 @@ owned by another server stops startup. None of these cases creates a key or fall
 - **Identity.** The database stores a random UUID in `storage_state` (`internal/database`, `uuid`). The data identity is
   the database path plus that UUID.
 - **Owner lock.** Server startup holds an exclusive SQLite lock on `<realpath(db)>.owner.lock` for the life of the
-  process. The OS releases it if the process dies. The desktop sidecar and quick-connect `serve` take it too, so from
-  this release on two current binaries can't both write one database.
+  process. The OS releases it if the process dies. Every `Server.listen` caller takes it: the desktop sidecar,
+  `forge serve` in either mode, and `forge acp`. So two current servers can't both run on one database. A CLI command
+  that opens a quick-connect database without listening doesn't take the lock. In persistent mode
+  (`FORGE_SERVER_MODE=persistent`), any open outside the process that holds the lock fails.
 - **Owner record.** `internal/server-owner` records the server ID, key ID, mode (`quick-connect` or `persistent`), pid,
   and start time. Every database open checks it before migrations run, including CLI commands that don't take the lock.
   A persistent record requires the configured persistent mode and server ID. A quick-connect database becomes
