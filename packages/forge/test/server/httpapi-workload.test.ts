@@ -55,7 +55,7 @@ import { GlobalBus } from "../../src/bus/global"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, provideTmpdirServer } from "../fixture/fixture"
 import { reply, TestLLMServer } from "../lib/llm-server"
-import { awaitWithTimeout, pollWithTimeout, testEffectShared } from "../lib/effect"
+import { awaitWithTimeout, pollWithTimeout, testEffect } from "../lib/effect"
 import { ProviderTest } from "../fake/provider"
 import { httpApiLayer, request } from "./httpapi-layer"
 
@@ -193,8 +193,10 @@ const stack = Layer.mergeAll(
   ]),
 )
 
-// Shared memoMap so the drain's EventV2 publications reach the HTTP SSE route.
-const it = testEffectShared(stack)
+// Isolated build: the SSE route observes GlobalBus, which is a module
+// singleton — no shared memoMap needed. Isolation keeps the fake Provider
+// pinned even when other files in the shard build shared graphs first.
+const it = testEffect(stack)
 
 afterEach(async () => {
   await disposeAllInstances()
