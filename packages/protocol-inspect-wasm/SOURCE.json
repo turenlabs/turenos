@@ -1,6 +1,6 @@
 {
   "crate": "turen-protocol-inspect-wasm",
-  "sourceRevision": "8c99fda31917e43bfc082553e9d2d2c63eb1e5c1",
+  "sourceRevision": "c0f1500e71f04e5b5de28a8f6c0bf9a1ae449814",
   "dependencies": {
     "etherparse": {
       "version": "0.21.0",
@@ -10,5 +10,5 @@
   },
   "rust": "1.94.0",
   "wasmPack": "0.15.0",
-  "run": "35765714240"
+  "run": "36869876228"
 }

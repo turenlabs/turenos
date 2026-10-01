@@ -4,8 +4,10 @@ import { Context, Effect, FiberMap, Iterable, Layer, Schema, Stream } from "effe
 import { serviceUse } from "@turenlabs/core/effect/service-use"
 import { FetchHttpClient, HttpBody, HttpClient, HttpClientError, HttpClientRequest } from "effect/unstable/http"
 import { Database } from "@turenlabs/core/database/database"
+import { and } from "drizzle-orm"
 import { asc } from "drizzle-orm"
 import { eq } from "drizzle-orm"
+import { gt } from "drizzle-orm"
 import { inArray } from "drizzle-orm"
 import { Project } from "@/project/project"
 import { GlobalBus } from "@/bus/global"
@@ -326,63 +328,86 @@ const layer = Layer.effect(
               .where(inArray(EventSequenceTable.aggregate_id, sessionIDs))
               .all()
               .pipe(Effect.orDie)).map((row) => [row.aggregate_id, row.seq]),
-          )
+          ) as Record<string, number>
         : {}
 
-      const response = yield* http.execute(
-        HttpClientRequest.post(route(url, "/sync/history"), {
-          headers: new Headers(headers),
-          body: HttpBody.jsonUnsafe(state),
-        }),
-      )
+      // The response is paged by `limit`: every returned event advances its
+      // aggregate's `state`, so the loop keeps re-requesting until the server
+      // reports nothing new — an empty page, or one where nothing advanced,
+      // which also guards a server that stops honoring the exclusion.
+      while (true) {
+        const target = route(url, "/sync/history")
+        target.searchParams.set("limit", String(SYNC_HISTORY_PAGE))
+        const response = yield* http.execute(
+          HttpClientRequest.post(target, {
+            headers: new Headers(headers),
+            body: HttpBody.jsonUnsafe(state),
+          }),
+        )
 
-      if (response.status < 200 || response.status >= 300) {
-        const body = yield* response.text
-        return yield* new SyncHttpError({
-          message: `Workspace history HTTP failure: ${response.status} ${body}`,
-          status: response.status,
-          body,
-        })
-      }
-
-      const history = (yield* response.json) as HistoryEvent[]
-      for (const event of history) {
-        if (!SessionTaskV2.isDurableEventType(event.type)) continue
-        protectedIDs.add(event.aggregate_id)
-        const task =
-          typeof event.data.task === "object" && event.data.task !== null
-            ? (event.data.task as Record<string, unknown>)
-            : undefined
-        for (const id of [
-          event.data.sessionID,
-          event.data.taskID,
-          task?.rootSessionID,
-          task?.parentSessionID,
-          task?.childSessionID,
-        ]) {
-          if (typeof id === "string") protectedIDs.add(id)
+        if (response.status < 200 || response.status >= 300) {
+          const body = yield* response.text
+          return yield* new SyncHttpError({
+            message: `Workspace history HTTP failure: ${response.status} ${body}`,
+            status: response.status,
+            body,
+          })
         }
-      }
 
-      yield* Effect.forEach(
-        history.filter(
-          (event) => !protectedIDs.has(event.aggregate_id) && !SessionTaskV2.isDurableEventType(event.type),
-        ),
-        (event) =>
-          events
-            .replay(
-              {
-                id: EventV2.ID.make(event.id),
-                aggregateID: event.aggregate_id,
-                seq: event.seq,
-                type: event.type,
-                data: event.data,
-              },
-              { publish: true, ownerID: space.id },
-            )
-            .pipe(Effect.provideService(WorkspaceRef, space.id)),
-        { discard: true },
-      )
+        const history = (yield* response.json) as HistoryEvent[]
+        for (const event of history) {
+          if (!SessionTaskV2.isDurableEventType(event.type)) continue
+          protectedIDs.add(event.aggregate_id)
+          const task =
+            typeof event.data.task === "object" && event.data.task !== null
+              ? (event.data.task as Record<string, unknown>)
+              : undefined
+          for (const id of [
+            event.data.sessionID,
+            event.data.taskID,
+            task?.rootSessionID,
+            task?.parentSessionID,
+            task?.childSessionID,
+          ]) {
+            if (typeof id === "string") protectedIDs.add(id)
+          }
+        }
+
+        let advanced = false
+        yield* Effect.forEach(
+          history,
+          (event) =>
+            // Filtered-out events are permanently excluded, but still advance
+            // `state` — a page full of them must not re-request forever.
+            (!protectedIDs.has(event.aggregate_id) && !SessionTaskV2.isDurableEventType(event.type)
+              ? events.replay(
+                  {
+                    id: EventV2.ID.make(event.id),
+                    aggregateID: event.aggregate_id,
+                    seq: event.seq,
+                    type: event.type,
+                    data: event.data,
+                  },
+                  { publish: true, ownerID: space.id },
+                )
+              : Effect.void
+            ).pipe(
+              // Advance only after a durable replay commit: a failure leaves
+              // state behind so the next connection re-requests the page.
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  if (event.seq > (state[event.aggregate_id] ?? -1)) {
+                    state[event.aggregate_id] = event.seq
+                    advanced = true
+                  }
+                }),
+              ),
+              Effect.provideService(WorkspaceRef, space.id),
+            ),
+          { discard: true },
+        )
+        if (history.length === 0 || !advanced) break
+      }
     })
 
     const syncWorkspaceLoop = Effect.fn("Workspace.syncWorkspaceLoop")(function* (space: Info) {
@@ -671,55 +696,63 @@ const layer = Layer.effect(
           return
         }
 
-        const rows = yield* db
-          .select({
-            id: EventTable.id,
-            aggregateID: EventTable.aggregate_id,
-            seq: EventTable.seq,
-            type: EventTable.type,
-            data: EventTable.data,
-          })
-          .from(EventTable)
-          .where(eq(EventTable.aggregate_id, input.sessionID))
-          .orderBy(asc(EventTable.seq))
-          .all()
-          .pipe(Effect.orDie)
-        if (rows.length === 0)
+        // Page the aggregate instead of materializing it: long-running sessions
+        // carry tens of thousands of events and the full read would hold them
+        // all in memory at once.
+        let after = -1
+        let sent = 0
+        while (true) {
+          const rows = yield* db
+            .select({
+              id: EventTable.id,
+              aggregateID: EventTable.aggregate_id,
+              seq: EventTable.seq,
+              type: EventTable.type,
+              data: EventTable.data,
+            })
+            .from(EventTable)
+            .where(and(eq(EventTable.aggregate_id, input.sessionID), gt(EventTable.seq, after)))
+            .orderBy(asc(EventTable.seq))
+            .limit(SESSION_WARP_PAGE)
+            .all()
+            .pipe(Effect.orDie)
+          if (rows.length === 0) break
+          after = rows.at(-1)!.seq
+          sent += rows.length
+
+          yield* Effect.forEach(
+            Iterable.chunksOf(rows, 10),
+            (events) =>
+              Effect.gen(function* () {
+                const response = yield* http.execute(
+                  HttpClientRequest.post(route(target.url, "/sync/replay"), {
+                    headers: new Headers(target.headers),
+                    body: HttpBody.jsonUnsafe({
+                      directory: space.directory ?? "",
+                      events,
+                    }),
+                  }),
+                )
+
+                if (response.status < 200 || response.status >= 300) {
+                  const body = yield* response.text
+                  return yield* new SessionWarpHttpError({
+                    message: `Failed to warp session ${input.sessionID} into workspace ${workspaceID}: HTTP ${response.status} ${body}`,
+                    workspaceID,
+                    sessionID: input.sessionID,
+                    status: response.status,
+                    body,
+                  })
+                }
+              }),
+            { discard: true },
+          )
+        }
+        if (sent === 0)
           return yield* new SessionEventsNotFoundError({
             message: `No events found for session: ${input.sessionID}`,
             sessionID: input.sessionID,
           })
-
-        const batches = Iterable.chunksOf(rows, 10)
-        const total = Iterable.size(batches)
-
-        yield* Effect.forEach(
-          batches,
-          (events, i) =>
-            Effect.gen(function* () {
-              const response = yield* http.execute(
-                HttpClientRequest.post(route(target.url, "/sync/replay"), {
-                  headers: new Headers(target.headers),
-                  body: HttpBody.jsonUnsafe({
-                    directory: space.directory ?? "",
-                    events,
-                  }),
-                }),
-              )
-
-              if (response.status < 200 || response.status >= 300) {
-                const body = yield* response.text
-                return yield* new SessionWarpHttpError({
-                  message: `Failed to warp session ${input.sessionID} into workspace ${workspaceID}: HTTP ${response.status} ${body}`,
-                  workspaceID,
-                  sessionID: input.sessionID,
-                  status: response.status,
-                  body,
-                })
-              }
-            }),
-          { discard: true },
-        )
 
         const response = yield* http.execute(
           HttpClientRequest.post(route(target.url, "/sync/steal"), {
@@ -915,6 +948,10 @@ const layer = Layer.effect(
 )
 
 const TIMEOUT = 5000
+// Bounded page so a remote with a large event table never materializes its
+// whole history in one request/response body.
+const SYNC_HISTORY_PAGE = 500
+const SESSION_WARP_PAGE = 500
 
 type HistoryEvent = {
   id: string

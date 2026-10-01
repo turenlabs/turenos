@@ -404,7 +404,10 @@ export function createSessionRecoveryProbe(input: {
 export function createSessionGoalRecovery(options?: { attempts?: number; wait?: (delay: number) => Promise<void> }) {
   const completed = new Set<string>()
   const running = new Map<string, Promise<SessionRecoveryOutcome>>()
-  const attempts = Math.max(1, options?.attempts ?? 3)
+  // A sidecar restart takes ~10s before it is healthy again; the retry budget
+  // must span it or every crash surfaces "could not recover" while a Retry
+  // click would have succeeded.
+  const attempts = Math.max(1, options?.attempts ?? 12)
   const wait = options?.wait ?? ((delay: number) => new Promise<void>((resolve) => setTimeout(resolve, delay)))
 
   const resume = (action: () => Promise<SessionRecoveryOutcome>, attempt: number): Promise<SessionRecoveryOutcome> =>
