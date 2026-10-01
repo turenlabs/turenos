@@ -24,7 +24,12 @@ function eventID() {
 
 // A stalled subscriber must fail and reconnect, not accumulate the whole event
 // stream in process memory — the unbounded queue here was a heap-growth vector.
-const subscriberCapacity = 256
+// The bound must still absorb normal burst traffic: a busy event loop starves
+// the SSE writer while drains publish hundreds of events per tick (shell
+// output, fleet task updates, text deltas), and at 256 a healthy client
+// disconnected mid-burst and flapped the UI on every reconnect. Match the
+// EventV2 pubsub bound so only a genuinely stalled consumer overflows.
+const subscriberCapacity = 8192
 
 function eventResponse(events: EventV2.Interface) {
   return Effect.gen(function* () {

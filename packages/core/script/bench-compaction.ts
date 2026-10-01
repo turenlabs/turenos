@@ -2,6 +2,7 @@ import { LLMEvent, Model, type LLMRequest } from "@turenlabs/llm"
 import { route } from "@turenlabs/llm/protocols/openai-chat"
 import { ModelV2 } from "../src/model"
 import { ProviderV2 } from "../src/provider"
+import { SecretRedaction } from "../src/secret-redaction"
 import { SessionCompaction } from "../src/session/compaction"
 import { SessionMessage } from "../src/session/message"
 import { TextPart } from "../src/session/prompt"
@@ -79,6 +80,7 @@ const benchmark = async (permits: number) => {
   let committedLedger: readonly string[] = []
   const semaphore = Semaphore.makeUnsafe(permits)
   const compaction = SessionCompaction.make({
+    disclosure: Effect.succeed(SecretRedaction),
     events: {
       publish: ((definition: { readonly type: string }, data: Record<string, unknown>) =>
         Effect.sync(() => {

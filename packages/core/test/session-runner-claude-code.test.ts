@@ -1,8 +1,9 @@
 import { describe, expect } from "bun:test"
-import { LLM, LLMError, ToolDefinition, type LLMEvent } from "@turenlabs/llm"
+import { LLM, LLMError, Message, ToolCallPart, ToolDefinition, type LLMEvent } from "@turenlabs/llm"
 import { LLMClient, RequestExecutor } from "@turenlabs/llm/route"
 import { DateTime, Deferred, Effect, Fiber, Layer, Stream } from "effect"
 import { EventV2 } from "@turenlabs/core/event"
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { createLLMEventPublisher } from "@turenlabs/core/session/runner/publish-llm-event"
 import { SessionV2 } from "@turenlabs/core/session"
 import { ProjectV2 } from "@turenlabs/core/project"
@@ -209,11 +210,15 @@ const publishAll = (events: ReadonlyArray<LLMEvent>) =>
       remove: () => Effect.void,
       claim: () => Effect.void,
     })
-    const publisher = createLLMEventPublisher(service, {
-      sessionID: SessionV2.ID.make("ses_claude_code_tool"),
-      agent: "build",
-      model: { id: ModelV2.ID.make("opus"), providerID: ProviderV2.ID.make("claude-code") },
-    })
+    const publisher = createLLMEventPublisher(
+      service,
+      {
+        sessionID: SessionV2.ID.make("ses_claude_code_tool"),
+        agent: "build",
+        model: { id: ModelV2.ID.make("opus"), providerID: ProviderV2.ID.make("claude-code") },
+      },
+      Effect.succeed(SecretRedaction),
+    )
     for (const event of events) yield* publisher.publish(event)
     yield* publisher.flush()
     return published.map((item) => item.type)
@@ -407,6 +412,9 @@ describe("SessionRunner claude-code transport", () => {
         HTTPS_PROXY: "http://proxy.example",
         NO_PROXY: "internal.example,localhost",
         no_proxy: "legacy.example",
+        CLAUDE_AUTO_BACKGROUND_TASKS: "1",
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: "0",
+        CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS: "120000",
       })
 
       expect(env).toMatchObject({
@@ -415,6 +423,11 @@ describe("SessionRunner claude-code transport", () => {
         CLAUDE_AGENT_SDK_CLIENT_APP: "forge",
         CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "forge",
         MCP_TOOL_TIMEOUT: "610000",
+        // Inherited values cannot re-enable ambient memory or background MCP settlement.
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+        CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1",
+        CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS: "0",
+        CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH: "65536",
       })
       expect(Object.keys(env).filter((name) => name.startsWith("ANTHROPIC_"))).toEqual([])
       expect(Object.keys(env).filter((name) => name.startsWith("CLAUDE_CODE_USE_"))).toEqual([])
@@ -986,10 +999,329 @@ describe("SessionRunner claude-code transport", () => {
     }).pipe(Effect.provide(layer)),
   )
 
+  it.effect("describes unsupported image types as not forwarded and sends no image block for them", () =>
+    Effect.gen(function* () {
+      const executable = fakeCLI("")
+      const captured = path.join(path.dirname(executable), "stdin.json")
+      writeFileSync(
+        executable,
+        ["#!/bin/sh", `cat > ${JSON.stringify(captured)}`, `echo ${envelope(successResult)}`].join("\n") + "\n",
+      )
+      chmodSync(executable, 0o755)
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel(executable))
+      const request = LLM.request({
+        model,
+        system: "system context",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "compare these" },
+              { type: "media", mediaType: "image/svg+xml", data: "PHN2Zy8+", filename: "logo.svg" },
+              { type: "media", mediaType: "image/png", data: "aGVsbG8=", filename: "shot.png" },
+            ],
+          },
+        ],
+      })
+      yield* LLM.stream(request).pipe(Stream.runCollect)
+      const content = JSON.parse(readFileSync(captured, "utf8").trim()).message.content
+      expect(content[0].text).toContain("[logo.svg is attached in TurenOS but is not forwarded to Claude Code]")
+      expect(content[0].text).not.toContain("[image logo.svg")
+      expect(content[0].text).toContain("[image shot.png is attached to this conversation]")
+      expect(content.filter((block: { type: string }) => block.type === "image")).toEqual([
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "aGVsbG8=" } },
+      ])
+    }).pipe(Effect.provide(layer)),
+  )
+
+  it.effect("replays settled screenshot results as images", () =>
+    Effect.gen(function* () {
+      const executable = fakeCLI("")
+      const captured = path.join(path.dirname(executable), "stdin.json")
+      writeFileSync(
+        executable,
+        ["#!/bin/sh", `cat > ${JSON.stringify(captured)}`, `echo ${envelope(successResult)}`].join("\n") + "\n",
+      )
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel(executable))
+      const messages = [
+        Message.user("Take a screenshot and inspect it"),
+        Message.assistant([ToolCallPart.make({ id: "shot", name: "screenshot", input: {} })]),
+        Message.tool({
+          id: "shot",
+          name: "screenshot",
+          result: {
+            type: "content",
+            value: [
+              { type: "text", text: "Current screen" },
+              { type: "file", mime: "image/png", uri: "data:image/png;base64,aGVsbG8=" },
+              { type: "file", mime: "image/svg+xml", uri: "data:image/svg+xml;base64,PHN2Zy8+" },
+              { type: "file", mime: "application/pdf", name: "report.pdf", uri: "file:///report.pdf" },
+            ],
+          },
+        }),
+      ]
+      yield* LLM.stream(LLM.request({ model, messages })).pipe(Stream.runCollect)
+      const content = JSON.parse(readFileSync(captured, "utf8").trim()).message.content
+      expect(content.filter((block: { type: string }) => block.type === "image")).toEqual([
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "aGVsbG8=" } },
+      ])
+      expect(content[1].text).toContain("Current screen")
+      expect(content[1].text).toContain("[image from screenshot is attached to this conversation]")
+      expect(content[1].text).toContain("Inline image omitted")
+      expect(content[1].text).toContain("file:///report.pdf")
+      expect(content[1].text).not.toContain("data:")
+      expect(content[1].text).not.toContain("aGVsbG8=")
+      expect(
+        ClaudeCodeBridge.content(
+          LLM.request({ model, messages: [...messages, Message.user("Inspect it again")] }),
+        ).slice(0, content.length),
+      ).toEqual(content)
+    }).pipe(Effect.provide(layer)),
+  )
+
+  it.effect("accepts echoed MCP images at the decoded image byte limit", () =>
+    Effect.gen(function* () {
+      const executable = fakeCLI("")
+      const output = path.join(path.dirname(executable), "output.jsonl")
+      const result = ClaudeCodeMcp.toCallToolResult({
+        type: "content",
+        value: Array.from({ length: 2 }, () => ({
+          type: "file" as const,
+          mime: "image/png",
+          uri: `data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString("base64")}`,
+        })),
+      })
+      expect(result.content.every((item) => item.type === "image")).toBe(true)
+      writeFileSync(
+        output,
+        [
+          ...toolCallEnvelopes({ id: "shot", name: "mcp__forge__screenshot" }).filter((item) => item.type !== "user"),
+          {
+            type: "user",
+            message: {
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "shot",
+                  content: result.content.map((item) =>
+                    item.type === "image"
+                      ? { type: "image", source: { type: "base64", media_type: item.mimeType, data: item.data } }
+                      : item,
+                  ),
+                },
+              ],
+            },
+          },
+          successResult,
+        ]
+          .map((item) => JSON.stringify(item))
+          .join("\n") + "\n",
+      )
+      writeFileSync(executable, `#!/bin/sh\ncat > /dev/null\ncat ${JSON.stringify(output)}\n`)
+      const events = Array.from(yield* collect(executable))
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      expect(events.at(-1)).toMatchObject({ type: "finish", reason: "stop" })
+    }),
+  )
+
+  it.effect("shares replay image limits between attachments and screenshot results", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            Message.user([
+              { type: "text", text: "Original screenshot" },
+              { type: "media", mediaType: "image/png", data: "b2xk" },
+            ]),
+            Message.tool({
+              id: "shots",
+              name: "screenshot",
+              result: {
+                type: "content",
+                value: Array.from({ length: 2 }, () => ({
+                  type: "file",
+                  mime: "image/png",
+                  uri: `data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString("base64")}`,
+                })),
+              },
+            }),
+          ],
+        }),
+      )
+      const images = blocks.filter((block) => block.type === "image")
+      expect(images).toHaveLength(2)
+      expect(images.reduce((bytes, image) => bytes + Buffer.byteLength(image.source.data, "base64"), 0)).toBe(
+        8 * 1024 * 1024,
+      )
+      expect(
+        blocks
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("\n"),
+      ).not.toContain("data:")
+    }),
+  )
+
+  it.effect("replays the transcript as append-only blocks so the next turn extends the cached prefix", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const run = (tag: string) => [
+        Message.assistant([ToolCallPart.make({ id: `call-${tag}`, name: "read", input: { filePath: `${tag}.ts` } })]),
+        Message.tool({ id: `call-${tag}`, name: "read", result: { type: "text", value: `contents of ${tag}` } }),
+        Message.assistant(`answer ${tag}`),
+      ]
+      const first = [Message.user("first question"), ...run("a"), Message.user("second question")]
+      const before = ClaudeCodeBridge.content(LLM.request({ model, messages: first }))
+      const after = ClaudeCodeBridge.content(
+        LLM.request({ model, messages: [...first, ...run("b"), Message.user("third question")] }),
+      )
+
+      expect(before).toEqual([
+        { type: "text", text: "USER:\nfirst question" },
+        {
+          type: "text",
+          text: 'ASSISTANT:\n[tool call read] {"filePath":"a.ts"}\n\nTOOL:\n[tool result read] "contents of a"\n\nASSISTANT:\nanswer a',
+        },
+        { type: "text", text: "USER:\nsecond question" },
+      ])
+      // The previous turn's whole replay is a block prefix of this one, and only two blocks follow it.
+      expect(after.slice(0, before.length)).toEqual(before)
+      expect(after).toHaveLength(before.length + 2)
+    }),
+  )
+
+  it.effect("forwards chronological system updates instead of dropping them", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("hello"),
+            Message.system("These instructions replace all previously loaded ambient instructions."),
+            Message.user("next"),
+          ],
+        }),
+      )
+      expect(blocks).toEqual([
+        { type: "text", text: "USER:\nhello" },
+        {
+          type: "text",
+          text: "<system-update>\nThese instructions replace all previously loaded ambient instructions.\n</system-update>",
+        },
+        { type: "text", text: "USER:\nnext" },
+      ])
+    }),
+  )
+
+  it.effect("leaves one-turn runtime instructions out so the next turn still extends the cached prefix", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      // The runner inserts runtime instructions before each new human message, then never replays them.
+      const runtime = (tag: string) =>
+        Message.make({
+          role: "system",
+          content: `<todo_checkpoint>${tag}</todo_checkpoint>`,
+          metadata: { forge: { internalContext: "runtime" } },
+        })
+      const history = [Message.user("first question"), Message.assistant("answer")]
+      const before = ClaudeCodeBridge.content(
+        LLM.request({ model, messages: [...history, runtime("a"), Message.user("second question")] }),
+      )
+      const after = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            ...history,
+            Message.user("second question"),
+            Message.assistant("answer two"),
+            runtime("b"),
+            Message.user("third question"),
+          ],
+        }),
+      )
+
+      expect(JSON.stringify([before, after])).not.toContain("todo_checkpoint")
+      expect(after.slice(0, before.length)).toEqual(before)
+    }),
+  )
+
+  it.effect("keeps each image beside the message that attached it and still caps the count", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const image = (name: string) => ({
+        type: "media" as const,
+        mediaType: "image/png",
+        data: "aGVsbG8=",
+        filename: name,
+      })
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            { role: "user", content: [{ type: "text", text: "first" }, image("a.png")] },
+            Message.assistant("seen"),
+            {
+              role: "user",
+              content: [{ type: "text", text: "more" }, ...Array.from({ length: 8 }, (_, i) => image(`${i}.png`))],
+            },
+          ],
+        }),
+      )
+      expect(blocks.map((block) => block.type)).toEqual([
+        "text",
+        "text",
+        "text",
+        ...Array.from({ length: 8 }, () => "image" as const),
+      ])
+      // The older image past the cap stays behind as its attachment note.
+      expect(blocks[0]).toMatchObject({
+        text: expect.stringContaining("[image a.png is attached to this conversation]"),
+      })
+    }),
+  )
+
+  it.effect("drops the oldest transcript first when the replay exceeds the prompt limit", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const old = "x".repeat(3 * 1024 * 1024)
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({ model, messages: [Message.user(old), Message.assistant(old), Message.user("latest question")] }),
+      )
+      expect(blocks).toHaveLength(3)
+      expect(blocks[0]).toMatchObject({ text: expect.stringContaining("Earlier transcript omitted") })
+      expect(blocks.at(-1)).toEqual({ type: "text", text: "USER:\nlatest question" })
+    }),
+  )
+
+  it.effect("omits images belonging to discarded transcript messages", () =>
+    Effect.gen(function* () {
+      const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel("claude"))
+      const blocks = ClaudeCodeBridge.content(
+        LLM.request({
+          model,
+          messages: [
+            Message.user([
+              { type: "text", text: "x".repeat(5 * 1024 * 1024) },
+              { type: "media", mediaType: "image/png", data: "b2xk", filename: "old.png" },
+            ]),
+            Message.user([
+              { type: "text", text: "latest" },
+              { type: "media", mediaType: "image/png", data: "bmV3", filename: "new.png" },
+            ]),
+          ],
+        }),
+      )
+      expect(blocks.filter((block) => block.type === "image").map((block) => block.source.data)).toEqual(["bmV3"])
+    }),
+  )
+
   it.effect("bounds a raw stream-json line before parsing it", () =>
     Effect.gen(function* () {
       const events = Array.from(
-        yield* collect(fakeCLI(`awk 'BEGIN { for (i = 0; i < ${9 * 1024 * 1024}; i++) printf "x" }'`)),
+        yield* collect(fakeCLI(`awk 'BEGIN { for (i = 0; i < ${21 * 1024 * 1024}; i++) printf "x" }'`)),
       )
       expect(events.map((event) => event.type)).toEqual(["step-start", "provider-error"])
       expect(events.at(-1)).toMatchObject({

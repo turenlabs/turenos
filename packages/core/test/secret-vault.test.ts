@@ -9,6 +9,28 @@ const vault = SecretVault.layer({ keyID: "test-key", key: root })
 const withVault = <A, E>(effect: Effect.Effect<A, E, SecretVault.Service>) => effect.pipe(Effect.provide(vault))
 
 describe("SecretVault", () => {
+  it.effect("fingerprints synchronously with stable scope-separated keyed identities", () =>
+    Effect.gen(function* () {
+      const fingerprint = (key: Uint8Array, keyID = "test-key") =>
+        Effect.gen(function* () {
+          const service = yield* SecretVault.Service
+          const result = service.fingerprint("redaction", "synthetic-secret")
+          expect(result).toMatch(/^[a-f0-9]{64}$/)
+          expect(service.fingerprint("redaction", "synthetic-secret")).toBe(result)
+          expect(service.fingerprint("other", "synthetic-secret")).not.toBe(result)
+          expect(service.fingerprint("redaction", "different-secret")).not.toBe(result)
+          return result
+        }).pipe(Effect.provide(SecretVault.layer({ keyID, key })))
+      const first = yield* fingerprint(root)
+      expect(yield* fingerprint(root)).toBe(first)
+      expect(yield* fingerprint(new Uint8Array(32).fill(42))).not.toBe(first)
+      expect(yield* fingerprint(root, "different-identity")).not.toBe(first)
+      expect(SecretVault.fingerprint("redaction", "synthetic-secret")).toBe(
+        SecretVault.fingerprint("redaction", "synthetic-secret"),
+      )
+    }),
+  )
+
   it.effect("roundtrips a secret", () =>
     Effect.gen(function* () {
       const service = yield* SecretVault.Service

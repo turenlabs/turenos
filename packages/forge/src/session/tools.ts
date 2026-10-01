@@ -27,6 +27,8 @@ import { ProviderV2 } from "@turenlabs/core/provider"
 import { ModelV2 } from "@turenlabs/core/model"
 import { isRecord } from "@/util/record"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { SecretOutput } from "@turenlabs/core/secret-output"
+import { ToolOutput } from "@/tool/secret-output"
 
 const MCP_RESOURCE_TOOLS = {
   list: "list_mcp_resources",
@@ -62,6 +64,18 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const source = yield* Effect.serviceOption(McpTool.Source)
   const truncate = yield* Truncate.Service
   const flags = yield* RuntimeFlags.Service
+  // One snapshot for this processing step, shared by streamed metadata and every final result.
+  const protection = SecretOutput.reuse(yield* SecretOutput.Service)
+  const finalize = <T extends { title: string; output: string; metadata: Record<string, unknown> }>(output: T) =>
+    Effect.gen(function* () {
+      const guard = yield* ToolOutput.snapshot(protection)
+      return {
+        ...output,
+        title: ToolOutput.text(output.title, guard),
+        output: ToolOutput.text(output.output, guard),
+        metadata: ToolOutput.record(output.metadata, guard),
+      }
+    })
 
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
     sessionID: input.session.id,
@@ -72,18 +86,21 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     agent: input.agent.name,
     messages: input.messages,
     metadata: (val) =>
-      input.processor.updateToolCall(options.toolCallId, (match) => {
-        if (!["running", "pending"].includes(match.state.status)) return match
-        return {
-          ...match,
-          state: {
-            title: val.title,
-            metadata: val.metadata,
-            status: "running",
-            input: args,
-            time: { start: Date.now() },
-          },
-        }
+      Effect.gen(function* () {
+        const guard = yield* ToolOutput.snapshot(protection)
+        yield* input.processor.updateToolCall(options.toolCallId, (match) => {
+          if (!["running", "pending"].includes(match.state.status)) return match
+          return {
+            ...match,
+            state: {
+              title: val.title === undefined ? undefined : ToolOutput.text(val.title, guard),
+              metadata: val.metadata === undefined ? undefined : ToolOutput.record(val.metadata, guard),
+              status: "running",
+              input: args,
+              time: { start: Date.now() },
+            },
+          }
+        })
       }),
     ask: (req) =>
       permission
@@ -184,10 +201,11 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID, args },
               output,
             )
+            const safe = yield* finalize(output)
             if (options.abortSignal?.aborted) {
-              yield* input.processor.completeToolCall(options.toolCallId, output)
+              yield* input.processor.completeToolCall(options.toolCallId, safe)
             }
-            return output
+            return safe
           }),
         )
       },
@@ -220,8 +238,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               { tool: name, sessionID: ctx.sessionID, callID: options.toolCallId, args: values },
               output,
             )
-            if (options.abortSignal?.aborted) yield* input.processor.completeToolCall(options.toolCallId, output)
-            return output
+            const safe = yield* finalize(output)
+            if (options.abortSignal?.aborted) yield* input.processor.completeToolCall(options.toolCallId, safe)
+            return safe
           }),
         )
       },
@@ -358,10 +377,11 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               { tool: MCP_RESOURCE_TOOLS.list, sessionID: ctx.sessionID, callID: opts.toolCallId, args },
               output,
             )
+            const safe = yield* finalize(output)
             if (opts.abortSignal?.aborted) {
-              yield* input.processor.completeToolCall(opts.toolCallId, output)
+              yield* input.processor.completeToolCall(opts.toolCallId, safe)
             }
-            return output
+            return safe
           }),
         )
       },
@@ -441,10 +461,11 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               { tool: MCP_RESOURCE_TOOLS.listTemplates, sessionID: ctx.sessionID, callID: opts.toolCallId, args },
               output,
             )
+            const safe = yield* finalize(output)
             if (opts.abortSignal?.aborted) {
-              yield* input.processor.completeToolCall(opts.toolCallId, output)
+              yield* input.processor.completeToolCall(opts.toolCallId, safe)
             }
-            return output
+            return safe
           }),
         )
       },
@@ -523,10 +544,11 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               { tool: MCP_RESOURCE_TOOLS.read, sessionID: ctx.sessionID, callID: opts.toolCallId, args },
               output,
             )
+            const safe = yield* finalize(output)
             if (opts.abortSignal?.aborted) {
-              yield* input.processor.completeToolCall(opts.toolCallId, output)
+              yield* input.processor.completeToolCall(opts.toolCallId, safe)
             }
-            return output
+            return safe
           }),
         )
       },
@@ -654,10 +676,11 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               messageID: input.processor.message.id,
             })),
           }
+          const safe = yield* finalize(output)
           if (opts.abortSignal?.aborted) {
-            yield* input.processor.completeToolCall(opts.toolCallId, output)
+            yield* input.processor.completeToolCall(opts.toolCallId, safe)
           }
-          return output
+          return safe
         }),
       )
     tools[key] = item

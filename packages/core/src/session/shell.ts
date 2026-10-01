@@ -11,6 +11,7 @@ import { KeyedMutex } from "../effect/keyed-mutex"
 import { EventV2 } from "../event"
 import { Location } from "../location"
 import { AppProcess } from "../process"
+import { SecretOutput } from "../secret-output"
 import { SessionEvent } from "./event"
 import { SessionInput } from "./input"
 import { SessionMessage } from "./message"
@@ -22,6 +23,7 @@ export const MAX_TIMEOUT_MS = 10 * 60 * 1_000
 export const MAX_COMMAND_BYTES = 64 * 1024
 export const MAX_OUTPUT_BYTES = 1024 * 1024
 export const INTERRUPTED_ERROR = "Shell execution was interrupted before this TurenOS process observed completion."
+export const WITHHELD_OUTPUT = "Shell output withheld because secret output protection failed."
 
 export class BusyError extends Schema.TaggedErrorClass<BusyError>()("SessionShell.BusyError", {
   sessionID: SessionSchema.ID,
@@ -143,6 +145,7 @@ const layer = Layer.effect(
     const database = yield* Database.Service
     const db = isWithReplicas(database.db) ? database.db.$primary : database.db
     const appProcess = yield* AppProcess.Service
+    const secretOutput = yield* SecretOutput.Service
     const config = yield* Config.Service
     const location = yield* Location.Service
     const registry = yield* Registry
@@ -213,6 +216,20 @@ const layer = Layer.effect(
         readonly error?: string
       },
     ) {
+      // The capture becomes durable history and model context. Protect it with a snapshot taken
+      // after the command ran, before the byte cap; an unavailable guard withholds the text.
+      const guard = yield* secretOutput.snapshot().pipe(Effect.option)
+      const protect = (value: string) => {
+        if (guard._tag === "None") return WITHHELD_OUTPUT
+        try {
+          return guard.value.text(value)
+        } catch {
+          return WITHHELD_OUTPUT
+        }
+      }
+      const output = protect(settlement.output)
+      // References are longer than most credentials, so protection can push a capture over the cap.
+      const expanded = Buffer.byteLength(output) > MAX_OUTPUT_BYTES
       yield* events.publish(
         SessionEvent.Shell.Ended,
         {
@@ -220,6 +237,9 @@ const layer = Layer.effect(
           timestamp: yield* DateTime.now,
           callID: callID(input.messageID),
           ...settlement,
+          output: bounded(output),
+          ...(settlement.error === undefined ? {} : { error: bounded(protect(settlement.error)) }),
+          ...(expanded ? { truncated: true } : {}),
         },
         { location: placement },
       )
@@ -403,5 +423,5 @@ const bounded = (value: string) => {
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [EventV2.node, Database.node, AppProcess.node, Config.node, Location.node, registryNode],
+  deps: [EventV2.node, Database.node, AppProcess.node, SecretOutput.node, Config.node, Location.node, registryNode],
 })

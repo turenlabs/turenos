@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Schema, Stream } from "effect"
+import { Effect, Exit, Schema, Stream } from "effect"
 import { LLMEvent } from "@turenlabs/llm"
 import { EventV2 } from "@turenlabs/core/event"
 import { SessionEvent } from "@turenlabs/core/session/event"
@@ -7,12 +7,16 @@ import { SessionMessage } from "@turenlabs/core/session/message"
 import { SessionV2 } from "@turenlabs/core/session"
 import { ModelV2 } from "@turenlabs/core/model"
 import { ProviderV2 } from "@turenlabs/core/provider"
+import { SecretOutput } from "@turenlabs/core/secret-output"
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { createLLMEventPublisher } from "@turenlabs/core/session/runner/publish-llm-event"
 
 const sessionID = SessionV2.ID.make("ses_tool_event_test")
 const base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
 
-const capture = () => {
+const capture = (
+  disclosure: Effect.Effect<SecretOutput.Snapshot, SecretOutput.Error> = Effect.succeed(SecretRedaction),
+) => {
   const published: Array<{ readonly type: string; readonly data: unknown }> = []
   const events = EventV2.Service.of({
     publish: (definition, data) =>
@@ -39,16 +43,25 @@ const capture = () => {
   })
   return {
     published,
-    publisher: createLLMEventPublisher(events, {
-      sessionID,
-      agent: "build",
-      model: {
-        id: ModelV2.ID.make("model"),
-        providerID: ProviderV2.ID.make("provider"),
+    publisher: createLLMEventPublisher(
+      events,
+      {
+        sessionID,
+        agent: "build",
+        model: {
+          id: ModelV2.ID.make("model"),
+          providerID: ProviderV2.ID.make("provider"),
+        },
       },
-    }),
+      disclosure,
+    ),
   }
 }
+
+const unavailable = Effect.fail(new SecretOutput.Error({ message: "Secret output protection unavailable" }))
+const nested = (depth: number, leaf: unknown): Record<string, unknown> => ({
+  child: depth <= 1 ? leaf : nested(depth - 1, leaf),
+})
 
 const call = LLMEvent.toolCall({ id: "call-image", name: "read", input: { path: "pixel.png" } })
 const result = LLMEvent.toolResult({
@@ -87,6 +100,118 @@ test("local tool success serializes media base64 once and reconstructs from stru
       { type: "file", uri: `data:image/png;base64,${base64}`, mime: "image/png" },
     ],
   })
+})
+
+test("unsettled callback failures redact secrets before becoming replayable tool output", async () => {
+  const { published, publisher } = capture()
+  const secret = `ghp_${"a".repeat(36)}`
+  await Effect.runPromise(publisher.publish(call))
+  await Effect.runPromise(publisher.failUnsettledTools(secret))
+  const failure = published.find((event) => event.type === "session.next.tool.failed.1")
+  expect(JSON.stringify(failure)).not.toContain(secret)
+  expect(JSON.stringify(failure)).toContain("[SECRET:v1:")
+})
+
+test("hosted tool output and compatibility JSON are sanitized before persistence", async () => {
+  const { published, publisher } = capture()
+  const secret = `ghp_${"a".repeat(36)}`
+  await Effect.runPromise(publisher.publish(LLMEvent.toolCall({ ...call, providerExecuted: true })))
+  await Effect.runPromise(
+    publisher.publish(
+      LLMEvent.toolResult({
+        ...result,
+        providerExecuted: true,
+        result: { type: "json", value: { token: secret } },
+        output: { structured: { token: secret }, content: [{ type: "text", text: secret }] },
+        providerMetadata: { opaque: { signature: secret } },
+      }),
+    ),
+  )
+  const success = published.find((event) => event.type === "session.next.tool.success.1")
+  expect(success?.data).toMatchObject({ provider: { metadata: { opaque: { signature: secret } } } })
+  const data = success?.data as Record<string, unknown>
+  expect(JSON.stringify({ structured: data.structured, content: data.content, result: data.result })).not.toContain(
+    secret,
+  )
+  expect(JSON.stringify(data.structured)).toContain("[SECRET:v1:")
+})
+
+test("unavailable protection settles a hosted result once with a fixed failure instead of orphaning it", async () => {
+  const { published, publisher } = capture(unavailable)
+  const secret = `ghp_${"b".repeat(36)}`
+  await Effect.runPromise(publisher.publish(LLMEvent.toolCall({ ...call, providerExecuted: true })))
+  const exit = await Effect.runPromiseExit(
+    publisher.publish(
+      LLMEvent.toolResult({
+        ...result,
+        providerExecuted: true,
+        result: { type: "json", value: { token: secret } },
+        output: { structured: { token: secret }, content: [{ type: "text", text: secret }] },
+      }),
+    ),
+  )
+  expect(Exit.isSuccess(exit)).toBe(true)
+  expect(publisher.unsettledToolNames()).toEqual([])
+  const failures = published.filter((event) => event.type === "session.next.tool.failed.1")
+  expect(failures).toHaveLength(1)
+  expect(published.some((event) => event.type === "session.next.tool.success.1")).toBe(false)
+  expect(JSON.stringify(published)).not.toContain(secret)
+  expect(JSON.stringify(failures[0])).toContain("withheld")
+})
+
+test("an unprocessable hosted result is withheld and settled rather than left running", async () => {
+  const { published, publisher } = capture()
+  const secret = `ghp_${"c".repeat(36)}`
+  await Effect.runPromise(publisher.publish(LLMEvent.toolCall({ ...call, providerExecuted: true })))
+  const exit = await Effect.runPromiseExit(
+    publisher.publish(
+      LLMEvent.toolResult({
+        ...result,
+        providerExecuted: true,
+        result: { type: "json", value: nested(70, secret) },
+        output: undefined,
+      }),
+    ),
+  )
+  expect(Exit.isSuccess(exit)).toBe(true)
+  expect(publisher.unsettledToolNames()).toEqual([])
+  expect(published.filter((event) => event.type === "session.next.tool.failed.1")).toHaveLength(1)
+  expect(JSON.stringify(published)).not.toContain(secret)
+})
+
+test("cleanup settles every open call with a fixed message when protection is unavailable", async () => {
+  const { published, publisher } = capture(unavailable)
+  const secret = `ghp_${"d".repeat(36)}`
+  await Effect.runPromise(publisher.publish(call))
+  await Effect.runPromise(publisher.publish(LLMEvent.toolCall({ id: "call-other", name: "bash", input: {} })))
+  const exit = await Effect.runPromiseExit(publisher.failUnsettledTools(`Tool execution failed: ${secret}`))
+  expect(Exit.isSuccess(exit)).toBe(true)
+  expect(publisher.unsettledToolNames()).toEqual([])
+  expect(published.filter((event) => event.type === "session.next.tool.failed.1")).toHaveLength(2)
+  expect(JSON.stringify(published)).not.toContain(secret)
+})
+
+test("provider tool errors and step failures never persist raw text when protection is unavailable", async () => {
+  const { published, publisher } = capture(unavailable)
+  const secret = `ghp_${"e".repeat(36)}`
+  await Effect.runPromise(publisher.publish(LLMEvent.toolCall({ ...call, providerExecuted: true })))
+  const errored = await Effect.runPromiseExit(
+    publisher.publish(LLMEvent.toolError({ id: call.id, name: call.name, message: `upstream said ${secret}` })),
+  )
+  expect(Exit.isSuccess(errored)).toBe(true)
+  const failed = await Effect.runPromiseExit(publisher.failAssistant(`Provider stream failed: ${secret}`))
+  expect(Exit.isSuccess(failed)).toBe(true)
+  expect(publisher.unsettledToolNames()).toEqual([])
+  expect(published.some((event) => event.type.startsWith("session.next.step.failed"))).toBe(true)
+  expect(JSON.stringify(published)).not.toContain(secret)
+})
+
+test("provider failure text is redacted before it becomes a durable step failure", async () => {
+  const { published, publisher } = capture()
+  const secret = `ghp_${"f".repeat(36)}`
+  await Effect.runPromise(publisher.publish(LLMEvent.providerError({ message: `rejected request body: ${secret}` })))
+  expect(JSON.stringify(published)).not.toContain(secret)
+  expect(JSON.stringify(published)).toContain("[SECRET:v1:github:")
 })
 
 test("provider-executed success retains its compatibility result", async () => {
