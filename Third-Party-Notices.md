@@ -584,7 +584,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `fast-xml-builder` | `1.2.0` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-builder.git) |
 | `fast-xml-parser` | `5.7.3` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-parser.git) |
 | `fastdom` | `1.0.12` | MIT | [source](git://github.com/wilsonpage/fastdom.git) |
-| `fastify` | `5.12.1` | MIT | [source](git+https://github.com/fastify/fastify.git) |
+| `fastify` | `5.12.5` | MIT | [source](git+https://github.com/fastify/fastify.git) |
 | `fastify-plugin` | `5.1.0` | MIT | [source](git+https://github.com/fastify/fastify-plugin.git) |
 | `fastq` | `1.20.1` | ISC | [source](git+https://github.com/mcollina/fastq.git) |
 | `fdir` | `6.5.0` | MIT | [source](git+https://github.com/thecodrr/fdir.git) |
@@ -628,7 +628,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `hasown` | `2.0.4` | MIT | [source](git+https://github.com/inspect-js/hasOwn.git) |
 | `hast-util-to-html` | `9.0.5` | MIT | [source](syntax-tree/hast-util-to-html) |
 | `hast-util-whitespace` | `3.0.0` | MIT | [source](syntax-tree/hast-util-whitespace) |
-| `hono` | `4.13.5` | MIT | [source](git+https://github.com/honojs/hono.git) |
+| `hono` | `4.13.9` | MIT | [source](git+https://github.com/honojs/hono.git) |
 | `hosted-git-info` | `9.0.3` | ISC | [source](git+https://github.com/npm/hosted-git-info.git) |
 | `html-void-elements` | `3.0.0` | MIT | [source](wooorm/html-void-elements) |
 | `htmlparser2` | `8.0.2` | MIT | [source](git://github.com/fb55/htmlparser2.git) |

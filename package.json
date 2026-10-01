@@ -129,7 +129,9 @@
     "@opencode-ai/plugin": "file:./packages/plugin",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "poe-oauth": "0.0.14"
+    "poe-oauth": "0.0.14",
+    "fastify": "5.12.5",
+    "hono": "4.13.9"
   },
   "patchedDependencies": {
     "@ff-labs/fff-bun@0.9.3": "patches/@ff-labs%2Ffff-bun@0.9.3.patch",
