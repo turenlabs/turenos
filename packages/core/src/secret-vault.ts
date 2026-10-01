@@ -1,6 +1,6 @@
 export * as SecretVault from "./secret-vault"
 
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomUUID } from "node:crypto"
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, randomUUID } from "node:crypto"
 import { Context, Effect, Layer, Schema } from "effect"
 import { makeGlobalNode } from "./effect/app-node"
 
@@ -21,6 +21,7 @@ export class Error extends Schema.TaggedErrorClass<Error>()("SecretVault.Error",
 
 export interface Interface {
   readonly keyID: string
+  readonly fingerprint: (scope: string, value: string) => string
   readonly seal: (scope: string, key: string, value: string) => Effect.Effect<string>
   readonly open: (scope: string, key: string, value: string) => Effect.Effect<string>
   readonly sealBytes: (scope: string, key: string, value: Uint8Array) => Effect.Effect<string>
@@ -40,6 +41,16 @@ export const layer = (options: Key) => {
 
 function make(options: Key): Interface {
   const root = Buffer.from(options.key)
+  // Separate key material from encryption, including the installation key identity.
+  const fingerprintKey = Buffer.from(
+    hkdfSync(
+      "sha256",
+      root,
+      HKDF_SALT,
+      lengthPrefixed([Buffer.from("forge-secret:v1:fingerprint-key", "utf8"), Buffer.from(options.keyID, "utf8")]),
+      32,
+    ),
+  )
   const sealBytes = (scope: string, key: string, value: Uint8Array) =>
     Effect.try({
       try: () => {
@@ -71,6 +82,10 @@ function make(options: Key): Interface {
     }).pipe(Effect.orDie)
   return {
     keyID: options.keyID,
+    fingerprint: (scope, value) =>
+      createHmac("sha256", fingerprintKey)
+        .update(lengthPrefixed([Buffer.from(scope, "utf8"), Buffer.from(value, "utf8")]))
+        .digest("hex"),
     seal: (scope, key, value) => sealBytes(scope, key, Buffer.from(value, "utf8")),
     open: (scope, key, value) =>
       openBytes(scope, key, value).pipe(Effect.map((bytes) => Buffer.from(bytes).toString("utf8"))),
@@ -104,6 +119,7 @@ export const open = (scope: string, key: string, value: string) => current.open(
 export const sealBytes = (scope: string, key: string, value: Uint8Array) => current.sealBytes(scope, key, value)
 export const openBytes = (scope: string, key: string, value: string) => current.openBytes(scope, key, value)
 export const isSealed = (value: string) => current.isSealed(value)
+export const fingerprint = (scope: string, value: string) => current.fingerprint(scope, value)
 
 export const ephemeral = layer(fallback)
 

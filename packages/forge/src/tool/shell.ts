@@ -403,11 +403,40 @@ export const ShellTool = Tool.define(
       let used = 0
       let file = ""
       let sink: ReturnType<typeof createWriteStream> | undefined
+      // One protector per run, ahead of everything derived from the output: live previews, the
+      // saved file and the final tail only ever see text it has released.
+      const protector = yield* trunc.stream()
       let cut = false
       let expired = false
       let aborted = false
 
-      const closeSink = Effect.fnUntraced(function* () {
+      const append = Effect.fnUntraced(function* (text: string) {
+        if (!text) return
+        const size = Buffer.byteLength(text, "utf-8")
+        list.push({ text, size })
+        used += size
+        while (used > keep && list.length > 1) {
+          const item = list.shift()
+          if (!item) break
+          used -= item.size
+          cut = true
+        }
+        last = preview(last + text)
+        if (file) {
+          sink?.write(text)
+          return
+        }
+        full += text
+        if (Buffer.byteLength(full, "utf-8") <= limits.maxBytes) return
+        file = yield* trunc.write(full)
+        cut = true
+        sink = createWriteStream(file, { flags: "a" })
+        full = ""
+      })
+
+      const finish = Effect.fnUntraced(function* () {
+        // The stream has ended, so the suffix held back for later text is decided now.
+        yield* append(protector.end())
         const stream = sink
         if (!stream) return
         sink = undefined
@@ -440,53 +469,22 @@ export const ShellTool = Tool.define(
 
       const code: number | null = yield* Effect.scoped(
         Effect.gen(function* () {
-          yield* Effect.addFinalizer(closeSink)
+          yield* Effect.addFinalizer(finish)
           const handle = yield* spawner.spawn(cmd(input.shell, input.command, input.cwd, input.env))
 
           yield* Effect.forkScoped(
             Stream.runForEach(Stream.decodeText(handle.all), (chunk) => {
-              const size = Buffer.byteLength(chunk, "utf-8")
-              list.push({ text: chunk, size })
-              used += size
-              while (used > keep && list.length > 1) {
-                const item = list.shift()
-                if (!item) break
-                used -= item.size
-                cut = true
-              }
-
-              last = preview(last + chunk)
-
-              if (file) {
-                sink?.write(chunk)
-              } else {
-                full += chunk
-                if (Buffer.byteLength(full, "utf-8") > limits.maxBytes) {
-                  return trunc.write(full).pipe(
-                    Effect.andThen((next) =>
-                      Effect.sync(() => {
-                        file = next
-                        cut = true
-                        sink = createWriteStream(next, { flags: "a" })
-                        full = ""
-                      }),
-                    ),
-                    Effect.andThen(
-                      ctx.metadata({
-                        metadata: {
-                          output: last,
-                        },
-                      }),
-                    ),
-                  )
-                }
-              }
-
-              return ctx.metadata({
-                metadata: {
-                  output: last,
-                },
-              })
+              const text = protector.push(chunk)
+              if (!text) return Effect.void
+              return append(text).pipe(
+                Effect.andThen(() =>
+                  ctx.metadata({
+                    metadata: {
+                      output: last,
+                    },
+                  }),
+                ),
+              )
             }),
           )
 
