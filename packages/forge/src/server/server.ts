@@ -17,6 +17,7 @@ import { PublicApi } from "./routes/instance/httpapi/public"
 import type { CorsOptions } from "@turenlabs/server/cors"
 import { startScheduler } from "@turenlabs/server/intel/scheduler"
 import { lazy } from "@/util/lazy"
+import { Heap } from "@/cli/heap"
 import { Flag } from "@turenlabs/core/flag/flag"
 import { isLoopbackHostname } from "./shared/local-request"
 import { ServerAuth } from "./auth"
@@ -98,6 +99,10 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
   const password = ServerAuth.claimPassword(opts.password)
   const username = opts.username ?? process.env.FORGE_SERVER_USERNAME ?? Flag.FORGE_SERVER_USERNAME
   Flag.FORGE_SERVER_USERNAME = username
+  // The desktop sidecar reaches listen() without passing the CLI middleware that
+  // arms this, so FORGE_AUTO_HEAP_SNAPSHOT has to be armed here or packaged
+  // processes can never self-capture a heap profile when memory climbs.
+  Heap.start()
   // Binding a non-loopback interface exposes every privileged API on the LAN, so a
   // password is mandatory there unless the caller explicitly opts into insecure mode.
   if (!password && !opts.insecure && !isLoopbackHostname(opts.hostname)) {

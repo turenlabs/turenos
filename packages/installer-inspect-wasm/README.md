@@ -29,7 +29,7 @@ Installer database:
 - `streams` — embedded binary streams (Binary-table payloads, embedded
   cabinets) with decoded name, size, and SHA-256.
 - `customActions` — every `CustomAction` row with the `Type` bitfield decoded
-  into `kind` (`dll`/`exe`/`jscript`/`vbscript`/`install`/`textData`),
+  into `kind` (`dll`/`exe`/`jscript`/`vbscript`/`install`, or `unknown-<n>`),
   `location` (`binary`/`installedFile`/`directoryPath`/`inlineText`/
   `propertyValue`), and scheduling flags (`inScript`, `rollback`, `commit`,
   `noImpersonate`, `64bitScript`, `hideTarget`, `tsAware`, `patchUninstall`,
