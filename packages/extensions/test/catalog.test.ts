@@ -4,6 +4,7 @@ import { ExtensionCatalog, ExtensionManifestPolicy } from "@turenlabs/extensions
 import { Schema } from "effect"
 
 const expected = [
+  "turenlabs/agentic-prompt-injection-review",
   "turenlabs/atlassian-security-context",
   "turenlabs/attack",
   "turenlabs/automox",
@@ -155,7 +156,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(19)
+    expect(skills.length).toBe(20)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0
