@@ -81,4 +81,4 @@ No new findings database or raw-secret store. Model-visible references have the 
   - The GitLab workflow callback captured the request's compiled snapshot on a cached model. It now acquires protection per call.
 - The literal `[SECRET:v1` mutation check also refuses searches for references. That false positive is kept deliberately: the check cannot tell a search pattern from a truncated reference copied into a command, and the workaround (omit the bracket) is documented.
 
-See `docs/secret-output-protection.md` for the implemented boundaries and explicit limitations. Integration tests exercise synthetic secrets through real retention and provider-request paths; they are not a universal DLP or containment guarantee.
+See `docs/systems/secret-output-protection.md` for the implemented boundaries and explicit limitations. Integration tests exercise synthetic secrets through real retention and provider-request paths; they are not a universal DLP or containment guarantee.
