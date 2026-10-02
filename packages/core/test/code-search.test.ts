@@ -1,7 +1,7 @@
 import fs from "fs/promises"
 import path from "path"
 import { describe, expect } from "bun:test"
-import { Effect, Layer, Schema } from "effect"
+import { Deferred, Effect, Fiber, Layer, Schema, Scheduler } from "effect"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { EventV2 } from "@turenlabs/core/event"
@@ -158,10 +158,30 @@ struct PackerRule { marker: u8 }
   }
 }
 
-const updated = (dir: string, file: string): EventV2.Payload => ({
+// records every embed batch; the query words are excluded by the caller so only vocabulary embeds remain
+const counting = (
+  pair: readonly string[],
+  state: { batches: string[][]; fail: boolean; hook?: (texts: readonly string[]) => void },
+): PotionRuntime => {
+  const base = runtime(pair)
+  return {
+    ...base,
+    embed: (texts) => {
+      state.batches.push([...texts])
+      state.hook?.(texts)
+      if (state.fail) throw new Error("embed failed")
+      return base.embed(texts)
+    },
+  }
+}
+
+const vocabEmbeds = (state: { batches: string[][] }, query: readonly string[]) =>
+  state.batches.flat().filter((text) => !query.includes(text))
+
+const updated = (dir: string, file: string, event: "change" | "unlink" = "change"): EventV2.Payload => ({
   id: Schema.decodeUnknownSync(Event.ID)("evt_test"),
   type: Watcher.Event.Updated.type,
-  data: { file: AbsolutePath.make(path.join(dir, file)), event: "change" },
+  data: { file: AbsolutePath.make(path.join(dir, file)), event },
   location: { directory: AbsolutePath.make(dir) },
 })
 
@@ -326,4 +346,181 @@ describe("code_search", () => {
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),
   )
+
+  describe("term embedding cache", () => {
+    const pair = ["verify", "checksum"]
+    const run = <A, E, R>(
+      body: (
+        registry: ToolRegistry.Interface,
+        dir: string,
+        state: { batches: string[][]; fail: boolean; hook?: (texts: readonly string[]) => void },
+      ) => Effect.Effect<A, E, R>,
+    ) =>
+      Effect.acquireUseRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => {
+          const state = {
+            batches: [] as string[][],
+            fail: false,
+            hook: undefined as ((texts: readonly string[]) => void) | undefined,
+          }
+          return withSearch(
+            tmp.path,
+            () => Promise.resolve(counting(pair, state)),
+            (registry) =>
+              Effect.gen(function* () {
+                yield* Effect.promise(() => seed(tmp.path))
+                return yield* body(registry, tmp.path, state)
+              }),
+          )
+        },
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      )
+
+    it.live("does not re-embed the vocabulary after an edit that changes no term", () =>
+      run((registry, dir, state) =>
+        Effect.gen(function* () {
+          const first = yield* search(registry, { queries: ["verify"] })
+          const initial = vocabEmbeds(state, ["verify"])
+          expect(initial.length).toBeGreaterThan(0)
+
+          const file = "src/util/hash.ts"
+          yield* Effect.promise(async () => fs.writeFile(path.join(dir, file), await fs.readFile(path.join(dir, file))))
+          yield* listener!(updated(dir, file))
+          state.batches.length = 0
+
+          const second = yield* search(registry, { queries: ["verify"] })
+          expect(vocabEmbeds(state, ["verify"])).toEqual([])
+          expect(second.map((hit) => hit.path)).toEqual(first.map((hit) => hit.path))
+          expect(second[0]?.path).toBe(file)
+        }),
+      ),
+    )
+
+    it.live("embeds only the terms that enter the vocabulary", () =>
+      run((registry, dir, state) =>
+        Effect.gen(function* () {
+          yield* search(registry, { queries: ["verify"] })
+          for (let i = 0; i < 3; i++) {
+            const file = `src/extra/q${i}.ts`
+            yield* Effect.promise(() => fs.mkdir(path.join(dir, "src/extra"), { recursive: true }))
+            yield* Effect.promise(() => fs.writeFile(path.join(dir, file), "export const quokkaflux = 1\n"))
+            yield* listener!(updated(dir, file))
+          }
+          state.batches.length = 0
+
+          yield* search(registry, { queries: ["verify"] })
+          expect(vocabEmbeds(state, ["verify"])).toEqual(["quokkaflux"])
+        }),
+      ),
+    )
+
+    it.live("keeps the cache clean when an embed fails and recovers on the next search", () =>
+      run((registry, _dir, state) =>
+        Effect.gen(function* () {
+          state.fail = true
+          const failed = yield* search(registry, { queries: ["verify"] })
+          expect(failed.map((hit) => hit.path)).not.toContain("src/util/hash.ts")
+
+          state.fail = false
+          state.batches.length = 0
+          const hits = yield* search(registry, { queries: ["verify"] })
+          expect(vocabEmbeds(state, ["verify"]).length).toBeGreaterThan(0)
+          expect(hits[0]?.path).toBe("src/util/hash.ts")
+        }),
+      ),
+    )
+
+    it.live("drops terms of a deleted file without re-embedding the rest", () =>
+      run((registry, dir, state) =>
+        Effect.gen(function* () {
+          const before = yield* search(registry, { queries: ["verify"] })
+          expect(before[0]?.path).toBe("src/util/hash.ts")
+
+          yield* Effect.promise(() => fs.rm(path.join(dir, "src/util/hash.ts")))
+          yield* listener!(updated(dir, "src/util/hash.ts", "unlink"))
+          state.batches.length = 0
+
+          const after = yield* search(registry, { queries: ["verify"] })
+          expect(after.map((hit) => hit.path)).not.toContain("src/util/hash.ts")
+          expect(vocabEmbeds(state, ["verify"])).toEqual([])
+        }),
+      ),
+    )
+
+    it.live("reuses the thesaurus on an unchanged corpus and picks up the next edit", () =>
+      run((registry, dir, state) =>
+        Effect.gen(function* () {
+          const first = yield* search(registry, { queries: ["verify"] })
+          state.batches.length = 0
+
+          const repeat = yield* search(registry, { queries: ["verify"] })
+          expect(state.batches).toEqual([["verify"]])
+          expect(repeat.map((hit) => hit.path)).toEqual(first.map((hit) => hit.path))
+
+          for (let i = 0; i < 3; i++) {
+            const file = `src/extra/q${i}.ts`
+            yield* Effect.promise(() => fs.mkdir(path.join(dir, "src/extra"), { recursive: true }))
+            yield* Effect.promise(() => fs.writeFile(path.join(dir, file), "export const quokkaflux = 1\n"))
+            yield* listener!(updated(dir, file))
+          }
+          state.batches.length = 0
+
+          yield* search(registry, { queries: ["verify"] })
+          expect(vocabEmbeds(state, ["verify"])).toEqual(["quokkaflux"])
+        }),
+      ),
+    )
+
+    it.live("keeps cached vectors for a search suspended while another search prunes", () =>
+      run((registry, dir, state) =>
+        Effect.gen(function* () {
+          yield* search(registry, { queries: ["verify"] })
+          for (let i = 0; i < 3; i++) {
+            const file = `src/extra/q${i}.ts`
+            yield* Effect.promise(() => fs.mkdir(path.join(dir, "src/extra"), { recursive: true }))
+            yield* Effect.promise(() => fs.writeFile(path.join(dir, file), "export const quokkaflux = 1\n"))
+            yield* listener!(updated(dir, file))
+          }
+          yield* Effect.promise(() => fs.rm(path.join(dir, "src/util/hash.ts")))
+
+          const paused = yield* Deferred.make<void>()
+          const gate: { pause: boolean; resume?: () => void } = { pause: false }
+          const scheduler = new Scheduler.MixedScheduler("async", (task) => {
+            if (gate.pause) {
+              gate.pause = false
+              gate.resume = task
+              Effect.runSync(Deferred.succeed(paused, undefined))
+              return () => {
+                gate.resume = undefined
+              }
+            }
+            const handle = setImmediate(task)
+            return () => clearImmediate(handle)
+          })
+          // suspend the first search right after it embeds the new term, with the retained terms counted as cached
+          state.hook = (texts) => {
+            if (!texts.includes("quokkaflux")) return
+            state.hook = undefined
+            gate.pause = true
+          }
+          const first = yield* Effect.forkChild(
+            search(registry, { queries: ["verify"] }).pipe(
+              Effect.provideService(Scheduler.Scheduler, scheduler),
+              Effect.provideService(Scheduler.MaxOpsBeforeYield, 5),
+            ),
+          )
+          yield* Deferred.await(paused)
+          // a smaller vocabulary rebuilds and prunes the cache while the first search is suspended
+          yield* listener!(updated(dir, "src/util/hash.ts", "unlink"))
+          yield* search(registry, { queries: ["verify"] })
+          const resume = gate.resume
+          gate.resume = undefined
+          resume?.()
+          const hits = yield* Fiber.join(first)
+          expect(hits.map((hit) => hit.path)).not.toContain("src/util/hash.ts")
+        }),
+      ),
+    )
+  })
 })

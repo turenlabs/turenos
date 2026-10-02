@@ -37,10 +37,6 @@ export class Service extends Context.Service<Service, Interface>()("@forge/v2/Co
 
 // --- corpus bounds ------------------------------------------------------------
 
-// Minimum gap between whole-vocabulary thesaurus re-embeds. Churn that lands
-// inside the window keeps the previous expansion table — it only broadens
-// terms semantically, so direct lexicon matches stay exact meanwhile.
-const THESAURUS_REBUILD_MS = 2_000
 const CHUNK_LINES = 100
 const CHUNK_STEP = 100
 const MAX_FILE_LINES = 4000
@@ -333,9 +329,10 @@ const makeLayer = (load: PotionLoader) =>
 
     let potion: Promise<PotionRuntime> | undefined
     let potionFailures = 0
-    let thesaurus:
-      | { version: number; builtAt: number; vocab: string[]; vecs: Float32Array; dim: number }
-      | undefined
+    let thesaurus: { version: number; vocab: string[]; vecs: Float32Array; dim: number } | undefined
+    // L2-normalized embedding per vocabulary term; a term's vector depends only on the term and the runtime dimension
+    const termVecs = new Map<string, Float32Array>()
+    let termVecsDim = 0
 
     const moduleToFiles = () => {
       const map = new Map<string, string[]>()
@@ -620,29 +617,50 @@ const makeLayer = (load: PotionLoader) =>
       const runtime = yield* loadPotion()
       if (!runtime) return new Map<string, number>()
       const dim = runtime.profile.dimension
+      // an unchanged index keeps its thesaurus without a vocabulary pass; the stamp is read before embed yields
+      const stamp = version
       let th = thesaurus
-      // A rebuild embeds the whole vocabulary; under continuous file churn that
-      // runs once per query. The lexicons stay current via ensureIndex, so a
-      // briefly stale expansion table only delays semantic widening of fresh
-      // terms. A model swap (`dim` change) still rebuilds immediately.
-      if (!th || th.dim !== dim || (th.version !== version && Date.now() - th.builtAt >= THESAURUS_REBUILD_MS)) {
+      if (!th || th.version !== stamp || th.dim !== dim) {
         const vocab = [...chunkLex.inverted.keys()].filter((t) => {
           const df = (chunkLex.inverted.get(t)?.length ?? 0) / 2
           return t.length >= 3 && !STOP.has(t) && df >= 3 && df <= chunkLex.n * 0.1
         })
-        const vecs = new Float32Array(vocab.length * dim)
-        const embedded = yield* embed(runtime, vocab)
-        if (!embedded) return new Map<string, number>()
-        for (const [j, v] of embedded.entries()) {
-          const off = j * dim
-          vecs.set(v, off)
-          let n2 = 0
-          for (let d = 0; d < dim; d++) n2 += vecs[off + d]! ** 2
-          const norm = Math.sqrt(n2) || 1
-          for (let d = 0; d < dim; d++) vecs[off + d]! /= norm
+        if (termVecsDim !== dim) {
+          termVecs.clear()
+          termVecsDim = dim
         }
-        th = { version, builtAt: Date.now(), vocab, vecs, dim }
+        // hold references now: another expand can prune the shared cache while this one is suspended at embed
+        const known = new Map<string, Float32Array>()
+        const missing: string[] = []
+        for (const t of vocab) {
+          const v = termVecs.get(t)
+          if (v) known.set(t, v)
+          else missing.push(t)
+        }
+        if (missing.length) {
+          const embedded = yield* embed(runtime, missing)
+          if (!embedded || embedded.length !== missing.length) return new Map<string, number>()
+          for (const [j, v] of embedded.entries()) {
+            let n2 = 0
+            for (let d = 0; d < dim; d++) n2 += v[d] ** 2
+            const norm = Math.sqrt(n2) || 1
+            const unit = v.map((x) => x / norm)
+            termVecs.set(missing[j], unit)
+            known.set(missing[j], unit)
+          }
+        }
+        if (th && th.dim === dim && th.vocab.length === vocab.length && th.vocab.every((t, i) => t === vocab[i])) {
+          th = { ...th, version: stamp }
+        } else {
+          const vecs = new Float32Array(vocab.length * dim)
+          for (const [i, t] of vocab.entries()) vecs.set(known.get(t)!, i * dim)
+          th = { version: stamp, vocab, vecs, dim }
+        }
         thesaurus = th
+        if (termVecs.size > 2 * vocab.length) {
+          const live = new Set(vocab)
+          for (const t of termVecs.keys()) if (!live.has(t)) termVecs.delete(t)
+        }
       }
       const out = new Map<string, number>()
       const seen = new Set<string>()
