@@ -41,6 +41,7 @@ bun test src/main/profiler.test.ts src/main/profiler/run.test.ts src/main/profil
 - One process only; time spent in the renderer or Electron main process does not appear.
 - Sampling adds overhead. At 1 ms it measured at or below noise on a CPU-bound workload, while 100 µs cost about 3%.
 - Ten minutes at 1 ms is roughly half a million samples, near the limit of what DevTools loads comfortably.
+- Built bundles (packaged and `bun run build`) are minified, and function names in the profile are shortened. `bun dev` keeps main and preload output readable. JavaScript source maps are never packed into `app.asar`; the third-party wasm maps ship as extra resources.
 
 ## Source
 

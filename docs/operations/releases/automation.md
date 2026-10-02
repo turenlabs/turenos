@@ -145,6 +145,14 @@ update-feed bytes, and a size-checked range request for every desktop architectu
 edits change only the four platform URLs/checksums and an existing version field. The GitHub
 Contents API's blob SHA prevents overwriting a concurrent formula edit.
 
+## Desktop bundle contents
+
+Desktop build output is minified. Renderer source maps are generated (as hidden maps) only when `SENTRY_AUTH_TOKEN`,
+`SENTRY_ORG` and `SENTRY_PROJECT` are set; the Sentry plugin uploads them and deletes them from `out/` before packaging.
+Main and preload get no maps. `electron-builder.config.ts` excludes `out/**/*.map` from `app.asar`, and
+`packages/desktop/scripts/verify-no-sourcemaps.ts`, the last step of `bun run build`, fails if any map is left in `out/`
+other than the third-party wasm maps shipped through `extraResources`.
+
 ## Local verification and tests
 
 A read-only diagnostic can recheck an existing published release and formula:
