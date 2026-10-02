@@ -34,6 +34,7 @@ import { BinwalkScanTools } from "./binwalk-scan-tools"
 import { BinaryDiffTools } from "./binary-diff-tools"
 import { CodecTools } from "./codec-tools"
 import { SourcemapTools } from "./sourcemap-tools"
+import { ScriptDeobfuscateTools } from "./script-deobfuscate-tools"
 import { JsonQueryTools } from "./json-query-tools"
 import { FuzzyHashTools } from "./fuzzy-hash-tools"
 import { CryptoMarkersTools } from "./crypto-markers-tools"
@@ -114,6 +115,7 @@ export const node = makeLocationNode({
     BinaryDiffTools.node,
     CodecTools.node,
     SourcemapTools.node,
+    ScriptDeobfuscateTools.node,
     JsonQueryTools.node,
     FuzzyHashTools.node,
     CryptoMarkersTools.node,

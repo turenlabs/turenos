@@ -14,6 +14,8 @@ export const read = Effect.fn("BinaryTool.read")(function* (
   mutation: LocationMutation.Interface,
   fs: FSUtil.Interface,
   permission: PermissionV2.Interface,
+  maxBytes = MAX_ANALYSIS_BYTES,
+  allowEmpty = false,
 ) {
   const source = {
     type: "tool" as const,
@@ -42,11 +44,13 @@ export const read = Effect.fn("BinaryTool.read")(function* (
       const file = yield* fs.open(target.canonical, { flag: "r" })
       const info = yield* file.stat
       if (info.type !== "File") return yield* new ToolFailure({ message: `${path} is not a file` })
-      if (info.size <= 0) return yield* new ToolFailure({ message: `${path} is empty` })
-      if (info.size > MAX_ANALYSIS_BYTES)
+      if (info.size <= 0 && !allowEmpty) return yield* new ToolFailure({ message: `${path} is empty` })
+      if (info.size > maxBytes)
         return yield* new ToolFailure({
-          message: `${path} exceeds the ${MAX_ANALYSIS_BYTES / 1024 / 1024} MiB binary analysis limit`,
+          message: `${path} exceeds the ${maxBytes / 1024 / 1024} MiB binary analysis limit`,
         })
+
+      if (Number(info.size) === 0) return { bytes: new Uint8Array(), resource: target.resource }
 
       const bytes = yield* file.readAlloc(Number(info.size))
       if (bytes._tag === "None" || bytes.value.length !== Number(info.size))

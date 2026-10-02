@@ -65,6 +65,7 @@ const wasmLeaves = [
   "minidump",
   "pdf-inspect",
   "rtf-inspect",
+  "script-deobfuscate",
   "sourcemap",
   "sqlite-inspect",
   "squashfs",
