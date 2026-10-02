@@ -65,12 +65,14 @@ const sentry =
       })
     : false
 
-export default defineConfig({
+// Dev keeps readable main and preload output; only build minifies.
+export default defineConfig(({ command }) => ({
   main: {
     define: {
       "import.meta.env.FORGE_CHANNEL": JSON.stringify(channel),
     },
     build: {
+      minify: command === "build" && "esbuild",
       rollupOptions: {
         input: { index: "src/main/index.ts" },
         // Keep this identical to electron-vite's Node 20.11+ shim. Its regex insertion can
@@ -219,6 +221,7 @@ const require = __cjs_mod__.createRequire(import.meta.url);
       "import.meta.env.FORGE_CHANNEL": JSON.stringify(channel),
     },
     build: {
+      minify: command === "build" && "esbuild",
       rollupOptions: {
         input: { index: "src/preload/index.ts", "security-browser": "src/preload/security-browser.ts" },
         output: {
@@ -233,7 +236,9 @@ const require = __cjs_mod__.createRequire(import.meta.url);
     publicDir: "../../../app/public",
     root: "src/renderer",
     build: {
-      sourcemap: true,
+      minify: command === "build" && "esbuild",
+      // Hidden maps exist only when the Sentry plugin uploads and deletes them.
+      sourcemap: sentry ? "hidden" : false,
       rollupOptions: {
         input: {
           main: "src/renderer/index.html",
@@ -242,4 +247,4 @@ const require = __cjs_mod__.createRequire(import.meta.url);
       },
     },
   },
-})
+}))

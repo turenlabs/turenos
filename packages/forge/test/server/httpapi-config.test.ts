@@ -1,12 +1,13 @@
-import { afterEach, beforeEach, describe, expect } from "bun:test"
+import { afterEach, describe, expect } from "bun:test"
 import fs from "node:fs/promises"
 import path from "path"
 import { Global } from "@turenlabs/core/global"
+import { Flag } from "@turenlabs/core/flag/flag"
 import { Config } from "../../src/config/config"
 import { AppRuntime } from "../../src/effect/app-runtime"
 import { Server } from "../../src/server/server"
 import { GlobalBus, type GlobalEvent } from "../../src/bus/global"
-import { Effect, Fiber } from "effect"
+import { Effect, Exit, Fiber } from "effect"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, tmpdir } from "../fixture/fixture"
 import { it } from "../lib/effect"
@@ -29,28 +30,90 @@ const tmpdirEffect = (options: Parameters<typeof tmpdir>[0]) =>
     (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
   )
 
-let globalFiles: { file: string; contents: string | undefined }[] = []
-beforeEach(async () => {
-  globalFiles = await Promise.all(
-    ["forge.jsonc", "forge.json", "config.json"].map(async (name) => {
-      const file = path.join(Global.Path.config, name)
-      return { file, contents: (await Bun.file(file).exists()) ? await Bun.file(file).text() : undefined }
-    }),
+// Preserve bytes, not a merged config: an empty PATCH cannot remove nested keys.
+const preserveGlobalConfig = () =>
+  Effect.acquireRelease(
+    Effect.promise(() =>
+      Promise.all(
+        ["forge.jsonc", "forge.json", "config.json"].map(async (name) => {
+          const filename = path.join(Flag.FORGE_CONFIG_DIR ?? Global.Path.config, name)
+          const file = Bun.file(filename)
+          return { filename, contents: (await file.exists()) ? await file.bytes() : undefined }
+        }),
+      ),
+    ),
+    (files) =>
+      Effect.promise(async () => {
+        await Promise.all(
+          files.map((entry) =>
+            entry.contents === undefined
+              ? fs.rm(entry.filename, { force: true })
+              : Bun.write(entry.filename, entry.contents),
+          ),
+        )
+        await AppRuntime.runPromise(Config.use.invalidate())
+        await disposeAllInstances()
+      }),
   )
-})
 
 afterEach(async () => {
-  await Promise.all(
-    globalFiles.map(({ file, contents }) =>
-      contents === undefined ? fs.rm(file, { force: true }) : Bun.write(file, contents),
-    ),
-  )
-  await AppRuntime.runPromise(Config.use.invalidate())
   await disposeAllInstances()
   await resetDatabase()
 })
 
 describe("config HttpApi", () => {
+  for (const original of [undefined, "forge.jsonc", "forge.json", "config.json"]) {
+    it.live(
+      `restores global config after failure (${original ?? "absent"})`,
+      Effect.gen(function* () {
+        const files = yield* preserveGlobalConfig()
+        yield* Effect.promise(() => Promise.all(files.map((entry) => fs.rm(entry.filename, { force: true }))))
+        const contents = '{\n  "username": "original-global-user"\n}\n'
+        if (original) {
+          yield* Effect.promise(() =>
+            Bun.write(path.join(Flag.FORGE_CONFIG_DIR ?? Global.Path.config, original), contents),
+          )
+        }
+        yield* Effect.promise(() => AppRuntime.runPromise(Config.use.invalidate()))
+        const failure = new Error("simulated assertion failure after global config update")
+        const exit = yield* Effect.gen(function* () {
+          yield* preserveGlobalConfig()
+          const updated = yield* waitGlobalBusEvent({
+            message: "timed out waiting for config.updated",
+            predicate: (event) => event.payload.type === "config.updated",
+          }).pipe(Effect.forkScoped({ startImmediately: true }))
+          const response = yield* Effect.promise(() =>
+            Promise.resolve(
+              app().request("/global/config", {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ agent: { build: { model: "test-provider/test-model" } } }),
+              }),
+            ),
+          )
+          expect(response.status).toBe(200)
+          yield* Fiber.join(updated)
+          // Warm the cache with the polluted value before finalization.
+          expect(yield* Effect.promise(() => AppRuntime.runPromise(Config.use.getGlobal()))).toMatchObject({
+            agent: { build: { model: "test-provider/test-model" } },
+          })
+          return yield* Effect.die(failure)
+        }).pipe(Effect.scoped, Effect.exit)
+        expect(exit).toEqual(Exit.die(failure))
+        for (const entry of files) {
+          const file = Bun.file(entry.filename)
+          expect(yield* Effect.promise(() => file.exists())).toBe(path.basename(entry.filename) === original)
+          if (path.basename(entry.filename) !== original) continue
+          expect(yield* Effect.promise(() => file.bytes())).toEqual(new TextEncoder().encode(contents))
+        }
+        // Reading config can seed a missing file or add $schema, so check bytes first.
+        const restored = yield* Effect.promise(() => AppRuntime.runPromise(Config.use.getGlobal()))
+        expect(restored.agent?.build?.model).toBeUndefined()
+        expect(restored.username).toBe(original ? "original-global-user" : undefined)
+      }),
+    )
+  }
+
   it.live(
     "serves config update through the default server app",
     Effect.gen(function* () {
@@ -88,6 +151,7 @@ describe("config HttpApi", () => {
   it.live(
     "global config update refreshes instance state without disposing instances",
     Effect.gen(function* () {
+      yield* preserveGlobalConfig()
       const tmp = yield* tmpdirEffect({ config: { formatter: false, lsp: false } })
       const headers = { "content-type": "application/json", "x-forge-directory": tmp.path }
 
@@ -97,7 +161,10 @@ describe("config HttpApi", () => {
 
       const events: GlobalEvent[] = []
       const onEvent = (event: GlobalEvent) => events.push(event)
-      GlobalBus.on("event", onEvent)
+      yield* Effect.acquireRelease(
+        Effect.sync(() => GlobalBus.on("event", onEvent)),
+        () => Effect.sync(() => GlobalBus.off("event", onEvent)),
+      )
       const updated = yield* waitGlobalBusEvent({
         message: "timed out waiting for config.updated",
         predicate: (event) => event.payload.type === "config.updated",
@@ -114,7 +181,6 @@ describe("config HttpApi", () => {
       )
       expect(response.status).toBe(200)
       yield* Fiber.join(updated)
-      GlobalBus.off("event", onEvent)
 
       const scoped = events.filter((event) => event.directory === tmp.path || event.directory === "global")
       expect(scoped.some((event) => event.payload.type === "server.instance.disposed")).toBe(false)

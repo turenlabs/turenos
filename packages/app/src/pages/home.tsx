@@ -682,7 +682,10 @@ function HomeProjectColumn(props: {
   const global = useGlobal()
   const notification = useNotification()
   const permission = usePermission()
-  const [library, setLibrary] = createStore({ filter: "all" as "all" | "running" | "loops" | "archived" })
+  const [library, setLibrary] = createStore({
+    filter: "all" as "all" | "running" | "attention" | "loops" | "archived",
+    collapsed: { today: false, yesterday: false, older: false },
+  })
   const selectedServer = () =>
     props.focusedServer() ??
     global.servers.list().find((item) => ServerConnection.key(item) === props.selected.server) ??
@@ -749,26 +752,32 @@ function HomeProjectColumn(props: {
   const knownDirectories = createMemo(
     () => new Set(props.projects.flatMap((project) => [project.worktree, ...(project.sandboxes ?? [])]).map(pathKey)),
   )
+  const sessionRecords = createMemo(() => [
+    ...new Map([...props.records, ...props.pinnedRecords].map((record) => [record.session.id, record])).values(),
+  ])
+  const listedSessionIDs = createMemo(() => new Set(sessionRecords().map((record) => record.session.id)))
   const runningRecords = createMemo(() =>
-    props.records.filter((record) => {
+    sessionRecords().filter((record) => {
       const status = selectedSessionStatus(record.session)
       return status === "working" || status === "attention"
     }),
   )
-  const automationRecords = createMemo(() =>
-    props.records.filter((record) => sessionOrigin(record.session) === "automation"),
+  const attentionRecords = createMemo(() =>
+    sessionRecords().filter((record) => selectedSessionStatus(record.session) === "attention"),
   )
-  const manualRecords = createMemo(() =>
-    props.records.filter((record) => sessionOrigin(record.session) !== "automation"),
+  const automationRecords = createMemo(() =>
+    sessionRecords().filter((record) => sessionOrigin(record.session) === "automation"),
   )
   const libraryRecords = createMemo(() =>
     recentHomeSessionRecords(
       library.filter === "running"
         ? runningRecords()
-        : library.filter === "loops"
-          ? automationRecords()
-          : manualRecords(),
-      props.records.length,
+        : library.filter === "attention"
+          ? attentionRecords()
+          : library.filter === "loops"
+            ? automationRecords()
+            : sessionRecords(),
+      sessionRecords().length,
     ),
   )
   const archivedSessions = createMemo(() =>
@@ -776,12 +785,12 @@ function HomeProjectColumn(props: {
   )
   const inactiveSessions = createMemo(() =>
     props.inactiveSessions.filter(
-      (session) => knownDirectories().has(pathKey(session.directory)) && sessionOrigin(session) !== "automation",
+      (session) => knownDirectories().has(pathKey(session.directory)) && !listedSessionIDs().has(session.id),
     ),
   )
   const libraryGroups = createMemo(() => groupSessions(libraryRecords(), props.language))
 
-  function setLibraryFilter(filter: "all" | "running" | "loops" | "archived") {
+  function setLibraryFilter(filter: typeof library.filter) {
     if (filter === "archived" && !props.archivedOpen) props.toggleArchived()
     if (library.filter === "archived" && filter !== "archived" && props.archivedOpen) props.toggleArchived()
     setLibrary("filter", filter)
@@ -925,48 +934,6 @@ function HomeProjectColumn(props: {
   const chips = () => {
     return (
       <div class="flex min-w-0 items-center gap-1 px-2">
-        <Show when={props.desktop}>
-          <button
-            type="button"
-            data-component="home-library-filter"
-            data-value="all"
-            data-active={library.filter === "all" ? "" : undefined}
-            class={HOME_LIBRARY_CHIP}
-            onClick={() => setLibraryFilter("all")}
-          >
-            All <span class="tabular-nums text-v2-text-text-faint">{manualRecords().length}</span>
-          </button>
-          <button
-            type="button"
-            data-component="home-library-filter"
-            data-value="running"
-            data-active={library.filter === "running" ? "" : undefined}
-            class={HOME_LIBRARY_CHIP}
-            onClick={() => setLibraryFilter("running")}
-          >
-            Running <span class="tabular-nums text-v2-text-text-faint">{runningRecords().length}</span>
-          </button>
-          <button
-            type="button"
-            data-component="home-library-filter"
-            data-value="loops"
-            data-active={library.filter === "loops" ? "" : undefined}
-            class={HOME_LIBRARY_CHIP}
-            onClick={() => setLibraryFilter("loops")}
-          >
-            Loops <span class="tabular-nums text-v2-text-text-faint">{automationRecords().length}</span>
-          </button>
-          <button
-            type="button"
-            data-component="home-library-filter"
-            data-value="archived"
-            data-active={library.filter === "archived" ? "" : undefined}
-            class={HOME_LIBRARY_CHIP}
-            onClick={() => setLibraryFilter("archived")}
-          >
-            {props.language.t("session.archived.show")}
-          </button>
-        </Show>
         <Show when={!props.desktop && selectedServer()}>
           {(conn) => (
             <MenuV2 gutter={6} modal={false} placement="bottom-start">
@@ -1098,10 +1065,24 @@ function HomeProjectColumn(props: {
           >
             <For each={libraryGroups()}>
               {(group) => (
-                <>
-                  <div class="px-2 pb-1 pt-3 text-[10.5px] [font-weight:600] text-v2-text-text-faint">
-                    {group.title}
-                  </div>
+                <details
+                  data-component="home-library-date-group"
+                  data-group={group.id}
+                  open={!library.collapsed[group.id]}
+                  onToggle={(event) => setLibrary("collapsed", group.id, !event.currentTarget.open)}
+                >
+                  <summary
+                    aria-expanded={!library.collapsed[group.id]}
+                    class="flex cursor-pointer list-none items-center gap-1.5 px-2 pb-1 pt-3 text-[10.5px] text-v2-text-text-faint [font-weight:600] hover:text-v2-text-text-muted focus-visible:outline focus-visible:outline-1 focus-visible:outline-v2-border-border-focus [&::-webkit-details-marker]:hidden"
+                  >
+                    <IconV2
+                      name="chevron-down"
+                      size="small"
+                      classList={{ "-rotate-90": library.collapsed[group.id] }}
+                    />
+                    <span class="flex-1">{group.title}</span>
+                    <span class="tabular-nums">{group.sessions.length}</span>
+                  </summary>
                   <For each={group.sessions}>
                     {(record) => (
                       <HomeNavSessionRow
@@ -1119,7 +1100,7 @@ function HomeProjectColumn(props: {
                       />
                     )}
                   </For>
-                </>
+                </details>
               )}
             </For>
           </Show>
@@ -1158,6 +1139,7 @@ function HomeProjectColumn(props: {
                 {(session) => (
                   <HomeNavSessionRow
                     session={session}
+                    status={() => selectedSessionStatus(session)}
                     openSession={props.openSession}
                     renameSession={props.renameSession}
                     archiveSession={props.archiveSession}
@@ -1219,39 +1201,65 @@ function HomeProjectColumn(props: {
             </button>
           </nav>
 
-          {inbox()}
-
-          {pinned()}
-
           <div class="mt-5 flex min-h-0 flex-1 flex-col">
             <div class="flex h-7 shrink-0 items-center justify-between gap-1 px-2 text-[11px] uppercase tracking-[0.08em] text-v2-text-text-faint [font-weight:600]">
               {props.language.t("home.library")}
-              <Show when={props.projects.length > 0 ? selectedServer() : undefined}>
-                {(conn) => (
-                  <span class="flex min-w-0 items-center normal-case tracking-normal">
-                    {projectSelector(conn())}
-                    <Show when={selectedProject()}>
-                      {(project) => (
-                        <MenuV2 gutter={6} modal={false} placement="bottom-end">
-                          <MenuV2.Trigger
-                            as={IconButtonV2}
-                            data-action="home-library-project-menu"
-                            variant="ghost-muted"
-                            size="small"
-                            icon={<IconV2 name="outline-dots" />}
-                            aria-label={props.language.t("common.moreOptions")}
-                          />
-                          <MenuV2.Portal>
-                            <MenuV2.Content>{projectActionsGroup(conn(), project())}</MenuV2.Content>
-                          </MenuV2.Portal>
-                        </MenuV2>
-                      )}
-                    </Show>
-                  </span>
-                )}
-              </Show>
+              <span class="flex min-w-0 items-center normal-case tracking-normal">
+                <Show when={props.projects.length > 0 ? selectedServer() : undefined}>
+                  {(conn) => projectSelector(conn())}
+                </Show>
+                <MenuV2 gutter={6} modal={false} placement="bottom-end">
+                  <MenuV2.Trigger
+                    as={IconButtonV2}
+                    data-action="home-library-project-menu"
+                    variant="ghost-muted"
+                    size="small"
+                    icon={<IconV2 name="outline-dots" />}
+                    aria-label={props.language.t("common.moreOptions")}
+                  />
+                  <MenuV2.Portal>
+                    <MenuV2.Content>
+                      <MenuV2.Group>
+                        <MenuV2.GroupLabel>Show sessions</MenuV2.GroupLabel>
+                        <For
+                          each={[
+                            { value: "all" as const, label: "All sessions" },
+                            { value: "running" as const, label: "Running" },
+                            { value: "attention" as const, label: "Needs attention" },
+                            { value: "loops" as const, label: "Loops" },
+                            { value: "archived" as const, label: props.language.t("session.archived.show") },
+                          ]}
+                        >
+                          {(filter) => (
+                            <MenuV2.Item
+                              data-component="home-library-filter"
+                              data-value={filter.value}
+                              badge={library.filter === filter.value ? <IconV2 name="check" size="small" /> : undefined}
+                              onSelect={() => setLibraryFilter(filter.value)}
+                            >
+                              {filter.label}
+                            </MenuV2.Item>
+                          )}
+                        </For>
+                      </MenuV2.Group>
+                      <Show when={selectedServer()}>
+                        {(conn) => (
+                          <Show when={selectedProject()}>
+                            {(project) => (
+                              <>
+                                <MenuV2.Separator />
+                                {projectActionsGroup(conn(), project())}
+                              </>
+                            )}
+                          </Show>
+                        )}
+                      </Show>
+                    </MenuV2.Content>
+                  </MenuV2.Portal>
+                </MenuV2>
+              </span>
             </div>
-            <Show when={props.projects.length > 0}>
+            <Show when={global.servers.list().length > 1}>
               <div class="mt-1">{chips()}</div>
             </Show>
             <ScrollView data-slot="home-projects-scroll" class="mt-1 min-h-0 min-w-0 flex-1">
@@ -1314,14 +1322,16 @@ function HomeNavSessionRow(props: {
   const title = createMemo(() => sessionTitle(props.session.title) || props.session.id)
   const status = createMemo(() => props.status?.() ?? (props.working?.() ? "working" : "settled"))
   const accessibleLabel = createMemo(() =>
-    [title(), props.source, props.projectName, sessionNavStatusLabel(status())].filter(Boolean).join(" - "),
+    [title(), props.source, props.projectName, status() === "settled" ? undefined : sessionNavStatusLabel(status())]
+      .filter(Boolean)
+      .join(" - "),
   )
   return (
     <div
       ref={(el) => {
         row = el
       }}
-      class="group/session relative flex h-7 min-w-0 items-center rounded-[6px]"
+      class="group/session relative flex min-h-9 min-w-0 items-center rounded-[var(--v2-radius-surface)]"
     >
       <button
         type="button"
@@ -1329,7 +1339,7 @@ function HomeNavSessionRow(props: {
         data-status={status()}
         data-active={active() ? "" : undefined}
         aria-current={active() ? "page" : undefined}
-        class={`${HOME_PROJECT_NAV_ROW} group h-7 px-1.5 pr-8 text-v2-text-text-faint data-[active]:bg-v2-background-bg-layer-03 data-[active]:text-v2-text-text-base data-[active]:[box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-muted)]`}
+        class={`${HOME_PROJECT_NAV_ROW} group !h-auto min-h-9 !rounded-[var(--v2-radius-surface)] px-2 py-1.5 pr-8 text-v2-text-text-muted data-[active]:bg-v2-background-bg-layer-03 data-[active]:text-v2-text-text-base data-[active]:[box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-muted)]`}
         title={accessibleLabel()}
         aria-label={accessibleLabel()}
         onMouseDown={(event) => {
@@ -1343,21 +1353,18 @@ function HomeNavSessionRow(props: {
         }}
       >
         <span class="flex size-4 shrink-0 items-center justify-center text-v2-icon-icon-muted" aria-hidden="true">
-          <HomeSessionStatusGlyph status={status()} />
+          <Show when={status() !== "settled"}>
+            <HomeSessionStatusGlyph status={status()} />
+          </Show>
         </span>
-        <span class={HOME_PROJECT_NAV_LABEL}>{title()}</span>
-        <Show when={props.source}>
-          {(source) => (
-            <span class="min-w-0 max-w-[32%] shrink-0 truncate text-[10px] text-v2-text-text-faint">{source()}</span>
-          )}
-        </Show>
-        <Show when={props.projectName}>
-          {(projectName) => (
-            <span class="min-w-0 max-w-[38%] shrink-0 truncate text-[10px] text-v2-text-text-faint">
-              {projectName()}
+        <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span class={HOME_PROJECT_NAV_LABEL}>{title()}</span>
+          <Show when={status() !== "settled"}>
+            <span class="min-w-0 truncate text-[10.5px] text-v2-text-text-faint">
+              {sessionNavStatusLabel(status())}
             </span>
-          )}
-        </Show>
+          </Show>
+        </span>
       </button>
       <div
         class="hover-reveal absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1 group-hover/session:opacity-100 focus-within:opacity-100 data-[menu=true]:opacity-100"

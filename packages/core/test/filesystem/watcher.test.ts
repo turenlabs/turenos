@@ -1,5 +1,5 @@
 import { $ } from "bun"
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { ConfigProvider, Deferred, Duration, Effect, Fiber, Layer, Option, Stream } from "effect"
@@ -215,6 +215,46 @@ describeWatcher("Watcher", () => {
     ),
   )
 
+  it.live("ignores nested ignored folders", () =>
+    withTmp(
+      (directory) =>
+        Effect.gen(function* () {
+          const fs = yield* FSUtil.Service
+          const write = (file: string, content = "x") =>
+            fs
+              .makeDirectory(path.dirname(path.join(directory, file)), { recursive: true })
+              .pipe(Effect.andThen(fs.writeFileString(path.join(directory, file), content)))
+          yield* fs.makeDirectory(path.join(directory, "pkg", "node_modules", "dep"), { recursive: true })
+          yield* fs.makeDirectory(path.join(directory, "pkg", "dist"), { recursive: true })
+          yield* fs.makeDirectory(path.join(directory, "pkg", "src"), { recursive: true })
+          yield* fs.makeDirectory(path.join(directory, "pkg", "desktop"), { recursive: true })
+          yield* fs.makeDirectory(path.join(directory, "vendored", ".git"), { recursive: true })
+          yield* ready(directory)
+          const nested = [
+            "pkg/node_modules/dep/index.js",
+            "pkg/dist/out.js",
+            "vendored/.git/HEAD",
+            "late/node_modules/x.js",
+          ].map((file) => path.join(directory, file))
+          for (const file of nested) {
+            yield* noUpdate((event) => event.file === file, write(path.relative(directory, file)))
+          }
+          yield* noUpdate((event) => event.file === path.join(directory, "wt", ".git"), write("wt/.git", "gitdir: x"))
+          const source = path.join(directory, "pkg", "src", "index.ts")
+          expect(
+            yield* nextUpdate((event) => event.file === source && event.event === "add", write("pkg/src/index.ts")),
+          ).toMatchObject({
+            file: source,
+          })
+          const desktop = path.join(directory, "pkg", "desktop", "x.ts")
+          expect(yield* nextUpdate((event) => event.file === desktop, write("pkg/desktop/x.ts"))).toMatchObject({
+            file: desktop,
+          })
+        }),
+      { git: true },
+    ),
+  )
+
   it.live("publishes .git/HEAD events", () =>
     withTmp(
       (directory) =>
@@ -262,5 +302,66 @@ describeWatcher("Watcher", () => {
         },
       ),
     )
+  })
+})
+
+// The regression this guards: native backends deliver updates in bursts, and
+// the old callback ran one EventV2 publish per update — thousands of publishes
+// inside a single NAPI callback starved the HTTP event loop under concurrent
+// agent work (observed as multi-minute sidecar wedges). Coalescing to one event
+// per path per flush window is the fix; these tests run without the native
+// binding so CI covers the policy even though the live tests above may skip.
+describe("Watcher.coalescedCallback", () => {
+  const update = (file: string, type: "create" | "update" | "delete") => ({ path: file, type })
+
+  test("dedupes per path, publishes nothing until flush, and last-write-wins", () => {
+    const batches: Watcher.Update[][] = []
+    const flushes: (() => void)[] = []
+    const callback = Watcher.coalescedCallback(
+      (updates) => batches.push(updates),
+      (flush) => flushes.push(flush),
+    )
+
+    callback(null, [update("/a", "create"), update("/a", "update"), update("/b", "create")])
+    expect(batches).toEqual([])
+    expect(flushes).toHaveLength(1)
+
+    // Further updates before the flush rides the same window.
+    callback(null, [update("/a", "delete"), update("/c", "update")])
+    expect(flushes).toHaveLength(1)
+
+    flushes[0]()
+    expect(batches).toEqual([
+      [
+        { file: "/a", event: "unlink" },
+        { file: "/b", event: "add" },
+        { file: "/c", event: "change" },
+      ],
+    ])
+
+    // After the flush a new burst schedules a fresh window.
+    callback(null, [update("/a", "create")])
+    expect(flushes).toHaveLength(2)
+    flushes[1]()
+    expect(batches[1]).toEqual([{ file: "/a", event: "add" }])
+  })
+
+  test("drains immediately when a single burst exceeds the pending bound", () => {
+    const batches: Watcher.Update[][] = []
+    let scheduled = 0
+    const callback = Watcher.coalescedCallback(
+      (updates) => batches.push(updates),
+      () => {
+        scheduled++
+      },
+    )
+
+    callback(
+      null,
+      Array.from({ length: 8192 }, (_, i) => update(`/burst-${i}`, "create")),
+    )
+    expect(scheduled).toBe(0)
+    expect(batches).toHaveLength(1)
+    expect(batches[0]).toHaveLength(8192)
   })
 })

@@ -21,9 +21,15 @@
  */
 import { describe } from "bun:test"
 import { eq } from "drizzle-orm"
-import { Duration, Effect } from "effect"
+import { Duration, Effect, Fiber } from "effect"
 import { LLMEvent } from "@turenlabs/llm"
-import type { SessionMessage } from "@turenlabs/core/session/message"
+import { Database } from "@turenlabs/core/database/database"
+import { EventV2 } from "@turenlabs/core/event"
+import { SessionGoal } from "@turenlabs/core/session/goal"
+import { SessionInput } from "@turenlabs/core/session/input"
+import { SessionMessage } from "@turenlabs/core/session/message"
+import { SessionOperation } from "@turenlabs/core/session/operation"
+import { Prompt } from "@turenlabs/core/session/prompt"
 import { SessionTable } from "@turenlabs/core/session/sql"
 import { contextOverflow, reply, replyWithTool, requestUserTexts, simulate, type ScenarioContext } from "./harness"
 
@@ -223,6 +229,78 @@ describe("phase-precise interruption", () => {
       // omits allowPendingInput, so it also proves the input row was consumed rather than orphaned.
       yield* ctx.invariants.settled(ctx.sessionID, { expect: "idle", minRequests: 2 })
       expectLastRequestContains(ctx, "After you finish, do this too.")
+    }),
+  )
+
+  simulate("a shell notice wake scheduled before an interrupt does not resume the active goal", (ctx) =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const db = Database.primary(ctx.services.db)
+      ctx.provider.enqueue(
+        reply("Never delivered.", { chunks: 3, interEventDelayMs: 20, stallAfter: { count: 3 } }),
+        reply("Must not run."),
+      )
+      yield* ctx.services.goals.create({
+        sessionID: ctx.sessionID,
+        objective: SessionGoal.Objective.make("Keep working until stopped"),
+        messageID: SessionMessage.ID.create(),
+      })
+      yield* ctx.user.prompt("Start, stall, and get interrupted.")
+      yield* ctx.phase.whileStalled()
+      // Admission schedules the advisory wake that outlives the cancelled notice.
+      yield* SessionInput.admit(db, events, {
+        sessionID: ctx.sessionID,
+        id: SessionMessage.ID.make("msg_shell_interrupt_wake"),
+        prompt: Prompt.make({ text: "Shell job observation" }),
+        delivery: "queue",
+        source: "shell_job",
+        kind: "prompt",
+      })
+      yield* ctx.user.interrupt()
+      yield* ctx.invariants.settled(ctx.sessionID, { expect: "interrupted", minRequests: 1 })
+      yield* Effect.sleep(Duration.millis(750))
+      if (ctx.provider.requests().length !== 1)
+        throw new Error(`expected no provider request after the interrupt, saw ${ctx.provider.requests().length}`)
+    }),
+  )
+  simulate("a shell notice wake already waiting for the session lock does not resume the active goal", (ctx) =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const operations = yield* SessionOperation.Service
+      const db = Database.primary(ctx.services.db)
+      ctx.provider.enqueue(
+        reply("Never delivered.", { chunks: 3, interEventDelayMs: 20, stallAfter: { count: 3 } }),
+        reply("Must not run."),
+      )
+      yield* ctx.services.goals.create({
+        sessionID: ctx.sessionID,
+        objective: SessionGoal.Objective.make("Keep working until stopped"),
+        messageID: SessionMessage.ID.create(),
+      })
+      yield* ctx.user.prompt("Start, stall, and get interrupted.")
+      yield* ctx.phase.whileStalled()
+      const stopping = yield* operations.withLock(ctx.sessionID)(
+        Effect.gen(function* () {
+          yield* SessionInput.admit(db, events, {
+            sessionID: ctx.sessionID,
+            id: SessionMessage.ID.make("msg_shell_interrupt_lock_wake"),
+            prompt: Prompt.make({ text: "Shell job observation" }),
+            delivery: "queue",
+            source: "shell_job",
+            kind: "prompt",
+          })
+          // The interrupt queues behind this lock first; the 250ms wake timer then expires
+          // while both wait for it.
+          const fiber = yield* ctx.user.interrupt().pipe(Effect.forkChild)
+          yield* Effect.sleep(Duration.millis(500))
+          return fiber
+        }),
+      )
+      yield* Fiber.join(stopping)
+      yield* ctx.invariants.settled(ctx.sessionID, { expect: "interrupted", minRequests: 1 })
+      yield* Effect.sleep(Duration.millis(750))
+      if (ctx.provider.requests().length !== 1)
+        throw new Error(`expected no provider request after the interrupt, saw ${ctx.provider.requests().length}`)
     }),
   )
 })

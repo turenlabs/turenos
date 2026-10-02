@@ -66,6 +66,7 @@ import { Config } from "@turenlabs/core/config"
 import { ConfigCompaction } from "@turenlabs/core/config/compaction"
 import { Tool } from "@turenlabs/core/tool/tool"
 import {
+  SessionContextBlobTable,
   SessionContextEpochTable,
   SessionContextRequestTable,
   SessionGoalTable,
@@ -109,6 +110,8 @@ import { location as locationFixture } from "./fixture/location"
 import { agentHost, host } from "./plugin/host"
 
 const requests: LLMRequest[] = []
+let requestCount = 0
+let captureRequests = true
 const discoveryContextPrefix = "Additional built-in capabilities —"
 let response: LLMEvent[] = []
 let responses: LLMEvent[][] | undefined
@@ -130,10 +133,13 @@ const client = Layer.succeed(
   LLMClient.Service.of({
     prepare: () => Effect.die("unused"),
     stream: ((request: LLMRequest) => {
-      requests.push({
-        ...request,
-        system: request.system.filter((part) => !part.text.startsWith(discoveryContextPrefix)),
-      })
+      requestCount++
+      if (captureRequests) {
+        requests.push({
+          ...request,
+          system: request.system.filter((part) => !part.text.startsWith(discoveryContextPrefix)),
+        })
+      }
       if (responseStream) {
         const stream = responseStream
         responseStream = undefined
@@ -389,13 +395,10 @@ const mcpSource = Layer.succeed(
   McpTool.Source,
   McpTool.Source.of({
     list: () => Effect.succeed([]),
-    begin: (input) =>
-      Effect.sync(() => ToolBroker.beginTurn(input.sessionID, input.capabilities, input.directory)),
+    begin: (input) => Effect.sync(() => ToolBroker.beginTurn(input.sessionID, input.capabilities, input.directory)),
     selected: (input) =>
       Effect.sync(() =>
-        ToolBroker.selected(input.sessionID, input.capabilities, input.directory).map(
-          (capability) => capability.key,
-        ),
+        ToolBroker.selected(input.sessionID, input.capabilities, input.directory).map((capability) => capability.key),
       ),
     search: (input) =>
       Effect.sync(() => ToolBroker.search(input.sessionID, input.capabilities, input.query, input.directory)),
@@ -517,6 +520,8 @@ const insertSession = (id: SessionV2.ID) =>
 const setup = Effect.gen(function* () {
   const { db } = yield* Database.Service
   requests.length = 0
+  requestCount = 0
+  captureRequests = true
   response = []
   systemBaseline = "Initial context"
   systemRemoved = false
@@ -962,6 +967,54 @@ describe("SessionRunnerLLM", () => {
       expectStablePrefix(requests[1]!, requests[2]!)
       expect(userTexts(requests[2]!).join("\n")).toContain("Original attachment bytes: café")
       expect(userTexts(requests[2]!).join("\n")).not.toContain("Changed between separate resumes")
+    }),
+  )
+
+  it.effect("keeps a large media attachment byte-identical across turns while the stored frame stays small", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const uri = `data:audio/mpeg;base64,${"QUJD".repeat(64 * 1024)}`
+      const mediaData = (request: LLMRequest) =>
+        request.messages.flatMap((message) =>
+          message.content.flatMap((part) => (part.type === "media" ? [part.data] : [])),
+        )
+      responses = [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: "media-echo", name: "echo", input: { text: "checked" } }),
+          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+          LLMEvent.finish({ reason: "tool-calls" }),
+        ],
+        fragmentFixture("text", "media-final", ["Heard it"]).completeEvents,
+      ]
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Listen", files: [{ uri, mime: "audio/mpeg", name: "clip.mp3" }] }),
+        resume: false,
+      })
+      toolExecutionsReady = 1
+      toolExecutionsStarted = yield* Deferred.make<void>()
+      toolExecutionGate = yield* Deferred.make<void>()
+      const running = yield* session.resume(sessionID).pipe(Effect.forkChild)
+      yield* Deferred.await(toolExecutionsStarted)
+      yield* Deferred.succeed(toolExecutionGate, undefined)
+      yield* Fiber.join(running)
+      toolExecutionGate = undefined
+      toolExecutionsStarted = undefined
+
+      expect(requests).toHaveLength(2)
+      expect(mediaData(requests[0])).toEqual([uri])
+      expect(mediaData(requests[1])).toEqual([uri])
+      const database = yield* Database.Service
+      const row = yield* database.db
+        .select()
+        .from(SessionContextRequestTable)
+        .where(eq(SessionContextRequestTable.session_id, sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      expect(JSON.stringify(row!.data).length).toBeLessThan(64 * 1024)
+      expect(yield* database.db.select().from(SessionContextBlobTable).all().pipe(Effect.orDie)).toHaveLength(1)
     }),
   )
 
@@ -7046,7 +7099,8 @@ describe("SessionRunnerLLM Claude Code steering", () => {
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Start the refactor" }), resume: false })
       const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
-      while (requests.length === 0) yield* Effect.sleep("5 millis")
+      for (let attempt = 0; attempt < 300 && requests.length === 0; attempt += 1) yield* Effect.sleep("10 millis")
+      expect(requests.length).toBeGreaterThan(0)
       yield* session.prompt({ id: steerID, sessionID, prompt: Prompt.make({ text: "Use approach B instead" }) })
       return { session, run }
     })
@@ -7261,15 +7315,92 @@ describe("SessionRunnerLLM Claude Code steering", () => {
       response = fragmentFixture("text", "text-after-question", ["Doing that instead"]).completeEvents
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Ask before continuing" }), resume: false })
       const run = yield* session.resume(sessionID).pipe(Effect.exit, Effect.forkChild)
-      while ((yield* questions.list()).length === 0) yield* Effect.sleep("5 millis")
+      for (let attempt = 0; attempt < 300 && (yield* questions.list()).length === 0; attempt += 1)
+        yield* Effect.sleep("10 millis")
+      expect((yield* questions.list()).length).toBeGreaterThan(0)
 
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Do this instead" }) })
-      yield* Fiber.join(run)
+      yield* Fiber.join(run).pipe(Effect.timeout("5 seconds"))
       // The dismissal halts the parked turn; nothing but the steer itself is left to wake the Session.
       for (let attempt = 0; attempt < 300 && requests.length < 2; attempt++) yield* Effect.sleep("10 millis")
 
       expect(requests).toHaveLength(2)
       expect(userTexts(requests[1]!)).toContain("Do this instead")
+      // A coalesced follow-up drain can still be in flight when the assertions finish; scope
+      // teardown interrupts it and the interrupt can wedge mid-settle, so let it go idle first.
+      const execution = yield* SessionExecution.Service
+      for (let attempt = 0; attempt < 300 && (yield* execution.active).size !== 0; attempt += 1)
+        yield* Effect.sleep("10 millis")
+      expect((yield* execution.active).size).toBe(0)
     }),
+  )
+})
+
+describe("SessionRunnerLLM soak", () => {
+  it.live(
+    "sustained tool-call turns do not retain memory per drain",
+    () =>
+      Effect.gen(function* () {
+        yield* setup
+        const session = yield* SessionV2.Service
+        yield* session.prompt({
+          sessionID,
+          prompt: Prompt.make({ text: "Soak" }),
+          resume: false,
+        })
+
+        const TURNS = 300
+        const payload = "x".repeat(20 * 1024)
+        responses = Array.from({ length: TURNS }, (_, i) => [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({ id: `soak-${i}`, name: "echo", input: { text: payload } }),
+          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+          LLMEvent.finish({ reason: "tool-calls" }),
+        ])
+        responses.push(fragmentFixture("text", "soak-final", ["done"]).completeEvents)
+
+        const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
+        captureRequests = false
+        const samples: Array<{ turn: number; rss: number; heapUsed: number }> = []
+        const sampler = yield* Effect.gen(function* () {
+          while (true) {
+            samples.push({
+              turn: requestCount,
+              rss: process.memoryUsage().rss,
+              heapUsed: process.memoryUsage().heapUsed,
+            })
+            yield* Effect.sleep("250 millis")
+          }
+        }).pipe(Effect.forkChild)
+
+        yield* Fiber.join(run)
+        yield* Fiber.interrupt(sampler)
+        captureRequests = true
+        expect(requestCount).toBe(TURNS + 1)
+
+        // Let GC settle, then measure the retained delta. A leak grows linearly
+        // with turns; a healthy drain ratchets a little and flattens.
+        yield* Effect.sleep("500 millis")
+        Bun.gc(true)
+        const after = process.memoryUsage()
+        const first = samples[0]
+        const last = samples.at(-1)!
+        const mid = samples[Math.floor(samples.length / 2)]
+        console.log(
+          `SOAK samples n=${samples.length} turn0 rss=${(first.rss / 1048576).toFixed(0)}MB heap=${(first.heapUsed / 1048576).toFixed(0)}MB` +
+            ` mid(t=${mid.turn}) rss=${(mid.rss / 1048576).toFixed(0)}MB heap=${(mid.heapUsed / 1048576).toFixed(0)}MB` +
+            ` last(t=${last.turn}) rss=${(last.rss / 1048576).toFixed(0)}MB heap=${(last.heapUsed / 1048576).toFixed(0)}MB` +
+            ` settled rss=${(after.rss / 1048576).toFixed(0)}MB heap=${(after.heapUsed / 1048576).toFixed(0)}MB`,
+        )
+        // Log the slope so the leak rate per turn is greppable.
+        const slopeMB = (last.heapUsed - first.heapUsed) / 1048576 / Math.max(last.turn - first.turn, 1)
+        console.log(`SOAK heap slope ${slopeMB.toFixed(3)}MB/turn`)
+        // Per-turn retention must stay near zero: RSS may swell under churn (V8
+        // holds freed pages), but post-GC heap has to settle. A healthy drain
+        // settles ~100MB here; per-turn retention pushed it past 1.8GB in the
+        // incident regression.
+        expect(after.heapUsed).toBeLessThan(512 * 1048576)
+      }),
+    120_000,
   )
 })

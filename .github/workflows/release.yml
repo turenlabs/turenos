@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       publish_existing:
-        description: Verify and finish public/Homebrew publication of an already-published private release, without rebuilding
+        description: Verify and finish publication of an existing public draft or release, without rebuilding
         required: false
         default: false
         type: boolean
@@ -66,17 +66,19 @@ jobs:
         run: |
           set -euo pipefail
           # The release source is a public main commit, whose test+typecheck
-          # runs gate every merge. Anything ambiguous (missing, in-progress,
-          # failed, or mixed conclusions) blocks the release — public CI is the
-          # test authority; this workflow does not rerun the suite.
-          conclusions=$(gh api "repos/turenlabs/turenos/commits/$RELEASE_SHA/check-runs?per_page=100" \
-            --jq '[.check_runs[] | select(.name=="test" or .name=="typecheck") | .conclusion] | unique')
-          echo "conclusions for $RELEASE_SHA: $conclusions"
-          if [ "$conclusions" = '["success"]' ]; then
-            echo "green=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "green=false" >> "$GITHUB_OUTPUT"
-          fi
+          # runs gate every merge. Each check must have run and succeeded on
+          # its own: a missing, in-progress, failed, or mixed result for either
+          # one blocks the release — public CI is the test authority; this
+          # workflow does not rerun the suite.
+          green=true
+          for check in test typecheck; do
+            # filter=latest keeps only the newest attempt, so a passing re-run counts.
+            conclusions=$(gh api "repos/turenlabs/turenos/commits/$RELEASE_SHA/check-runs?check_name=$check&filter=latest" \
+              --jq '[.check_runs[].conclusion] | unique')
+            echo "$check conclusions for $RELEASE_SHA: $conclusions"
+            if [ "$conclusions" != '["success"]' ]; then green=false; fi
+          done
+          echo "green=$green" >> "$GITHUB_OUTPUT"
 
   preflight:
     needs: release_context

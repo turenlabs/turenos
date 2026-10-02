@@ -1,6 +1,7 @@
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { describe, expect } from "bun:test"
 import { DateTime, Effect, Schema, Stream } from "effect"
-import { asc, eq } from "drizzle-orm"
+import { asc, eq, sql } from "drizzle-orm"
 import type { Config } from "@turenlabs/core/config"
 import { Database } from "@turenlabs/core/database/database"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -11,7 +12,7 @@ import { ModelV2 } from "@turenlabs/core/model"
 import { Project } from "@turenlabs/core/project"
 import { ProjectTable } from "@turenlabs/core/project/sql"
 import { ProviderV2 } from "@turenlabs/core/provider"
-import { AbsolutePath } from "@turenlabs/core/schema"
+import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionCompaction } from "@turenlabs/core/session/compaction"
 import { SessionEvent } from "@turenlabs/core/session/event"
@@ -548,6 +549,7 @@ describe("SessionProjector", () => {
 
       const events = yield* EventV2.Service
       const compaction = SessionCompaction.make({
+        disclosure: Effect.succeed(SecretRedaction),
         events,
         llm: { stream: () => Stream.empty },
         config: Effect.succeed([
@@ -872,7 +874,7 @@ describe("SessionProjector", () => {
       })
 
       expect(
-        yield* SessionMessageUpdater.memory({ messages: [stale, completed] }).getCurrentAssistant(),
+        yield* SessionMessageUpdater.memory({ messages: [stale, completed] }).getCurrentAssistantID(),
       ).toBeUndefined()
     }),
   )
@@ -1288,6 +1290,613 @@ describe("SessionProjector usage roll-up", () => {
       yield* events.publish(SessionEvent.Step.Ended, withoutModel)
 
       expect((yield* providerRows(db)).map((row) => row.provider_id)).toEqual([model.providerID])
+    }),
+  )
+})
+
+describe("SessionProjector assistant patches", () => {
+  const otherSessionID = SessionV2.ID.make("ses_projector_other")
+  const decodeMessage = Schema.decodeUnknownSync(SessionMessage.Message)
+  const at = (millis: number) => DateTime.makeUnsafe(millis)
+  const usage = { input: 1, output: 2, reasoning: 3, cache: { read: 4, write: 5 } }
+
+  const seedSessions = Effect.gen(function* () {
+    const { db } = yield* Database.Service
+    yield* db
+      .insert(ProjectTable)
+      .values({ id: Project.ID.global, worktree: AbsolutePath.make("/project"), sandboxes: [] })
+      .run()
+      .pipe(Effect.orDie)
+    yield* db
+      .insert(SessionTable)
+      .values(
+        [sessionID, otherSessionID].map((id) => ({
+          id,
+          project_id: Project.ID.global,
+          slug: id,
+          directory: "/project",
+          title: "test",
+          version: "test",
+        })),
+      )
+      .run()
+      .pipe(Effect.orDie)
+    return db
+  })
+
+  const rowsOf = (id: typeof sessionID) =>
+    Effect.gen(function* () {
+      const { db } = yield* Database.Service
+      return yield* db
+        .select()
+        .from(SessionMessageTable)
+        .where(eq(SessionMessageTable.session_id, id))
+        .orderBy(asc(SessionMessageTable.seq))
+        .all()
+        .pipe(Effect.orDie)
+    })
+
+  const partsOf = (id: SessionMessage.ID) =>
+    Effect.gen(function* () {
+      const { db } = yield* Database.Service
+      return yield* db
+        .all<{ value: string }>(
+          sql`SELECT part.value AS value FROM session_message, json_each(session_message.data, '$.content') AS part
+            WHERE session_message.id = ${id} ORDER BY part.key`,
+        )
+        .pipe(
+          Effect.orDie,
+          Effect.map((rows) => rows.map((row) => row.value)),
+        )
+    })
+
+  it.effect("does not re-encode assistant parts an event leaves alone", () =>
+    Effect.gen(function* () {
+      const db = yield* seedSessions
+      const id = SessionMessage.ID.make("msg_untouched")
+      // Key order the schema encoder would not produce, plus a key it does not know: a decode and encode of
+      // this part would reorder the first and drop the second.
+      const first = {
+        time: { created: 1 },
+        state: { structured: {}, content: [{ type: "text", text: "kept" }], input: {}, status: "completed" },
+        legacy: "unknown key",
+        name: "bash",
+        id: "call_first",
+        type: "tool",
+      }
+      yield* db.insert(SessionMessageTable).values(assistantRow(id, 1)).run().pipe(Effect.orDie)
+      yield* db
+        .update(SessionMessageTable)
+        .set({ data: sql`json_set(${SessionMessageTable.data}, '$.content', json(${JSON.stringify([first])}))` })
+        .where(eq(SessionMessageTable.id, id))
+        .run()
+        .pipe(Effect.orDie)
+      const events = yield* EventV2.Service
+      const ids = { sessionID, assistantMessageID: id, callID: "call_later" }
+      yield* events.publish(SessionEvent.Tool.Input.Started, { ...ids, name: "bash", timestamp: at(2) })
+      yield* events.publish(SessionEvent.Tool.Input.Ended, { ...ids, text: "{}", timestamp: at(3) })
+      yield* events.publish(SessionEvent.Tool.Called, {
+        ...ids,
+        tool: "bash",
+        input: {},
+        provider: { executed: false },
+        timestamp: at(4),
+      })
+      yield* events.publish(SessionEvent.Tool.Success, {
+        ...ids,
+        structured: {},
+        content: [{ type: "text", text: "done" }],
+        provider: { executed: false },
+        timestamp: at(5),
+      })
+
+      const parts = yield* partsOf(id)
+      expect(parts[0]).toBe(JSON.stringify(first))
+      expect(JSON.parse(parts[1] ?? "")).toMatchObject({ id: "call_later", state: { status: "completed" } })
+    }),
+  )
+
+  it.effect("changes only the touched part of a large assistant message", () =>
+    Effect.gen(function* () {
+      const db = yield* seedSessions
+      const id = SessionMessage.ID.make("msg_large")
+      const running: SessionMessage.AssistantTool = {
+        type: "tool",
+        id: "call_running",
+        name: "bash",
+        state: { status: "running", input: {}, content: [], structured: {} },
+        time: { created, ran: created },
+      }
+      const content = [
+        ...Array.from({ length: 200 }, (_, index) => completedTool(`call_${index}`, "o".repeat(2048))),
+        running,
+      ]
+      const assistant = assistantWith(id, content)
+      yield* db.insert(SessionMessageTable).values(messageRow(assistant, 1)).run().pipe(Effect.orDie)
+      // A key the schema does not know marks each stored part, so re-encoding any of them would show.
+      const marked = Schema.encodeSync(SessionMessage.Assistant)(assistant).content.map((part, index) =>
+        index < 200 ? { ...part, legacy: true } : part,
+      )
+      yield* db
+        .update(SessionMessageTable)
+        .set({ data: sql`json_set(${SessionMessageTable.data}, '$.content', json(${JSON.stringify(marked)}))` })
+        .where(eq(SessionMessageTable.id, id))
+        .run()
+        .pipe(Effect.orDie)
+      const before = yield* partsOf(id)
+
+      const events = yield* EventV2.Service
+      yield* events.publish(SessionEvent.Tool.Success, {
+        sessionID,
+        assistantMessageID: id,
+        callID: "call_running",
+        structured: {},
+        content: [{ type: "text", text: "finished" }],
+        provider: { executed: false },
+        timestamp: at(9),
+      })
+
+      const after = yield* partsOf(id)
+      expect(after).toHaveLength(201)
+      expect(after.slice(0, 200)).toEqual(before.slice(0, 200))
+      expect(after[200]).not.toBe(before[200])
+      expect(JSON.parse(after[200] ?? "")).toMatchObject({
+        id: "call_running",
+        state: { status: "completed", content: [{ type: "text", text: "finished" }] },
+        time: { completed: 9 },
+      })
+    }),
+  )
+
+  it.effect("projects several assistant messages in one provider turn like the in-memory updater", () =>
+    Effect.gen(function* () {
+      yield* seedSessions
+      const events = yield* EventV2.Service
+      const state: SessionMessageUpdater.MemoryState = { messages: [] }
+      const adapter = SessionMessageUpdater.memory(state)
+      // Every event goes to the SQL projector and to the in-memory oracle.
+      const feed = (published: Effect.Effect<SessionEvent.Event>) =>
+        published.pipe(Effect.flatMap((event) => SessionMessageUpdater.update(adapter, event)))
+
+      const a1 = SessionMessage.ID.make("msg_fold_1")
+      const stale = SessionMessage.ID.make("msg_fold_stale")
+      const a2 = SessionMessage.ID.make("msg_fold_2")
+      const a3 = SessionMessage.ID.make("msg_fold_3")
+      const tool = (assistantMessageID: SessionMessage.ID, callID: string) => ({
+        sessionID,
+        assistantMessageID,
+        callID,
+      })
+      const metadata = { anthropic: { signature: "sig" } }
+      const call = (assistantMessageID: SessionMessage.ID, callID: string, timestamp: number) =>
+        feed(
+          events.publish(SessionEvent.Tool.Called, {
+            ...tool(assistantMessageID, callID),
+            tool: "bash",
+            input: { command: callID },
+            provider: { executed: false, metadata },
+            timestamp: at(timestamp),
+          }),
+        )
+      const start = (assistantMessageID: SessionMessage.ID, callID: string, timestamp: number) =>
+        feed(
+          events.publish(SessionEvent.Tool.Input.Started, {
+            ...tool(assistantMessageID, callID),
+            name: "bash",
+            timestamp: at(timestamp),
+          }),
+        )
+      const ended = (assistantMessageID: SessionMessage.ID, callID: string, timestamp: number) =>
+        feed(
+          events.publish(SessionEvent.Tool.Input.Ended, {
+            ...tool(assistantMessageID, callID),
+            text: `{"command":"${callID}"}`,
+            timestamp: at(timestamp),
+          }),
+        )
+      const succeed = (assistantMessageID: SessionMessage.ID, callID: string, timestamp: number) =>
+        feed(
+          events.publish(SessionEvent.Tool.Success, {
+            ...tool(assistantMessageID, callID),
+            structured: { exit: 0 },
+            content: [{ type: "text", text: `${callID} output` }],
+            outputPaths: ["out.txt"],
+            result: { ok: true },
+            provider: { executed: true, metadata },
+            timestamp: at(timestamp),
+          }),
+        )
+      const fail = (assistantMessageID: SessionMessage.ID, callID: string, timestamp: number) =>
+        feed(
+          events.publish(SessionEvent.Tool.Failed, {
+            ...tool(assistantMessageID, callID),
+            error: { type: "unknown", message: `${callID} failed` },
+            provider: { executed: false },
+            timestamp: at(timestamp),
+          }),
+        )
+
+      yield* feed(
+        events.publish(SessionEvent.Step.Started, {
+          sessionID,
+          assistantMessageID: a1,
+          timestamp: at(1),
+          agent: "build",
+          model,
+          snapshot: "tree-0",
+        }),
+      )
+      yield* feed(
+        events.publish(SessionEvent.Reasoning.Started, {
+          sessionID,
+          assistantMessageID: a1,
+          reasoningID: "reason_1",
+          providerMetadata: metadata,
+          timestamp: at(2),
+        }),
+      )
+      yield* feed(
+        events.publish(SessionEvent.Reasoning.Ended, {
+          sessionID,
+          assistantMessageID: a1,
+          reasoningID: "reason_1",
+          text: "thinking",
+          providerMetadata: { anthropic: { signature: "sig-2" } },
+          timestamp: at(3),
+        }),
+      )
+      yield* feed(
+        events.publish(SessionEvent.Text.Started, {
+          sessionID,
+          assistantMessageID: a1,
+          textID: "text_1",
+          timestamp: at(4),
+        }),
+      )
+      yield* feed(
+        events.publish(SessionEvent.Text.Ended, {
+          sessionID,
+          assistantMessageID: a1,
+          textID: "text_1",
+          text: "I will run three commands",
+          timestamp: at(5),
+        }),
+      )
+      // Text and reasoning events for parts that do not exist, and a Called for a call that never started
+      // (a folded steer can reorder these), leave the message alone.
+      yield* feed(
+        events.publish(SessionEvent.Text.Ended, {
+          sessionID,
+          assistantMessageID: a1,
+          textID: "text_missing",
+          text: "ignored",
+          timestamp: at(5),
+        }),
+      )
+      yield* call(a1, "call_never_started", 5)
+      for (const id of ["call_ok", "call_pending", "call_running", "call_open"]) yield* start(a1, id, 6)
+      for (const id of ["call_ok", "call_running"]) yield* ended(a1, id, 7)
+      for (const id of ["call_ok", "call_running", "call_open"]) yield* call(a1, id, 8)
+      yield* feed(
+        events.publish(SessionEvent.Tool.Progress, {
+          ...tool(a1, "call_ok"),
+          structured: { lines: 1 },
+          content: [{ type: "text", text: "partial" }],
+          timestamp: at(9),
+        }),
+      )
+      yield* succeed(a1, "call_ok", 10)
+      // Neither a progress update nor a second success moves a completed call.
+      yield* feed(
+        events.publish(SessionEvent.Tool.Progress, {
+          ...tool(a1, "call_ok"),
+          structured: { lines: 2 },
+          content: [],
+          timestamp: at(10),
+        }),
+      )
+      yield* succeed(a1, "call_ok", 11)
+      yield* fail(a1, "call_pending", 11)
+      yield* fail(a1, "call_running", 12)
+      yield* feed(
+        events.publish(SessionEvent.Step.Ended, {
+          sessionID,
+          assistantMessageID: a1,
+          timestamp: at(13),
+          finish: "tool-calls",
+          cost: 0.5,
+          tokens: usage,
+          snapshot: "tree-1",
+          files: [RelativePath.make("src/a.ts")],
+        }),
+      )
+
+      // A steer fold ends one assistant message and opens the next inside the same provider turn. The stale
+      // message below never ended, so the next step start completes it.
+      yield* feed(
+        events.publish(SessionEvent.Step.Started, {
+          sessionID,
+          assistantMessageID: stale,
+          timestamp: at(14),
+          agent: "build",
+          model,
+        }),
+      )
+      yield* feed(
+        events.publish(SessionEvent.Step.Started, {
+          sessionID,
+          assistantMessageID: a2,
+          timestamp: at(15),
+          agent: "build",
+          model,
+        }),
+      )
+      yield* start(a2, "call_fold", 16)
+      yield* call(a2, "call_fold", 17)
+      // The earlier message's last call settles after the fold opened a newer message.
+      yield* succeed(a1, "call_open", 18)
+      yield* succeed(a2, "call_fold", 19)
+      yield* feed(
+        events.publish(SessionEvent.Step.Ended, {
+          sessionID,
+          assistantMessageID: a2,
+          timestamp: at(20),
+          finish: "tool-calls",
+          cost: 0,
+          tokens: usage,
+        }),
+      )
+      yield* feed(
+        events.publish(SessionEvent.Step.Started, {
+          sessionID,
+          assistantMessageID: a3,
+          timestamp: at(21),
+          agent: "build",
+          model,
+        }),
+      )
+      yield* feed(
+        events.publish(SessionEvent.Step.Failed, {
+          sessionID,
+          assistantMessageID: a3,
+          timestamp: at(22),
+          error: { type: "unknown", message: "provider error" },
+        }),
+      )
+      const pruned = (timestamp: number) =>
+        feed(
+          events.publish(SessionEvent.Compaction.Pruned, {
+            sessionID,
+            timestamp: at(timestamp),
+            freed: 10,
+            entries: [
+              { assistantMessageID: a1, callID: "call_ok" },
+              { assistantMessageID: a1, callID: "call_running" },
+              { assistantMessageID: a2, callID: "call_fold" },
+              { assistantMessageID: a3, callID: "call_missing" },
+            ],
+          }),
+        )
+      yield* pruned(30)
+      yield* pruned(40)
+
+      const rows = yield* rowsOf(sessionID)
+      expect(rows.map((row) => row.id)).toEqual([a1, stale, a2, a3])
+      expect(rows.map((row) => decodeMessage({ ...row.data, id: row.id, type: row.type }))).toEqual(state.messages)
+      expect<unknown[]>(rows.map((row) => ({ ...row.data, id: row.id, type: row.type }))).toEqual(
+        state.messages.map((message) => encodeMessage(message)),
+      )
+      const first = state.messages[0]
+      expect(first).toMatchObject({
+        time: { completed: at(13) },
+        finish: "tool-calls",
+        snapshot: { start: "tree-0", end: "tree-1", files: ["src/a.ts"] },
+      })
+      if (first?.type !== "assistant") throw new Error("expected an assistant message")
+      expect(first.content.map((part) => (part.type === "tool" ? part.state.status : part.type))).toEqual([
+        "reasoning",
+        "text",
+        "completed",
+        "error",
+        "error",
+        "completed",
+      ])
+      // Only a call that was completed when pruned is marked, once, at the first prune.
+      expect(first.content.flatMap((part) => (part.type === "tool" ? [part.time.pruned] : []))).toEqual([
+        at(30),
+        undefined,
+        undefined,
+        undefined,
+      ])
+      expect(state.messages[1]).toMatchObject({ id: stale, time: { completed: at(15) } })
+      expect(state.messages[3]).toMatchObject({ finish: "error", error: { message: "provider error" } })
+    }),
+  )
+
+  it.effect("marks more pruned tool parts than one SQLite function call can take", () =>
+    Effect.gen(function* () {
+      yield* seedSessions
+      const events = yield* EventV2.Service
+      const id = SessionMessage.ID.make("msg_many_pruned")
+      yield* events.publish(SessionEvent.Step.Started, {
+        sessionID,
+        assistantMessageID: id,
+        timestamp: at(1),
+        agent: "build",
+        model,
+      })
+      const callIDs = Array.from({ length: 130 }, (_, index) => `call_${index}`)
+      for (const callID of callIDs) {
+        const ids = { sessionID, assistantMessageID: id, callID }
+        yield* events.publish(SessionEvent.Tool.Input.Started, { ...ids, name: "bash", timestamp: at(2) })
+        yield* events.publish(SessionEvent.Tool.Called, {
+          ...ids,
+          tool: "bash",
+          input: {},
+          provider: { executed: false },
+          timestamp: at(3),
+        })
+        yield* events.publish(SessionEvent.Tool.Success, {
+          ...ids,
+          structured: {},
+          content: [],
+          provider: { executed: false },
+          timestamp: at(4),
+        })
+      }
+      yield* events.publish(SessionEvent.Compaction.Pruned, {
+        sessionID,
+        timestamp: at(5),
+        freed: 1,
+        entries: callIDs.map((callID) => ({ assistantMessageID: id, callID })),
+      })
+      const parts = (yield* partsOf(id)).map((part) => JSON.parse(part))
+      expect(parts).toHaveLength(130)
+      expect(parts.map((part) => part.time.pruned)).toEqual(callIDs.map(() => 5))
+    }),
+  )
+
+  it.effect("leaves rows unchanged when an already projected event is replayed", () =>
+    Effect.gen(function* () {
+      const db = yield* seedSessions
+      const events = yield* EventV2.Service
+      const id = SessionMessage.ID.make("msg_replayed")
+      yield* events.publish(SessionEvent.Step.Started, {
+        sessionID,
+        assistantMessageID: id,
+        timestamp: at(1),
+        agent: "build",
+        model,
+      })
+      const ids = { sessionID, assistantMessageID: id, callID: "call_1" }
+      yield* events.publish(SessionEvent.Tool.Input.Started, { ...ids, name: "bash", timestamp: at(2) })
+      yield* events.publish(SessionEvent.Tool.Called, {
+        ...ids,
+        tool: "bash",
+        input: {},
+        provider: { executed: false },
+        timestamp: at(3),
+      })
+      yield* events.publish(SessionEvent.Tool.Success, {
+        ...ids,
+        structured: {},
+        content: [],
+        provider: { executed: false },
+        timestamp: at(4),
+      })
+      yield* events.publish(SessionEvent.Compaction.Pruned, {
+        sessionID,
+        timestamp: at(5),
+        freed: 1,
+        entries: [{ assistantMessageID: id, callID: "call_1" }],
+      })
+      const before = yield* rowsOf(sessionID)
+      const stored = yield* db
+        .select()
+        .from(EventTable)
+        .where(eq(EventTable.aggregate_id, sessionID))
+        .orderBy(asc(EventTable.seq))
+        .all()
+        .pipe(Effect.orDie)
+
+      yield* events.replayAll(
+        stored.map((row) => ({ id: row.id, type: row.type, seq: row.seq, aggregateID: sessionID, data: row.data })),
+      )
+
+      expect(yield* rowsOf(sessionID)).toEqual(before)
+      expect(JSON.parse((yield* partsOf(id))[0] ?? "")).toMatchObject({ time: { pruned: 5 } })
+    }),
+  )
+
+  it.effect("ignores events for a missing assistant message or one in another session", () =>
+    Effect.gen(function* () {
+      const db = yield* seedSessions
+      const foreign = SessionMessage.ID.make("msg_foreign")
+      yield* db
+        .insert(SessionMessageTable)
+        .values({ ...assistantRow(foreign, 1), session_id: otherSessionID })
+        .run()
+        .pipe(Effect.orDie)
+      const before = yield* rowsOf(otherSessionID)
+      const events = yield* EventV2.Service
+      for (const assistantMessageID of [SessionMessage.ID.make("msg_missing"), foreign]) {
+        const ids = { sessionID, assistantMessageID, callID: "call_1" }
+        yield* events.publish(SessionEvent.Text.Started, {
+          sessionID,
+          assistantMessageID,
+          textID: "text_1",
+          timestamp: at(1),
+        })
+        yield* events.publish(SessionEvent.Tool.Input.Started, { ...ids, name: "bash", timestamp: at(2) })
+        yield* events.publish(SessionEvent.Tool.Success, {
+          ...ids,
+          structured: {},
+          content: [],
+          provider: { executed: false },
+          timestamp: at(3),
+        })
+        yield* events.publish(SessionEvent.Step.Ended, {
+          sessionID,
+          assistantMessageID,
+          timestamp: at(4),
+          finish: "stop",
+          cost: 0,
+          tokens: usage,
+          snapshot: "tree",
+        })
+        yield* events.publish(SessionEvent.Compaction.Pruned, {
+          sessionID,
+          timestamp: at(5),
+          freed: 0,
+          entries: [{ assistantMessageID, callID: "call_1" }],
+        })
+      }
+
+      expect(yield* rowsOf(sessionID)).toEqual([])
+      expect(yield* rowsOf(otherSessionID)).toEqual(before)
+    }),
+  )
+
+  it.effect("memory adapter applies the live deltas", () =>
+    Effect.gen(function* () {
+      const state: SessionMessageUpdater.MemoryState = { messages: [] }
+      const adapter = SessionMessageUpdater.memory(state)
+      const id = SessionMessage.ID.make("msg_live")
+      const run = (event: SessionEvent.Event) => SessionMessageUpdater.update(adapter, event)
+      const eventID = EventV2.ID.create()
+      yield* run({
+        id: eventID,
+        type: "session.next.step.started",
+        data: { sessionID, assistantMessageID: id, timestamp: at(1), agent: "build", model },
+      })
+      yield* run({
+        id: eventID,
+        type: "session.next.text.started",
+        data: { sessionID, assistantMessageID: id, textID: "text_1", timestamp: at(2) },
+      })
+      for (const delta of ["Hel", "lo"])
+        yield* run({
+          id: eventID,
+          type: "session.next.text.delta",
+          data: { sessionID, assistantMessageID: id, textID: "text_1", delta, timestamp: at(3) },
+        })
+      yield* run({
+        id: eventID,
+        type: "session.next.reasoning.started",
+        data: { sessionID, assistantMessageID: id, reasoningID: "reason_1", timestamp: at(4) },
+      })
+      yield* run({
+        id: eventID,
+        type: "session.next.reasoning.delta",
+        data: { sessionID, assistantMessageID: id, reasoningID: "reason_1", delta: "hmm", timestamp: at(5) },
+      })
+
+      expect(state.messages[0]).toMatchObject({
+        content: [
+          { type: "text", id: "text_1", text: "Hello" },
+          { type: "reasoning", id: "reason_1", text: "hmm" },
+        ],
+      })
     }),
   )
 })

@@ -3,6 +3,7 @@ import { createStore, reconcile } from "solid-js/store"
 import type { SwarmRoomEntry, SwarmRoomState } from "@turenlabs/sdk/v2/client"
 import { useSDK } from "@/context/sdk"
 import { useServerSDK } from "@/context/server-sdk"
+import { eventNeedsResync } from "@/context/global-sync/event-reducer"
 import { sessionTurnActivity } from "@/pages/session/goal/session-v2-timeline-controller"
 import {
   applySessionTaskSnapshot,
@@ -264,7 +265,7 @@ export function createSessionSubagentController(input: { sessionID: Accessor<str
   createEffect(() => {
     const current = serverSDK()
     const reconnect = current.event.on("global", (event) => {
-      if (event.type !== "server.connected" && event.type !== "global.disposed") return
+      if (!eventNeedsResync(event)) return
       void refresh()
     })
     onCleanup(reconnect)

@@ -448,17 +448,29 @@ const layer = Layer.effect(
       )
       const candidates = Array.from(new Set([...tracked, ...untracked]))
       if (!candidates.length) return { skipped: [] }
+      // NUL delimiters preserve filename bytes, not pathspec semantics. These
+      // lists contain literal Git filenames; inherited magic must not widen them.
+      const literalPaths = {
+        GIT_LITERAL_PATHSPECS: "1",
+        GIT_GLOB_PATHSPECS: "0",
+        GIT_NOGLOB_PATHSPECS: "0",
+        GIT_ICASE_PATHSPECS: "0",
+      }
       // check-ignore exits 1 when nothing is ignored; any other failure must
       // propagate, since treating it as "nothing ignored" would stage every
       // untracked candidate into the index.
       const ignored = input.ignores
         ? new Set(
             (yield* repositoryOperation("refresh", input.ignores, ["check-ignore", "--no-index", "--stdin", "-z"], {
-              stdin: candidates.join("\0") + "\0",
+              // check-ignore rejects literal magic too. A ./ prefix prevents
+              // filename magic while its own ignore matcher handles wildcards.
+              stdin: candidates.map((item) => `./${item}`).join("\0") + "\0",
+              env: { ...literalPaths, GIT_LITERAL_PATHSPECS: "0" },
               exitCodes: [0, 1],
             })).text
               .split("\0")
-              .filter(Boolean),
+              .filter(Boolean)
+              .map((item) => item.slice(2)),
           )
         : new Set<string>()
       const allowed = candidates.filter((item) => !ignored.has(item))
@@ -491,7 +503,7 @@ const layer = Layer.effect(
             "refresh",
             input.repository,
             ["rm", "--cached", "-f", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul"],
-            { stdin: skipped.join("\0") + "\0" },
+            { stdin: skipped.join("\0") + "\0", env: literalPaths },
           )
         return { skipped }
       }
@@ -500,7 +512,7 @@ const layer = Layer.effect(
           "refresh",
           input.repository,
           ["rm", "--cached", "-f", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul"],
-          { stdin: remove.join("\0") + "\0" },
+          { stdin: remove.join("\0") + "\0", env: literalPaths },
         )
       const skippedFiles = skipped.length > 0 ? new Set<string>(skipped) : undefined
       const stage = skippedFiles ? allowed.filter((item) => !skippedFiles.has(item)) : allowed
@@ -509,7 +521,7 @@ const layer = Layer.effect(
           "refresh",
           input.repository,
           ["add", "--all", "--sparse", "--pathspec-from-file=-", "--pathspec-file-nul"],
-          { stdin: stage.join("\0") + "\0" },
+          { stdin: stage.join("\0") + "\0", env: literalPaths },
         )
       return { skipped }
     })

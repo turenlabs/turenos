@@ -57,6 +57,17 @@ export function subscriptionEnvironment(source: NodeJS.ProcessEnv = process.env)
   env.CLAUDE_AGENT_SDK_CLIENT_APP = "forge"
   env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = "forge"
   env.MCP_TOOL_TIMEOUT = "610000"
+  // TurenOS supplies memory, instructions, and environment context itself. Claude Code's
+  // auto-memory prompt (about half of its system prompt) targets a Write tool this bridge
+  // never exposes, and its git snapshot changes after every edit, which invalidates the
+  // cached transcript that follows it on the next turn.
+  env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1"
+  env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS = "1"
+  // A backgrounded MCP call answers with a task ID and lets the run end before TurenOS
+  // settles the tool. An inherited CLAUDE_AUTO_BACKGROUND_TASKS=1 would turn it on.
+  env.CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS = "0"
+  // Other providers receive TurenOS tool descriptions in full; the CLI truncates at 2,048.
+  env.CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH = "65536"
   env.NO_PROXY = [...new Set(noProxy)].join(",")
   env.no_proxy = env.NO_PROXY
   return env

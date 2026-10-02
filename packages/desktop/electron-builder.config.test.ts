@@ -265,3 +265,10 @@ test("keeps a hidden prod launcher for old Linux pins", async () => {
   expect(desktop).toContain("StartupWMClass=com.turenlabs.forge")
   expect(desktop).toContain("NoDisplay=true")
 })
+
+test("keeps source maps out of the asar but still ships third-party wasm maps as resources", async () => {
+  const { default: config }: { default: Configuration } = await import("./electron-builder.config.ts?sourcemaps")
+  expect(config.files).toContain("!out/**/*.map")
+  expect(config.files).toContain("!out/main/chunks/binary-tools/**/*")
+  expect(config.extraResources).toContainEqual(expect.objectContaining({ from: "out/main/chunks/binary-tools/" }))
+})

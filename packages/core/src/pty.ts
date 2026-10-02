@@ -12,6 +12,9 @@ import { Shell } from "./shell"
 import { lazy } from "./util/lazy"
 
 const BUFFER_LIMIT = 1024 * 1024 * 2
+// Output is merged into the previous chunk while that chunk is shorter than this,
+// so byte-at-a-time output keeps the chunk list short.
+const COALESCE_LIMIT = 8 * 1024
 // Exited sessions stay observable (status, exit code, retained output) until removed explicitly.
 // Cap retention so abandoned terminals do not accumulate unbounded buffers.
 const EXITED_LIMIT = 25
@@ -29,7 +32,12 @@ type Subscriber = {
 type Active = {
   info: Info
   process: Proc
-  buffer: string
+  // Retained scrollback as a chunk list; chunks before head are dropped and compacted lazily.
+  chunks: string[]
+  head: number
+  // Retained UTF-16 units across live chunks, never above BUFFER_LIMIT.
+  length: number
+  // Absolute cursor of the first retained unit.
   bufferCursor: number
   cursor: number
   subscribers: Map<object, Subscriber>
@@ -194,7 +202,9 @@ const layer = Layer.effect(
       const session: Active = {
         info,
         process: proc,
-        buffer: "",
+        chunks: [],
+        head: 0,
+        length: 0,
         bufferCursor: 0,
         cursor: 0,
         subscribers: new Map(),
@@ -215,11 +225,7 @@ const layer = Layer.effect(
               session.subscribers.delete(token)
             }
           }
-          session.buffer += chunk
-          if (session.buffer.length <= BUFFER_LIMIT) return
-          const excess = session.buffer.length - BUFFER_LIMIT
-          session.buffer = session.buffer.slice(excess)
-          session.bufferCursor += excess
+          appendScrollback(session, chunk)
         }),
         proc.onExit(({ exitCode }) => {
           if (session.info.status === "exited") return
@@ -270,7 +276,6 @@ const layer = Layer.effect(
         pending: [],
       }
       session.subscribers.set(token, subscriber)
-      const start = session.bufferCursor
       const end = session.cursor
       const from =
         input.cursor === -1
@@ -278,14 +283,8 @@ const layer = Layer.effect(
           : typeof input.cursor === "number" && Number.isSafeInteger(input.cursor)
             ? Math.max(0, input.cursor)
             : 0
-      const replay = (() => {
-        if (!session.buffer || from >= end) return ""
-        const offset = Math.max(0, from - start)
-        if (offset >= session.buffer.length) return ""
-        return session.buffer.slice(offset)
-      })()
       return {
-        replay,
+        replay: from >= end ? "" : readScrollback(session, from),
         cursor: end,
         write: (data: string) => {
           if (session.info.status === "running") session.process.write(data)
@@ -313,9 +312,8 @@ const layer = Layer.effect(
     const snapshot = Effect.fn("Pty.snapshot")(function* (id: PtyID, cursor = 0) {
       const session = yield* requireSession(id)
       const from = Number.isSafeInteger(cursor) ? Math.max(0, cursor) : 0
-      const offset = Math.max(0, from - session.bufferCursor)
       return {
-        output: offset >= session.buffer.length ? "" : session.buffer.slice(offset),
+        output: readScrollback(session, from),
         cursor: session.cursor,
       }
     })
@@ -327,3 +325,46 @@ const layer = Layer.effect(
 export const locationLayer = layer.pipe(Layer.provide(Config.locationLayer))
 
 export const node = makeLocationNode({ service: Service, layer, deps: [EventV2.node, Location.node, Config.node] })
+
+function appendScrollback(session: Active, chunk: string) {
+  if (chunk.length === 0) return
+  const last = session.chunks.length - 1
+  if (last >= session.head && session.chunks[last].length < COALESCE_LIMIT) session.chunks[last] += chunk
+  else session.chunks.push(chunk)
+  session.length += chunk.length
+  while (session.length > BUFFER_LIMIT) {
+    const first = session.chunks[session.head]
+    if (session.length - first.length < BUFFER_LIMIT) {
+      const excess = session.length - BUFFER_LIMIT
+      session.chunks[session.head] = first.slice(excess)
+      session.bufferCursor += excess
+      session.length = BUFFER_LIMIT
+      break
+    }
+    session.chunks[session.head] = ""
+    session.head++
+    session.length -= first.length
+    session.bufferCursor += first.length
+  }
+  if (session.head > session.chunks.length / 2) {
+    session.chunks.splice(0, session.head)
+    session.head = 0
+  }
+}
+
+// Returns the retained output at or after the absolute cursor. Walks back from the newest chunk so reads near the tail
+// only touch the chunks they return. The end is bufferCursor + length rather than session.cursor because onData
+// advances session.cursor before the chunk is stored, so a read from a subscriber callback sees the older end.
+function readScrollback(session: Active, from: number) {
+  const end = session.bufferCursor + session.length
+  if (from >= end) return ""
+  if (from <= session.bufferCursor) return session.chunks.slice(session.head).join("")
+  let need = end - from
+  let index = session.chunks.length
+  while (need > 0 && index > session.head) {
+    index--
+    need -= session.chunks[index].length
+  }
+  // need is now minus the units of chunks[index] that precede the cursor (zero on a chunk boundary).
+  return session.chunks[index].slice(-need) + session.chunks.slice(index + 1).join("")
+}

@@ -9,6 +9,7 @@ import type { SessionCompaction } from "../compaction"
 import { SessionRunnerModel } from "./model"
 import type { SystemContext } from "../../system-context/index"
 import type { ToolOutputStore } from "../../tool-output-store"
+import type { SecretOutput } from "../../secret-output"
 
 export type RunError =
   | LLMError
@@ -17,6 +18,7 @@ export type RunError =
   | ContextSnapshotDecodeError
   | SystemContext.InitializationBlocked
   | ToolOutputStore.Error
+  | SecretOutput.Error
 
 /**
  * Manual compaction reports every way it can decline. It shares no failure modes with `run`

@@ -7,6 +7,7 @@ import { Effect, Context, Layer } from "effect"
 import type * as PlatformError from "effect/PlatformError"
 import type * as Scope from "effect/Scope"
 import { CrossSpawnSpawner } from "@turenlabs/core/cross-spawn-spawner"
+import { Global } from "@turenlabs/core/global"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import type { Config } from "@/config/config"
@@ -139,6 +140,7 @@ export function tmpdirScoped<E = never, R = never>(options?: {
           JSON.stringify({ $schema: "https://github.com/turenlabs/forge/config.json", ...resolved }),
         ),
       )
+      if (resolved.provider) yield* trustedProviderConfig(dir, resolved.provider)
     }
 
     if (options?.init) yield* options.init(dir)
@@ -146,6 +148,34 @@ export function tmpdirScoped<E = never, R = never>(options?: {
     return dir
   })
 }
+
+/**
+ * Makes a test's provider config trusted by mirroring it into a per-test global config directory.
+ *
+ * Provider routing (baseURL, npm, env, headers) from a project `forge.json` is ignored because a
+ * cloned repository controls that file. Tests that point a provider at a local fake server therefore
+ * need the same block in global config, which is what a person would do. `Global.Path.config` is
+ * swapped for the test's scope and restored afterwards; bun runs tests in a file sequentially.
+ */
+export const trustedProviderConfig = (dir: string, provider: NonNullable<ConfigV1.Info["provider"]>) =>
+  Effect.acquireRelease(
+    Effect.promise(async () => {
+      const globalDir = `${dir}.global-config`
+      await fs.mkdir(globalDir, { recursive: true })
+      await Bun.write(
+        path.join(globalDir, "forge.json"),
+        JSON.stringify({ $schema: "https://github.com/turenlabs/forge/config.json", provider }),
+      )
+      const previous = Global.Path.config
+      ;(Global.Path as { config: string }).config = globalDir
+      return { previous, globalDir }
+    }),
+    (state) =>
+      Effect.promise(async () => {
+        ;(Global.Path as { config: string }).config = state.previous
+        await fs.rm(state.globalDir, { recursive: true, force: true }).catch(() => undefined)
+      }),
+  ).pipe(Effect.asVoid)
 
 export const provideInstance =
   (directory: string) =>

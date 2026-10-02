@@ -35,6 +35,15 @@ const SESSION_CONTENT_EVENTS = new Set([
   "question.v2.rejected",
 ])
 
+// A `server.connected` the server stamped resume="ok" means the subscriber's
+// cursor was honored and every missed event is being replayed — resyncing
+// stores would only flicker the UI for a reconnect that lost nothing.
+export function eventNeedsResync(event: { type: string; properties?: unknown }) {
+  if (event.type === "global.disposed") return true
+  if (event.type !== "server.connected") return false
+  return (event.properties as { resume?: string } | undefined)?.resume !== "ok"
+}
+
 export function applyGlobalEvent(input: {
   event: { type: string; properties?: unknown }
   project: Project[]
@@ -42,7 +51,7 @@ export function applyGlobalEvent(input: {
   refresh: () => void
 }) {
   if (input.event.type === "global.disposed" || input.event.type === "server.connected") {
-    input.refresh()
+    if (eventNeedsResync(input.event)) input.refresh()
     return
   }
 

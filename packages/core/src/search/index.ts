@@ -37,6 +37,10 @@ export class Service extends Context.Service<Service, Interface>()("@forge/v2/Co
 
 // --- corpus bounds ------------------------------------------------------------
 
+// Minimum gap between whole-vocabulary thesaurus re-embeds. Churn that lands
+// inside the window keeps the previous expansion table — it only broadens
+// terms semantically, so direct lexicon matches stay exact meanwhile.
+const THESAURUS_REBUILD_MS = 2_000
 const CHUNK_LINES = 100
 const CHUNK_STEP = 100
 const MAX_FILE_LINES = 4000
@@ -44,6 +48,13 @@ const MAX_FILE_BYTES = 512 * 1024
 const MAX_BODY_CHARS = 8000
 const MAX_CALLEES_PER_NAME = 20
 const MAX_RESULTS = 40
+// Total postings (one packed [doc,freq] pair per unique term per doc) are the
+// index's memory multiplier — each carries a Map slot plus array storage. An
+// unbounded index over a large tree grows to multiple GB and has OOMed the
+// sidecar in practice, so indexing degrades to a partial index past the
+// budget rather than growing without limit. Paths and symbols are far
+// sparser than body chunks, so the cap applies per lexicon.
+const MAX_INDEX_POSTINGS = 8_000_000
 
 const EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rs", ".go", ".java",
@@ -96,12 +107,16 @@ type LexIndex = {
   docs: DocMeta[]
   alive: boolean[]
   docLen: number[]
-  inverted: Map<string, { doc: number; freq: number }[]>
-  df: Map<string, number>
+  // term -> packed [doc, freq] pairs; df(t) is always pairs/2 since removals
+  // filter eagerly, so no separate df map is kept
+  inverted: Map<string, number[]>
   sumLen: number
   n: number
   fileDocs: Map<string, number[]>
-  docTerms: Map<number, Map<string, number>>
+  // space-joined unique stemmed terms per doc — just enough to unlink the doc
+  // on removal; terms are word tokens and never contain spaces
+  docTerms: Map<number, string>
+  postings: number
 }
 
 const newLex = (): LexIndex => ({
@@ -109,11 +124,11 @@ const newLex = (): LexIndex => ({
   alive: [],
   docLen: [],
   inverted: new Map(),
-  df: new Map(),
   sumLen: 0,
   n: 0,
   fileDocs: new Map(),
   docTerms: new Map(),
+  postings: 0,
 })
 
 function addDoc(ix: LexIndex, doc: DocMeta, text: string) {
@@ -124,16 +139,16 @@ function addDoc(ix: LexIndex, doc: DocMeta, text: string) {
   for (const [t, f] of freqs) {
     len += f
     const postings = ix.inverted.get(t) ?? []
-    postings.push({ doc: id, freq: f })
+    postings.push(id, f)
     ix.inverted.set(t, postings)
-    ix.df.set(t, (ix.df.get(t) ?? 0) + 1)
   }
   ix.docs.push(doc)
   ix.alive.push(true)
   ix.docLen.push(len)
   ix.sumLen += len
   ix.n++
-  ix.docTerms.set(id, freqs)
+  ix.postings += freqs.size
+  ix.docTerms.set(id, [...freqs.keys()].join(" "))
   const list = ix.fileDocs.get(doc.file) ?? []
   list.push(id)
   ix.fileDocs.set(doc.file, list)
@@ -145,15 +160,19 @@ function removeFileDocs(ix: LexIndex, file: string) {
     ix.alive[id] = false
     ix.n--
     ix.sumLen -= ix.docLen[id]!
-    for (const t of ix.docTerms.get(id)!.keys()) {
-      const df = (ix.df.get(t) ?? 0) - 1
-      if (df <= 0) {
-        ix.df.delete(t)
+    for (const t of ix.docTerms.get(id)!.split(" ")) {
+      const postings = ix.inverted.get(t)
+      if (!postings) continue
+      ix.postings -= 1
+      if (postings.length === 2) {
         ix.inverted.delete(t)
-      } else {
-        ix.df.set(t, df)
-        ix.inverted.set(t, ix.inverted.get(t)!.filter((p) => p.doc !== id))
+        continue
       }
+      const next: number[] = []
+      for (let i = 0; i < postings.length; i += 2) {
+        if (postings[i] !== id) next.push(postings[i], postings[i + 1])
+      }
+      ix.inverted.set(t, next)
     }
     ix.docTerms.delete(id)
   }
@@ -169,11 +188,13 @@ function bm25Weighted(ix: LexIndex, qterms: Map<string, number>, idfPower = 1): 
   for (const [t, weight] of qterms) {
     const postings = ix.inverted.get(t)
     if (!postings?.length) continue
-    const df = ix.df.get(t)!
+    const df = postings.length / 2
     const idf = Math.pow(Math.log(1 + (ix.n - df + 0.5) / (df + 0.5)), idfPower)
-    for (const { doc, freq } of postings) {
+    for (let i = 0; i < postings.length; i += 2) {
+      const doc = postings[i]
       if (!ix.alive[doc]) continue
       const dl = ix.docLen[doc]!
+      const freq = postings[i + 1]
       scores[doc] += weight * idf * ((freq * (K1 + 1)) / (freq + K1 * (1 - B + (B * dl) / avg)))
     }
   }
@@ -312,7 +333,9 @@ const makeLayer = (load: PotionLoader) =>
 
     let potion: Promise<PotionRuntime> | undefined
     let potionFailures = 0
-    let thesaurus: { version: number; vocab: string[]; vecs: Float32Array; dim: number } | undefined
+    let thesaurus:
+      | { version: number; builtAt: number; vocab: string[]; vecs: Float32Array; dim: number }
+      | undefined
 
     const moduleToFiles = () => {
       const map = new Map<string, string[]>()
@@ -405,6 +428,8 @@ const makeLayer = (load: PotionLoader) =>
       fileGraph.delete(file)
     }
 
+    let capLogged = false
+
     const indexFile = Effect.fnUntraced(function* (file: string) {
       const abs = path.join(dir, file)
       const info = yield* fs.stat(abs).pipe(Effect.catch(() => Effect.succeed(undefined)))
@@ -413,7 +438,18 @@ const makeLayer = (load: PotionLoader) =>
       if (source === undefined || source.includes("\0")) return
 
       const lines = source.split("\n").slice(0, MAX_FILE_LINES)
-      for (const chunk of chunkDocs(file, lines)) addDoc(chunkLex, chunk.doc, chunk.text)
+      for (const chunk of chunkDocs(file, lines)) {
+        if (chunkLex.postings >= MAX_INDEX_POSTINGS) {
+          if (!capLogged) {
+            capLogged = true
+            yield* Effect.logWarning(`code_search index truncated at ${MAX_INDEX_POSTINGS} postings`)
+          }
+          break
+        }
+        addDoc(chunkLex, chunk.doc, chunk.text)
+      }
+      // path and symbol docs stay indexed even after the chunk lexicon caps —
+      // they are far sparser and keep identifier/filename queries working
       addDoc(pathLex, { file, line: 1 }, file)
       files.add(file)
 
@@ -433,6 +469,7 @@ const makeLayer = (load: PotionLoader) =>
             fileImports.set(file, unit.imports)
             const edges: EdgeInput[] = []
             for (const fn of unit.functions) {
+              if (symLex.postings >= MAX_INDEX_POSTINGS) break
               const body = fn.body
                 .slice(0, 4000)
                 .map((t) => t.text)
@@ -463,7 +500,12 @@ const makeLayer = (load: PotionLoader) =>
           }
         }
       }
-      if (!parsed) for (const sym of genericSyms(file, lines)) indexSym(sym.doc, sym.text)
+      if (!parsed) {
+        for (const sym of genericSyms(file, lines)) {
+          if (symLex.postings >= MAX_INDEX_POSTINGS) break
+          indexSym(sym.doc, sym.text)
+        }
+      }
       version++
     })
 
@@ -579,9 +621,13 @@ const makeLayer = (load: PotionLoader) =>
       if (!runtime) return new Map<string, number>()
       const dim = runtime.profile.dimension
       let th = thesaurus
-      if (!th || th.version !== version || th.dim !== dim) {
+      // A rebuild embeds the whole vocabulary; under continuous file churn that
+      // runs once per query. The lexicons stay current via ensureIndex, so a
+      // briefly stale expansion table only delays semantic widening of fresh
+      // terms. A model swap (`dim` change) still rebuilds immediately.
+      if (!th || th.dim !== dim || (th.version !== version && Date.now() - th.builtAt >= THESAURUS_REBUILD_MS)) {
         const vocab = [...chunkLex.inverted.keys()].filter((t) => {
-          const df = chunkLex.df.get(t) ?? 0
+          const df = (chunkLex.inverted.get(t)?.length ?? 0) / 2
           return t.length >= 3 && !STOP.has(t) && df >= 3 && df <= chunkLex.n * 0.1
         })
         const vecs = new Float32Array(vocab.length * dim)
@@ -595,7 +641,7 @@ const makeLayer = (load: PotionLoader) =>
           const norm = Math.sqrt(n2) || 1
           for (let d = 0; d < dim; d++) vecs[off + d]! /= norm
         }
-        th = { version, vocab, vecs, dim }
+        th = { version, builtAt: Date.now(), vocab, vecs, dim }
         thesaurus = th
       }
       const out = new Map<string, number>()
@@ -613,8 +659,7 @@ const makeLayer = (load: PotionLoader) =>
           for (let d = 0; d < dim; d++) dot += th.vecs[off + d]! * v[d]!
           scores[i] = dot / qn
         }
-        const idx = [...scores.keys()].sort((a, b) => scores[b]! - scores[a]!).slice(0, 6)
-        for (const i of idx) {
+        for (const i of topSixScoreIndexes(scores)) {
           const s = scores[i]!
           const st = stem(th.vocab[i]!)
           if (s < 0.55 || seen.has(st) || !chunkLex.inverted.has(st)) continue
@@ -666,7 +711,10 @@ const makeLayer = (load: PotionLoader) =>
       // coverage bonus: fraction of distinct query stems present in the file
       const covSets = new Map<string, Set<string>>()
       for (const t of stems) {
-        for (const { doc } of chunkLex.inverted.get(t) ?? []) {
+        const postings = chunkLex.inverted.get(t)
+        if (!postings) continue
+        for (let i = 0; i < postings.length; i += 2) {
+          const doc = postings[i]
           if (!chunkLex.alive[doc]) continue
           const f = chunkLex.docs[doc]!.file
           const set = covSets.get(f) ?? new Set<string>()
@@ -771,6 +819,23 @@ const makeLayer = (load: PotionLoader) =>
     })
   }),
   )
+
+function topSixScoreIndexes(scores: Float64Array) {
+  const indexes: number[] = []
+  for (let i = 0; i < scores.length; i++) {
+    const score = scores[i]
+    if (Number.isNaN(score)) {
+      // Match stable-sort behavior because NaN scores do not have a total ordering.
+      return [...scores.keys()].sort((a, b) => scores[b] - scores[a]).slice(0, 6)
+    }
+    let position = 0
+    while (position < indexes.length && !(score > scores[indexes[position]])) position++
+    if (position === 6) continue
+    indexes.splice(position, 0, i)
+    if (indexes.length > 6) indexes.pop()
+  }
+  return indexes
+}
 
 export const layerWith = (load: PotionLoader) => makeLayer(load)
 

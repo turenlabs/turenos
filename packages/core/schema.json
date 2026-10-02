@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "5ff8d263-f97d-45ca-a861-251fd11fdeda",
+  "id": "6577b9fe-84ce-4bba-ac96-75ed69b615a6",
   "prevIds": [
-    "b305b717-d371-490d-b802-9d42893237dd"
+    "e6ea6bd8-16e9-45a9-a507-3cfd6d73b34d"
   ],
   "ddl": [
     {
@@ -103,6 +103,34 @@
       "entityType": "tables"
     },
     {
+      "name": "prior_work_event",
+      "entityType": "tables"
+    },
+    {
+      "name": "prior_work_idempotency",
+      "entityType": "tables"
+    },
+    {
+      "name": "prior_work_link",
+      "entityType": "tables"
+    },
+    {
+      "name": "prior_work_origin",
+      "entityType": "tables"
+    },
+    {
+      "name": "prior_work_record",
+      "entityType": "tables"
+    },
+    {
+      "name": "prior_work_repository",
+      "entityType": "tables"
+    },
+    {
+      "name": "prior_work_revision",
+      "entityType": "tables"
+    },
+    {
       "name": "project_directory",
       "entityType": "tables"
     },
@@ -120,6 +148,10 @@
     },
     {
       "name": "provider_usage",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_context_blob",
       "entityType": "tables"
     },
     {
@@ -2830,6 +2862,566 @@
     },
     {
       "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "prior_work_event"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "project_id",
+      "entityType": "columns",
+      "table": "prior_work_event"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "repository_id",
+      "entityType": "columns",
+      "table": "prior_work_event"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "record_id",
+      "entityType": "columns",
+      "table": "prior_work_event"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "action",
+      "entityType": "columns",
+      "table": "prior_work_event"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor",
+      "entityType": "columns",
+      "table": "prior_work_event"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "prior_work_event"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "prior_work_event"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "reason",
+      "entityType": "columns",
+      "table": "prior_work_event"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "target_repository_id",
+      "entityType": "columns",
+      "table": "prior_work_event"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "prior_work_event"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "prior_work_idempotency"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "key",
+      "entityType": "columns",
+      "table": "prior_work_idempotency"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "intent_hash",
+      "entityType": "columns",
+      "table": "prior_work_idempotency"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "record_id",
+      "entityType": "columns",
+      "table": "prior_work_idempotency"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "prior_work_idempotency"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "prior_work_idempotency"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "repository_id",
+      "entityType": "columns",
+      "table": "prior_work_link"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "target_repository_id",
+      "entityType": "columns",
+      "table": "prior_work_link"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "prior_work_link"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "record_id",
+      "entityType": "columns",
+      "table": "prior_work_origin"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "repository_id",
+      "entityType": "columns",
+      "table": "prior_work_origin"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "author",
+      "entityType": "columns",
+      "table": "prior_work_origin"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_kind",
+      "entityType": "columns",
+      "table": "prior_work_origin"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_id",
+      "entityType": "columns",
+      "table": "prior_work_origin"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_root_session_id",
+      "entityType": "columns",
+      "table": "prior_work_origin"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_session_id",
+      "entityType": "columns",
+      "table": "prior_work_origin"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_observed",
+      "entityType": "columns",
+      "table": "prior_work_origin"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "prior_work_record"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "project_id",
+      "entityType": "columns",
+      "table": "prior_work_record"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "repository_id",
+      "entityType": "columns",
+      "table": "prior_work_record"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "kind",
+      "entityType": "columns",
+      "table": "prior_work_record"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "head_revision",
+      "entityType": "columns",
+      "table": "prior_work_record"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state",
+      "entityType": "columns",
+      "table": "prior_work_record"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "recording_session_id",
+      "entityType": "columns",
+      "table": "prior_work_record"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "prior_work_record"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "prior_work_repository"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "project_id",
+      "entityType": "columns",
+      "table": "prior_work_repository"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "dev",
+      "entityType": "columns",
+      "table": "prior_work_repository"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "ino",
+      "entityType": "columns",
+      "table": "prior_work_repository"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "birthtime",
+      "entityType": "columns",
+      "table": "prior_work_repository"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "prior_work_repository"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "record_id",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "summary",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "detail",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "method",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "assumptions",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "locations",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "evidence",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "challenges",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "derived_from",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "recording_capture",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "observation",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "recorded_by",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_recorded",
+      "entityType": "columns",
+      "table": "prior_work_revision"
+    },
+    {
+      "type": "text",
       "notNull": true,
       "autoincrement": false,
       "default": null,
@@ -3207,6 +3799,46 @@
       "name": "tokens_cache_write",
       "entityType": "columns",
       "table": "provider_usage"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_context_blob"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "sha256",
+      "entityType": "columns",
+      "table": "session_context_blob"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "session_context_blob"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "size",
+      "entityType": "columns",
+      "table": "session_context_blob"
     },
     {
       "type": "text",
@@ -4879,6 +5511,186 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
+      "name": "fk_prior_work_event_project_id_project_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_event"
+    },
+    {
+      "columns": [
+        "repository_id"
+      ],
+      "tableTo": "prior_work_repository",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_prior_work_event_repository_id_prior_work_repository_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_event"
+    },
+    {
+      "columns": [
+        "record_id"
+      ],
+      "tableTo": "prior_work_record",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_prior_work_event_record_id_prior_work_record_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_event"
+    },
+    {
+      "columns": [
+        "record_id"
+      ],
+      "tableTo": "prior_work_record",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_prior_work_idempotency_record_id_prior_work_record_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_idempotency"
+    },
+    {
+      "columns": [
+        "repository_id"
+      ],
+      "tableTo": "prior_work_repository",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_prior_work_link_repository_id_prior_work_repository_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_link"
+    },
+    {
+      "columns": [
+        "target_repository_id"
+      ],
+      "tableTo": "prior_work_repository",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_prior_work_link_target_repository_id_prior_work_repository_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_link"
+    },
+    {
+      "columns": [
+        "record_id"
+      ],
+      "tableTo": "prior_work_record",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_prior_work_origin_record_id_prior_work_record_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_origin"
+    },
+    {
+      "columns": [
+        "repository_id"
+      ],
+      "tableTo": "prior_work_repository",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_prior_work_origin_repository_id_prior_work_repository_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_origin"
+    },
+    {
+      "columns": [
+        "project_id"
+      ],
+      "tableTo": "project",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_prior_work_record_project_id_project_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_record"
+    },
+    {
+      "columns": [
+        "repository_id"
+      ],
+      "tableTo": "prior_work_repository",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_prior_work_record_repository_id_prior_work_repository_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_record"
+    },
+    {
+      "columns": [
+        "project_id"
+      ],
+      "tableTo": "project",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_prior_work_repository_project_id_project_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_repository"
+    },
+    {
+      "columns": [
+        "record_id"
+      ],
+      "tableTo": "prior_work_record",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_prior_work_revision_record_id_prior_work_record_id_fk",
+      "entityType": "fks",
+      "table": "prior_work_revision"
+    },
+    {
+      "columns": [
+        "project_id"
+      ],
+      "tableTo": "project",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
       "name": "fk_project_directory_project_id_project_id_fk",
       "entityType": "fks",
       "table": "project_directory"
@@ -4927,6 +5739,21 @@
       "name": "fk_provider_usage_session_id_session_id_fk",
       "entityType": "fks",
       "table": "provider_usage"
+    },
+    {
+      "columns": [
+        "session_id"
+      ],
+      "tableTo": "session_context_epoch",
+      "columnsTo": [
+        "session_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_context_blob_session_id_session_context_epoch_session_id_fk",
+      "entityType": "fks",
+      "table": "session_context_blob"
     },
     {
       "columns": [
@@ -5146,6 +5973,36 @@
     },
     {
       "columns": [
+        "session_id",
+        "key"
+      ],
+      "nameExplicit": false,
+      "name": "prior_work_idempotency_pk",
+      "entityType": "pks",
+      "table": "prior_work_idempotency"
+    },
+    {
+      "columns": [
+        "repository_id",
+        "target_repository_id"
+      ],
+      "nameExplicit": false,
+      "name": "prior_work_link_pk",
+      "entityType": "pks",
+      "table": "prior_work_link"
+    },
+    {
+      "columns": [
+        "record_id",
+        "revision"
+      ],
+      "nameExplicit": false,
+      "name": "prior_work_revision_pk",
+      "entityType": "pks",
+      "table": "prior_work_revision"
+    },
+    {
+      "columns": [
         "project_id",
         "directory"
       ],
@@ -5163,6 +6020,16 @@
       "name": "provider_usage_pk",
       "entityType": "pks",
       "table": "provider_usage"
+    },
+    {
+      "columns": [
+        "session_id",
+        "sha256"
+      ],
+      "nameExplicit": false,
+      "name": "session_context_blob_pk",
+      "entityType": "pks",
+      "table": "session_context_blob"
     },
     {
       "columns": [
@@ -5380,6 +6247,42 @@
       "nameExplicit": false,
       "name": "permission_pk",
       "table": "permission",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "prior_work_event_pk",
+      "table": "prior_work_event",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "record_id"
+      ],
+      "nameExplicit": false,
+      "name": "prior_work_origin_pk",
+      "table": "prior_work_origin",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "prior_work_record_pk",
+      "table": "prior_work_record",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "prior_work_repository_pk",
+      "table": "prior_work_repository",
       "entityType": "pks"
     },
     {
@@ -6210,6 +7113,94 @@
       "name": "permission_project_action_resource_idx",
       "entityType": "indexes",
       "table": "permission"
+    },
+    {
+      "columns": [
+        {
+          "value": "record_id",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "prior_work_event_record_idx",
+      "entityType": "indexes",
+      "table": "prior_work_event"
+    },
+    {
+      "columns": [
+        {
+          "value": "repository_id",
+          "isExpression": false
+        },
+        {
+          "value": "source_kind",
+          "isExpression": false
+        },
+        {
+          "value": "source_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "prior_work_origin_source_idx",
+      "entityType": "indexes",
+      "table": "prior_work_origin"
+    },
+    {
+      "columns": [
+        {
+          "value": "project_id",
+          "isExpression": false
+        },
+        {
+          "value": "repository_id",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "prior_work_record_scope_idx",
+      "entityType": "indexes",
+      "table": "prior_work_record"
+    },
+    {
+      "columns": [
+        {
+          "value": "project_id",
+          "isExpression": false
+        },
+        {
+          "value": "dev",
+          "isExpression": false
+        },
+        {
+          "value": "ino",
+          "isExpression": false
+        },
+        {
+          "value": "birthtime",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "prior_work_repository_incarnation_idx",
+      "entityType": "indexes",
+      "table": "prior_work_repository"
     },
     {
       "columns": [

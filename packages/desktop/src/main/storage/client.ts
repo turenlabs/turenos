@@ -100,6 +100,64 @@ export function createStorageRemote(options: Options): StorageRemote {
     return `${path}?${params.toString()}`
   }
 
+  // Writes to the same key serialize through one tail so a stalled server does
+  // not stack one 60-attempt retry loop per autosave. A queued unguarded write
+  // is superseded by the newest value — drafts are last-write-wins anyway.
+  const writeTails = new Map<string, Promise<void>>()
+  const writeQueued = new Map<
+    string,
+    {
+      value: string
+      expectedRevision?: number | null
+      resolve: (state: StorageState) => void
+      reject: (error: unknown) => void
+      promise: Promise<StorageState>
+    }
+  >()
+
+  const put = (scope: string, key: string, value: string, expectedRevision?: number | null) =>
+    request("/global/storage", {
+      method: "PUT",
+      body: JSON.stringify(
+        expectedRevision === undefined ? { scope, key, value } : { scope, key, value, expectedRevision },
+      ),
+    }).then((response) => response.json() as Promise<StorageState>)
+
+  const set = (scope: string, key: string, value: string, expectedRevision?: number | null) => {
+    const id = `${scope}${key}`
+    const queued = writeQueued.get(id)
+    if (queued && queued.expectedRevision === undefined && expectedRevision === undefined) {
+      queued.value = value
+      return queued.promise
+    }
+
+    let resolve!: (state: StorageState) => void
+    let reject!: (error: unknown) => void
+    const promise = new Promise<StorageState>((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    const entry = { value, expectedRevision, resolve, reject, promise }
+    writeQueued.set(id, entry)
+
+    const tail = (writeTails.get(id) ?? Promise.resolve()).catch(() => undefined)
+    const next = tail.then(async () => {
+      if (writeQueued.get(id) === entry) writeQueued.delete(id)
+      try {
+        entry.resolve(await put(scope, key, entry.value, entry.expectedRevision))
+      } catch (error) {
+        entry.reject(error)
+      }
+    })
+    writeTails.set(
+      id,
+      next.finally(() => {
+        if (writeTails.get(id) === next) writeTails.delete(id)
+      }),
+    )
+    return promise
+  }
+
   return {
     async get(scope, key) {
       const body = (await request(query("/global/storage", { scope, key })).then((response) => response.json())) as {
@@ -113,14 +171,7 @@ export function createStorageRemote(options: Options): StorageRemote {
       }
       return body.items
     },
-    async set(scope, key, value, expectedRevision) {
-      return (await request("/global/storage", {
-        method: "PUT",
-        body: JSON.stringify(
-          expectedRevision === undefined ? { scope, key, value } : { scope, key, value, expectedRevision },
-        ),
-      }).then((response) => response.json())) as StorageState
-    },
+    set,
     async remove(scope, key, expectedRevision) {
       const body = (await request(
         query("/global/storage", {

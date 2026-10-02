@@ -4,7 +4,7 @@
  * Keep these small and pragmatic: they are the wire contract between
  * integrations and the stdio MCP server in `mcp/server.ts`, and everything an
  * integration returns is ultimately serialized to compact JSON for LLM
- * consumption (see CONVENTIONS.md).
+ * consumption (see docs/development/security-integrations.md).
  */
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info" | "unknown"

@@ -289,16 +289,28 @@ export const serve = Effect.fn("ClaudeCodeMcp.serve")(function* (token: string) 
   }
 })
 
-function toCallToolResult(result: ToolResultValue): CallToolResult {
+export function toCallToolResult(result: ToolResultValue): CallToolResult {
   if (result.type === "error") return { content: [{ type: "text", text: stringify(result.value) }], isError: true }
   if (result.type === "text") return { content: [{ type: "text", text: stringify(result.value) }] }
   if (result.type === "json") return { content: [{ type: "text", text: stringify(result.value) }] }
+  const images = { count: 0, bytes: 0 }
   return {
-    content: result.value.map((item: ToolContent) =>
-      item.type === "text"
-        ? { type: "text" as const, text: item.text }
-        : { type: "text" as const, text: `[file ${item.name ?? item.uri}] ${item.uri} (${item.mime})` },
-    ),
+    content: result.value.map((item: ToolContent) => {
+      if (item.type === "text") return { type: "text" as const, text: item.text }
+      const image = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(item.uri)
+      const bytes = image ? Buffer.byteLength(image[2], "base64") : 0
+      if (image && image[1] === item.mime && images.count < 8 && images.bytes + bytes <= 8 * 1024 * 1024) {
+        images.count++
+        images.bytes += bytes
+        return { type: "image" as const, mimeType: item.mime, data: image[2] }
+      }
+      if (item.uri.startsWith("data:"))
+        return {
+          type: "text" as const,
+          text: `[file ${item.name ?? "inline attachment"}] Inline image omitted: unsupported format, invalid encoding, or image limit.`,
+        }
+      return { type: "text" as const, text: `[file ${item.name ?? item.uri}] ${item.uri} (${item.mime})` }
+    }),
   }
 }
 

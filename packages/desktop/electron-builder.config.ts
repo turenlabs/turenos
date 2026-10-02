@@ -385,6 +385,7 @@ const getBase = (appId: string): Configuration => ({
   files: [
     "out/**/*",
     "!out/main/server/**/*",
+    "!out/**/*.map",
     "!out/main/chunks/decompiler-worker.js",
     "!out/main/chunks/ghidra-decompiler/**/*",
     "!out/main/chunks/yara-worker.js",

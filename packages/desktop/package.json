@@ -1,7 +1,7 @@
 {
   "name": "@turenlabs/desktop",
   "private": true,
-  "version": "1.0.32",
+  "version": "1.0.38",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/turenlabs/forge",
@@ -15,7 +15,7 @@
     "predev": "bun ./scripts/predev.ts",
     "dev": "electron-vite dev",
     "prebuild": "bun ./scripts/prebuild.ts",
-    "build": "electron-vite build && bun ./scripts/verify-decompile-artifact.ts && bun ./scripts/verify-yara-artifact.ts && bun ./scripts/verify-email-security-artifact.ts && bun ./scripts/verify-wasm-inspect-artifact.ts && bun ./scripts/verify-protocol-inspect-artifact.ts && bun ./scripts/verify-debug-symbols-artifact.ts && bun ./scripts/verify-binwalk-scan-artifact.ts && bun ./scripts/verify-security-extensions-artifact.ts && bun ./scripts/verify-whiteboard-artifact.ts",
+    "build": "electron-vite build && bun ./scripts/verify-decompile-artifact.ts && bun ./scripts/verify-yara-artifact.ts && bun ./scripts/verify-email-security-artifact.ts && bun ./scripts/verify-wasm-inspect-artifact.ts && bun ./scripts/verify-protocol-inspect-artifact.ts && bun ./scripts/verify-debug-symbols-artifact.ts && bun ./scripts/verify-binwalk-scan-artifact.ts && bun ./scripts/verify-security-extensions-artifact.ts && bun ./scripts/verify-whiteboard-artifact.ts && bun ./scripts/verify-no-sourcemaps.ts",
     "preview": "electron-vite preview",
     "package": "bun run build && electron-builder --config electron-builder.config.ts",
     "package:dev": "bun run build && electron-builder --mac dir --config electron-builder.config.ts",
