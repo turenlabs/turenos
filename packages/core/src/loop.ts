@@ -1,8 +1,8 @@
 export * as Loop from "./loop"
 
-import { and, asc, count, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm"
+import { and, asc, count, desc, eq, gt, inArray, isNull, lte, min, or } from "drizzle-orm"
 import type { EffectDrizzleSqlite } from "@turenlabs/effect-drizzle-sqlite"
-import { Clock, Context, Effect, Layer, Schema } from "effect"
+import { Clock, Context, Deferred, Effect, Layer, Schema } from "effect"
 import { Database } from "./database/database"
 import { makeGlobalNode } from "./effect/app-node"
 import { Global } from "./global"
@@ -235,6 +235,17 @@ export interface Interface {
     readonly limit?: number
     readonly leaseMs?: number
   }) => Effect.Effect<ReadonlyArray<Run>, InvalidInputError>
+  /**
+   * Earliest time `claimDue` could have work, or undefined when nothing is scheduled. A value at or before
+   * `now` means `claimDue` has work. Read-only, so an idle scheduler can ask without taking the write lock.
+   */
+  readonly nextWakeAt: (now: number) => Effect.Effect<number | undefined>
+  /**
+   * Captures the current change token and returns an effect that completes once this process changes anything
+   * `nextWakeAt` reads. Capture before calling `nextWakeAt` so a change that lands in between is not lost.
+   * Writes from another process are not signalled.
+   */
+  readonly awaitChange: () => Effect.Effect<Effect.Effect<void>>
   readonly recordRunSession: (input: {
     readonly id: RunID
     readonly owner: string
@@ -277,12 +288,22 @@ const layer = Layer.effect(
     // Active file-change loops are read on every file event. Every status or trigger writer in this
     // layer must invalidate after its commit through Effect.ensuring, so cancellation cannot skip
     // it (claimDue included, for expiry); the TTL only covers writes from another process.
+    // The writers other than claimDue also signal the scheduler wake: its only claimDue caller
+    // reads again after every claim.
     let fileChange: { readonly loops: ReadonlyArray<Info>; readonly expiresAt: number } | undefined
     let generation = 0
     const invalidate = () => {
       generation++
       fileChange = undefined
     }
+
+    let changed = Deferred.makeUnsafe<void>()
+    const wake = Effect.suspend(() => {
+      const previous = changed
+      changed = Deferred.makeUnsafe<void>()
+      return Deferred.succeed(previous, undefined)
+    })
+    const stateChanged = Effect.sync(invalidate).pipe(Effect.andThen(wake))
 
     const get = Effect.fn("Loop.get")(function* (id: ID) {
       const row = yield* db.select().from(LoopTable).where(eq(LoopTable.id, id)).get().pipe(Effect.orDie)
@@ -367,7 +388,7 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
+        .pipe(Effect.orDie, Effect.ensuring(stateChanged))
       if (row.type === "limit") return yield* new ActiveLimitError({ limit: MAX_ACTIVE })
       return toInfo(row.row!)
     })
@@ -478,7 +499,7 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
+        .pipe(Effect.orDie, Effect.ensuring(stateChanged))
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
       if (result.type === "state") return yield* new InvalidStateError({ id: input.id, message: "Loop has expired" })
       if (result.type === "task")
@@ -520,7 +541,7 @@ const layer = Layer.effect(
             return paused
           }),
         )
-        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
+        .pipe(Effect.orDie, Effect.ensuring(stateChanged))
       if (!row) return yield* new InvalidStateError({ id, message: "Loop changed concurrently" })
       return toInfo(row)
     })
@@ -560,7 +581,7 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(wake))
       if (result.type === "event") {
         const activated = yield* db
           .update(LoopTable)
@@ -568,7 +589,7 @@ const layer = Layer.effect(
           .where(eq(LoopTable.id, id))
           .returning()
           .get()
-          .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
+          .pipe(Effect.orDie, Effect.ensuring(stateChanged))
         if (!activated) return yield* new InvalidStateError({ id, message: "Loop changed concurrently" })
         return toInfo(activated)
       }
@@ -592,7 +613,7 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
+        .pipe(Effect.orDie, Effect.ensuring(stateChanged))
       if (result.active)
         return yield* new InvalidStateError({ id, message: "Cancel the active run before deleting this Loop" })
       return result.removed
@@ -641,7 +662,7 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(wake))
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
       if (result.type === "expired") return yield* new InvalidStateError({ id: input.id, message: "Loop has expired" })
       return toRun(result.row)
@@ -699,7 +720,7 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(wake))
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
       if (result.type === "expired" || result.type === "inactive")
         return yield* new InvalidStateError({ id: input.id, message: "Loop is not active" })
@@ -858,7 +879,7 @@ const layer = Layer.effect(
         .where(and(eq(LoopRunTable.id, input.id), inArray(LoopRunTable.status, ["claimed", "running"])))
         .returning()
         .get()
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(wake))
       if (!row) return yield* new InvalidStateError({ id: input.id, message: "Run changed concurrently" })
       return toRun(row)
     })
@@ -871,7 +892,7 @@ const layer = Layer.effect(
         .where(and(eq(LoopRunTable.session_id, sessionID), inArray(LoopRunTable.status, ["claimed", "running"])))
         .returning({ id: LoopRunTable.id })
         .all()
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(wake))
       return rows.length > 0
     })
 
@@ -1038,11 +1059,47 @@ const layer = Layer.effect(
         )
         .returning()
         .get()
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(wake))
       if (row) return toRun(row)
       yield* getRun(input.id)
       return yield* new InvalidStateError({ id: input.id, message: "Run is not finishable by this owner" })
     })
+
+    // Mirrors the predicates in claimDue: an active loop's next_run_at (due) and expires_at (expired), a
+    // running or claimed run's lease (stale or recoverable), and a claimed manual run (picked up at once).
+    const nextWakeAt = Effect.fn("Loop.nextWakeAt")(function* (now: number) {
+      const loops = yield* db
+        .select({ next: min(LoopTable.next_run_at), expires: min(LoopTable.expires_at) })
+        .from(LoopTable)
+        .where(eq(LoopTable.status, "active"))
+        .get()
+        .pipe(Effect.orDie)
+      const lease = yield* db
+        .select({ at: min(LoopRunTable.lease_expires_at) })
+        .from(LoopRunTable)
+        .where(inArray(LoopRunTable.status, ["running", "claimed"]))
+        .get()
+        .pipe(Effect.orDie)
+      const manual = yield* db
+        .select({ id: LoopRunTable.id })
+        .from(LoopRunTable)
+        .where(
+          and(
+            eq(LoopRunTable.status, "claimed"),
+            eq(LoopRunTable.lease_owner, "manual"),
+            gt(LoopRunTable.lease_expires_at, now),
+          ),
+        )
+        .limit(1)
+        .get()
+        .pipe(Effect.orDie)
+      const times = [loops?.next, loops?.expires, lease?.at, manual ? now : undefined].filter(
+        (time): time is number => time !== null && time !== undefined,
+      )
+      return times.length ? Math.min(...times) : undefined
+    })
+
+    const awaitChange = () => Effect.sync(() => Deferred.await(changed))
 
     return Service.of({
       create,
@@ -1060,6 +1117,8 @@ const layer = Layer.effect(
       listRuns,
       getRun: findRun,
       claimDue,
+      nextWakeAt,
+      awaitChange,
       recordRunSession,
       startRun,
       completeRunStep,
