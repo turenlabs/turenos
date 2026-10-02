@@ -46,7 +46,11 @@ orchestrators, and their workers) shares one active pool. Its size is
   queued tasks in creation order (`time.created`, then ID) whenever a slot is
   free. It wakes on task events and on writes from another process, reads the
   root Session's Location config for the limit on every pass, and re-drives
-  queued tasks after a restart.
+  queued tasks after a restart. It checks for another process's writes every
+  250 ms while a task is queued; with nothing queued the interval doubles up to
+  5 seconds, so a task another process admits can wait that long to start.
+  Tasks admitted by this process wake the driver at once, and still start only
+  when a slot is free.
 - One root holds at most 10,000 unfinished tasks (`MAX_TASKS_PER_ROOT`);
   spawning past that fails with a queue-limit error.
 - Promotion cancels, rather than starts, a queued task that has a pending
