@@ -22,6 +22,10 @@ const MAX_ITEMS = 24
 const CLAIM_TIMEOUT_MS = 60 * 60 * 1_000
 const SYNTHETIC_PREFIXES = ["ses_handoff_", "ses_loop_"]
 const bounded = Schema.NonEmptyString.pipe(Schema.check(Schema.isMaxLength(MAX_ITEM_LENGTH)))
+const decodeResetPending = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ resetPending: Schema.Boolean })),
+)
+const decodeStoredValue = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
 const boundedItems = Schema.Array(bounded).pipe(Schema.check(Schema.isMaxLength(MAX_ITEMS)))
 export const Lesson = Schema.Struct({
   lesson: bounded,
@@ -401,15 +405,13 @@ const layer = Layer.effect(
       resetPending: Effect.fn("Reflection.resetPending")(function* (sessionID) {
         const stored = yield* storage.get(reflectionAddress(sessionID))
         if (!stored) return false
-        const decoded = Schema.decodeUnknownOption(
-          Schema.fromJsonString(Schema.Struct({ resetPending: Schema.Boolean })),
-        )(stored.value)
+        const decoded = decodeResetPending(stored.value)
         return Option.isSome(decoded) && decoded.value.resetPending
       }),
       resetComplete: Effect.fn("Reflection.resetComplete")(function* (sessionID) {
         const stored = yield* storage.get(reflectionAddress(sessionID))
         if (!stored) return
-        const decoded = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)(stored.value)
+        const decoded = decodeStoredValue(stored.value)
         if (Option.isNone(decoded) || typeof decoded.value !== "object" || decoded.value === null) return
         yield* storage.set({
           ...reflectionAddress(sessionID),

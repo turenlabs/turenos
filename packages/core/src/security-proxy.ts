@@ -38,6 +38,7 @@ const Manifest = Schema.Struct({
   ingestion: Schema.String,
   reservation: Schema.NullOr(Schema.String),
 })
+const decodeStoreCommand = Schema.decodeUnknownEffect(Schema.toType(SecurityProxy.StoreCommand))
 
 export const layer = Layer.effect(
   Service,
@@ -295,7 +296,7 @@ export const layer = Layer.effect(
     return Service.of({
       execute: (command) =>
         lock.withPermit(
-          Schema.decodeUnknownEffect(Schema.toType(SecurityProxy.StoreCommand))(command).pipe(
+          decodeStoreCommand(command).pipe(
             Effect.mapError(() => new Error({ message: "Invalid proxy storage command" })),
             Effect.flatMap((validated) => attempt(validated, 3)),
           ),
