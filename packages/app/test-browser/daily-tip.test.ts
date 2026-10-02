@@ -10,7 +10,9 @@ const preset = await import("babel-preset-solid")
 plugin({
   name: "daily-tip-ui-test",
   setup(build) {
-    build.onLoad({ filter: /pages\/new-session\/daily-tip\.tsx$/ }, async (args) => {
+    // Match either separator: on Windows args.path uses backslashes, and an unmatched file
+    // falls back to Bun's default React JSX transform.
+    build.onLoad({ filter: /pages[\\/]new-session[\\/]daily-tip\.tsx$/ }, async (args) => {
       const result = await compiler.transformAsync(await Bun.file(args.path).text(), {
         filename: args.path,
         babelrc: false,
