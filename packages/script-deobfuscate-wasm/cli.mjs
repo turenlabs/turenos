@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @generated from tools/script-deobfuscate/script/cli.mjs. Do not edit.
 import { createReadStream } from "node:fs"
 import { parseArgs } from "node:util"
 import { Worker } from "node:worker_threads"

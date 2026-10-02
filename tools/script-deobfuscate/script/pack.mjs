@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -15,10 +15,20 @@ for (const name of [
   "turen_script_deobfuscate_wasm_bg.wasm.d.ts",
 ])
   await writeFile(path.join(target, "dist", name), await readFile(path.join(source, name)))
-for (const name of ["LICENSE", "LICENSE-OXC", "NOTICE", "README.md"])
-  await writeFile(path.join(target, name), await readFile(path.join(root, name)))
-await writeFile(path.join(target, "cli.mjs"), await readFile(path.join(root, "script", "cli.mjs")), { mode: 0o755 })
-await writeFile(path.join(target, "cli-worker.mjs"), await readFile(path.join(root, "script", "cli-worker.mjs")))
+for (const name of ["LICENSE", "LICENSE-OXC", "NOTICE", "README.md"]) {
+  const output = name === "LICENSE-OXC" || name === "NOTICE" ? `${name}.txt` : name
+  await writeFile(path.join(target, output), await readFile(path.join(root, name)))
+  if (output !== name) await rm(path.join(target, name), { force: true })
+}
+await writeFile(
+  path.join(target, "cli.mjs"),
+  generated(await readFile(path.join(root, "script", "cli.mjs"), "utf8"), "script/cli.mjs"),
+  { mode: 0o755 },
+)
+await writeFile(
+  path.join(target, "cli-worker.mjs"),
+  generated(await readFile(path.join(root, "script", "cli-worker.mjs"), "utf8"), "script/cli-worker.mjs"),
+)
 await writeFile(path.join(target, "dist", "package.json"), JSON.stringify({ type: "module" }, null, 2) + "\n")
 await writeFile(
   path.join(target, "package.json"),
@@ -37,8 +47,8 @@ await writeFile(
         "cli-worker.mjs",
         "licenses/",
         "LICENSE",
-        "LICENSE-OXC",
-        "NOTICE",
+        "LICENSE-OXC.txt",
+        "NOTICE.txt",
         "README.md",
         "SOURCE.json",
         "SHA256SUMS",
@@ -78,12 +88,14 @@ for (const item of dependencies) {
   for (const name of texts) {
     const contents = await readFile(path.join(directory, name)).catch(() => undefined)
     if (!contents) continue
-    const relative = `licenses/${item.name}-${item.version}/${name}`
+    const original = `licenses/${item.name}-${item.version}/${name}`
+    const relative = original.endsWith(".txt") ? original : `${original}.txt`
     await mkdir(path.dirname(path.join(target, relative)), { recursive: true })
     await writeFile(path.join(target, relative), contents)
+    if (relative !== original) await rm(path.join(target, original), { force: true })
     files.push(relative)
   }
-  if (item.name.startsWith("oxc_") && files.length === 0) files.push("LICENSE-OXC")
+  if (item.name.startsWith("oxc_") && files.length === 0) files.push("LICENSE-OXC.txt")
   inventory.push({ crate: item.name, version: item.version, license: item.license, files })
 }
 await writeFile(path.join(target, "THIRD_PARTY_LICENSES.json"), JSON.stringify(inventory, null, 2) + "\n")
@@ -105,6 +117,13 @@ async function filesUnder(directory, prefix = "") {
     )
   ).flat()
 }
+function generated(code, origin) {
+  const header = `// @generated from tools/script-deobfuscate/${origin}. Do not edit.\n`
+  if (!code.startsWith("#!")) return header + code
+  const line = code.indexOf("\n") + 1
+  return code.slice(0, line) + header + code.slice(line)
+}
+
 const lines = await Promise.all(
   (await filesUnder(target)).map(
     async (name) =>
