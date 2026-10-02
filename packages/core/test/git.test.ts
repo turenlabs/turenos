@@ -207,6 +207,103 @@ describe("Git trees", () => {
 })
 
 describe("Git index", () => {
+  for (const checkIgnores of [false, true]) {
+    it.live(`stages magic, wildcard, and newline filenames literally (ignore check: ${checkIgnores})`, () =>
+      Effect.gen(function* () {
+        const root = yield* Effect.acquireRelease(
+          Effect.promise(() => tmpdir()),
+          (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+        )
+        const project = path.join(root.path, "project")
+        const names = [":(literal)missing", ":(glob)**", ":(exclude)*", "*.txt", "[abc]", "line\nbreak"]
+        yield* Effect.promise(async () => {
+          await fs.mkdir(project)
+          await initRepo(project)
+          await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
+          const ignoreRules = "ignored*\n:(glob)ignored\\*\n"
+          await fs.writeFile(path.join(project, ".gitignore"), checkIgnores ? "build/\n" : ignoreRules)
+          await runGit(project, "add", ".")
+          await runGit(project, "commit", "-qm", "tracked")
+          if (checkIgnores) await fs.writeFile(path.join(project, ".git", "info", "exclude"), ignoreRules)
+          await fs.writeFile(path.join(project, "ignored.txt"), "ignored")
+          await fs.writeFile(path.join(project, ":(glob)ignored*"), "ignored")
+          await fs.writeFile(path.join(project, "oversized.txt"), "oversized")
+          await Promise.all(names.map((file) => fs.writeFile(path.join(project, file), "ok")))
+        })
+        const git = yield* Git.Service
+        const source = yield* git.repo.discover(AbsolutePath.make(project))
+        if (!source) throw new Error("Repository not found")
+        const repository = yield* git.repo.create({
+          worktree: source.worktree,
+          gitDirectory: AbsolutePath.make(path.join(root.path, "shadow")),
+          seed: source,
+        })
+        const originalIndex = yield* Effect.promise(() => fs.readFile(path.join(source.gitDirectory, "index")))
+        const result = yield* git.index.refresh({
+          repository,
+          scope: RelativePath.make("."),
+          ignores: checkIgnores ? source : undefined,
+          maximumUntrackedFileBytes: 4,
+        })
+        expect(result.skipped).toEqual([RelativePath.make("oversized.txt")])
+        const { stdout: files } = yield* Effect.promise(() =>
+          runGit(project, "--git-dir", repository.gitDirectory, "ls-files", "-z"),
+        )
+        expect(files.split("\0").filter(Boolean).sort()).toEqual([".gitignore", "tracked.txt", ...names].sort())
+        expect(yield* Effect.promise(() => fs.readFile(path.join(source.gitDirectory, "index")))).toEqual(originalIndex)
+      }),
+    )
+  }
+
+  for (const oversizedCount of [1, Git.BULK_REBUILD_THRESHOLD, Git.BULK_REBUILD_THRESHOLD + 1]) {
+    it.live(`removes oversized literal paths without dropping tracked siblings (${oversizedCount})`, () =>
+      Effect.gen(function* () {
+        const root = yield* Effect.acquireRelease(
+          Effect.promise(() => tmpdir()),
+          (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+        )
+        const project = path.join(root.path, "project")
+        const skipped = [":(glob)**", ...Array.from({ length: oversizedCount - 1 }, (_, index) => `large-${index}`)]
+        yield* Effect.promise(async () => {
+          await fs.mkdir(project)
+          await initRepo(project)
+          await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
+          await fs.writeFile(path.join(project, ".gitignore"), "ignored*\n")
+          await runGit(project, "add", ".")
+          await runGit(project, "commit", "-qm", "tracked")
+          await fs.writeFile(path.join(project, "ignored.txt"), "ignored")
+          await Promise.all(skipped.map((file) => fs.writeFile(path.join(project, file), "oversized")))
+        })
+        const git = yield* Git.Service
+        const source = yield* git.repo.discover(AbsolutePath.make(project))
+        if (!source) throw new Error("Repository not found")
+        const repository = yield* git.repo.create({
+          worktree: source.worktree,
+          gitDirectory: AbsolutePath.make(path.join(root.path, "shadow")),
+          seed: source,
+        })
+        const originalIndex = yield* Effect.promise(() => fs.readFile(path.join(source.gitDirectory, "index")))
+
+        const result = yield* git.index.refresh({
+          repository,
+          scope: RelativePath.make("."),
+          maximumUntrackedFileBytes: 4,
+        })
+
+        expect([...result.skipped].sort()).toEqual(skipped.map((file) => RelativePath.make(file)).sort())
+        const { stdout: files } = yield* Effect.promise(() =>
+          runGit(project, "--git-dir", repository.gitDirectory, "ls-files", "-z"),
+        )
+        expect(files.split("\0").filter(Boolean)).toEqual([".gitignore", "tracked.txt"])
+        expect(yield* Effect.promise(() => fs.readFile(path.join(source.gitDirectory, "index")))).toEqual(originalIndex)
+        const lines = yield* TestConsole.logLines
+        expect(lines.some((line) => String(line).includes("refresh bulk rebuild"))).toBe(
+          oversizedCount > Git.BULK_REBUILD_THRESHOLD,
+        )
+      }),
+    )
+  }
+
   it.live("rebuilds a poisoned index wholesale when stale entries exceed the bulk threshold", () =>
     Effect.gen(function* () {
       const root = yield* Effect.acquireRelease(
