@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Schema } from "effect"
 import { HttpClientRequest } from "effect/unstable/http"
-import { LLM, mergeProviderOptions } from "../src"
+import { GenerationOptions, LLM, mergeProviderOptions, type LLMRequest } from "../src"
 import { AnthropicMessages, OpenAIChat } from "../src/protocols"
-import { Auth, LLMClient } from "../src/route"
+import { Auth, Endpoint, LLMClient, Route } from "../src/route"
 import { it } from "./lib/effect"
 import { dynamicResponse } from "./lib/http"
 import { deltaChunk } from "./lib/openai-chunks"
@@ -43,6 +43,64 @@ describe("request option precedence", () => {
       },
     })
   })
+
+  // `headers` runs inside prepareTransport on the request that compile resolved.
+  const resolve = (
+    defaults: Parameters<typeof Route.make>[0]["defaults"],
+    request: Omit<Parameters<typeof LLM.request>[0], "model">,
+  ) =>
+    Effect.gen(function* () {
+      const seen: LLMRequest[] = []
+      const route = Route.make({
+        id: "resolve-probe",
+        provider: "openai",
+        protocol: OpenAIChat.protocol,
+        endpoint: Endpoint.path("/chat/completions", { baseURL: "https://api.openai.test/v1/" }),
+        auth: Auth.none,
+        transport: OpenAIChat.httpTransport,
+        headers: (input) => {
+          seen.push(input.request)
+          return {}
+        },
+        defaults,
+      })
+      const input = LLM.request({ ...request, model: route.model({ id: "probe" }) })
+      yield* LLMClient.prepare(input)
+      return { input, resolved: seen[0] }
+    })
+
+  it.effect("keeps the request instance when no route or model option merges in", () =>
+    Effect.gen(function* () {
+      const bare = yield* resolve(undefined, { prompt: "Say hello." })
+      expect(bare.resolved).toBe(bare.input)
+      const own = yield* resolve(undefined, {
+        prompt: "Say hello.",
+        generation: { maxTokens: 5 },
+        providerOptions: { openai: { store: true } },
+        http: { headers: { "x-own": "1" } },
+      })
+      expect(own.resolved).toBe(own.input)
+      expect(own.resolved?.generation).toEqual(new GenerationOptions({ maxTokens: 5 }))
+    }),
+  )
+
+  it.effect("still merges route defaults under request options", () =>
+    Effect.gen(function* () {
+      const seen = yield* resolve(
+        {
+          generation: { maxTokens: 10, temperature: 1 },
+          providerOptions: { openai: { store: false } },
+          http: { headers: { "x-route": "route" } },
+        },
+        { prompt: "Say hello.", generation: { maxTokens: 5 } },
+      )
+      expect(seen.resolved).not.toBe(seen.input)
+      expect(seen.resolved?.messages).toEqual(seen.input.messages)
+      expect(seen.resolved?.generation).toEqual(new GenerationOptions({ maxTokens: 5, temperature: 1 }))
+      expect(seen.resolved?.providerOptions).toEqual({ openai: { store: false } })
+      expect(seen.resolved?.http?.headers).toEqual({ "x-route": "route" })
+    }),
+  )
 
   it.effect("prepares bodies with route defaults, model defaults, and call options in order", () =>
     Effect.gen(function* () {
