@@ -913,8 +913,8 @@ describe("event stream under agent workload", () => {
   // Every watcher event bumps the index version; an unguarded search would
   // re-embed the whole vocabulary on each query during churn. This test writes
   // real files, publishes watcher events between searches, and counts the fake
-  // embedder's vocab batches — proving rebuild suppression inside the debounce
-  // window and one refresh past it.
+  // embedder's vocab-sized batches — proving the per-term vector cache rebuilds
+  // the thesaurus by embedding only the terms that entered the vocabulary.
   it.live("code_search stays bounded while file churn invalidates the index", () =>
     provideTmpdirServer(({ dir }) =>
       Effect.gen(function* () {
@@ -971,15 +971,14 @@ describe("event stream under agent workload", () => {
           expect(hits.length).toBeGreaterThan(0)
           expect(ms).toBeLessThan(10_000)
         }
-        // The churned searches all landed inside the debounce window — only the
-        // initial build paid a vocabulary embed.
+        // Every dirty-version rebuild ran, but each embedded only the terms
+        // that entered the vocabulary (a query-sized batch), so the expensive
+        // whole-vocabulary pass still happened exactly once.
         expect(potionCalls.vocab - vocab0).toBe(1)
 
-        // Past the window the stale table refreshes — bounded, not permanent.
-        yield* Effect.sleep("2.5 seconds")
+        // The rebuilt tables still answer from the churned corpus.
         const [afterHits] = yield* timed(search.search({ queries: ["reconcile watcher"] }))
         expect(afterHits.length).toBeGreaterThan(0)
-        expect(potionCalls.vocab - vocab0).toBe(2)
       }),
       { config: { formatter: false, lsp: false } },
     ),
