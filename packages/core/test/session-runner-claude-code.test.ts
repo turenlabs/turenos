@@ -94,6 +94,56 @@ const recordingCLI = () => {
   return { executable, argv: () => readFileSync(argv, "utf8").split("\n").filter(Boolean) }
 }
 
+/** Fake CLI that writes each part to stdout separately, pausing between parts so they arrive as distinct chunks. */
+const chunkedCLI = (parts: ReadonlyArray<Buffer>) => {
+  const executable = fakeCLI("")
+  writeFileSync(
+    executable,
+    [
+      "#!/usr/bin/env bun",
+      `const parts = ${JSON.stringify(parts.map((part) => part.toString("base64")))}`,
+      "for (const part of parts) {",
+      '  process.stdout.write(Buffer.from(part, "base64"))',
+      "  await Bun.sleep(5)",
+      "}",
+    ].join("\n") + "\n",
+  )
+  chmodSync(executable, 0o755)
+  return executable
+}
+
+const resultLine = JSON.stringify({
+  type: "result",
+  subtype: "success",
+  uuid: "r",
+  is_error: false,
+  result: "ok",
+  usage: {},
+})
+
+/** One valid stream-json line of exactly `size` bytes including its newline, padded with trailing whitespace. */
+const paddedLine = (size: number) => {
+  const body = JSON.stringify({ type: "system", subtype: "padding" })
+  return Buffer.from(body + " ".repeat(size - body.length - 1) + "\n")
+}
+
+/**
+ * Fake CLI that writes each line from its own file, pausing after each so the last chunk of a line ends at its
+ * newline and the next line never shares a chunk with it.
+ */
+const bulkCLI = (lines: ReadonlyArray<Buffer>) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "forge-claude-code-"))
+  return fakeCLI(
+    lines
+      .map((line, index) => {
+        const file = path.join(dir, `line-${index}.bin`)
+        writeFileSync(file, line)
+        return `cat ${JSON.stringify(file)}\nsleep 0.2`
+      })
+      .join("\n"),
+  )
+}
+
 /** Resolves through the real variant-application path and drains one turn. */
 const spawnArgv = (variant?: string) =>
   Effect.gen(function* () {
@@ -1331,6 +1381,108 @@ describe("SessionRunner claude-code transport", () => {
     }),
   )
 
+  it.effect("accepts a long line just under the cap across many chunks", () =>
+    Effect.gen(function* () {
+      const events = Array.from(yield* collect(bulkCLI([paddedLine(19 * 1024 * 1024), Buffer.from(resultLine + "\n")])))
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      expect(events.at(-1)?.type).toBe("finish")
+    }),
+  )
+
+  it.effect("counts line bytes per line, not across lines", () =>
+    Effect.gen(function* () {
+      const events = Array.from(
+        yield* collect(
+          bulkCLI([
+            paddedLine(7 * 1024 * 1024),
+            paddedLine(7 * 1024 * 1024),
+            paddedLine(7 * 1024 * 1024),
+            Buffer.from(resultLine + "\n"),
+          ]),
+        ),
+      )
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      expect(events.at(-1)?.type).toBe("finish")
+    }),
+  )
+
+  it.effect("accepts a line of exactly the byte cap and rejects one byte more", () =>
+    Effect.gen(function* () {
+      const cap = 20 * 1024 * 1024
+      const accepted = Array.from(yield* collect(bulkCLI([paddedLine(cap), Buffer.from(resultLine + "\n")])))
+      expect(accepted.filter((event) => event.type === "provider-error")).toEqual([])
+      const rejected = Array.from(yield* collect(bulkCLI([paddedLine(cap + 1), Buffer.from(resultLine + "\n")])))
+      expect(rejected.at(-1)).toMatchObject({ type: "provider-error", message: expect.stringContaining("more output") })
+    }),
+  )
+
+  it.effect("keeps multi-byte text intact when chunk boundaries fall inside characters", () =>
+    Effect.gen(function* () {
+      const text = "界".repeat(400)
+      const bytes = Buffer.from(
+        [
+          {
+            type: "stream_event",
+            uuid: "m",
+            event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+          },
+          {
+            type: "stream_event",
+            uuid: "m",
+            event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
+          },
+          { type: "stream_event", uuid: "m", event: { type: "content_block_stop", index: 0 } },
+          { type: "result", subtype: "success", uuid: "r", is_error: false, result: text, usage: {} },
+        ]
+          .map((item) => JSON.stringify(item))
+          .join("\n") + "\n",
+      )
+      const parts = Array.from({ length: Math.ceil(bytes.length / 101) }, (_, index) =>
+        bytes.subarray(index * 101, (index + 1) * 101),
+      )
+      const events = Array.from(yield* collect(chunkedCLI(parts)))
+      expect(events.find((event) => event.type === "text-delta")).toMatchObject({ text })
+      expect(JSON.stringify(events)).not.toContain("\uFFFD")
+    }),
+  )
+
+  it.effect("parses a line whose newline arrives at the start of a later chunk", () =>
+    Effect.gen(function* () {
+      const delta = JSON.stringify({
+        type: "stream_event",
+        uuid: "n",
+        event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "split" } },
+      })
+      const start = JSON.stringify({
+        type: "stream_event",
+        uuid: "n",
+        event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      })
+      const events = Array.from(
+        yield* collect(
+          chunkedCLI([
+            Buffer.from(start),
+            Buffer.from("\n" + delta),
+            Buffer.from("\n\n" + resultLine),
+            Buffer.from("\n"),
+          ]),
+        ),
+      )
+      expect(events.find((event) => event.type === "text-delta")).toMatchObject({ text: "split" })
+      expect(events.at(-1)?.type).toBe("finish")
+    }),
+  )
+
+  it.effect("consumes an unterminated final line on exit", () =>
+    Effect.gen(function* () {
+      const events = Array.from(
+        yield* collect(chunkedCLI([Buffer.from(resultLine.slice(0, 40)), Buffer.from(resultLine.slice(40))])),
+      )
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      expect(events.at(-1)?.type).toBe("finish")
+    }),
+  )
+
   it.effect("treats an is_error result as a failed response even when its subtype says success", () =>
     Effect.gen(function* () {
       const script = replay([
@@ -1738,6 +1890,40 @@ const offerSteer = (steering: ClaudeCodeMcp.Steering) =>
   })
 
 describe("SessionRunner claude-code steering", () => {
+  it.live("recognizes command_lifecycle frames split across stdout chunks", () =>
+    Effect.gen(function* () {
+      const cli = steeringCLI(`
+await next()
+init(steerable)
+text("before", "Working on A")
+const steer = JSON.parse(await next())
+const split = async (value) => {
+  const line = JSON.stringify(value) + "\\n"
+  process.stdout.write(line.slice(0, 25))
+  await Bun.sleep(30)
+  process.stdout.write(line.slice(25))
+  await Bun.sleep(30)
+}
+await split({ type: "command_lifecycle", command_uuid: steer.uuid, state: "queued" })
+await split({ type: "command_lifecycle", command_uuid: steer.uuid, state: "started" })
+text("after", "Heard: " + steer.message.content[0].text)
+result({ user_message_uuids: [steer.uuid] })
+`)
+      const steering = ClaudeCodeMcp.makeSteering()
+      const run = yield* steered(cli.executable, steering).pipe(Effect.forkChild)
+      expect(yield* offerSteer(steering)).toBe(true)
+      const events = yield* Fiber.join(run)
+
+      expect(steering.take()).toEqual(["msg_steer"])
+      expect(
+        events.flatMap((event) =>
+          event.type === "text-delta" ? [event.text] : event.type === "step-start" ? [`step ${event.index}`] : [],
+        ),
+      ).toEqual(["step 0", "Working on A", "step 1", "Heard: Use approach B"])
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+    }),
+  )
+
   it.live("folds a steer into the running CLI turn once the CLI confirms it", () =>
     Effect.gen(function* () {
       const cli = steeringCLI(`

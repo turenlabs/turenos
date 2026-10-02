@@ -1069,7 +1069,8 @@ const pump = (
 ) => {
   const state = adapterState()
   const stdoutDecoder = new TextDecoder()
-  let buffer = ""
+  let pending: string[] = []
+  let pendingBytes = 0
   let rawBytes = 0
   let closed = false
   let terminalEvents: ReadonlyArray<LLMEvent> | undefined
@@ -1172,16 +1173,27 @@ const pump = (
     try {
       rawBytes += chunk.byteLength
       if (rawBytes > RAW_OUTPUT_LIMIT) throw new Error("Claude Code raw output exceeded TurenOS's safety limit")
-      buffer += stdoutDecoder.decode(chunk, { stream: true })
-      if (Buffer.byteLength(buffer, "utf8") > OUTPUT_LINE_LIMIT)
-        throw new Error("Claude Code output line exceeded TurenOS's safety limit")
-      let newline = buffer.indexOf("\n")
+      const text = stdoutDecoder.decode(chunk, { stream: true })
+      pendingBytes += chunk.byteLength
+      if (pendingBytes > OUTPUT_LINE_LIMIT) throw new Error("Claude Code output line exceeded TurenOS's safety limit")
+      // Search only the new text so a long line is not rescanned for every chunk.
+      let newline = text.indexOf("\n")
+      if (newline < 0) {
+        if (text) pending.push(text)
+        return
+      }
+      let start = 0
       while (newline >= 0) {
-        const line = buffer.slice(0, newline).trim()
-        buffer = buffer.slice(newline + 1)
-        newline = buffer.indexOf("\n")
+        pending.push(text.slice(start, newline))
+        const line = pending.join("").trim()
+        pending = []
+        start = newline + 1
+        newline = text.indexOf("\n", start)
         if (line) consume(line)
       }
+      const remainder = text.slice(start)
+      if (remainder) pending.push(remainder)
+      pendingBytes = Buffer.byteLength(remainder, "utf8")
     } catch (error) {
       // Output-limit breach or a malformed envelope: report it and stop reading.
       finish(safeProviderError(error))
@@ -1190,9 +1202,10 @@ const pump = (
   stdout?.on("error", (error) => finish(safeProviderError(error)))
   void child.exit.then((exit) => {
     if (closed) return
-    buffer += stdoutDecoder.decode()
-    const trailing = buffer.trim()
-    buffer = ""
+    pending.push(stdoutDecoder.decode())
+    const trailing = pending.join("").trim()
+    pending = []
+    pendingBytes = 0
     if (trailing) {
       try {
         consume(trailing)
