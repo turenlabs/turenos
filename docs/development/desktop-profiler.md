@@ -43,6 +43,22 @@ bun test src/main/profiler.test.ts src/main/profiler/run.test.ts src/main/profil
 - Ten minutes at 1 ms is roughly half a million samples, near the limit of what DevTools loads comfortably.
 - Built bundles (packaged and `bun run build`) are minified, and function names in the profile are shortened. `bun dev` keeps main and preload output readable. JavaScript source maps are never packed into `app.asar`; the third-party wasm maps ship as extra resources.
 
+## Sidecar memory
+
+The sidecar's V8 heap limit is a fixed 4096 MB under Electron, whatever `--max-old-space-size` says, so the Desktop
+does not pass that flag. A heap watchdog (`packages/forge/src/cli/heap.ts`), which every `forge` command and the
+server's `listen` start, checks every 60 seconds and logs one `heap watchdog: level=<60|75|90>` line the first time
+usage crosses 60%, 75% and 90% of the real limit, with used, total, limit, RSS, external and array-buffer megabytes
+plus the old, new, large-object and code space sizes. A level logs again only after usage drops 5 points below it. The
+watchdog never triggers when the limit is under 1 GiB.
+
+- Find the lines with `grep "heap watchdog:" server.log`. The startup line `heap watchdog: limit=<MB>` reports the limit.
+- Snapshots are opt-in: launch with `FORGE_AUTO_HEAP_SNAPSHOT=1` and one is written to the log directory at 90%. It is
+  best-effort, because serializing a heap at its limit can itself run out of memory.
+- Snapshot files are created with mode 0600. At startup the sidecar deletes all but the newest `heap-*.heapsnapshot` or
+  `Heap.*.heapsnapshot` file, and any older than 7 days, skipping files modified in the last 10 minutes.
+- Snapshots contain keys, passwords and prompts. Never attach one to a bug report; the support bundle skips them.
+
 ## Source
 
 - [`packages/desktop/src/main/profiler.ts`](../../packages/desktop/src/main/profiler.ts)
