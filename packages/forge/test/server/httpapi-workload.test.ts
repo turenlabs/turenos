@@ -5,8 +5,8 @@
 // The subscriber bound is now the EventV2 pubsub bound (8192); a stalled
 // reader must absorb a realistic burst without the stream dying.
 
-import { afterEach, describe, expect } from "bun:test"
-import { Deferred, Duration, Effect, Exit, Layer, Option, Queue, Ref, Schema, Stream } from "effect"
+import { afterEach, describe, expect, test } from "bun:test"
+import { Deferred, Duration, Effect, Exit, Fiber, Layer, Option, Queue, Ref, Schema, Stream } from "effect"
 import { Database } from "@turenlabs/core/database/database"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
@@ -58,6 +58,7 @@ import { reply, TestLLMServer } from "../lib/llm-server"
 import { awaitWithTimeout, pollWithTimeout, testEffect } from "../lib/effect"
 import { ProviderTest } from "../fake/provider"
 import { httpApiLayer, request } from "./httpapi-layer"
+import { encodeEvents } from "../../src/server/routes/instance/httpapi/handlers/global"
 
 const summary = Layer.succeed(
   SessionSummary.Service,
@@ -218,7 +219,7 @@ const EventData = Schema.Struct({
 function frameParser() {
   const decoder = new TextDecoder()
   let buffer = ""
-  const all: { type: string; directory?: string; properties?: Record<string, unknown> }[] = []
+  const all: { type: string; id?: string; directory?: string; properties?: Record<string, unknown> }[] = []
   return {
     all,
     feed(parts: Iterable<Uint8Array>) {
@@ -226,11 +227,14 @@ function frameParser() {
       const frames = buffer.split("\n\n")
       buffer = frames.pop() ?? ""
       const events = frames
-        .filter((frame) => frame.startsWith("data: "))
         .map((frame) => {
-          const envelope = Schema.decodeUnknownSync(EventData)(JSON.parse(frame.slice(6)))
+          // Frames may carry `id:`/`event:` lines before the data payload.
+          const line = frame.split("\n").find((l) => l.startsWith("data: "))
+          if (!line) return undefined
+          const envelope = Schema.decodeUnknownSync(EventData)(JSON.parse(line.slice(6)))
           return { ...envelope.payload, directory: envelope.directory }
         })
+        .filter((event) => event !== undefined)
       all.push(...events)
       return events
     },
@@ -414,7 +418,7 @@ describe("event stream under agent workload", () => {
           // Workload events are scoped to the instance directory — nothing
           // leaks across project boundaries on the global stream.
           const scoped = events.filter(
-            (event) => event.directory !== undefined && event.directory !== "probe",
+            (event) => event.directory !== undefined && event.directory !== "probe" && event.directory !== "global",
           )
           expect(scoped.length).toBeGreaterThan(0)
           expect(scoped.every((event) => event.directory === dir)).toBe(true)
@@ -433,6 +437,196 @@ describe("event stream under agent workload", () => {
         }),
         { config: { formatter: false, lsp: false } },
       ),
+    120_000,
+  )
+
+  const emit = (type: string, i: number) =>
+    GlobalBus.emit("event", { directory: "probe", payload: { type, properties: { i } } })
+
+  // An SSE subscriber opened against the test server with a parsed frame
+  // stream. `until` resolves once a matching frame has been parsed.
+  const subscriber = Effect.fnUntraced(function* (init?: RequestInit) {
+    const response = yield* request(GlobalPaths.event, init)
+    expect(response.status).toBe(200)
+    const chunks = yield* Queue.unbounded<Uint8Array>()
+    const reader = yield* response.stream.pipe(
+      Stream.runForEach((value) => Queue.offer(chunks, value)),
+      Effect.forkScoped,
+    )
+    const parser = frameParser()
+    const until = (check: (event: (typeof parser.all)[number]) => boolean, message: string) =>
+      pollWithTimeout(
+        Effect.gen(function* () {
+          const part = yield* Queue.take(chunks).pipe(
+            Effect.timeoutOrElse({ duration: "2 seconds", orElse: () => Effect.succeed(undefined) }),
+          )
+          parser.feed(part === undefined ? yield* Queue.takeAll(chunks) : [part])
+          return parser.all.some(check) ? (true as const) : undefined
+        }),
+        message,
+        "15 seconds",
+      )
+    return { parser, reader, until }
+  })
+
+  it.live("reconnecting with Last-Event-ID replays missed events instead of resyncing", () =>
+    Effect.gen(function* () {
+      const first = yield* subscriber()
+      yield* first.until(
+        (event) => event.type === "server.connected" && event.properties?.resume === "initial",
+        "first connect never delivered server.connected resume=initial",
+      )
+
+      emit("replay.before", 1)
+      emit("replay.before", 2)
+      yield* first.until(
+        (event) => event.type === "replay.before" && event.properties?.i === 2,
+        "cursor event never arrived",
+      )
+      const cursor = first.parser.all.findLast((event) => event.type === "replay.before")?.id
+      expect(cursor).toBeDefined()
+      yield* Fiber.interrupt(first.reader)
+
+      // Events emitted while the subscriber is gone.
+      emit("replay.during", 1)
+      emit("replay.during", 2)
+
+      const second = yield* subscriber({ headers: { "Last-Event-ID": String(cursor) } })
+      yield* second.until(
+        (event) => event.type === "replay.during" && event.properties?.i === 2,
+        "missed events were not replayed after resume",
+      )
+
+      const connected = second.parser.all[0]
+      expect(connected?.type).toBe("server.connected")
+      expect(connected?.properties?.resume).toBe("ok")
+      // The replay covers the gap exactly: nothing older than the cursor
+      // repeats, and both missed events arrived in order before live ones.
+      const replayed = second.parser.all.filter((event) => event.type === "replay.during")
+      expect(replayed.map((event) => event.properties?.i)).toEqual([1, 2])
+      expect(second.parser.all.some((event) => event.type === "replay.before")).toBe(false)
+
+      emit("replay.after", 1)
+      yield* second.until(
+        (event) => event.type === "replay.after",
+        "live events stopped after backlog replay",
+      )
+
+      // A cursor the server can no longer place asks the client to resync.
+      const stale = yield* subscriber({ headers: { "Last-Event-ID": "evt_stale000000000000000000000" } })
+      yield* stale.until(
+        (event) => event.type === "server.connected",
+        "stale cursor never delivered server.connected",
+      )
+      expect(stale.parser.all[0]?.properties?.resume).toBe("gap")
+    }),
+    60_000,
+  )
+
+  // The 1.0.36 wedge: under burst load the handler ran JSON.stringify once per
+  // event per subscriber, so each attached stream multiplied serialization
+  // cost on the main thread. The frame is rendered once per event and shared.
+  it.live("serializes each event once across subscribers", () =>
+    Effect.gen(function* () {
+      const first = yield* subscriber()
+      const second = yield* subscriber()
+      yield* first.until((event) => event.type === "server.connected", "first subscriber never connected")
+      yield* second.until((event) => event.type === "server.connected", "second subscriber never connected")
+
+      let serializations = 0
+      GlobalBus.emit("event", {
+        directory: "probe",
+        payload: {
+          type: "serialize.once",
+          properties: {
+            get marker() {
+              serializations++
+              return "probe"
+            },
+          },
+        },
+      })
+
+      yield* first.until((event) => event.type === "serialize.once", "first subscriber missed the event")
+      yield* second.until((event) => event.type === "serialize.once", "second subscriber missed the event")
+      expect(serializations).toBe(1)
+    }),
+    60_000,
+  )
+
+  // The other half of the 1.0.36 wedge: the response stream issued one socket
+  // write per event, so a burst multiplied WriteString calls across every
+  // attached subscriber and starved the loop. encodeEvents groups bursts into
+  // bounded writes — each element it emits is one write — without dropping or
+  // reordering frames.
+  test("encodeEvents joins an event burst into bounded socket writes", async () => {
+    const flood = 1000
+    const events = Array.from({ length: flood }, (_, i) => ({
+      directory: "probe",
+      payload: { id: `evt_probe${i}`, type: "workload.flood", properties: { i } },
+    }))
+    const writes = await Effect.runPromise(
+      encodeEvents(Stream.fromIterable(events)).pipe(Stream.runCollect),
+    )
+    expect(writes.length).toBeLessThanOrEqual(Math.ceil(flood / 256))
+    const text = Array.from(writes, (write) => new TextDecoder().decode(write)).join("")
+    const frames = text.split("\n\n").filter((frame) => frame.length > 0)
+    expect(frames).toHaveLength(flood)
+    const parser = frameParser()
+    const parsed = parser.feed(writes)
+    expect(parsed.map((event) => event.properties?.i)).toEqual(Array.from({ length: flood }, (_, i) => i))
+  })
+
+  // Storm scale: every subscriber must receive the whole burst in order, and a
+  // connection that drops mid-life must resume by replay — the wedge made
+  // reconnects trigger a full resync that flashed every tab.
+  it.live("subscribers that drop mid-storm resume by replay instead of resyncing", () =>
+    Effect.gen(function* () {
+      const subscribers = 6
+      const flood = 4000
+      const subs = yield* Effect.forEach(
+        Array.from({ length: subscribers }),
+        () => subscriber(),
+        { concurrency: "unbounded" },
+      )
+      yield* Effect.all(
+        subs.map((sub, i) =>
+          sub.until((event) => event.type === "server.connected", `subscriber ${i} never connected`),
+        ),
+        { concurrency: "unbounded" },
+      )
+
+      for (let i = 0; i < flood; i++) emit("workload.flood", i)
+
+      const dropped = subs[0]
+      yield* Effect.all(
+        subs.map((sub, i) =>
+          sub.until(
+            (event) => event.type === "workload.flood" && event.properties?.i === flood - 1,
+            `subscriber ${i} missed the storm tail`,
+          ),
+        ),
+        { concurrency: "unbounded" },
+      )
+
+      // A subscriber drops after the storm; traffic continues while it is gone.
+      yield* Fiber.interrupt(dropped.reader)
+      emit("workload.during", 1)
+      emit("workload.during", 2)
+
+      const cursor = dropped.parser.all.findLast((event) => event.type === "workload.flood")?.id
+      expect(cursor).toBeDefined()
+      const rejoined = yield* subscriber({ headers: { "Last-Event-ID": String(cursor) } })
+      yield* rejoined.until(
+        (event) => event.type === "workload.during" && event.properties?.i === 2,
+        "missed events were not replayed for the rejoined subscriber",
+      )
+      expect(rejoined.parser.all[0]?.properties?.resume).toBe("ok")
+      expect(rejoined.parser.all.filter((event) => event.type === "workload.during").map((event) => event.properties?.i)).toEqual(
+        [1, 2],
+      )
+      expect(rejoined.parser.all.some((event) => event.type === "workload.flood")).toBe(false)
+    }),
     120_000,
   )
 })

@@ -9,13 +9,33 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import * as Sse from "effect/unstable/encoding/Sse"
 import { EventApi } from "../groups/event"
 
-function eventData(data: unknown): Sse.Event {
-  return {
+// Every subscriber receives the same underlying event, so serializing per
+// connection multiplies JSON.stringify cost by subscriber count — measurable
+// under token-delta bursts with several attached streams. Cache the wire shape
+// on the source event and the rendered frame on the wire object; both die with
+// the event, so the maps cannot grow unboundedly.
+const wires = new WeakMap<object, { id: string; type: string; properties: unknown }>()
+const frames = new WeakMap<object, Sse.Event>()
+
+function wireFor(event: { id: string; type: string; data: unknown }) {
+  const hit = wires.get(event)
+  if (hit) return hit
+  const wire = { id: event.id, type: event.type, properties: event.data }
+  wires.set(event, wire)
+  return wire
+}
+
+function eventData(data: { id: string; type: string; properties: unknown }): Sse.Event {
+  const hit = frames.get(data)
+  if (hit) return hit
+  const value: Sse.Event = {
     _tag: "Event",
     event: "message",
     id: undefined,
     data: JSON.stringify(data),
   }
+  frames.set(data, value)
+  return value
 }
 
 function eventID() {
@@ -64,7 +84,7 @@ function eventResponse(events: EventV2.Interface) {
           event.location?.directory === instance.directory &&
           (event.location.workspaceID === undefined || event.location.workspaceID === workspaceID),
       ),
-      Stream.map((event) => ({ id: event.id, type: event.type, properties: event.data })),
+      Stream.map(wireFor),
     )
     const disposed = Stream.callback<{ id: string; type: string; properties: unknown }>(
       (queue) => {
@@ -101,6 +121,11 @@ function eventResponse(events: EventV2.Interface) {
         Stream.concat(output.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }))),
         Stream.map(eventData),
         Stream.pipeThroughChannel(Sse.encode()),
+        // Join bursts into a single write — under load the stream otherwise
+        // issues one socket write per event, which is what saturates the event
+        // loop when hundreds of events publish per tick.
+        Stream.groupedWithin(256, "10 millis"),
+        Stream.map((chunk) => chunk.join("")),
         Stream.encodeText,
         Stream.ensuring(Effect.logInfo("event disconnected")),
       ),
