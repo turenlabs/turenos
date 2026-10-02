@@ -215,6 +215,46 @@ describeWatcher("Watcher", () => {
     ),
   )
 
+  it.live("ignores nested ignored folders", () =>
+    withTmp(
+      (directory) =>
+        Effect.gen(function* () {
+          const fs = yield* FSUtil.Service
+          const write = (file: string, content = "x") =>
+            fs
+              .makeDirectory(path.dirname(path.join(directory, file)), { recursive: true })
+              .pipe(Effect.andThen(fs.writeFileString(path.join(directory, file), content)))
+          yield* fs.makeDirectory(path.join(directory, "pkg", "node_modules", "dep"), { recursive: true })
+          yield* fs.makeDirectory(path.join(directory, "pkg", "dist"), { recursive: true })
+          yield* fs.makeDirectory(path.join(directory, "pkg", "src"), { recursive: true })
+          yield* fs.makeDirectory(path.join(directory, "pkg", "desktop"), { recursive: true })
+          yield* fs.makeDirectory(path.join(directory, "vendored", ".git"), { recursive: true })
+          yield* ready(directory)
+          const nested = [
+            "pkg/node_modules/dep/index.js",
+            "pkg/dist/out.js",
+            "vendored/.git/HEAD",
+            "late/node_modules/x.js",
+          ].map((file) => path.join(directory, file))
+          for (const file of nested) {
+            yield* noUpdate((event) => event.file === file, write(path.relative(directory, file)))
+          }
+          yield* noUpdate((event) => event.file === path.join(directory, "wt", ".git"), write("wt/.git", "gitdir: x"))
+          const source = path.join(directory, "pkg", "src", "index.ts")
+          expect(
+            yield* nextUpdate((event) => event.file === source && event.event === "add", write("pkg/src/index.ts")),
+          ).toMatchObject({
+            file: source,
+          })
+          const desktop = path.join(directory, "pkg", "desktop", "x.ts")
+          expect(yield* nextUpdate((event) => event.file === desktop, write("pkg/desktop/x.ts"))).toMatchObject({
+            file: desktop,
+          })
+        }),
+      { git: true },
+    ),
+  )
+
   it.live("publishes .git/HEAD events", () =>
     withTmp(
       (directory) =>
