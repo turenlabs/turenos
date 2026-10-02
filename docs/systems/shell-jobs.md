@@ -32,10 +32,14 @@ safety checks all run before job admission. Other sessions cannot read, wait on,
 or cancel the job. There are at most four active jobs per session and 32 per
 server process, counted across all sessions.
 
-Repeating the same tool-call identity reconciles the existing job rather than
-executing the command again. Durable records are observations, not instructions
-to resume after a restart. Lost process ownership is reported as `interrupted`;
-TurenOS never replays the command or terminates a stored command PID on recovery.
+Repeating the same tool-call identity reconciles the existing retained job
+rather than executing the command again. Retention deletes finished jobs whose
+delivery is not `pending` once they are older than `retention.toolOutputDays`
+(14 days by default; `0` keeps them). After a record is deleted, the job reads
+as not found and repeating its identity starts the command again. Durable
+records are observations, not instructions to resume after a restart. Lost
+process ownership is reported as `interrupted`; TurenOS never replays the
+command or terminates a stored command PID on recovery.
 
 ## Source
 
