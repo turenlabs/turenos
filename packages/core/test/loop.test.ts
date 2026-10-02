@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import { eq } from "drizzle-orm"
-import { Effect } from "effect"
+import { Effect, Fiber } from "effect"
+import { TestClock } from "effect/testing"
 import { Database } from "@turenlabs/core/database/database"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -1290,4 +1291,111 @@ describe("Loop", () => {
       expect(finished.outputs["summarize"]).toEqual({ text: "Step failed but continuing: boom", artifacts: [] })
     }),
   )
+
+  describe("listFileChange", () => {
+    const fileLoop = (id: string) =>
+      input(id, { intervalSeconds: undefined, eventTrigger: { type: "file-change", paths: ["src/**"] } })
+
+    const ids = (loops: Loop.Interface["listFileChange"]) =>
+      loops().pipe(Effect.map((found) => found.map((loop) => loop.id)))
+
+    it.effect("returns only active file-change loops", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        yield* loops.create(input("lop_fc_scheduled"))
+        yield* loops.create(
+          input("lop_fc_session", {
+            intervalSeconds: undefined,
+            eventTrigger: { type: "session-end", outcomes: ["failure"] },
+          }),
+        )
+        yield* loops.create(fileLoop("lop_fc_file"))
+        yield* loops.create({ ...fileLoop("lop_fc_paused"), paused: true })
+
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_file"])
+      }),
+    )
+
+    it.effect("reflects create, edit, pause, resume and delete on the next read", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+
+        yield* loops.create(fileLoop("lop_fc_cycle"))
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_cycle"])
+
+        yield* loops.pause("lop_fc_cycle")
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+
+        yield* loops.resume("lop_fc_cycle")
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_cycle"])
+
+        yield* loops.edit({ id: "lop_fc_cycle", intervalSeconds: Loop.MIN_INTERVAL_SECONDS })
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+
+        yield* loops.edit({ id: "lop_fc_cycle", eventTrigger: { type: "file-change", paths: ["*.md"] } })
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_cycle"])
+
+        yield* loops.delete("lop_fc_cycle")
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+      }),
+    )
+
+    it.effect("drops loops that claimDue expires", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        const database = yield* Database.Service
+        yield* loops.create(fileLoop("lop_fc_expiring"))
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_expiring"])
+
+        yield* database.db
+          .update(LoopTable)
+          .set({ expires_at: Date.now() - 1 })
+          .where(eq(LoopTable.id, "lop_fc_expiring"))
+          .run()
+          .pipe(Effect.orDie)
+        yield* loops.claimDue({ owner: "worker" })
+
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+      }),
+    )
+
+    it.effect("stays consistent with the table when a write is interrupted", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+
+        for (const index of [0, 1, 2, 3, 4]) {
+          const fiber = yield* Effect.forkChild(loops.create(fileLoop(`lop_fc_interrupt_${index}`)))
+          yield* Effect.forEach(Array.from({ length: index }), () => Effect.yieldNow)
+          yield* Fiber.interrupt(fiber)
+          const committed = (yield* loops.list())
+            .filter((loop) => loop.id.startsWith("lop_fc_interrupt_"))
+            .map((loop) => loop.id)
+          const cached = (yield* loops.listFileChange()).map((loop) => loop.id)
+          expect(cached.toSorted()).toEqual(committed.toSorted())
+        }
+      }),
+    )
+
+    it.effect("serves a cached result until the TTL picks up writes from another connection", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        const database = yield* Database.Service
+        yield* loops.create(fileLoop("lop_fc_external"))
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_external"])
+
+        yield* database.db
+          .update(LoopTable)
+          .set({ status: "paused" })
+          .where(eq(LoopTable.id, "lop_fc_external"))
+          .run()
+          .pipe(Effect.orDie)
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_external"])
+
+        yield* TestClock.adjust("6 seconds")
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+      }),
+    )
+  })
 })

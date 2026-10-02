@@ -2,7 +2,7 @@ export * as Loop from "./loop"
 
 import { and, asc, count, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm"
 import type { EffectDrizzleSqlite } from "@turenlabs/effect-drizzle-sqlite"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Clock, Context, Effect, Layer, Schema } from "effect"
 import { Database } from "./database/database"
 import { makeGlobalNode } from "./effect/app-node"
 import { Global } from "./global"
@@ -16,6 +16,7 @@ export const MAX_ACTIVE = 50
 export const MAX_ACTIVE_PER_LOCATION = 10
 export const DEFAULT_EXPIRY_MS = 7 * 24 * 60 * 60 * 1_000
 export const DEFAULT_LEASE_MS = 5 * 60 * 1_000
+const FILE_CHANGE_CACHE_TTL_MS = 5_000
 /** The durable workspace used by Automations that are created without a project. */
 export const DEFAULT_LOCATION_DIRECTORY = Global.Path.data
 
@@ -200,6 +201,8 @@ type DatabaseTransaction = Parameters<Parameters<EffectDrizzleSqlite.EffectSQLit
 export interface Interface {
   readonly create: (input: CreateInput) => Effect.Effect<Info, InvalidInputError | ActiveLimitError>
   readonly list: () => Effect.Effect<ReadonlyArray<Info>>
+  /** Active file-change loops, served from a short-lived cache so file events do not query the table. */
+  readonly listFileChange: () => Effect.Effect<ReadonlyArray<Info>>
   readonly get: (id: ID) => Effect.Effect<Info, NotFoundError>
   readonly edit: (input: EditInput) => Effect.Effect<Info, NotFoundError | InvalidInputError | InvalidStateError>
   readonly pause: (id: ID) => Effect.Effect<Info, NotFoundError | InvalidStateError>
@@ -270,6 +273,16 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const database = yield* Database.Service
     const db = Database.primary(database.db)
+
+    // Active file-change loops are read on every file event. Every status or trigger writer in this
+    // layer must invalidate after its commit through Effect.ensuring, so cancellation cannot skip
+    // it (claimDue included, for expiry); the TTL only covers writes from another process.
+    let fileChange: { readonly loops: ReadonlyArray<Info>; readonly expiresAt: number } | undefined
+    let generation = 0
+    const invalidate = () => {
+      generation++
+      fileChange = undefined
+    }
 
     const get = Effect.fn("Loop.get")(function* (id: ID) {
       const row = yield* db.select().from(LoopTable).where(eq(LoopTable.id, id)).get().pipe(Effect.orDie)
@@ -354,7 +367,7 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
       if (row.type === "limit") return yield* new ActiveLimitError({ limit: MAX_ACTIVE })
       return toInfo(row.row!)
     })
@@ -367,6 +380,22 @@ const layer = Layer.effect(
         .all()
         .pipe(Effect.orDie)
       return rows.map(toInfo)
+    })
+
+    const listFileChange = Effect.fn("Loop.listFileChange")(function* () {
+      const now = yield* Clock.currentTimeMillis
+      if (fileChange && fileChange.expiresAt > now) return fileChange.loops
+      const started = generation
+      const rows = yield* db
+        .select()
+        .from(LoopTable)
+        .where(and(eq(LoopTable.status, "active"), eq(LoopTable.trigger_type, "file-change")))
+        .orderBy(desc(LoopTable.time_created), desc(LoopTable.id))
+        .all()
+        .pipe(Effect.orDie)
+      const loops = rows.map(toInfo)
+      if (started === generation) fileChange = { loops, expiresAt: now + FILE_CHANGE_CACHE_TTL_MS }
+      return loops
     })
 
     const edit = Effect.fn("Loop.edit")(function* (input: EditInput) {
@@ -449,7 +478,7 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
       if (result.type === "state") return yield* new InvalidStateError({ id: input.id, message: "Loop has expired" })
       if (result.type === "task")
@@ -491,7 +520,7 @@ const layer = Layer.effect(
             return paused
           }),
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
       if (!row) return yield* new InvalidStateError({ id, message: "Loop changed concurrently" })
       return toInfo(row)
     })
@@ -539,7 +568,7 @@ const layer = Layer.effect(
           .where(eq(LoopTable.id, id))
           .returning()
           .get()
-          .pipe(Effect.orDie)
+          .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
         if (!activated) return yield* new InvalidStateError({ id, message: "Loop changed concurrently" })
         return toInfo(activated)
       }
@@ -563,7 +592,7 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
       if (result.active)
         return yield* new InvalidStateError({ id, message: "Cancel the active run before deleting this Loop" })
       return result.removed
@@ -811,7 +840,8 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
+      // The bulk expiry update and the per-loop update can both expire loops without reporting a count.
       return rows.filter((row): row is NonNullable<typeof row> => row !== undefined).map(toRun)
     })
 
@@ -1017,6 +1047,7 @@ const layer = Layer.effect(
     return Service.of({
       create,
       list,
+      listFileChange,
       get,
       edit,
       pause,
