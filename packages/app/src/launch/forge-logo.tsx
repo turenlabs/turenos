@@ -5,7 +5,8 @@ import { startForgeScene, type ForgeScene } from "./launch-screen"
 
 /**
  * The TurenOS lockup — the Ember Forge mark rendered inline beside the
- * wordmark, already formed (no forge-in), with the ember field drifting.
+ * wordmark, already formed (no forge-in), with the ember field drifting while
+ * the page is active (it pauses when idle, hidden or unfocused).
  * Used where the static Logo would otherwise sit (e.g. the new session
  * landing). Falls back to the static artwork when WebGL is unavailable.
  */

@@ -314,7 +314,7 @@ const layer = Layer.effect(
 
     const queueFileEvent = (file: string) =>
       Effect.gen(function* () {
-        const actives = yield* loops.list()
+        const actives = yield* loops.listFileChange()
         for (const info of actives) {
           if (info.status !== "active") continue
           if (info.eventTrigger?.type !== "file-change") continue

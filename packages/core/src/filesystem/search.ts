@@ -236,7 +236,14 @@ export const fffLayer = Layer.effect(
   }),
 )
 
-const layer = Layer.unwrap(Effect.sync(() => (Flag.FORGE_DISABLE_FFF || !Fff.available() ? ripgrepLayer : fffLayer)))
+// fff runs its own native watcher and git status scan, which the Forge watcher flag does not reach.
+const layer = Layer.unwrap(
+  Effect.gen(function* () {
+    // An unparsable flag value keeps the default finder instead of failing every search.
+    const watcherDisabled = yield* Flag.FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER.pipe(Effect.orElseSucceed(() => false))
+    return Flag.FORGE_DISABLE_FFF || watcherDisabled || !Fff.available() ? ripgrepLayer : fffLayer
+  }),
+)
 
 export const locationLayer = layer
 
