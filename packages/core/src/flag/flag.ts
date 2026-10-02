@@ -58,6 +58,11 @@ export const Flag = {
   get FORGE_EXPERIMENTAL_REFERENCES() {
     return enabledByExperimental("FORGE_EXPERIMENTAL_REFERENCES")
   },
+  // Off until representative-repository cost, crash cleanup and platform gates pass. Deliberately
+  // not enabled by FORGE_EXPERIMENTAL: it hashes the whole worktree when a record is created.
+  get FORGE_EXPERIMENTAL_PRIOR_WORK_CAPTURE() {
+    return truthy("FORGE_EXPERIMENTAL_PRIOR_WORK_CAPTURE")
+  },
   get FORGE_CONFIG_DIR() {
     return process.env["FORGE_CONFIG_DIR"]
   },

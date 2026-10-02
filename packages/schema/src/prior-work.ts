@@ -132,6 +132,20 @@ export const Challenges = Schema.Union([
 export type Challenges = typeof Challenges.Type
 
 /**
+ * Strict canonical anchor form for prepared input: a nonempty POSIX repository-root-relative path
+ * with no absolute or drive prefix, NUL, backslash, empty segment, trailing slash, `.`/`..`
+ * segment, or `.git` component. Stored/output decoding stays lenient; legacy malformed anchors
+ * become unknown applicability rather than read failures.
+ */
+export const canonicalAnchor = (value: string) =>
+  value.isWellFormed() &&
+  !/[\0\\]/.test(value) &&
+  !/^[A-Za-z]:/.test(value) &&
+  value.split("/").every((part) => part !== "" && part !== "." && part !== ".." && part.toLowerCase() !== ".git")
+
+const anchorOf = (location: Location) => ("path" in location ? location.path : location.directory)
+
+/**
  * The prepared, model-readable fields of one revision. Everything else (repository binding,
  * recorder, origin, capture, observation) is filled by the server.
  */
@@ -156,6 +170,14 @@ export const Prepared = Schema.Struct({
           issue: "challenges are required for refutations and not allowed otherwise",
         },
     ),
+  )
+  .check(
+    Schema.makeFilter((value) => {
+      const index = value.locations.findIndex((location) => !canonicalAnchor(anchorOf(location)))
+      if (index === -1) return true
+      const location = value.locations[index]!
+      return { path: ["locations", index, "path" in location ? "path" : "directory"], issue: "noncanonical anchor" }
+    }),
   )
   .check(Schema.makeFilter((value) => bytes(JSON.stringify(value)) <= Limits.revisionBytes, { expected: BYTE_LIMIT }))
   .annotate({ identifier: "PriorWork.Prepared" })
@@ -203,23 +225,130 @@ export const AdoptOrigin = Schema.Struct({
 }).annotate({ identifier: "PriorWork.AdoptOrigin" })
 export interface AdoptOrigin extends Schema.Schema.Type<typeof AdoptOrigin> {}
 
+/** Upper bound on one stored baseline, independent of the 16 KiB prepared fields. */
+export const CAPTURE_BYTES = 32 * 1024
+
+const ObjectID = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/))
+
 /**
- * Whole-repository capture at recording time. Rollout step 1 stores none; applicability fills it.
+ * Result for one original anchor, indexed by position in the recording revision's `locations`.
+ * Never repeats the anchor path. A directory's `contains_symlink` is computed from its enumerated
+ * subtree; an equal directory containing a link cannot prove its targets unchanged.
  */
-export const Capture = Schema.Struct({
-  commit: optional(Schema.String),
-  snapshot_tree: optional(Schema.String),
-  snapshot_id: optional(Schema.String),
-  completeness: Schema.Union([
-    Schema.Struct({ state: Schema.Literal("complete") }),
-    Schema.Struct({
-      state: Schema.Literal("partial"),
-      reason: Schema.String,
-      excluded: Schema.Array(Schema.String),
-    }),
+export const CaptureAnchor = Schema.Union([
+  Schema.Struct({
+    state: Schema.Literal("entry"),
+    mode: Schema.Literals(["100644", "100755", "120000"]),
+    oid: ObjectID,
+  }),
+  Schema.Struct({ state: Schema.Literal("tree"), oid: ObjectID, contains_symlink: Schema.Boolean }),
+  Schema.Struct({ state: Schema.Literal("absent") }),
+  Schema.Struct({
+    state: Schema.Literal("unknown"),
+    reason: Schema.Literals(["noncanonical", "excluded", "symlink_parent", "outside_universe", "indeterminate"]),
+  }),
+]).annotate({ identifier: "PriorWork.CaptureAnchor" })
+export type CaptureAnchor = typeof CaptureAnchor.Type
+
+export const CaptureUnavailableReason = Schema.Literals([
+  "disabled",
+  "platform",
+  "git_capability",
+  "identity",
+  "lock",
+  "timeout",
+  "entry_limit",
+  "read_limit",
+  "output_limit",
+  "scratch_limit",
+  "race",
+  "special_file",
+  "unmerged",
+  "sparse_checkout",
+  "partial_clone",
+  "object_format",
+  "process",
+  "io",
+  "metadata_limit",
+]).annotate({ identifier: "PriorWork.CaptureUnavailableReason" })
+export type CaptureUnavailableReason = typeof CaptureUnavailableReason.Type
+
+/**
+ * Versioned whole-repository comparison fingerprint attempted when a live record is first
+ * created and carried forward unchanged by every later revision. Raw-byte identifiers are
+ * comparison metadata, not file contents, and never prove Git-normalized content or safety.
+ */
+export const Capture = Schema.Union([
+  Schema.Struct({
+    scheme: Schema.Literal("fp_v1"),
+    capture_revision: Schema.Literal(1),
+    status: Schema.Literal("available"),
+    object_format: Schema.Literal("sha1"),
+    head: optional(Schema.Struct({ commit: ObjectID, tree: ObjectID })),
+    root: ObjectID,
+    completeness: Schema.Union([
+      Schema.Struct({ state: Schema.Literal("complete") }),
+      Schema.Struct({
+        state: Schema.Literal("partial"),
+        reasons: Schema.Array(
+          Schema.Literals([
+            "oversized",
+            "unreadable",
+            "path_encoding",
+            "gitlink",
+            "embedded_repository",
+            "symlink_parent",
+            "alias",
+          ]),
+        ).check(Schema.isMaxLength(7)),
+        excluded: NonNegativeInt,
+        /** At most 8 samples, each at most 1 KiB of JSON-encoded bytes. Oversized samples are omitted. */
+        samples: Schema.Array(
+          Schema.String.check(Schema.makeFilter((value) => bytes(JSON.stringify(value)) <= 1024)),
+        ).check(Schema.isMaxLength(8)),
+        omitted: Schema.Boolean,
+      }),
+    ]),
+    anchors: Schema.Array(CaptureAnchor).check(Schema.isMaxLength(Limits.locations)),
+  }),
+  Schema.Struct({
+    scheme: Schema.Literal("fp_v1"),
+    capture_revision: Schema.Literal(1),
+    status: Schema.Literal("unavailable"),
+    reason: CaptureUnavailableReason,
+  }),
+]).annotate({ identifier: "PriorWork.Capture" })
+export type Capture = typeof Capture.Type
+
+/**
+ * Whether a recorded revision's original observation context still matches the reader's
+ * worktree. `unchanged_since_recording` never means verified, safe, checked at this tree, or a
+ * reason to skip investigation.
+ */
+export const Applicability = Schema.Struct({
+  record_id: RecordID,
+  revision: PositiveInt,
+  status: Schema.Literals(["unchanged_since_recording", "stale", "unknown"]),
+  reason: Schema.Literals([
+    "no_baseline",
+    "baseline_unavailable",
+    "current_unavailable",
+    "incompatible",
+    "partial",
+    "record_deleted",
+    "root_changed",
+    "root_unchanged",
+    "anchor_changed",
+    "anchor_unknown",
+    "anchors_unchanged",
   ]),
-}).annotate({ identifier: "PriorWork.Capture" })
-export interface Capture extends Schema.Schema.Type<typeof Capture> {}
+}).annotate({ identifier: "PriorWork.Applicability" })
+export interface Applicability extends Schema.Schema.Type<typeof Applicability> {}
+
+export const ApplicabilityRequest = Schema.Struct({
+  refs: Schema.Array(RevisionRef).check(Schema.isMaxLength(Limits.pageSize)),
+}).annotate({ identifier: "PriorWork.ApplicabilityRequest" })
+export interface ApplicabilityRequest extends Schema.Schema.Type<typeof ApplicabilityRequest> {}
 
 /** Where the check ran, only as far as the server can prove. Always `unknown` in v1. */
 export const Observation = Schema.Struct({
@@ -362,7 +491,13 @@ export class NotFound extends Schema.TaggedErrorClass<NotFound>()("PriorWork.Not
 }
 
 export class Conflict extends Schema.TaggedErrorClass<Conflict>()("PriorWork.Conflict", {
-  reason: Schema.Literals(["stale_head", "idempotency_mismatch", "already_adopted", "record_not_active"]),
+  reason: Schema.Literals([
+    "stale_head",
+    "idempotency_mismatch",
+    "already_adopted",
+    "record_not_active",
+    "repository_changed",
+  ]),
 }) {
   override get message() {
     return `Prior work conflict (${this.reason})`

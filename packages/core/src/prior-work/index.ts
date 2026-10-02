@@ -1,4 +1,5 @@
 import { createHash } from "crypto"
+import path from "path"
 import { types } from "node:util"
 import type { EffectDrizzleSqlite } from "@turenlabs/effect-drizzle-sqlite"
 import { PriorWork } from "@turenlabs/schema/prior-work"
@@ -6,11 +7,16 @@ import { and, desc, eq, inArray, lt, sql } from "drizzle-orm"
 import { Context, Effect, Layer, Option, Result, Schema, SchemaIssue } from "effect"
 import { Database } from "../database/database"
 import { makeLocationNode } from "../effect/app-node"
+import { Flag } from "../flag/flag"
 import { FSUtil } from "../fs-util"
+import { Git } from "../git"
+import { GitFingerprint } from "../git-fingerprint"
+import { Global } from "../global"
 import { Location } from "../location"
 import { Project } from "../project"
 import { ProjectTable } from "../project/sql"
-import { SecretPlaceholder } from "../secret-placeholder"
+import { SecretRedaction } from "../secret-redaction"
+import { evaluate, bounded, decodeCapture, unavailable } from "./applicability"
 import {
   PriorWorkEventTable,
   PriorWorkIdempotencyTable,
@@ -31,6 +37,8 @@ export type HumanActor = PriorWork.HumanActor
 export type Written = PriorWork.Written
 export type Detail = PriorWork.Detail
 export type Page = PriorWork.Page
+export type Capture = PriorWork.Capture
+export type Applicability = PriorWork.Applicability
 export const InvalidInput = PriorWork.InvalidInput
 export type InvalidInput = PriorWork.InvalidInput
 export const NotFound = PriorWork.NotFound
@@ -65,6 +73,12 @@ export interface Interface {
   readonly link: (target: RepositoryID, actor: HumanActor) => Effect.Effect<RepositoryID, Failure>
   readonly get: (input: unknown) => Effect.Effect<Detail, Failure>
   readonly search: (input: unknown) => Effect.Effect<Page, Failure>
+  /**
+   * Applicability of exact authorized record revisions against this Location's worktree. Captures
+   * at most once per call, outside any transaction, and only when an authorized record remains.
+   * Unauthorized or unknown references fail as `NotFound`; deleted records are `unknown`.
+   */
+  readonly applicability: (input: unknown) => Effect.Effect<readonly Applicability[], Failure>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@forge/PriorWork") {}
@@ -75,6 +89,12 @@ type RevisionRow = typeof PriorWorkRevisionTable.$inferSelect
 type OriginRow = typeof PriorWorkOriginTable.$inferSelect
 type Incarnation = { readonly dev: number; readonly ino: number; readonly birthtime: number }
 type OriginValues = Omit<typeof PriorWorkOriginTable.$inferInsert, "record_id" | "repository_id">
+type Observed = {
+  readonly incarnation: Incarnation | undefined
+  readonly worktree: { readonly path: string; readonly dev: number; readonly ino: number } | undefined
+  /** The discovered repository, present only while its common directory is the bound store. */
+  readonly repository: Git.Repository | undefined
+}
 
 const MAX_ERROR_PATHS = 16
 
@@ -85,7 +105,11 @@ const layer = Layer.effect(
     const db = Database.primary(database.db)
     const fs = yield* FSUtil.Service
     const location = yield* Location.Service
+    const git = yield* Git.Service
+    const fingerprint = yield* GitFingerprint.Service
+    const global = yield* Global.Service
     const projectID = location.project.id
+    const scratch = path.join(global.cache, "prior-work", "captures")
 
     // The canonical common directory's filesystem incarnation. Its path only locates a binding.
     // Anything short of a device, inode, and birth time leaves the Location unbound: it sees no
@@ -106,6 +130,63 @@ const layer = Layer.effect(
 
     // Drizzle failures retain query parameters; never expose them through a domain failure.
     const storageFailure = () => Effect.die(new Error("Prior work storage unavailable"))
+
+    // Worktree-root identity, compared before and after capture so a replaced root fails closed.
+    const worktreeIdentity = Effect.fn("PriorWork.worktreeIdentity")(function* () {
+      const real = yield* fs.realPath(location.project.directory).pipe(Effect.option)
+      if (Option.isNone(real)) return undefined
+      const info = yield* fs.stat(real.value).pipe(Effect.option)
+      const ino = Option.isSome(info) ? Option.getOrUndefined(info.value.ino) : undefined
+      if (Option.isNone(info) || info.value.type !== "Directory" || ino === undefined) return undefined
+      return { path: real.value, dev: info.value.dev, ino }
+    })
+
+    /**
+     * Repository identity as the create and applicability paths must recheck it: the common
+     * directory's incarnation, the worktree root's identity, and whether the worktree's Git
+     * directory still resolves to the Location's bound common directory. Runs whether or not
+     * capture is enabled.
+     */
+    const observe = Effect.fn("PriorWork.observe")(function* () {
+      const found = yield* incarnation()
+      const worktree = yield* worktreeIdentity()
+      const discovered = location.vcs ? yield* git.repo.discover(location.project.directory) : undefined
+      const store = location.vcs ? yield* fs.realPath(location.vcs.store).pipe(Effect.option) : Option.none()
+      const common = discovered ? yield* fs.realPath(discovered.commonDirectory).pipe(Effect.option) : Option.none()
+      // Discovery walks upward, so a nested worktree that lost its `.git` would resolve to an
+      // enclosing repository; the discovered worktree must be this Location's own root.
+      const top = discovered ? yield* fs.realPath(discovered.worktree).pipe(Effect.option) : Option.none()
+      const related =
+        Option.isSome(store) &&
+        Option.isSome(common) &&
+        store.value === common.value &&
+        Option.isSome(top) &&
+        top.value === worktree?.path
+      return { incarnation: found, worktree, repository: related ? discovered : undefined } satisfies Observed
+    })
+
+    /**
+     * A fresh fingerprint of the observed worktree. Runs outside every transaction and never
+     * fails: disabled, unsupported or failed captures are stored as unavailable. `changed` reports
+     * that the repository identity moved under the capture, which callers must treat as a
+     * conflict rather than a storable result.
+     */
+    const capture = Effect.fn("PriorWork.capture")(function* (observed: Observed, anchors: readonly string[]) {
+      if (!Flag.FORGE_EXPERIMENTAL_PRIOR_WORK_CAPTURE) return { baseline: unavailable("disabled"), changed: false }
+      if (!GitFingerprint.supportedPlatform()) return { baseline: unavailable("platform"), changed: false }
+      if (!observed.repository) return { baseline: unavailable("identity"), changed: true }
+      const result = yield* fingerprint.capture({ repository: observed.repository, scratch, anchors })
+      if (result.status === "unavailable") return { baseline: bounded(result), changed: result.reason === "identity" }
+      // The primitive's own identities must be the ones this Location observed.
+      const same =
+        observed.incarnation !== undefined &&
+        observed.worktree !== undefined &&
+        result.identity.common.dev === observed.incarnation.dev &&
+        result.identity.common.ino === observed.incarnation.ino &&
+        result.identity.worktree.dev === observed.worktree.dev &&
+        result.identity.worktree.ino === observed.worktree.ino
+      return { baseline: bounded(result), changed: !same }
+    })
 
     const transact = <A, E>(body: (tx: Transaction) => Effect.Effect<A, E>) =>
       db
@@ -214,25 +295,27 @@ const layer = Layer.effect(
       tx: Transaction,
       repositories: readonly RepositoryID[],
       prepared: PriorWork.Prepared,
-      binding: RepositoryID,
+      binding: RepositoryID | undefined,
       previous?: RevisionRow,
     ) {
       const source =
         prepared.challenges && "unresolved" in prepared.challenges ? prepared.challenges.unresolved : undefined
-      const adopted = source
-        ? yield* tx
-            .select({ id: PriorWorkOriginTable.record_id })
-            .from(PriorWorkOriginTable)
-            .where(
-              and(
-                eq(PriorWorkOriginTable.repository_id, binding),
-                eq(PriorWorkOriginTable.source_kind, source.source),
-                eq(PriorWorkOriginTable.source_id, source.source_id),
-              ),
-            )
-            .get()
-            .pipe(Effect.orDie)
-        : undefined
+      // Without a binding there are no origins to adopt from.
+      const adopted =
+        source && binding
+          ? yield* tx
+              .select({ id: PriorWorkOriginTable.record_id })
+              .from(PriorWorkOriginTable)
+              .where(
+                and(
+                  eq(PriorWorkOriginTable.repository_id, binding),
+                  eq(PriorWorkOriginTable.source_kind, source.source),
+                  eq(PriorWorkOriginTable.source_id, source.source_id),
+                ),
+              )
+              .get()
+              .pipe(Effect.orDie)
+          : undefined
       const checked = adopted
         ? { ...prepared, challenges: { resolved: { record_id: adopted.id, revision: 1 } } }
         : prepared
@@ -357,6 +440,7 @@ const layer = Layer.effect(
       prepared: PriorWork.Prepared,
       actor: Actor,
       origin: OriginValues,
+      baseline: PriorWork.Capture | null,
       now: number,
     ) {
       const id = PriorWork.RecordID.create()
@@ -376,7 +460,7 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
       yield* tx
         .insert(PriorWorkRevisionTable)
-        .values(revisionValues(id, 1, prepared, { basis: "unknown" }, actor, now))
+        .values(revisionValues(id, 1, prepared, { basis: "unknown" }, baseline, actor, now))
         .run()
         .pipe(Effect.orDie)
       yield* tx
@@ -396,7 +480,8 @@ const layer = Layer.effect(
     })
 
     // Writes the next revision of `record` whose head must still be `head`. A new revision keeps
-    // the previous revision's observation: a prose correction never refreshes it.
+    // the previous revision's observation and original recording baseline, including its
+    // `capture_revision`: neither a prose correction nor a challenge resolution refreshes them.
     const append = Effect.fn("PriorWork.append")(function* (
       tx: Transaction,
       record: RecordRow,
@@ -424,7 +509,17 @@ const layer = Layer.effect(
       if (!moved) return yield* new PriorWork.Conflict({ reason: "stale_head" })
       yield* tx
         .insert(PriorWorkRevisionTable)
-        .values(revisionValues(record.id, revision, prepared, previous.observation, actor, now))
+        .values(
+          revisionValues(
+            record.id,
+            revision,
+            prepared,
+            previous.observation,
+            previous.recording_capture ?? null,
+            actor,
+            now,
+          ),
+        )
         .run()
         .pipe(Effect.orDie)
       yield* event(tx, {
@@ -527,21 +622,63 @@ const layer = Layer.effect(
 
       record: Effect.fn("PriorWork.record")(function* (input: unknown, actor: Actor) {
         const request = yield* parse(PriorWork.RecordRequest, input)
-        const found = yield* incarnation()
         const hash = intent("record", request)
+        if (request.target) {
+          const target = request.target
+          const found = yield* incarnation()
+          const now = Date.now()
+          return yield* transact((tx) =>
+            Effect.gen(function* () {
+              const binding = yield* ensureBinding(tx, found, now)
+              const repositories = yield* authorized(tx, binding)
+              const replayed = yield* replay(tx, repositories, actor, request.key, hash)
+              if (replayed) return replayed
+              // revise checks references against the previous head so retained tombstones stay valid.
+              const written = yield* revise(tx, repositories, target, request.prepared, actor, now)
+              yield* remember(tx, actor, request.key, hash, written, now)
+              return written
+            }),
+          )
+        }
+
+        // Initial live creation: resolve replay, authorization and references first, observing
+        // the repository identity, without creating a binding before capture.
+        const before = yield* observe()
+        const early = yield* read((tx) =>
+          Effect.gen(function* () {
+            const binding = yield* findBinding(tx, before.incarnation)
+            const repositories = yield* authorized(tx, binding)
+            const replayed = yield* replay(tx, repositories, actor, request.key, hash)
+            if (replayed) return { replayed, binding }
+            // Advisory only: the write transaction rechecks and adopts against its own binding.
+            yield* checkReferences(tx, repositories, request.prepared, binding)
+            return { replayed: undefined, binding }
+          }),
+        )
+        if (early.replayed) return early.replayed
+        if (!before.incarnation) return yield* new PriorWork.Unsupported({ reason: "unbound" })
+        if (!before.repository) return yield* new PriorWork.Conflict({ reason: "repository_changed" })
+
+        const captured = yield* capture(before, request.prepared.locations.map(anchorPath))
+        const baseline = captured.baseline
+
+        const after = yield* observe()
+        if (captured.changed || !sameObservation(before, after))
+          return yield* new PriorWork.Conflict({ reason: "repository_changed" })
         const now = Date.now()
         return yield* transact((tx) =>
           Effect.gen(function* () {
-            const binding = yield* ensureBinding(tx, found, now)
+            const current = yield* findBinding(tx, after.incarnation)
+            // An existing binding must not have changed; an absent one may be created only now.
+            if (early.binding && current !== early.binding)
+              return yield* new PriorWork.Conflict({ reason: "repository_changed" })
+            const binding = current ?? (yield* ensureBinding(tx, after.incarnation, now))
             const repositories = yield* authorized(tx, binding)
+            // A concurrent exact retry may have committed while this one captured.
             const replayed = yield* replay(tx, repositories, actor, request.key, hash)
             if (replayed) return replayed
-            const prepared = request.target
-              ? request.prepared
-              : yield* checkReferences(tx, repositories, request.prepared, binding)
-            const written = request.target
-              ? yield* revise(tx, repositories, request.target, prepared, actor, now)
-              : yield* create(tx, binding, prepared, actor, liveOrigin(actor, now), now)
+            const prepared = yield* checkReferences(tx, repositories, request.prepared, binding)
+            const written = yield* create(tx, binding, prepared, actor, liveOrigin(actor, now), baseline, now)
             yield* remember(tx, actor, request.key, hash, written, now)
             return written
           }),
@@ -586,6 +723,8 @@ const layer = Layer.effect(
                 source_session_id: request.origin.source_session_id ?? null,
                 time_observed: request.origin.time_observed,
               },
+              // The current worktree cannot stand in for a historical source tree.
+              null,
               now,
             )
             yield* resolvePending(
@@ -779,6 +918,69 @@ const layer = Layer.effect(
           }),
         )
       }),
+
+      applicability: Effect.fn("PriorWork.applicability")(function* (input: unknown) {
+        const request = yield* parse(PriorWork.ApplicabilityRequest, input)
+        const before = yield* observe()
+        const load = (incarnation: Incarnation | undefined) =>
+          read((tx) =>
+            Effect.gen(function* () {
+              const repositories = yield* authorized(tx, yield* findBinding(tx, incarnation))
+              return yield* Effect.forEach(request.refs, (ref, index) =>
+                Effect.gen(function* () {
+                  const record = yield* findRecord(tx, repositories, ref.record_id, `refs.${index}.record_id`)
+                  if (record.state === "deleted") return { ref, record, original: undefined, evaluated: undefined }
+                  const evaluated = yield* findRevision(tx, record.id, ref.revision)
+                  if (!evaluated) return yield* new PriorWork.NotFound({ path: `refs.${index}.revision` })
+                  const original = ref.revision === 1 ? evaluated : yield* findRevision(tx, record.id, 1)
+                  return { ref, record, original, evaluated }
+                }),
+              )
+            }),
+          )
+        const candidates = yield* load(before.incarnation)
+        const live = candidates.filter((item) => item.original && item.evaluated)
+        const anchors = [
+          ...new Set(
+            live.flatMap((item) => [...item.original!.locations, ...item.evaluated!.locations].map(anchorPath)),
+          ),
+        ]
+        // Capture only when some evaluated revision has a complete baseline to compare against:
+        // empty, deleted-only, null, unavailable or partial baselines are unknown regardless.
+        const needed = live.some((item) => {
+          const baseline = decodeCapture(item.original!.recording_capture)
+          return baseline?.status === "available" && baseline.completeness.state === "complete"
+        })
+        const captured = needed
+          ? yield* capture(before, anchors)
+          : { baseline: unavailable("disabled"), changed: false }
+        const current = captured.baseline
+        const after = yield* observe()
+        // Recheck authorization and the evaluated revisions after capture.
+        const recheck = yield* load(after.incarnation)
+        const changed =
+          captured.changed ||
+          !sameObservation(before, after) ||
+          recheck.some((item, index) => item.record.state !== candidates[index]!.record.state)
+        return candidates.map((item): Applicability => {
+          const base = { record_id: item.ref.record_id, revision: item.ref.revision }
+          if (!item.original || !item.evaluated) return { ...base, status: "unknown", reason: "record_deleted" }
+          if (changed) return { ...base, status: "unknown", reason: "current_unavailable" }
+          const anchor = (value: string) =>
+            current.status === "available" ? current.anchors[anchors.indexOf(value)] : undefined
+          return {
+            ...base,
+            ...evaluate({
+              kind: item.record.kind,
+              original: item.original.locations.map(anchorPath),
+              evaluated: item.evaluated.locations.map(anchorPath),
+              baseline: decodeCapture(item.original.recording_capture),
+              current,
+              anchor,
+            }),
+          }
+        })
+      }),
     })
   }),
 )
@@ -786,8 +988,31 @@ const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Database.node, FSUtil.node, Location.node],
+  deps: [Database.node, FSUtil.node, Git.node, GitFingerprint.node, Global.node, Location.node],
 })
+
+function anchorPath(location: PriorWork.Location) {
+  return "path" in location ? location.path : location.directory
+}
+
+function sameObservation(a: Observed, b: Observed) {
+  return (
+    a.worktree !== undefined &&
+    b.worktree !== undefined &&
+    a.worktree.path === b.worktree.path &&
+    a.worktree.dev === b.worktree.dev &&
+    a.worktree.ino === b.worktree.ino &&
+    a.repository !== undefined &&
+    b.repository !== undefined &&
+    a.repository.gitDirectory === b.repository.gitDirectory &&
+    a.repository.commonDirectory === b.repository.commonDirectory &&
+    a.incarnation !== undefined &&
+    b.incarnation !== undefined &&
+    a.incarnation.dev === b.incarnation.dev &&
+    a.incarnation.ino === b.incarnation.ino &&
+    a.incarnation.birthtime === b.incarnation.birthtime
+  )
+}
 
 /**
  * Screens raw input for secret placeholders before decoding, then decodes it. Failures carry a
@@ -798,7 +1023,7 @@ function parse<S extends Schema.Decoder<unknown> & { readonly fields: Schema.Str
   schema: S,
   input: unknown,
 ) {
-  if (SecretPlaceholder.containsPlaceholder(input))
+  if (masked(input))
     return Effect.fail(new PriorWork.InvalidInput({ reason: "placeholder", paths: placeholderFields(schema, input) }))
   const decoded = Schema.decodeUnknownResult(schema, { errors: "all" })(input)
   if (Result.isSuccess(decoded)) return Effect.succeed(decoded.success)
@@ -819,8 +1044,18 @@ function placeholderFields(schema: { readonly fields: Schema.Struct.Fields }, in
     const descriptor = Object.getOwnPropertyDescriptor(input, key)
     if (!descriptor) return false
     if (!("value" in descriptor)) return true
-    return SecretPlaceholder.containsPlaceholder(descriptor.value)
+    return masked(descriptor.value)
   })
+}
+
+// The secret-output guard's walk refuses what it cannot read safely (cycles, proxies, accessors,
+// class instances, non-finite numbers, bigints, values past its budgets) by throwing. Treat that as
+// a placeholder too, so prior-work input fails closed exactly where the tool guard does.
+function masked(value: unknown) {
+  return Result.getOrElse(
+    Result.try(() => SecretRedaction.containsPlaceholder(value)),
+    () => true,
+  )
 }
 
 function collect(issue: SchemaIssue.Issue, path: readonly PropertyKey[]): { path: string; tooLarge: boolean }[] {
@@ -879,6 +1114,7 @@ function revisionValues(
   revision: number,
   prepared: PriorWork.Prepared,
   observation: PriorWork.Observation,
+  baseline: PriorWork.Capture | null,
   actor: Actor,
   now: number,
 ): typeof PriorWorkRevisionTable.$inferInsert {
@@ -893,8 +1129,7 @@ function revisionValues(
     evidence: prepared.evidence,
     challenges: prepared.challenges ?? null,
     derived_from: prepared.derived_from,
-    // Rollout step 2 (applicability) fills the whole-repository capture.
-    recording_capture: null,
+    recording_capture: baseline,
     observation,
     recorded_by: recordedBy(actor),
     time_recorded: now,
@@ -927,7 +1162,7 @@ function revisionFromRow(row: RevisionRow): PriorWork.Revision {
     evidence: row.evidence,
     challenges: row.challenges ?? undefined,
     derivedFrom: row.derived_from,
-    recordingCapture: row.recording_capture ?? undefined,
+    recordingCapture: decodeCapture(row.recording_capture),
     observation: row.observation,
     recordedBy: row.recorded_by,
     timeRecorded: row.time_recorded,
