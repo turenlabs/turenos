@@ -125,6 +125,7 @@
     "@turenlabs/minidump-wasm": "workspace:*",
     "@turenlabs/pdf-inspect-wasm": "workspace:*",
     "@turenlabs/sourcemap-wasm": "workspace:*",
+    "@turenlabs/script-deobfuscate-wasm": "workspace:*",
     "@turenlabs/sqlite-inspect-wasm": "workspace:*",
     "@turenlabs/squashfs-wasm": "workspace:*",
     "@turenlabs/unicode-audit-wasm": "workspace:*",

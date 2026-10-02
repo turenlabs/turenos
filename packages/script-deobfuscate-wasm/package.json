@@ -1,0 +1,24 @@
+{
+  "name": "@turenlabs/script-deobfuscate-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": "./dist/turen_script_deobfuscate_wasm.js",
+  "bin": {
+    "script-deobfuscate": "./cli.mjs"
+  },
+  "files": [
+    "dist/",
+    "cli.mjs",
+    "cli-worker.mjs",
+    "licenses/",
+    "LICENSE",
+    "LICENSE-OXC",
+    "NOTICE",
+    "README.md",
+    "SOURCE.json",
+    "SHA256SUMS",
+    "THIRD_PARTY_LICENSES.json"
+  ]
+}

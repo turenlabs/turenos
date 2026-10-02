@@ -84,6 +84,9 @@ Current implemented targets:
   and DIRC inspection.
 - `tools/sourcemap`: source-map decode/lookup/reverse-lookup/source
   extraction.
+- `tools/script-deobfuscate`: bounded, static JavaScript constant recovery
+  and payload evidence extraction. Never execute analyzed source; intrinsic
+  decoding requires explicit assumptions and closed literal contexts.
 - `tools/wasm-toolkit`: wat print/compile, WASM feature detection, and
   producers/component metadata.
 - `tools/macos-artifacts`: plist, FSEvents, unified-log tracev3, and

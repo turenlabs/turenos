@@ -85,6 +85,7 @@
   },
   "devDependencies": {
     "@actions/artifact": "6.2.1",
+    "@turenlabs/script-deobfuscate-wasm": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/mime-types": "3.0.1",
     "@typescript/native-preview": "catalog:",

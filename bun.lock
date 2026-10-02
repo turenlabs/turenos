@@ -13,6 +13,7 @@
       "devDependencies": {
         "@actions/artifact": "6.2.1",
         "@tsconfig/bun": "catalog:",
+        "@turenlabs/script-deobfuscate-wasm": "workspace:*",
         "@types/mime-types": "3.0.1",
         "@typescript/native-preview": "catalog:",
         "glob": "13.0.5",
@@ -236,6 +237,7 @@
         "@turenlabs/rebuild-timeline-wasm": "workspace:*",
         "@turenlabs/rtf-inspect-wasm": "workspace:*",
         "@turenlabs/schema": "workspace:*",
+        "@turenlabs/script-deobfuscate-wasm": "workspace:*",
         "@turenlabs/sourcemap-wasm": "workspace:*",
         "@turenlabs/sqlite-inspect-wasm": "workspace:*",
         "@turenlabs/squashfs-wasm": "workspace:*",
@@ -730,6 +732,13 @@
       "devDependencies": {
         "@types/bun": "catalog:",
         "@types/semver": "^7.5.8",
+      },
+    },
+    "packages/script-deobfuscate-wasm": {
+      "name": "@turenlabs/script-deobfuscate-wasm",
+      "version": "0.1.0",
+      "bin": {
+        "script-deobfuscate": "./cli.mjs",
       },
     },
     "packages/sdk-next": {
@@ -2088,6 +2097,8 @@
     "@turenlabs/schema": ["@turenlabs/schema@workspace:packages/schema"],
 
     "@turenlabs/script": ["@turenlabs/script@workspace:packages/script"],
+
+    "@turenlabs/script-deobfuscate-wasm": ["@turenlabs/script-deobfuscate-wasm@workspace:packages/script-deobfuscate-wasm"],
 
     "@turenlabs/sdk": ["@turenlabs/sdk@workspace:packages/sdk/js"],
 

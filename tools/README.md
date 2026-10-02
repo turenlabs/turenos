@@ -73,6 +73,9 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   packfile/delta, pack-index, DIRC index, and bundle inspection.
 - [`tools/sourcemap`](sourcemap): source-map decode, lookup,
   reverse-lookup, embedded-source extraction, and index-map flattening.
+- [`tools/script-deobfuscate`](script-deobfuscate): bounded static JavaScript
+  constant recovery, optional intrinsic decoding, readable printing, and
+  non-executing payload evidence extraction, with a positional `js` CLI.
 - [`tools/wasm-toolkit`](wasm-toolkit): deeper WASM analysis on the
   Bytecode Alliance crates — wat printing/compile, feature detection, and
   producers/component metadata.

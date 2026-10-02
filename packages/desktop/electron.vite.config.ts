@@ -41,6 +41,7 @@ const wasmToolLeaves = new Set([
   "pdf-inspect",
   "ripgrep-wasm",
   "rtf-inspect",
+  "script-deobfuscate",
   "sourcemap",
   "sqlite-inspect",
   "squashfs",
