@@ -130,6 +130,32 @@ describe("SecretRedaction", () => {
     expect(SecretRedaction.json(result)).toEqual(result)
   })
 
+  test("returns the input by reference when nothing is redacted, and a copy when a value or key is", () => {
+    const clean = { list: [1, { name: "ok" }, null], flag: true, nested: { text: "plain" } }
+    expect(SecretRedaction.json(clean)).toBe(clean)
+    expect(SecretRedaction.json(clean.list)).toBe(clean.list)
+    const value = { list: [{ name: github }], keep: clean.nested }
+    const redacted = SecretRedaction.json(value)
+    if (typeof redacted !== "object" || redacted === null) throw new Error("expected an object")
+    expect(redacted).not.toBe(value)
+    expect(Object.getOwnPropertyDescriptor(redacted, "keep")?.value).toBe(clean.nested)
+    expect(JSON.stringify(redacted)).not.toContain(github)
+    const key = SecretRedaction.json({ [github]: 1 })
+    if (typeof key !== "object" || key === null) throw new Error("expected an object")
+    expect(Object.keys(key)).toEqual([SecretRedaction.text(github)])
+    const hidden = { visible: "ok" }
+    Object.defineProperty(hidden, "extra", { value: "x", enumerable: false })
+    expect(SecretRedaction.json(hidden)).not.toBe(hidden)
+    // A subclassed array is copied, so a prototype toJSON never decides what is serialized.
+    class Tagged extends Array<unknown> {
+      toJSON() {
+        return "unredacted"
+      }
+    }
+    const tagged = Tagged.from(["ok"])
+    expect(JSON.stringify(SecretRedaction.json(tagged))).toBe('["ok"]')
+  })
+
   test("redacts complete and truncated PEM private keys without eating complete-block suffixes", () => {
     for (const label of [
       "PRIVATE KEY",

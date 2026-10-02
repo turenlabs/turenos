@@ -81,3 +81,40 @@ test("request guard sanitizes conversational text and historical results, not op
   expect(safe.http).toBe(request.http)
   expect(request.messages[0].content[0]).toEqual({ type: "text", text: secret })
 })
+
+const model = Model.make({ id: "test", provider: "openai", route: OpenAIChat.route })
+
+test("a request with nothing to redact is returned as the same instance", () => {
+  const file = { type: "file" as const, uri: "data:image/png;base64,AAAA", mime: "image/png" }
+  const request = LLM.request({
+    model,
+    system: "be brief",
+    messages: [
+      Message.user("hello"),
+      Message.assistant("hi"),
+      Message.tool({ id: "text", name: "read", result: "plain", resultType: "text" }),
+      Message.tool({ id: "error", name: "read", result: "failed", resultType: "error" }),
+      Message.tool({ id: "json", name: "read", result: { ok: [1, { nested: "value" }], none: null } }),
+      Message.tool({ id: "content", name: "read", result: [{ type: "text", text: "a" }, file], resultType: "content" }),
+    ],
+  })
+  expect(SessionDisclosure.request(request)).toBe(request)
+})
+
+test("redacting one message leaves every other message and part unchanged in value", () => {
+  const request = LLM.request({
+    model,
+    system: "be brief",
+    messages: [
+      Message.user("hello"),
+      Message.tool({ id: "json", name: "read", result: { token: secret, other: { keep: [1, 2] } } }),
+      Message.tool({ id: "clean", name: "read", result: { keep: ["a"] } }),
+      Message.assistant("hi"),
+    ],
+  })
+  const safe = SessionDisclosure.request(request)
+  expect(safe).not.toBe(request)
+  expect(JSON.stringify(safe.messages[1])).not.toContain(secret)
+  expect(safe.system).toEqual(request.system)
+  for (const index of [0, 2, 3]) expect(safe.messages[index]).toEqual(request.messages[index])
+})

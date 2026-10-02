@@ -478,7 +478,15 @@ function walkArray(value: readonly unknown[], visit: (value: unknown) => unknown
   const names = Object.keys(value)
   if (names.length + budget.nodes > MAX_NODES) throw failure()
   if (names.length !== value.length || names.some((key, index) => key !== String(index))) throw failure()
-  return names.map((key) => visit(dataProperty(value, key)))
+  const items = names.map((key) => visit(dataProperty(value, key)))
+  // A clean array is returned as is so callers can detect "nothing redacted" by reference. Extra own
+  // keys (only `length` is expected) or a subclass prototype (which could define toJSON) would have
+  // been dropped by the copy, so they force one.
+  return Object.getPrototypeOf(value) === Array.prototype &&
+    Reflect.ownKeys(value).length === names.length + 1 &&
+    items.every((item, index) => item === value[index])
+    ? value
+    : items
 }
 
 function walkRecord(
@@ -491,15 +499,20 @@ function walkRecord(
   const keys = new Set<string>()
   const names = Object.keys(value)
   if (names.length + budget.nodes > MAX_NODES) throw failure()
-  return Object.fromEntries(
-    names.map((key) => {
-      const item = dataProperty(value, key)
-      const sanitized = transform(key)
-      if (keys.has(sanitized)) throw failure()
-      keys.add(sanitized)
-      return [sanitized, visit(item)] as const
-    }),
+  const entries = names.map((key) => {
+    const item = dataProperty(value, key)
+    const sanitized = transform(key)
+    if (keys.has(sanitized)) throw failure()
+    keys.add(sanitized)
+    return [key, sanitized, item, visit(item)] as const
+  })
+  // Same sharing rule as arrays: symbol or non-enumerable keys would have been dropped by the copy.
+  if (
+    Reflect.ownKeys(value).length === names.length &&
+    entries.every((entry) => entry[0] === entry[1] && entry[2] === entry[3])
   )
+    return value
+  return Object.fromEntries(entries.map((entry) => [entry[1], entry[3]] as const))
 }
 
 function dataProperty(value: object, key: string): unknown {
