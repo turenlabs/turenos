@@ -349,6 +349,21 @@ export const SessionContextRequestTable = sqliteTable("session_context_request",
   reason: text().notNull(),
 })
 
+/** Oversized strings from a persisted context frame, stored once per Session by content hash. */
+export const SessionContextBlobTable = sqliteTable(
+  "session_context_blob",
+  {
+    session_id: text()
+      .$type<SessionSchema.ID>()
+      .notNull()
+      .references(() => SessionContextEpochTable.session_id, { onDelete: "cascade" }),
+    sha256: text().notNull(),
+    data: text().notNull(),
+    size: integer().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.session_id, table.sha256] })],
+)
+
 /** Durable declarative harness state and its snapshot history for one Session. */
 export const SessionHarnessTable = sqliteTable("session_harness", {
   session_id: text()

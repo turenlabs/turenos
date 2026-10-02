@@ -96,6 +96,8 @@ Session                            Epoch
    ├─ clear after Location move ─────▶
 ```
 
+The rendered request frame that makes the next provider turn replay byte-for-byte is persisted in `session_context_request`. Well-formed strings of at least 64 Ki characters, such as inline attachment data, are stored once per Session in `session_context_blob`, keyed by SHA-256, and the frame row holds a reference instead. A frame with externalized strings is wrapped in a `forge_context_blobs` marker object, so rows written before externalization are read unchanged. If a referenced blob is missing, the runner rebuilds the frame with reason `history`. A save removes the Session's blobs the new frame no longer references, and clearing the epoch removes the blobs with it.
+
 Ambient project discovery canonicalizes and contains traversal within the project root and honors `FORGE_DISABLE_PROJECT_CONFIG`. Project `AGENTS.md` files take precedence as one working-directory-to-root set; only when none exist does discovery use the corresponding `CLAUDE.md` set. The configured global `AGENTS.md` similarly takes precedence over `~/.claude/CLAUDE.md`. `FORGE_DISABLE_CLAUDE_CODE` and `FORGE_DISABLE_CLAUDE_CODE_PROMPT` disable both Claude compatibility sources. An unavailable observation preserves the previously admitted value. A confirmed partial instruction removal emits the complete remaining aggregate with explicit supersession text; removing the final instruction emits a revocation message.
 
 Current Context Epoch follow-ups:

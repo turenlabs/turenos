@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "e6ea6bd8-16e9-45a9-a507-3cfd6d73b34d",
+  "id": "6577b9fe-84ce-4bba-ac96-75ed69b615a6",
   "prevIds": [
-    "5ff8d263-f97d-45ca-a861-251fd11fdeda"
+    "e6ea6bd8-16e9-45a9-a507-3cfd6d73b34d"
   ],
   "ddl": [
     {
@@ -148,6 +148,10 @@
     },
     {
       "name": "provider_usage",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_context_blob",
       "entityType": "tables"
     },
     {
@@ -3798,6 +3802,46 @@
     },
     {
       "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_context_blob"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "sha256",
+      "entityType": "columns",
+      "table": "session_context_blob"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "session_context_blob"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "size",
+      "entityType": "columns",
+      "table": "session_context_blob"
+    },
+    {
+      "type": "text",
       "notNull": false,
       "autoincrement": false,
       "default": null,
@@ -5700,6 +5744,21 @@
       "columns": [
         "session_id"
       ],
+      "tableTo": "session_context_epoch",
+      "columnsTo": [
+        "session_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_context_blob_session_id_session_context_epoch_session_id_fk",
+      "entityType": "fks",
+      "table": "session_context_blob"
+    },
+    {
+      "columns": [
+        "session_id"
+      ],
       "tableTo": "session",
       "columnsTo": [
         "id"
@@ -5961,6 +6020,16 @@
       "name": "provider_usage_pk",
       "entityType": "pks",
       "table": "provider_usage"
+    },
+    {
+      "columns": [
+        "session_id",
+        "sha256"
+      ],
+      "nameExplicit": false,
+      "name": "session_context_blob_pk",
+      "entityType": "pks",
+      "table": "session_context_blob"
     },
     {
       "columns": [
