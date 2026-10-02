@@ -248,7 +248,6 @@
         "@turenlabs/wifi-offline-wasm": "workspace:*",
         "@turenlabs/windows-artifacts-wasm": "workspace:*",
         "ai-gateway-provider": "3.1.2",
-        "bun-pty": "0.4.8",
         "cross-spawn": "catalog:",
         "diff": "catalog:",
         "drizzle-orm": "catalog:",
@@ -358,6 +357,7 @@
         "@solidjs/meta": "0.29.4",
         "@solidjs/router": "0.15.4",
         "@turenlabs/app": "workspace:*",
+        "@turenlabs/script": "workspace:*",
         "@turenlabs/ui": "workspace:*",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
@@ -2453,8 +2453,6 @@
     "builder-util": ["builder-util@26.15.3", "", { "dependencies": { "@types/debug": "^4.1.6", "builder-util-runtime": "9.7.0", "chalk": "^4.1.2", "cross-spawn": "^7.0.6", "debug": "^4.3.4", "fs-extra": "^10.1.0", "http-proxy-agent": "^7.0.0", "https-proxy-agent": "^7.0.0", "js-yaml": "^4.1.0", "sanitize-filename": "^1.6.3", "source-map-support": "^0.5.19", "stat-mode": "^1.0.0", "temp-file": "^3.4.0", "tiny-async-pool": "1.3.0" } }, "sha512-q2hn7Mbo2nFNkVekPiHFx6Nfo3hURmES3tfBn+k5Pqxl2RkmP3QGqZUhH/q9Pch/4G05NRhPjDlVj1O8q4Txvw=="],
 
     "builder-util-runtime": ["builder-util-runtime@9.7.0", "", { "dependencies": { "debug": "^4.3.4", "sax": "^1.2.4" } }, "sha512-g/kR520giAFYkSXTzcmF3kqQq7wi8F6N6SzeDgZrqTBN+VHdmgWOyTdD1yD7AATDId/yXLvuP34CxW46/BwCdw=="],
-
-    "bun-pty": ["bun-pty@0.4.8", "", {}, "sha512-rO70Mrbr13+jxHHHu2YBkk2pNqrJE5cJn29WE++PUr+GFA0hq/VgtQPZANJ8dJo6d7XImvBk37Innt8GM7O28w=="],
 
     "bun-types": ["bun-types@1.4.0", "", { "dependencies": { "@types/node": "*" } }, "sha512-iIKw23BspnQQYd3prITOBxeUsxBHnwzX6YJfGMuNOZzeNcMmVqzIIVGRm1l69ogaPQmb4wB6BN8mA5bE9YuC5Q=="],
 

@@ -1,20 +1,63 @@
 import assert from "node:assert/strict"
-import { fork } from "node:child_process"
+import { fork, spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
-import { mkdtemp, rm } from "node:fs/promises"
+import { cp, mkdir, mkdtemp, rm } from "node:fs/promises"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 
 // Run with Node to exercise the same JSON IPC transport as Electron main.
-const resources = path.resolve(process.argv[2] ?? "resources")
-const server = path.resolve(process.argv[3] ?? "out/main/server")
+const sourceResources = path.resolve(process.argv[2] ?? "resources")
+const sourceServer = path.resolve(process.argv[3] ?? "out/main/server")
+const targets = {
+  "linux-x64": ["linux", "x64"],
+  "linux-arm64": ["linux", "arm64"],
+  "macos-x64": ["darwin", "x64"],
+  "macos-arm64": ["darwin", "arm64"],
+  "windows-x64": ["win32", "x64"],
+  "windows-arm64": ["win32", "arm64"],
+}
 const directory = await mkdtemp(path.join(os.tmpdir(), "turen-bun-smoke-"))
+const resources = path.join(directory, "resources")
+const server = path.join(directory, "server")
 const children = []
 const password = randomBytes(24).toString("hex")
 const credentialVault = { keyID: "smoke", key: randomBytes(32).toString("base64") }
 const headers = { authorization: `Basic ${Buffer.from(`forge:${password}`).toString("base64")}` }
 try {
+  const target = process.env.TARGET ? targets[process.env.TARGET] : [process.platform, process.arch]
+  assert.ok(target, `Unknown native runner target: ${process.env.TARGET}`)
+  assert.deepEqual(
+    [process.platform, process.arch],
+    target,
+    `Expected ${target}, got ${process.platform}/${process.arch}`,
+  )
+  console.log(`Native runner verified: ${process.env.TARGET ?? "local"} = ${process.platform}/${process.arch}`)
+  await cp(sourceServer, server, { recursive: true, dereference: true })
+  await mkdir(resources)
+  await cp(
+    path.join(sourceResources, process.platform === "win32" ? "bun.exe" : "bun"),
+    path.join(resources, process.platform === "win32" ? "bun.exe" : "bun"),
+  )
+  const bun = path.join(resources, process.platform === "win32" ? "bun.exe" : "bun")
+  const nativeCheck = spawnSync(bun, [path.join(server, "native-check.js")], {
+    cwd: server,
+    encoding: "utf8",
+    timeout: 30_000,
+    env: {
+      ...process.env,
+      XDG_DATA_HOME: directory,
+      XDG_CONFIG_HOME: directory,
+      XDG_STATE_HOME: directory,
+      XDG_CACHE_HOME: directory,
+      FORGE_DB: path.join(directory, "forge.db"),
+      FORGE_RESOURCES_PATH: resources,
+      FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER: "true",
+      ELECTRON_RUN_AS_NODE: undefined,
+    },
+  })
+  assert.equal(nativeCheck.status, 0, `Native module probe failed:\n${nativeCheck.stdout}\n${nativeCheck.stderr}`)
+  console.log(nativeCheck.stdout.trim())
   const start = async () => {
     const port = await new Promise((resolve, reject) => {
       const probe = net.createServer()
@@ -25,7 +68,7 @@ try {
       })
     })
     const child = fork(path.join(server, "sidecar.js"), [], {
-      execPath: path.join(resources, process.platform === "win32" ? "bun.exe" : "bun"),
+      execPath: bun,
       execArgv: ["--no-env-file", "--no-install", "--use-system-ca"],
       cwd: server,
       env: {
@@ -83,6 +126,9 @@ try {
   const first = await start()
   assert.equal((await fetch(`${first.url}/global/health`)).status, 401)
   assert.equal((await fetch(`${first.url}/global/health`, { headers })).status, 200)
+  const events = await fetch(`${first.url}/global/event`, { headers })
+  assert.match(events.headers.get("content-type"), /text\/event-stream/)
+  await events.body.cancel()
   const reply = first.next("security-proxy-result")
   first.child.send({
     type: "security-proxy",
@@ -94,32 +140,86 @@ try {
     },
   })
   assert.equal((await reply).result.case.id, "smoke_case")
-  if (process.platform !== "win32") {
-    const response = await fetch(`${first.url}/pty`, {
+  const ptyResponse = await fetch(`${first.url}/pty`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json", "x-forge-directory": directory },
+    body: JSON.stringify({
+      command: process.execPath,
+      args: ["-e", "setInterval(() => {}, 1000)"],
+      title: "Bun native PTY smoke",
+    }),
+  })
+  assert.equal(ptyResponse.status, 200, await ptyResponse.clone().text())
+  const pty = await ptyResponse.json()
+  const ticketResponse = await fetch(
+    `${first.url}/pty/${pty.id}/connect-token?directory=${encodeURIComponent(directory)}`,
+    {
       method: "POST",
-      headers: { ...headers, "content-type": "application/json", "x-forge-directory": directory },
-      body: JSON.stringify({ command: "/bin/cat", title: "Bun native PTY smoke" }),
-    })
-    assert.equal(response.status, 200, await response.clone().text())
-    const pty = await response.json()
-    assert.equal(
-      (
-        await fetch(`${first.url}/pty/${pty.id}`, {
-          method: "DELETE",
-          headers: { ...headers, "x-forge-directory": directory },
-        })
-      ).status,
-      200,
+      headers: { ...headers, "x-forge-directory": directory, "x-forge-ticket": "1" },
+    },
+  )
+  assert.equal(ticketResponse.status, 200, await ticketResponse.clone().text())
+  const ticket = await ticketResponse.json()
+  const socket = new WebSocket(
+    `ws://127.0.0.1:${new URL(first.url).port}/pty/${pty.id}/connect?directory=${encodeURIComponent(directory)}&ticket=${encodeURIComponent(ticket.ticket)}`,
+  )
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Timed out waiting for PTY websocket data")), 10_000)
+    socket.addEventListener("open", () => socket.send("bun-smoke-pty\n"), { once: true })
+    socket.addEventListener(
+      "message",
+      async (event) => {
+        const data =
+          typeof event.data === "string"
+            ? event.data
+            : typeof event.data?.text === "function"
+              ? await event.data.text()
+              : Buffer.from(event.data).toString("utf8")
+        if (!data.includes("bun-smoke-pty")) return
+        clearTimeout(timer)
+        resolve()
+      },
+      { once: false },
     )
-  }
+    socket.addEventListener("error", () => reject(new Error("PTY websocket failed")), { once: true })
+  })
+  socket.close()
+  assert.equal(
+    (
+      await fetch(`${first.url}/pty/${pty.id}`, {
+        method: "PUT",
+        headers: { ...headers, "content-type": "application/json", "x-forge-directory": directory },
+        body: JSON.stringify({ size: { rows: 30, cols: 100 } }),
+      })
+    ).status,
+    200,
+  )
+  assert.equal(
+    (
+      await fetch(`${first.url}/pty/${pty.id}`, {
+        method: "DELETE",
+        headers: { ...headers, "x-forge-directory": directory },
+      })
+    ).status,
+    200,
+  )
   const stopped = first.next("stopped")
   first.child.send({ type: "stop" })
   await stopped
   assert.equal(await first.exited, 0)
   const second = await start()
+  const persisted = second.next("security-proxy-result")
+  second.child.send({
+    type: "security-proxy",
+    id: "persistence",
+    command: { type: "list", owner: { directory } },
+  })
+  assert.ok((await persisted).result.cases.some((item) => item.id === "smoke_case"))
   second.child.disconnect()
   assert.equal(await second.exited, 0)
-  console.log("PASS: staged Bun, Node IPC, authenticated HTTP, private proxy, native PTY, stop, parent disconnect")
+  console.log(
+    "PASS: isolated staged Bun, Node IPC, authenticated HTTP, SSE abort, proxy, native PTY create/resize/delete, stop, parent disconnect",
+  )
 } finally {
   await Promise.all(
     children.map(async (child) => {

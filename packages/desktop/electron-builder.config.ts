@@ -159,8 +159,8 @@ const verifyPackage: NonNullable<Configuration["afterPack"]> = async (context) =
       context.electronPlatformName === "win32" ? "bun.exe" : "bun",
       "server/sidecar.js",
       "server/node.js",
-      "server/vendor/bun-pty/package.json",
-      "server/vendor/bun-pty/src/index.ts",
+      "server/native-check.js",
+      "server/node_modules/@ff-labs/fff-bun/package.json",
       "decompiler/decompiler-worker.js",
       "decompiler/ghidra-decompiler/package.json",
       "decompiler/ghidra-decompiler/dist/ghidra_decompiler.js",
@@ -408,6 +408,10 @@ const getBase = (appId: string): Configuration => ({
     {
       from: "out/main/server/",
       to: "server/",
+    },
+    {
+      from: "out/main/server/node_modules/",
+      to: "server/node_modules/",
     },
     {
       from: "resources/",

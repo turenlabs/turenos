@@ -32,23 +32,73 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: "core (1/3)", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/core, command: "bun run test --shard=1/3" }
-          - { name: "core (2/3)", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/core, command: "bun run test --shard=2/3" }
-          - { name: "core (3/3)", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/core, command: "bun run test --shard=3/3" }
-          - { name: "forge (1/4)", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=1/4" }
-          - { name: "forge (2/4)", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=2/4" }
-          - { name: "forge (3/4)", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=3/4" }
-          - { name: "forge (4/4)", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=4/4" }
-          - { name: "desktop", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/desktop, command: "bun run test" }
+          - {
+              name: "core (1/3)",
+              host: blacksmith-4vcpu-ubuntu-2404,
+              github_host: ubuntu-latest,
+              directory: packages/core,
+              command: "bun run test --shard=1/3",
+            }
+          - {
+              name: "core (2/3)",
+              host: blacksmith-4vcpu-ubuntu-2404,
+              github_host: ubuntu-latest,
+              directory: packages/core,
+              command: "bun run test --shard=2/3",
+            }
+          - {
+              name: "core (3/3)",
+              host: blacksmith-4vcpu-ubuntu-2404,
+              github_host: ubuntu-latest,
+              directory: packages/core,
+              command: "bun run test --shard=3/3",
+            }
+          - {
+              name: "forge (1/4)",
+              host: blacksmith-4vcpu-ubuntu-2404,
+              github_host: ubuntu-latest,
+              directory: packages/forge,
+              command: "bun run test --shard=1/4",
+            }
+          - {
+              name: "forge (2/4)",
+              host: blacksmith-4vcpu-ubuntu-2404,
+              github_host: ubuntu-latest,
+              directory: packages/forge,
+              command: "bun run test --shard=2/4",
+            }
+          - {
+              name: "forge (3/4)",
+              host: blacksmith-4vcpu-ubuntu-2404,
+              github_host: ubuntu-latest,
+              directory: packages/forge,
+              command: "bun run test --shard=3/4",
+            }
+          - {
+              name: "forge (4/4)",
+              host: blacksmith-4vcpu-ubuntu-2404,
+              github_host: ubuntu-latest,
+              directory: packages/forge,
+              command: "bun run test --shard=4/4",
+            }
+          - {
+              name: "desktop",
+              host: blacksmith-4vcpu-ubuntu-2404,
+              github_host: ubuntu-latest,
+              directory: packages/desktop,
+              command: "bun run test",
+            }
           - {
               name: "packages (linux)",
-              host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest,
+              host: blacksmith-4vcpu-ubuntu-2404,
+              github_host: ubuntu-latest,
               directory: ".",
               command: "bun .github/scripts/test-packages.ts",
             }
           - {
               name: "unit (windows 1/2)",
-              host: blacksmith-4vcpu-windows-2025, github_host: windows-latest,
+              host: blacksmith-4vcpu-windows-2025,
+              github_host: windows-latest,
               directory: ".",
               command: "bun .github/scripts/test-packages.ts --shard=1/2",
               transport: true,
@@ -56,7 +106,8 @@ jobs:
             }
           - {
               name: "unit (windows 2/2)",
-              host: blacksmith-4vcpu-windows-2025, github_host: windows-latest,
+              host: blacksmith-4vcpu-windows-2025,
+              github_host: windows-latest,
               directory: ".",
               command: "bun .github/scripts/test-packages.ts --shard=2/2",
               timeout: 20,
@@ -160,10 +211,54 @@ jobs:
         working-directory: packages/extensions
         run: bun run check
 
+  bun-runtime:
+    name: Bun backend (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x64, runner: ubuntu-24.04 }
+          - { name: linux-arm64, runner: ubuntu-24.04-arm }
+          - { name: macos-x64, runner: macos-15-intel }
+          - { name: macos-arm64, runner: macos-15 }
+          - { name: windows-x64, runner: windows-2025 }
+          - { name: windows-arm64, runner: windows-11-arm }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Verify native runner architecture
+        run: |
+          node -e 'const expected = { "linux-x64": ["linux", "x64"], "linux-arm64": ["linux", "arm64"], "macos-x64": ["darwin", "x64"], "macos-arm64": ["darwin", "arm64"], "windows-x64": ["win32", "x64"], "windows-arm64": ["win32", "arm64"] }[process.env.TARGET]; if (process.platform !== expected[0] || process.arch !== expected[1]) throw new Error(`Expected ${expected}, got ${process.platform}/${process.arch}`)'
+        env:
+          TARGET: ${{ matrix.name }}
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --frozen-lockfile
+      - name: Verify Bun native terminal
+        run: bun --cwd packages/script test ../core/test/pty/native-terminal.test.ts --timeout 15000
+      - name: Build Forge Bun backend
+        run: bun run --cwd packages/forge script/build-node.ts
+      - name: Stage Bun runtime
+        run: bun run --cwd packages/desktop scripts/stage-bun.ts
+      - name: Bundle desktop sidecar entry
+        run: bun run --cwd packages/desktop scripts/build-sidecar.ts
+      - name: Smoke staged Bun backend
+        run: node packages/desktop/scripts/smoke-bun-sidecar.mjs packages/desktop/resources packages/forge/dist/node
+        env:
+          TARGET: ${{ matrix.name }}
+
   test:
     name: test
     if: always()
-    needs: [unit, httpapi, generated]
+    needs: [unit, httpapi, generated, bun-runtime]
     runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 1
     steps:

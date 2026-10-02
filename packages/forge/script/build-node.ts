@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { Script } from "@turenlabs/script"
+import { Platform } from "@turenlabs/script/platform"
 import { createRequire } from "node:module"
 import path from "path"
 import { cp, rm } from "node:fs/promises"
@@ -77,9 +78,8 @@ const wasmLeafPackages = wasmLeaves.map((name) => ({
 }))
 
 const generated = await import("./generate.ts")
-const coreRequire = createRequire(path.join(dir, "../core/package.json"))
 const packageRoot = async (name: string) => {
-  let current = path.dirname(coreRequire.resolve(name))
+  let current = path.dirname(Bun.resolveSync(name, path.join(dir, "../core")))
   while (path.dirname(current) !== current) {
     const manifest = Bun.file(path.join(current, "package.json"))
     if ((await manifest.exists()) && (await manifest.json()).name === name) return current
@@ -87,7 +87,12 @@ const packageRoot = async (name: string) => {
   }
   throw new Error(`Unable to locate ${name} package root`)
 }
-const bunPtyRoot = await packageRoot("bun-pty")
+const target = Platform.get()
+const fffRoot = await packageRoot("@ff-labs/fff-bun")
+const nativePackages = [
+  `@ff-labs/fff-bin-${target.platform}-${target.arch}${target.platform === "linux" ? "-gnu" : ""}`,
+  `@parcel/watcher-${target.platform}-${target.arch}${target.platform === "linux" ? "-glibc" : ""}`,
+]
 
 // Chunk names are content-hashed, so without this every build leaves the last
 // build's chunks behind and the directory grows without bound.
@@ -95,24 +100,15 @@ await rm("./dist/node", { recursive: true, force: true })
 
 const nodeBuild = await Bun.build({
   target: "bun",
-  entrypoints: ["./src/node.ts"],
+  entrypoints: ["./src/node.ts", "./script/native-check.ts"],
   outdir: "./dist/node",
   format: "esm",
+  naming: { entry: "[name].js" },
   sourcemap: "linked",
   // Without splitting, Bun inlines dynamic imports back into the entry, so
   // deferred modules would still be parsed on every server start.
   splitting: true,
-  plugins: [
-    {
-      name: "external-bun-pty",
-      setup(builder) {
-        builder.onResolve({ filter: /^bun-pty$/ }, () => ({
-          path: "./vendor/bun-pty/src/index.ts",
-          external: true,
-        }))
-      },
-    },
-  ],
+  external: ["@ff-labs/fff-bun"],
   define: {
     FORGE_MODELS_DEV: generated.modelsData,
     FORGE_VERSION: JSON.stringify(Script.version),
@@ -168,6 +164,17 @@ for (const item of binaryPackages)
   await cp(path.join(item.root, ".."), path.join("./dist/node", item.name), { recursive: true })
 for (const item of wasmLeafPackages)
   await cp(path.join(item.root, ".."), path.join("./dist/node", item.name), { recursive: true })
-await cp(bunPtyRoot, "./dist/node/vendor/bun-pty", { recursive: true, dereference: true })
+await cp(fffRoot, "./dist/node/node_modules/@ff-labs/fff-bun", { recursive: true, dereference: true })
+for (const name of nativePackages)
+  await cp(
+    path.dirname(
+      Bun.resolveSync(`${name}/package.json`, name.startsWith("@ff-labs/") ? fffRoot : path.join(dir, "../core")),
+    ),
+    path.join("./dist/node/node_modules", name),
+    {
+      recursive: true,
+      dereference: true,
+    },
+  )
 
 console.log("Build complete")
