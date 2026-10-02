@@ -294,4 +294,85 @@ describe("durable ShellJob runner", () => {
       expect(yield* storage.get(address)).toBeDefined()
     }),
   )
+
+  it.live(
+    "cancelSession stops every live job owned by the session without notices and leaves other sessions alone",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* ShellJob.make
+        const app = yield* AppProcess.Service
+        const notices: string[] = []
+        const notify = (info: ShellJob.Info) =>
+          Effect.sync(() => {
+            notices.push(info.id)
+          })
+        const target = session()
+        const bystander = session()
+        const started = yield* Effect.forEach(
+          [
+            input(app, target, "setInterval(() => {}, 1000)"),
+            input(app, target, "setInterval(() => {}, 1000)"),
+            input(app, bystander, "setInterval(() => {}, 1000)"),
+          ],
+          (request) =>
+            jobs.start({ ...request, notify }).pipe(Effect.tap((job) => jobs.detach(request.sessionID, job.id))),
+        )
+        yield* jobs.cancelSession(target)
+        const settled = yield* Effect.forEach(started.slice(0, 2), (job) => jobs.wait(target, job.id, 5_000))
+        expect(settled.map((job) => job.status)).toEqual(["cancelled", "cancelled"])
+        expect((yield* jobs.observe(bystander, started[2].id)).status).toBe("running")
+        yield* jobs.deliver(target, notify)
+        expect(notices).toEqual([])
+        yield* jobs.cancel(bystander, started[2].id)
+        expect((yield* jobs.wait(bystander, started[2].id, 5_000)).status).toBe("cancelled")
+        yield* jobs.deliver(bystander, notify)
+        expect(notices).toEqual([started[2].id])
+      }),
+  )
+
+  it.live("cancelSession is a no-op without live jobs and does not signal non-owned jobs", () =>
+    Effect.gen(function* () {
+      const jobs = yield* ShellJob.make
+      const app = yield* AppProcess.Service
+      yield* jobs.cancelSession(session())
+      const notices: string[] = []
+      const request = {
+        ...input(app, session(), "setInterval(() => {}, 1000)"),
+        notify: (info: ShellJob.Info) =>
+          Effect.sync(() => {
+            notices.push(info.id)
+          }),
+      }
+      const job = yield* jobs.start(request)
+      yield* jobs.detach(request.sessionID, job.id)
+      const other = yield* ShellJob.make
+      yield* other.cancelSession(request.sessionID)
+      expect((yield* jobs.observe(request.sessionID, job.id)).status).toBe("running")
+      yield* jobs.cancel(request.sessionID, job.id)
+      yield* jobs.wait(request.sessionID, job.id, 5_000)
+      // The first service still owns the job, so cancelling through it by hand keeps the notice.
+      yield* jobs.deliver(request.sessionID, request.notify)
+      expect(notices).toEqual([job.id])
+    }),
+  )
+
+  it.live("cancelSession stamps a settled pending notice as sent so deliver() does not admit it", () =>
+    Effect.gen(function* () {
+      const jobs = yield* ShellJob.make
+      const app = yield* AppProcess.Service
+      const request = input(app, session(), "setTimeout(() => console.log('done'), 60)")
+      const job = yield* jobs.start({ ...request, notify: () => Effect.die("delivery failed") })
+      yield* jobs.detach(request.sessionID, job.id)
+      yield* jobs.wait(request.sessionID, job.id, 5_000)
+      yield* jobs.cancelSession(request.sessionID)
+      const notices: string[] = []
+      yield* jobs.deliver(request.sessionID, (info) =>
+        Effect.sync(() => {
+          notices.push(info.id)
+        }),
+      )
+      expect(notices).toEqual([])
+      expect((yield* jobs.observe(request.sessionID, job.id)).status).toBe("completed")
+    }),
+  )
 })

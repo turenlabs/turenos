@@ -22,6 +22,7 @@ import { SessionInput } from "@turenlabs/core/session/input"
 import { SessionInputTable, SessionMessageTable, SessionTable } from "@turenlabs/core/session/sql"
 import { SessionStore } from "@turenlabs/core/session/store"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
+import { ShellJob } from "@turenlabs/core/shell-job"
 import { testEffect } from "./lib/effect"
 
 const executionCalls: SessionV2.ID[] = []
@@ -63,6 +64,7 @@ const it = testEffect(
       SessionProjector.node,
       SessionStore.node,
       SessionTaskV2.node,
+      ShellJob.node,
       SessionV2.node,
     ]),
     [[SessionExecution.node, execution]],
@@ -427,6 +429,126 @@ describe("SessionV2.prompt", () => {
       yield* session.interrupt(sessionID)
       expect(interruptCalls).toEqual([sessionID])
       expect(yield* session.messages({ sessionID })).toEqual([])
+    }),
+  )
+
+  it.effect("cancels unpromoted inputs from one source and leaves everything else", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const events = yield* EventV2.Service
+      const { db } = yield* Database.Service
+      const otherSessionID = SessionV2.ID.make("ses_cancel_source_other")
+      yield* db
+        .insert(SessionTable)
+        .values({
+          id: otherSessionID,
+          project_id: (yield* ProjectV2.Service.use((projects) => projects.resolve(projectDirectory))).id,
+          slug: "other",
+          directory: projectDirectory,
+          title: "other",
+          version: "test",
+        })
+        .run()
+        .pipe(Effect.orDie)
+      const admit = (id: string, target: SessionV2.ID, source?: SessionInput.Source) =>
+        SessionInput.admit(db, events, {
+          id: SessionMessage.ID.make(id),
+          sessionID: target,
+          prompt: Prompt.make({ text: id }),
+          delivery: "queue",
+          source,
+          kind: "prompt",
+        })
+      yield* admit("msg_source_promoted", sessionID, "shell_job")
+      yield* SessionInput.promoteNextQueued(db, events, sessionID)
+      yield* admit("msg_source_cancelled", sessionID, "shell_job")
+      yield* admit("msg_source_user", sessionID)
+      yield* admit("msg_source_board", sessionID, "subagent_board")
+      yield* admit("msg_source_other_session", otherSessionID, "shell_job")
+
+      yield* SessionInput.cancelPendingBySource(db, sessionID, "shell_job")
+
+      const rows = yield* db.select().from(SessionInputTable).all().pipe(Effect.orDie)
+      const state = Object.fromEntries(rows.map((row) => [row.id, row.time_cancelled !== null]))
+      expect(state).toEqual({
+        msg_source_cancelled: true,
+        msg_source_promoted: false,
+        msg_source_user: false,
+        msg_source_board: false,
+        msg_source_other_session: false,
+      })
+    }),
+  )
+
+  it.effect("cancels owned shell jobs and their unpromoted notices when a running session is interrupted", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const jobs = yield* ShellJob.Service
+      const events = yield* EventV2.Service
+      const { db } = yield* Database.Service
+      const notices: string[] = []
+      const job = yield* jobs.start({
+        sessionID,
+        messageID: "msg_interrupt_job",
+        callID: "call_interrupt_job",
+        request: "interrupt",
+        timeout: 5_000,
+        run: Effect.never,
+        notify: (info) =>
+          Effect.sync(() => {
+            notices.push(info.id)
+          }),
+      })
+      yield* jobs.detach(sessionID, job.id)
+      yield* SessionInput.admit(db, events, {
+        id: SessionMessage.ID.make("msg_interrupt_notice"),
+        sessionID,
+        prompt: Prompt.make({ text: "Shell job observation" }),
+        delivery: "queue",
+        source: "shell_job",
+        kind: "prompt",
+      })
+      wakeCalls.length = 0
+      activeSessions.add(sessionID)
+
+      yield* session.interrupt(sessionID)
+
+      expect((yield* jobs.wait(sessionID, job.id, 5_000)).status).toBe("cancelled")
+      const row = yield* SessionInput.inputStatus(db, {
+        sessionID,
+        messageID: SessionMessage.ID.make("msg_interrupt_notice"),
+      })
+      expect(row?.status).toBe("cancelled")
+      yield* jobs.deliver(sessionID, (info) =>
+        Effect.sync(() => {
+          notices.push(info.id)
+        }),
+      )
+      expect(notices).toEqual([])
+      expect(wakeCalls).toEqual([])
+    }),
+  )
+
+  it.effect("leaves shell jobs running when an idle session is interrupted", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const jobs = yield* ShellJob.Service
+      const job = yield* jobs.start({
+        sessionID,
+        messageID: "msg_idle_job",
+        callID: "call_idle_job",
+        request: "idle",
+        timeout: 5_000,
+        run: Effect.never,
+      })
+      yield* jobs.detach(sessionID, job.id)
+
+      yield* session.interrupt(sessionID)
+
+      expect((yield* jobs.observe(sessionID, job.id)).status).toBe("running")
+      yield* jobs.cancel(sessionID, job.id)
     }),
   )
 

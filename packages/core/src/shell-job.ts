@@ -64,6 +64,8 @@ export interface Interface {
   detach: (sessionID: string, id: string) => Effect.Effect<Info, ToolFailure>
   cancel: (sessionID: string, id: string) => Effect.Effect<Info, ToolFailure>
   deliver: (sessionID: string, notify: Notify) => Effect.Effect<void>
+  /** Cancels this process's live jobs for the session and drops their pending completion notices. */
+  cancelSession: (sessionID: string) => Effect.Effect<void>
 }
 export class Service extends Context.Service<Service, Interface>()("@forge/ShellJob") {}
 export const recordScope = Storage.Scope.make("internal/shell-jobs/records")
@@ -171,7 +173,8 @@ export const make = Effect.gen(function* () {
         }),
       )
       .pipe(Effect.catchCause(Effect.logError))
-  const stop = (id: string) =>
+  // quiet also stamps the notice as sent: settlement spreads the latest record, so deliverOne skips it.
+  const stop = (id: string, quiet = false) =>
     lock.withLock(id)(
       Effect.gen(function* () {
         const current = active.get(id)
@@ -179,7 +182,12 @@ export const make = Effect.gen(function* () {
         const record = yield* read(current.sessionID, id)
         if (!live(record)) return
         current.cancelled = true
-        yield* save({ ...record, status: "stopping", output: "Cancellation requested; process teardown is pending." })
+        yield* save({
+          ...record,
+          status: "stopping",
+          output: "Cancellation requested; process teardown is pending.",
+          ...(quiet ? { delivery: "sent" as const } : {}),
+        })
         // Waiting on interruption can hang on inherited stdio; never await it here.
         yield* Fiber.interrupt(current.fiber).pipe(Effect.forkDetach({ startImmediately: true }))
       }),
@@ -416,6 +424,37 @@ export const make = Effect.gen(function* () {
           cursor = { key: last.key, timeCreated: last.timeCreated }
         }
       }),
+    cancelSession: (sessionID) =>
+      Effect.gen(function* () {
+        let cursor: Storage.QueryInput["cursor"]
+        while (true) {
+          const rows = yield* storage.query({
+            scope: recordScope,
+            prefix: prefix(sessionID),
+            limit: MAX_LIST,
+            order: "time-created-desc",
+            cursor,
+          })
+          for (const row of rows) {
+            const record = decode(row.value)
+            // Jobs owned by another process are never signalled and keep their notice.
+            if (live(record) && active.has(record.id)) yield* stop(record.id, true)
+            if (!live(record) && record.delivery !== "pending") continue
+            // The query is a snapshot: a job may have settled since, and its notice may be in flight.
+            // Deciding under the job lock waits for that delivery and stamps what remains as sent.
+            yield* lock.withLock(record.id)(
+              read(sessionID, record.id).pipe(
+                Effect.flatMap((latest) =>
+                  !live(latest) && latest.delivery === "pending" ? save({ ...latest, delivery: "sent" }) : Effect.void,
+                ),
+              ),
+            )
+          }
+          const last = rows.at(-1)
+          if (rows.length < MAX_LIST || !last) break
+          cursor = { key: last.key, timeCreated: last.timeCreated }
+        }
+      }).pipe(Effect.catchCause(Effect.logError)),
   })
 })
 export const node = makeGlobalNode({

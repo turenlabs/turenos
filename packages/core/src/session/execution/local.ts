@@ -71,10 +71,12 @@ const layer = Layer.effect(
       }).pipe(Effect.provide(locations.get(session.location)))
     })
     let wakeAdvisory: (sessionID: SessionSchema.ID) => Effect.Effect<void> = () => Effect.void
-    const advisoryWakeRetries = new Map<SessionSchema.ID, boolean>()
+    // The entry is the live timer: an interrupt drops it so the timer it superseded never wakes.
+    const advisoryWakeTimers = new Map<SessionSchema.ID, { again: boolean }>()
     const advisoryBusyEpochs = new Map<SessionSchema.ID, { since: number; warnedAt: number }>()
     let scheduleAdvisoryWake: (sessionID: SessionSchema.ID) => Effect.Effect<void> = () => Effect.void
-    let attemptAdvisoryWake: (sessionID: SessionSchema.ID) => Effect.Effect<void> = () => Effect.void
+    let attemptAdvisoryWake: (sessionID: SessionSchema.ID, timer: { again: boolean }) => Effect.Effect<void> = () =>
+      Effect.void
     const advisoryBusyReasons = Effect.fn("SessionExecutionLocal.advisoryBusyReasons")(function* (
       sessionID: SessionSchema.ID,
     ) {
@@ -209,24 +211,31 @@ const layer = Layer.effect(
     scheduleAdvisoryWake = Effect.fn("SessionExecutionLocal.scheduleAdvisoryWake")(function* (
       sessionID: SessionSchema.ID,
     ) {
-      if (advisoryWakeRetries.has(sessionID)) {
-        advisoryWakeRetries.set(sessionID, true)
+      const pending = advisoryWakeTimers.get(sessionID)
+      if (pending) {
+        pending.again = true
         return
       }
-      advisoryWakeRetries.set(sessionID, false)
+      const timer = { again: false }
+      advisoryWakeTimers.set(sessionID, timer)
       yield* Effect.gen(function* () {
         yield* Effect.sleep("250 millis")
-        yield* attemptAdvisoryWake(sessionID).pipe(Effect.catchCause(() => Effect.void))
-        const retryAgain = advisoryWakeRetries.get(sessionID) === true
-        advisoryWakeRetries.delete(sessionID)
-        if (retryAgain) yield* scheduleAdvisoryWake(sessionID)
+        if (advisoryWakeTimers.get(sessionID) !== timer) return
+        yield* attemptAdvisoryWake(sessionID, timer).pipe(Effect.catchCause(() => Effect.void))
+        if (advisoryWakeTimers.get(sessionID) !== timer) return
+        advisoryWakeTimers.delete(sessionID)
+        if (timer.again) yield* scheduleAdvisoryWake(sessionID)
       }).pipe(Effect.forkIn(scope, { startImmediately: true }), Effect.asVoid)
     })
     attemptAdvisoryWake = Effect.fn("SessionExecutionLocal.attemptAdvisoryWake")(function* (
       sessionID: SessionSchema.ID,
+      timer: { again: boolean },
     ) {
       yield* operations.withLock(sessionID)(
         Effect.gen(function* () {
+          // An interrupt that ran while this timer waited for the lock dropped it; waking now
+          // would restart the work the interrupt just stopped.
+          if (advisoryWakeTimers.get(sessionID) !== timer) return
           const session = yield* store.get(sessionID)
           if (!session) {
             advisoryBusyEpochs.delete(sessionID)
@@ -336,7 +345,16 @@ const layer = Layer.effect(
       active: coordinator.active,
       claimResume: coordinator.claim,
       claimPending: coordinator.claimPending,
-      interrupt: coordinator.interrupt,
+      // Only an interrupt that stops a running drain supersedes its scheduled wakes; an idle one
+      // must not strand an undelivered notice.
+      interrupt: (sessionID) =>
+        Effect.gen(function* () {
+          const running = (yield* coordinator.active).has(sessionID)
+          yield* coordinator.interrupt(sessionID)
+          if (!running) return
+          advisoryWakeTimers.delete(sessionID)
+          advisoryBusyEpochs.delete(sessionID)
+        }),
       resume: coordinator.run,
       wake: coordinator.wake,
       wakeForced: coordinator.wakeForced,

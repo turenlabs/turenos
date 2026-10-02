@@ -82,6 +82,7 @@ import { SessionGoal } from "@turenlabs/core/session/goal"
 import type { SessionInput } from "@turenlabs/core/session/input"
 import { SessionEvent } from "@turenlabs/core/session/event"
 import { SessionMessage } from "@turenlabs/core/session/message"
+import { SessionOperation } from "@turenlabs/core/session/operation"
 import { Prompt } from "@turenlabs/core/session/prompt"
 import { SessionProjector } from "@turenlabs/core/session/projector"
 import * as SessionRunnerLLM from "@turenlabs/core/session/runner/llm"
@@ -538,6 +539,7 @@ const it = testEffect(
       Snapshot.node,
       SessionRunnerLLM.node,
       SessionExecution.node,
+      SessionOperation.node,
       SessionV2.node,
     ]),
     [
