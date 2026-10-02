@@ -7,7 +7,12 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 import { Deferred, Duration, Effect, Exit, Fiber, Layer, Option, Queue, Ref, Schema, Stream } from "effect"
+import { eq, sql } from "drizzle-orm"
 import { Database } from "@turenlabs/core/database/database"
+import { EventV2 } from "@turenlabs/core/event"
+import { EventSequenceTable, EventTable } from "@turenlabs/core/event/sql"
+import { SessionSchema } from "@turenlabs/core/session/schema"
+import { SessionMessageTable, SessionTable } from "@turenlabs/core/session/sql"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { CrossSpawnSpawner } from "@turenlabs/core/cross-spawn-spawner"
@@ -57,7 +62,7 @@ import { disposeAllInstances, provideTmpdirServer } from "../fixture/fixture"
 import { reply, TestLLMServer } from "../lib/llm-server"
 import { awaitWithTimeout, pollWithTimeout, testEffect } from "../lib/effect"
 import { ProviderTest } from "../fake/provider"
-import { httpApiLayer, request } from "./httpapi-layer"
+import { httpApiLayer, request, requestInDirectory } from "./httpapi-layer"
 import { encodeEvents } from "../../src/server/routes/instance/httpapi/handlers/global"
 
 const summary = Layer.succeed(
@@ -628,5 +633,239 @@ describe("event stream under agent workload", () => {
       expect(rejoined.parser.all.some((event) => event.type === "workload.flood")).toBe(false)
     }),
     120_000,
+  )
+
+  // The wedge ran against a 6.3GB database: ~1k sessions, ~46k session_message
+  // rows, ~430k durable events — skewed, with a few sessions carrying hundreds
+  // of messages. Seed that shape synthetically (scaled for CI; raise the env
+  // knobs to probe a heavier rig) and prove the hot reads stay bounded while an
+  // SSE storm is in flight.
+  it.live("session and event reads stay bounded over a large seeded database", () =>
+    provideTmpdirServer(({ dir }) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const { db } = yield* Database.Service
+
+        // Clone a real session row so project/directory/version stay honest.
+        const probe = yield* sessions.create({ title: "seed probe" })
+        const template = yield* db
+          .select()
+          .from(SessionTable)
+          .where(eq(SessionTable.id, probe.id))
+          .get()
+          .pipe(Effect.orDie)
+        if (!template) return yield* Effect.die("seed probe session row missing")
+
+        const sessionCount = Number(process.env.BULK_SESSIONS ?? 600)
+        const heavy = Math.min(12, sessionCount)
+        const heavyMessages = Number(process.env.BULK_HEAVY_MESSAGES ?? 800)
+        const lightMessages = 24
+        const eventsPerHeavy = Number(process.env.BULK_HEAVY_EVENTS ?? 8_000)
+        const eventsPerLight = 60
+        const base = Date.now() - 30 * 86_400_000
+
+        const seeded: (typeof probe.id)[] = []
+        for (let i = 0; i < sessionCount; i += 200) {
+          yield* db
+            .insert(SessionTable)
+            .values(
+              Array.from({ length: Math.min(200, sessionCount - i) }, (_, j) => {
+                const index = i + j
+                const id = SessionSchema.ID.make(`ses_bulk_${String(index).padStart(6, "0")}`)
+                seeded.push(id)
+                return {
+                  ...template,
+                  id,
+                  slug: `bulk-${index}`,
+                  title: `bulk session ${index}`,
+                  parent_id: null,
+                  time_created: base + index * 60_000,
+                  time_updated: base + index * 60_000,
+                }
+              }),
+            )
+            .run()
+            .pipe(Effect.orDie)
+        }
+
+        type MessageInsert = typeof SessionMessageTable.$inferInsert
+        const messageRows: MessageInsert[] = []
+        for (const [index, sessionID] of seeded.entries()) {
+          const count = index < heavy ? heavyMessages : lightMessages
+          for (let seq = 1; seq <= count; seq++) {
+            const assistant = seq % 2 === 0
+            const created = base + index * 60_000 + seq
+            // Wire-shaped JSON; the column is schemaless text at rest.
+            const data: Record<string, unknown> = assistant
+              ? {
+                  time: { created, completed: created + 500 },
+                  agent: "build",
+                  model: { id: "gpt-5.6-luna", providerID: "openai" },
+                  content: [{ type: "text", id: `txt_${index}_${seq}`, text: `assistant reply ${seq}` }],
+                }
+              : {
+                  time: { created },
+                  text: `bulk user message ${seq}`,
+                  parts: [{ id: `part_${index}_${seq}`, type: "text", text: `bulk user message ${seq}` }],
+                }
+            messageRows.push({
+              id: `msg_bulk_${index}_${seq}` as MessageInsert["id"],
+              session_id: sessionID,
+              type: assistant ? "assistant" : "user",
+              seq,
+              time_created: created,
+              time_updated: created,
+              data: data as MessageInsert["data"],
+            })
+          }
+        }
+        for (let i = 0; i < messageRows.length; i += 300) {
+          yield* db
+            .insert(SessionMessageTable)
+            .values(messageRows.slice(i, i + 300))
+            .run()
+            .pipe(Effect.orDie)
+        }
+
+        // Durable events: the real table's biggest read surface. Aggregates
+        // follow sessions; heavy sessions carry most of the volume.
+        const eventTypes = [
+          "session.next.tool.input.started.1",
+          "session.next.tool.input.ended.1",
+          "session.next.tool.called.1",
+          "session.next.tool.success.1",
+          "session.next.step.started.1",
+          "session.next.step.ended.2",
+          "session.next.reasoning.started.1",
+          "session.next.reasoning.ended.1",
+        ]
+        const sequenceRows = seeded.map((aggregateID, index) => ({
+          aggregate_id: aggregateID,
+          seq: index < heavy ? eventsPerHeavy : eventsPerLight,
+          owner_id: null,
+        }))
+        for (let i = 0; i < sequenceRows.length; i += 300) {
+          yield* db
+            .insert(EventSequenceTable)
+            .values(sequenceRows.slice(i, i + 300))
+            .run()
+            .pipe(Effect.orDie)
+        }
+        const eventRows: (typeof EventTable.$inferInsert)[] = []
+        for (const [index, aggregateID] of seeded.entries()) {
+          const count = index < heavy ? eventsPerHeavy : eventsPerLight
+          for (let seq = 1; seq <= count; seq++) {
+            eventRows.push({
+              id: `evt_bulk_${index}_${seq}` as EventV2.ID,
+              aggregate_id: aggregateID,
+              seq,
+              type: eventTypes[seq % eventTypes.length],
+              data: {
+                timestamp: base + seq,
+                sessionID: aggregateID,
+                assistantMessageID: `msg_bulk_${index}_${Math.ceil(seq / 12)}`,
+                callID: `call_${index}_${seq}`,
+                tool: "bash",
+                input: { command: `echo ${seq}` },
+                output: { text: "x".repeat(512) },
+              },
+            })
+          }
+        }
+        for (let i = 0; i < eventRows.length; i += 300) {
+          yield* db
+            .insert(EventTable)
+            .values(eventRows.slice(i, i + 300))
+            .run()
+            .pipe(Effect.orDie)
+        }
+
+        // Prove the fixture is the claimed volume — a seed that silently
+        // short-changes makes the probes below meaningless.
+        const counts = yield* db
+          .all<{ events: number; messages: number; sessions: number }>(sql`select
+            (select count(*) from ${EventTable}) as events,
+            (select count(*) from ${SessionMessageTable}) as messages,
+            (select count(*) from ${SessionTable}) as sessions`)
+          .pipe(Effect.orDie)
+        const volumes = counts[0]
+        // Ambient rows (the probe session's own event) make these floors.
+        expect(volumes?.sessions).toBeGreaterThanOrEqual(sessionCount + 1)
+        expect(volumes?.messages).toBeGreaterThanOrEqual(
+          heavy * heavyMessages + (sessionCount - heavy) * lightMessages,
+        )
+        expect(volumes?.events).toBeGreaterThanOrEqual(
+          heavy * eventsPerHeavy + (sessionCount - heavy) * eventsPerLight,
+        )
+
+        // Subscribers attached like open tabs, then a paced storm so the writes
+        // overlap the reads below instead of draining before them.
+        const subs = yield* Effect.forEach(
+          Array.from({ length: 3 }),
+          () => subscriber(),
+          { concurrency: "unbounded" },
+        )
+        yield* Effect.all(
+          subs.map((sub, i) =>
+            sub.until((event) => event.type === "server.connected", `subscriber ${i} never connected`),
+          ),
+          { concurrency: "unbounded" },
+        )
+
+        const flood = 3000
+        yield* Effect.gen(function* () {
+          for (let i = 0; i < flood; i++) {
+            GlobalBus.emit("event", {
+              directory: "probe",
+              payload: { type: "workload.flood", properties: { i, pad: "x".repeat(1024) } },
+            })
+            if (i % 64 === 0) yield* Effect.yieldNow
+          }
+        }).pipe(Effect.forkScoped)
+
+        const probeMs = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+          Effect.gen(function* () {
+            const started = Date.now()
+            const result = yield* effect
+            return [result, Date.now() - started] as const
+          })
+
+        const [list, listMs] = yield* probeMs(requestInDirectory("/session", dir))
+        expect(list.status).toBe(200)
+        const listed = yield* list.json
+        expect(Array.isArray(listed) && listed.length).toBeGreaterThan(0)
+
+        // A history page mid-catch-up: exclude two aggregates at their last
+        // seen seq, page the widest scan the API allows.
+        const exclude = { [seeded[0]]: eventsPerHeavy - 100, [seeded[1]]: eventsPerHeavy - 50 }
+        const [history, historyMs] = yield* probeMs(
+          requestInDirectory("/sync/history?limit=10000", dir, { method: "POST", body: JSON.stringify(exclude) }),
+        )
+        expect(history.status).toBe(200)
+        const page = yield* history.json
+        expect(Array.isArray(page)).toBe(true)
+
+        const [health, healthMs] = yield* probeMs(request(GlobalPaths.health))
+        expect(health.status).toBe(200)
+
+        yield* Effect.all(
+          subs.map((sub, i) =>
+            sub.until(
+              (event) => event.type === "workload.flood" && event.properties?.i === flood - 1,
+              `subscriber ${i} never drained the storm`,
+            ),
+          ),
+          { concurrency: "unbounded" },
+        )
+
+        console.log("bulk probes", { listMs, historyMs, healthMs })
+        // Wedges measured in minutes; these bounds only fail on real starvation.
+        expect(listMs).toBeLessThan(15_000)
+        expect(historyMs).toBeLessThan(15_000)
+        expect(healthMs).toBeLessThan(5_000)
+      }),
+      { config: { formatter: false, lsp: false } },
+    ),
+    180_000,
   )
 })
