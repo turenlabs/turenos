@@ -4,6 +4,7 @@ import fs from "fs/promises"
 import path from "path"
 import os from "os"
 import { Cause, Effect, Exit } from "effect"
+import { TestClock } from "effect/testing"
 import { testEffect } from "../lib/effect"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -192,6 +193,40 @@ describe("util.effect-flock", () => {
         }),
       )
       yield* Effect.promise(() => fs.rm(tmp, { recursive: true, force: true }))
+    }),
+  )
+
+  it.effect("renews the heartbeat mtime across repeated intervals", () =>
+    Effect.gen(function* () {
+      const flock = yield* EffectFlock.Service
+      const tmp = yield* Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "eflock-heartbeat-")))
+      const dir = path.join(tmp, "locks")
+      const heartbeat = path.join(lock(dir, "eflock:heartbeat"), "heartbeat")
+      const statHeartbeat = () => Effect.promise(() => fs.stat(heartbeat, { bigint: true }))
+      const waitForMtimeAdvance = (previousMtimeNs: bigint) =>
+        Effect.gen(function* () {
+          const deadline = performance.now() + 1_000
+          while (performance.now() < deadline) {
+            yield* TestClock.adjust("20 seconds")
+            const current = yield* statHeartbeat()
+            if (current.mtimeNs > previousMtimeNs) return current
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 5)))
+          }
+          return yield* Effect.die(new Error(`Heartbeat mtime did not advance beyond ${previousMtimeNs}ns`))
+        })
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          yield* flock.acquire("eflock:heartbeat", dir)
+          let mtimeNs = (yield* statHeartbeat()).mtimeNs
+
+          for (let index = 0; index < 3; index++) {
+            const renewed = yield* waitForMtimeAdvance(mtimeNs)
+            expect(renewed.mtimeNs).toBeGreaterThan(mtimeNs)
+            mtimeNs = renewed.mtimeNs
+          }
+        }),
+      ).pipe(Effect.ensuring(Effect.promise(() => fs.rm(tmp, { recursive: true, force: true }))))
     }),
   )
 
