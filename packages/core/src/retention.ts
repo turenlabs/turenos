@@ -2,7 +2,7 @@ export * as Retention from "./retention"
 
 import path from "path"
 import { and, asc, eq, gt, inArray, isNotNull, lt, or, sql } from "drizzle-orm"
-import { Context, Duration, Effect, Layer, Schedule } from "effect"
+import { Context, Duration, Effect, Layer, Option, Schedule, Schema } from "effect"
 import { Config } from "./config"
 import { ConfigRetention } from "./config/retention"
 import { Database } from "./database/database"
@@ -11,6 +11,8 @@ import { Global } from "./global"
 import { makeGlobalNode } from "./effect/app-node"
 import { SessionMessageTable, SessionTable } from "./session/sql"
 import { ToolExecutionTable, type StoredSettlement } from "./tool/execution.sql"
+import { ShellJob } from "./shell-job"
+import { Storage } from "./storage"
 import { boundedPreview } from "./tool-output-store"
 import type { SessionMessage } from "./session/message"
 
@@ -69,18 +71,20 @@ export const INTERVAL = Duration.hours(6)
 export interface Settings {
   /** Days after archiving before an archived session's payloads are reduced. `0` disables. */
   readonly archivedSessionDays: number
-  /** Days a stored tool payload is kept in full in any session. `0` disables. */
+  /** Days a stored tool payload is kept in full in any session, and a finished shell job is kept at all. `0` disables. */
   readonly toolOutputDays: number
 }
 
 export interface Report {
   readonly messages: number
   readonly executions: number
+  /** Terminal shell-job records (and their captured output) deleted by this pass. */
+  readonly shellJobs: number
   /** Bytes of stored JSON this pass removed, as measured before and after each rewrite. */
   readonly bytes: number
 }
 
-const EMPTY: Report = { messages: 0, executions: 0, bytes: 0 }
+const EMPTY: Report = { messages: 0, executions: 0, shellJobs: 0, bytes: 0 }
 
 export interface Interface {
   /** Effective policy, folded from the global config with defaults and clamps applied. */
@@ -298,6 +302,7 @@ const layer = Layer.effect(
     const fs = yield* FSUtil.Service
     const global = yield* Global.Service
     const database = yield* Database.Service
+    const storage = yield* Storage.Service
     const db = Database.primary(database.db)
 
     /**
@@ -407,7 +412,7 @@ const layer = Layer.effect(
         messages += committed.length
         saved += committed.reduce((total, rewrite) => total + rewrite.saved, 0)
       }
-      return { messages, executions: 0, bytes: saved } satisfies Report
+      return { messages, executions: 0, shellJobs: 0, bytes: saved } satisfies Report
     })
 
     const sweepExecutions = Effect.fn("Retention.sweepExecutions")(function* (toolCutoff: number | undefined) {
@@ -489,7 +494,49 @@ const layer = Layer.effect(
         executions += committed.length
         saved += committed.reduce((total, rewrite) => total + rewrite.saved, 0)
       }
-      return { messages: 0, executions, bytes: saved } satisfies Report
+      return { messages: 0, executions, shellJobs: 0, bytes: saved } satisfies Report
+    })
+
+    /**
+     * Deletes finished shell-job records and their captured output once they are older than the
+     * tool-output window.
+     *
+     * Live rows (`running`, `stopping`) are left to `ShellJob.recover`, and `pending` deliveries are
+     * kept so an undelivered completion is never dropped. Age is the row's last write, which is the
+     * terminal settle or the later `sent` save. Each row is removed under a revision guard in its own
+     * transaction, so a concurrent writer wins and the row is simply skipped.
+     */
+    const sweepShellJobs = Effect.fn("Retention.sweepShellJobs")(function* (toolCutoff: number) {
+      let reaped = 0
+      let saved = 0
+      let cursor: { key: Storage.Key; timeCreated: number } | undefined
+      while (true) {
+        const rows = yield* storage.query({ scope: ShellJob.recordScope, prefix: "job_", limit: BATCH, cursor })
+        for (const row of rows) {
+          if (row.timeUpdated >= toolCutoff) continue
+          const record = Schema.decodeUnknownOption(Schema.fromJsonString(ShellJob.Record))(row.value)
+          if (Option.isNone(record)) continue
+          if (record.value.status === "running" || record.value.status === "stopping") continue
+          if (record.value.delivery === "pending") continue
+          const output = yield* storage.get({ scope: ShellJob.outputScope, key: row.key })
+          const removed = yield* storage
+            .guardedBatch({
+              sets: [],
+              removes: [
+                { scope: ShellJob.recordScope, key: row.key },
+                { scope: ShellJob.outputScope, key: row.key },
+              ],
+              guards: [{ scope: ShellJob.recordScope, key: row.key, expectedRevision: row.revision }],
+            })
+            .pipe(Effect.catchTag("Storage.RevisionConflict", () => Effect.succeed(0)))
+          if (removed === 0) continue
+          reaped += 1
+          saved += row.value.length + (output?.value.length ?? 0)
+        }
+        const last = rows.at(-1)
+        if (rows.length < BATCH || last === undefined) return { reaped, saved }
+        cursor = { key: last.key, timeCreated: last.timeCreated }
+      }
     })
 
     const sweep = Effect.fn("Retention.sweep")(function* (override?: Partial<Settings>) {
@@ -500,12 +547,15 @@ const layer = Layer.effect(
       if (toolCutoff === undefined && archivedCutoff === undefined) return EMPTY
       const fromMessages = yield* sweepMessages(toolCutoff, archivedCutoff)
       const fromExecutions = yield* sweepExecutions(toolCutoff)
+      const fromShellJobs = toolCutoff === undefined ? { reaped: 0, saved: 0 } : yield* sweepShellJobs(toolCutoff)
       const report = {
         messages: fromMessages.messages,
         executions: fromExecutions.executions,
-        bytes: fromMessages.bytes + fromExecutions.bytes,
+        shellJobs: fromShellJobs.reaped,
+        bytes: fromMessages.bytes + fromExecutions.bytes + fromShellJobs.saved,
       } satisfies Report
-      if (report.messages > 0 || report.executions > 0) yield* Effect.logInfo("retention swept", report)
+      if (report.messages > 0 || report.executions > 0 || report.shellJobs > 0)
+        yield* Effect.logInfo("retention swept", report)
       return report
     })
 
@@ -513,7 +563,11 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = makeGlobalNode({ service: Service, layer, deps: [Database.node, FSUtil.node, Global.node] })
+export const node = makeGlobalNode({
+  service: Service,
+  layer,
+  deps: [Database.node, FSUtil.node, Global.node, Storage.node],
+})
 
 /**
  * Runs the sweep on a global schedule rather than once per active Location.
@@ -537,5 +591,5 @@ export const sweepLayer = Layer.effectDiscard(
 export const sweepNode = makeGlobalNode({
   name: "retention-sweep",
   layer: Layer.merge(layer, sweepLayer.pipe(Layer.provide(layer))),
-  deps: [Database.node, FSUtil.node, Global.node],
+  deps: [Database.node, FSUtil.node, Global.node, Storage.node],
 })

@@ -15,6 +15,9 @@ import { AbsolutePath } from "@turenlabs/core/schema"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { SessionMessageTable, SessionTable } from "@turenlabs/core/session/sql"
+import { ShellJob } from "@turenlabs/core/shell-job"
+import { Storage } from "@turenlabs/core/storage"
+import { StorageStateTable } from "@turenlabs/core/storage/sql"
 import { ToolExecutionTable } from "@turenlabs/core/tool/execution.sql"
 import { testEffect } from "./lib/effect"
 import { tmpdir } from "./fixture/tmpdir"
@@ -38,7 +41,7 @@ afterAll(async () => {
 
 // The layer is only *described* here; `Global` reads `FORGE_CONFIG_DIR` when it is constructed,
 // which happens inside each test body and therefore after the `beforeAll` above has run.
-const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Retention.node])))
+const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Retention.node, Storage.node])))
 
 const DAY = 24 * 60 * 60 * 1000
 const created = DateTime.makeUnsafe(0)
@@ -146,7 +149,7 @@ async function withFileBackedRetention(
 ) {
   await using tmp = await tmpdir()
   const filename = path.join(tmp.path, "retention.sqlite")
-  const app = AppNodeBuilder.build(LayerNode.group([Database.node, Retention.node]), [
+  const app = AppNodeBuilder.build(LayerNode.group([Database.node, Retention.node, Storage.node]), [
     [Database.node, Database.layerFromPath(filename)],
   ])
   const sqlite = await import("bun:sqlite")
@@ -378,6 +381,7 @@ describe("Retention selection", () => {
       expect(yield* retention.sweep({ toolOutputDays: 0, archivedSessionDays: 0 })).toEqual({
         messages: 0,
         executions: 0,
+        shellJobs: 0,
         bytes: 0,
       })
       expect(toolText((yield* readMessage("msg_disabled")).data)).toBe(bigOutput)
@@ -472,7 +476,7 @@ describe("Retention selection", () => {
       expect((yield* retention.sweep({ toolOutputDays: 14, archivedSessionDays: 30 })).messages).toBe(1)
       const first = (yield* readMessage("msg_idempotent")).data
       const second = yield* retention.sweep({ toolOutputDays: 14, archivedSessionDays: 30 })
-      expect(second).toEqual({ messages: 0, executions: 0, bytes: 0 })
+      expect(second).toEqual({ messages: 0, executions: 0, shellJobs: 0, bytes: 0 })
       expect((yield* readMessage("msg_idempotent")).data).toEqual(first)
     }),
   )
@@ -510,7 +514,7 @@ describe("Retention selection", () => {
         const retention = yield* Retention.Service
         const sweeping = yield* retention.sweep({ toolOutputDays: 14, archivedSessionDays: 0 }).pipe(Effect.forkChild)
 
-        expect(yield* Fiber.join(sweeping)).toEqual({ messages: 0, executions: 0, bytes: 0 })
+        expect(yield* Fiber.join(sweeping)).toEqual({ messages: 0, executions: 0, shellJobs: 0, bytes: 0 })
         expect(yield* Effect.promise(() => updater.exited)).toBe(0)
         expect(
           JSON.parse(
@@ -643,7 +647,7 @@ describe("Retention tool_execution selection", () => {
         const retention = yield* Retention.Service
         const sweeping = yield* retention.sweep({ toolOutputDays: 14, archivedSessionDays: 0 }).pipe(Effect.forkChild)
 
-        expect(yield* Fiber.join(sweeping)).toEqual({ messages: 0, executions: 0, bytes: 0 })
+        expect(yield* Fiber.join(sweeping)).toEqual({ messages: 0, executions: 0, shellJobs: 0, bytes: 0 })
         expect(yield* Effect.promise(() => updater.exited)).toBe(0)
         expect(
           JSON.parse(
@@ -816,6 +820,179 @@ describe("Retention preview rewrite", () => {
         { pruneInputs: false },
       )
       expect(next).toMatchObject({ status: "error", error: { type: "unknown", message: "exited with code 1" } })
+    }),
+  )
+})
+
+describe("shell-job retention", () => {
+  const record = (id: string, status: ShellJob.Info["status"], delivery: "inline" | "pending" | "sent") => ({
+    id,
+    sessionID: "ses_shell_retention",
+    status,
+    output: "",
+    truncated: false,
+    createdAt: 0,
+    identity: id,
+    request: "echo hi",
+    owner: "owner",
+    host: "host",
+    ownerPID: 1,
+    delivery,
+  })
+
+  const seedJob = Effect.fn("seedJob")(function* (
+    key: string,
+    status: ShellJob.Info["status"],
+    delivery: "inline" | "pending" | "sent",
+    age: number,
+  ) {
+    const storage = yield* Storage.Service
+    const { db } = yield* Database.Service
+    yield* storage.set({
+      scope: ShellJob.recordScope,
+      key: Storage.Key.make(key),
+      value: JSON.stringify(record(key, status, delivery)),
+    })
+    yield* storage.set({ scope: ShellJob.outputScope, key: Storage.Key.make(key), value: `output of ${key}` })
+    yield* db
+      .update(StorageStateTable)
+      .set({ time_updated: Date.now() - age * DAY })
+      .where(eq(StorageStateTable.key, Storage.Key.make(key)))
+      .run()
+  })
+
+  const present = Effect.fn("present")(function* (key: string) {
+    const storage = yield* Storage.Service
+    const address = { key: Storage.Key.make(key) }
+    return {
+      record: (yield* storage.get({ ...address, scope: ShellJob.recordScope })) !== undefined,
+      output: (yield* storage.get({ ...address, scope: ShellJob.outputScope })) !== undefined,
+    }
+  })
+
+  const reset = Effect.fn("reset")(function* () {
+    const storage = yield* Storage.Service
+    yield* storage.clear(ShellJob.recordScope)
+    yield* storage.clear(ShellJob.outputScope)
+  })
+
+  it.effect("deletes old terminal jobs with their output and reports them", () =>
+    Effect.gen(function* () {
+      yield* reset()
+      yield* seedJob("job_a_sent", "completed", "sent", 30)
+      yield* seedJob("job_a_inline", "failed", "inline", 30)
+      const retention = yield* Retention.Service
+      const report = yield* retention.sweep({ toolOutputDays: 14, archivedSessionDays: 0 })
+      expect(report.shellJobs).toBe(2)
+      expect(report.bytes).toBeGreaterThan(0)
+      expect(yield* present("job_a_sent")).toEqual({ record: false, output: false })
+      expect(yield* present("job_a_inline")).toEqual({ record: false, output: false })
+    }),
+  )
+
+  it.effect("keeps live, undelivered, recent and malformed jobs", () =>
+    Effect.gen(function* () {
+      yield* reset()
+      const storage = yield* Storage.Service
+      yield* seedJob("job_b_pending", "completed", "pending", 30)
+      yield* seedJob("job_b_running", "running", "inline", 30)
+      yield* seedJob("job_b_stopping", "stopping", "inline", 30)
+      yield* seedJob("job_b_recent", "completed", "sent", 1)
+      yield* storage.set({ scope: ShellJob.recordScope, key: Storage.Key.make("job_b_malformed"), value: "{not json" })
+      const { db } = yield* Database.Service
+      yield* db
+        .update(StorageStateTable)
+        .set({ time_updated: Date.now() - 30 * DAY })
+        .where(eq(StorageStateTable.key, Storage.Key.make("job_b_malformed")))
+        .run()
+      const retention = yield* Retention.Service
+      expect((yield* retention.sweep({ toolOutputDays: 14, archivedSessionDays: 0 })).shellJobs).toBe(0)
+      for (const key of ["job_b_pending", "job_b_running", "job_b_stopping", "job_b_recent"])
+        expect(yield* present(key)).toEqual({ record: true, output: true })
+      expect((yield* present("job_b_malformed")).record).toBe(true)
+    }),
+  )
+
+  it.effect("leaves shell jobs alone when the tool-output window is disabled", () =>
+    Effect.gen(function* () {
+      yield* reset()
+      yield* seedJob("job_c_old", "completed", "sent", 3650)
+      const retention = yield* Retention.Service
+      const report = yield* retention.sweep({ toolOutputDays: 0, archivedSessionDays: 30 })
+      expect(report.shellJobs).toBe(0)
+      expect(yield* present("job_c_old")).toEqual({ record: true, output: true })
+    }),
+  )
+
+  it.effect("pages past a full batch and keeps a younger job between old ones", () =>
+    Effect.gen(function* () {
+      yield* reset()
+      const storage = yield* Storage.Service
+      const { db } = yield* Database.Service
+      const keys = Array.from({ length: 450 }, (_, i) => `job_d_${String(i).padStart(4, "0")}`)
+      yield* storage.batch({
+        sets: keys.flatMap((key) => [
+          {
+            scope: ShellJob.recordScope,
+            key: Storage.Key.make(key),
+            value: JSON.stringify(record(key, "completed", "sent")),
+          },
+          { scope: ShellJob.outputScope, key: Storage.Key.make(key), value: "out" },
+        ]),
+        removes: [],
+      })
+      yield* db
+        .update(StorageStateTable)
+        .set({ time_updated: Date.now() - 30 * DAY })
+        .where(eq(StorageStateTable.scope, ShellJob.recordScope))
+        .run()
+      yield* db
+        .update(StorageStateTable)
+        .set({ time_updated: Date.now() })
+        .where(
+          and(
+            eq(StorageStateTable.scope, ShellJob.recordScope),
+            eq(StorageStateTable.key, Storage.Key.make("job_d_0210")),
+          ),
+        )
+        .run()
+      const retention = yield* Retention.Service
+      expect((yield* retention.sweep({ toolOutputDays: 14, archivedSessionDays: 0 })).shellJobs).toBe(449)
+      expect(yield* present("job_d_0210")).toEqual({ record: true, output: true })
+      expect(yield* present("job_d_0449")).toEqual({ record: false, output: false })
+    }),
+  )
+
+  it.effect("skips a job that changes after the sweep read it", () =>
+    Effect.gen(function* () {
+      yield* reset()
+      yield* seedJob("job_e_race", "completed", "sent", 30)
+      const storage = yield* Storage.Service
+      const get = storage.get
+      let raced = false
+      // The sweep holds this same service instance, so a write between its read and its guarded
+      // delete reproduces a concurrent update deterministically.
+      Object.assign(storage, {
+        get: (address: Storage.Address) =>
+          Effect.gen(function* () {
+            if (!raced && address.scope === ShellJob.outputScope) {
+              raced = true
+              yield* storage.set({
+                scope: ShellJob.recordScope,
+                key: address.key,
+                value: JSON.stringify(record("job_e_race", "completed", "pending")),
+              })
+            }
+            return yield* get(address)
+          }),
+      })
+      const retention = yield* Retention.Service
+      const report = yield* retention
+        .sweep({ toolOutputDays: 14, archivedSessionDays: 0 })
+        .pipe(Effect.ensuring(Effect.sync(() => Object.assign(storage, { get }))))
+      expect(raced).toBe(true)
+      expect(report.shellJobs).toBe(0)
+      expect(yield* present("job_e_race")).toEqual({ record: true, output: true })
     }),
   )
 })

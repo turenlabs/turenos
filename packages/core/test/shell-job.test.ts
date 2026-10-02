@@ -235,4 +235,63 @@ describe("durable ShellJob runner", () => {
       }
     }),
   )
+
+  it.live("reports a job whose rows were reaped as not found and lets the same identity start again", () =>
+    Effect.gen(function* () {
+      const jobs = yield* ShellJob.make
+      const app = yield* AppProcess.Service
+      const storage = yield* Storage.Service
+      const sessionID = session()
+      const reaped = input(app, sessionID, "console.log('first')")
+      const kept = input(app, sessionID, "console.log('kept')")
+      const first = yield* jobs.start(reaped)
+      const other = yield* jobs.start(kept)
+      yield* jobs.wait(sessionID, first.id, 5_000)
+      yield* jobs.wait(sessionID, other.id, 5_000)
+      // Retention removes both rows with a revision-guarded batch; this is the same storage effect.
+      const record = yield* storage.get({ scope: ShellJob.recordScope, key: Storage.Key.make(first.id) })
+      const removed = yield* storage.guardedBatch({
+        sets: [],
+        removes: [
+          { scope: ShellJob.recordScope, key: Storage.Key.make(first.id) },
+          { scope: ShellJob.outputScope, key: Storage.Key.make(first.id) },
+        ],
+        guards: [{ scope: ShellJob.recordScope, key: Storage.Key.make(first.id), expectedRevision: record!.revision }],
+      })
+      expect(removed).toBeGreaterThanOrEqual(1)
+
+      const failure = yield* jobs.observe(sessionID, first.id).pipe(Effect.flip)
+      expect(failure.message).toBe("Shell job not found in this session")
+      expect((yield* jobs.list(sessionID)).map((job) => job.id)).toEqual([other.id])
+      expect(yield* jobs.observe(sessionID, other.id)).toMatchObject({ status: "completed", output: "kept\n" })
+
+      const restarted = yield* ShellJob.make
+      expect((yield* restarted.list(sessionID)).map((job) => job.id)).toEqual([other.id])
+      const again = yield* restarted.start(reaped)
+      expect(again.id).toBe(first.id)
+      expect((yield* restarted.wait(sessionID, again.id, 5_000)).output).toBe("first\n")
+    }),
+  )
+
+  it.live("converts a stale live row to interrupted on reconstruction instead of removing it", () =>
+    Effect.gen(function* () {
+      const jobs = yield* ShellJob.make
+      const app = yield* AppProcess.Service
+      const storage = yield* Storage.Service
+      const request = input(app, session(), "console.log('done')")
+      const job = yield* jobs.start(request)
+      yield* jobs.wait(request.sessionID, job.id, 5_000)
+      const address = { scope: ShellJob.recordScope, key: Storage.Key.make(job.id) }
+      const record = Schema.decodeUnknownSync(Schema.fromJsonString(ShellJob.Record))(
+        (yield* storage.get(address))!.value,
+      )
+      yield* storage.set({
+        ...address,
+        value: JSON.stringify({ ...record, status: "running", owner: "lost-runtime", ownerPID: process.pid }),
+      })
+      const restarted = yield* ShellJob.make
+      expect((yield* restarted.observe(request.sessionID, job.id)).status).toBe("interrupted")
+      expect(yield* storage.get(address)).toBeDefined()
+    }),
+  )
 })

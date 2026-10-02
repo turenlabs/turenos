@@ -67,7 +67,7 @@ The descriptions are the schema annotations. "Legacy" marks keys read only by th
 | `attachments`     | object                     | see below                          | Image attachment processing.                                                                                                                        |
 | `tool_output`     | object                     | 2,000 lines, 51,200 bytes          | `max_lines` and `max_bytes` before tool output is written to a file and shown as a preview.                                                         |
 | `compaction`      | object                     | see below                          | Conversation compaction and replay pruning.                                                                                                         |
-| `retention`       | object                     | see below                          | How long stored session payloads are kept in full before they are reduced to previews.                                                              |
+| `retention`       | object                     | see below                          | How long session payloads are kept in full before previews, and finished shell jobs before deletion.                                                |
 | `reflection`      | object                     | enabled, every 20 sessions         | `enabled` and `every_sessions` for embedded reflection checkpoints.                                                                                 |
 | `semantic_memory` | object                     | disabled                           | `enabled: true` downloads the `potion-base-8M` model and adds local semantic memory retrieval.                                                      |
 | `commands`        | record of command objects  | none                               | Named slash commands. See [Commands](#commands).                                                                                                    |
@@ -114,7 +114,7 @@ and `cors` entries are added to the `--cors` list. The CLI defaults are port `0`
 | `compaction.keep.tokens`                 | 16,000  | Recent tokens kept out of the summary. Clamped to 200,000.                                                               |
 | `compaction.keep.turns`                  | 2       | Recent turns kept out of the summary; `0` disables turn alignment. Clamped to 50.                                        |
 | `compaction.buffer`                      | 20,000  | Tokens reserved below the context limit. Clamped to 500,000.                                                             |
-| `retention.toolOutputDays`               | 14      | Days a stored tool payload is kept in full. `0` disables; values above 3650 are clamped.                                 |
+| `retention.toolOutputDays`               | 14      | Days a tool payload is kept in full and a finished shell job is kept before deletion. `0` disables; clamped to 3650.     |
 | `retention.archivedSessionDays`          | 30      | Days after archiving before tool payloads and shell output are reduced to previews. `0` disables; clamped to 3650.       |
 | `reflection.every_sessions`              | 20      | Completed root sessions between reflection checkpoints.                                                                  |
 | `experimental.harness_self_modification` | off     | Allow the automatic Harness reviewer to propose and apply self-modifications.                                            |
