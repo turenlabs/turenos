@@ -20,97 +20,120 @@ import { ToolRegistry } from "@turenlabs/core/tool/registry"
 import { location } from "./fixture/location"
 import { tmpdir } from "./fixture/tmpdir"
 
-if (process.platform !== "win32")
-  test("ShellJobTool admits one queued same-session completion and wakes once", async () => {
-    await using tmp = await tmpdir()
-    const directory = AbsolutePath.make(tmp.path)
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const database = yield* Database.Service
-        const db = Database.primary(database.db)
-        const agents = yield* AgentV2.Service
-        const tools = yield* ShellJobTool.Service
-        const registry = yield* ToolRegistry.Service
-        const jobs = yield* ShellJob.Service
-        const sessionID = SessionSchema.ID.create()
-        const agent = AgentV2.ID.make("shell-delivery-test")
-        yield* agents.transform((editor) =>
-          editor.update(agent, (draft) => {
-            draft.mode = "primary"
-            draft.permissions = [{ action: "*", resource: "*", effect: "allow" }]
-          }),
-        )
-        yield* db
-          .insert(ProjectTable)
-          .values({ id: ProjectV2.ID.global, worktree: directory, sandboxes: [] })
-          .onConflictDoNothing()
-          .run()
-        yield* db
-          .insert(SessionTable)
-          .values({
-            id: sessionID,
-            project_id: ProjectV2.ID.global,
-            slug: "shell-delivery",
-            directory,
-            title: "Shell delivery",
-            version: "test",
-          })
-          .run()
-        const woken = yield* Deferred.make<void>()
-        const wakes: SessionSchema.ID[] = []
-        const control: SessionExecutionControl.Interface = {
-          ...SessionExecutionControl.noop,
-          wake: () => Effect.die("Completion must use advisory wake"),
-          wakeAdvisory: (id) =>
-            Effect.sync(() => {
-              wakes.push(id)
-            }).pipe(Effect.andThen(Deferred.succeed(woken, undefined)), Effect.asVoid),
-        }
-        const materialized = yield* registry.materialize({ session: yield* tools.forExecution({ sessionID, control }) })
-        const returned = yield* materialized.settle({
-          sessionID,
-          agent,
-          assistantMessageID: SessionMessage.ID.create(),
-          call: {
-            type: "tool-call",
-            id: "shell-delivery",
-            name: "bash",
-            input: { command: "sleep 2; printf UNTRUSTED_COMMAND_TEXT" },
-          },
+const scenario = async (name: string, command: string, cancel: boolean) => {
+  await using tmp = await tmpdir()
+  const directory = AbsolutePath.make(tmp.path)
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const db = Database.primary(database.db)
+      const agents = yield* AgentV2.Service
+      const tools = yield* ShellJobTool.Service
+      const registry = yield* ToolRegistry.Service
+      const jobs = yield* ShellJob.Service
+      const sessionID = SessionSchema.ID.create()
+      const agent = AgentV2.ID.make(name)
+      yield* agents.transform((editor) =>
+        editor.update(agent, (draft) => {
+          draft.mode = "primary"
+          draft.permissions = [{ action: "*", resource: "*", effect: "allow" }]
+        }),
+      )
+      yield* db
+        .insert(ProjectTable)
+        .values({ id: ProjectV2.ID.global, worktree: directory, sandboxes: [] })
+        .onConflictDoNothing()
+        .run()
+      yield* db
+        .insert(SessionTable)
+        .values({
+          id: sessionID,
+          project_id: ProjectV2.ID.global,
+          slug: name,
+          directory,
+          title: "Shell delivery",
+          version: "test",
         })
-        const result = returned.output?.structured as { job_id: string; status: string }
-        expect(result.status).toBe("running")
-        expect((yield* jobs.wait(sessionID, result.job_id, 5_000)).output).toBe("UNTRUSTED_COMMAND_TEXT")
-        yield* Deferred.await(woken).pipe(Effect.timeout(5_000))
-        // Retry materialization waits for the delivery latch, then finds the durable sent disposition.
+        .run()
+      const woken = yield* Deferred.make<void>()
+      const wakes: SessionSchema.ID[] = []
+      const control: SessionExecutionControl.Interface = {
+        ...SessionExecutionControl.noop,
+        wake: () => Effect.die("Completion must use advisory wake"),
+        wakeAdvisory: (id) =>
+          Effect.sync(() => {
+            wakes.push(id)
+          }).pipe(Effect.andThen(Deferred.succeed(woken, undefined)), Effect.asVoid),
+      }
+      const materialized = yield* registry.materialize({ session: yield* tools.forExecution({ sessionID, control }) })
+      const returned = yield* materialized.settle({
+        sessionID,
+        agent,
+        assistantMessageID: SessionMessage.ID.create(),
+        call: {
+          type: "tool-call",
+          id: name,
+          name: "bash",
+          input: { command },
+        },
+      })
+      const result = returned.output?.structured as { job_id: string; status: string }
+      expect(result.status).toBe("running")
+      if (cancel) {
+        yield* jobs.cancelSession(sessionID)
+        expect((yield* jobs.wait(sessionID, result.job_id, 5_000)).status).toBe("cancelled")
         yield* tools.forExecution({ sessionID, control })
         yield* tools.forExecution({ sessionID, control })
         const rows = yield* db.select().from(SessionInputTable).where(eq(SessionInputTable.session_id, sessionID)).all()
-        expect(rows).toHaveLength(1)
-        expect(rows[0]).toMatchObject({
-          id: `msg_shell_${result.job_id.slice(4)}`,
-          session_id: sessionID,
-          source: "shell_job",
-          delivery: "queue",
-          promoted_seq: null,
-        })
-        expect(JSON.stringify(rows[0]?.prompt)).not.toContain("UNTRUSTED_COMMAND_TEXT")
-        expect(wakes).toEqual([sessionID])
-      }).pipe(
-        Effect.scoped,
-        Effect.provide(
-          AppNodeBuilder.build(
-            LayerNode.group([
-              Database.node,
-              AgentV2.node,
-              ShellJob.node,
-              ShellJobTool.node,
-              ToolRegistry.node,
-              SessionProjector.node,
-            ]),
-            [[Location.node, Layer.succeed(Location.Service, Location.Service.of(location({ directory })))]],
-          ),
+        expect(rows).toEqual([])
+        expect(wakes).toEqual([])
+        return
+      }
+      expect((yield* jobs.wait(sessionID, result.job_id, 5_000)).output).toBe("UNTRUSTED_COMMAND_TEXT")
+      yield* Deferred.await(woken).pipe(Effect.timeout(5_000))
+      // Retry materialization waits for the delivery latch, then finds the durable sent disposition.
+      yield* tools.forExecution({ sessionID, control })
+      yield* tools.forExecution({ sessionID, control })
+      const rows = yield* db.select().from(SessionInputTable).where(eq(SessionInputTable.session_id, sessionID)).all()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        id: `msg_shell_${result.job_id.slice(4)}`,
+        session_id: sessionID,
+        source: "shell_job",
+        delivery: "queue",
+        promoted_seq: null,
+      })
+      expect(JSON.stringify(rows[0]?.prompt)).not.toContain("UNTRUSTED_COMMAND_TEXT")
+      expect(wakes).toEqual([sessionID])
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        AppNodeBuilder.build(
+          LayerNode.group([
+            Database.node,
+            AgentV2.node,
+            ShellJob.node,
+            ShellJobTool.node,
+            ToolRegistry.node,
+            SessionProjector.node,
+          ]),
+          [[Location.node, Layer.succeed(Location.Service, Location.Service.of(location({ directory })))]],
         ),
       ),
-    )
-  }, 15_000)
+    ),
+  )
+}
+
+if (process.platform !== "win32") {
+  test(
+    "ShellJobTool admits one queued same-session completion and wakes once",
+    () => scenario("shell-delivery", "sleep 2; printf UNTRUSTED_COMMAND_TEXT", false),
+    15_000,
+  )
+
+  test(
+    "ShellJobTool admits nothing and never wakes after the session cancels its jobs",
+    () => scenario("shell-delivery-cancel", "sleep 30", true),
+    15_000,
+  )
+}
