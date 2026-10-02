@@ -11,8 +11,10 @@ replay search, after which a background backfill fills it in and search results 
    backfill batch inline before searching. Later process starts resume the backfill automatically once the index is
    enabled. A page holds 50 results by default; `limit` accepts at most 200.
 2. The backfill indexes sessions and event text in batches of 64 sessions and 16 events, pausing 100 ms between
-   batches. New writes queue in `session_replay_pending_v3`. The index lives in `session_replay_v3` with an FTS5 table,
-   `session_replay_fts_v3`; a rebuild moves to a new table suffix instead of dropping the old index on a request path.
+   batches. Once everything is indexed the loop polls for new work with a doubling sleep, 1 s up to 10 s, and returns to
+   the 100 ms pace as soon as a poll finds work. New writes queue in `session_replay_pending_v3`. The index lives in
+   `session_replay_v3` with an FTS5 table, `session_replay_fts_v3`; a rebuild moves to a new table suffix instead of
+   dropping the old index on a request path.
 3. `SessionReplay.search` parses the query into free text and filters, matches sessions and events (never Lobby or
    other internal sessions), and returns scored entries, a total, a cursor for the next page, the parsed query, and the
    index status (`indexing` or `ready`, with progress).
@@ -52,6 +54,9 @@ bun test --cwd packages/app src/pages/session-replay-model.test.ts
 - Only the first 2,048 characters of session text, 960 characters of each event text fragment, and 1,024 characters of a
   path are indexed.
 - Until the backfill finishes, older sessions can be missing from results; the page reports `indexing` progress.
+- A search drains one inline batch (16 events). Events written while the loop is idle can be missing from results for
+  up to 10 s until the next poll, and a large burst then drains at 16 events per batch with a 100 ms pause between
+  batches, so it can take longer still.
 
 ## Source
 

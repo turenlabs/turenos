@@ -93,6 +93,9 @@ const SESSION_BACKFILL_BATCH = 64
 const EVENT_BACKFILL_BATCH = 16
 const LEGACY_RECLAIM_BATCH = SESSION_BACKFILL_BATCH + EVENT_BACKFILL_BATCH
 const BACKFILL_PAUSE_MS = 100
+const BACKFILL_IDLE_MS = 1_000
+// Pending rows written after a completed backfill wait up to this long for the next poll; search drains one batch.
+const BACKFILL_IDLE_CAP_MS = 10_000
 const INDEX_VERSION = 3
 const replayDefinitions = Event.durable([
   ...SessionV1.Event.Definitions.filter((definition) => definition.durable !== undefined),
@@ -417,8 +420,11 @@ export function backfill(db: Database) {
   return ensure(db).pipe(Effect.andThen(backfillLoop(db)))
 }
 
-export function backfillBatch(db: Database, options: { readonly sessions?: number; readonly events?: number } = {}) {
-  return hasBackfillWork(db).pipe(
+export function backfillBatch(
+  db: Database,
+  options: { readonly sessions?: number; readonly events?: number; readonly legacy?: boolean } = {},
+) {
+  return hasBackfillWork(db, options.legacy ?? true).pipe(
     Effect.flatMap((work) =>
       work
         ? db.transaction((tx) => backfillBatchLocked(tx, options), { behavior: "immediate" })
@@ -427,12 +433,13 @@ export function backfillBatch(db: Database, options: { readonly sessions?: numbe
   )
 }
 
-function hasBackfillWork(db: Database) {
+// The legacy table probe can only match before the legacy index is reclaimed, so idle polls after a pass skip it.
+function hasBackfillWork(db: Database, legacy: boolean) {
   return db
     .get<{ work: number }>(
       sql.raw(`SELECT (
       EXISTS(SELECT 1 FROM ${PENDING})
-      OR EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_replay')
+      ${legacy ? "OR EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_replay')" : ""}
       OR coalesce((SELECT value > 1 FROM session_replay_meta WHERE key = 'session_before'), 0)
       OR coalesce((SELECT value > 1 FROM session_replay_meta WHERE key = 'event_before'), 0)
     ) AS work`),
@@ -440,12 +447,15 @@ function hasBackfillWork(db: Database) {
     .pipe(Effect.map((row) => row?.work === 1))
 }
 
-function backfillLoop(db: Database): Effect.Effect<void> {
-  return backfillBatch(db).pipe(
+// idle is the last sleep after a completed pass: undefined while work remained, then doubling up to the cap.
+function backfillLoop(db: Database, idle?: number): Effect.Effect<void> {
+  return backfillBatch(db, { legacy: idle === undefined }).pipe(
     Effect.catch(() => Effect.sleep(1_000).pipe(Effect.as({ complete: false }))),
-    Effect.flatMap((result) =>
-      Effect.sleep(result.complete ? 1_000 : BACKFILL_PAUSE_MS).pipe(Effect.andThen(backfillLoop(db))),
-    ),
+    Effect.flatMap((result) => {
+      if (!result.complete) return Effect.sleep(BACKFILL_PAUSE_MS).pipe(Effect.andThen(backfillLoop(db)))
+      const next = idle === undefined ? BACKFILL_IDLE_MS : Math.min(idle * 2, BACKFILL_IDLE_CAP_MS)
+      return Effect.sleep(next).pipe(Effect.andThen(backfillLoop(db, next)))
+    }),
   )
 }
 
