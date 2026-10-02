@@ -29,6 +29,31 @@ const layer = LayerNode.compile(
   LayerNode.group([Vcs.node, Git.node, EventV2Bridge.node, FSUtil.node, CrossSpawnSpawner.node]),
 )
 const it = testEffect(layer)
+
+const calls = { stat: 0, active: 0, peak: 0 }
+
+// Wraps the real Git service so tests can count and bound statUntracked spawns.
+const countedGit = Layer.effect(
+  Git.Service,
+  Effect.gen(function* () {
+    const real = yield* Git.Service
+    return Git.Service.of({
+      ...real,
+      statUntracked: (cwd, file) =>
+        Effect.suspend(() => {
+          calls.stat++
+          calls.active++
+          calls.peak = Math.max(calls.peak, calls.active)
+          return real.statUntracked(cwd, file)
+        }).pipe(Effect.ensuring(Effect.sync(() => calls.active--))),
+    })
+  }),
+).pipe(Layer.provide(LayerNode.compile(Git.node)))
+const counted = testEffect(
+  LayerNode.compile(LayerNode.group([Vcs.node, Git.node, EventV2Bridge.node, FSUtil.node, CrossSpawnSpawner.node]), [
+    [Git.node, countedGit],
+  ]),
+)
 const worktreeIt = testEffect(Layer.mergeAll(layer, testInstanceStoreLayer))
 
 const git = Effect.fn("VcsTest.git")(function* (cwd: string, args: string[]) {
@@ -331,5 +356,178 @@ describe("Vcs diff", () => {
         )
       }),
     { git: true },
+  )
+})
+
+describe("Vcs untracked stats", () => {
+  afterEach(async () => {
+    await disposeAllInstances()
+  })
+
+  const lines = (count: number) => ("x".repeat(99) + "\n").repeat(count)
+
+  counted.instance(
+    "diff('git') counts untracked files from the patch without spawning stats",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        calls.stat = 0
+        yield* write(path.join(test.directory, "three.txt"), "a\nb\nc\n")
+        yield* write(path.join(test.directory, "bare.txt"), "no newline")
+        yield* write(path.join(test.directory, "plus.txt"), "++x\n+++y\nz\n")
+        yield* write(path.join(test.directory, "empty.txt"), "")
+        yield* write(path.join(test.directory, "binary.bin"), "a\0b\nc\n")
+
+        const vcs = yield* init()
+        for (const options of [undefined, { context: 1 }]) {
+          const diff = yield* vcs.diff("git", options)
+          const stat = (file: string) => {
+            const item = diff.find((item) => item.file === file)
+            return [item?.additions, item?.deletions]
+          }
+
+          expect(stat("three.txt")).toEqual([3, 0])
+          expect(stat("bare.txt")).toEqual([1, 0])
+          expect(stat("plus.txt")).toEqual([3, 0])
+          expect(stat("empty.txt")).toEqual([0, 0])
+          expect(stat("binary.bin")).toEqual([0, 0])
+        }
+        expect(calls.stat).toBe(0)
+      }),
+    { git: true },
+  )
+
+  counted.instance(
+    "diff('git') falls back to a stat for a file whose patch was truncated",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        calls.stat = 0
+        yield* write(path.join(test.directory, "huge.txt"), lines(105_000))
+        yield* write(path.join(test.directory, "small.txt"), "a\n")
+
+        const vcs = yield* init()
+        const diff = yield* vcs.diff("git")
+
+        expect(diff.find((item) => item.file === "huge.txt")?.additions).toBe(105_000)
+        expect(diff.find((item) => item.file === "small.txt")?.additions).toBe(1)
+        expect(calls.stat).toBe(1)
+      }),
+    { git: true },
+    60_000,
+  )
+
+  counted.instance(
+    "diff('git') keeps every file and bounds stats past the total patch cap",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        calls.stat = 0
+        for (const name of ["a", "b", "c", "d", "e"]) {
+          yield* write(path.join(test.directory, `${name}.txt`), lines(40_000))
+        }
+
+        const vcs = yield* init()
+        const diff = yield* vcs.diff("git")
+
+        expect(diff.map((item) => item.file)).toEqual(["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"])
+        expect(diff.map((item) => item.additions)).toEqual([40_000, 40_000, 40_000, 40_000, 40_000])
+        expect(diff[4]?.patch).not.toContain("+xxx")
+        expect(calls.stat).toBe(2)
+        expect(calls.stat).toBeLessThanOrEqual(Vcs.MAX_UNTRACKED_STATS)
+      }),
+    { git: true },
+    60_000,
+  )
+
+  counted.instance(
+    "status() stats at most MAX_UNTRACKED_STATS untracked files, 8 at a time",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        calls.stat = 0
+        calls.peak = 0
+        const total = Vcs.MAX_UNTRACKED_STATS + 5
+        const names = Array.from({ length: total }, (_, index) => `f${String(index).padStart(4, "0")}.txt`)
+        for (const name of names) yield* write(path.join(test.directory, name), "a\nb\n")
+
+        const vcs = yield* init()
+        const status = yield* vcs.status()
+
+        expect(status.map((item) => item.file)).toEqual(names)
+        expect(status.every((item) => item.status === "added")).toBe(true)
+        expect(calls.stat).toBe(Vcs.MAX_UNTRACKED_STATS)
+        expect(calls.peak).toBeGreaterThan(1)
+        expect(calls.peak).toBeLessThanOrEqual(8)
+        expect(status.slice(0, Vcs.MAX_UNTRACKED_STATS).every((item) => item.additions === 2)).toBe(true)
+        expect(status.slice(Vcs.MAX_UNTRACKED_STATS).map((item) => [item.additions, item.deletions])).toEqual(
+          Array.from({ length: 5 }, () => [0, 0]),
+        )
+      }),
+    { git: true },
+    60_000,
+  )
+
+  counted.instance(
+    "diff('git') counts untracked additions when color.ui is always",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        calls.stat = 0
+        yield* git(test.directory, ["config", "color.ui", "always"])
+        yield* write(path.join(test.directory, "three.txt"), "a\nb\nc\n")
+
+        const vcs = yield* init()
+        const diff = yield* vcs.diff("git")
+
+        expect(diff.find((item) => item.file === "three.txt")?.additions).toBe(3)
+        expect(calls.stat).toBe(0)
+      }),
+    { git: true },
+  )
+
+  counted.instance(
+    "diff('git') keeps original-file counts when a textconv driver is configured",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        calls.stat = 0
+        yield* git(test.directory, ["config", "diff.review.textconv", "sed -n 1p"])
+        yield* write(path.join(test.directory, ".gitattributes"), "*.txt diff=review\n")
+        yield* write(path.join(test.directory, "three.txt"), "a\nb\nc\n")
+
+        const vcs = yield* init()
+        const diff = yield* vcs.diff("git")
+
+        expect(diff.find((item) => item.file === "three.txt")?.additions).toBe(3)
+        expect(calls.stat).toBeGreaterThan(0)
+      }),
+    { git: true },
+  )
+
+  counted.instance(
+    "diff('git') bounds fallback stats for files after the total patch cap",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        calls.stat = 0
+        for (const name of ["a", "b", "c"]) {
+          yield* write(path.join(test.directory, `${name}.txt`), lines(40_000))
+        }
+        const small = Array.from(
+          { length: Vcs.MAX_UNTRACKED_STATS + 5 },
+          (_, index) => `z${String(index).padStart(4, "0")}.txt`,
+        )
+        for (const name of small) yield* write(path.join(test.directory, name), "a\n")
+
+        const vcs = yield* init()
+        const diff = yield* vcs.diff("git")
+
+        expect(diff).toHaveLength(small.length + 3)
+        expect(calls.stat).toBe(Vcs.MAX_UNTRACKED_STATS)
+        expect(diff.slice(-5).map((item) => item.additions)).toEqual([0, 0, 0, 0, 0])
+      }),
+    { git: true },
+    120_000,
   )
 })
