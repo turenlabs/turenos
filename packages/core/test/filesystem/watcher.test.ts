@@ -1,5 +1,5 @@
 import { $ } from "bun"
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { ConfigProvider, Deferred, Duration, Effect, Fiber, Layer, Option, Stream } from "effect"
@@ -262,5 +262,66 @@ describeWatcher("Watcher", () => {
         },
       ),
     )
+  })
+})
+
+// The regression this guards: native backends deliver updates in bursts, and
+// the old callback ran one EventV2 publish per update — thousands of publishes
+// inside a single NAPI callback starved the HTTP event loop under concurrent
+// agent work (observed as multi-minute sidecar wedges). Coalescing to one event
+// per path per flush window is the fix; these tests run without the native
+// binding so CI covers the policy even though the live tests above may skip.
+describe("Watcher.coalescedCallback", () => {
+  const update = (file: string, type: "create" | "update" | "delete") => ({ path: file, type })
+
+  test("dedupes per path, publishes nothing until flush, and last-write-wins", () => {
+    const batches: Watcher.Update[][] = []
+    const flushes: (() => void)[] = []
+    const callback = Watcher.coalescedCallback(
+      (updates) => batches.push(updates),
+      (flush) => flushes.push(flush),
+    )
+
+    callback(null, [update("/a", "create"), update("/a", "update"), update("/b", "create")])
+    expect(batches).toEqual([])
+    expect(flushes).toHaveLength(1)
+
+    // Further updates before the flush rides the same window.
+    callback(null, [update("/a", "delete"), update("/c", "update")])
+    expect(flushes).toHaveLength(1)
+
+    flushes[0]()
+    expect(batches).toEqual([
+      [
+        { file: "/a", event: "unlink" },
+        { file: "/b", event: "add" },
+        { file: "/c", event: "change" },
+      ],
+    ])
+
+    // After the flush a new burst schedules a fresh window.
+    callback(null, [update("/a", "create")])
+    expect(flushes).toHaveLength(2)
+    flushes[1]()
+    expect(batches[1]).toEqual([{ file: "/a", event: "add" }])
+  })
+
+  test("drains immediately when a single burst exceeds the pending bound", () => {
+    const batches: Watcher.Update[][] = []
+    let scheduled = 0
+    const callback = Watcher.coalescedCallback(
+      (updates) => batches.push(updates),
+      () => {
+        scheduled++
+      },
+    )
+
+    callback(
+      null,
+      Array.from({ length: 8192 }, (_, i) => update(`/burst-${i}`, "create")),
+    )
+    expect(scheduled).toBe(0)
+    expect(batches).toHaveLength(1)
+    expect(batches[0]).toHaveLength(8192)
   })
 })

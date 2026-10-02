@@ -131,6 +131,20 @@ describe("applyGlobalEvent", () => {
 
     expect(refreshCount).toBe(1)
   })
+
+  test("skips refresh when the server replayed the missed window", () => {
+    let refreshCount = 0
+    applyGlobalEvent({
+      event: { type: "server.connected", properties: { resume: "ok" } },
+      project: [],
+      refresh: () => {
+        refreshCount += 1
+      },
+      setGlobalProject() {},
+    })
+
+    expect(refreshCount).toBe(0)
+  })
 })
 
 describe("applyDirectoryEvent", () => {
