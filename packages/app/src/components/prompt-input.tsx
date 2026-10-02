@@ -1710,25 +1710,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       <Switch>
         <Match when={props.controls.newLayoutDesigns}>
           <div class="flex w-full flex-col gap-2">
-            <div data-component="prompt-toolbar" class="w-full">
-              <div data-slot="prompt-toolbar-row">
-                <Show when={props.sessionDock}>{props.sessionDock}</Show>
-                <Show when={!providersLoading()}>
-                  <div data-component="prompt-mode-dock" class="flex min-w-0 items-center">
-                    <ComposerModelControl state={modelControlState()} />
-                    {variantControl()}
-                    {fastControl()}
-                  </div>
-                </Show>
-              </div>
-            </div>
             <DockShellForm
               data-component={newSession() ? "session-new-composer" : "session-composer"}
               data-rule="muted"
               data-rule-focus
               onSubmit={submitOrAnswer}
               classList={{
-                "group/prompt-input min-h-[96px] w-full !rounded-[18px] bg-v2-background-bg-base": true,
+                "group/prompt-input min-h-[76px] w-full bg-v2-background-bg-base": true,
                 "border-icon-info-active border-dashed": store.draggingType !== null,
                 [props.class ?? ""]: !!props.class,
               }}
@@ -1823,8 +1811,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </div>
                 </div>
               </div>
-              <div class="flex h-11 items-center px-2">
-                <div class="flex min-w-0 flex-1 items-center gap-1">
+              <div data-slot="prompt-composer-controls" class="flex min-h-[38px] items-end gap-1 px-2 py-1">
+                <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1">
                   {fileAttachmentInput()}
                   <TooltipV2
                     placement="top"
@@ -1869,6 +1857,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </TooltipV2>
                   <Show when={showAgentControl()}>
                     <ComposerAgentControl state={agentControlState()} />
+                  </Show>
+                  <Show when={!providersLoading()}>
+                    <div data-component="prompt-mode-dock" class="flex min-w-0 flex-wrap items-center">
+                      <ComposerModelControl state={modelControlState()} />
+                      {variantControl()}
+                      {fastControl()}
+                    </div>
+                  </Show>
+                  <Show when={props.sessionDock}>
+                    <div data-slot="prompt-workspace-controls">{props.sessionDock}</div>
                   </Show>
                   {props.toolbar}
                 </div>
