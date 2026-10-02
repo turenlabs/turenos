@@ -143,6 +143,15 @@ const readLayer = (imageLayer: Layer.Layer<Image.Service>) =>
   ])
 const it = testEffect(readLayer(imageLayer))
 const itWithoutResizer = testEffect(readLayer(unavailableImage))
+const itFileSystem = testEffect(
+  AppNodeBuilder.build(LayerNode.group([ToolRegistry.node, ToolRegistry.toolsNode, ReadTool.node]), [
+    [PermissionV2.node, permission],
+    [Config.node, config],
+    [Image.node, unavailableImage],
+    [Location.node, locationLayer],
+    [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],
+  ]),
+)
 const sessionID = SessionV2.ID.make("ses_read_tool_test")
 
 describe("ReadTool", () => {
@@ -504,6 +513,44 @@ describe("ReadTool", () => {
     }),
   )
 
+  itFileSystem.live("explains a missing file using the real filesystem", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const result = yield* executeTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        call: { type: "tool-call", id: "call-real-missing", name: "read", input: { path: missingPath } },
+      })
+      expect(result.type).toBe("error")
+      expect(result.type === "error" ? result.value : "").toContain(`Unable to read ${missingPath}:`)
+      expect(result.type === "error" ? result.value : "").toContain("NotFound")
+    }),
+  )
+
+  it.effect("preserves actionable decoding and pagination failures", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      yield* Effect.forEach(
+        [
+          new ReadToolFileSystem.MalformedUtf8Error({ resource: "notes.txt" }),
+          new ReadToolFileSystem.OffsetOutOfRangeError({ offset: 100 }),
+          new ReadToolFileSystem.PathKindError({ resource: "notes.txt", expected: "a file" }),
+        ],
+        (error, index) =>
+          Effect.gen(function* () {
+            readFailure = error
+            expect(
+              yield* executeTool(registry, {
+                sessionID,
+                ...toolIdentity,
+                call: { type: "tool-call", id: `call-read-error-${index}`, name: "read", input: { path: "notes.txt" } },
+              }),
+            ).toEqual({ type: "error", value: error.message })
+          }),
+      )
+    }),
+  )
+
   it.effect("preserves unexpected filesystem defects", () =>
     Effect.gen(function* () {
       resolveFailure = new Error("unexpected")
@@ -532,12 +579,12 @@ describe("ReadTool", () => {
           ...toolIdentity,
           call: { type: "tool-call", id: "call-read", name: "read", input: { path: "README.md" } },
         }),
-      ).toEqual({ type: "error", value: "Unable to read README.md" })
+      ).toEqual({ type: "error", value: "Permission denied: read README.md" })
       expect(readCalls).toEqual([])
     }),
   )
 
-  it.effect("returns missing paths as model-visible tool failures", () =>
+  it.effect("explains invalid path resolution to the model", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service
 
@@ -547,7 +594,7 @@ describe("ReadTool", () => {
           ...toolIdentity,
           call: { type: "tool-call", id: "call-missing-path", name: "read", input: { path: missingPath } },
         }),
-      ).toEqual({ type: "error", value: `Unable to read ${missingPath}` })
+      ).toEqual({ type: "error", value: `Invalid read path ${missingPath}: non_directory_ancestor` })
       expect(assertions).toEqual([])
       expect(readCalls).toEqual([])
     }),
@@ -587,7 +634,7 @@ describe("ReadTool", () => {
           ...toolIdentity,
           call: { type: "tool-call", id: "call-read-directory-denied", name: "read", input: { path: "src" } },
         }),
-      ).toEqual({ type: "error", value: "Unable to read src" })
+      ).toEqual({ type: "error", value: "Permission denied: read src" })
       expect(listCalls).toEqual([])
     }),
   )
