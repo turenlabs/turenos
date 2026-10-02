@@ -1,5 +1,9 @@
-import { afterEach, describe, expect } from "bun:test"
+import { afterEach, beforeEach, describe, expect } from "bun:test"
+import fs from "node:fs/promises"
 import path from "path"
+import { Global } from "@turenlabs/core/global"
+import { Config } from "../../src/config/config"
+import { AppRuntime } from "../../src/effect/app-runtime"
 import { Server } from "../../src/server/server"
 import { GlobalBus, type GlobalEvent } from "../../src/bus/global"
 import { Effect, Fiber } from "effect"
@@ -25,7 +29,23 @@ const tmpdirEffect = (options: Parameters<typeof tmpdir>[0]) =>
     (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
   )
 
+let globalFiles: { file: string; contents: string | undefined }[] = []
+beforeEach(async () => {
+  globalFiles = await Promise.all(
+    ["forge.jsonc", "forge.json", "config.json"].map(async (name) => {
+      const file = path.join(Global.Path.config, name)
+      return { file, contents: (await Bun.file(file).exists()) ? await Bun.file(file).text() : undefined }
+    }),
+  )
+})
+
 afterEach(async () => {
+  await Promise.all(
+    globalFiles.map(({ file, contents }) =>
+      contents === undefined ? fs.rm(file, { force: true }) : Bun.write(file, contents),
+    ),
+  )
+  await AppRuntime.runPromise(Config.use.invalidate())
   await disposeAllInstances()
   await resetDatabase()
 })

@@ -30,6 +30,7 @@
       "@babel/core": "7.29.7",
       "@effect/opentelemetry": "4.0.0-beta.83",
       "@effect/platform-node": "4.0.0-beta.83",
+      "@effect/platform-bun": "4.0.0-beta.83",
       "@effect/sql-sqlite-bun": "4.0.0-beta.83",
       "@npmcli/arborist": "9.4.0",
       "@types/bun": "1.4.0",

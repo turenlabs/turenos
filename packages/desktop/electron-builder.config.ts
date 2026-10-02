@@ -156,6 +156,11 @@ const verifyPackage: NonNullable<Configuration["afterPack"]> = async (context) =
   )
   await Promise.all(
     [
+      context.electronPlatformName === "win32" ? "bun.exe" : "bun",
+      "server/sidecar.js",
+      "server/node.js",
+      "server/vendor/bun-pty/package.json",
+      "server/vendor/bun-pty/src/index.ts",
       "decompiler/decompiler-worker.js",
       "decompiler/ghidra-decompiler/package.json",
       "decompiler/ghidra-decompiler/dist/ghidra_decompiler.js",
@@ -314,7 +319,9 @@ const verifyPackage: NonNullable<Configuration["afterPack"]> = async (context) =
   const archive = path.join(resources, "app.asar")
   await Promise.all(
     wasmAssets.map(async (file) => {
-      const packaged = extractFile(archive, path.join("out", "main", file))
+      const packaged = file.startsWith("server/")
+        ? await readFile(path.join(resources, file))
+        : extractFile(archive, path.join("out", "main", file))
       if ((await readFile(path.join(mainOutput, file))).equals(packaged)) return
       throw new Error(`Packaged WASM artifact differs from the desktop build: ${file}`)
     }),
@@ -377,6 +384,7 @@ const getBase = (appId: string): Configuration => ({
   },
   files: [
     "out/**/*",
+    "!out/main/server/**/*",
     "!out/main/chunks/decompiler-worker.js",
     "!out/main/chunks/ghidra-decompiler/**/*",
     "!out/main/chunks/yara-worker.js",
@@ -392,13 +400,18 @@ const getBase = (appId: string): Configuration => ({
     "!out/main/chunks/forensic-tools/**/*",
     ...wasmToolLeaves.map((name) => `!out/main/chunks/${name}/**/*`),
     "resources/**/*",
+    "!resources/bun*",
     "!resources/forge-cli*",
   ],
   extraResources: [
     {
+      from: "out/main/server/",
+      to: "server/",
+    },
+    {
       from: "resources/",
       to: ".",
-      filter: ["forge-cli*", "vigil/**"],
+      filter: ["forge-cli*", "bun*", "vigil/**"],
     },
     {
       from: "native/",

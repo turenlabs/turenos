@@ -77,13 +77,24 @@ const wasmLeafPackages = wasmLeaves.map((name) => ({
 }))
 
 const generated = await import("./generate.ts")
+const coreRequire = createRequire(path.join(dir, "../core/package.json"))
+const packageRoot = async (name: string) => {
+  let current = path.dirname(coreRequire.resolve(name))
+  while (path.dirname(current) !== current) {
+    const manifest = Bun.file(path.join(current, "package.json"))
+    if ((await manifest.exists()) && (await manifest.json()).name === name) return current
+    current = path.dirname(current)
+  }
+  throw new Error(`Unable to locate ${name} package root`)
+}
+const bunPtyRoot = await packageRoot("bun-pty")
 
 // Chunk names are content-hashed, so without this every build leaves the last
 // build's chunks behind and the directory grows without bound.
 await rm("./dist/node", { recursive: true, force: true })
 
 const nodeBuild = await Bun.build({
-  target: "node",
+  target: "bun",
   entrypoints: ["./src/node.ts"],
   outdir: "./dist/node",
   format: "esm",
@@ -91,7 +102,17 @@ const nodeBuild = await Bun.build({
   // Without splitting, Bun inlines dynamic imports back into the entry, so
   // deferred modules would still be parsed on every server start.
   splitting: true,
-  external: ["jsonc-parser", "@lydell/node-pty"],
+  plugins: [
+    {
+      name: "external-bun-pty",
+      setup(builder) {
+        builder.onResolve({ filter: /^bun-pty$/ }, () => ({
+          path: "./vendor/bun-pty/src/index.ts",
+          external: true,
+        }))
+      },
+    },
+  ],
   define: {
     FORGE_MODELS_DEV: generated.modelsData,
     FORGE_VERSION: JSON.stringify(Script.version),
@@ -102,10 +123,10 @@ const nodeBuild = await Bun.build({
   },
 })
 
-if (!nodeBuild.success) throw new Error("Forge Node build failed")
+if (!nodeBuild.success) throw new Error("Forge Bun server build failed")
 
 const workerBuild = await Bun.build({
-  target: "node",
+  target: "bun",
   entrypoints: [
     "../core/src/tool/decompiler-worker.ts",
     "../core/src/tool/yara-worker.ts",
@@ -147,5 +168,6 @@ for (const item of binaryPackages)
   await cp(path.join(item.root, ".."), path.join("./dist/node", item.name), { recursive: true })
 for (const item of wasmLeafPackages)
   await cp(path.join(item.root, ".."), path.join("./dist/node", item.name), { recursive: true })
+await cp(bunPtyRoot, "./dist/node/vendor/bun-pty", { recursive: true, dereference: true })
 
 console.log("Build complete")

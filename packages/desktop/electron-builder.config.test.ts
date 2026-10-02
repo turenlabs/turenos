@@ -171,14 +171,20 @@ for (const channel of channels) {
     expect(config.files).toContain("!out/main/chunks/binary-tools/**/*")
     expect(config.files).toContain("!out/main/chunks/static-analysis/**/*")
     expect(config.files).toContain("!out/main/chunks/forensic-tools/**/*")
+    expect(config.files).toContain("!out/main/server/**/*")
+    expect(config.files).toContain("!resources/bun*")
     expect(config.asarUnpack).toBeUndefined()
     expect(config.publish).toEqual([
       { provider: "github", owner: "turenlabs", repo: "turenos", channel: `latest-${process.arch}` },
     ])
     expect(config.extraResources).toContainEqual({
+      from: "out/main/server/",
+      to: "server/",
+    })
+    expect(config.extraResources).toContainEqual({
       from: "resources/",
       to: ".",
-      filter: ["forge-cli*", "vigil/**"],
+      filter: ["forge-cli*", "bun*", "vigil/**"],
     })
     expect(config.extraResources).toContainEqual(noticeResource)
     expect(config.extraResources).toContainEqual(thinkingOrbsLicenseResource)
