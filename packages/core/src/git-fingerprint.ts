@@ -2,9 +2,10 @@ export * as GitFingerprint from "./git-fingerprint"
 
 import os from "os"
 import path from "path"
-import { randomUUID } from "crypto"
+import { createHash, randomUUID } from "crypto"
 import { constants, type BigIntStats } from "fs"
 import { lstat, mkdir, open, readdir, readlink, realpath, rm, symlink, writeFile } from "fs/promises"
+import whichPkg from "which"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { makeGlobalNode } from "./effect/app-node"
@@ -171,7 +172,8 @@ const layer = Layer.effect(
     const proc = yield* AppProcess.Service
     const locks = KeyedMutex.makeUnsafe<string>()
     const swept = new Set<string>()
-    const trusted = Bun.which("git")
+    // Resolved from the server's own PATH only. The desktop sidecar runs under Node, so no Bun APIs.
+    const trusted = whichPkg.sync("git", { nothrow: true })
     // Runtime capability is a property of this process and kernel; cache only a definitive answer.
     let capable: boolean | undefined
 
@@ -618,7 +620,7 @@ const readRegular = (context: Run, absolute: string, before: BigIntStats, budget
         )
         // Refuse a raced swap (including to a FIFO or device) before reading any content.
         if (!opened.isFile() || signature(opened) !== signature(before)) return yield* new Stop({ reason: "race" })
-        const hasher = new Bun.CryptoHasher("sha1")
+        const hasher = createHash("sha1")
         hasher.update(`blob ${before.size}\0`)
         const buffer = Buffer.alloc(CHUNK)
         const state = { total: 0 }
@@ -702,7 +704,7 @@ function buildTree(seen: ReadonlyMap<string, Seen>): Tree {
         Buffer.from(item.oid, "hex"),
       ]),
     )
-    const hasher = new Bun.CryptoHasher("sha1")
+    const hasher = createHash("sha1")
     hasher.update(`tree ${body.length}\0`)
     hasher.update(body)
     return {
@@ -906,7 +908,7 @@ function signature(stats: BigIntStats) {
 }
 
 function blob(parts: readonly Buffer[]) {
-  const hasher = new Bun.CryptoHasher("sha1")
+  const hasher = createHash("sha1")
   hasher.update(`blob ${parts.reduce((total, part) => total + part.length, 0)}\0`)
   for (const part of parts) hasher.update(part)
   return hasher.digest("hex")
