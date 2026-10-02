@@ -564,6 +564,30 @@ describe("EventV2", () => {
     }),
   )
 
+  it.effect("decodes each durable row once across repeated snapshots", () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const aggregateID = Session.ID.create()
+      yield* events.publish(DurableMessage, durableData(aggregateID, "zero"))
+      yield* events.publish(DurableMessage, durableData(aggregateID, "one"))
+
+      const misses = () => EventV2.decodeStats.misses
+      const before = misses()
+      const first = yield* events.durableSnapshot({ aggregateID })
+      expect(first).toHaveLength(2)
+      expect(misses() - before).toBe(2)
+
+      const second = yield* events.durableSnapshot({ aggregateID })
+      expect(second).toEqual(first)
+      expect(misses() - before).toBe(2)
+
+      yield* events.publish(DurableMessage, durableData(aggregateID, "two"))
+      const third = yield* events.durableSnapshot({ aggregateID })
+      expect(third).toHaveLength(3)
+      expect(misses() - before).toBe(3)
+    }),
+  )
+
   it.effect("omits live-only events from durable aggregate streams", () =>
     Effect.gen(function* () {
       const events = yield* EventV2.Service

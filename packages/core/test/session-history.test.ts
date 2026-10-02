@@ -380,7 +380,7 @@ describe("SessionHistory decode cache", () => {
       if (!("text" in row.data)) return yield* Effect.die("expected a user message row")
       yield* database.db
         .update(SessionMessageTable)
-        .set({ data: { ...row.data, text: "turn 0 edited" } })
+        .set({ data: { ...row.data, text: "turn 0 edited" } as typeof row.data })
         .where(eq(SessionMessageTable.id, target.id))
         .run()
 

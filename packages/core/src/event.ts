@@ -3,7 +3,7 @@ export * as EventV2 from "./event"
 import { Cause, Context, Effect, Layer, Option, PubSub, Queue, Schema, Stream } from "effect"
 import { Event } from "@turenlabs/schema/event"
 import type { Data, Definition, Payload } from "@turenlabs/schema/event"
-import { and, asc, eq, gt, inArray } from "drizzle-orm"
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm"
 import { Database } from "./database/database"
 import { EventSequenceTable, EventTable } from "./event/sql"
 import { Location } from "./location"
@@ -59,6 +59,41 @@ const decodeSerializedEvent = (event: SerializedEvent): Payload => {
     durable: { aggregateID: event.aggregateID, seq: event.seq, version: definition.durable.version },
     data: Schema.decodeUnknownSync(definition.data)(event.data),
   }
+}
+
+// Durable rows are immutable once committed, and durable-stream subscribers re-read
+// overlapping ranges on every wake — keying hits on the raw JSON means each unique
+// row parses and decodes once no matter how many subscribers or re-reads see it.
+const decodeCache = new Map<ID, { data: string; payload: Payload }>()
+const DECODE_CACHE_LIMIT = 8192
+
+export const decodeStats = { hits: 0, misses: 0 }
+
+type EventRow = {
+  readonly id: ID
+  readonly aggregate_id: string
+  readonly seq: number
+  readonly type: string
+  readonly data: string
+}
+
+const decodeEventRow = (row: EventRow): Payload => {
+  const cached = decodeCache.get(row.id)
+  if (cached !== undefined && cached.data === row.data) {
+    decodeStats.hits++
+    return cached.payload
+  }
+  decodeStats.misses++
+  const payload = decodeSerializedEvent({
+    id: row.id,
+    type: row.type,
+    seq: row.seq,
+    aggregateID: row.aggregate_id,
+    data: JSON.parse(row.data),
+  })
+  if (decodeCache.size >= DECODE_CACHE_LIMIT) decodeCache.delete(decodeCache.keys().next().value!)
+  decodeCache.set(row.id, { data: row.data, payload })
+  return payload
 }
 
 export const readAggregate = Effect.fn("EventV2.readAggregate")(function* <A>(
@@ -556,24 +591,20 @@ export const layerWith = (options?: LayerOptions) =>
         (options?.beforeAggregateRead?.(aggregateID) ?? Effect.void).pipe(
           Effect.andThen(
             db
-              .select()
+              .select({
+                id: EventTable.id,
+                aggregate_id: EventTable.aggregate_id,
+                seq: EventTable.seq,
+                type: EventTable.type,
+                data: sql<string>`${EventTable.data}`,
+              })
               .from(EventTable)
               .where(and(eq(EventTable.aggregate_id, aggregateID), gt(EventTable.seq, after)))
               .orderBy(asc(EventTable.seq))
               .all(),
           ),
           Effect.orDie,
-          Effect.map((rows) =>
-            rows.map((event) =>
-              decodeSerializedEvent({
-                id: event.id,
-                aggregateID: event.aggregate_id,
-                seq: event.seq,
-                type: event.type,
-                data: event.data,
-              }),
-            ),
-          ),
+          Effect.map((rows) => rows.map(decodeEventRow)),
         )
 
       const subscribeDurable = (aggregateID: string) =>
