@@ -291,6 +291,67 @@ describe("PriorWork prepared anchors", () => {
 
 darwin("PriorWork applicability", () => {
   it.live(
+    "compares disjoint record anchors without applying the stored capture budget to their union",
+    () =>
+      captureOn(
+        Effect.gen(function* () {
+          const tmp = yield* scratch
+          const main = path.join(tmp.path, "main")
+          const other = path.join(tmp.path, "other")
+          const groups = ["first", "second"].map((group) =>
+            Array.from({ length: 17 }, (_, index) => ({ path: `src/${group}-${index}.ts` })),
+          )
+          yield* Effect.promise(async () => {
+            await fs.mkdir(main)
+            await repository(main)
+            await Promise.all(groups.flat().map((location) => write(main, location.path, "export {}\n")))
+            await commit(main)
+            await $`git clone -q ${main} ${other}`.quiet()
+          })
+          const records = yield* Effect.forEach(groups, (locations) =>
+            at(main, (service) => service.record({ prepared: prepared({ locations }) }, agent()), tmp.path),
+          )
+          const refs = records.map((record) => ({ record_id: record.id, revision: 1 }))
+          const history = yield* Effect.forEach(records, (record) =>
+            at(main, (service) => service.get({ id: record.id, revision: 1 }), tmp.path),
+          )
+          expect(history.map((detail) => detail.revision?.recordingCapture)).toMatchObject([
+            { status: "available", completeness: { state: "complete" } },
+            { status: "available", completeness: { state: "complete" } },
+          ])
+          const individual = yield* Effect.forEach(refs, (ref) =>
+            at(main, (service) => service.applicability({ refs: [ref] }), tmp.path),
+          )
+          expect(individual.flat().map((result) => result.status)).toEqual([
+            "unchanged_since_recording",
+            "unchanged_since_recording",
+          ])
+          expect(yield* at(main, (service) => service.applicability({ refs }), tmp.path)).toEqual(individual.flat())
+          yield* Effect.promise(() => write(main, groups[0]![0]!.path, "export const changed = true\n"))
+          const changed = yield* at(main, (service) => service.applicability({ refs }), tmp.path)
+          expect(changed.map((result) => [result.status, result.reason])).toEqual([
+            ["stale", "anchor_changed"],
+            ["unchanged_since_recording", "anchors_unchanged"],
+          ])
+          expect(changed).toEqual(
+            (yield* Effect.forEach(refs, (ref) =>
+              at(main, (service) => service.applicability({ refs: [ref] }), tmp.path),
+            )).flat(),
+          )
+          expect(
+            yield* Effect.forEach(records, (record) =>
+              at(main, (service) => service.get({ id: record.id, revision: 1 }), tmp.path),
+            ),
+          ).toEqual(history)
+          expect(
+            yield* at(other, (service) => service.applicability({ refs }), tmp.path).pipe(Effect.flip),
+          ).toBeInstanceOf(PriorWork.NotFound)
+        }),
+      ),
+    TIMEOUT,
+  )
+
+  it.live(
     "stores the original baseline and evaluates file and directory anchors against the current worktree",
     () =>
       captureOn(

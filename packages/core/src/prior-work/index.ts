@@ -171,7 +171,11 @@ const layer = Layer.effect(
      * that the repository identity moved under the capture, which callers must treat as a
      * conflict rather than a storable result.
      */
-    const capture = Effect.fn("PriorWork.capture")(function* (observed: Observed, anchors: readonly string[]) {
+    const capture = Effect.fn("PriorWork.capture")(function* (
+      observed: Observed,
+      anchors: readonly string[],
+      stored = true,
+    ) {
       if (!Flag.FORGE_EXPERIMENTAL_PRIOR_WORK_CAPTURE) return { baseline: unavailable("disabled"), changed: false }
       if (!GitFingerprint.supportedPlatform()) return { baseline: unavailable("platform"), changed: false }
       if (!observed.repository) return { baseline: unavailable("identity"), changed: true }
@@ -185,7 +189,13 @@ const layer = Layer.effect(
         result.identity.common.ino === observed.incarnation.ino &&
         result.identity.worktree.dev === observed.worktree.dev &&
         result.identity.worktree.ino === observed.worktree.ino
-      return { baseline: bounded(result), changed: !same }
+      // The current batch's union is bounded by the primitive, not the per-record storage budget.
+      // Still validate root/completeness metadata through the stored schema, without union anchors.
+      return {
+        baseline: bounded(stored ? result : { ...result, anchors: [] }),
+        currentAnchors: result.anchors,
+        changed: !same,
+      }
     })
 
     const transact = <A, E>(body: (tx: Transaction) => Effect.Effect<A, E>) =>
@@ -952,7 +962,7 @@ const layer = Layer.effect(
           return baseline?.status === "available" && baseline.completeness.state === "complete"
         })
         const captured = needed
-          ? yield* capture(before, anchors)
+          ? yield* capture(before, anchors, false)
           : { baseline: unavailable("disabled"), changed: false }
         const current = captured.baseline
         const after = yield* observe()
@@ -966,8 +976,13 @@ const layer = Layer.effect(
           const base = { record_id: item.ref.record_id, revision: item.ref.revision }
           if (!item.original || !item.evaluated) return { ...base, status: "unknown", reason: "record_deleted" }
           if (changed) return { ...base, status: "unknown", reason: "current_unavailable" }
-          const anchor = (value: string) =>
-            current.status === "available" ? current.anchors[anchors.indexOf(value)] : undefined
+          const anchor = (value: string): PriorWork.CaptureAnchor | undefined => {
+            if (current.status !== "available" || !("currentAnchors" in captured)) return undefined
+            const result = captured.currentAnchors?.[anchors.indexOf(value)]
+            return result?.state === "tree"
+              ? { state: "tree", oid: result.oid, contains_symlink: result.containsSymlink }
+              : result
+          }
           return {
             ...base,
             ...evaluate({
