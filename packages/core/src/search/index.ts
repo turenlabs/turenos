@@ -37,6 +37,10 @@ export class Service extends Context.Service<Service, Interface>()("@forge/v2/Co
 
 // --- corpus bounds ------------------------------------------------------------
 
+// Minimum gap between whole-vocabulary thesaurus re-embeds. Churn that lands
+// inside the window keeps the previous expansion table — it only broadens
+// terms semantically, so direct lexicon matches stay exact meanwhile.
+const THESAURUS_REBUILD_MS = 2_000
 const CHUNK_LINES = 100
 const CHUNK_STEP = 100
 const MAX_FILE_LINES = 4000
@@ -312,7 +316,9 @@ const makeLayer = (load: PotionLoader) =>
 
     let potion: Promise<PotionRuntime> | undefined
     let potionFailures = 0
-    let thesaurus: { version: number; vocab: string[]; vecs: Float32Array; dim: number } | undefined
+    let thesaurus:
+      | { version: number; builtAt: number; vocab: string[]; vecs: Float32Array; dim: number }
+      | undefined
 
     const moduleToFiles = () => {
       const map = new Map<string, string[]>()
@@ -579,7 +585,11 @@ const makeLayer = (load: PotionLoader) =>
       if (!runtime) return new Map<string, number>()
       const dim = runtime.profile.dimension
       let th = thesaurus
-      if (!th || th.version !== version || th.dim !== dim) {
+      // A rebuild embeds the whole vocabulary; under continuous file churn that
+      // runs once per query. The lexicons stay current via ensureIndex, so a
+      // briefly stale expansion table only delays semantic widening of fresh
+      // terms. A model swap (`dim` change) still rebuilds immediately.
+      if (!th || th.dim !== dim || (th.version !== version && Date.now() - th.builtAt >= THESAURUS_REBUILD_MS)) {
         const vocab = [...chunkLex.inverted.keys()].filter((t) => {
           const df = chunkLex.df.get(t) ?? 0
           return t.length >= 3 && !STOP.has(t) && df >= 3 && df <= chunkLex.n * 0.1
@@ -595,7 +605,7 @@ const makeLayer = (load: PotionLoader) =>
           const norm = Math.sqrt(n2) || 1
           for (let d = 0; d < dim; d++) vecs[off + d]! /= norm
         }
-        th = { version, vocab, vecs, dim }
+        th = { version, builtAt: Date.now(), vocab, vecs, dim }
         thesaurus = th
       }
       const out = new Map<string, number>()
