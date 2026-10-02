@@ -17,6 +17,41 @@ import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 
 describe("Snapshot", () => {
+  testEffect(Layer.empty).live("keeps tracked entries when an oversized filename resembles a pathspec", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        Effect.gen(function* () {
+          const project = path.join(tmp.path, "project")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(project)
+            await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
+            await fs.writeFile(path.join(project, ".gitignore"), "ignored*\n")
+            await $`git init`.cwd(project).quiet()
+            await $`git config core.fsmonitor false`.cwd(project).quiet()
+            await $`git config commit.gpgsign false`.cwd(project).quiet()
+            await $`git config user.email test@forge.test`.cwd(project).quiet()
+            await $`git config user.name Test`.cwd(project).quiet()
+            await $`git add .`.cwd(project).quiet()
+            await $`git commit -m initial`.cwd(project).quiet()
+          })
+          const originalIndex = yield* Effect.promise(() => fs.readFile(path.join(project, ".git", "index")))
+          yield* Effect.gen(function* () {
+            const snapshot = yield* Snapshot.Service
+            const before = yield* snapshot.capture()
+            expect(before).toBeDefined()
+            yield* Effect.promise(async () => {
+              await fs.writeFile(path.join(project, ":(glob)**"), Buffer.alloc(2 * 1024 * 1024 + 1))
+              await fs.writeFile(path.join(project, "ignored.txt"), "ignored")
+            })
+            expect(yield* snapshot.capture()).toBe(before)
+          }).pipe(Effect.provide(snapshotLayer(tmp.path, project)))
+          expect(yield* Effect.promise(() => fs.readFile(path.join(project, ".git", "index")))).toEqual(originalIndex)
+        }),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   testEffect(Layer.empty).live("captures and restores Location-scoped changes", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
