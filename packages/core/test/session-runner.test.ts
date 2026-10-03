@@ -418,8 +418,32 @@ const mcpSource = Layer.succeed(
 // between them here. Only `status`, which the runner never calls, is stubbed. Reset per test so a claimed note
 // or pending checkpoint cannot leak from one test into the next.
 let contextRequests = SessionContextManagement.makeRequests()
+// Records tree captures and comparisons when a test sets `treeLog`; otherwise it is exactly `Snapshot.noopLayer`.
+let treeLog: { captures: string[]; compared: { from: string; to: string }[] } | undefined
+const snapshotService = Layer.succeed(
+  Snapshot.Service,
+  Snapshot.Service.of({
+    capture: () =>
+      Effect.sync(() => {
+        if (!treeLog) return undefined
+        const id = `tree-${treeLog.captures.length + 1}`
+        treeLog.captures.push(id)
+        return Snapshot.ID.make(id)
+      }),
+    files: (input) =>
+      Effect.sync(() => {
+        treeLog?.compared.push({ from: input.from, to: input.to })
+        return []
+      }),
+    diff: () => Effect.succeed([]),
+    preview: () => Effect.succeed([]),
+    restore: () => Effect.void,
+    checkout: () => Effect.void,
+  }),
+)
 beforeEach(() => {
   contextRequests = SessionContextManagement.makeRequests()
+  treeLog = undefined
 })
 const contextManagement = Layer.succeed(
   SessionContextManagement.Service,
@@ -434,7 +458,7 @@ const runnerLayer = AppNodeBuilder.build(
   LayerNode.group([SessionRunnerLLM.node, SessionTodo.node, SessionHarness.node, ReflectionTool.node]),
   [
     [SessionContextManagement.node, contextManagement],
-    [Snapshot.node, Snapshot.noopLayer],
+    [Snapshot.node, snapshotService],
     [LayerNodePlatform.llmClient, client],
     [SessionRunnerModel.node, models],
     [SystemContextRegistry.node, systemContext],
@@ -511,7 +535,7 @@ const it = testEffect(
       [Location.node, Location.boundNode({ directory: testDirectory })],
       [SkillGuidance.node, skillGuidance],
       [ReferenceGuidance.node, referenceGuidance],
-      [Snapshot.node, Snapshot.noopLayer],
+      [Snapshot.node, snapshotService],
       [SessionExecution.node, execution],
       [LocationServiceMap.node, executionLocations],
       [Config.node, config],
@@ -2979,6 +3003,79 @@ describe("SessionRunnerLLM", () => {
           ],
         },
         { type: "assistant", finish: "stop", content: [{ type: "text", id: "text-final", text: "Done" }] },
+      ])
+    }),
+  )
+
+  const toolStep = [
+    LLMEvent.stepStart({ index: 0 }),
+    LLMEvent.toolCall({ id: "call-echo", name: "echo", input: { text: "hello" } }),
+    LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+    LLMEvent.finish({ reason: "tool-calls" }),
+  ]
+  const finalStep = [
+    LLMEvent.stepStart({ index: 0 }),
+    LLMEvent.textStart({ id: "text-final" }),
+    LLMEvent.textDelta({ id: "text-final", text: "Done" }),
+    LLMEvent.textEnd({ id: "text-final" }),
+    LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+    LLMEvent.finish({ reason: "stop" }),
+  ]
+
+  it.effect("starts each step of a drain from the tree the previous step ended on, capturing it once", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Echo this" }), resume: false })
+
+      requests.length = 0
+      executions.length = 0
+      streamGate = undefined
+      streamStarted = undefined
+      treeLog = { captures: [], compared: [] }
+      responses = [toolStep, toolStep, finalStep]
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(3)
+      // One baseline for the drain and one end of step for each of the three steps. Capturing a baseline for every
+      // step as well would be six, each a walk of the whole worktree.
+      expect(treeLog.captures).toEqual(["tree-1", "tree-2", "tree-3", "tree-4"])
+      // Each step is compared from the tree the one before it ended on.
+      expect(treeLog.compared).toEqual([
+        { from: "tree-1", to: "tree-2" },
+        { from: "tree-2", to: "tree-3" },
+        { from: "tree-3", to: "tree-4" },
+      ])
+    }),
+  )
+
+  it.effect("takes a fresh baseline for every drain, so a user turn never inherits the last one", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "First" }), resume: false })
+
+      requests.length = 0
+      executions.length = 0
+      streamGate = undefined
+      streamStarted = undefined
+      treeLog = { captures: [], compared: [] }
+      responses = [finalStep]
+      yield* session.resume(sessionID)
+
+      // The person edits files and sends another prompt.
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Second" }), resume: false })
+      responses = [finalStep]
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      // Two captures per drain: a fresh baseline, then the end of the step. The second drain's baseline is a new
+      // capture (tree-3), not the first drain's end (tree-2).
+      expect(treeLog.captures).toEqual(["tree-1", "tree-2", "tree-3", "tree-4"])
+      expect(treeLog.compared).toEqual([
+        { from: "tree-1", to: "tree-2" },
+        { from: "tree-3", to: "tree-4" },
       ])
     }),
   )
