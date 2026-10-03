@@ -1,6 +1,6 @@
 import { parseJSON } from "../api"
 import { isRecord, object, string } from "../response-validation"
-import { DETACH, type AttachResult, type Session } from "./types"
+import { DETACH, PENDING_LIMIT, type AttachResult, type Session } from "./types"
 
 export function start(session: Session) {
   session.options.stdin.on("data", session.listeners.keystrokes)
@@ -21,8 +21,17 @@ export function keystrokes(session: Session, chunk: Buffer | string) {
   const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk
   const stop = bytes.indexOf(DETACH)
   const text = session.decoder.decode(stop < 0 ? bytes : bytes.subarray(0, stop), { stream: stop < 0 })
-  if (text && session.socket?.readyState === WebSocket.OPEN) session.socket.send(text)
+  if (text) send(session, text)
   if (stop >= 0) finish(session, { reason: "detached" })
+}
+
+function send(session: Session, text: string) {
+  if (session.socket?.readyState === WebSocket.OPEN) return session.socket.send(text)
+  // Reconnecting: keep what was typed, up to the limit, and drop the rest rather than grow without bound.
+  const bytes = Buffer.byteLength(text)
+  if (session.pending.bytes + bytes > PENDING_LIMIT) return
+  session.pending.text.push(text)
+  session.pending.bytes += bytes
 }
 
 export function resized(session: Session) {
@@ -54,7 +63,10 @@ function closed(session: Session, current: WebSocket, code: number) {
 
 async function connect(session: Session) {
   const ticket = await mint(session).catch((error: unknown) => {
-    finish(session, { reason: "failed", detail: error instanceof Error ? error.message : String(error) })
+    const detail = error instanceof Error ? error.message : String(error)
+    // A 404 means the PTY was removed while this client was disconnected: there is nothing to reconnect to.
+    if (/^Server returned HTTP 404\b/.test(detail)) finish(session, { reason: "exited" })
+    else finish(session, { reason: "failed", detail })
     return undefined
   })
   if (!ticket || session.finished) return
@@ -69,6 +81,8 @@ async function connect(session: Session) {
   current.onopen = () => {
     session.attempts = 0
     resized(session)
+    session.pending.text.splice(0).forEach((text) => current.send(text))
+    session.pending.bytes = 0
   }
   current.onmessage = (event) => receive(session, event.data as string | ArrayBuffer)
   current.onclose = (event) => closed(session, current, event.code)

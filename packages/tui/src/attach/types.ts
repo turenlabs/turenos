@@ -3,6 +3,9 @@ import type { Api } from "../api"
 /** Ctrl+], as in telnet and `docker attach`: a key shells and editors leave alone. */
 export const DETACH = 0x1d
 
+/** Keystrokes typed while the socket is down wait for the reconnect, up to this many bytes. */
+export const PENDING_LIMIT = 64 * 1024
+
 export type AttachTarget = { id: string; title: string; directory: string; workspace?: string }
 
 export type Input = {
@@ -39,6 +42,8 @@ export type Session = {
   socket: WebSocket | undefined
   finished: boolean
   attempts: number
+  /** Input typed while disconnected, in order, and its size in bytes. */
+  pending: { text: string[]; bytes: number }
   resolve: (result: AttachResult) => void
   /** Registered on stdin and stdout while attached, and released in finish(). */
   listeners: { keystrokes: (chunk: Buffer | string) => void; resized: () => void }

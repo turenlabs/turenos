@@ -5,7 +5,7 @@ import { attachTerminal, DETACH } from "../src/attach"
 import { cleanup, until } from "./support"
 
 /** A PTY endpoint that behaves like the server's: ticketed WebSocket, replay, cursor frame, echo. */
-function pty(options: { drop?: boolean } = {}) {
+function pty(options: { drop?: boolean; gone?: boolean } = {}) {
   const tickets = new Set<string>()
   const connects: URL[] = []
   const received: string[] = []
@@ -16,6 +16,8 @@ function pty(options: { drop?: boolean } = {}) {
     fetch(request, server) {
       const url = new URL(request.url)
       if (url.pathname === "/api/pty/pty_1/connect-token" && request.method === "POST") {
+        // The PTY ended while the client was disconnected.
+        if (options.gone && connects.length > 0) return new Response(null, { status: 404 })
         if (request.headers.get("x-forge-ticket") !== "1") return new Response(null, { status: 403 })
         const ticket = crypto.randomUUID()
         tickets.add(ticket)
@@ -117,4 +119,41 @@ test("a dropped connection reconnects with a new ticket from the last cursor", a
   expect(terminal.stdout.text.split("$ hello").length).toBe(2)
   terminal.stdin.emit("data", Buffer.from([DETACH]))
   expect((await attached).reason).toBe("detached")
+})
+
+test("input typed while reconnecting is kept and sent after the socket reopens", async () => {
+  const server = pty({ drop: true })
+  const terminal = io()
+  const attached = attach(server, terminal)
+  await until(() => server.connects.length === 1)
+  // The reconnect waits 500 ms; keystrokes land while the socket is closed.
+  await Bun.sleep(100)
+  terminal.stdin.emit("data", "ls")
+  terminal.stdin.emit("data", " -l\r")
+  await until(() => server.connects.length === 2)
+  await until(() => server.received.join("") === "ls -l\r")
+  terminal.stdin.emit("data", Buffer.from([DETACH]))
+  expect((await attached).reason).toBe("detached")
+})
+
+test("input buffered for a reconnect is bounded", async () => {
+  const server = pty({ drop: true })
+  const terminal = io()
+  const attached = attach(server, terminal)
+  await until(() => server.connects.length === 1)
+  await Bun.sleep(100)
+  const chunk = "x".repeat(16 * 1024)
+  for (let index = 0; index < 8; index++) terminal.stdin.emit("data", chunk)
+  await until(() => server.connects.length === 2)
+  await until(() => server.received.length > 0)
+  await Bun.sleep(100)
+  expect(server.received.join("").length).toBe(64 * 1024)
+  terminal.stdin.emit("data", Buffer.from([DETACH]))
+  await attached
+})
+
+test("a PTY that ended while disconnected reports exited, not failed", async () => {
+  const server = pty({ drop: true, gone: true })
+  const terminal = io()
+  expect(await attach(server, terminal)).toEqual({ reason: "exited" })
 })

@@ -26,6 +26,7 @@ export function attachTerminal(input: AttachOptions): Promise<AttachResult> {
       socket: undefined,
       finished: false,
       attempts: 0,
+      pending: { text: [], bytes: 0 },
       resolve,
       listeners: { keystrokes: (chunk) => keystrokes(session, chunk), resized: () => resized(session) },
     }
