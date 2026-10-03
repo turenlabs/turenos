@@ -39,3 +39,23 @@
   height: 4px;
   border-radius: var(--v2-radius-pill);
 }
+
+[data-component="session-live-dock"] [data-slot="dock-metric-separator"] {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 3px;
+  color: var(--v2-text-text-faint);
+  user-select: none;
+}
+
+[data-component="session-live-dock"] [data-slot="dock-metric"] {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--v2-text-text-faint);
+  white-space: nowrap;
+  cursor: default;
+}
