@@ -183,6 +183,8 @@ describe("cli.heap", () => {
       ),
     )
     expect(line).toMatch(/rssMB=\d+/)
+    expect(line).toMatch(/nativeMB=\d+/)
+    expect(line).toMatch(/nativePeakMB=\d+/)
     expect(line).toMatch(/heapMB=\d+/)
     expect(line).toMatch(/extraMB=\d+/)
     expect(line).toMatch(/objects=\d+/)

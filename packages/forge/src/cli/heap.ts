@@ -141,9 +141,13 @@ let memoryPrevious: Readonly<Record<string, number>> | undefined
 // full type list when the heap crosses an absolute level.
 function startMemorySampler() {
   if (memoryTimer) return
-  void import("bun:jsc").then(({ heapStats }) => {
+  void import("bun:jsc").then(({ heapStats, memoryUsage }) => {
     const run = () => {
       const stats: JscStats = heapStats()
+      // The allocator's own view. JavaScriptCore drops a value from its accounting the moment it is collected, but the
+      // allocator keeps the pages for tens of seconds before returning them, so under allocation churn resident size
+      // runs well above `heapMB` + `extraMB`. `nativeMB` is what is actually held; the gap to JS is what is lingering.
+      const native = memoryUsage()
       const heap = stats.heapSize + stats.extraMemorySize
       const next = advanceMemory(memoryArmed, heap)
       memoryArmed = next.fired
@@ -151,6 +155,8 @@ function startMemorySampler() {
       memoryPrevious = stats.objectTypeCounts
       const fields = {
         rssMB: Math.round(process.memoryUsage().rss / MB),
+        nativeMB: Math.round(native.current / MB),
+        nativePeakMB: Math.round(native.peak / MB),
         heapMB: Math.round(stats.heapSize / MB),
         extraMB: Math.round(stats.extraMemorySize / MB),
         objects: stats.objectCount,

@@ -51,10 +51,17 @@ watchdog never triggers when the limit is under 1 GiB.
 ### Memory sampler
 
 The server (not short `forge` commands) also samples JavaScriptCore itself every 60 seconds, starting immediately, and
-writes to `forge.log` through the normal logger. Each `Backend memory` line carries `rssMB`, `heapMB` (the JS heap),
+writes to `forge.log` through the normal logger. Each `Backend memory` line carries `rssMB`, `nativeMB` and
+`nativePeakMB` (what the allocator holds, from `bun:jsc` `memoryUsage()`), `heapMB` (the JS heap),
 `extraMB` (string and array-buffer memory), `objects`, `protectedObjects`, `top` (the largest object types as
 `Type=count`) and `grew` (types whose count rose since the previous sample). A type that climbs sample after sample is
 the one holding memory. Each takes a few milliseconds even on a multi-gigabyte heap.
+
+Read `nativeMB` against `heapMB` + `extraMB`. JavaScriptCore stops counting a value the moment it is collected, but
+Bun's allocator (mimalloc) holds the freed pages for tens of seconds before returning them to the OS (measured on
+Bun 1.4.2: about 1 GB of dropped strings was still held after 10 seconds and gone by 30). Under steady allocation
+churn, resident size therefore sits well above the JS numbers without anything being leaked. A leak is `nativeMB`
+that keeps rising across samples while the process is idle; a lingering working set rises and then falls.
 
 The fractions above depend on a runtime-reported limit, so the sampler also warns on absolute sizes: one
 `Backend memory level crossed` line the first time the heap plus extra memory reaches 1, 2, 3, 4, 6 and 8 GB, with
