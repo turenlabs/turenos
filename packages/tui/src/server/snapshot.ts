@@ -2,7 +2,7 @@ import { ClientError } from "@turenlabs/client"
 import type { SessionsListOutput } from "@turenlabs/client"
 import { identifier, isRecord } from "../response-validation"
 import type { Client, Context } from "./context"
-import { errorText } from "./errors"
+import { errorText, httpStatus } from "./errors"
 
 type InventoryErrors = { terminals: string; automations: string }
 
@@ -70,9 +70,15 @@ async function recentAndActive(
   // including older sessions absent from the recent-history page.
   for (let offset = 0; offset < missing.length; offset += 8) {
     const found = await Promise.all(
-      missing.slice(offset, offset + 8).map((sessionID) => client.sessions.get({ sessionID }, request)),
+      missing.slice(offset, offset + 8).map((sessionID) =>
+        client.sessions.get({ sessionID }, request).catch((error: unknown) => {
+          // A session deleted between the active read and this fetch must not fail the whole snapshot.
+          if (httpStatus(error) === 404) return undefined
+          throw error
+        }),
+      ),
     )
-    found.forEach((session) => sessions.set(session.id, session))
+    found.forEach((session) => session && sessions.set(session.id, session))
   }
   if (sessions.size && ![...sessions.values()].some((session) => !session.parentID)) {
     const roots = await client.sessions.list({ roots: true, archived: false, order: "desc", limit: 100 }, request)

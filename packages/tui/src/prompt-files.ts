@@ -11,7 +11,7 @@ export type PromptFile = {
  * a shorter — possibly different — file. A leading delimiter keeps email
  * addresses and `a@b` from becoming attachments.
  */
-const mention = /(^|[\s([{"'])@(?:"([^"\u0000-\u001f\u007f-\u009f]{1,4096})"(#\d+(?:-\d+)?)?|([^\s()[\]{}"'`]+))/g
+const mention = /(^|[\s([{"'])@(?:"([^"\u0000-\u001f\u007f-\u009f]{1,4096})"(#\d+(?:-\d+)?)?(?!#)|([^\s()[\]{}"'`]+))/g
 const hazard = /^[^\s()[\]{}"'`]+$/
 
 /**
@@ -20,11 +20,20 @@ const hazard = /^[^\s()[\]{}"'`]+$/
  * opens the path itself, which is what lets it address files on a remote server.
  */
 export function parseMentions(text: string, directory: string): PromptFile[] {
+  return mentionReport(text, directory).files
+}
+
+/** The attachments a text produces, plus the mention texts whose path leaves the session directory. */
+export function mentionReport(text: string, directory: string) {
   const seen = new Set<string>()
-  return [...text.matchAll(mention)]
+  const found = [...text.matchAll(mention)]
     .flatMap((match) => decodeMention(match, directory) ?? [])
-    .filter((file) => !seen.has(file.uri) && seen.add(file.uri))
+    .filter((item) => !seen.has(item.file.uri) && seen.add(item.file.uri))
     .slice(0, 32)
+  return {
+    files: found.map((item) => item.file),
+    outside: found.filter((item) => item.outside).map((item) => item.file.source.text),
+  }
 }
 
 // A prompt without mentions keeps its original body, so ordinary messages and
@@ -45,7 +54,7 @@ export function mentionText(path: string) {
   return bare ? `@${path}` : `@"${path}"`
 }
 
-function decodeMention(match: RegExpExecArray, directory: string): PromptFile | undefined {
+function decodeMention(match: RegExpExecArray, directory: string) {
   const quoted = match[2] !== undefined
   const token = quoted ? match[2]! : match[4]!.replace(/[.,!?;:]+$/, "")
   const split = quoted ? undefined : /^(.+?)(#\d+(?:-\d+)?)$/.exec(token)
@@ -53,12 +62,31 @@ function decodeMention(match: RegExpExecArray, directory: string): PromptFile | 
   const query = lineQuery(quoted ? match[3] : split?.[2])
   if (!path || path.length > 4096 || query === undefined) return undefined
   if (/[\u0000-\u001f\u007f-\u009f]/.test(path)) return undefined
+  // A bare `file#5-` or `file#a-b` is a malformed range, not a file whose name ends that way.
+  if (!quoted && !split && /#(?:\d*|\w*-[\w-]*)$/.test(path)) return undefined
+  const uri = fileURI(absolute(directory, path), query)
+  if (!uri) return undefined
   const text = quoted ? match[0].slice(match[1]!.length) : `@${token}`
   const offset = match.index + match[1]!.length
-  return {
-    uri: `file://${encodePath(absolute(directory, path))}${query}`,
+  const file: PromptFile = {
+    uri,
     name: path.split(/[\\/]/).at(-1) || path,
     source: { start: offset, end: offset + text.length, text },
+  }
+  return { file, outside: escapes(path) }
+}
+
+/** An absolute path, `~`, or a `..` segment reaches outside the directory the session works in. */
+function escapes(path: string) {
+  return absolutePath(path) || path.startsWith("~") || path.split(/[\\/]/).includes("..")
+}
+
+// A lone surrogate cannot be percent-encoded; such a mention stays plain text instead of failing the send.
+function fileURI(path: string, query: string) {
+  try {
+    return `file://${encodePath(path)}${query}`
+  } catch {
+    return undefined
   }
 }
 
@@ -74,8 +102,12 @@ function lineQuery(range: string | undefined) {
   return `?start=${start}&end=${end}`
 }
 
+function absolutePath(path: string) {
+  return path.startsWith("/") || path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path)
+}
+
 function absolute(directory: string, path: string) {
-  if (path.startsWith("/") || path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path)) return path
+  if (absolutePath(path)) return path
   return `${directory.replace(/[\\/]+$/, "")}/${path}`
 }
 

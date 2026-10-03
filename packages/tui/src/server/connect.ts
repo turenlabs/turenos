@@ -5,7 +5,7 @@ import { createProviders } from "../providers"
 import { createWorkingFolders } from "../working-folders"
 import type { ConnectionOptions, Context, Session } from "./context"
 import { launch } from "./launch"
-import { agents, commands, findFiles, resolveCommand, runs, shell } from "./queries"
+import { agents, checkShell, commands, findFiles, resolveCommand, runs, shell } from "./queries"
 import {
   deleteSession,
   detail,
@@ -46,6 +46,7 @@ export function connect(options: ConnectionOptions) {
     findFiles: (directory: string, query: string, workspaceID?: string, signal?: AbortSignal) =>
       findFiles(ctx, directory, query, workspaceID, signal),
     shell: (sessionID: string, id: string, command: string) => shell(ctx, sessionID, id, command),
+    checkShell,
     resolveCommand: (text: string, directory: string, workspaceID?: string) =>
       resolveCommand(ctx, text, directory, workspaceID),
     runs: (loopID: string) => runs(ctx, loopID),

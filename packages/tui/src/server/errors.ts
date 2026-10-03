@@ -24,3 +24,26 @@ export function errorText(error: unknown): string {
   }
   return "Request failed. Check the server connection."
 }
+
+/** The HTTP status behind a client failure, from a bare status or from the tagged body the generated client throws. */
+export function httpStatus(error: unknown): number | undefined {
+  if (error instanceof ClientError)
+    return error.reason === "UnexpectedStatus" && isRecord(error.cause) && typeof error.cause.status === "number"
+      ? error.cause.status
+      : undefined
+  if (!isRecord(error) || typeof error._tag !== "string") return undefined
+  if (error._tag === "UnauthorizedError") return 401
+  if (error._tag === "ConflictError" || error._tag.endsWith("ConflictError")) return 409
+  if (error._tag.endsWith("NotFoundError")) return 404
+  if (error._tag === "InvalidRequestError" || error._tag === "InvalidCursorError") return 400
+  return undefined
+}
+
+/**
+ * True when the server definitely refused a request (4xx other than 408 and 409), so nothing was
+ * admitted. Transport failures, timeouts, 5xx and 409 are ambiguous: the request may have landed.
+ */
+export function refused(error: unknown) {
+  const status = httpStatus(error)
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 409
+}

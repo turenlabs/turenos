@@ -3,6 +3,7 @@ import { promptPayload } from "../prompt-files"
 import { invalid, modelRef, name } from "../response-validation"
 import type { Context } from "./context"
 import { resolveCommand } from "./queries"
+import { refused } from "./errors"
 import { inputDirectory } from "./transport"
 
 type LaunchInput = { directory: string; agent?: string; model?: string; variant?: string; prompt: string }
@@ -11,6 +12,8 @@ type LaunchState = {
   sessionID: string
   messageID: string
   admitted?: SessionsCreateOutput
+  /** The fields the server's session was created with; only the prompt may change afterwards. */
+  created?: LaunchInput
   draft?: LaunchInput
   routing?: Promise<{ command: string; arguments: string } | undefined>
 }
@@ -46,16 +49,41 @@ async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
       `Retry with the original fields. Inspect session ${state.sessionID} before starting another launch.`,
     )
   }
+  if (state.created && !sameFields(state.created, input))
+    throw new Error(
+      `Session ${state.sessionID} already exists with other directory, agent or model fields. Restore them or inspect it.`,
+    )
   const model = launchModel(input)
-  state.draft = { ...input }
-  // Freeze even an unknown command's prompt route before the first POST.
-  // Inventory failures are safe to retry because no admission has occurred.
+  // An unlocked draft routes afresh: its prompt or the command inventory may have changed.
+  if (!state.draft) state.routing = undefined
+  // Inventory failures are safe to retry because nothing has been sent, so the fields stay editable.
   const command = await (state.routing ??= resolveCommand(ctx, input.prompt, input.directory).catch(
     (error: unknown) => {
       state.routing = undefined
       throw error
     },
   ))
+  // Freeze the fields and the prompt route only once bytes may go out.
+  state.draft = { ...input }
+  try {
+    return await write(ctx, state, input, model, command)
+  } catch (error) {
+    // A definite 4xx admitted nothing: keep the IDs and the text, release the fields.
+    if (refused(error)) {
+      state.draft = undefined
+      state.routing = undefined
+    }
+    throw error
+  }
+}
+
+async function write(
+  ctx: Context,
+  state: LaunchState,
+  input: LaunchInput,
+  model: ReturnType<typeof launchModel>,
+  command: Awaited<NonNullable<LaunchState["routing"]>>,
+) {
   state.admitted ??= await ctx.client.sessions.create({
     id: state.sessionID,
     location: { directory: input.directory },
@@ -63,6 +91,7 @@ async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
     model,
   })
   if (state.admitted.id !== state.sessionID) invalid("launch session identity")
+  state.created ??= { ...input }
   if (command) {
     await ctx.client.sessions.command({
       sessionID: state.admitted.id,
@@ -80,6 +109,15 @@ async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
     })
   }
   return state.admitted
+}
+
+function sameFields(created: LaunchInput, input: LaunchInput) {
+  return (
+    created.directory === input.directory &&
+    created.agent === input.agent &&
+    created.model === input.model &&
+    created.variant === input.variant
+  )
 }
 
 function launchModel(input: LaunchInput) {

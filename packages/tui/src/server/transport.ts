@@ -39,16 +39,32 @@ export function basicAuthHeaders(username: string, password: string | undefined)
   return headers
 }
 
+const defaultTimeout = 10_000
+// The server runs `/shell` for up to 120 s by default; wait that long plus a margin, so a slow
+// command is in flight under its message ID rather than a connection error.
+const shellTimeout = 130_000
+// Compaction calls the session's model and has no request ID, so it must not time out into a retry.
+const compactTimeout = 600_000
+
+/** How long one request may take: long for the routes whose work runs server-side, 10 s otherwise. */
+export function requestTimeout(address: URL, method: string | undefined) {
+  if (method !== "POST") return defaultTimeout
+  if (/^\/api\/session\/[^/]+\/shell$/.test(address.pathname)) return shellTimeout
+  if (/^\/api\/session\/[^/]+\/compact$/.test(address.pathname)) return compactTimeout
+  return defaultTimeout
+}
+
 /**
- * Fetch with a 10 s timeout, no redirects, and bounded response bytes. Responses are validated and
+ * Fetch with a per-route timeout (10 s unless requestTimeout says otherwise), no redirects, and bounded response bytes. Responses are validated and
  * sanitized before the generated client's JSON parser sees them.
  */
 export function createTransport(controller: AbortController) {
   return Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit) => {
+      const address = new URL(input instanceof Request ? input.url : input.toString())
       const signal = AbortSignal.any([
         controller.signal,
-        AbortSignal.timeout(10000),
+        AbortSignal.timeout(requestTimeout(address, init?.method ?? (input instanceof Request ? input.method : "GET"))),
         ...(init?.signal ? [init.signal] : []),
       ])
       // Never forward server credentials to a redirect target. Limit decoded
@@ -64,7 +80,6 @@ export function createTransport(controller: AbortController) {
       if (response.status === 204 || response.status === 205 || !response.body) return response
       const body = await readLimited(response.body)
       if (response.ok) {
-        const address = new URL(input instanceof Request ? input.url : input.toString())
         // This root API has its own strict State/value parser in working-folders.
         if (address.pathname === "/global/storage")
           return new Response(body, { status: response.status, headers: response.headers })

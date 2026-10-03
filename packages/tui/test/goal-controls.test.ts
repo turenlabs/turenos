@@ -43,6 +43,7 @@ async function fixture(initial: SessionsGoalGetOutput = goal(), width = 100) {
     apply: true,
     gate: undefined as Promise<void> | undefined,
     race: false,
+    getFails: false,
     response: undefined as Partial<NonNullable<SessionsGoalGetOutput>> | undefined,
   }
   const requests: { method: string; path: string; body: string }[] = []
@@ -55,6 +56,7 @@ async function fixture(initial: SessionsGoalGetOutput = goal(), width = 100) {
       requests.push({ method: request.method, path, body })
       if (request.method === "GET") {
         if (path.endsWith("/goal")) {
+          if (remote.getFails) return new Response("down", { status: 500 })
           await remote.gate
           return Response.json({ data: remote.goal })
         }
@@ -207,6 +209,23 @@ test("Set is explicit, Enter inserts newline, Ctrl+S starts with captured settin
     model: { variant: "high" },
   })
   expect(app.writes()).toHaveLength(1)
+})
+
+test("a submit that sent nothing leaves the objective editable", async () => {
+  const app = await fixture(null)
+  await app.open()
+  await app.choose("Set")
+  await app.view.mockInput.typeText("First draft")
+  app.remote.getFails = true
+  app.submit()
+  await app.waitFor((frame) => frame.includes("HTTP 500"))
+  expect(app.writes()).toHaveLength(0)
+  app.remote.getFails = false
+  const editor = app.state.modal!.fields[0] as TextareaRenderable
+  editor.setText("Second draft")
+  app.submit()
+  await app.waitFor(() => !app.state.modal)
+  expect(JSON.parse(app.writes()[0]!.body)).toMatchObject({ objective: "Second draft" })
 })
 
 test("creation retry retains IDs and frozen agent/model", async () => {

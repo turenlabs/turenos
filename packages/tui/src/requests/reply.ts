@@ -1,9 +1,11 @@
 import { TextRenderable } from "@opentui/core"
-import type { Session } from "../server"
+import { refused, type Session } from "../server"
 import { label, type MessageDraft, type ModalState } from "../state"
 import { color } from "../theme"
 import { matchesKey } from "../keys"
+import { outsideNotice } from "../mentions/outside"
 import { promptPayload } from "../prompt-files"
+import { showAttachments } from "./attachments"
 import { openBlockedReply } from "./blocked-reply"
 import { maxDrafts, maxMessageLength, newMessageID, replyBlocked, type RequestContext } from "./context"
 
@@ -34,6 +36,7 @@ function openReply(ctx: RequestContext, session: Session) {
   ctx.messages.set(sessionID, draft)
   const delivery = wireDelivery(ctx, dialog, session, draft)
   const task = createReplyEditor(ctx, dialog, draft)
+  showAttachments(ctx, dialog, task, session.location.directory)
   dialog.save = () => {
     draft.text = draft.submitted ?? task.plainText
     draft.cursor = task.cursorOffset
@@ -43,7 +46,8 @@ function openReply(ctx: RequestContext, session: Session) {
   dialog.discard = () => {
     ctx.messages.delete(sessionID)
   }
-  dialog.submit = () => submitReply(ctx, session, draft, task)
+  const attached: { acknowledged?: string } = {}
+  dialog.submit = () => submitReply(ctx, session, draft, task, attached)
   delivery()
   ctx.slash.attach(
     dialog,
@@ -113,9 +117,15 @@ function createReplyEditor(ctx: RequestContext, dialog: ModalState, draft: Messa
   return task
 }
 
-type ReplyEditor = ReturnType<typeof createReplyEditor>
+export type ReplyEditor = ReturnType<typeof createReplyEditor>
 
-async function submitReply(ctx: RequestContext, session: Session, draft: MessageDraft, task: ReplyEditor) {
+async function submitReply(
+  ctx: RequestContext,
+  session: Session,
+  draft: MessageDraft,
+  task: ReplyEditor,
+  attached: { acknowledged?: string },
+) {
   const sessionID = session.id
   if (!ctx.state.connected) throw new Error("Reconnect before sending. Your draft is kept.")
   if (replyBlocked(ctx, sessionID))
@@ -132,9 +142,23 @@ async function submitReply(ctx: RequestContext, session: Session, draft: Message
     throw new Error(
       `${draft.shell ? "Shell commands" : "Slash commands"} do not support Queue. Press Ctrl+T to choose Steer before sending.`,
     )
+  // Every local check runs before the draft locks: a message that was never sent stays editable.
+  const directory = current.location.directory
+  const request = prepare(ctx, draft, task.plainText, sessionID, directory)
+  if (draft.submitted === undefined && !draft.shell && !draft.command) {
+    const notice = outsideNotice(task.plainText, directory, attached.acknowledged)
+    attached.acknowledged = notice.key
+    if (notice.message) throw new Error(notice.message)
+  }
   draft.text = task.plainText
   draft.submitted = draft.text
-  await send(ctx, draft, sessionID, current.location.directory)
+  try {
+    await request()
+  } catch (error) {
+    // A definite 4xx admitted nothing, so the text is editable again; the ID stays for the next send.
+    if (refused(error)) draft.submitted = undefined
+    throw ownedError(ctx, sessionID, error)
+  }
   ctx.messages.delete(sessionID)
   ctx.say(draft.shell ? "Shell command sent to the server." : "Reply sent.")
 }
@@ -147,27 +171,28 @@ async function classify(ctx: RequestContext, draft: MessageDraft, text: string, 
   if (shell && current.revert)
     throw new Error("Commit or clear the staged undo before running a shell command. Your draft is kept.")
   draft.shell = shell
-  if (!shell)
-    draft.command = await ctx.connection.resolveCommand(text, current.location.directory, current.location.workspaceID)
+  draft.command = shell
+    ? undefined
+    : await ctx.connection.resolveCommand(text, current.location.directory, current.location.workspaceID)
 }
 
-async function send(ctx: RequestContext, draft: MessageDraft, sessionID: string, directory: string) {
-  try {
-    if (draft.shell) await ctx.connection.shell(sessionID, draft.id, draft.shell)
-    else if (draft.command)
-      await ctx.connection.client.sessions.command({ sessionID, id: draft.id, ...draft.command, resume: true })
-    else
-      await ctx.connection.client.sessions.prompt({
-        sessionID,
-        id: draft.id,
-        prompt: promptPayload(draft.text, directory),
-        delivery: draft.delivery,
-      })
-  } catch (error) {
-    if (error && typeof error === "object" && "kind" in error && error.kind === "session_task_owned") {
-      ctx.owned.add(sessionID)
-      throw new Error("This is a task-owned subagent. Draft kept. Press Esc, then f to open its owning session.")
-    }
-    throw error
+/** Builds the exact request from validated input, so nothing that can throw locally runs after the lock. */
+function prepare(ctx: RequestContext, draft: MessageDraft, text: string, sessionID: string, directory: string) {
+  if (draft.shell) {
+    const command = draft.shell
+    ctx.connection.checkShell(sessionID, draft.id, command)
+    return () => ctx.connection.shell(sessionID, draft.id, command)
   }
+  if (draft.command) {
+    const command = draft.command
+    return () => ctx.connection.client.sessions.command({ sessionID, id: draft.id, ...command, resume: true })
+  }
+  const prompt = promptPayload(text, directory)
+  return () => ctx.connection.client.sessions.prompt({ sessionID, id: draft.id, prompt, delivery: draft.delivery })
+}
+
+function ownedError(ctx: RequestContext, sessionID: string, error: unknown) {
+  if (!error || typeof error !== "object" || !("kind" in error) || error.kind !== "session_task_owned") return error
+  ctx.owned.add(sessionID)
+  return new Error("This is a task-owned subagent. Draft kept. Press Esc, then f to open its owning session.")
 }
