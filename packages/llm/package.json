@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.38",
+  "version": "1.0.39",
   "name": "@turenlabs/llm",
   "type": "module",
   "license": "MIT",
