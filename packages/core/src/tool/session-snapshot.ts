@@ -16,6 +16,7 @@ import { SessionTerminal } from "../session/terminal"
 import { HandoffTool } from "./handoff"
 import { ToolBroker } from "./broker"
 import { McpTool } from "./mcp"
+import { NativeToolSearch } from "./native-tool-search"
 import { SubagentTool } from "./subagent"
 import { ShellJobTool } from "./shell-job"
 import { ToolRegistry } from "./registry"
@@ -88,6 +89,12 @@ export interface Input {
   readonly advanceTurn?: boolean
   /** @deprecated Use `advanceTurn`; built-in and MCP deferral share one turn clock. */
   readonly advanceMcpTurn?: boolean
+  /**
+   * Native tool search (see `NativeToolSearch`): loaded tools stay executable but are never advertised, and
+   * `tool_search` returns their definitions in its result. The advertised list then does not change when a tool
+   * is loaded, so the cached prefix survives.
+   */
+  readonly nativeToolSearch?: boolean
   readonly deferral?: {
     /** Defaults to true. When false, deferred tools are advertised inline like any other. */
     readonly enabled?: boolean
@@ -121,6 +128,12 @@ const DiscoverySearchOutput = Schema.Struct({
   matches: Schema.Array(DiscoveryCapability),
   selected: Schema.Array(Schema.String),
   available: Schema.Int,
+  // Native tool search only: the definitions of the tools this search loaded, for the provider to inject at the
+  // end of the context window, and the ones that matched but did not fit the output limit.
+  tools: Schema.optional(
+    Schema.Array(Schema.Struct({ name: Schema.String, description: Schema.String, inputSchema: Schema.Unknown })),
+  ),
+  omitted: Schema.optional(Schema.Array(Schema.String)),
 })
 const DiscoveryLoadOutput = Schema.Struct({
   loaded: Schema.Array(Schema.Struct({ key: Schema.String, source: Schema.String })),
@@ -356,32 +369,137 @@ const layer = Layer.effect(
               ]
             : builtinCapabilities.map((capability) => capability.key),
         )
-      const sessionTools = {
-        ...sessionToolsBase,
-        [ToolBroker.SEARCH_TOOL_NAME]: Tool.make({
-          description: ToolBroker.SEARCH_TOOL_DESCRIPTION,
-          input: Schema.Struct({ query: Schema.optional(Schema.String) }),
-          output: DiscoverySearchOutput,
-          execute: (args) =>
-            Effect.gen(function* () {
-              const mcp = yield* source.search({
+      const native = input.nativeToolSearch === true
+      // Under native search nothing loaded is advertised, so the per-server and global caps that kept the
+      // advertised list short have nothing to protect.
+      const loadCapabilities = native
+        ? inventory.capabilities.map((capability) => ({ ...capability, maxLoadedTools: NativeToolSearch.MAX_LOADED }))
+        : inventory.capabilities
+      const loadCap = native ? NativeToolSearch.MAX_LOADED : ToolBroker.BUILTIN_MAX_LOADED_TOOLS
+      const loadKeys = (keys: ReadonlyArray<string>) =>
+        Effect.gen(function* () {
+          const builtinKeys = new Set(builtinCapabilities.map((capability) => capability.key))
+          const mcpKeys = new Set(inventory.capabilities.map((capability) => capability.key))
+          const builtin = keys.some((key) => builtinKeys.has(key))
+            ? yield* Effect.try({
+                try: () =>
+                  ToolBroker.load(
+                    input.sessionID,
+                    builtinCapabilities,
+                    keys.filter((key) => builtinKeys.has(key)),
+                    brokerScope,
+                    { globalCap: loadCap },
+                  ),
+                catch: (error) =>
+                  new Tool.Failure({ message: error instanceof Error ? error.message : String(error) }),
+              })
+            : undefined
+          const mcp = keys.some((key) => mcpKeys.has(key))
+            ? yield* source.load({
                 sessionID: input.sessionID,
                 directory: input.directory,
-                capabilities: inventory.capabilities,
-                query: args.query,
+                capabilities: loadCapabilities,
+                tools: keys.filter((key) => mcpKeys.has(key)),
               })
-              const builtin = ToolBroker.search(input.sessionID, builtinCapabilities, args.query, brokerScope)
-              const loaded = inline()
-              return {
-                matches: [
-                  ...builtin.matches.map((match) => ({ ...match, selected: loaded.has(match.key) })),
-                  ...mcp.matches.map((match) => ({ ...match, source: "mcp" as const })),
-                ],
-                selected: [...loaded, ...mcp.selected].toSorted(),
-                available: builtin.available + mcp.available,
-              }
-            }),
-        }),
+            : undefined
+          return { builtin, mcp }
+        })
+      // Definitions for the tools a search is about to load, in the caller's ranking. A built-in is only
+      // returned if it survives the registry's permission filtering; an MCP tool only if it is in `usable`.
+      const definitionsFor = (matches: ReadonlyArray<{ readonly key: string; readonly source?: string }>) =>
+        Effect.gen(function* () {
+          const builtinKeys = new Set(
+            matches.filter((match) => match.source !== "mcp").map((match) => match.key),
+          )
+          const builtinDefinitions =
+            builtinKeys.size === 0
+              ? []
+              : (yield* registry.materialize({
+                  permissionSets,
+                  session: sessionToolsBase,
+                  deferred: { selected: builtinKeys, forceInline },
+                })).definitions.filter((definition) => builtinKeys.has(definition.name))
+          const byBuiltin = new Map(builtinDefinitions.map((definition) => [definition.name, definition]))
+          const byMcp = new Map(usableMcpDefinitions.map((definition) => [definition.key, definition]))
+          return matches.flatMap((match) => {
+            if (match.source !== "mcp") {
+              const definition = byBuiltin.get(match.key)
+              return definition
+                ? [
+                    {
+                      key: match.key,
+                      name: definition.name,
+                      description: definition.description,
+                      inputSchema: definition.inputSchema,
+                    },
+                  ]
+                : []
+            }
+            const definition = byMcp.get(match.key)
+            return definition
+              ? [
+                  {
+                    key: match.key,
+                    name: McpTool.toolName(definition.server, definition.name),
+                    description: definition.description ?? "",
+                    inputSchema: definition.inputSchema,
+                  },
+                ]
+              : []
+          })
+        })
+      const discover = (query: string | undefined) =>
+        Effect.gen(function* () {
+          const mcp = yield* source.search({
+            sessionID: input.sessionID,
+            directory: input.directory,
+            capabilities: inventory.capabilities,
+            query,
+          })
+          const builtin = ToolBroker.search(input.sessionID, builtinCapabilities, query, brokerScope)
+          const loaded = inline()
+          return {
+            matches: [
+              ...builtin.matches.map((match) => ({ ...match, selected: loaded.has(match.key) })),
+              ...mcp.matches.map((match) => ({ ...match, source: "mcp" as const })),
+            ],
+            selected: [...loaded, ...mcp.selected].toSorted(),
+            available: builtin.available + mcp.available,
+          }
+        })
+      const legacySearch = Tool.make({
+        description: ToolBroker.SEARCH_TOOL_DESCRIPTION,
+        input: Schema.Struct({ query: Schema.optional(Schema.String) }),
+        output: DiscoverySearchOutput,
+        execute: (args) => discover(args.query),
+      })
+      // Native: return the definitions of the best matches and load exactly those, so everything the model is
+      // told about is callable and nothing it was not told about is loaded.
+      const nativeSearch = Tool.make({
+        description: NativeToolSearch.DESCRIPTION,
+        input: Schema.Struct({ query: Schema.optional(Schema.String), limit: Schema.optional(Schema.Number) }),
+        output: DiscoverySearchOutput,
+        execute: (args) =>
+          Effect.gen(function* () {
+            const base = yield* discover(args.query)
+            const limit = Math.min(
+              NativeToolSearch.MAX_LIMIT,
+              Math.max(1, Math.floor(args.limit ?? NativeToolSearch.DEFAULT_LIMIT)),
+            )
+            const candidates = yield* definitionsFor(base.matches.slice(0, limit))
+            const { included, omitted } = NativeToolSearch.fit(base, candidates)
+            if (included.length > 0) yield* loadKeys(included.map((definition) => definition.key))
+            return {
+              ...base,
+              selected: [...new Set([...base.selected, ...included.map((definition) => definition.key)])].toSorted(),
+              tools: included.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+              ...(omitted.length === 0 ? {} : { omitted: omitted.map((definition) => definition.name) }),
+            }
+          }),
+      })
+      const sessionTools = {
+        ...sessionToolsBase,
+        [ToolBroker.SEARCH_TOOL_NAME]: native ? nativeSearch : legacySearch,
         [ToolBroker.LOAD_TOOL_NAME]: Tool.make({
           description: ToolBroker.LOAD_TOOL_DESCRIPTION,
           input: Schema.Struct({ tools: Schema.Array(Schema.String) }),
@@ -394,28 +512,7 @@ const layer = Layer.effect(
               const mcpKeys = new Set(inventory.capabilities.map((capability) => capability.key))
               const unknown = args.tools.find((key) => !builtinKeys.has(key) && !mcpKeys.has(key))
               if (unknown) return yield* new Tool.Failure({ message: `Tool is not available: ${unknown}` })
-              const builtin = args.tools.some((key) => builtinKeys.has(key))
-                ? yield* Effect.try({
-                    try: () =>
-                      ToolBroker.load(
-                        input.sessionID,
-                        builtinCapabilities,
-                        args.tools.filter((key) => builtinKeys.has(key)),
-                        brokerScope,
-                        { globalCap: ToolBroker.BUILTIN_MAX_LOADED_TOOLS },
-                      ),
-                    catch: (error) =>
-                      new Tool.Failure({ message: error instanceof Error ? error.message : String(error) }),
-                  })
-                : undefined
-              const mcp = args.tools.some((key) => mcpKeys.has(key))
-                ? yield* source.load({
-                    sessionID: input.sessionID,
-                    directory: input.directory,
-                    capabilities: inventory.capabilities,
-                    tools: args.tools.filter((key) => mcpKeys.has(key)),
-                  })
-                : undefined
+              const { builtin, mcp } = yield* loadKeys(args.tools)
               const loaded = [
                 ...(builtin?.loaded ?? []).map((key) => ({ key, source: "builtin" as const })),
                 ...(mcp?.loaded ?? []).map((key) => ({ key, source: "mcp" as const })),
@@ -439,11 +536,29 @@ const layer = Layer.effect(
       })
       // `mcp_search`/`mcp_load` remain settleable as hidden aliases for the MCP subset; the
       // unified `tool_search`/`tool_load` pair is what the model sees.
-      const hiddenAliases = new Set([McpTool.SEARCH_TOOL_NAME, McpTool.LOAD_TOOL_NAME])
+      // Native: `tool_load` is not needed (search loads what it returns), and loaded tools stay executable but are
+      // never advertised, so the advertised list is the same on every turn. Tools an agent declared inline stay
+      // advertised: that is part of its contract, not a selection.
+      const hiddenAliases = new Set([
+        McpTool.SEARCH_TOOL_NAME,
+        McpTool.LOAD_TOOL_NAME,
+        ...(native ? [ToolBroker.LOAD_TOOL_NAME] : []),
+      ])
+      const mcpSelected = new Set(mcpSelectedKeys)
+      const nativeLoaded = native
+        ? new Set([
+            ...[...builtinSelected].filter((name) => !forceInline.has(name)),
+            ...inventory.capabilities
+              .filter((capability) => mcpSelected.has(capability.key))
+              .map((capability) => McpTool.toolName(capability.server, capability.name)),
+          ])
+        : new Set<string>()
       const deferredNames = new Set(deferredCandidates.map((candidate) => candidate.name))
       const materialization: ToolRegistry.Materialization = {
         ...materialized,
-        definitions: materialized.definitions.filter((definition) => !hiddenAliases.has(definition.name)),
+        definitions: materialized.definitions.filter(
+          (definition) => !hiddenAliases.has(definition.name) && !nativeLoaded.has(definition.name),
+        ),
         settle: (executeInput) => {
           const name = executeInput.call.name
           if (deferralEnabled && input.deferral?.selected === undefined && deferredNames.has(name)) {

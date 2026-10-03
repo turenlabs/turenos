@@ -42,6 +42,18 @@ keeps rarely used capabilities out of context. The model finds deferred tools wi
 over the MCP subset. A direct call to a deferred tool that wasn't selected still executes, and any allow rule other than
 the catch-all `*` whose action pattern matches the tool keeps it inline.
 
+### Native tool search
+
+Selecting a tool with `tool_load` changes the request's `tools`, which sit at the front of the cached prefix, so every
+load re-reads the whole window uncached. With `FORGE_NATIVE_TOOL_SEARCH=true`, a turn on the OpenAI Responses route with a
+GPT-5.4 or later model uses the provider's client-executed tool search instead (`packages/core/src/tool/native-tool-search.ts`).
+The request declares `tool_search` once and its advertised tools never change. `tool_search` loads the best matches
+(default 8, at most 20) and returns their definitions, which the protocol sends back as a `tool_search_output` item that
+the provider injects at the end of the context window. `tool_load` is not advertised, loaded tools stay callable but
+are never advertised, and a `tool_search` result is never pruned because it holds those definitions. The flag is off by
+default until `packages/core/script/smoke-tool-search.ts` confirms the backend accepts it. Every other route and model
+keeps the `tool_search` and `tool_load` pair.
+
 ## Interceptors
 
 Registered interceptors run inside settlement, for every call that reaches a real tool (subagent calls included):

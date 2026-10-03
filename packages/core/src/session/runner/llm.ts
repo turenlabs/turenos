@@ -30,7 +30,9 @@ import { SystemContext } from "../../system-context/index"
 import { SystemContextRegistry } from "../../system-context/registry"
 import { SkillGuidance } from "../../skill/guidance"
 import { ReferenceGuidance } from "../../reference/guidance"
+import { Flag } from "../../flag/flag"
 import { ToolBroker } from "../../tool/broker"
+import { NativeToolSearch } from "../../tool/native-tool-search"
 import { SessionToolSnapshot } from "../../tool/session-snapshot"
 import { ToolVisibleError } from "../../tool/visible-error"
 import { GoalTool } from "../../tool/goal"
@@ -847,6 +849,11 @@ const layer = Layer.effect(
           ? latestHumanInput
           : undefined
       yield* startupPhase("history_ready", { entries: history.length })
+      const nativeToolSearch = NativeToolSearch.enabled({
+        flag: Flag.FORGE_NATIVE_TOOL_SEARCH,
+        routeID: model.route.id,
+        modelID: model.id,
+      })
       const toolSnapshot = toolsDisabled
         ? undefined
         : yield* toolSnapshots.materialize({
@@ -859,6 +866,7 @@ const layer = Layer.effect(
             taskOwned: session.parentID !== undefined,
             control,
             harnessState,
+            nativeToolSearch,
           })
       yield* startupPhase("tools_ready", { tools: toolSnapshot?.materialization.definitions.length ?? 0 })
       const objectiveChanged =
@@ -1074,7 +1082,9 @@ const layer = Layer.effect(
         // key (see `sendsPromptCacheKey`) also gets it under its provider ID, which is where the AI SDK
         // bridge looks for a bridged package such as Venice.
         providerOptions: {
-          openai: { promptCacheKey },
+          // `toolSearch: "client"` makes the Responses protocol declare `tool_search` natively and answer it with
+          // `tool_search_output`, so loading a tool no longer changes the request's tools.
+          openai: { promptCacheKey, ...(nativeToolSearch ? { toolSearch: "client" } : {}) },
           openrouter: { promptCacheKey },
           ...(model.compatibility?.promptCacheKey === true ? { [String(modelRef.providerID)]: { promptCacheKey } } : {}),
         },
