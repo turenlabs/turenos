@@ -82,6 +82,8 @@ dist
 !packages/sqlite-inspect-wasm/dist/**
 !packages/squashfs-wasm/dist/
 !packages/squashfs-wasm/dist/**
+!packages/text-diff-wasm/dist/
+!packages/text-diff-wasm/dist/**
 !packages/unicode-audit-wasm/dist/
 !packages/unicode-audit-wasm/dist/**
 !packages/wasm-toolkit-wasm/dist/

@@ -90,6 +90,9 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   and u-boot environment, Intel HEX/S-Record, and Android sparse images.
 - [`tools/binary-diff`](binary-diff): bounded binary compare/regions,
   bipatch-format diff production, patch application, and patch introspection.
+- [`tools/text-diff`](text-diff): bounded line diff built on `similar`: added and
+  removed line counts plus a unified patch compatible with the `diff` package's
+  `createTwoFilesPatch`, with a deterministic work budget instead of a deadline.
 - [`tools/browser-artifacts`](browser-artifacts): Chromium LevelDB
   log/table, Simple Cache, and Safari binarycookies forensic parsing.
 - [`tools/sqlite-inspect`](sqlite-inspect): read-only SQLite 3 database
