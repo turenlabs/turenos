@@ -61,14 +61,6 @@ const decodeSerializedEvent = (event: SerializedEvent): Payload => {
   }
 }
 
-// Durable rows are immutable once committed, and durable-stream subscribers re-read
-// overlapping ranges on every wake — keying hits on the raw JSON means each unique
-// row parses and decodes once no matter how many subscribers or re-reads see it.
-const decodeCache = new Map<ID, { data: string; payload: Payload }>()
-const DECODE_CACHE_LIMIT = 8192
-
-export const decodeStats = { hits: 0, misses: 0 }
-
 type EventRow = {
   readonly id: ID
   readonly aggregate_id: string
@@ -77,24 +69,16 @@ type EventRow = {
   readonly data: string
 }
 
-const decodeEventRow = (row: EventRow): Payload => {
-  const cached = decodeCache.get(row.id)
-  if (cached !== undefined && cached.data === row.data) {
-    decodeStats.hits++
-    return cached.payload
-  }
-  decodeStats.misses++
-  const payload = decodeSerializedEvent({
+// Not cached: the previous per-id cache held the raw text and the decoded copy of the newest 8,192 events, to skip a
+// small parse and decode that subscribers re-do when they re-read an overlapping range.
+const decodeEventRow = (row: EventRow): Payload =>
+  decodeSerializedEvent({
     id: row.id,
     type: row.type,
     seq: row.seq,
     aggregateID: row.aggregate_id,
     data: JSON.parse(row.data),
   })
-  if (decodeCache.size >= DECODE_CACHE_LIMIT) decodeCache.delete(decodeCache.keys().next().value!)
-  decodeCache.set(row.id, { data: row.data, payload })
-  return payload
-}
 
 export const readAggregate = Effect.fn("EventV2.readAggregate")(function* <A>(
   db: Database.Interface["db"],
