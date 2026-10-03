@@ -117,14 +117,16 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
         replyWithTool("sim_huge", { bytes: 40_000 + turn * 17 }, { match: turnRequest }),
         reply(`Read ${turn} digested.`, { match: turnRequest }),
       ),
-    modelContextLimit: { context: 60_000 },
+    // Sized so the 40% target (about 45k tokens) lands where the old 75% target of a 60k window did, which is
+    // what the three scripted summarizers and four extra turns below were calibrated to.
+    modelContextLimit: { context: 112_000 },
     summarizers: 3,
     extraTurns: 4,
   },
   {
     // Sustained prune pressure without compaction: sim_big outputs pass the
-    // durable cap whole (~56KB each), so occupancy crosses the 75% prune gate
-    // around turn 11 and every new reduction breaks the prefix mid-history.
+    // durable cap whole (~56KB each), so occupancy crosses the prune gate (40% of
+    // the window) around turn 6 and every new reduction breaks the prefix mid-history.
     // Measures prune-churn cost in isolation.
     name: "pressure",
     turns: 14,

@@ -1,9 +1,8 @@
 import type { Session } from "node:inspector"
 
 /**
- * In-process V8 CPU profiler, shared by the Electron main process and the
- * `utilityProcess` sidecar. Both are Node environments, so both can drive the
- * V8 inspector directly.
+ * In-process V8 CPU profiler for Electron's Node main process. The Bun sidecar
+ * does not support the V8 inspector profiler.
  *
  * This deliberately uses `new inspector.Session()` rather than
  * `inspector.open()` or an `--inspect` argv flag. A `Session` speaks the V8

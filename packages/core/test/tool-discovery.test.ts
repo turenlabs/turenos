@@ -262,22 +262,40 @@ describe("SessionToolSnapshot tool discovery", () => {
     }),
   )
 
-  it.effect("unloads a deferred selection left idle past its idle-turn budget", () =>
+  it.effect("keeps an idle deferred selection loaded: every unload rewrites the cached prefix", () =>
     Effect.gen(function* () {
       const sessionID = yield* setup("idle")
       const before = yield* materialize(sessionID)
       yield* before.materialization.settle(
         call(sessionID, ToolBroker.LOAD_TOOL_NAME, { tools: ["fixture_yara"] }),
       )
+      // Untouched for far longer than the old three-turn budget, it is still advertised, so the tool list at
+      // the front of the cached prefix does not change. Unloading would cost a full uncached re-read.
+      for (let turn = 1; turn <= ToolBroker.MIN_UNLOAD_AFTER_IDLE_TURNS; turn++)
+        expect((yield* materialize(sessionID)).materialization.definitions.map((definition) => definition.name)).toContain(
+          "fixture_yara",
+        )
 
-      const advertised = yield* materialize(sessionID)
-      expect(advertised.materialization.definitions.map((definition) => definition.name)).toContain("fixture_yara")
+      // Only once the floor is passed does it drop.
+      expect((yield* materialize(sessionID)).materialization.definitions.map((definition) => definition.name)).not.toContain(
+        "fixture_yara",
+      )
+    }),
+  )
 
-      // The default idle budget is three turns; the fourth untouched advance drops it.
-      yield* materialize(sessionID)
-      yield* materialize(sessionID)
-      const last = yield* materialize(sessionID)
-      expect(last.materialization.definitions.map((definition) => definition.name)).not.toContain("fixture_yara")
+  it.effect("raises a capability's own shorter idle budget to the floor", () =>
+    Effect.sync(() => {
+      // Twenty catalog capabilities declare three idle turns. Each would otherwise unload, and rewrite the
+      // cached prefix, three turns after its last use.
+      const capability = { key: "short-budget", name: "short-budget", server: "forge", unloadAfterIdleTurns: 3 }
+      const id = "ses_broker_floor"
+      ToolBroker.clear(id)
+      ToolBroker.beginTurn(id, [capability])
+      ToolBroker.load(id, [capability], [capability.key])
+      for (let turn = 1; turn <= ToolBroker.MIN_UNLOAD_AFTER_IDLE_TURNS; turn++)
+        expect(ToolBroker.beginTurn(id, [capability])).toContain(capability.key)
+      expect(ToolBroker.beginTurn(id, [capability])).not.toContain(capability.key)
+      ToolBroker.clear(id)
     }),
   )
 

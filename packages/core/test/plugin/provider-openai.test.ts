@@ -449,4 +449,63 @@ describe("OpenAIPlugin", () => {
       ).toBe(true)
     }),
   )
+
+  it.effect("sends cache-affinity headers only on ChatGPT OAuth requests that carry a prompt cache key", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      yield* addPlugin()
+      const model = required(yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("gpt-6.1-sol")))
+      const headersFor = (resolved: Parameters<typeof LLM.request>[0]["model"], input: Partial<Parameters<typeof LLM.request>[0]>) =>
+        Effect.gen(function* () {
+          const request = LLM.request({ model: resolved, prompt: "Hello", ...input })
+          const body = yield* resolved.route.body.from(request)
+          const prepared = yield* resolved.route.prepareTransport(body, request)
+          return prepared.request.headers as Record<string, string>
+        })
+      const oauth = yield* SessionRunnerModel.fromCatalogModelWithAISDK(
+        model,
+        Credential.OAuth.make({
+          type: "oauth",
+          methodID: Integration.MethodID.make("chatgpt-browser"),
+          access: "test-access",
+          refresh: "test-refresh",
+          expires: Date.now() + 60_000,
+          metadata: { accountID: "test-account" },
+        }),
+      )
+      const key = "a".repeat(64)
+
+      const keyed = yield* headersFor(oauth, {
+        providerOptions: { openai: { promptCacheKey: key } },
+        metadata: { [OpenAICodex.CONTEXT_WINDOW_METADATA_KEY]: 2 },
+      })
+      expect(keyed).toMatchObject({
+        authorization: "Bearer test-access",
+        "chatgpt-account-id": "test-account",
+        originator: OpenAICodex.ORIGINATOR,
+        "session-id": key,
+        "thread-id": key,
+        "x-client-request-id": key,
+        "x-codex-window-id": `${key}:2`,
+      })
+
+      // Window defaults to 0 before any compaction.
+      expect(
+        (yield* headersFor(oauth, { providerOptions: { openai: { promptCacheKey: key } } }))["x-codex-window-id"],
+      ).toBe(`${key}:0`)
+
+      // Title generation and compaction send no cache key, so nothing changes for them.
+      const unkeyed = yield* headersFor(oauth, {})
+      expect(unkeyed.authorization).toBe("Bearer test-access")
+      expect(Object.keys(unkeyed).filter((name) => name === "session-id" || name.startsWith("x-codex"))).toEqual([])
+
+      // API-key requests never carry ChatGPT-backend headers.
+      const apiKey = yield* SessionRunnerModel.fromCatalogModelWithAISDK(
+        model,
+        Credential.Key.make({ type: "key", key: "test-key" }),
+      )
+      const direct = yield* headersFor(apiKey, { providerOptions: { openai: { promptCacheKey: key } } })
+      expect(Object.keys(direct).filter((name) => name === "session-id" || name.startsWith("x-codex"))).toEqual([])
+    }),
+  )
 })

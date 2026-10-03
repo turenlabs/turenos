@@ -1,5 +1,6 @@
 import { $ } from "bun"
 import { dirname } from "node:path"
+import { Platform } from "@turenlabs/script/platform"
 
 export type Channel = "dev" | "beta" | "prod"
 
@@ -10,50 +11,15 @@ export function resolveChannel(): Channel {
   return "dev"
 }
 
-export const SIDECAR_BINARIES: Array<{ rustTarget: string; ocBinary: string; assetExt: string }> = [
-  {
-    rustTarget: "aarch64-apple-darwin",
-    ocBinary: "forge-darwin-arm64",
-    assetExt: "zip",
-  },
-  {
-    rustTarget: "x86_64-apple-darwin",
-    ocBinary: "forge-darwin-x64-baseline",
-    assetExt: "zip",
-  },
-  {
-    rustTarget: "aarch64-pc-windows-msvc",
-    ocBinary: "forge-windows-arm64",
-    assetExt: "zip",
-  },
-  {
-    rustTarget: "x86_64-pc-windows-msvc",
-    ocBinary: "forge-windows-x64-baseline",
-    assetExt: "zip",
-  },
-  {
-    rustTarget: "x86_64-unknown-linux-gnu",
-    ocBinary: "forge-linux-x64-baseline",
-    assetExt: "tar.gz",
-  },
-  {
-    rustTarget: "aarch64-unknown-linux-gnu",
-    ocBinary: "forge-linux-arm64",
-    assetExt: "tar.gz",
-  },
-]
+export const SIDECAR_BINARIES = Platform.targets.map((target) => ({
+  rustTarget: target.rustTarget,
+  ocBinary: `forge-${target.platform === "win32" ? "windows" : target.platform}-${target.arch}${target.arch === "x64" ? "-baseline" : ""}`,
+  assetExt: target.platform === "linux" ? "tar.gz" : "zip",
+}))
 
 export const RUST_TARGET = Bun.env.RUST_TARGET
 
-function nativeTarget() {
-  const { platform, arch } = process
-  if (platform === "darwin") return arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin"
-  if (platform === "win32") return arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc"
-  if (platform === "linux") return arch === "arm64" ? "aarch64-unknown-linux-gnu" : "x86_64-unknown-linux-gnu"
-  throw new Error(`Unsupported platform: ${platform}/${arch}`)
-}
-
-export function getCurrentSidecar(target = RUST_TARGET ?? nativeTarget()) {
+export function getCurrentSidecar(target = Platform.get(RUST_TARGET).rustTarget) {
   const binaryConfig = SIDECAR_BINARIES.find((b) => b.rustTarget === target)
   if (!binaryConfig) throw new Error(`Sidecar configuration not available for Rust target '${target}'`)
 

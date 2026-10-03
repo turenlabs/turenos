@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { beforeEach, describe, expect } from "bun:test"
 import fs from "node:fs"
 import path from "node:path"
 import { tmpdir } from "node:os"
@@ -33,6 +33,7 @@ import { Flag } from "@turenlabs/core/flag/flag"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionHarness } from "@turenlabs/core/session/harness"
 import { SessionCompaction } from "@turenlabs/core/session/compaction"
+import { SessionContextManagement } from "@turenlabs/core/session/context-management"
 import { SessionContextRequest } from "@turenlabs/core/session/context-request"
 import { Snapshot } from "@turenlabs/core/snapshot"
 import { ContextSnapshotDecodeError } from "@turenlabs/core/session/error"
@@ -188,7 +189,9 @@ const compactModel = Model.make({
 const recoveryModel = Model.make({
   id: "recovery",
   provider: "fake",
-  route: OpenAIChat.route.with({ limits: { context: 20_000, output: 1_000 } }),
+  // The window is sized so these fixtures stay under the 40% compaction target and the scripted provider
+  // overflow, not a pre-flight compaction, is what triggers recovery.
+  route: OpenAIChat.route.with({ limits: { context: 50_000, output: 1_000 } }),
 })
 const compactionSummary = (objective: string) => `## Objective
 - ${objective}
@@ -411,9 +414,26 @@ const mcpSource = Layer.succeed(
     touch: (input) => Effect.sync(() => ToolBroker.touch(input.sessionID, input.key, input.directory)),
   }),
 )
+// The runner and the test body are built from separate graphs, so the real in-memory request store is shared
+// between them here. Only `status`, which the runner never calls, is stubbed. Reset per test so a claimed note
+// or pending checkpoint cannot leak from one test into the next.
+let contextRequests = SessionContextManagement.makeRequests()
+beforeEach(() => {
+  contextRequests = SessionContextManagement.makeRequests()
+})
+const contextManagement = Layer.succeed(
+  SessionContextManagement.Service,
+  SessionContextManagement.Service.of({
+    status: () => Effect.die("the runner does not read context status"),
+    request: (sessionID, handoff) => contextRequests.request(sessionID, handoff),
+    take: (sessionID) => contextRequests.take(sessionID),
+    claimNudge: (input) => contextRequests.claimNudge(input),
+  }),
+)
 const runnerLayer = AppNodeBuilder.build(
   LayerNode.group([SessionRunnerLLM.node, SessionTodo.node, SessionHarness.node, ReflectionTool.node]),
   [
+    [SessionContextManagement.node, contextManagement],
     [Snapshot.node, Snapshot.noopLayer],
     [LayerNodePlatform.llmClient, client],
     [SessionRunnerModel.node, models],
@@ -478,10 +498,12 @@ const it = testEffect(
       Config.node,
       Snapshot.node,
       SessionRunnerLLM.node,
+      SessionContextManagement.node,
       SessionExecution.node,
       SessionV2.node,
     ]),
     [
+      [SessionContextManagement.node, contextManagement],
       [LayerNodePlatform.llmClient, client],
       [PermissionV2.node, permission],
       [SessionRunnerModel.node, models],
@@ -2529,6 +2551,31 @@ describe("SessionRunnerLLM", () => {
         { type: "user", text: "Continue" },
         { type: "assistant", finish: "error", error: { message: "prompt too long" } },
       ])
+    }),
+  )
+
+  it.effect("runs an agent-requested checkpoint before the next turn without asking a model to summarize", () =>
+    Effect.gen(function* () {
+      const session = yield* setupOverflowRecovery
+      const management = yield* SessionContextManagement.Service
+      const handoff = compactionSummary("Agent-written checkpoint")
+      yield* management.request(sessionID, handoff)
+      // The only provider call left is the answer itself: a summarizer would consume it and fail the turn.
+      responses = [fragmentFixture("text", "text-final", ["Continuing from the checkpoint"]).completeEvents]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(1)
+      expect(requests.some((request) => userTexts(request).some((text) => text.includes("anchored summary")))).toBe(
+        false,
+      )
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "compaction", summary: handoff },
+        { type: "user", text: "Continue" },
+        { type: "assistant", finish: "stop" },
+      ])
+      // Taken exactly once: a second turn is not compacted again.
+      expect(yield* management.take(sessionID)).toBeUndefined()
     }),
   )
 

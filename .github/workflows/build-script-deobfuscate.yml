@@ -1,0 +1,81 @@
+name: Build script-deobfuscate WASM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/script-deobfuscate/**"
+      - ".github/workflows/build-script-deobfuscate.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-script-deobfuscate
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+
+env:
+  RUST_TOOLCHAIN: 1.97.1
+  WASM_PACK_VERSION: 0.15.0
+
+jobs:
+  build:
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'self-hosted' }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout trusted source
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+      - name: Install pinned Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+      - name: Install Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: "24.14.0"
+      - name: Install pinned wasm-pack
+        run: cargo +"$RUST_TOOLCHAIN" install --locked wasm-pack --version "$WASM_PACK_VERSION"
+      - name: Test static engine
+        run: cargo +"$RUST_TOOLCHAIN" test --locked --manifest-path tools/script-deobfuscate/Cargo.toml
+      - name: Build bounded WASM
+        run: wasm-pack build tools/script-deobfuscate --target web --release --out-dir pkg
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+          RUSTFLAGS: "-C link-arg=--max-memory=268435456"
+      - name: Verify generated and adversarial corpus
+        run: node tools/script-deobfuscate/test/verify.mjs tools/script-deobfuscate/pkg
+      - name: Package workspace module
+        run: node tools/script-deobfuscate/script/pack.mjs tools/script-deobfuscate/pkg packages/script-deobfuscate-wasm
+      - name: Verify packaged module
+        run: node tools/script-deobfuscate/test/verify.mjs packages/script-deobfuscate-wasm/dist
+      - name: Verify positional CLI
+        run: node tools/script-deobfuscate/test/cli.mjs packages/script-deobfuscate-wasm
+      - name: Verify artifact checksums
+        working-directory: packages/script-deobfuscate-wasm
+        run: sha256sum -c SHA256SUMS
+      - name: Open artifact update PR
+        id: cpr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          sign-commits: true
+          add-paths: packages/script-deobfuscate-wasm
+          branch: deobfuscate-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild script-deobfuscate"
+          title: "chore(wasm): rebuild script-deobfuscate"
+          body: "Rebuilt the bounded static JavaScript deobfuscator from trusted source at ${{ github.sha }}."
+      - name: Report verified artifact status
+        if: steps.cpr.outputs.pull-request-head-sha != ''
+        env:
+          GH_HEAD_SHA: ${{ steps.cpr.outputs.pull-request-head-sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" \
+            -f name=lint -f head_sha="$GH_HEAD_SHA" \
+            -f status=completed -f conclusion=success \
+            -f 'output[title]=WASM artifact verified' \
+            -f 'output[summary]=Locked tests, WASM corpus, positional CLI, and package checksums passed.'

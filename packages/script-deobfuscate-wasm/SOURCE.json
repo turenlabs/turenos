@@ -1,0 +1,29 @@
+{
+  "crate": "turen-script-deobfuscate-wasm",
+  "upstream": "https://github.com/oxc-project/oxc",
+  "upstreamVersion": "0.152.0",
+  "upstreamCommit": "dfbc0d1ea752f021ba4a68e4703b3a9031082a46",
+  "derivation": "Turen-authored conservative static analysis over unmodified exact-pinned Oxc crates; no upstream patches and no JavaScript VM",
+  "license": "MIT",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "target": "wasm32-unknown-unknown",
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "limits": {
+    "inputBytes": 1048576,
+    "optionsBytes": 4096,
+    "outputBytes": 4194304,
+    "codeBytes": 2097152,
+    "valueBytes": 65536,
+    "payloadBytes": 262144,
+    "transformations": 256,
+    "payloads": 128,
+    "structuralDepth": 64,
+    "linearMemoryBytes": 268435456,
+    "workerTimeoutMs": 30000
+  },
+  "cargoLockSha256": "c3b8c46d22f37ee373348360cdd6078fe6b4e59d3a199122aa055c2f8e3e4a17",
+  "run": "37087068098"
+}

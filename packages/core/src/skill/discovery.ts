@@ -113,10 +113,6 @@ const layer = Layer.effect(
         )
         if (!data) return []
 
-        // node:crypto, not `Bun.hash`: the desktop app runs this server inside an
-        // Electron `utilityProcess.fork`, which is plain Node, where any Bun API
-        // throws. Only the cache directory's name changes, so the worst an
-        // existing cache sees is one re-fetch.
         const sourceRoot = path.resolve(
           global.cache,
           "skills",
