@@ -9,14 +9,38 @@ import { loadSession } from "./session-load"
 
 type Snapshot = NonNullable<DashboardState["snapshot"]>
 
-export async function render(c: Conversation) {
-  const { state, ui, hooks } = c
+/**
+ * Loads the selected view. A request for the view already loading runs at most once more after
+ * the current load, and the current load still paints. Only a different view discards a load.
+ */
+export function render(c: Conversation) {
+  const { state } = c
   if (c.disposed) return
-  currentView(c)
-  const version = ++state.detailVersion
-  if (c.loading) await c.loading
-  if (c.disposed || version !== state.detailVersion || state.closed) return
-  c.loading = load(c, version)
+  const key = `${currentView(c)}:${c.pageRequest?.cursor ?? ""}:${state.historyCursor ?? ""}`
+  if (key !== c.loadKey) {
+    c.loadKey = key
+    ++state.detailVersion
+  }
+  if (c.loading) {
+    c.refreshPending = true
+    return c.loading
+  }
+  c.loading = drain(c).finally(() => {
+    c.loading = undefined
+  })
+  return c.loading
+}
+
+async function drain(c: Conversation) {
+  do {
+    c.refreshPending = false
+    await once(c, c.state.detailVersion)
+  } while (c.refreshPending && !c.disposed && !c.state.closed)
+}
+
+function once(c: Conversation, version: number) {
+  const { state, ui, hooks } = c
+  return load(c, version)
     .then(() => {
       if (c.disposed || version !== state.detailVersion || state.closed) return
       if (c.error) hooks.clearNotice(c.error)
@@ -32,10 +56,6 @@ export async function render(c: Conversation) {
       hooks.say(c.error, true)
       hooks.actions()
     })
-    .finally(() => {
-      c.loading = undefined
-    })
-  return c.loading
 }
 
 async function load(c: Conversation, version: number) {

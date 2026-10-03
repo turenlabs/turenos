@@ -1,6 +1,7 @@
 import type { LiveEvent } from "../live-events"
 import type { LiveSession } from "./context"
 import { current, dropSession, paint, snapshot } from "./schedule"
+import { settleBusy, trackSequence } from "./sequence"
 
 /** Consumes the global event stream, reconnecting with backoff and falling back to polling between attempts. */
 export async function run(s: LiveSession) {
@@ -30,6 +31,9 @@ function handle(s: LiveSession, event: LiveEvent) {
   const { state } = s
   if (event.type === "server.connected") return connected(s)
   const sessionID = event.data.sessionID
+  settleBusy(s, event)
+  // Deltas are not durable and cannot be replayed, so a jump can only be repaired by refetching the transcript.
+  const gap = trackSequence(s, event)
   if (typeof sessionID === "string" && /^session\.next\.revert\.(staged|cleared|committed)$/.test(event.type)) {
     s.hooks.invalidate?.(sessionID)
     dropSession(s, sessionID)
@@ -49,7 +53,7 @@ function handle(s: LiveSession, event: LiveEvent) {
       state.snapshot.active = { ...state.snapshot.active, [sessionID]: { type: "running" } }
     paint(s, sessionID)
   }
-  if (!changed || /\.(ended|failed|success)$/.test(event.type)) snapshot(s, sessionID)
+  if (gap || !changed || /\.(ended|failed|success)$/.test(event.type)) snapshot(s, sessionID)
 }
 
 function connected(s: LiveSession) {

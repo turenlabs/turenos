@@ -27,17 +27,20 @@ async function fixture(deferredReady = false, initialText = "Initial snapshot") 
     tasks: { data: [], active: [], cursor: {} } as SessionsTaskListOutput,
     revert: undefined as Session["revert"],
     tail: undefined as string | undefined,
+    delay: 0,
   }
   const streams = new Set<ReadableStreamDefaultController<Uint8Array>>()
   let connections = 0
   let reads = 0
   let sequence = 0
-  const encode = (type: string, value: Record<string, unknown>) =>
-    new TextEncoder().encode(`data: ${JSON.stringify({ id: `evt_${++sequence}`, type, data: value })}\n\n`)
+  const encode = (type: string, value: Record<string, unknown>, durable?: { aggregateID: string; seq: number }) =>
+    new TextEncoder().encode(
+      `data: ${JSON.stringify({ id: `evt_${++sequence}`, type, data: value, ...(durable ? { durable: { ...durable, version: 1 } } : {}) })}\n\n`,
+    )
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch(request) {
+    async fetch(request) {
       const path = new URL(request.url).pathname
       if (path === "/api/event") {
         if (!data.available) return new Response(null, { status: 503 })
@@ -66,6 +69,7 @@ async function fixture(deferredReady = false, initialText = "Initial snapshot") 
       if (path === "/api/session/ses_live") return Response.json({ data: { ...session, revert: data.revert } })
       if (path.endsWith("/message")) {
         reads++
+        if (data.delay) await Bun.sleep(data.delay)
         return Response.json({
           data: [
             ...(data.tail ? [{ id: "msg_tail", type: "user", text: data.tail, time: { created: 2 } }] : []),
@@ -105,9 +109,15 @@ async function fixture(deferredReady = false, initialText = "Initial snapshot") 
   async function screen(text: string) {
     await wait(() => view.captureCharFrame().includes(text))
   }
-  function emit(type: string, fields: Record<string, unknown> = {}) {
+  function emit(type: string, fields: Record<string, unknown> = {}, seq?: number) {
     for (const stream of streams)
-      stream.enqueue(encode(type, { sessionID: session.id, assistantMessageID: "msg_live", timestamp: 2, ...fields }))
+      stream.enqueue(
+        encode(
+          type,
+          { sessionID: session.id, assistantMessageID: "msg_live", timestamp: 2, ...fields },
+          seq === undefined ? undefined : { aggregateID: session.id, seq },
+        ),
+      )
   }
   function closeStreams() {
     for (const stream of streams) stream.close()
@@ -313,3 +323,64 @@ test.each(["events", "reconnect"])(
     expect(content()).not.toContain("UNDO STAGED")
   },
 )
+
+test("a durable sequence jump refetches the transcript instead of waiting for the poll", async () => {
+  const f = await fixture()
+  await f.wait(() => f.reads() >= 2)
+  f.emit("session.next.text.started", { textID: "text_live" }, 3)
+  // Sync to just after a poll so the next poll is about 2 s away.
+  const seen = f.reads()
+  await f.wait(() => f.reads() > seen)
+  const before = f.reads()
+  f.data.text = "Recovered after the gap"
+  f.emit("session.next.text.started", { textID: "text_other" }, 9)
+  const deadline = Date.now() + 700
+  while (f.reads() === before && Date.now() < deadline) await Bun.sleep(10)
+  expect(f.reads()).toBeGreaterThan(before)
+  await f.screen("Recovered after the gap")
+}, 10000)
+
+test("consecutive durable events do not refetch", async () => {
+  const f = await fixture()
+  await f.wait(() => f.reads() >= 2)
+  f.emit("session.next.text.started", { textID: "text_live" }, 3)
+  const seen = f.reads()
+  await f.wait(() => f.reads() > seen)
+  const before = f.reads()
+  f.emit("session.next.text.started", { textID: "text_a" }, 4)
+  f.emit("session.next.text.started", { textID: "text_b" }, 5)
+  await Bun.sleep(500)
+  expect(f.reads()).toBe(before)
+}, 10000)
+
+test("a burst of ended events cannot starve the transcript refresh", async () => {
+  const f = await fixture()
+  await f.wait(() => f.reads() >= 2)
+  f.data.delay = 250
+  f.data.text = "Updated during the burst"
+  let finished = false
+  const burst = (async () => {
+    for (let index = 0; index < 14; index++) {
+      f.emit("session.next.tool.input.ended", { callID: `call_${index}`, text: "{}" })
+      await Bun.sleep(120)
+    }
+    finished = true
+  })()
+  await f.screen("Updated during the burst")
+  expect(finished).toBe(false)
+  await burst
+}, 10000)
+
+test("the Working marker clears at the final step end without waiting for the poll", async () => {
+  const f = await fixture()
+  await f.wait(() => f.reads() >= 2)
+  await f.screen("· Working")
+  const seen = f.reads()
+  await f.wait(() => f.reads() > seen)
+  f.emit("session.next.step.ended", {
+    finish: "stop",
+    cost: 0,
+    tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
+  })
+  await f.wait(() => !/Working [\u2800-\u28ff]{3}|· Working/.test(f.view.captureCharFrame()))
+}, 10000)

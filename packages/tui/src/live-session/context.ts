@@ -21,6 +21,8 @@ export type LiveSession = {
   paintTimer: ReturnType<typeof setTimeout> | undefined
   snapshotTimer: ReturnType<typeof setTimeout> | undefined
   metadataRefresh: boolean
+  /** The last durable `seq` seen per aggregate (session); kept across reconnects to expose missed events. */
+  seqs: Map<string, number>
   started: boolean
   retry: number
 }
