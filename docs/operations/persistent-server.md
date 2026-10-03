@@ -30,8 +30,8 @@ redirecting root's work:
   hard link. It retains handles to claimed directories and hands them back through those handles, children before
   parents. A rejected layout does not enter ownership cleanup; a partial claim releases only directories it acquired.
   Database files are checked and handed back through open handles while their parent directories remain protected.
-- **Service binary and recovery copy.** The binary the unit runs (`--forge-bin`, default: the running `forge`, resolved
-  through links) must be a root-owned file in directories only root can write, since it receives the key and
+- **Service binary and recovery copy.** The binary the unit runs (`--forge-bin`, default: the installed unit's binary,
+  else the running `forge`, resolved through links) must be a root-owned file in directories only root can write, since it receives the key and
   password. The `--recovery-file` directory must also be writable only by root.
 - **Unit values.** Values written into the unit (account, server ID, paths, port) are limited to characters that can't
   split or reinterpret a unit line.
@@ -177,7 +177,7 @@ printf '%s\n%s\n' "$KEY_ID" "$KEY_BASE64" | sudo forge persistent install --user
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Status and logs            | `systemctl status turenos`, `journalctl -u turenos`                                                                                                                                                                                                                                                           |
 | Stop or retire the service | `systemctl disable --now turenos`. Clients never stop a persistent server                                                                                                                                                                                                                                     |
-| Re-run or upgrade          | `sudo forge persistent install --apply` with no other options reuses the installed unit's account, data root, port, and server ID, then restarts the service. It refuses to replace an existing key, to change the account or data root of an installed server, or to overwrite a unit for a different server |
+| Re-run or upgrade          | `sudo forge persistent install --apply` with no other options reuses the installed unit's account, data root, port, server ID, and forge binary (pass `--forge-bin` to switch binaries), then restarts the service. It refuses to replace an existing key, to change the account or data root of an installed server, or to overwrite a unit for a different server |
 | Check what a key opens     | `forge persistent verify-key --db <path>` (key on stdin)                                                                                                                                                                                                                                                      |
 
 ### Failure behavior
@@ -189,8 +189,9 @@ If a step fails before the restart, `install` starts a service that was running 
 doesn't become healthy, `install` prints the last journal lines, then stops and disables the service so it doesn't keep
 restarting. It doesn't disable a service that was already installed. Preflight refuses a
 port another process holds (quick connect prefers 4096, so the default here is 4097) and a data root that belongs to
-another account. The unit restarts the service on failure. Each restart
-fails the same way until the operator fixes the cause.
+another account. The unit restarts the service on failure, at most five times in 300 seconds, and never after exit
+status 78 (a configuration error such as a missing credential or a unit written by a different forge). Fix the cause,
+then re-run `install --apply` or `systemctl reset-failed turenos` and start the service.
 
 While `install` works in the data root, the root and its managed directories belong to root. A failure hands them
 back before the service is started again. If the process itself dies there (a dropped SSH session, Ctrl-C under

@@ -68,8 +68,30 @@ describe("PersistentLinux", () => {
       user: "turen",
       dataRoot: "/var/lib/turenos",
       port: 4096,
+      forgeBin: "/usr/local/bin/forge",
     })
     expect(PersistentLinux.installed(undefined).serverID).toBeUndefined()
+  })
+
+  test("a re-run reads the installed forge binary back from the unit", () => {
+    const text = PersistentLinux.unit({ ...plan, forgeBin: "/opt/forge-1.2/bin/forge" })
+    expect(PersistentLinux.installed(text).forgeBin).toBe("/opt/forge-1.2/bin/forge")
+    expect(PersistentLinux.installed(undefined).forgeBin).toBeUndefined()
+  })
+
+  test("the unit stops restarting a binary or credential that cannot start", () => {
+    const text = PersistentLinux.unit(plan)
+    const [unit, service] = text.split("[Service]")
+    expect(unit).toContain("StartLimitIntervalSec=300")
+    expect(unit).toContain("StartLimitBurst=5")
+    expect(service).toContain("RestartPreventExitStatus=78")
+    expect(service).toContain("Environment=FORGE_PERSISTENT_UNIT=1")
+    expect(service).toContain("Restart=on-failure")
+  })
+
+  test("the unit omits HOME for an account without a home directory", () => {
+    expect(PersistentLinux.unit(plan)).toContain("Environment=HOME=/home/turen\n")
+    expect(PersistentLinux.unit({ ...plan, home: "" })).not.toContain("Environment=HOME=")
   })
 
   test("refuses a port another process holds, but not the installed service's own", () => {

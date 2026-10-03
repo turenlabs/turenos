@@ -60,6 +60,8 @@ async function plan(args: PlanArgs, runner = PersistentLinux.run) {
           : []),
       ]
     : []
+  // A re-run keeps the installed binary unless --forge-bin names another one.
+  const forgeBin = args["forge-bin"] ?? (sameServer ? installed.forgeBin : undefined) ?? process.execPath
   const passwd = await runner("getent", ["passwd", user])
   const target = {
     user,
@@ -68,7 +70,7 @@ async function plan(args: PlanArgs, runner = PersistentLinux.run) {
     port: args.port ?? (sameServer ? installed.port : undefined) ?? PersistentLinux.defaults.port,
     serverID: args["server-id"] ?? installed.serverID ?? PersistentLinux.newServerID(),
     // Resolved, so the unit names the checked file rather than a link that could be repointed later.
-    forgeBin: await realpath(args["forge-bin"] ?? process.execPath).catch(() => args["forge-bin"] ?? process.execPath),
+    forgeBin: await realpath(forgeBin).catch(() => forgeBin),
     group: PersistentLinux.defaults.group,
     unitPath: PersistentLinux.defaults.unitPath,
     attachPath: PersistentLinux.defaults.attachPath,

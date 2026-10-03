@@ -110,17 +110,22 @@ export function unit(plan: Plan) {
     "Description=TurenOS persistent server",
     "After=network-online.target",
     "Wants=network-online.target",
+    // A binary that rejects the unit's flags would otherwise restart every RestartSec forever.
+    "StartLimitIntervalSec=300",
+    "StartLimitBurst=5",
     "",
     "[Service]",
     "Type=simple",
     `User=${plan.user}`,
-    `Environment=HOME=${plan.home}`,
+    // Without a passwd home systemd leaves HOME unset, which is better than an empty value.
+    ...(plan.home ? [`Environment=HOME=${plan.home}`] : []),
     `Environment=XDG_DATA_HOME=${join(plan.dataRoot, "data")}`,
     `Environment=XDG_CONFIG_HOME=${join(plan.dataRoot, "config")}`,
     `Environment=XDG_STATE_HOME=${join(plan.dataRoot, "state")}`,
     `Environment=XDG_CACHE_HOME=${join(plan.dataRoot, "cache")}`,
     `Environment=FORGE_DB=${databasePath(plan.dataRoot)}`,
     "Environment=FORGE_SERVER_MODE=persistent",
+    "Environment=FORGE_PERSISTENT_UNIT=1",
     `Environment=FORGE_SERVER_ID=${plan.serverID}`,
     `Environment=FORGE_SERVER_PASSWORD_CREDENTIAL=${credentials.password}`,
     `LoadCredentialEncrypted=${credentials.key}:${encrypted(credentials.key)}`,
@@ -128,6 +133,8 @@ export function unit(plan: Plan) {
     `LoadCredentialEncrypted=${credentials.password}:${encrypted(credentials.password)}`,
     `ExecStart=${plan.forgeBin} serve --key-source systemd-credentials --hostname 127.0.0.1 --port ${plan.port}`,
     "Restart=on-failure",
+    // EX_CONFIG: the server found a configuration error that a restart cannot fix.
+    "RestartPreventExitStatus=78",
     "RestartSec=5",
     "UMask=0077",
     "NoNewPrivileges=yes",
@@ -154,6 +161,7 @@ export function installed(text: string | undefined) {
   const dataHome = line(/^Environment=XDG_DATA_HOME=(\S+)$/m)
   const port = line(/^ExecStart=\S+ serve .*--port (\d+)/m)
   return {
+    forgeBin: line(/^ExecStart=(\S+) serve /m),
     serverID: line(/^Environment=FORGE_SERVER_ID=(\S+)$/m),
     user: line(/^User=(\S+)$/m),
     dataRoot: dataHome ? dirname(dataHome) : undefined,
