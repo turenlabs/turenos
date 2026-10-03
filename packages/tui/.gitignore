@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+*.log
+*.tsbuildinfo
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+audit-output/

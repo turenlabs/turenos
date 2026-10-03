@@ -10,6 +10,7 @@
     "dev": "bun --cwd packages/desktop dev",
     "dev:desktop": "bun --cwd packages/desktop dev",
     "dev:renderer": "bun --cwd packages/app dev",
+    "tui": "bun --cwd packages/tui start",
     "lint": "oxlint",
     "license:check": "bun script/license-audit.ts",
     "license:generate": "bun script/license-audit.ts --write",
