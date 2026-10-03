@@ -128,13 +128,18 @@ try {
     await cli.parse()
   }
 } catch (e) {
-  const formatted = FormatError(e)
-  if (formatted) UI.error(formatted)
-  if (formatted === undefined) {
-    UI.error("Unexpected error" + EOL)
-    process.stderr.write(errorMessage(e) + EOL)
+  if (e instanceof ServerMode.ConfigError) {
+    process.stderr.write(e.message + EOL)
+    process.exitCode = ServerMode.configExitStatus
+  } else {
+    const formatted = FormatError(e)
+    if (formatted) UI.error(formatted)
+    if (formatted === undefined) {
+      UI.error("Unexpected error" + EOL)
+      process.stderr.write(errorMessage(e) + EOL)
+    }
+    process.exitCode = 1
   }
-  process.exitCode = 1
 } finally {
   // Some subprocesses don't react properly to SIGTERM and similar signals.
   // Most notably, some docker-container-based MCP servers don't handle such signals unless

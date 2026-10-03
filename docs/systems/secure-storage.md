@@ -67,7 +67,8 @@ which keeps it in memory only: `ServerAuth.claimPassword` stores it in the in-pr
 `FORGE_SERVER_PASSWORD` from `process.env`), and `ServerAuth.listenerLayer` gives it to the listener's auth check and to
 the in-process plugin SDK client. The password is never added to `process.env`.
 Persistent startup refuses to start if the vault key or the HTTP password appears in the initial environment. It also
-refuses an `env` key source or a missing server ID.
+refuses an `env` key source, a missing server ID, a non-loopback hostname, and mDNS. It also requires
+`FORGE_PERSISTENT_UNIT=1`, which the installer writes into the unit. These configuration errors exit with status 78.
 
 Key material must decode from canonical base64 to exactly 32 bytes, and the key ID must contain 1–128 letters, digits,
 `.`, `_`, or `-`. A missing source, an inaccessible file, invalid material, a wrong key, multiple key IDs, or a database

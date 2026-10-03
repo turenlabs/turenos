@@ -56,8 +56,9 @@ redirecting root's work:
   user could bind it and collect the password from a client that connects. The desktop checks the descriptor's server
   ID and mode, but only after it has sent credentials. Quick connect has the same limit. A Unix-socket listener with
   group permissions would remove it.
-- **Credentials inside the service.** `$CREDENTIALS_DIRECTORY` is readable by the service account, and so by agent
-  tools, as described under Scope.
+- **Credentials inside the service.** The credential files are readable by the service account, and so by agent
+  tools, as described under Scope. After loading them `serve` removes `CREDENTIALS_DIRECTORY` and
+  `FORGE_SERVER_PASSWORD_CREDENTIAL` from the environment, so tools, PTYs, and MCP servers are not told where they are.
 - **`forge` commands run by tools.** Tools inherit the pinned `FORGE_DB` and persistent mode. In persistent mode a
   database opens only in the process that holds its owner lock, so a `forge` command a tool runs fails before it can
   migrate or write the live database. This guards against accidents, not against a tool: it can clear the
@@ -191,7 +192,9 @@ printf '%s\n%s\n' "$KEY_ID" "$KEY_BASE64" | sudo forge persistent install --user
 ### Failure behavior
 
 A missing credential, wrong key bytes, several key IDs, a database owned by another server, or a key or password in the
-environment all stop startup before the server accepts work.
+environment all stop startup before the server accepts work. Configuration errors (missing or invalid credentials, a
+key or password in the environment, a unit without `FORGE_PERSISTENT_UNIT=1`, a non-loopback `--hostname`, or `--mdns`)
+exit with status 78 and a one-line message saying what to fix.
 
 If a step fails before the restart, `install` starts a service that was running again. If a newly installed service
 doesn't become healthy, `install` prints the last journal lines, then stops and disables the service so it doesn't keep
