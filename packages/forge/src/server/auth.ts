@@ -2,6 +2,7 @@ export * as ServerAuth from "./auth"
 
 import { ConfigService } from "@/effect/config-service"
 import { Flag } from "@turenlabs/core/flag/flag"
+import { ProcessEnv } from "@turenlabs/core/process-env"
 import { Config as EffectConfig, Context, Option, Redacted } from "effect"
 
 export type Credentials = {
@@ -45,7 +46,7 @@ export function authorized(credentials: DecodedCredentials, config: Info) {
  */
 export function claimPassword(password = process.env.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD) {
   Flag.FORGE_SERVER_PASSWORD = password
-  delete process.env.FORGE_SERVER_PASSWORD
+  ProcessEnv.remove(["FORGE_SERVER_PASSWORD"])
   return password
 }
 

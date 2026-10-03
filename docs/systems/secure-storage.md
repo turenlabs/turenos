@@ -33,8 +33,10 @@ The desktop sidecar receives the raw key in the utility-process `start` message 
 `SecretVault.configure` before the server layer graph builds. The WSL and SSH backends receive it as
 `export` lines in a startup script piped over stdin (see [WSL backends](../operations/wsl.md) and
 [SSH remote servers](../operations/ssh-remote/README.md)), so it reaches the native server's environment without
-appearing in a command line. These bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`, `FORGE_SECRET_VAULT_KEY`) are deleted when the
-Secret Vault layer initializes and before normal child tools are started. Headless server startup reads the same two
+appearing in a command line. These bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`, `FORGE_SECRET_VAULT_KEY`) are removed when the
+Secret Vault layer initializes and before normal child tools are started. The removal clears both `process.env` and, under
+Bun on Linux and macOS, the native environment through `unsetenv` ([`packages/core/src/process-env.ts`](../../packages/core/src/process-env.ts)),
+because terminals started with `bun-pty` begin from the native environment. Under Bun on Windows only `process.env` is cleared. Headless server startup reads the same two
 variables; without them, non-test startup fails instead of falling back to an ephemeral or plaintext mode.
 
 The Desktop main process checks the same two variables in its own environment before it touches `safeStorage`. When

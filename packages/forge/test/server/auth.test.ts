@@ -1,3 +1,4 @@
+import path from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
 import { ConfigProvider, Effect, Layer, Option, Redacted } from "effect"
 import { Flag } from "@turenlabs/core/flag/flag"
@@ -73,5 +74,16 @@ describe("ServerAuth", () => {
     )
     expect(ServerAuth.required(config)).toBe(true)
     expect(ServerAuth.authorized({ username: "forge", password: Redacted.make("claimed-secret") }, config)).toBe(true)
+  })
+
+  test.skipIf(process.platform === "win32")("claimPassword keeps the password out of PTY children", async () => {
+    const child = Bun.spawn([process.execPath, path.join(import.meta.dir, "../fixture/claim-password-probe.ts")], {
+      env: { ...process.env, FORGE_SERVER_PASSWORD: "claimed-secret" },
+      stdout: "pipe",
+      stderr: "inherit",
+    })
+    const output = await new Response(child.stdout).text()
+    expect(await child.exited).toBe(0)
+    expect(JSON.parse(output)).toEqual({ pty: [] })
   })
 })

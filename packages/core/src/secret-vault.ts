@@ -3,6 +3,7 @@ export * as SecretVault from "./secret-vault"
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, randomUUID } from "node:crypto"
 import { Context, Effect, Layer, Schema } from "effect"
 import { makeGlobalNode } from "./effect/app-node"
+import { ProcessEnv } from "./process-env"
 
 const FORMAT = "forge-secret"
 const VERSION = "v1"
@@ -131,8 +132,7 @@ function runtimeKey() {
   if (configured) return configured
   const keyID = process.env[KEY_ID_ENV]
   const encoded = process.env[KEY_ENV]
-  delete process.env[KEY_ID_ENV]
-  delete process.env[KEY_ENV]
+  ProcessEnv.remove([KEY_ID_ENV, KEY_ENV])
   if (keyID === undefined && encoded === undefined) {
     if (process.env.NODE_ENV === "test") return fallback
     throw new globalThis.Error("Persistent secret storage requires an OS-protected key")
