@@ -207,6 +207,23 @@ describe("VaultVerification", () => {
     expect(report.stores).toEqual([{ store: "storage", sealed: 1, opened: true }])
   })
 
+  test("reports a live sentinel that is not an envelope as invalid", async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "forge.db")
+    await seed(filename)
+    expect(Exit.isSuccess(await start(filename, right))).toBe(true)
+    const native = new SQLite(filename)
+    native.run(
+      "UPDATE storage_state SET value = 'corrupt' WHERE scope = 'internal/database-verification' AND key = 'sentinel'",
+    )
+    native.close()
+
+    expect((await VaultVerification.inspectFile(filename, right)).verification).toBe("invalid")
+    const exit = await start(filename, right)
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("Database secret verification failed")
+  })
+
   test("reports stores and key IDs without writing", async () => {
     await using tmp = await tmpdir()
     const filename = path.join(tmp.path, "forge.db")
