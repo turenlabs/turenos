@@ -226,6 +226,14 @@ What changed:
 - `llm.ts`: passes the compaction count as `request.metadata["forge.contextWindow"]` so the window ID advances at each compaction.
 - Test: `provider-openai.test.ts` asserts the headers appear with a key, window defaults to 0, none appear without a key, and none appear on the API-key route.
 
+Other providers (same PR):
+
+- The v1 runtime sent `x-session-affinity`, `X-Session-Id` and `x-parent-session-id` to every non-opencode provider, and `x-opencode-session` to opencode ones. V2 kept only the opencode header (`model.ts:1166`) and dropped the rest. `session/runner/cache-affinity.ts` restores them, plus xAI's documented `x-grok-conv-id` (host-matched on `api.x.ai`).
+- OpenRouter's own `promptCacheKey` option was never set by the runner, so it had no body key either. The runner now sets it, and OpenRouter also gets `x-session-id`, its explicit sticky-routing key.
+- The compaction cap is provider-agnostic: it keys off the model's declared context limit. It reaches the Claude Code bridge too (its catalog limit is 1M for Opus), and the Claude Code limits test now pins that.
+- opencode and opencode-go get nothing extra, since their route already carries `x-opencode-session`. The data agrees they did not need it: `opencode-go` had a 98.9% hit rate over 181 turns.
+- Not done: a body `prompt_cache_key` for providers on the OpenAI Chat protocol. v1 set one for Venice and opencode models, and the V2 chat protocol does not emit it. It needs a change in `packages/llm`, and several of those providers go through the AI SDK bridge. Claude Code and Muse use a local CLI, so request headers do not apply to them.
+
 Not sent, deliberately: `x-codex-installation-id` (a stable per-install identifier sent to a third party), turn metadata, routing hint and the subagent marker (attribution, not affinity).
 
 Not done yet: **`x-codex-turn-state`**. The Codex client learns it from a response header at the start of a turn and replays it unchanged for every request in that turn, and must not send it across turns. `packages/llm` does not expose response headers to callers, so this needs a small hook in the HTTP transport and a turn-scoped holder in the runner. It is the other half of affinity and should follow if the stateless headers do not move the cold-streak rate.

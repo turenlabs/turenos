@@ -64,6 +64,7 @@ import { SessionRunnerRetry } from "./retry"
 import { SessionRunnerTitle } from "./title"
 import { GoalContext } from "./goal-context"
 import { SessionRunnerAttachment } from "./attachment"
+import { CacheAffinity } from "./cache-affinity"
 import { ClaudeCodeMcp } from "./claude-code-mcp-namespace"
 import { toLLMMessages } from "./to-llm-message"
 import { MAX_STEPS_PROMPT } from "./max-steps"
@@ -1040,7 +1041,18 @@ const layer = Layer.effect(
       const insertion = boundary === -1 ? messages.length : boundary
       const request = LLM.request({
         model,
-        providerOptions: { openai: { promptCacheKey } },
+        // One session-derived key for every provider that takes one in the body. OpenRouter reads its own
+        // namespace and forwards the key to upstreams that cache on it.
+        providerOptions: { openai: { promptCacheKey }, openrouter: { promptCacheKey } },
+        // Providers that pin a conversation to one server or replica with a header.
+        http: {
+          headers: CacheAffinity.headers({
+            providerID: String(modelRef.providerID),
+            baseURL: model.route.endpoint.baseURL,
+            key: promptCacheKey,
+            parentSessionID: session.parentID === undefined ? undefined : String(session.parentID),
+          }),
+        },
         metadata: {
           ...(claudeMcpToken ? ClaudeCodeMcp.requestMetadata(claudeMcpToken) : {}),
           // Compactions so far; routes that tell the provider which context window a request belongs to read it.
