@@ -163,7 +163,9 @@ export const PRUNE_PROTECT = 40_000
  * and is never reconsidered. A session that accumulates more reports than the context can hold
  * therefore escalates to full compaction instead of silently shedding them -- the correct order.
  */
-const PRUNE_PROTECTED_TOOLS: ReadonlySet<string> = new Set(["skill", "wait_agents", "task"])
+// `tool_search` is protected because under native tool search its result carries the definitions of the tools it
+// loaded. Clearing or deduplicating one would leave later calls to those tools without a definition.
+const PRUNE_PROTECTED_TOOLS: ReadonlySet<string> = new Set(["skill", "wait_agents", "task", "tool_search"])
 /** Sentinel substituted for a pruned tool result. Matches V1's `message-v2.ts:316-319` wording exactly. */
 export const PRUNED_TEXT = "[Old tool result content cleared]"
 /** Replaces an older duplicate result. The identical bytes survive verbatim in a newer call. */

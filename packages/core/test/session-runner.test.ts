@@ -29,6 +29,7 @@ import { Project } from "@turenlabs/core/project"
 import { ProjectTable } from "@turenlabs/core/project/sql"
 import { QuestionV2 } from "@turenlabs/core/question"
 import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
+import { Flag } from "@turenlabs/core/flag/flag"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionHarness } from "@turenlabs/core/session/harness"
 import { SessionCompaction } from "@turenlabs/core/session/compaction"
@@ -1015,6 +1016,44 @@ describe("SessionRunnerLLM", () => {
         .pipe(Effect.orDie)
       expect(JSON.stringify(row!.data).length).toBeLessThan(64 * 1024)
       expect(yield* database.db.select().from(SessionContextBlobTable).all().pipe(Effect.orDie)).toHaveLength(1)
+    }),
+  )
+
+  it.effect("declares native tool search only for a supported Responses model with the flag on", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      response = fragmentFixture("text", "text-native-search", ["done"]).completeEvents
+      const turn = (candidate: Model, flag: boolean) =>
+        Effect.gen(function* () {
+          const previous = Flag.FORGE_NATIVE_TOOL_SEARCH
+          Flag.FORGE_NATIVE_TOOL_SEARCH = flag
+          currentModel = candidate
+          requests.length = 0
+          yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "hello" }), resume: false })
+          yield* session.resume(sessionID)
+          const request = requests[0]!
+          return {
+            toolSearch: (request.providerOptions?.openai as { toolSearch?: string } | undefined)?.toolSearch,
+            tools: request.tools.map((tool) => tool.name),
+          }
+        }).pipe(Effect.ensuring(Effect.sync(() => void (Flag.FORGE_NATIVE_TOOL_SEARCH = false))))
+      const responsesModel = (id: string) => Model.make({ id, provider: "openai", route: OpenAIResponses.route })
+
+      const on = yield* turn(responsesModel("gpt-6-sol"), true)
+      expect(on.toolSearch).toBe("client")
+      expect(on.tools).toContain("tool_search")
+      expect(on.tools).not.toContain("tool_load")
+
+      for (const [candidate, flag] of [
+        [responsesModel("gpt-6-sol"), false],
+        [responsesModel("gpt-4.1"), true],
+        [Model.make({ id: "gpt-6-sol", provider: "openai", route: OpenAIChat.route }), true],
+      ] as const) {
+        const off = yield* turn(candidate, flag)
+        expect(off.toolSearch).toBeUndefined()
+        expect(off.tools).toContain("tool_load")
+      }
     }),
   )
 

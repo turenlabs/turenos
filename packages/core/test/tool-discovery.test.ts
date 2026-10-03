@@ -23,6 +23,9 @@ import { SubagentTool } from "@turenlabs/core/tool/subagent"
 import { Tool } from "@turenlabs/core/tool/tool"
 import { Tools } from "@turenlabs/core/tool/tools"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
+import { LLM, Message, ToolCallPart } from "@turenlabs/llm"
+import * as OpenAIResponses from "@turenlabs/llm/protocols/openai-responses"
+import { Auth, LLMClient } from "@turenlabs/llm/route"
 import { Effect, Layer, Schema } from "effect"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
@@ -277,6 +280,182 @@ describe("SessionToolSnapshot tool discovery", () => {
       expect(last.materialization.definitions.map((definition) => definition.name)).not.toContain("fixture_yara")
     }),
   )
+
+  describe("native tool search", () => {
+    const mcpName = McpTool.toolName(mcpCapability.server, mcpCapability.name)
+    const allowAll: PermissionV2.Ruleset = [{ action: "*", resource: "*", effect: "allow" }]
+    const materializeNative = (sessionID: SessionSchema.ID, permissions: PermissionV2.Ruleset = allowAll) =>
+      Effect.gen(function* () {
+        const snapshots = yield* SessionToolSnapshot.Service
+        return yield* snapshots.materialize({
+          sessionID,
+          directory,
+          model,
+          agent,
+          permissions,
+          nativeToolSearch: true,
+        })
+      })
+    const searchOutput = (settled: { readonly result: { readonly type: string; readonly value?: unknown } }) => {
+      expect(settled.result.type).toBe("json")
+      return settled.result.value as {
+        tools?: ReadonlyArray<{ name: string; description: string; inputSchema: unknown }>
+        omitted?: ReadonlyArray<string>
+        selected: ReadonlyArray<string>
+      }
+    }
+    const names = (result: SessionToolSnapshot.Result) =>
+      result.materialization.definitions.map((definition) => definition.name)
+
+    it.effect("advertises one fixed list: tool_search without tool_load", () =>
+      Effect.gen(function* () {
+        const sessionID = yield* setup("native-list")
+        const advertised = names(yield* materializeNative(sessionID))
+
+        expect(advertised).toContain(ToolBroker.SEARCH_TOOL_NAME)
+        expect(advertised).not.toContain(ToolBroker.LOAD_TOOL_NAME)
+        expect(advertised).toContain("fixture_inline")
+        expect(advertised).not.toContain("fixture_yara")
+      }),
+    )
+
+    it.effect("returns the definitions of the tools it loads, built-in and MCP", () =>
+      Effect.gen(function* () {
+        const sessionID = yield* setup("native-definitions")
+        const before = yield* materializeNative(sessionID)
+        const output = searchOutput(
+          yield* before.materialization.settle(call(sessionID, ToolBroker.SEARCH_TOOL_NAME, { query: "" })),
+        )
+
+        const tools = new Map((output.tools ?? []).map((tool) => [tool.name, tool]))
+        expect(tools.get("fixture_yara")).toMatchObject({ description: "Scan a file with the fixture YARA engine." })
+        expect(tools.get(mcpName)).toMatchObject({
+          description: "Look up a record on the fixture server.",
+          inputSchema: { type: "object", properties: {} },
+        })
+        expect(output.selected).toEqual(expect.arrayContaining(["fixture_yara", mcpCapability.key]))
+      }),
+    )
+
+    it.effect("never changes the advertised list when tools load", () =>
+      Effect.gen(function* () {
+        const sessionID = yield* setup("native-stable")
+        const before = yield* materializeNative(sessionID)
+        yield* before.materialization.settle(call(sessionID, ToolBroker.SEARCH_TOOL_NAME, { query: "" }))
+
+        const after = yield* materializeNative(sessionID)
+        const third = yield* materializeNative(sessionID)
+
+        // The loaded tools are recorded as selected, but the list the provider sees is byte-for-byte the same.
+        expect(after.snapshot.deferred.loaded).toContain("fixture_yara")
+        expect(after.snapshot.broker.loaded).toContain(mcpCapability.key)
+        expect(names(after)).toEqual(names(before))
+        expect(names(third)).toEqual(names(before))
+      }),
+    )
+
+    it.effect("keeps loaded tools executable although they are not advertised", () =>
+      Effect.gen(function* () {
+        const sessionID = yield* setup("native-execute")
+        const before = yield* materializeNative(sessionID)
+        yield* before.materialization.settle(call(sessionID, ToolBroker.SEARCH_TOOL_NAME, { query: "" }))
+
+        const after = yield* materializeNative(sessionID)
+        expect(names(after)).not.toContain(mcpName)
+        const mcp = yield* after.materialization.settle(call(sessionID, mcpName, {}, "call-mcp"))
+        const builtin = yield* after.materialization.settle(call(sessionID, "fixture_yara", {}, "call-yara"))
+
+        expect(mcp.result.type).not.toBe("error")
+        expect(builtin.result).toMatchObject({ type: "json", value: { report: "scanned" } })
+      }),
+    )
+
+    it.effect("loads only as many tools as the limit allows", () =>
+      Effect.gen(function* () {
+        const sessionID = yield* setup("native-limit")
+        const before = yield* materializeNative(sessionID)
+        const output = searchOutput(
+          yield* before.materialization.settle(call(sessionID, ToolBroker.SEARCH_TOOL_NAME, { query: "", limit: 1 })),
+        )
+
+        expect(output.tools).toHaveLength(1)
+        const after = yield* materializeNative(sessionID)
+        expect(after.snapshot.deferred.loaded.length + after.snapshot.broker.loaded.length).toBe(1)
+      }),
+    )
+
+    it.effect("does not load or describe a tool the agent is not permitted to use", () =>
+      Effect.gen(function* () {
+        const sessionID = yield* setup("native-denied")
+        const before = yield* materializeNative(sessionID, [
+          ...allowAll,
+          { action: "fixture_yara", resource: "*", effect: "deny" },
+        ])
+        const output = searchOutput(
+          yield* before.materialization.settle(call(sessionID, ToolBroker.SEARCH_TOOL_NAME, { query: "" })),
+        )
+
+        expect((output.tools ?? []).map((tool) => tool.name)).not.toContain("fixture_yara")
+        const after = yield* materializeNative(sessionID)
+        expect(after.snapshot.deferred.loaded).not.toContain("fixture_yara")
+      }),
+    )
+
+    it.effect("produces a result the Responses protocol lowers into tool_search_output", () =>
+      Effect.gen(function* () {
+        const sessionID = yield* setup("native-wire")
+        const before = yield* materializeNative(sessionID)
+        const output = searchOutput(
+          yield* before.materialization.settle(call(sessionID, ToolBroker.SEARCH_TOOL_NAME, { query: "" })),
+        )
+        const searchDefinition = before.materialization.definitions.find(
+          (definition) => definition.name === ToolBroker.SEARCH_TOOL_NAME,
+        )!
+
+        const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+          LLM.request({
+            model: OpenAIResponses.route
+              .with({ endpoint: { baseURL: "https://api.openai.test/v1/" }, auth: Auth.bearer("test") })
+              .model({ id: "gpt-6-sol" }),
+            providerOptions: { openai: { toolSearch: "client" } },
+            tools: [searchDefinition],
+            messages: [
+              Message.user("find tools"),
+              Message.assistant([ToolCallPart.make({ id: "call_s", name: "tool_search", input: { query: "" } })]),
+              Message.tool({ id: "call_s", name: "tool_search", result: output }),
+            ],
+          }),
+        )
+
+        expect(prepared.body.tools).toMatchObject([{ type: "tool_search", execution: "client" }])
+        expect(prepared.body.input.at(-1)).toMatchObject({
+          type: "tool_search_output",
+          call_id: "call_s",
+          status: "completed",
+          execution: "client",
+          tools: expect.arrayContaining([
+            expect.objectContaining({ type: "function", name: "fixture_yara", defer_loading: true }),
+            expect.objectContaining({ type: "function", name: mcpName, defer_loading: true }),
+          ]),
+        })
+      }),
+    )
+
+    it.effect("leaves the legacy pair untouched when native search is off", () =>
+      Effect.gen(function* () {
+        const sessionID = yield* setup("native-off")
+        const result = yield* materialize(sessionID, allowAll)
+        const output = searchOutput(
+          yield* result.materialization.settle(call(sessionID, ToolBroker.SEARCH_TOOL_NAME, { query: "" })),
+        )
+
+        expect(result.materialization.definitions.map((definition) => definition.name)).toContain(
+          ToolBroker.LOAD_TOOL_NAME,
+        )
+        expect(output.tools).toBeUndefined()
+      }),
+    )
+  })
 
   it.effect("keeps the hidden mcp_search and mcp_load aliases settleable", () =>
     Effect.gen(function* () {

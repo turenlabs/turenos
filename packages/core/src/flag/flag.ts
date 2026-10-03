@@ -26,6 +26,8 @@ export const Flag = {
   FORGE_DISABLE_TERMINAL_TITLE: truthy("FORGE_DISABLE_TERMINAL_TITLE"),
   FORGE_SHOW_TTFD: truthy("FORGE_SHOW_TTFD"),
   FORGE_DISABLE_AUTOCOMPACT: truthy("FORGE_DISABLE_AUTOCOMPACT"),
+  /** Use the provider's native tool search instead of changing the advertised tools. Off until verified live. */
+  FORGE_NATIVE_TOOL_SEARCH: truthy("FORGE_NATIVE_TOOL_SEARCH"),
   FORGE_DISABLE_MODELS_FETCH: truthy("FORGE_DISABLE_MODELS_FETCH"),
   FORGE_DISABLE_MOUSE: truthy("FORGE_DISABLE_MOUSE"),
   FORGE_FAKE_VCS: process.env["FORGE_FAKE_VCS"],

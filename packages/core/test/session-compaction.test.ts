@@ -457,6 +457,36 @@ describe("pruneEntries", () => {
     expect(toolOutputOf(result.entries, "a5", "call_5")).toBe("CURRENT-TURN-OUTPUT")
   })
 
+  test("never clears or deduplicates a tool_search result, which carries the loaded tool definitions", () => {
+    // Under native tool search the definitions live in this result, not in the request's tools. Clearing it, or
+    // clearing an older copy because a newer one is byte-identical, would leave later calls undefined.
+    const entries = [
+      entry(user("ts_u1", "first")),
+      entry(
+        assistant("ts_a1", [
+          tool({ id: "ts_c1", name: "tool_search", output: staleOutput }),
+          tool({ id: "ts_control", name: "bash", output: staleOutput }),
+        ]),
+      ),
+      entry(user("ts_u2", "second")),
+      entry(assistant("ts_a2", [tool({ id: "ts_c2", name: "tool_search", output: staleOutput })])),
+      entry(user("ts_u3", "third")),
+      // Larger than the protect window by itself: protected tool results are not counted toward it, so the
+      // control result above is only eligible once enough prunable output sits newer than it.
+      entry(assistant("ts_a3", [tool({ id: "ts_c3", name: "bash", output: "p".repeat(170_000) })])),
+      entry(user("ts_u4", "fourth")),
+      entry(assistant("ts_a4", [tool({ id: "ts_c4", name: "bash", output: "RECENT" })])),
+      entry(user("ts_u5", "fifth")),
+      entry(assistant("ts_a5", [tool({ id: "ts_c5", name: "bash", output: "CURRENT" })])),
+    ]
+    const result = SessionCompaction.pruneEntries(entries, { enabled: true, dedup: true })
+
+    expect(toolOutputOf(result.entries, "ts_a1", "ts_c1")).toBe(staleOutput)
+    expect(toolOutputOf(result.entries, "ts_a2", "ts_c2")).toBe(staleOutput)
+    // A stale bash result beside the first one does get cleared, so the exemption is by tool and not by luck.
+    expect(toolOutputOf(result.entries, "ts_a1", "ts_control")).toBe(SessionCompaction.PRUNED_TEXT)
+  })
+
   test("pruning is read-time only and leaves the caller's messages untouched", () => {
     const original = history()
     const result = SessionCompaction.pruneEntries(original, { enabled: true })
