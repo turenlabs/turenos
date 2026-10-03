@@ -16,6 +16,7 @@ export function createLiveSession(state: DashboardState, connection: Connection,
     paintTimer: undefined,
     snapshotTimer: undefined,
     metadataRefresh: false,
+    seqs: new Map(),
     started: false,
     retry: 250,
   }

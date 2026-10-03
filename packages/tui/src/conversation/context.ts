@@ -43,6 +43,10 @@ export type Conversation = {
   error: string
   lastPending: string
   loading: Promise<void> | undefined
+  /** A refresh was requested while one was in flight; it runs once the current one ends. */
+  refreshPending: boolean
+  /** What the in-flight or last load was for; a different view discards loads for the old one. */
+  loadKey: string
   disposed: boolean
   pageRequest: { sessionID: string; cursor: string; direction: "next" | "previous" } | undefined
   positions: Map<string, SavedPosition>
@@ -70,6 +74,8 @@ export function newConversation(
     error: "",
     lastPending: "",
     loading: undefined,
+    refreshPending: false,
+    loadKey: "",
     disposed: false,
     pageRequest: undefined,
     positions: new Map(),

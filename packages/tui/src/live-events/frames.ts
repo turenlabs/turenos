@@ -1,4 +1,4 @@
-import { invalid } from "../response-validation"
+const MAX_FRAME = 1024 * 1024
 
 /** Parser state for one server-sent event stream. */
 export type Frames = {
@@ -7,36 +7,48 @@ export type Frames = {
   length: number
   frameBytes: number
   carriageReturn: boolean
+  /** Dropping the rest of an oversized or undecodable frame, up to its blank line. */
+  skipping: boolean
   data: string[]
 }
 
 export function newFrames(): Frames {
   // Count wire bytes per frame, not per connection. Keep partial UTF-8 bytes until a complete line arrives.
   return {
-    line: new Uint8Array(1024 * 1024),
+    line: new Uint8Array(MAX_FRAME),
     decoder: new TextDecoder("utf-8", { fatal: true }),
     length: 0,
     frameBytes: 0,
     carriageReturn: false,
+    skipping: false,
     data: [],
   }
 }
 
-/** Feeds one wire byte; returns the joined `data:` lines when it completes a frame. */
+/**
+ * Feeds one wire byte; returns the joined `data:` lines when it completes a frame.
+ * A frame over 1 MiB or with invalid UTF-8 is dropped whole, so one bad event never ends the stream.
+ */
 export function pushByte(f: Frames, byte: number): string | undefined {
+  const lineEnd = byte === 10 || byte === 13
   if (f.carriageReturn && byte === 10) {
     f.carriageReturn = false
-    if (f.frameBytes && ++f.frameBytes > f.line.length) invalid("live event frame exceeds 1 MiB")
+    if (!f.skipping && f.frameBytes && ++f.frameBytes > MAX_FRAME) skip(f)
     return
   }
   f.carriageReturn = byte === 13
-  if (++f.frameBytes > f.line.length) invalid("live event frame exceeds 1 MiB")
-  if (byte !== 10 && byte !== 13) {
+  if (!f.skipping && ++f.frameBytes > MAX_FRAME) skip(f)
+  if (f.skipping) {
+    skipByte(f, lineEnd)
+    return
+  }
+  if (!lineEnd) {
     f.line[f.length++] = byte
     return
   }
-  const text = f.decoder.decode(f.line.subarray(0, f.length))
+  const text = decode(f)
   f.length = 0
+  if (text === undefined) return
   if (text === "") {
     f.frameBytes = 0
     const payload = f.data
@@ -46,5 +58,36 @@ export function pushByte(f: Frames, byte: number): string | undefined {
   if (text === "data" || text.startsWith("data:")) {
     const value = text.slice(5)
     f.data.push(value.startsWith(" ") ? value.slice(1) : value)
+  }
+}
+
+/** While skipping, `length` counts the current line's bytes so a blank line ends the frame. */
+function skipByte(f: Frames, lineEnd: boolean) {
+  if (!lineEnd) {
+    f.length++
+    return
+  }
+  if (f.length === 0) {
+    f.skipping = false
+    f.frameBytes = 0
+    return
+  }
+  f.length = 0
+}
+
+function skip(f: Frames) {
+  f.skipping = true
+  f.data = []
+  // Nonzero so the line that overflowed is not mistaken for the blank line that ends the frame.
+  f.length = 1
+}
+
+function decode(f: Frames): string | undefined {
+  try {
+    return f.decoder.decode(f.line.subarray(0, f.length))
+  } catch {
+    skip(f)
+    f.length = 0
+    return undefined
   }
 }

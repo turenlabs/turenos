@@ -122,25 +122,37 @@ test("live events refuse foreign redirects without forwarding credentials", asyn
 for (const [label, payload] of [
   ["malformed JSON", "data: {broken}\n\n"],
   ["deep JSON", `data: {"id":"evt_test","type":"test","data":{"nested":${"[".repeat(65)}0${"]".repeat(65)}}}\n\n`],
-  ["oversized unterminated frame", `data: ${"x".repeat(1024 * 1024)}`],
+  ["oversized frame", `data: ${"x".repeat(1024 * 1024)}\n\n`],
   ["oversized comment frame", `: ${"x".repeat(1024 * 1024)}\n\n`],
   ["invalid id", encode({ ...connected, id: [] })],
   ["invalid type", encode({ ...connected, type: "bad\nname" })],
   ["invalid data", encode({ ...connected, data: [] })],
   ["invalid sequence", encode({ ...connected, durable: { aggregateID: "ses_test", seq: -1, version: 1 } })],
   ["invalid version", encode({ ...connected, durable: { aggregateID: "ses_test", seq: 0, version: 0.5 } })],
-  ["invalid aggregate", encode({ ...connected, durable: { aggregateID: null, seq: 0, version: 1 } })],
+  ["non-string aggregate", encode({ ...connected, durable: { aggregateID: null, seq: 0, version: 1 } })],
 ] as const) {
-  test(`live events reject ${label}`, async () => {
+  test(`live events skip ${label} and keep reading`, async () => {
     const f = fixture()
     try {
       f.send(payload)
-      await expect(f.events.next()).rejects.toThrow("Invalid server response")
+      f.send(encode({ ...connected, id: "evt_after" }))
+      expect((await f.events.next()).value?.id).toBe("evt_after")
     } finally {
       await f.stop()
     }
   })
 }
+
+test("live events accept any string durable aggregate id", async () => {
+  const f = fixture()
+  const durable = { aggregateID: "wf/odd id", seq: 4, version: 1 }
+  try {
+    f.send(encode({ ...connected, durable }))
+    expect((await f.events.next()).value?.durable).toEqual(durable)
+  } finally {
+    await f.stop()
+  }
+})
 
 test("live events do not impose an 8 MiB lifetime cap", async () => {
   const f = fixture()

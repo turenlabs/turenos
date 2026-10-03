@@ -22,7 +22,14 @@ describe("live event frames", () => {
     expect(payloads).toEqual(["é"])
   })
 
-  test("rejects a frame larger than 1 MiB", () => {
-    expect(() => feed(`data: ${"x".repeat(1024 * 1024)}\n`)).toThrow("live event frame exceeds 1 MiB")
+  test("drops a frame larger than 1 MiB and resumes at the next frame", () => {
+    expect(feed(`data: ${"x".repeat(1024 * 1024)}\ndata: more\n\ndata: next\n\n`)).toEqual(["next"])
+  })
+
+  test("drops a frame with invalid UTF-8 and resumes at the next frame", () => {
+    const frames = newFrames()
+    const bad = [...new TextEncoder().encode("data: "), 0xff, ...new TextEncoder().encode("\ndata: x\n\n")]
+    expect(bad.flatMap((byte) => pushByte(frames, byte) ?? [])).toEqual([])
+    expect(feed("data: ok\n\n", frames)).toEqual(["ok"])
   })
 })
