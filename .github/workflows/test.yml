@@ -247,7 +247,7 @@ jobs:
       - name: Build Forge Bun backend
         run: bun run --cwd packages/forge script/build-node.ts
       - name: Stage Bun runtime
-        run: bun run --cwd packages/desktop scripts/stage-bun.ts
+        run: bun run --cwd packages/desktop scripts/stage-bun.ts --unsigned
       - name: Bundle desktop sidecar entry
         run: bun run --cwd packages/desktop scripts/build-sidecar.ts
       - name: Smoke staged Bun backend

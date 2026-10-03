@@ -14,12 +14,17 @@ const directory = await mkdtemp(path.join(os.tmpdir(), "turen-bun-"))
 try {
   await $`npm pack ${packageName}@${version} --pack-destination ${directory}`
   const archive = (await Array.fromAsync(new Bun.Glob("*.tgz").scan({ cwd: directory })))[0]
-  await $`tar -xzf ${path.join(directory, archive)} -C ${directory}`
+  await $`tar -xzf ${archive}`.cwd(directory)
   const source = path.join(directory, "package", "bin", target.platform === "win32" ? "bun.exe" : "bun")
   const destination = path.join(desktopDir, "resources", target.platform === "win32" ? "bun.exe" : "bun")
   await cp(source, destination)
   if (target.platform !== "win32") await $`chmod 755 ${destination}`
-  if (target.platform === "win32" && process.platform === "win32" && process.env.GITHUB_ACTIONS === "true")
+  if (
+    target.platform === "win32" &&
+    process.platform === "win32" &&
+    process.env.GITHUB_ACTIONS === "true" &&
+    !Bun.argv.includes("--unsigned")
+  )
     await $`pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File ${path.join(desktopDir, "../../script/sign-windows.ps1")} ${destination}`
   console.log(`Staged ${packageName}@${version} for ${target.rustTarget}`)
 } finally {
