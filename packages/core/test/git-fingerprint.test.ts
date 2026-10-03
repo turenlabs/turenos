@@ -513,6 +513,26 @@ darwin("GitFingerprint", () => {
         Effect.gen(function* () {
           expect(yield* capture(repo, [], { entries: 3 })).toEqual({ status: "unavailable", reason: "entry_limit" })
           expect(yield* capture(repo, [], { readBytes: 150 })).toEqual({ status: "unavailable", reason: "read_limit" })
+          // The budget counts content once: exactly 500 bytes of content fits a 500-byte budget
+          // through both passes, and one byte less does not.
+          const exact = available(yield* capture(repo, [], { readBytes: 500 }))
+          expect(exact.readBytes).toBe(500)
+          expect(yield* capture(repo, [], { readBytes: 499 })).toEqual({ status: "unavailable", reason: "read_limit" })
+          // Content growing between passes exceeds what pass 1 read: a race, not a budget verdict.
+          expect(
+            yield* capture(repo, [], { readBytes: 500 }, { between: await_(() => write(repo, "f0", "x".repeat(101))) }),
+          ).toEqual({ status: "unavailable", reason: "race" })
+          // Shrinking or a same-length edit fits the pass-2 budget and is still caught as a race.
+          for (const content of ["x".repeat(99), "y".repeat(100), ""])
+            expect(yield* capture(repo, [], {}, { between: await_(() => write(repo, "f1", content)) })).toEqual({
+              status: "unavailable",
+              reason: "race",
+            })
+          yield* await_(async () => {
+            await write(repo, "f0", "x".repeat(100))
+            await write(repo, "f1", "x".repeat(100))
+          })
+          expect(available(yield* capture(repo)).root).toBe(exact.root)
           expect(yield* capture(repo, [], { timeoutMs: 300 }, { between: Effect.sleep("5 seconds") })).toEqual({
             status: "unavailable",
             reason: "timeout",
@@ -575,7 +595,7 @@ darwin("GitFingerprint", () => {
           expect(chunks.count).toBeGreaterThan(0)
           expect(chunks.count).toBeLessThan(8 * 16)
           expect(yield* await_(() => fs.readdir(repo.scratch))).toEqual([])
-          // Read budget is charged per chunk inside the loop.
+          // Read budget is reserved before reading, so an over-budget file is never read.
           const limited = { count: 0 }
           expect(
             yield* capture(
@@ -583,11 +603,13 @@ darwin("GitFingerprint", () => {
               [],
               { readBytes: 256 * 1024 },
               {
-                seam: (event) => (event.phase === "chunk" ? Effect.sync(() => limited.count++) : Effect.void),
+                seam: (event) =>
+                  event.phase === "chunk" && event.path === large ? Effect.sync(() => limited.count++) : Effect.void,
               },
             ),
           ).toEqual({ status: "unavailable", reason: "read_limit" })
-          expect(limited.count).toBeLessThan(8)
+          // The whole file is reserved before its first byte is read, so `large` is never read.
+          expect(limited.count).toBe(0)
           // The deadline expires while the read loop is running, not in a Git child. Either the
           // in-loop check or the outer interruptible timeout may end it; this proves the deadline
           // holds during an active read, not which of the two mechanisms fired.
@@ -819,7 +841,248 @@ darwin("GitFingerprint", () => {
           yield* await_(async () => {
             for (const name of ["closed", "write-exec"]) await fs.chmod(path.join(repo.worktree, name), 0o700)
           })
-          expect(result).toEqual({ status: "unavailable", reason: "io" })
+          expect(result).toEqual({ status: "unavailable", reason: "git_warning" })
+        }),
+    ),
+  )
+
+  it.live("reports Git failures as process even with stderr, and never surfaces stderr text", () =>
+    withRepo(
+      async (repo) => {
+        await write(repo, "file", "x\n")
+        await commitAll(repo)
+        const canary = "STDERR-CANARY-/secret/path"
+        // Both wrappers write a path/content canary to stderr; one also fails the enumeration.
+        for (const [name, code] of [
+          ["warn-git", "0"],
+          ["fail-git", "3"],
+        ] as const)
+          await fs.writeFile(
+            path.join(repo.root, name),
+            `#!/bin/sh\nfor a in "$@"; do if [ "$a" = "--others" ]; then /usr/bin/git "$@"; echo '${canary}' >&2; exit ${code}; fi; done\nexec /usr/bin/git "$@"\n`,
+            { mode: 0o700 },
+          )
+      },
+      (repo) =>
+        Effect.gen(function* () {
+          const warned = yield* capture(repo, [], {}, { git: path.join(repo.root, "warn-git") })
+          expect(warned).toEqual({ status: "unavailable", reason: "git_warning" })
+          const failed = yield* capture(repo, [], {}, { git: path.join(repo.root, "fail-git") })
+          expect(failed).toEqual({ status: "unavailable", reason: "process" })
+          expect(JSON.stringify([warned, failed])).not.toContain("CANARY")
+        }),
+    ),
+  )
+
+  it.live("refuses an unsafe scratch root without repairing it, and reports real filesystem errors as io", () =>
+    withRepo(
+      async (repo) => {
+        await write(repo, "file", "x\n")
+        await commitAll(repo)
+      },
+      (repo) =>
+        Effect.gen(function* () {
+          const at = (scratch: string) =>
+            Effect.gen(function* () {
+              const fingerprint = yield* GitFingerprint.Service
+              return yield* fingerprint.capture({ repository: repo, scratch })
+            })
+          const shared = path.join(repo.root, "shared")
+          yield* await_(async () => {
+            await fs.mkdir(shared, { mode: 0o700 })
+            await fs.chmod(shared, 0o755)
+            await fs.writeFile(path.join(shared, "keep"), "left alone\n")
+          })
+          expect(yield* at(shared)).toEqual({ status: "unavailable", reason: "scratch_unsafe" })
+          expect(((yield* await_(() => fs.stat(shared))).mode & 0o777).toString(8)).toBe("755")
+          expect(yield* await_(() => fs.readdir(shared))).toEqual(["keep"])
+
+          const target = path.join(repo.root, "private")
+          const link = path.join(repo.root, "link")
+          yield* await_(async () => {
+            await fs.mkdir(target, { mode: 0o700 })
+            await fs.symlink(target, link)
+          })
+          expect(yield* at(link)).toEqual({ status: "unavailable", reason: "scratch_unsafe" })
+          expect(yield* await_(() => fs.readdir(target))).toEqual([])
+
+          const file = path.join(repo.root, "file-root")
+          yield* await_(() => fs.writeFile(file, "not a directory\n"))
+          expect(yield* at(file)).toEqual({ status: "unavailable", reason: "scratch_unsafe" })
+          expect(yield* await_(() => fs.readFile(file, "utf8"))).toBe("not a directory\n")
+
+          // A root that cannot be created at all is a filesystem error, not an unsafe root.
+          expect(yield* at(path.join(file, "child"))).toEqual({ status: "unavailable", reason: "io" })
+
+          const fresh = path.join(repo.root, "fresh", "nested")
+          expect((yield* at(fresh)).status).toBe("available")
+          expect(((yield* await_(() => fs.stat(fresh))).mode & 0o777).toString(8)).toBe("700")
+          expect(yield* await_(() => fs.readdir(fresh))).toEqual([])
+        }),
+    ),
+  )
+
+  it.live("fails when the HEAD commit or tree is missing instead of treating HEAD as unborn", () =>
+    Effect.gen(function* () {
+      const remove = (repo: Repo, oid: string) =>
+        fs.rm(path.join(repo.worktree, ".git", "objects", oid.slice(0, 2), oid.slice(2)), { force: true })
+      const commit = yield* fixture(async (repo) => {
+        await write(repo, "file", "x\n")
+        await commitAll(repo)
+        await remove(repo, (await run(repo.worktree, "rev-parse", "HEAD")).trim())
+      })
+      expect(yield* capture(commit)).toEqual({ status: "unavailable", reason: "process" })
+      const tree = yield* fixture(async (repo) => {
+        await write(repo, "file", "x\n")
+        await commitAll(repo)
+        await remove(repo, (await run(repo.worktree, "rev-parse", "HEAD^{tree}")).trim())
+      })
+      expect(yield* capture(tree)).toEqual({ status: "unavailable", reason: "process" })
+      const subtree = yield* fixture(async (repo) => {
+        await write(repo, "dir/file", "x\n")
+        await commitAll(repo)
+        await remove(repo, (await run(repo.worktree, "rev-parse", "HEAD:dir")).trim())
+      })
+      expect(yield* capture(subtree)).toEqual({ status: "unavailable", reason: "process" })
+    }),
+  )
+
+  it.live("captures partial clones without fetching or writing to any Git store", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      )
+      const origin = path.join(root.path, "origin")
+      const bare = path.join(root.path, "origin.git")
+      const full = repoPaths(path.join(root.path, "full"))
+      const partial = repoPaths(path.join(root.path, "partial"))
+      const lazy = repoPaths(path.join(root.path, "lazy"))
+      const log = path.join(root.path, "git.log")
+      const recording = path.join(root.path, "recording-git")
+      yield* await_(async () => {
+        const source = repoPaths(origin)
+        await init(source)
+        await write(source, "a.txt", "alpha\n")
+        await write(source, "dir/b.txt", "beta\n")
+        await write(source, "dir/sub/c.txt", "gamma\n")
+        await commitAll(source)
+        await write(source, "dir/b.txt", "beta two\n")
+        await write(source, "old/gone.txt", "history only\n")
+        await commitAll(source)
+        await fs.rm(path.join(source.worktree, "old"), { recursive: true })
+        await commitAll(source)
+        await Bun.$`git clone -q --bare ${source.worktree} ${bare}`.env(env(source)).quiet()
+        await Bun.$`git -C ${bare} config uploadpack.allowFilter true`.env(env(source)).quiet()
+        await fs.mkdir(full.root, { recursive: true })
+        await fs.mkdir(partial.root, { recursive: true })
+        await fs.mkdir(lazy.root, { recursive: true })
+        await Bun.$`git clone -q file://${bare} ${full.worktree}`.env(env(full)).quiet()
+        await Bun.$`git clone -q --filter=tree:0 file://${bare} ${partial.worktree}`.env(env(partial)).quiet()
+        await Bun.$`git clone -q --no-checkout --filter=tree:0 file://${bare} ${lazy.worktree}`.env(env(lazy)).quiet()
+        // Records every Git invocation the capture makes, including any transport helper it spawns.
+        await fs.writeFile(
+          recording,
+          `#!/bin/sh\n{ printf 'ARGS'; for a in "$@"; do printf ' %s' "$a"; done; printf ' ENV GIT_NO_LAZY_FETCH=%s GIT_ALLOW_PROTOCOL=%s\\n' "$GIT_NO_LAZY_FETCH" "$GIT_ALLOW_PROTOCOL"; } >> '${log}'\nexec /usr/bin/git "$@"\n`,
+          { mode: 0o700 },
+        )
+      })
+      // Filtering really happened: the old tree for the deleted directory is not present locally.
+      const oldTree = yield* git(full.worktree, "rev-parse", "HEAD~2:dir")
+      const present = yield* await_(() =>
+        Bun.$`git cat-file -e ${oldTree}`
+          .cwd(partial.worktree)
+          .env({ ...env(partial), GIT_NO_LAZY_FETCH: "1" })
+          .nothrow()
+          .quiet(),
+      )
+      expect(present.exitCode).not.toBe(0)
+      expect(yield* git(partial.worktree, "config", "--get", "remote.origin.promisor")).toBe("true")
+
+      const store = (repo: Repo) => await_(() => digests(path.join(repo.worktree, ".git"), ["objects", "index"]))
+      const before = yield* store(partial)
+      const fullResult = available(yield* capture(full, ["a.txt", "dir", "dir/sub/c.txt", "old"]))
+      const partialResult = available(
+        yield* capture(partial, ["a.txt", "dir", "dir/sub/c.txt", "old"], {}, { git: recording }),
+      )
+      expect(partialResult.root).toBe(fullResult.root)
+      expect(partialResult.head).toEqual(fullResult.head)
+      expect(partialResult.anchors).toEqual(fullResult.anchors)
+      expect(partialResult.completeness).toEqual({ state: "complete" })
+      expect(yield* store(partial)).toEqual(before)
+
+      // An unchanged store alone proves nothing (a fetch can be attempted and fail), so the log must
+      // show only the read-only plumbing verbs and the fetch barriers on every child.
+      const logged = () =>
+        await_(() => fs.readFile(log, "utf8")).pipe(
+          Effect.map((text) =>
+            text
+              .trim()
+              .split("\n")
+              .map((line) => {
+                const [command = "", environment] = line.split(" ENV ")
+                return {
+                  verb: command.split(" ").filter((part) => part !== "-c" && !part.includes("="))[1],
+                  environment,
+                }
+              }),
+          ),
+        )
+      const plumbing = ["config", "ls-files", "ls-tree", "rev-parse", "version"]
+      const calls = yield* logged()
+      expect([...new Set(calls.map((call) => call.verb))].toSorted()).toEqual(plumbing)
+      for (const call of calls) expect(call.environment).toBe("GIT_NO_LAZY_FETCH=1 GIT_ALLOW_PROTOCOL=none")
+
+      // A no-checkout tree:0 clone genuinely lacks HEAD's trees. With the remote still reachable,
+      // capture must fail rather than fetch them, and the store must not change.
+      yield* await_(() => fs.writeFile(log, ""))
+      const lazyBefore = yield* store(lazy)
+      expect(yield* capture(lazy, [], {}, { git: recording })).toEqual({ status: "unavailable", reason: "process" })
+      expect(yield* store(lazy)).toEqual(lazyBefore)
+      const lazyCalls = yield* logged()
+      expect(lazyCalls.filter((call) => !plumbing.includes(call.verb ?? ""))).toEqual([])
+      for (const call of lazyCalls) expect(call.environment).toBe("GIT_NO_LAZY_FETCH=1 GIT_ALLOW_PROTOCOL=none")
+      // Positive control: without the capture's environment the same listing does fetch, so the
+      // unchanged store above is evidence that no fetch happened, not that none was possible.
+      yield* await_(() => Bun.$`git ls-tree -r HEAD`.cwd(lazy.worktree).env(env(lazy)).quiet())
+      expect(yield* store(lazy)).not.toEqual(lazyBefore)
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("admits partial clones only from Git 2.45, whatever the version string looks like", () =>
+    withRepo(
+      async (repo) => {
+        await write(repo, "file", "x\n")
+        await commitAll(repo)
+        await run(repo.worktree, "config", "remote.origin.url", "file:///nonexistent")
+        await run(repo.worktree, "config", "remote.origin.promisor", "true")
+        for (const [name, version] of [
+          ["git-2.44", "git version 2.44.2"],
+          ["git-2.45", "git version 2.45.0"],
+          ["git-vendor", "git version 2.45.1 (Apple Git-155)"],
+          ["git-3", "git version 3.0.0"],
+          ["git-2.40", "git version 2.40.1.windows.1"],
+          ["git-malformed", "git version two.forty-five"],
+        ] as const)
+          await fs.writeFile(
+            path.join(repo.root, name),
+            // The capture passes `-c` options first, so look for the subcommand anywhere in argv.
+            `#!/bin/sh\nfor a in "$@"; do if [ "$a" = "version" ]; then echo '${version}'; exit 0; fi; done\nexec /usr/bin/git "$@"\n`,
+            { mode: 0o700 },
+          )
+      },
+      (repo) =>
+        Effect.gen(function* () {
+          const at = (name: string) => capture(repo, [], {}, { git: path.join(repo.root, name) })
+          expect(yield* at("git-2.44")).toEqual({ status: "unavailable", reason: "partial_clone" })
+          expect(yield* at("git-2.40")).toEqual({ status: "unavailable", reason: "partial_clone" })
+          expect(yield* at("git-malformed")).toEqual({ status: "unavailable", reason: "git_capability" })
+          for (const name of ["git-2.45", "git-vendor", "git-3"]) expect((yield* at(name)).status).toBe("available")
+          // An ordinary clone is unaffected by the partial-clone floor on older supported Git.
+          yield* await_(async () => {
+            await run(repo.worktree, "config", "--unset", "remote.origin.promisor")
+          })
+          expect((yield* at("git-2.40")).status).toBe("available")
         }),
     ),
   )
@@ -1127,6 +1390,28 @@ async function listFiles(root: string) {
     .filter((entry) => entry.isFile())
     .map((entry) => path.join(entry.parentPath, entry.name))
     .toSorted()
+}
+
+/** Every file name and its exact bytes (as a SHA-256) under the given entries of a Git directory. */
+async function digests(gitDirectory: string, entries: readonly string[]) {
+  const files = (
+    await Promise.all(
+      entries.map(async (entry) => {
+        const absolute = path.join(gitDirectory, entry)
+        const stats = await fs.stat(absolute).catch(() => undefined)
+        if (!stats) return []
+        return stats.isDirectory() ? listFiles(absolute) : [absolute]
+      }),
+    )
+  ).flat()
+  return Object.fromEntries(
+    await Promise.all(
+      files.map(async (file) => [
+        path.relative(gitDirectory, file),
+        new Bun.CryptoHasher("sha256").update(await fs.readFile(file)).digest("hex"),
+      ]),
+    ),
+  )
 }
 
 function stamp(file: string) {

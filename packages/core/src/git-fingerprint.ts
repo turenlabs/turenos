@@ -47,6 +47,11 @@ export const SAMPLE_BYTES = 1024
  * `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` and `--path-format`.
  */
 export const GIT_FLOOR = [2, 36] as const
+/**
+ * Git 2.45 is the first release with `GIT_NO_LAZY_FETCH`. Older Git could lazily fetch a missing
+ * object from a promisor remote, so partial clones are only admitted from this release.
+ */
+export const PARTIAL_CLONE_FLOOR = [2, 45] as const
 
 export const UnavailableReason = Schema.Literals([
   "platform",
@@ -58,6 +63,7 @@ export const UnavailableReason = Schema.Literals([
   "read_limit",
   "output_limit",
   "scratch_limit",
+  "scratch_unsafe",
   "race",
   "special_file",
   "unmerged",
@@ -65,6 +71,7 @@ export const UnavailableReason = Schema.Literals([
   "partial_clone",
   "object_format",
   "process",
+  "git_warning",
   "io",
 ])
 export type UnavailableReason = typeof UnavailableReason.Type
@@ -116,6 +123,7 @@ export type Result =
       /** Identities observed at both ends of the capture, for the caller's own binding checks. */
       readonly identity: Identity
       readonly entries: number
+      /** Content bytes hashed by the first pass; the verifying pass is bounded to the same amount. */
       readonly readBytes: number
     }
 
@@ -178,7 +186,7 @@ const layer = Layer.effect(
     let capable: boolean | undefined
 
     const reclaim = Effect.fn("GitFingerprint.reclaim")(function* (scratch: string) {
-      if (!(yield* ownedDirectory(scratch))) return
+      if ((yield* rootState(scratch)) !== "owned") return
       const names = yield* io(() => readdir(scratch)).pipe(Effect.orElseSucceed(() => [] as string[]))
       yield* Effect.forEach(
         names.filter((name) => dead(name, path.join(scratch, name))),
@@ -283,11 +291,11 @@ const run = Effect.fnUntraced(function* (context: Run) {
   if (format !== "sha1") return yield* new Stop({ reason: "object_format" })
   if (yield* git.flag(["config", "--bool", "--get", "core.sparseCheckout"]))
     return yield* new Stop({ reason: "sparse_checkout" })
-  if (yield* git.flag(["config", "--get", "extensions.partialClone"]))
-    return yield* new Stop({ reason: "partial_clone" })
-  // A promisor remote can make a missing object trigger a lazy fetch on older Git.
-  if ((yield* git.optional(["config", "--get-regexp", "^remote\\..*\\.promisor$"])).trim())
-    return yield* new Stop({ reason: "partial_clone" })
+  // A promisor remote can make a missing object trigger a lazy fetch unless GIT_NO_LAZY_FETCH is honored.
+  const partial =
+    (yield* git.flag(["config", "--get", "extensions.partialClone"])) ||
+    (yield* git.optional(["config", "--get-regexp", "^remote\\..*\\.promisor$"])).trim() !== ""
+  if (partial && !atLeast(git.version, PARTIAL_CLONE_FLOOR)) return yield* new Stop({ reason: "partial_clone" })
   const excludes = (yield* git.optional(["config", "--path", "--get", "core.excludesFile"])).trim()
   const metadata = [
     path.join(context.repository.commonDirectory, "info", "exclude"),
@@ -297,14 +305,15 @@ const run = Effect.fnUntraced(function* (context: Run) {
   ]
   const metaBefore = yield* Effect.forEach(metadata, signatureOf)
   const headBefore = yield* head(git)
-  const budget = { read: 0 }
 
-  const first = yield* universe(git, context.limits)
-  const pass1 = yield* observe(context, first, budget)
+  // Pass 1 is charged against the content budget. Pass 2 must observe the same bytes, so it is
+  // bounded by what pass 1 read and running past that is a race, not a budget verdict.
+  const first = yield* universe(git, context.limits, headBefore)
+  const pass1 = yield* observe(context, first, { read: 0, limit: context.limits.readBytes, reason: "read_limit" })
   const anchors = yield* Effect.forEach(context.anchors, (anchor) => resolveAnchor(context, anchor, pass1))
   if (context.between) yield* context.between
-  const second = yield* universe(git, context.limits)
-  const pass2 = yield* observe(context, second, budget)
+  const second = yield* universe(git, context.limits, headBefore)
+  const pass2 = yield* observe(context, second, { read: 0, limit: pass1.read, reason: "race" })
 
   // Root or common-directory replacement is reported as such before content differences.
   const after = yield* identity(context.repository)
@@ -345,12 +354,16 @@ const run = Effect.fnUntraced(function* (context: Run) {
     anchors,
     identity: before,
     entries: [...pass1.seen.values()].filter((seen) => seen.kind === "blob").length,
-    readBytes: budget.read,
+    readBytes: pass1.read,
   } satisfies Result
 })
 
 function unavailable(reason: UnavailableReason): Result {
   return { status: "unavailable", reason }
+}
+
+function atLeast(version: readonly [number, number], floor: readonly [number, number]) {
+  return version[0] > floor[0] || (version[0] === floor[0] && version[1] >= floor[1])
 }
 
 /** Child Git with an explicit allowlisted environment; nothing is inherited from the server. */
@@ -434,16 +447,16 @@ const requireGit = Effect.fnUntraced(function* (context: Run) {
       // Git reports skipped directories (e.g. "could not open directory") on stderr and still
       // exits 0; a warning means the enumeration may be smaller than the declared universe.
       // The text names paths, so it is never surfaced.
-      if (result.stderr.length > 0) return yield* new Stop({ reason: "io" })
+      if (result.stderr.length > 0) return yield* new Stop({ reason: "git_warning" })
       return result
     })
   const version = (yield* exec(["version"], { env: base, uncapped: true })).stdout.toString("utf8")
   const match = version.match(/^git version (\d+)\.(\d+)/)
   if (!match) return yield* new Stop({ reason: "git_capability" })
-  const [major, minor] = [Number(match[1]), Number(match[2])]
-  if (major < GIT_FLOOR[0] || (major === GIT_FLOOR[0] && minor < GIT_FLOOR[1]))
-    return yield* new Stop({ reason: "git_capability" })
+  const parsed = [Number(match[1]), Number(match[2])] as const
+  if (!atLeast(parsed, GIT_FLOOR)) return yield* new Stop({ reason: "git_capability" })
   return {
+    version: parsed,
     bytes: (args: readonly string[]) => exec(args).pipe(Effect.map((result) => result.stdout)),
     text: (args: readonly string[]) => exec(args).pipe(Effect.map((result) => result.stdout.toString("utf8"))),
     optional: (args: readonly string[]) =>
@@ -479,14 +492,21 @@ const verifyDiscovery = Effect.fnUntraced(function* (git: GitRunner, repository:
 })
 
 const head = Effect.fnUntraced(function* (git: GitRunner) {
-  const commit = (yield* git.optional(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])).trim()
-  if (!commit) return undefined
+  // Unpeeled HEAD names no object only on an unborn branch. When it names an object, the commit
+  // and tree must resolve: a missing object (e.g. in a partial clone) fails rather than reading
+  // as unborn and silently dropping HEAD's paths from the universe.
+  if (!(yield* git.optional(["rev-parse", "--verify", "--quiet", "HEAD"])).trim()) return undefined
+  const commit = (yield* git.text(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])).trim()
   const tree = (yield* git.text(["rev-parse", "--verify", "--quiet", `${commit}^{tree}`])).trim()
   return { commit, tree }
 })
 
 /** HEAD/index tracked paths plus untracked non-ignored paths, keyed losslessly by raw bytes. */
-const universe = Effect.fnUntraced(function* (git: GitRunner, limits: Limits) {
+const universe = Effect.fnUntraced(function* (
+  git: GitRunner,
+  limits: Limits,
+  commit: { readonly commit: string } | undefined,
+) {
   const entries = new Map<string, { bytes: Buffer; gitlink: boolean; embedded: boolean }>()
   const add = (bytes: Buffer, flags: { gitlink?: boolean; embedded?: boolean } = {}) => {
     const key = bytes.toString("latin1")
@@ -503,8 +523,9 @@ const universe = Effect.fnUntraced(function* (git: GitRunner, limits: Limits) {
     if (stage !== "0") return yield* new Stop({ reason: "unmerged" })
     add(record.subarray(tab + 1), { gitlink: mode === "160000" })
   }
-  if ((yield* git.optional(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])).trim())
-    for (const record of split(yield* git.bytes(["ls-tree", "-r", "-z", "--full-tree", "HEAD"]))) {
+  // HEAD is fixed for the capture (rechecked at the end), so list the commit resolved up front.
+  if (commit)
+    for (const record of split(yield* git.bytes(["ls-tree", "-r", "-z", "--full-tree", commit.commit]))) {
       const tab = record.indexOf(9)
       add(record.subarray(tab + 1), { gitlink: record.subarray(0, tab).toString("latin1").startsWith("160000 ") })
     }
@@ -517,7 +538,17 @@ const universe = Effect.fnUntraced(function* (git: GitRunner, limits: Limits) {
   return entries as Universe
 })
 
-const observe = Effect.fnUntraced(function* (context: Run, entries: Universe, budget: { read: number }) {
+/**
+ * Content bytes one observation pass may read. Bytes are reserved before they are read, so
+ * concurrent readers cannot overshoot `limit`; exceeding it stops the capture with `reason`.
+ */
+interface Budget {
+  read: number
+  readonly limit: number
+  readonly reason: "read_limit" | "race"
+}
+
+const observe = Effect.fnUntraced(function* (context: Run, entries: Universe, budget: Budget) {
   const parents = new Map<string, "directory" | "symlink" | "absent">()
   const gitlinks = [...entries.values()].filter((entry) => entry.gitlink).map((entry) => entry.bytes.toString("latin1"))
   const keys = [...entries.keys()].toSorted((a, b) =>
@@ -545,7 +576,7 @@ const observe = Effect.fnUntraced(function* (context: Run, entries: Universe, bu
     seen.set(other, { kind: "excluded", reason: "alias" })
   }
   const excluded = keys.filter((key) => seen.get(key)!.kind === "excluded")
-  return { seen, excluded, tree: buildTree(seen) }
+  return { seen, excluded, tree: buildTree(seen), read: budget.read }
 })
 
 const observeEntry = Effect.fnUntraced(function* (
@@ -554,7 +585,7 @@ const observeEntry = Effect.fnUntraced(function* (
   key: string,
   gitlinks: readonly string[],
   parents: Map<string, "directory" | "symlink" | "absent">,
-  budget: { read: number },
+  budget: Budget,
 ) {
   if (Date.now() >= context.deadline) return yield* new Stop({ reason: "timeout" })
   if (entry.gitlink || gitlinks.some((link) => key.startsWith(link + "/")))
@@ -587,20 +618,22 @@ const observeEntry = Effect.fnUntraced(function* (
   if (!stats.isFile() && !stats.isSymbolicLink()) return yield* new Stop({ reason: "special_file" })
   if (stats.size > BigInt(context.limits.entryBytes)) return { kind: "excluded", reason: "oversized" } satisfies Seen
   if (stats.isSymbolicLink()) {
+    // A symlink's lstat size is its target length, so the read is reserved before readlink.
+    yield* charge(budget, Number(stats.size))
     const target = yield* io(() => readlink(absolute, { encoding: "buffer" })).pipe(
       Effect.mapError(() => new Stop({ reason: "race" })),
     )
     const after = yield* io(() => lstat(absolute, { bigint: true })).pipe(
       Effect.mapError(() => new Stop({ reason: "race" })),
     )
-    if (signature(after) !== signature(stats)) return yield* new Stop({ reason: "race" })
-    yield* charge(context, budget, target.length)
+    if (signature(after) !== signature(stats) || target.length !== Number(stats.size))
+      return yield* new Stop({ reason: "race" })
     return { kind: "blob", mode: "120000", oid: blob([target]), sig: signature(stats) } satisfies Seen
   }
   return yield* readRegular(context, absolute, stats, budget)
 })
 
-const readRegular = (context: Run, absolute: string, before: BigIntStats, budget: { read: number }) =>
+const readRegular = (context: Run, absolute: string, before: BigIntStats, budget: Budget) =>
   Effect.acquireUseRelease(
     (context.seam ? context.seam({ phase: "open", path: absolute }) : Effect.void).pipe(
       Effect.andThen(io(() => open(absolute, READ_FLAGS))),
@@ -620,28 +653,30 @@ const readRegular = (context: Run, absolute: string, before: BigIntStats, budget
         )
         // Refuse a raced swap (including to a FIFO or device) before reading any content.
         if (!opened.isFile() || signature(opened) !== signature(before)) return yield* new Stop({ reason: "race" })
+        // Reserve the whole file before reading, then never request more than one byte past the
+        // expected size: that byte only detects growth, so a pass reads at most limit + 1 per file.
+        const size = Number(before.size)
+        yield* charge(budget, size)
         const hasher = createHash("sha1")
-        hasher.update(`blob ${before.size}\0`)
+        hasher.update(`blob ${size}\0`)
         const buffer = Buffer.alloc(CHUNK)
         const state = { total: 0 }
         while (true) {
           // The deadline is enforced inside the read loop; interruption lands between chunks.
           if (Date.now() >= context.deadline) return yield* new Stop({ reason: "timeout" })
-          const read = yield* io(() => file.read(buffer, 0, CHUNK, null)).pipe(
+          const read = yield* io(() => file.read(buffer, 0, Math.min(CHUNK, size - state.total + 1), null)).pipe(
             Effect.mapError(() => new Stop({ reason: "io" })),
           )
           if (read.bytesRead === 0) break
           if (context.seam) yield* context.seam({ phase: "chunk", path: absolute })
           state.total += read.bytesRead
-          if (state.total > Number(before.size)) return yield* new Stop({ reason: "race" })
-          yield* charge(context, budget, read.bytesRead)
+          if (state.total > size) return yield* new Stop({ reason: "race" })
           hasher.update(buffer.subarray(0, read.bytesRead))
         }
         const after = yield* io(() => file.stat({ bigint: true })).pipe(
           Effect.mapError(() => new Stop({ reason: "io" })),
         )
-        if (state.total !== Number(before.size) || signature(after) !== signature(before))
-          return yield* new Stop({ reason: "race" })
+        if (state.total !== size || signature(after) !== signature(before)) return yield* new Stop({ reason: "race" })
         return {
           kind: "blob",
           mode: before.mode & 0o100n ? "100755" : "100644",
@@ -652,10 +687,10 @@ const readRegular = (context: Run, absolute: string, before: BigIntStats, budget
     (handle) => (Option.isSome(handle) ? io(() => handle.value.close()).pipe(Effect.ignore) : Effect.void),
   )
 
-const charge = (context: Run, budget: { read: number }, bytes: number) =>
+const charge = (budget: Budget, bytes: number) =>
   Effect.suspend(() => {
     budget.read += bytes
-    return budget.read > context.limits.readBytes ? Effect.fail(new Stop({ reason: "read_limit" })) : Effect.void
+    return budget.read > budget.limit ? Effect.fail(new Stop({ reason: budget.reason })) : Effect.void
   })
 
 const parentKind = (absolute: string) =>
@@ -808,10 +843,13 @@ const signatureOf = (file: string) =>
 /** Fresh owner-only scratch per capture. It only ever holds empty HOME/XDG/hooks directories and a capability probe. */
 const scratchDirectory = (scratch: string, maximum: number, reclaim: (scratch: string) => Effect.Effect<void>) =>
   Effect.gen(function* () {
-    yield* io(() => mkdir(scratch, { recursive: true, mode: 0o700 })).pipe(
-      Effect.mapError(() => new Stop({ reason: "io" })),
-    )
-    if (!(yield* ownedDirectory(scratch))) return yield* new Stop({ reason: "io" })
+    yield* io(() => mkdir(scratch, { recursive: true, mode: 0o700 })).pipe(Effect.ignore)
+    // A root that exists but is shared, foreign, a link or not a directory is refused as unsafe and
+    // never repaired: chmod cannot undo earlier exposure or vouch for its contents. Failing to
+    // create or inspect it at all is an ordinary filesystem error.
+    const root = yield* rootState(scratch)
+    if (root === "missing") return yield* new Stop({ reason: "io" })
+    if (root === "unsafe") return yield* new Stop({ reason: "scratch_unsafe" })
     const count = () =>
       io(() => readdir(scratch)).pipe(
         Effect.map((names) => names.filter((name) => OWNER.test(name)).length),
@@ -869,16 +907,14 @@ const probeCapability = (directory: string) =>
   )
 
 /** The scratch root must be a real directory owned by this user and closed to others; never a link. */
-const ownedDirectory = (scratch: string) =>
+const rootState = (scratch: string) =>
   io(() => lstat(scratch)).pipe(
-    Effect.map(
-      (stats) =>
-        stats.isDirectory() &&
-        !stats.isSymbolicLink() &&
-        stats.uid === process.getuid?.() &&
-        (stats.mode & 0o077) === 0,
+    Effect.map((stats): "owned" | "unsafe" | "missing" =>
+      stats.isDirectory() && !stats.isSymbolicLink() && stats.uid === process.getuid?.() && (stats.mode & 0o077) === 0
+        ? "owned"
+        : "unsafe",
     ),
-    Effect.orElseSucceed(() => false),
+    Effect.orElseSucceed(() => "missing" as const),
   )
 
 function dead(name: string, directory: string) {

@@ -261,6 +261,7 @@ export const CaptureUnavailableReason = Schema.Literals([
   "read_limit",
   "output_limit",
   "scratch_limit",
+  "scratch_unsafe",
   "race",
   "special_file",
   "unmerged",
@@ -268,6 +269,7 @@ export const CaptureUnavailableReason = Schema.Literals([
   "partial_clone",
   "object_format",
   "process",
+  "git_warning",
   "io",
   "metadata_limit",
 ]).annotate({ identifier: "PriorWork.CaptureUnavailableReason" })
