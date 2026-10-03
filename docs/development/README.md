@@ -7,8 +7,7 @@ live in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) and the operator procedures i
   scanner rules for integrations in `packages/forge/src/security/`.
 - [Forge test fixtures](./forge-tests.md): temporary directories, Effect test helpers, and waiting on concurrent work in
   `packages/forge` tests.
-- [Desktop sidecar profiler](./desktop-profiler.md): recording a V8 CPU profile of the local sidecar in dev-channel
-  Desktop builds.
+- [Desktop sidecar profiler](./desktop-profiler.md): Bun profiling limits and sidecar memory diagnostics.
 
 The Effect patterns used in `packages/forge` are specified beside that package, in
 [`packages/forge/specs/effect/`](../../packages/forge/specs/effect/): the [Effect guide](../../packages/forge/specs/effect/guide.md),

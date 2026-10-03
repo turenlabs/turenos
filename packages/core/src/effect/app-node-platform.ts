@@ -1,12 +1,12 @@
-import { NodeFileSystem, NodePath } from "@effect/platform-node"
+import { BunFileSystem, BunPath } from "@effect/platform-bun"
 import { LLMClient, RequestExecutor } from "@turenlabs/llm/route"
 import { FileSystem, Path } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import { HttpClient } from "effect/unstable/http"
 import { makeGlobalNode } from "./app-node"
 
-export const filesystem = makeGlobalNode({ service: FileSystem.FileSystem, layer: NodeFileSystem.layer, deps: [] })
-export const path = makeGlobalNode({ service: Path.Path, layer: NodePath.layer, deps: [] })
+export const filesystem = makeGlobalNode({ service: FileSystem.FileSystem, layer: BunFileSystem.layer, deps: [] })
+export const path = makeGlobalNode({ service: Path.Path, layer: BunPath.layer, deps: [] })
 export const httpClient = makeGlobalNode({ service: HttpClient.HttpClient, layer: FetchHttpClient.layer, deps: [] })
 export const requestExecutor = makeGlobalNode({
   service: RequestExecutor.Service,

@@ -2538,6 +2538,8 @@ describe("the pre-flight gate budgets against the model's real window", () => {
   const OPUS_5 = { context: 1_000_000, output: 128_000 }
 
   test("a conversation inside Opus 5's 1M window is left alone", async () => {
+    // 300k is under the merged target (min(40% of 1M, 400k cap)); a misread 200k
+    // window would have compacted this.
     expect(await gate(300_000, OPUS_5)).toBe(false)
   })
 
@@ -2659,6 +2661,24 @@ describe("the pre-flight gate budgets against the model's real window", () => {
         ...history(),
         entry(user(`target_u_${tokens}`, "start")),
         measuredTurn(`target_${tokens}`, { input: tokens }),
+      ]
+      expect(SessionCompaction.needsPruning({ entries, model: request.model, request })).toBe(expected)
+      expect(await gateWith(entries, request)).toBe(expected)
+    }
+  })
+
+  test("a million-token window prunes and compacts at the token cap, not at 75%", async () => {
+    expect(SessionCompaction.CONTEXT_TARGET_TOKEN_CAP).toBe(400_000)
+    const request = requestOf(1, { context: 1_050_000, output: 10_000 })
+    for (const [tokens, expected] of [
+      [399_800, false],
+      [400_000, true],
+      [600_000, true],
+    ] as const) {
+      const entries = [
+        ...history(),
+        entry(user(`cap_u_${tokens}`, "start")),
+        measuredTurn(`cap_${tokens}`, { input: tokens }),
       ]
       expect(SessionCompaction.needsPruning({ entries, model: request.model, request })).toBe(expected)
       expect(await gateWith(entries, request)).toBe(expected)

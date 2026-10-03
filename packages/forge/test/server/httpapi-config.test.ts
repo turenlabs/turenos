@@ -1,6 +1,6 @@
 import { afterEach, describe, expect } from "bun:test"
+import fs from "node:fs/promises"
 import path from "path"
-import fs from "fs/promises"
 import { Global } from "@turenlabs/core/global"
 import { Flag } from "@turenlabs/core/flag/flag"
 import { Config } from "../../src/config/config"

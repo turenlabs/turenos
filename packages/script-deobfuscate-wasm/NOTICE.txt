@@ -1,0 +1,9 @@
+Script Deobfuscate is a Turen Labs static analysis implementation.
+
+JavaScript parsing, AST inspection, and printing use unmodified Oxc
+0.152.0 crates (MIT), from https://github.com/oxc-project/oxc at immutable
+commit dfbc0d1ea752f021ba4a68e4703b3a9031082a46.
+
+All dependency versions and source checksums are recorded in Cargo.lock.
+Packaged artifacts include the resolved dependency license inventory and
+available upstream license/notice texts under licenses/.

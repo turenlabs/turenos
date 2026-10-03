@@ -208,6 +208,12 @@ export class ModelCompatibility extends Schema.Class<ModelCompatibility>("LLM.Mo
    * and fails identically, so the Session cannot recover without editing its history.
    */
   mediaInput: Schema.optional(Schema.Boolean),
+  /**
+   * Whether the upstream accepts a `prompt_cache_key` in an OpenAI Chat body and routes on it. Opt-in:
+   * only `true` sends it, because many OpenAI-compatible servers reject fields they do not know. The
+   * Responses protocol sends the key whenever the request carries one and ignores this flag.
+   */
+  promptCacheKey: Schema.optional(Schema.Boolean),
 }) {}
 
 export namespace ModelCompatibility {

@@ -16,12 +16,9 @@ export type OrphanWatchOptions = {
 /**
  * Resolve once the process that forked us is gone.
  *
- * The sidecar exists only to serve the Electron main process. Every teardown
- * path it has - the `stop` command, `child.kill()`, `child-process-gone` - needs
- * the parent to still be running to drive it, so none of them survive a SIGKILL
- * of main. Chromium does normally terminate a `utilityProcess` when the browser
- * process dies, from its IO thread, so this fires almost never; it is the
- * backstop for when that does not happen, because a surviving sidecar is
+ * The sidecar exits on Bun's cross-platform IPC `disconnect` event when its
+ * parent goes away. This PPID poll is the Unix backstop in case that channel
+ * signal is missed, because a surviving sidecar is
  * expensive: it holds the HTTP port, keeps writing to the databases the next
  * launch will open, and its own children (MCP servers, LSPs, ptys) stay
  * legitimately parented to it, so the `ppid === 1` sweep that reaps stranded MCP
@@ -31,15 +28,8 @@ export type OrphanWatchOptions = {
  * only trust it once the pid has actually *changed* from what we started under,
  * so a process legitimately launched by pid 1 is never mistaken for an orphan.
  *
- * We deliberately do not use a parent heartbeat as a second signal. Unlike the
- * stdio MCP children there is no pipe to watch - Electron rejects any `stdin`
- * mode other than `ignore` for a utility process, and `process.parentPort`
- * exposes no close/disconnect event - so a heartbeat would have to be a timeout
- * on parent silence. That trades a hang we have never observed for a real
- * false-positive: a suspended laptop or a paused main process would look
- * identical to a dead one and would kill a healthy sidecar holding user data.
- * On Windows, where there is no reparenting to observe, Chromium's job object
- * already tears the child down with the browser process.
+ * No heartbeat is needed: the IPC channel reports parent disconnection on
+ * every supported platform, and the PPID check only covers Unix as backup.
  */
 export function watchOrphaned(options?: OrphanWatchOptions): OrphanWatch {
   const readParent = options?.ppid ?? (() => process.ppid)
