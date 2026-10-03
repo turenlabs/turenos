@@ -2,8 +2,11 @@ import path from "path"
 import { chmodSync, closeSync, openSync, rmSync } from "node:fs"
 import { readdir, rm, stat } from "node:fs/promises"
 import { getHeapSpaceStatistics, getHeapStatistics, writeHeapSnapshot } from "node:v8"
+import { BunFileSystem } from "@effect/platform-bun"
+import { Effect, Layer, Logger, ManagedRuntime, References } from "effect"
 import { Flag } from "@turenlabs/core/flag/flag"
 import { Global } from "@turenlabs/core/global"
+import { Logging } from "@turenlabs/core/observability/logging"
 
 const MINUTE = 60_000
 const MB = 1024 ** 2
@@ -65,6 +68,112 @@ export function writeSnapshot(file: string) {
   chmodSync(file, 0o600)
 }
 
+// Under Bun the watchdog above works from a "limit" the runtime reports (a few gigabytes, and different from run to
+// run), but JavaScriptCore has no cap, so a fraction of that figure says little, and the watchdog writes to standard
+// error, which is not always kept. These are absolute sizes of the JS heap (objects plus string and array-buffer
+// memory) written to `forge.log`, and the first thing wanted when one is crossed is what the heap is made of, not a
+// snapshot.
+const MEMORY_LEVELS = [1, 2, 3, 4, 6, 8].map((gigabytes) => gigabytes * 1024 ** 3)
+const MEMORY_REARM = 256 * MB
+const TOP_TYPES = 8
+const TOP_TYPES_AT_LEVEL = 20
+
+// The highest absolute level crossed. Like `advance`, a level re-arms only after usage falls MEMORY_REARM below it,
+// and crossing several at once reports the highest.
+export function advanceMemory(armed: readonly number[], bytes: number): { fired: number[]; level: number | undefined } {
+  const reached = MEMORY_LEVELS.filter((item) => bytes >= item)
+  const kept = armed.filter((item) => bytes >= item - MEMORY_REARM)
+  const top = reached.findLast((item) => !kept.includes(item))
+  return { fired: [...new Set([...kept, ...reached])], level: top === undefined ? undefined : top / 1024 ** 3 }
+}
+
+// The largest object types and how much each grew since the previous sample, as `Type=count` and `Type +delta` lists.
+// Counts are of objects, not bytes, but a type whose count climbs sample after sample is the one that is leaking.
+export function describeTypes(
+  counts: Readonly<Record<string, number>>,
+  previous: Readonly<Record<string, number>> | undefined,
+  limit = TOP_TYPES,
+) {
+  const entries = Object.entries(counts).toSorted((a, b) => b[1] - a[1])
+  const grew = previous
+    ? entries
+        .map(([name, count]) => [name, count - (previous[name] ?? 0)] as const)
+        .filter(([, delta]) => delta > 0)
+        .toSorted((a, b) => b[1] - a[1])
+    : []
+  return {
+    top: entries
+      .slice(0, limit)
+      .map(([name, count]) => `${name}=${count}`)
+      .join(" "),
+    grew: grew
+      .slice(0, limit)
+      .map(([name, delta]) => `${name} +${delta}`)
+      .join(" "),
+  }
+}
+
+// One shared logger for the life of the process. `forge.log` is written through an Effect logger, which the plain
+// timers in this module have no access to, so the layer is built once and each sample logs through it.
+const runtime = ManagedRuntime.make(
+  Logger.layer([...Logging.loggers()], { mergeWithExisting: false }).pipe(
+    Layer.provide(BunFileSystem.layer),
+    Layer.orDie,
+    Layer.merge(Layer.succeed(References.MinimumLogLevel, Logging.minimumLogLevel())),
+  ),
+)
+
+type JscStats = {
+  readonly heapSize: number
+  readonly heapCapacity: number
+  readonly extraMemorySize: number
+  readonly objectCount: number
+  readonly protectedObjectCount: number
+  readonly objectTypeCounts: Readonly<Record<string, number>>
+}
+
+let memoryTimer: Timer | undefined
+let memoryArmed: number[] = []
+let memoryPrevious: Readonly<Record<string, number>> | undefined
+
+// Samples JavaScriptCore every minute: cheap (a few milliseconds even on a multi-gigabyte heap) and always on, so a
+// slow climb is visible in `forge.log` long before it matters. Logs an info line each time and a warning with the
+// full type list when the heap crosses an absolute level.
+function startMemorySampler() {
+  if (memoryTimer) return
+  void import("bun:jsc").then(({ heapStats }) => {
+    const run = () => {
+      const stats: JscStats = heapStats()
+      const heap = stats.heapSize + stats.extraMemorySize
+      const next = advanceMemory(memoryArmed, heap)
+      memoryArmed = next.fired
+      const types = describeTypes(stats.objectTypeCounts, memoryPrevious)
+      memoryPrevious = stats.objectTypeCounts
+      const fields = {
+        rssMB: Math.round(process.memoryUsage().rss / MB),
+        heapMB: Math.round(stats.heapSize / MB),
+        extraMB: Math.round(stats.extraMemorySize / MB),
+        objects: stats.objectCount,
+        protectedObjects: stats.protectedObjectCount,
+        top: types.top,
+        grew: types.grew,
+      }
+      void runtime.runPromise(
+        next.level === undefined
+          ? Effect.logInfo("Backend memory", fields)
+          : Effect.logWarning("Backend memory level crossed", {
+              ...fields,
+              levelGB: next.level,
+              top: describeTypes(stats.objectTypeCounts, undefined, TOP_TYPES_AT_LEVEL).top,
+            }),
+      )
+    }
+    run()
+    memoryTimer = setInterval(run, MINUTE)
+    memoryTimer.unref?.()
+  })
+}
+
 // A missing file or directory is expected (a concurrent prune, a fresh install); anything else would leave sensitive
 // snapshots in place, so it is reported. Pruning stays non-fatal either way.
 function ignoreMissing(action: string, target: string) {
@@ -112,6 +221,8 @@ export function start(options?: { announce?: boolean }) {
     announced = true
     process.stderr.write(`heap watchdog: limit=${Math.round(getHeapStatistics().heap_size_limit / MB)}\n`)
   }
+  // Only the long-running server samples. A CLI command would be held open by the timer for no benefit.
+  if (options?.announce && process.versions.bun) startMemorySampler()
   if (timer) return
 
   void prune(Global.Path.log)

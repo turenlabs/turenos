@@ -2,6 +2,9 @@ import { describe, expect, spyOn, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { getHeapStatistics } from "node:v8"
+import { Effect } from "effect"
+import { Global } from "@turenlabs/core/global"
+import { pollWithTimeout } from "../lib/effect"
 import { Heap } from "../../src/cli/heap"
 import { tmpdir } from "../fixture/fixture"
 
@@ -131,6 +134,59 @@ describe("cli.heap", () => {
 
     expect((await fs.stat(file)).mode & 0o777).toBe(0o600)
     expect((await fs.stat(file)).size).toBeGreaterThan(0)
+  })
+
+  // Regression: under Bun the fraction levels never trigger because the runtime reports a small limit, so a heap
+  // that grew to gigabytes produced no signal at all.
+  test("absolute memory levels report the highest crossed and re-arm below it", () => {
+    expect(Heap.advanceMemory([], 0.9 * GB).level).toBeUndefined()
+    expect(Heap.advanceMemory([], 1.2 * GB).level).toBe(1)
+    expect(Heap.advanceMemory([], 4.5 * GB).level).toBe(4)
+    expect(Heap.advanceMemory([], 9 * GB).level).toBe(8)
+    const reports = [1.1, 1.2, 1.0, 0.9, 0.7, 1.1, 2.1].reduce(
+      (acc, gb) => {
+        const next = Heap.advanceMemory(acc.fired, gb * GB)
+        return { fired: next.fired, levels: [...acc.levels, next.level] }
+      },
+      { fired: [] as number[], levels: [] as (number | undefined)[] },
+    )
+    // 0.9 GB is still within 256 MB of the 1 GB level, so only the drop to 0.7 GB re-arms it.
+    expect(reports.levels).toEqual([1, undefined, undefined, undefined, undefined, 1, 2])
+  })
+
+  test("describeTypes lists the largest object types and what grew since the last sample", () => {
+    const now = { String: 900, Array: 400, Object: 300, Function: 50, Map: 10 }
+    const before = { String: 500, Array: 400, Object: 290, Function: 60 }
+    expect(Heap.describeTypes(now, before, 3)).toEqual({
+      top: "String=900 Array=400 Object=300",
+      // Array did not grow and Function shrank, so neither is listed; a type that is new counts from zero. Equal
+      // growth keeps the larger type first.
+      grew: "String +400 Object +10 Map +10",
+    })
+  })
+
+  test("describeTypes has nothing to report as growth on the first sample", () => {
+    expect(Heap.describeTypes({ String: 3, Array: 1 }, undefined)).toEqual({ top: "String=3 Array=1", grew: "" })
+    expect(Heap.describeTypes({}, undefined)).toEqual({ top: "", grew: "" })
+  })
+
+  test.skipIf(!process.versions.bun)("the server's sampler writes a Backend memory line to forge.log", async () => {
+    const file = path.join(Global.Path.log, "forge.log")
+    Heap.start({ announce: true })
+    const line = await Effect.runPromise(
+      pollWithTimeout(
+        Effect.promise(() => fs.readFile(file, "utf8").catch(() => "")).pipe(
+          Effect.map((text) => text.split("\n").find((entry) => entry.includes('message="Backend memory"'))),
+        ),
+        "no Backend memory line reached forge.log",
+        "10 seconds",
+      ),
+    )
+    expect(line).toMatch(/rssMB=\d+/)
+    expect(line).toMatch(/heapMB=\d+/)
+    expect(line).toMatch(/extraMB=\d+/)
+    expect(line).toMatch(/objects=\d+/)
+    expect(line).toMatch(/top="?[A-Za-z]+=\d+/)
   })
 
   test("start() is idempotent", () => {

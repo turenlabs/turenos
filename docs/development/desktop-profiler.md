@@ -41,11 +41,26 @@ plus the old, new, large-object and code space sizes. A level logs again only af
 watchdog never triggers when the limit is under 1 GiB.
 
 - Find the lines with `grep "heap watchdog:" server.log`. The startup line `heap watchdog: limit=<MB>` reports the limit.
+  These go to the sidecar's standard error, which is not always kept, so the sampler below is the record to rely on.
 - Snapshots are opt-in: launch with `FORGE_AUTO_HEAP_SNAPSHOT=1` and one is written to the log directory at 90%. It is
   best-effort, because serializing a heap at its limit can itself run out of memory.
 - Snapshot files are created with mode 0600. At startup the sidecar deletes all but the newest `heap-*.heapsnapshot` or
   `Heap.*.heapsnapshot` file, and any older than 7 days, skipping files modified in the last 10 minutes.
 - Snapshots contain keys, passwords and prompts. Never attach one to a bug report; the support bundle skips them.
+
+### Memory sampler
+
+The server (not short `forge` commands) also samples JavaScriptCore itself every 60 seconds, starting immediately, and
+writes to `forge.log` through the normal logger. Each `Backend memory` line carries `rssMB`, `heapMB` (the JS heap),
+`extraMB` (string and array-buffer memory), `objects`, `protectedObjects`, `top` (the largest object types as
+`Type=count`) and `grew` (types whose count rose since the previous sample). A type that climbs sample after sample is
+the one holding memory. Each takes a few milliseconds even on a multi-gigabyte heap.
+
+The fractions above depend on a runtime-reported limit, so the sampler also warns on absolute sizes: one
+`Backend memory level crossed` line the first time the heap plus extra memory reaches 1, 2, 3, 4, 6 and 8 GB, with
+`levelGB` and the 20 largest types. A level logs again only after usage drops 256 MB below it.
+
+- Find the lines with `grep "Backend memory" forge.log` in the log directory.
 
 ## Source
 
