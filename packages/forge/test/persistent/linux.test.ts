@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises"
+import { chmod, lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises"
 import { Effect } from "effect"
 import { sql } from "drizzle-orm"
 import { Database } from "@turenlabs/core/database/database"
@@ -261,6 +261,67 @@ describe("PersistentLinux", () => {
     ).rejects.toThrow("another account can write")
     expect(await lstat(destination).catch(() => undefined)).toBeUndefined()
   })
+
+  // The parent check and the expected owner are injected so a non-root test controls both: "root" is
+  // a uid the staged tree does not have, or the test's own uid when the tree should pass.
+  const staged = async (root: string) => {
+    const source = path.join(root, "staged")
+    await mkdir(path.join(source, "data", "snapshot"), { recursive: true })
+    await writeFile(path.join(source, "data", "snapshot", "HEAD"), "ref: refs/heads/main\n")
+    await symlink("data", path.join(source, "link"))
+    await chmod(source, 0o755)
+    await chmod(path.join(source, "data"), 0o755)
+    await chmod(path.join(source, "data", "snapshot"), 0o755)
+    return source
+  }
+  const importTreeAs = (source: string, destination: string) =>
+    PersistentLinux.importTree(source, destination, self(), { uid: process.getuid!(), parentSafe: async () => true })
+  const self = () => ({ uid: process.getuid!(), gid: process.getgid!() })
+
+  test.skipIf(process.platform === "win32")(
+    "a staged tree whose root another account owns is refused even when its parent is safe",
+    async () => {
+      await using tmp = await tmpdir()
+      const source = await staged(tmp.path)
+      const destination = path.join(tmp.path, "root", "data", "forge")
+      await expect(
+        PersistentLinux.importTree(source, destination, self(), {
+          uid: process.getuid!() + 1,
+          parentSafe: async () => true,
+        }),
+      ).rejects.toThrow("not owned by root")
+      expect(await lstat(destination).catch(() => undefined)).toBeUndefined()
+    },
+  )
+
+  test.skipIf(process.platform === "win32")(
+    "a staged tree with a nested directory another account can write is refused before anything is copied",
+    async () => {
+      await using tmp = await tmpdir()
+      const source = await staged(tmp.path)
+      await chmod(path.join(source, "data", "snapshot"), 0o775)
+      const destination = path.join(tmp.path, "root", "data", "forge")
+      await expect(
+        PersistentLinux.importTree(source, destination, self(), {
+          uid: process.getuid!(),
+          parentSafe: async () => true,
+        }),
+      ).rejects.toThrow("writable by another account")
+      expect(await lstat(destination).catch(() => undefined)).toBeUndefined()
+    },
+  )
+
+  test.skipIf(process.platform === "win32")(
+    "a staged tree owned by root and closed to others is copied as links",
+    async () => {
+      await using tmp = await tmpdir()
+      const source = await staged(tmp.path)
+      const destination = path.join(tmp.path, "forge")
+      await importTreeAs(source, destination)
+      expect(await readFile(path.join(destination, "data", "snapshot", "HEAD"), "utf8")).toBe("ref: refs/heads/main\n")
+      expect((await lstat(path.join(destination, "link"))).isSymbolicLink()).toBe(true)
+    },
+  )
 
   test("an imported quick-connect database is copied read-only, verified, and promoted", async () => {
     await using tmp = await tmpdir()

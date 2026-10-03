@@ -142,7 +142,10 @@ three, or accept that history diffs and reverts fail for older sessions and that
 configuration. `--import-data` skips database files (they come from `--import-db`), `log`, and `repos` (a regenerable
 clone cache). Nothing from `~/.cache` or `~/.local/state` is needed.
 
-Every `--import-*` source must sit in a directory another account cannot write, because root reads it: SQLite running
+Every `--import-*` source must sit in a directory another account cannot write, because root reads it. For
+`--import-data` and `--import-config`, the staged directory and every entry under it must also be owned by root, and no
+directory in it may be group- or other-writable; `install` refuses the import otherwise (copy with root ownership, not
+`cp -a` as a user): SQLite running
 as root follows the WAL, SHM, and lock file names beside a database and changes the ownership of what it opens, and a
 tree copy must not have entries swapped under it. `--import-db` verifies the key against the source, then takes the
 source's owner lock, which refuses a server still running on it. It copies the database with `VACUUM INTO` into the

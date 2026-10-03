@@ -386,24 +386,37 @@ const importSkipped = new Set(["log", "repos"])
 
 /**
  * Copies a staged data or config tree into the claimed data root and hands it to the service
- * account. The staging directory must be writable only by root, like an imported database, so the
- * account whose data this is cannot swap entries under root while they are read. Symlinks are
+ * account. The staging directory, its parents, and every entry in it must be owned by root with no
+ * group or other write on any directory, like an imported database, so the account whose data this is
+ * cannot swap entries under root while they are read. Symlinks are
  * copied as links, never followed; database files come from `VACUUM INTO`, not from here.
  */
-export async function importTree(source: string, destination: string, owner: { uid: number; gid: number }) {
+export async function importTree(
+  source: string,
+  destination: string,
+  owner: { uid: number; gid: number },
+  // Production trusts only root. The trusted uid and the parent check are parameters so a test that
+  // cannot be root can exercise each refusal on its own.
+  trusted: { uid: number; parentSafe: (path: string) => Promise<boolean> } = { uid: 0, parentSafe: writableOnlyByRoot },
+) {
   const real = await realpath(source).catch(() => {
     throw new Error(`${source} does not exist`)
   })
   if (!(await stat(real)).isDirectory()) throw new Error(`${source} is not a directory`)
-  if (!(await writableOnlyByRoot(dirname(real))))
+  if (!(await trusted.parentSafe(dirname(real))))
     throw new Error(
       `${source} is in a directory another account can write; copy it into a directory writable only by root and import that copy`,
     )
+  // Everything that will be copied is checked before anything is, so an entry the account can swap
+  // never reaches the lchown below.
+  const entries = (await readdir(real)).filter(
+    (entry) => !importSkipped.has(entry) && !/^forge[^/]*\.db(-wal|-shm|-journal|\.owner\.lock)?$/.test(entry),
+  )
+  await checkStaged(real, trusted.uid, entries)
   // The destination may be a managed directory the claim created; entries are copied one by one
   // into it, and any that already exist are an interrupted import that must start over.
   if (!(await lstat(destination).catch(() => undefined))) await mkdir(destination, { mode: 0o700 })
-  for (const entry of await readdir(real)) {
-    if (importSkipped.has(entry) || /^forge[^/]*\.db(-wal|-shm|-journal|\.owner\.lock)?$/.test(entry)) continue
+  for (const entry of entries) {
     if (await lstat(join(destination, entry)).catch(() => undefined))
       throw new Error(`${join(destination, entry)} already exists; remove the data root to retry an interrupted import`)
     await cp(join(real, entry), join(destination, entry), {
@@ -415,6 +428,17 @@ export async function importTree(source: string, destination: string, owner: { u
     })
     await chownTree(join(destination, entry), owner)
   }
+}
+
+/** Refuses entries the service account could have swapped: not root-owned, or a directory others can write. */
+async function checkStaged(path: string, uid: number, children?: string[]) {
+  // lstat, so a symlink is judged as the link itself and never followed.
+  const info = await lstat(path)
+  if (info.uid !== uid) throw new Error(`${path} is not owned by root; import a copy made by root`)
+  if (!info.isDirectory()) return
+  if ((info.mode & 0o022) !== 0)
+    throw new Error(`${path} is writable by another account; remove group and other write access or import a copy`)
+  for (const entry of children ?? (await readdir(path))) await checkStaged(join(path, entry), uid)
 }
 
 async function chownTree(root: string, owner: { uid: number; gid: number }) {
