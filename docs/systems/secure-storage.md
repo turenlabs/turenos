@@ -34,8 +34,11 @@ The desktop sidecar receives the raw key in the utility-process `start` message 
 `export` lines in a startup script piped over stdin (see [WSL backends](../operations/wsl.md) and
 [SSH remote servers](../operations/ssh-remote/README.md)), so it reaches the native server's environment without
 appearing in a command line. These bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`,
-`FORGE_SECRET_VAULT_KEY`) are deleted after vault configuration and before child tools are started. That environment
-bootstrap exists only for the Desktop's WSL and SSH quick-connect backends and for development. Deleting a variable
+`FORGE_SECRET_VAULT_KEY`) are removed after vault configuration and before child tools are started. The removal clears
+both `process.env` and, under Bun on Linux and macOS, the native environment through `unsetenv`
+([`packages/core/src/process-env.ts`](../../packages/core/src/process-env.ts)), because terminals started with
+`bun-pty` begin from the native environment; under Bun on Windows only `process.env` is cleared. That environment
+bootstrap exists only for the Desktop's WSL and SSH quick-connect backends and for development. Removing a variable
 does not remove it from `/proc/<pid>/environ` or `ps eww`, so it is **not supported for persistent servers**. Without
 key material, non-test startup fails instead of using an ephemeral or plaintext key.
 
