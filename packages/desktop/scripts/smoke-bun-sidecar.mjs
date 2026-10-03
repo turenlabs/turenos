@@ -234,5 +234,8 @@ try {
       await exited
     }),
   )
-  await rm(directory, { recursive: true, force: true })
+  // Windows keeps a just-exited executable image locked briefly, so a single
+  // rm attempt can race the OS handle release with EBUSY. maxRetries is a
+  // no-op on POSIX and covers exactly that error set on win32.
+  await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 })
 }
