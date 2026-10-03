@@ -91,6 +91,47 @@ test("indexes each parent directory once for search", async () => {
   }
 })
 
+// The finder is built on the first search, and fff returns nothing until its scan finishes. An
+// empty first grep would tell an agent the code has no matches.
+test.skipIf(!Fff.available())("answers the first fff search after its scan", async () => {
+  const tmp = await tmpdir()
+  try {
+    await fs.mkdir(path.join(tmp.path, "src"))
+    await fs.writeFile(path.join(tmp.path, "src", "match.ts"), "needle\n")
+
+    const runtime = AppNodeBuilder.build(
+      LayerNode.make({
+        service: FileSystemSearch.Service,
+        layer: FileSystemSearch.fffLayer,
+        deps: [FSUtil.node, Location.node, Ripgrep.node],
+      }),
+      [
+        [
+          Location.node,
+          Layer.succeed(
+            Location.Service,
+            Location.Service.of(location(Location.Ref.make({ directory: AbsolutePath.make(tmp.path) }))),
+          ),
+        ],
+      ],
+    )
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const search = yield* FileSystemSearch.Service
+        const grep = yield* search.grep({ pattern: "needle", limit: 10 })
+        const found = yield* search.find({ query: "match", type: "file", limit: 10 })
+        return { grep: grep.map((match) => match.entry.path), found: found.map((entry) => entry.path) }
+      }).pipe(Effect.scoped, Effect.provide(runtime)),
+    )
+
+    expect(result.grep).toEqual([RelativePath.make("src/match.ts")])
+    expect(result.found).toContain(RelativePath.make("src/match.ts"))
+  } finally {
+    await tmp[Symbol.asyncDispose]()
+  }
+})
+
 // Without fff both selections resolve to ripgrep, so the test could not tell them apart.
 test.skipIf(!Fff.available())("uses ripgrep instead of fff when the file watcher is disabled", async () => {
   const tmp = await tmpdir()
