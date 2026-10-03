@@ -1,0 +1,26 @@
+import { TextRenderable } from "@opentui/core"
+import { color } from "../theme"
+import type { MenuContext } from "./context"
+
+export function help(ctx: MenuContext) {
+  const dialog = ctx.dialogs.open("Keyboard shortcuts", false, 28)
+  if (!dialog) return
+  dialog.form.add(
+    new TextRenderable(ctx.renderer, { content: sections.join("\n\n"), fg: color.text, wrapMode: "word" }),
+  )
+  dialog.error.content = "PgUp/PgDn scroll · Esc close"
+  dialog.form.focus()
+}
+
+const sections = [
+  "ESSENTIALS\nEnter opens the primary action / sends from editor\nn new session · f reply · Up recalls in an empty editor\nShift+Enter / Alt+Enter adds a line · Ctrl+S also sends\nEsc close / keep draft · F4 discard local draft\n/ commands in conversation/editor · Ctrl+P all actions\nCtrl+C cancels a form; repeat to quit with drafts\nq quits dashboard; repeat if drafts are saved",
+  "SESSION VIEWS\nd Changes: uncommitted, branch, or last turn (m switches) · @ mentions a file\ne Files: browse and read · Enter opens a folder · ← up · @ mentions\nT the session's shared terminal (the agent uses it too)\nt Tasks and to-dos · u queued messages: Enter send now, Ctrl+E edit\nw swarm room: lanes, entries, Tab to post · H harness · i details\n/tools the agent's tools and MCP servers · /trace the event log\nThe action row shows the context window: Context 45% · 90k/200k",
+  "TERMINALS AND AUTOMATIONS\n2 Terminals: Enter attaches full-screen; Ctrl+] detaches\n  a new terminal · R rename · d close\n3 Automations: Enter manages (run now, pause, edit, runs, delete)\n  a new automation (every 30m, every 1d, or cron) · E edit · d delete",
+  "SETTINGS AND INTEL\n, Settings: providers (connect, disconnect, remove), usage and limits,\n  extensions (Enter on/off · s secret · c setting · o sign in),\n  memories (a add · E edit · Ctrl+D delete), agents' default models,\n  permission checks and saved rules, servers, appearance\nI Intel: advisories, known-exploited CVEs, news · m list · f feeds · p poll\nCtrl+P Stop all agents interrupts every session on the server",
+  "SERVERS AND HARNESS\ns or click the server name opens the server picker\nThis computer: the running TurenOS app first, then this host's\n  quick-connect or persistent server, or a private forge serve\nPicker: Enter connect · a add URL or user@host · d remove · r rescan\nSSH servers need key or agent login; the TUI opens its own tunnel\nServer passwords are asked once and kept only until you quit\nH or /harness: the session's harness tools, guidance, and\n  reviewer proposals; every change confirms with Ctrl+S",
+  "FILES AND SHELL\n@ searches the server's files; Up/Down choose\nTab or Enter completes · Esc closes the list\nA folder keeps searching; a file ends the mention\n@path#12 or @path#12-40 attaches only those lines\nThe server reads mentioned files; this client does not\n! at the start of a message runs a server shell command\nShell output arrives as a transcript message",
+  "DASHBOARD (no form or search open)\nCtrl+K switch session · Alt+Left/Right hop\n/ commands in conversation; find/filter in sidebar\nCtrl+X subagent browser · t Tasks\n1 Sessions · 2 Terminals · 3 Automations\nUp/Down select · Enter focus conversation, then reply\nTab / Shift+Tab switch panes · b / Ctrl+B sidebar\nPgUp/PgDn scroll a page · r refresh\nh History / Recent · [ older / ] newer history page\ni session and connection details\nCtrl+Y / right-click copies selected text\nF6 toggles terminal native selection/right-click menu\nIn tmux, Ctrl+B twice sends the sidebar shortcut.",
+  "EDITING AND DRAFTS\nCtrl+D delete forward · Ctrl+K delete to line end\nCtrl+A line start · Alt+Left/Right word motion\nF2 or /editor composes the draft in $EDITOR\nEsc first, then Ctrl+K or Alt+Left/Right to switch\nCtrl+N new session also works in drafts and switcher\nTab / Shift+Tab next / previous field\nTab or click Settings reveals launch settings\nReply: Ctrl+T Steer/Queue before sending\nReply: PgUp/PgDn reads the conversation\nAttempted launch: Ctrl+O inspect session\nDrafts last until quit; discard does not stop server work.",
+  "PICKERS AND MODELS\nUp/Down choose · Enter select · Esc back\nSession picker: type anytime; Tab stays in search\nF2 Recent / All sessions / Archived\nServer title search: F3 older · Shift+F3 newer\nPgUp/PgDn or wheel browse · Click a result to open\nCtrl+O open older session by ID\nt Tasks · Ctrl+P rename, archive/restore, delete, or open parent\nm session model · Ctrl+L model in New session\nNew session settings (Tab): folder, agent, model, new git worktree\n/agent chooses agent · /compact confirms summarization\nModel picker: F2 provider setup · Ctrl+R refresh\nProvider setup: Enter continue/save · Ctrl+U clear key\nProvider credentials and configuration are server-global.",
+  "REQUESTS\nUndo/Redo: Ctrl+D shows the staged patch before confirming\np permission · o question · x interrupt\nPermission starts on Reject; choose Allow once or Allow always,\n  then Ctrl+S to send (always saves the server's rule)\nQuestions: arrows choose · Space toggles multiple\nEnter selects/continues · Left/Right changes question\nReview answers, then Enter / Ctrl+S sends\nCustom answer: Enter saves · Ctrl+B back to choices\nCtrl+R opens rejection · Ctrl+S confirms\nInterrupt: type stop · Ctrl+S confirm\nEsc closes without responding; PgUp/PgDn scrolls forms",
+]

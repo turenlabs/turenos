@@ -126,78 +126,93 @@ function boardMessage(text: string) {
 }
 
 export function latestMessage(messages: MessagesListOutput["data"]) {
-  // Reserve the shortening marker so the complete preview stays within 16k.
-  const preview = (text: string) => display(text, 16000 - "\n[display shortened]".length)
   for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index]!
-    if (message.type === "agent-switched") {
-      return preview(`Agent switched to ${display(message.agent)}`)
-    }
-    if (message.type === "model-switched") {
-      return preview(
-        `Model switched to ${display(message.model.providerID)}/${display(message.model.id)}${message.model.variant ? ` (${display(message.model.variant)})` : ""}`,
-      )
-    }
-    if (message.type === "compaction") {
-      return preview(
-        `Conversation compacted (${message.reason})${message.summary ? `: ${display(message.summary, 200).trim()}` : ""}`,
-      )
-    }
-    if (message.type === "assistant") {
-      const tools = message.content.filter((part) => part.type === "tool")
-      const failures = tools.filter((part) => part.state.status === "error")
-      const alerts = [
-        ...(message.error
-          ? [`Error: ${display(message.error.message, 1000).trim() || "The assistant reported an error."}`]
-          : []),
-        ...failures
-          .slice(0, 3)
-          .map(
-            (part) =>
-              `Tool failed: ${display(part.name, 80).replace(/\s/g, " ")}\n${part.state.status === "error" ? display(part.state.error.message, 1000).trim() || "No error details available." : ""}`,
-          ),
-        ...(failures.length > 3
-          ? [`${failures.length - 3} more tool failure${failures.length === 4 ? "" : "s"}.`]
-          : []),
-      ]
-      const text = message.content
-        .filter((part) => part.type === "text")
-        .map((part) => display(part.text, 16000).trim())
-        .filter(Boolean)
-        .join("\n\n")
-      if (alerts.length || text) return preview([...alerts, text].filter(Boolean).join("\n\n"))
-      if (!tools.length) continue
-      const running = tools.filter((part) => part.state.status === "running")
-      const pending = tools.filter((part) => part.state.status === "pending")
-      const active = running.length ? running : pending.length ? pending : tools
-      const names = [...new Set(active.map((part) => display(part.name, 80).replace(/\s/g, " ").trim() || "tool"))]
-      const summary = names.slice(0, 5).join(", ") + (names.length > 5 ? `, and ${names.length - 5} more` : "")
-      if (running.length) return preview(`Working: ${summary}`)
-      if (pending.length) return preview(`Waiting to run: ${summary}`)
-      if (tools.every((part) => part.state.status === "completed"))
-        return `Completed ${tools.length} tool step${tools.length === 1 ? "" : "s"}. Waiting for a reply.`
-      return preview(`Tool activity: ${summary}. Status unavailable.`)
-    }
-    if (message.type === "user" || message.type === "synthetic" || message.type === "system") {
-      const text = display(message.text, 16000).trim()
-      if (text && message.type === "user" && message.source === "subagent_board")
-        return preview(`Agent update\n${boardMessage(message.text)}`)
-      if (text && message.type === "user" && message.source && message.source !== "user")
-        return preview(`${sourceLabel[message.source]}\n${text}`)
-      if (text)
-        return preview(`${message.type === "user" ? "You" : message.type === "system" ? "System" : "Update"}\n${text}`)
-    }
-    if (message.type === "shell") {
-      if (message.error) return preview(`Shell command error\n${display(message.error, 1000)}`)
-      if (message.status === "running") return preview(`Working: ${display(message.command, 200)}`)
-      if (message.status === "completed") return "Shell command completed. Waiting for a reply."
-      if (message.status === "failed") return "Shell command failed. Open history for details."
-      if (message.status === "cancelled") return "Shell command cancelled."
-      if (message.status === "timed_out") return "Shell command timed out."
-      return "Shell command status unavailable."
-    }
+    const text = previewOf(messages[index]!)
+    if (text !== undefined) return text
   }
   return "No output yet."
+}
+
+// Reserve the shortening marker so the complete preview stays within 16k.
+const preview = (text: string) => display(text, 16000 - "\n[display shortened]".length)
+
+type Message = MessagesListOutput["data"][number]
+
+/** The status line for one message, or undefined when it says nothing and an earlier one should be used. */
+function previewOf(message: Message) {
+  if (message.type === "agent-switched") {
+    return preview(`Agent switched to ${display(message.agent)}`)
+  }
+  if (message.type === "model-switched") {
+    return preview(
+      `Model switched to ${display(message.model.providerID)}/${display(message.model.id)}${message.model.variant ? ` (${display(message.model.variant)})` : ""}`,
+    )
+  }
+  if (message.type === "compaction") {
+    return preview(
+      `Conversation compacted (${message.reason})${message.summary ? `: ${display(message.summary, 200).trim()}` : ""}`,
+    )
+  }
+  if (message.type === "assistant") return assistantPreview(message)
+  if (message.type === "user" || message.type === "synthetic" || message.type === "system") {
+    const text = textPreview(message)
+    if (text) return text
+  }
+  if (message.type === "shell") return shellPreview(message)
+}
+
+function textPreview(message: Extract<Message, { type: "user" | "synthetic" | "system" }>) {
+  const text = display(message.text, 16000).trim()
+  if (text && message.type === "user" && message.source === "subagent_board")
+    return preview(`Agent update\n${boardMessage(message.text)}`)
+  if (text && message.type === "user" && message.source && message.source !== "user")
+    return preview(`${sourceLabel[message.source]}\n${text}`)
+  if (text)
+    return preview(`${message.type === "user" ? "You" : message.type === "system" ? "System" : "Update"}\n${text}`)
+}
+
+function shellPreview(message: Extract<Message, { type: "shell" }>) {
+  if (message.error) return preview(`Shell command error\n${display(message.error, 1000)}`)
+  if (message.status === "running") return preview(`Working: ${display(message.command, 200)}`)
+  if (message.status === "completed") return "Shell command completed. Waiting for a reply."
+  if (message.status === "failed") return "Shell command failed. Open history for details."
+  if (message.status === "cancelled") return "Shell command cancelled."
+  if (message.status === "timed_out") return "Shell command timed out."
+  return "Shell command status unavailable."
+}
+
+function assistantPreview(message: Extract<Message, { type: "assistant" }>) {
+  const tools = message.content.filter((part) => part.type === "tool")
+  const failures = tools.filter((part) => part.state.status === "error")
+  const alerts = [
+    ...(message.error
+      ? [`Error: ${display(message.error.message, 1000).trim() || "The assistant reported an error."}`]
+      : []),
+    ...failures
+      .slice(0, 3)
+      .map(
+        (part) =>
+          `Tool failed: ${display(part.name, 80).replace(/\s/g, " ")}\n${part.state.status === "error" ? display(part.state.error.message, 1000).trim() || "No error details available." : ""}`,
+      ),
+    ...(failures.length > 3 ? [`${failures.length - 3} more tool failure${failures.length === 4 ? "" : "s"}.`] : []),
+  ]
+  const text = message.content
+    .filter((part) => part.type === "text")
+    .map((part) => display(part.text, 16000).trim())
+    .filter(Boolean)
+    .join("\n\n")
+  if (alerts.length || text) return preview([...alerts, text].filter(Boolean).join("\n\n"))
+  if (!tools.length) return
+  const running = tools.filter((part) => part.state.status === "running")
+  const pending = tools.filter((part) => part.state.status === "pending")
+  const active = running.length ? running : pending.length ? pending : tools
+  const names = [...new Set(active.map((part) => display(part.name, 80).replace(/\s/g, " ").trim() || "tool"))]
+  const summary = names.slice(0, 5).join(", ") + (names.length > 5 ? `, and ${names.length - 5} more` : "")
+  if (running.length) return preview(`Working: ${summary}`)
+  if (pending.length) return preview(`Waiting to run: ${summary}`)
+  if (tools.every((part) => part.state.status === "completed"))
+    return `Completed ${tools.length} tool step${tools.length === 1 ? "" : "s"}. Waiting for a reply.`
+  return preview(`Tool activity: ${summary}. Status unavailable.`)
 }
 
 export function transcript(messages: MessagesListOutput["data"], raw = false) {
