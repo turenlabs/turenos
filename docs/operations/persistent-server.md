@@ -24,7 +24,9 @@ redirecting root's work:
 
 - **Service account.** The account must not be root.
 - **Data root location.** The data root's parent, and every directory above it, must be writable only by root. The
-  data root itself must not be a symlink.
+  data root itself must not be a symlink. An existing data root must be empty, carry the `.turenos-persistent` marker
+  that `install` writes (root-owned `0600`) when it first takes a directory, or already be named by the installed
+  unit; `install` refuses any other directory, so `--data-root /var/lib` is never handed to the service account.
 - **Taking the data root back.** Before working in it, `install` stops the service and makes the data root and every
   managed directory in it root-owned `0700`. It refuses any managed directory or database file that is a symlink or a
   hard link. It retains handles to claimed directories and hands them back through those handles, children before

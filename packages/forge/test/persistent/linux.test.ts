@@ -40,6 +40,8 @@ const facts: PersistentLinux.Facts = {
   passwordCredential: false,
   database: false,
   dataRootOwner: undefined,
+  dataRootEmpty: true,
+  dataRootMarked: false,
   dataRootLink: false,
   dataRootParentSafe: true,
   forgeBinSafe: true,
@@ -214,6 +216,21 @@ describe("PersistentLinux", () => {
     expect(PersistentLinux.evaluate({ ...facts, dataRootOwner: 1000 }, plan).problems).toEqual([])
   })
 
+  test("an existing data root is taken only when empty, marked, or already the installed server's", () => {
+    const problems = (extra: Partial<PersistentLinux.Facts>, input: Partial<PersistentLinux.Plan> = {}) =>
+      PersistentLinux.evaluate({ ...facts, dataRootEmpty: false, ...extra }, { ...plan, ...input }).problems
+    const refused = ["/var/lib/turenos is not empty and was not created by this installer; choose another --data-root"]
+    expect(problems({ dataRootOwner: 0 })).toEqual(refused)
+    expect(problems({ dataRootOwner: 1000 })).toEqual(refused)
+    expect(problems({ dataRootOwner: 0, dataRootMarked: true })).toEqual([])
+    expect(problems({ dataRootOwner: 1000, dataRootMarked: true })).toEqual([])
+    expect(problems({ dataRootOwner: 1000, dataRootEmpty: true })).toEqual([])
+    expect(problems({ dataRootOwner: 1000, existingUnit: PersistentLinux.unit(plan) })).toEqual([])
+    expect(
+      problems({ dataRootOwner: 1000, existingUnit: PersistentLinux.unit({ ...plan, dataRoot: "/srv/other" }) }),
+    ).toEqual(refused)
+  })
+
   test("a root-owned data root is an interrupted setup, not another account's", () => {
     const evaluated = PersistentLinux.evaluate({ ...facts, dataRootOwner: 0 }, plan)
     expect(evaluated.problems).toEqual([])
@@ -233,6 +250,8 @@ describe("PersistentLinux", () => {
             expect(info.uid).toBe(0)
             expect(info.mode & 0o777).toBe(0o700)
           }
+          const marker = await lstat(path.join(root, PersistentLinux.defaults.dataRootMarker))
+          expect([marker.uid, marker.mode & 0o777]).toEqual([0, 0o600])
           await writeFile(PersistentLinux.databasePath(root), "fixture")
           throw new Error("work failed")
         }),

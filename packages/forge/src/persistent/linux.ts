@@ -17,6 +17,7 @@ import {
   rename,
   stat,
   unlink,
+  writeFile,
   type FileHandle,
 } from "node:fs/promises"
 import { createServer } from "node:net"
@@ -28,6 +29,9 @@ export const defaults = {
   serviceName: "turenos.service",
   unitPath: "/etc/systemd/system/turenos.service",
   dataRoot: "/var/lib/turenos-server",
+  // Written when the installer first takes a data root, so a later run can tell its own directory
+  // from an unrelated one that --data-root happens to name.
+  dataRootMarker: ".turenos-persistent",
   group: "turenos-operators",
   attachPath: "/etc/turenos/attach.json",
   credstore: "/etc/credstore",
@@ -68,6 +72,8 @@ export type Facts = {
   passwordCredential: boolean
   database: boolean
   dataRootOwner: number | undefined
+  dataRootEmpty: boolean
+  dataRootMarked: boolean
   dataRootLink: boolean
   dataRootParentSafe: boolean
   forgeBinSafe: boolean
@@ -224,6 +230,15 @@ export function evaluate(facts: Facts, plan: Plan) {
     facts.dataRootOwner !== facts.user.uid
   )
     problems.push(`${plan.dataRoot} already exists and belongs to another account; choose another --data-root`)
+  // Setup hands the data root to the service account, so it must not take over an unrelated directory
+  // such as /var/lib. Marked roots are this installer's own, and a unit naming the root predates the marker.
+  if (
+    facts.dataRootOwner !== undefined &&
+    !facts.dataRootEmpty &&
+    !facts.dataRootMarked &&
+    installed(facts.existingUnit).dataRoot !== plan.dataRoot
+  )
+    problems.push(`${plan.dataRoot} is not empty and was not created by this installer; choose another --data-root`)
   const existingID = installed(facts.existingUnit).serverID
   if (facts.existingUnit !== undefined && existingID !== plan.serverID)
     problems.push(`${plan.unitPath} already exists for a different server; it was left untouched`)
@@ -273,6 +288,14 @@ export async function gather(plan: Plan, runner: Runner = run): Promise<Facts> {
     dataRootOwner: await lstat(plan.dataRoot).then(
       (info) => info.uid,
       () => undefined,
+    ),
+    dataRootEmpty: await readdir(plan.dataRoot).then(
+      (entries) => entries.length === 0,
+      () => false,
+    ),
+    dataRootMarked: await lstat(join(plan.dataRoot, defaults.dataRootMarker)).then(
+      (info) => info.isFile() && info.uid === 0,
+      () => false,
     ),
     dataRootLink: await lstat(plan.dataRoot).then(
       (info) => info.isSymbolicLink(),
@@ -340,6 +363,14 @@ export async function withDataRoot<T>(dataRoot: string, owner: { uid: number; gi
       await entry.handle.chown(0, 0)
       entry.claimed = true
       await entry.handle.chmod(0o700)
+      // Right after the root is claimed, so an interrupted run still leaves the marker its re-run needs.
+      if (path === dataRoot)
+        await writeFile(join(dataRoot, defaults.dataRootMarker), "created by forge persistent install\n", {
+          flag: "wx",
+          mode: 0o600,
+        }).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "EEXIST") throw error
+        })
     }
     await checkLayout(dataRoot)
     try {
