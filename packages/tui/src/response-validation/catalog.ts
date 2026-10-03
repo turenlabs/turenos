@@ -2,6 +2,7 @@ import {
   array,
   checkDirectory,
   choice,
+  clip,
   identifier,
   invalid,
   location,
@@ -47,6 +48,7 @@ export function agents(address: URL, value: unknown) {
   })
 }
 
+/** Keeps every usable command; an invalid, duplicate or unaddressable (`/` or whitespace in the name) entry is skipped. */
 export function commands(address: URL, value: unknown) {
   const response = object(value)
   location(response.location)
@@ -55,18 +57,30 @@ export function commands(address: URL, value: unknown) {
   const workspace = address.searchParams.get("location[workspace]")
   if (directory !== null && resolved.directory !== directory) invalid("command location identity")
   if (workspace !== null && resolved.workspaceID !== workspace) invalid("command workspace identity")
+  if (!Array.isArray(response.data)) invalid("array expected")
   const names = new Set<string>()
-  for (const value of array(response.data, 256)) {
+  response.data = response.data.slice(0, 2048).filter((entry) => {
+    const command = usableCommand(entry)
+    if (command === undefined || names.has(command)) return false
+    names.add(command)
+    return true
+  })
+  return response
+}
+
+function usableCommand(value: unknown) {
+  try {
     const item = object(value)
     const command = name(item.name)
-    if (/[\s/\\]/.test(command)) invalid("command name")
-    if (names.has(command)) invalid("duplicate command name")
-    names.add(command)
-    string(item.template, 1024 * 1024)
-    if (item.description !== undefined) string(item.description, 64000)
+    if (/[\s/\\]/.test(command)) return undefined
+    clip(item, "template")
+    if (item.description !== undefined) clip(item, "description", 64000)
     if (item.agent !== undefined) name(item.agent)
     if (item.model !== undefined) modelRef(item.model)
-    if (item.subtask !== undefined && typeof item.subtask !== "boolean") invalid("command subtask")
+    if (item.subtask !== undefined && typeof item.subtask !== "boolean") return undefined
+    return command
+  } catch {
+    return undefined
   }
 }
 

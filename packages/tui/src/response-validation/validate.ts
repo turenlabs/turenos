@@ -10,15 +10,16 @@ export function validateResponse(address: URL, init: RequestInit | undefined, va
   if (!address.pathname.includes("/api/")) invalid("route")
   const route = apiRoute(address)
   const get = (init?.method ?? "GET") === "GET"
+  // Routes that skip oversized or unusable items return the sanitized body.
+  if (route[0] === "command") return commands(address, value)
+  if (route[0] === "session") return sessionRoute(route, init, value)
   if (route[0] === "pty" && route.length === 1 && get) terminals(address, value)
   else if (route[0] === "location") location(value)
   else if (route[0] === "agent") agents(address, value)
-  else if (route[0] === "command") commands(address, value)
   else if (route[0] === "loop") automations(route, init, value)
   else if (route[0] === "memory" && get) memories(route, value)
   else if (route[0] === "permission" && route[1] === "saved" && get) savedPermissions(value)
   else if (route[0] === "fs") files(value)
-  else if (route[0] === "session") sessionRoute(route, init, value)
   return undefined
 }
 

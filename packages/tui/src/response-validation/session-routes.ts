@@ -23,7 +23,8 @@ export function sessionRoute(route: string[], init: RequestInit | undefined, val
   if (route.length === 2) return session(response.data, sessionID)
   if (route[2] === "message") {
     unique(array(response.data, 30), (value) => message(value, sessionID))
-    return cursor(response.cursor)
+    cursor(response.cursor)
+    return response
   }
   if (route[2] === "task") return taskInventory(route, response)
   if (route[2] === "permission" || route[2] === "question") return permissionsOrQuestions(route[2], sessionID, response)

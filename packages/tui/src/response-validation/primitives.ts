@@ -26,6 +26,17 @@ export function string(value: unknown, maximum = 1024 * 1024) {
   return value
 }
 
+/**
+ * Bounds a text field the UI only displays. An oversized value is cut at `maximum`
+ * and ends with a visible marker, so one large tool output cannot reject its page.
+ */
+export function clip(holder: Record<string, unknown>, key: string, maximum = 1024 * 1024) {
+  const value = holder[key]
+  if (typeof value !== "string" || value.length <= maximum) return string(value, maximum)
+  holder[key] = `${value.slice(0, maximum)}\n[truncated: ${value.length - maximum} characters omitted]`
+  return holder[key] as string
+}
+
 export function name(value: unknown) {
   const result = string(value, 512)
   if (!result || UNSAFE_TEXT.test(result)) invalid("name")

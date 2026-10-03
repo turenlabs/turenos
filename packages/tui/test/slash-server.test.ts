@@ -190,27 +190,12 @@ for (const prompt of ["plain task", "/usr/file", "/unknown  keep\ntext"]) {
   })
 }
 
+// A wrong location or a non-list inventory is not this directory's command list: refuse it.
 const badInventories = [
   { location: { ...location, directory: "/srv/wrong" }, data: [command] },
   { location: { ...location, workspaceID: "wrk_wrong" }, data: [command] },
   { location: { directory: location.directory }, data: [command] },
   { location, data: {} },
-  { location, data: Array.from({ length: 257 }, (_, index) => ({ ...command, name: `command${index}` })) },
-  { location, data: [command, command] },
-  ...[
-    { name: "" },
-    { name: "bad name" },
-    { name: "usr/file" },
-    { name: "bad\u001b" },
-    { name: "a".repeat(513) },
-    { description: 4 },
-    { description: "x".repeat(64001) },
-    { template: null },
-    { template: "x".repeat(1024 * 1024 + 1) },
-    { agent: "bad\u001b" },
-    { model: { id: "m" } },
-    { subtask: "yes" },
-  ].map((change) => ({ location, data: [{ ...command, ...change }] })),
 ]
 for (const [index, inventory] of badInventories.entries()) {
   test(`malformed command inventory ${index} fails before new-session admission`, async () => {
@@ -229,6 +214,46 @@ for (const [index, inventory] of badInventories.entries()) {
     expect(calls.filter((call) => call.method === "POST")).toHaveLength(2)
   })
 }
+
+// One unusable command is dropped from the list; the rest of the inventory stays usable.
+const unusableCommands = [
+  { name: "" },
+  { name: "bad name" },
+  { name: "usr/file" },
+  { name: "bad\u001b" },
+  { name: "a".repeat(513) },
+  { description: 4 },
+  { template: null },
+  { agent: "bad\u001b" },
+  { model: { id: "m" } },
+  { subtask: "yes" },
+]
+for (const [index, change] of unusableCommands.entries()) {
+  test(`unusable command ${index} is skipped and the other commands stay`, async () => {
+    const { connection, state } = fixture()
+    state.inventory = { location, data: [{ ...command, ...change, name: change.name ?? "broken" }, command] }
+    const result = await connection.commands(location.directory, location.workspaceID)
+    expect(result.map((item) => item.name)).toEqual(["review"])
+  })
+}
+
+test("a duplicate command name keeps the first entry", async () => {
+  const { connection, state } = fixture()
+  state.inventory = { location, data: [command, { ...command, description: "Second copy" }] }
+  const result = await connection.commands(location.directory, location.workspaceID)
+  expect(result.map((item) => item.description)).toEqual(["Review a change"])
+})
+
+test("an oversized command description or template is clipped with a marker, not rejected", async () => {
+  const { connection, state } = fixture()
+  state.inventory = {
+    location,
+    data: [{ ...command, description: "x".repeat(64001), template: "y".repeat(1024 * 1024 + 1) }],
+  }
+  const result = await connection.commands(location.directory, location.workspaceID)
+  expect(result).toHaveLength(1)
+  expect(result[0]!.description).toEndWith("[truncated: 1 characters omitted]")
+})
 
 for (const [field, value] of [
   ["sessionID", "ses_wrong"],
