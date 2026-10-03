@@ -246,14 +246,16 @@ def main():
         "NO_PROXY": "127.0.0.1", "no_proxy": "127.0.0.1",
     }
     manifest = json.loads((repo / "package.json").read_text())
+    # The monorepo pins Bun once, in the workspace root manifest.
+    root_manifest = json.loads((repo.parents[1] / "package.json").read_text())
     def hashes():
-        return {str(p.relative_to(repo)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((repo / "src").glob("*.ts"))}
+        return {str(p.relative_to(repo)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((repo / "src").rglob("*.ts"))}
     result = {
         "started": datetime.now(timezone.utc).isoformat(), "repo": str(repo), "artifacts": str(run),
         "entrypoint": "dist/cli.js" if args.built else "src/index.ts:runTui", "source_sha256_start": hashes(),
         "versions": {
             "bun_installed": subprocess.check_output([bun, "--version"], text=True, env=env).strip(),
-            "bun_manifest": manifest["packageManager"], "root_package": manifest["version"],
+            "bun_manifest": root_manifest["packageManager"], "root_package": root_manifest["version"],
             "tui_package": manifest["version"], "opentui_manifest": manifest["dependencies"]["@opentui/core"],
             "tmux": subprocess.check_output([tmux_bin, "-V"], text=True, env=env).strip(),
             "python": sys.version.split()[0], "pillow": PIL.__version__,
@@ -264,7 +266,7 @@ def main():
         "socket": str(socket), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "checks": [], "captures": [], "requests": [], "keys": [],
     }
-    result["versions"]["matches_manifest_bun"] = "bun@" + result["versions"]["bun_installed"] == manifest["packageManager"]
+    result["versions"]["matches_manifest_bun"] = "bun@" + result["versions"]["bun_installed"] == root_manifest["packageManager"]
     base = {
         "id": "ses_review", "projectID": "project", "title": TITLE, "agent": "build",
         "location": {"directory": DIRECTORY}, "model": {"providerID": "fixture", "id": "local"},
@@ -364,7 +366,9 @@ def main():
                 except (BrokenPipeError, ConnectionResetError):
                     pass
                 return
-            if path == "/global/storage":
+            if path == "/global/health":
+                data = {"healthy": True, "version": "fixture"}
+            elif path == "/global/storage":
                 data = {"state": {"scope": "desktop/store/working-folders", "key": "open", "value": json.dumps({"version": 1, "directories": [DIRECTORY, "/srv/empty-folder"]}), "revision": 1, "timeCreated": 1, "timeUpdated": 1} if stage == "folder-browser" else None}
             elif path == "/api/location":
                 data = {"directory": DIRECTORY, "project": {"id": "project", "directory": DIRECTORY}}
@@ -372,9 +376,12 @@ def main():
                 data = {"data": sessions, "cursor": {}}
             elif path == "/api/session/active":
                 data = {"data": {"ses_review": {"type": "running"}} if stream_state["active"] else {}}
-            elif path == "/api/activity":
-                data = {"ptys": []}
+            elif path == "/api/pty":
+                directory = parse_qs(url.query).get("location[directory]", [DIRECTORY])[0]
+                data = {"location": {"directory": directory, "project": {"id": "project", "directory": directory}}, "data": []}
             elif path == "/api/loop":
+                data = []
+            elif path == "/extension" or re.fullmatch(r"/session/ses_[A-Za-z0-9_]+/todo", path):
                 data = []
             elif path == "/api/command":
                 directory = parse_qs(url.query).get("location[directory]", [DIRECTORY])[0]
@@ -651,6 +658,11 @@ def main():
         capture(f"{kind}-edited")
         return "lpha preserved"
 
+    def focus_conversation():
+        # A dashboard that just connected has no focused pane (the server picker closes without
+        # restoring focus), so Enter, "/" and End do nothing until Tab moves focus to the conversation.
+        key("Tab")
+
     def choose_session(query, expected):
         key("C-k")
         wait(FINDER)
@@ -920,8 +932,7 @@ def main():
 
             with scenario("keyboard-workflow", width, height):
                 start = len(result["requests"])
-                if width >= 90:
-                    key("Enter")
+                focus_conversation()
                 key("Enter")
                 wait("Your message")
                 key("Up")
@@ -964,8 +975,7 @@ def main():
 
             with scenario("slash-commands", width, height):
                 start = len(result["requests"])
-                if width >= 90:
-                    key("Enter")
+                focus_conversation()
                 key("/", literal=True)
                 wait("Your message")
                 key("hel", literal=True)
@@ -1027,8 +1037,7 @@ def main():
 
             with scenario("wrapped-text", width, height):
                 start = len(result["requests"])
-                if width >= 90:
-                    key("Enter")
+                focus_conversation()
                 key("PPage", "PPage")
                 marker = re.search(r"WRAP_\d+", frame()).group(0)
                 capture("wrapped-reading")
@@ -1082,8 +1091,7 @@ def main():
 
             with scenario("transcript-scroll", width, height):
                 start = len(result["requests"])
-                if width >= 90:
-                    key("Enter")
+                focus_conversation()
                 for _ in range(12):
                     key("PPage")
                     if "Earlier prompt from the previous page." in frame():
@@ -1530,7 +1538,7 @@ def main():
             "# TUI PTY Audit", "", f"Result: {'PASS' if result['passed'] else 'FAIL'}; {len(failed)} failed / {len(result['checks'])} checks; {len(result['captures'])} PNGs.",
             f"Entrypoint: `{result['entrypoint']}` in `{repo}`.",
             f"Scope: {'exit restoration only' if args.exit_only else 'text lifecycle and exit restoration' if args.lifecycle_only else 'full visual harness'}.",
-            f"Bun on PATH **{result['versions']['bun_installed']}**; manifest **{manifest['packageManager']}**. " + ("Matches the pinned runtime." if manifest["packageManager"] == f"bun@{result['versions']['bun_installed']}" else "This is not pinned-runtime verification."),
+            f"Bun on PATH **{result['versions']['bun_installed']}**; manifest **{root_manifest['packageManager']}**. " + ("Matches the pinned runtime." if root_manifest["packageManager"] == f"bun@{result['versions']['bun_installed']}" else "This is not pinned-runtime verification."),
             f"Sizes: {', '.join(f'{w}x{h}' for w, h in sizes)}; resize shield: 59x23.",
             f"Fixture only: `{url}`; no live service, credential discovery, or provider writes.",
             f"Source changed during run: {result['source_changed_during_run']}. Rerun after concurrent edits finish.",
