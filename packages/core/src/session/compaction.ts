@@ -22,12 +22,18 @@ import { Token } from "../util/token"
 import { toLLMMessages } from "./runner/to-llm-message"
 
 const DEFAULT_BUFFER = 20_000
-export const CONTEXT_TARGET = 0.75
 /**
- * Absolute ceiling on the pruning and compaction target. A fraction alone lets a million-token window
- * ride up to ~790k tokens, where every turn re-reads the whole prompt: measured on real sessions, median
- * time to first frame grew from 2.8s to 9.1s even with a warm cache, and per-turn cost grew roughly in
- * proportion. Windows under ~530k are unaffected because the fraction is already lower.
+ * Share of the model's context window a Session should stay under. Past it, old tool output is pruned and the
+ * history is compacted. Every turn re-sends the whole window, so a larger window costs time and money on
+ * every turn even when the cache is warm: measured on real sessions, median time to first frame grew from 2.8s
+ * to 9.1s as context went from 100-200k to 600k+, and cost per turn grew roughly in proportion. An agent can
+ * checkpoint earlier on its own (`session_checkpoint`); this is the backstop.
+ */
+export const CONTEXT_TARGET = 0.4
+/**
+ * Absolute ceiling on the pruning and compaction target for windows above 1M tokens, where the 40% share
+ * alone would still let a turn re-read more than ~400k tokens of prompt. Ordinary windows are unaffected
+ * because the fraction binds first.
  */
 export const CONTEXT_TARGET_TOKEN_CAP = 400_000
 const contextTarget = (context: number) => Math.min(Math.floor(context * CONTEXT_TARGET), CONTEXT_TARGET_TOKEN_CAP)
@@ -466,6 +472,11 @@ type Input = {
   readonly model: Model
   /** Omitted by the manual path, which compacts on demand rather than against a request budget. */
   readonly request?: LLMRequest
+  /**
+   * A checkpoint the agent wrote itself, already in the summary template. When present it is the checkpoint:
+   * there is nothing to summarize, so no model call and no wait.
+   */
+  readonly handoff?: string
 }
 
 type BudgetInput = Input & {
@@ -1585,6 +1596,34 @@ export const make = (dependencies: Dependencies) => {
     )
     const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
     if (!selected || selected.head.length === 0) return yield* decline(input, "emptyConversation", mode)
+    if (input.handoff !== undefined) {
+      const handoff = input.handoff
+      const messageID = SessionMessage.ID.create()
+      const carried = previousSummary?.type === "compaction" ? (previousSummary.ledger ?? []) : []
+      // Both events commit together: with no model call there is no interruptible window, and a lone
+      // `Started` would leave a checkpoint that never ends.
+      return yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
+            sessionID: input.sessionID,
+            messageID,
+            timestamp: yield* DateTime.now,
+            reason: mode,
+          })
+          yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
+            sessionID: input.sessionID,
+            messageID,
+            timestamp: yield* DateTime.now,
+            reason: mode,
+            text: handoff,
+            recent: selected.recent,
+            ...(carried.length === 0 ? {} : { ledger: carried }),
+            ...(selected.throughSeq === undefined ? {} : { throughSeq: selected.throughSeq }),
+          })
+          return COMPACTED
+        }),
+      )
+    }
     // Resolve before fitting: the hidden compaction agent may use a much smaller model than the
     // Session. Fitting against the Session model and then sending to the override made the
     // summarizer itself overflow. Its system prompt consumes the same input budget too.
@@ -1885,6 +1924,16 @@ export const make = (dependencies: Dependencies) => {
     return outcome
   })
 
+  /**
+   * Agent-initiated compaction. The agent supplies the checkpoint, so this is the automatic path (the current
+   * turn stays verbatim and the Session continues afterwards) without the summarization call.
+   */
+  const compactWithHandoff = Effect.fn("SessionCompaction.compactWithHandoff")(function* (
+    input: Input & { readonly handoff: string },
+  ) {
+    return yield* run(input, "auto")
+  })
+
   const compactAfterOverflow = Effect.fn("SessionCompaction.compactAfterOverflow")(function* (input: Input) {
     const outcome = yield* run(input, "auto")
     // Pre-`Started` declines log a warning and nothing else, so a provider overflow whose
@@ -1943,6 +1992,7 @@ export const make = (dependencies: Dependencies) => {
   return {
     compact,
     compactIfNeeded,
+    compactWithHandoff,
     compactAfterOverflow,
     prune,
     /** Effective settings after folding and clamping, as of this read. For diagnostics and tests. */

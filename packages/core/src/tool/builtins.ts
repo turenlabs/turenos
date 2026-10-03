@@ -5,6 +5,7 @@ import { Layer } from "effect"
 import { AutomationTool } from "./automation"
 import { BashTool } from "./bash"
 import { CodeSearchTool } from "./code-search"
+import { ContextTool } from "./context"
 import { ApplyPatchTool } from "./apply-patch"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
@@ -83,6 +84,7 @@ export const node = makeLocationNode({
     AutomationTool.node,
     BashTool.node,
     CodeSearchTool.node,
+    ContextTool.node,
     EditTool.node,
     GlobTool.node,
     GoalTool.node,
