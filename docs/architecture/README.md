@@ -15,7 +15,7 @@ utility, used for headless servers, remote hosts, and backend administration rat
 user-facing product. Both use one shared server implementation:
 
 - The desktop shell hosts the web renderer and starts a supervised local server directly in an
-  Electron utility process. It does not launch `forge serve` for its local backend or require a
+  bundled Bun child process. It does not launch `forge serve` for its local backend or require a
   separately installed CLI.
 - For SSH and managed WSL backends, Desktop starts the native executable with `forge serve`.
   The SSH path manages the remote server and connects through a tunnel; see
@@ -34,6 +34,22 @@ Source: [local process startup](../../packages/desktop/src/main/server.ts),
 [WSL server startup](../../packages/desktop/src/main/wsl/sidecar.ts), and
 [current CLI registration](../../packages/forge/src/index.ts).
 
+The local sidecar uses an absolute bundled Bun path, not the user's `PATH`. Electron remains the UI runtime.
+Bun starts with `--no-env-file`, `--no-install`, and `--use-system-ca`.
+The parent sends the vault key through JSON IPC as canonical base64, not through arguments or inherited environment variables.
+`FORGE_RESOURCES_PATH` supplies the trusted resource directory to the sidecar.
+The HTTP listener uses `BunHttpServer`; native terminals use `Bun.Terminal` and `Bun.spawn`.
+When the requested port is `0`, the listener tries `4096` first, then a free port if that address is occupied.
+
+Desktop builds download the root-pinned Bun npm package for the selected target.
+The supported targets are macOS, Windows, and glibc Linux, each on x86-64 and ARM64.
+`RUST_TARGET` selects the build target; without it, builds use the host platform and architecture.
+The Bun executable, server bundle, and target-specific FFF and Parcel native libraries ship outside `app.asar`.
+See [runtime staging](../../packages/desktop/scripts/stage-bun.ts),
+[target selection](../../packages/script/src/platform.ts),
+[backend build](../../packages/forge/script/build-node.ts), and
+[Desktop packaging](../../packages/desktop/electron-builder.config.ts).
+
 The browser renderer does not call Core services directly; from `@turenlabs/core` it imports only pure
 `@turenlabs/core/util/*` helpers. It uses a generated SDK client contract over
 HTTP, server-sent events (SSE), and selected WebSocket routes.
@@ -45,7 +61,7 @@ flowchart LR
     Renderer[TurenOS web UI\npackages/app]
     Operator[Backend operator]
     CLI[forge backend utility\nheadless, SSH, WSL]
-    Sidecar[Local sidecar\nElectron utility process]
+    Sidecar[Local sidecar\nBundled Bun process]
     Server[TurenOS server\npackages/forge]
     API[Typed HTTP API\nProtocol and Server]
     Client[Generated client\npackages/client]
