@@ -3051,4 +3051,114 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     expect(clamped.generation?.maxTokens).toBeGreaterThan(32_000)
     expect(clamped.generation?.maxTokens).toBeLessThan(64_000)
   })
+
+  describe("background compaction", () => {
+    // 200k window, so the target is 80k and background work starts at 64k.
+    const limits = { context: 200_000, output: 8_000 }
+    const request = () => LLM.request({ model: model(limits), messages: [Message.user("tiny")], tools: [] })
+    const gate = (harness: ReturnType<typeof engine>, entries: readonly Entry[]) =>
+      Effect.runPromise(
+        harness.compaction.compactIfNeeded({ sessionID, entries, model: request().model, request: request() }),
+      )
+    const types = (harness: ReturnType<typeof engine>) => harness.published.map((item) => item.type)
+    // The summary is requested as soon as the gate forks it; it is ready a moment after the stream ends.
+    const settled = async (harness: ReturnType<typeof engine>) => {
+      for (let wait = 0; wait < 200 && harness.requests.length === 0; wait++) await Bun.sleep(5)
+      await Bun.sleep(50)
+    }
+    const config = { ledger: false }
+    const prefix = (tag: string) => [
+      entry(user(`${tag}_u1`, "do the thing")),
+      measuredTurn(`${tag}_a1`, { input: 70_000 }),
+      entry(user(`${tag}_u2`, "keep going")),
+    ]
+
+    test("does nothing below the background threshold", async () => {
+      const harness = engine({ events: [delta(VALID_SUMMARY)], config: configWith(config) })
+      const entries = [
+        entry(user("bg_low_u1", "hi")),
+        measuredTurn("bg_low_a1", { input: 30_000 }),
+        entry(user("bg_low_u2", "more")),
+      ]
+
+      expect(await gate(harness, entries)).toBe(false)
+      await Bun.sleep(30)
+      expect(harness.requests).toEqual([])
+      expect(harness.published).toEqual([])
+    })
+
+    test("writes the checkpoint silently as the window nears its target, then commits it at once", async () => {
+      const harness = engine({ events: [delta(VALID_SUMMARY)], config: configWith(config) })
+      const entries = prefix("bg_commit")
+
+      // 70k of an 80k target: not needed yet, so the turn is not held up and nothing is published.
+      expect(await gate(harness, entries)).toBe(false)
+      await settled(harness)
+      expect(harness.requests).toHaveLength(1)
+      expect(harness.published).toEqual([])
+
+      // The window then reaches the target. Compaction commits the finished summary without a model call.
+      const later = [...entries, measuredTurn("bg_commit_a2", { input: 85_000 }), entry(user("bg_commit_u3", "next"))]
+      expect(await gate(harness, later)).toBe(true)
+      expect(harness.requests).toHaveLength(1)
+      // Started and ended together, and no summary was ever streamed to the transcript.
+      expect(types(harness)).toEqual(["session.next.compaction.started", "session.next.compaction.ended"])
+      expect(harness.published[1]!.data).toMatchObject({
+        reason: "auto",
+        text: VALID_SUMMARY,
+        throughSeq: entries[1]!.seq,
+      })
+    })
+
+    test("waits for a summary that is still being written instead of starting a second", async () => {
+      const harness = engine({ events: [delta(VALID_SUMMARY)], config: configWith(config) })
+      const entries = prefix("bg_running")
+      expect(await gate(harness, entries)).toBe(false)
+
+      // No settling: the fork may not have finished when the target is reached.
+      const later = [...entries, measuredTurn("bg_running_a2", { input: 85_000 }), entry(user("bg_running_u3", "next"))]
+      expect(await gate(harness, later)).toBe(true)
+      expect(harness.requests).toHaveLength(1)
+      expect(types(harness)).toEqual(["session.next.compaction.started", "session.next.compaction.ended"])
+    })
+
+    test("discards a prepared checkpoint whose cut message is gone and compacts the ordinary way", async () => {
+      const harness = engine({ events: [delta(VALID_SUMMARY)], config: configWith(config) })
+      const entries = prefix("bg_stale")
+      expect(await gate(harness, entries)).toBe(false)
+      await settled(harness)
+
+      // A revert removed the history the summary was cut from.
+      const reverted = [
+        entries[0]!,
+        measuredTurn("bg_stale_other", { input: 85_000 }),
+        entry(user("bg_stale_u3", "next")),
+      ]
+      expect(await gate(harness, reverted)).toBe(true)
+      expect(harness.requests).toHaveLength(2)
+      expect(types(harness)).toContain("session.next.compaction.delta")
+    })
+
+    test("a failed background attempt never surfaces and the ordinary compaction still runs", async () => {
+      const harness = engine({ events: [], config: configWith(config) })
+      const entries = prefix("bg_failed")
+
+      expect(await gate(harness, entries)).toBe(false)
+      await settled(harness)
+      expect(harness.published).toEqual([])
+
+      const later = [...entries, measuredTurn("bg_failed_a2", { input: 85_000 }), entry(user("bg_failed_u3", "next"))]
+      await gate(harness, later)
+      // The blocking path ran, and it is the only thing that ever published.
+      expect(types(harness)[0]).toBe("session.next.compaction.started")
+    })
+
+    test("can be turned off", async () => {
+      const harness = engine({ events: [delta(VALID_SUMMARY)], config: configWith({ ...config, background: false }) })
+
+      expect(await gate(harness, prefix("bg_off"))).toBe(false)
+      await Bun.sleep(30)
+      expect(harness.requests).toEqual([])
+    })
+  })
 })
