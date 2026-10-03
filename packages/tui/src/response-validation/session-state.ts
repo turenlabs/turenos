@@ -1,6 +1,7 @@
 import {
   array,
   choice,
+  clip,
   identifier,
   invalid,
   location,
@@ -83,15 +84,15 @@ export function message(value: unknown, sessionID: string) {
     "model-switched",
     "compaction",
   ])
-  if (item.type === "user" || item.type === "synthetic" || item.type === "system") string(item.text)
+  if (item.type === "user" || item.type === "synthetic" || item.type === "system") clip(item, "text")
   if (item.type === "user" && item.source !== undefined && !sources.includes(item.source as string))
     invalid("message source")
   if (item.type === "agent-switched") name(item.agent)
   if (item.type === "model-switched") modelRef(item.model)
   if (item.type === "shell") {
-    string(item.command)
-    string(item.output)
-    optional(item.error, string)
+    clip(item, "command")
+    clip(item, "output")
+    optional(item.error, () => clip(item, "error"))
     optional(item.status, (value) => choice(value, shellStatuses))
   }
   if (item.type === "assistant") assistantMessage(item)
@@ -100,7 +101,7 @@ export function message(value: unknown, sessionID: string) {
 function assistantMessage(item: Record<string, unknown>) {
   name(item.agent)
   modelRef(item.model)
-  optional(item.error, (value) => string(object(value).message))
+  optional(item.error, (value) => clip(object(value), "message"))
   // The context meter adds these up.
   optional(item.tokens, (value) => {
     const tokens = object(value)
@@ -117,24 +118,40 @@ function assistantMessage(item: Record<string, unknown>) {
   optional(item.snapshot, (value) =>
     optional(object(value).files, (files) => array(files, 5000).forEach((file) => string(file, 4096))),
   )
-  unique(array(item.content, 128), contentPart)
+  item.content = omit(array(item.content, Infinity), 128, (count) => ({
+    id: "omitted_parts",
+    type: "text",
+    text: `[${count} parts omitted]`,
+  }))
+  unique(item.content as unknown[], contentPart)
+}
+
+/** Keeps the first `maximum` entries and appends a visible marker for the rest. */
+function omit(items: unknown[], maximum: number, marker: (count: number) => unknown) {
+  if (items.length <= maximum) return items
+  return [...items.slice(0, maximum), marker(items.length - maximum)]
 }
 
 function contentPart(value: unknown) {
   const part = object(value)
   choice(part.type, ["text", "reasoning", "tool"])
   if (part.type !== "tool") {
-    string(part.text)
+    clip(part, "text")
     return
   }
   name(part.name)
   const state = object(part.state)
   choice(state.status, ["pending", "running", "completed", "error"])
   if (state.status === "pending") return
-  for (const value of array(state.content, 128)) {
+  state.content = omit(array(state.content, Infinity), 128, (count) => ({
+    type: "text",
+    text: `[${count} outputs omitted]`,
+  }))
+  for (const value of state.content as unknown[]) {
     const content = object(value)
     choice(content.type, ["text", "file"])
-    string(content.type === "text" ? content.text : content.uri)
+    if (content.type === "text") clip(content, "text")
+    else string(content.uri)
   }
-  if (state.status === "error") string(object(state.error).message)
+  if (state.status === "error") clip(object(state.error), "message")
 }
