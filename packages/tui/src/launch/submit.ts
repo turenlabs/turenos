@@ -1,3 +1,4 @@
+import { outsideNotice } from "../mentions/outside"
 import { errorText } from "../server"
 import { folderContains } from "../working-folders"
 import type { LaunchForm } from "./context"
@@ -9,7 +10,12 @@ export async function submitLaunch(form: LaunchForm) {
   const { state, openSession, say } = form.deps
   const { current, dialog } = form
   if (!state.connected) throw new Error("Reconnect before sending. Your draft is kept.")
-  if (!current.start.input()) await prepare(form)
+  if (!current.start.input()) {
+    const notice = outsideNotice(form.task.plainText, form.directory.value.trim(), form.outsideAck)
+    form.outsideAck = notice.key
+    if (notice.message) throw new Error(notice.message)
+    await prepare(form)
+  }
   const session = await current
     .start({
       directory: current.directory,

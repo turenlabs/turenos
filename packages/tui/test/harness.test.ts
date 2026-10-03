@@ -61,6 +61,7 @@ async function fixture(options: { status?: Proposal["status"]; owned?: boolean }
     } as Harness,
     ambiguous: false,
     malformed: false,
+    applyRefused: false,
   }
   const requests: { method: string; path: string; body: string }[] = []
   const base = `/api/session/${session.id}/harness`
@@ -86,6 +87,8 @@ async function fixture(options: { status?: Proposal["status"]; owned?: boolean }
       if (path.endsWith("/status")) data = state.proposals[0] = { ...current, status: input.status }
       else if (path.endsWith("/reject")) data = state.proposals[0] = { ...current, status: "rejected" }
       else if (path.endsWith("/apply")) {
+        if (remote.applyRefused)
+          return Response.json({ _tag: "InvalidRequestError", message: "proposal no longer valid" }, { status: 400 })
         if (current.status !== "approved") return Response.json({ message: "not approved" }, { status: 409 })
         data = next("proposal")
         state.proposals[0] = { ...current, status: "applied", appliedVersion: state.snapshot!.version }
@@ -232,6 +235,23 @@ test("after an uncertain result, retries only recheck and report the observed ou
   app.view.mockInput.pressKey("s", { ctrl: true })
   await app.waitFor(() => app.notices.includes("Harness change observed."))
   expect(app.writes()).toHaveLength(1)
+})
+
+test("a definitely rejected apply after a successful approval retries by applying only", async () => {
+  const app = await fixture()
+  await app.choose("Approve and apply")
+  app.remote.applyRefused = true
+  app.view.mockInput.pressKey("s", { ctrl: true })
+  await app.waitFor((frame) => frame.includes("proposal no longer valid"))
+  expect(app.view.captureCharFrame()).not.toContain("Outcome unconfirmed")
+  app.remote.applyRefused = false
+  app.view.mockInput.pressKey("s", { ctrl: true })
+  await app.waitFor(() => app.notices.some((notice) => notice.startsWith("Proposal applied")))
+  expect(app.writes()).toEqual([
+    ["/proposal/hpr_one/status", JSON.stringify({ status: "approved" })],
+    ["/proposal/hpr_one/apply", ""],
+    ["/proposal/hpr_one/apply", ""],
+  ])
 })
 
 test("task-owned sessions are read-only and malformed harness data is refused", async () => {

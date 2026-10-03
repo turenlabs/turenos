@@ -45,11 +45,16 @@ export async function findFiles(
 // The server owns execution: this admits one command and returns the shell
 // message the transcript already renders. Retries reuse the caller's ID.
 export async function shell(ctx: Context, sessionID: string, id: string, command: string) {
+  checkShell(sessionID, id, command)
+  return ctx.client.sessions.shell({ sessionID, id, command })
+}
+
+/** The local limits on a shell command, checkable before anything is locked or sent. */
+export function checkShell(sessionID: string, id: string, command: string) {
   identifier(sessionID, "ses_")
   identifier(id, "msg_")
   if (!command.trim()) throw new Error("Enter a command to run on the server.")
   if (command.length > 8192) throw new Error("Keep the command below 8,192 characters.")
-  return ctx.client.sessions.shell({ sessionID, id, command })
 }
 
 export async function resolveCommand(ctx: Context, text: string, directory: string, workspaceID?: string) {

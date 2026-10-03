@@ -1,4 +1,5 @@
 import { TextRenderable, TextAttributes } from "@opentui/core"
+import { httpStatus } from "../server"
 import { color } from "../theme"
 import { recipient, type RequestContext } from "./context"
 
@@ -32,8 +33,12 @@ export function kill(ctx: RequestContext) {
   confirmation.dialog.submit = async () => {
     if (confirmation.input.value !== "kill") throw new Error("Type kill to confirm.")
     await ctx.connection.client.sessions.interrupt({ sessionID: id })
-    const cancelled = await cancelActiveTasks(ctx, id)
-    ctx.say(`Session killed.${cancelled ? ` Cancelled ${cancelled} active task${cancelled === 1 ? "" : "s"}.` : ""}`)
+    const result = await cancelActiveTasks(ctx, id)
+    const summary = `${result.cancelled} cancelled, ${result.failed} failed, ${result.gone} not listed`
+    const older = result.more ? " Older tasks beyond the first 50 were not checked." : ""
+    if (result.failed) throw new Error(`Session interrupted; tasks: ${summary}. Ctrl+S retries the cancels.${older}`)
+    const cancelled = result.cancelled ? ` Cancelled ${result.cancelled} active task${result.cancelled === 1 ? "" : "s"}.` : ""
+    ctx.say(`Session killed.${cancelled}${result.gone ? ` ${result.gone} not listed.` : ""}${older}`)
   }
 }
 
@@ -91,19 +96,22 @@ async function cancelActiveTasks(ctx: RequestContext, sessionID: string) {
   const active = [...new Map([...tasks.data, ...tasks.active].map((task) => [task.id, task])).values()].filter((task) =>
     ["queued", "starting", "running"].includes(task.status),
   )
-  let cancelled = 0
-  for (const task of active) {
-    try {
-      await ctx.connection.client.sessions.taskCancel({
-        sessionID,
-        taskID: task.id,
-        expectedRevision: task.revision,
-      })
-      cancelled++
-    } catch {
-      // The task may finish between listing and cancellation; the session
-      // interrupt above already stops new work.
-    }
+  const outcomes = await Promise.all(
+    active.map((task) =>
+      ctx.connection.client.sessions
+        .taskCancel({ sessionID, taskID: task.id, expectedRevision: task.revision })
+        .then(() => "cancelled" as const)
+        .catch((error: unknown) => {
+          // 404 and 409 mean the task finished or changed since the listing; the session interrupt covers new work.
+          const status = httpStatus(error)
+          return status === 404 || status === 409 ? ("gone" as const) : ("failed" as const)
+        }),
+    ),
+  )
+  return {
+    cancelled: outcomes.filter((outcome) => outcome === "cancelled").length,
+    failed: outcomes.filter((outcome) => outcome === "failed").length,
+    gone: outcomes.filter((outcome) => outcome === "gone").length,
+    more: !!tasks.cursor.next,
   }
-  return cancelled
 }

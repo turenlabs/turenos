@@ -44,4 +44,6 @@ export type LaunchForm = {
   loaded: string | undefined
   loadError: unknown
   loading: Promise<void> | undefined
+  /** The escaping mention paths the user already saw and sent past once. */
+  outsideAck?: string
 }

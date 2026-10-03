@@ -10,7 +10,8 @@ export async function submitGoal(flow: GoalSubmission) {
   current(flow.env, session, flow.dialog)
   if (flow.env.blocked(session.id)) throw new Error(TASK_OWNED)
   if (flow.typed && flow.typed.value !== "clear") throw new Error("Type clear exactly, then Ctrl+S.")
-  const intent = prepareIntent(flow)
+  const objective = checkedObjective(flow)
+  const intent = flow.intent ?? newIntent(flow, objective)
   const { goal: next, remote } = await fresh(flow.env, session, flow.dialog)
   if (flow.env.blocked(session.id)) throw new Error(TASK_OWNED)
   if (flow.attempted && observed(flow, intent, next)) {
@@ -25,6 +26,8 @@ export async function submitGoal(flow: GoalSubmission) {
   }
   if (flow.attempted && action !== "Set")
     throw new Error("Outcome unconfirmed. Retry checks GET only; Esc to inspect. No write repeated.")
+  // Freeze the IDs and objective only once a write is about to go out, so a failure that sent nothing stays editable.
+  flow.intent = intent
   flow.attempted = true
   await write(flow, intent)
   flow.env.say(
@@ -32,22 +35,25 @@ export async function submitGoal(flow: GoalSubmission) {
   )
 }
 
-/** Validates the objective and freezes the goal and message IDs on the first submit so retries reuse them. */
-function prepareIntent(flow: GoalSubmission) {
-  const { editor, session } = flow
+/** Validates the objective; once a write has gone out, retries must keep the original. */
+function checkedObjective(flow: GoalSubmission) {
+  const { editor } = flow
   const objective = editor ? editor.plainText.trim() : (flow.base?.objective ?? "")
   if (editor && (!objective || objective.length > 4000)) throw new Error("Objective must contain 1-4000 characters.")
   if (flow.intent && objective !== flow.intent.objective)
     throw new Error("Retry keeps the original objective. Esc and reopen to change it.")
-  flow.intent ??= {
-    sessionID: session.id,
+  return objective
+}
+
+function newIntent(flow: GoalSubmission, objective: string): SessionsGoalSetInput {
+  return {
+    sessionID: flow.session.id,
     id: `goal_${crypto.randomUUID().replaceAll("-", "")}`,
     messageID: `msg_${crypto.randomUUID().replaceAll("-", "")}`,
     objective,
-    agent: session.agent,
-    model: session.model ? structuredClone(session.model) : undefined,
+    agent: flow.session.agent,
+    model: flow.session.model ? structuredClone(flow.session.model) : undefined,
   }
-  return flow.intent
 }
 
 function desired(flow: GoalSubmission, intent: SessionsGoalSetInput, value: Goal) {
