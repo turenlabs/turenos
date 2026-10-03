@@ -1333,6 +1333,62 @@ describe("compaction outcomes", () => {
     expect(ended["text"]).toBe(VALID_SUMMARY)
   })
 
+  describe("agent-written handoff", () => {
+    const turns = () => [
+      ...[1, 2, 3, 4].flatMap((n) => [
+        entry(user(`h_u${n}`, `step ${n} ${"x".repeat(2_000)}`)),
+        entry(assistant(`h_a${n}`, [{ type: "text", id: `h_t${n}`, text: `done ${n} ${"y".repeat(2_000)}` }])),
+      ]),
+      entry(user("h_current", "keep going")),
+    ]
+
+    test("is the checkpoint: no model call, one started and one ended", async () => {
+      const harness = engine({ events: [delta("a summarizer must never be asked")] })
+      const outcome = await Effect.runPromise(
+        harness.compaction.compactWithHandoff({
+          sessionID,
+          entries: turns(),
+          model: model({ context: 200_000 }),
+          handoff: VALID_SUMMARY,
+        }),
+      )
+
+      expect(outcome).toEqual({ ok: true })
+      expect(harness.requests).toHaveLength(0)
+      expect(harness.published.map((item) => item.type)).toEqual([
+        "session.next.compaction.started",
+        "session.next.compaction.ended",
+      ])
+      const started = harness.published[0]!.data
+      const ended = harness.published[1]!.data
+      expect(ended["messageID"]).toBe(started["messageID"])
+      expect(ended["text"]).toBe(VALID_SUMMARY)
+      // The automatic path, so the session continues afterwards and the current turn stays verbatim.
+      expect(started["reason"]).toBe("auto")
+      expect(ended["reason"]).toBe("auto")
+      // The cutoff sits before the current turn, so that turn is carried forward untouched.
+      const current = turns().at(-1)!.seq
+      expect(typeof ended["throughSeq"]).toBe("number")
+      expect(ended["throughSeq"] as number).toBeLessThan(current)
+    })
+
+    test("declines, publishing nothing, when there is nothing to compact", async () => {
+      const harness = engine({ events: [] })
+      const outcome = await Effect.runPromise(
+        harness.compaction.compactWithHandoff({
+          sessionID,
+          entries: [],
+          model: model({ context: 200_000 }),
+          handoff: VALID_SUMMARY,
+        }),
+      )
+
+      expect(outcome).toEqual({ ok: false, reason: "emptyConversation" })
+      expect(harness.published).toEqual([])
+      expect(harness.requests).toHaveLength(0)
+    })
+  })
+
   test("redacts history before eliding it, so a cut credential never reaches the summarizer", async () => {
     const token = `ghp_${"Kx7".repeat(12)}`
     // The bash budget keeps ~977 leading characters, so this credential straddles the elision cut.
@@ -2477,17 +2533,17 @@ describe("the pre-flight gate budgets against the model's real window", () => {
   }
 
   // claude-opus-5: { context: 1000000, output: 128000 }. Forge used to publish
-  // 200k for the `opus` CLI alias, so a 400k-token conversation -- comfortably
-  // inside the real window -- was compacted away every turn.
+  // 200k for the `opus` CLI alias, so a 300k-token conversation -- under the 40%
+  // target and comfortably inside the real window -- was compacted away every turn.
   const OPUS_5 = { context: 1_000_000, output: 128_000 }
 
   test("a conversation inside Opus 5's 1M window is left alone", async () => {
-    expect(await gate(400_000, OPUS_5)).toBe(false)
+    expect(await gate(300_000, OPUS_5)).toBe(false)
   })
 
   test("the same conversation would have been compacted against the old 200k figure", async () => {
     // Pins the regression itself: this is the number the gate used to see.
-    expect(await gate(400_000, { context: 200_000, output: 64_000 })).toBe(true)
+    expect(await gate(300_000, { context: 200_000, output: 64_000 })).toBe(true)
   })
 
   test("a conversation genuinely over Opus 5's window still compacts", async () => {
@@ -2504,7 +2560,7 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     expect(await gate(950_000, GPT_5_6_SOL)).toBe(true)
     // Removing the hard input cap does not disable the soft context target.
     expect(await gate(950_000, { context: 1_050_000, output: 128_000 })).toBe(true)
-    expect(await gate(700_000, GPT_5_6_SOL)).toBe(false)
+    expect(await gate(350_000, GPT_5_6_SOL)).toBe(false)
   })
 
   // github-copilot/gpt-5-mini: { context: 264000, input: 128000, output: 64000 }.
@@ -2516,9 +2572,12 @@ describe("the pre-flight gate budgets against the model's real window", () => {
   test("a prompt over a binding input cap compacts even though it fits context minus output", async () => {
     // 160k fits 264000-64000=200000 but exceeds the 128000 the model accepts.
     expect(await gate(160_000, COPILOT_GPT_5_MINI)).toBe(true)
-    // Dropping the cap -- exactly what V2 used to compute -- calls it fine, and
-    // the request would then be refused by the provider.
-    expect(await gate(160_000, { context: 264_000, output: 64_000 })).toBe(false)
+    // The 40% target (105k here) now binds before this model's cap, so the cap case is pinned on a window
+    // where it still decides: 160k is under the 400k target and fits 1M minus 64k of output, but exceeds a
+    // 100k input cap. Dropping the cap -- exactly what V2 used to compute -- calls it fine, and the request
+    // would then be refused by the provider.
+    expect(await gate(160_000, { context: 1_000_000, input: 100_000, output: 64_000 })).toBe(true)
+    expect(await gate(160_000, { context: 1_000_000, output: 64_000 })).toBe(false)
   })
 
   test("a prompt under a binding input cap is left alone", async () => {
@@ -2527,7 +2586,7 @@ describe("the pre-flight gate budgets against the model's real window", () => {
 
   // k3: { context: 1048576, output: 131072 }. No input cap, and none invented.
   test("a model with no published input cap budgets against context alone", async () => {
-    expect(await gate(700_000, { context: 1_048_576, output: 131_072 })).toBe(false)
+    expect(await gate(350_000, { context: 1_048_576, output: 131_072 })).toBe(false)
     expect(await gate(1_030_000, { context: 1_048_576, output: 131_072 })).toBe(true)
   })
 
@@ -2588,13 +2647,13 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     return Effect.runPromise(harness.compaction.compactIfNeeded({ sessionID, entries, model: request.model, request }))
   }
 
-  test("pruning starts at exactly 75% provider-reported occupancy without a request margin", async () => {
-    expect(SessionCompaction.CONTEXT_TARGET).toBe(0.75)
+  test("pruning starts at exactly 40% provider-reported occupancy without a request margin", async () => {
+    expect(SessionCompaction.CONTEXT_TARGET).toBe(0.4)
     const request = requestOf(1, { context: 200_000, output: 10_000 })
     for (const [tokens, expected] of [
-      [149_800, false],
-      [150_000, true],
-      [150_200, true],
+      [79_800, false],
+      [80_000, true],
+      [80_200, true],
     ] as const) {
       const entries = [
         ...history(),
@@ -2753,10 +2812,11 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     // The reserve used to be the full output limit: a 200k/128k model budgeted only 72k of
     // prompt and compacted at ~68% occupancy for turns that emit a few thousand tokens. The
     // reserve is capped at 32k; `clampOutput` shrinks the wire allowance inside that band.
+    // The 40% target (80k here) now binds first, so "halfway" sits just under it.
     const limits = { context: 200_000, output: 128_000 }
     const halfway = [
       entry(user("cap_u1", "start")),
-      measuredTurn("cap_a1", { input: 95_000, output: 5_000 }),
+      measuredTurn("cap_a1", { input: 70_000, output: 5_000 }),
       entry(user("cap_pending", "current instruction")),
     ]
     expect(await gateWith(halfway, requestCarrying([{ type: "text", text: "tiny" }], limits))).toBe(false)

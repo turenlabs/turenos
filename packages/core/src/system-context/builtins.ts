@@ -8,6 +8,7 @@ import { InstructionContext } from "../instruction-context"
 import { SystemContextRegistry } from "./registry"
 import { FSUtil } from "../fs-util"
 import { Global } from "../global"
+import { SessionContextManagement } from "../session/context-management"
 import { SessionTodoGuidance } from "../session/todo-guidance"
 import { Reflection } from "../reflection"
 
@@ -75,6 +76,13 @@ const builtIns = Layer.effectDiscard(
         key: SystemContext.Key.make("core/memory-guidance"),
         codec: Schema.toCodecJson(Schema.String),
         load: Effect.succeed(memoryGuidance),
+        baseline: (guidance) => guidance,
+        update: (_previous, guidance) => guidance,
+      }),
+      SystemContext.make({
+        key: SystemContext.Key.make("core/context-guidance"),
+        codec: Schema.toCodecJson(Schema.String),
+        load: Effect.succeed(SessionContextManagement.GUIDANCE),
         baseline: (guidance) => guidance,
         update: (_previous, guidance) => guidance,
       }),

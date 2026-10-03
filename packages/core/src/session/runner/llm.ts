@@ -37,6 +37,7 @@ import { GoalTool } from "../../tool/goal"
 import { SwarmRoomTool } from "../../tool/swarm-room"
 import { ToolOutputStore } from "../../tool-output-store"
 import { SessionContextEpoch } from "../context-epoch"
+import { SessionContextManagement } from "../context-management"
 import { SessionContextRequest } from "../context-request"
 import { SessionCompaction } from "../compaction"
 import { SessionEvent } from "../event"
@@ -333,6 +334,7 @@ const layer = Layer.effect(
     const models = yield* SessionRunnerModel.Service
     const store = yield* SessionStore.Service
     const goalAccounting = yield* SessionGoalAccounting.Service
+    const contextManagement = yield* SessionContextManagement.Service
     const goals = yield* SessionGoal.Service
     const harness = yield* Effect.serviceOption(SessionHarness.Service)
     const todos = yield* SessionTodo.Service
@@ -981,7 +983,33 @@ const layer = Layer.effect(
             ]
           : []),
       ]
+      // A one-time note when this window first crosses a budget threshold. Claimed per Session, window and
+      // level so it is added once and stays in the frame, instead of repeating as a new message every turn.
+      const windowTokens = model.route.defaults.limits?.context
+      const occupancy = windowTokens === undefined ? undefined : SessionCompaction.reportedOccupancy(history, model)
+      const budgetLevel =
+        occupancy === undefined || windowTokens === undefined || windowTokens <= 0
+          ? undefined
+          : SessionContextManagement.nudgeLevel(occupancy / windowTokens)
+      const budgetNote =
+        budgetLevel === undefined || occupancy === undefined || windowTokens === undefined
+          ? undefined
+          : (yield* contextManagement.claimNudge({
+                sessionID: session.id,
+                window: history.filter((entry) => entry.message.type === "compaction").length,
+                level: budgetLevel,
+              }))
+            ? Message.make({
+                role: "user",
+                content: SessionContextManagement.nudge({
+                  level: budgetLevel,
+                  usedPercent: Math.round((occupancy / windowTokens) * 100),
+                }),
+                metadata: { forge: { internalContext: "context-budget" } },
+              })
+            : undefined
       const notes = [
+        ...(budgetNote ? [budgetNote] : []),
         ...(currentTask
           ? [
               Message.make({
@@ -1053,6 +1081,22 @@ const layer = Layer.effect(
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: toolsDisabled ? "none" : undefined,
       })
+      // A checkpoint the agent asked for with `session_checkpoint`. It runs here, at a provider-turn boundary,
+      // because the call that requested it is already in history and the checkpoint must not split it from
+      // its result. The agent wrote the summary, so there is no summarization call to wait for. Taken before
+      // the pruning branch below so a requested checkpoint is not preceded by a prune that busts the cache.
+      const requestedHandoff = compactBeforeTurn ? yield* contextManagement.take(session.id) : undefined
+      if (
+        requestedHandoff !== undefined &&
+        (yield* compaction.compactWithHandoff({
+          sessionID: session.id,
+          entries: history,
+          model,
+          request,
+          handoff: requestedHandoff,
+        })).ok
+      )
+        return yield* Effect.die(continueAfterCompaction(currentStep, todoPrompt))
       if (
         compactBeforeTurn &&
         prepared.frame?.turn !== turn &&
@@ -2182,6 +2226,7 @@ export const node = makeLocationNode({
     Database.node,
     SessionGoal.node,
     SessionGoalAccounting.node,
+    SessionContextManagement.node,
     SessionTodo.node,
     Reflection.node,
     // Needed by SessionRunnerAttachment.materialize: FileSystem.Service reads `file:` attachments

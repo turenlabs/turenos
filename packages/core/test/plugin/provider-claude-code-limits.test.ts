@@ -248,9 +248,11 @@ describe("the window the plugin publishes is the window compaction budgets again
       // The number the runner hands the gate, not the one the panel formats.
       expect(resolved.route.defaults.limits?.context).toBe(1_000_000)
 
-      // 400k tokens: over the old 200k figure, well inside the real window.
+      // 300k tokens: over the old 200k figure, under the 40% target, well inside the real window.
       // Before the fix this compacted on every single turn.
-      expect(yield* gate(resolved, 400_000)).toBe(false)
+      expect(yield* gate(resolved, 300_000)).toBe(false)
+      // The 40% target applies to the Claude Code bridge like any other model.
+      expect(yield* gate(resolved, 400_000)).toBe(true)
       expect(yield* gate(resolved, 990_000)).toBe(true)
     }),
   )

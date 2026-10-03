@@ -105,7 +105,7 @@ and `cors` entries are added to the `--cors` list. The CLI defaults are port `0`
 | `attachments.image.max_width`            | 2,000   | Pixels.                                                                                                                  |
 | `attachments.image.max_height`           | 2,000   | Pixels.                                                                                                                  |
 | `attachments.image.max_base64_bytes`     | 5 MiB   | Encoded size limit.                                                                                                      |
-| `compaction.auto`                        | `true`  | Compact automatically when the context budget runs out. A user-requested compaction ignores it.                          |
+| `compaction.auto`                        | `true`  | Compact automatically at 40% of the context window. A user-requested compaction ignores it.                              |
 | `compaction.prune`                       | `true`  | Clear stale tool results from replay. `false` also turns off the clearing options below.                                 |
 | `compaction.pruneInputs`                 | `true`  | Also clear stale, re-derivable tool inputs (`write`, `edit`, `apply_patch` bodies).                                      |
 | `compaction.pruneMedia`                  | `true`  | Also clear stale media attachments past the protect window.                                                              |

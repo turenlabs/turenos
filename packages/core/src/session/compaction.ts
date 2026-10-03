@@ -22,7 +22,14 @@ import { Token } from "../util/token"
 import { toLLMMessages } from "./runner/to-llm-message"
 
 const DEFAULT_BUFFER = 20_000
-export const CONTEXT_TARGET = 0.75
+/**
+ * Share of the model's context window a Session should stay under. Past it, old tool output is pruned and the
+ * history is compacted. Every turn re-sends the whole window, so a larger window costs time and money on
+ * every turn even when the cache is warm: measured on real sessions, median time to first frame grew from 2.8s
+ * to 9.1s as context went from 100-200k to 600k+, and cost per turn grew roughly in proportion. An agent can
+ * checkpoint earlier on its own (`session_checkpoint`); this is the backstop.
+ */
+export const CONTEXT_TARGET = 0.4
 // Measured against a real 24/7 corpus (533 sessions, 5.6 days): at 8k the median
 // preserved tail was a single message — mean message is ~1.8k wire tokens — and
 // tail-only fact recall was 5.9%. 16k keeps ~4 messages for 18.7% recall, the best
@@ -458,6 +465,11 @@ type Input = {
   readonly model: Model
   /** Omitted by the manual path, which compacts on demand rather than against a request budget. */
   readonly request?: LLMRequest
+  /**
+   * A checkpoint the agent wrote itself, already in the summary template. When present it is the checkpoint:
+   * there is nothing to summarize, so no model call and no wait.
+   */
+  readonly handoff?: string
 }
 
 type BudgetInput = Input & {
@@ -1577,6 +1589,34 @@ export const make = (dependencies: Dependencies) => {
     )
     const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
     if (!selected || selected.head.length === 0) return yield* decline(input, "emptyConversation", mode)
+    if (input.handoff !== undefined) {
+      const handoff = input.handoff
+      const messageID = SessionMessage.ID.create()
+      const carried = previousSummary?.type === "compaction" ? (previousSummary.ledger ?? []) : []
+      // Both events commit together: with no model call there is no interruptible window, and a lone
+      // `Started` would leave a checkpoint that never ends.
+      return yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
+            sessionID: input.sessionID,
+            messageID,
+            timestamp: yield* DateTime.now,
+            reason: mode,
+          })
+          yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
+            sessionID: input.sessionID,
+            messageID,
+            timestamp: yield* DateTime.now,
+            reason: mode,
+            text: handoff,
+            recent: selected.recent,
+            ...(carried.length === 0 ? {} : { ledger: carried }),
+            ...(selected.throughSeq === undefined ? {} : { throughSeq: selected.throughSeq }),
+          })
+          return COMPACTED
+        }),
+      )
+    }
     // Resolve before fitting: the hidden compaction agent may use a much smaller model than the
     // Session. Fitting against the Session model and then sending to the override made the
     // summarizer itself overflow. Its system prompt consumes the same input budget too.
@@ -1877,6 +1917,16 @@ export const make = (dependencies: Dependencies) => {
     return outcome
   })
 
+  /**
+   * Agent-initiated compaction. The agent supplies the checkpoint, so this is the automatic path (the current
+   * turn stays verbatim and the Session continues afterwards) without the summarization call.
+   */
+  const compactWithHandoff = Effect.fn("SessionCompaction.compactWithHandoff")(function* (
+    input: Input & { readonly handoff: string },
+  ) {
+    return yield* run(input, "auto")
+  })
+
   const compactAfterOverflow = Effect.fn("SessionCompaction.compactAfterOverflow")(function* (input: Input) {
     const outcome = yield* run(input, "auto")
     // Pre-`Started` declines log a warning and nothing else, so a provider overflow whose
@@ -1935,6 +1985,7 @@ export const make = (dependencies: Dependencies) => {
   return {
     compact,
     compactIfNeeded,
+    compactWithHandoff,
     compactAfterOverflow,
     prune,
     /** Effective settings after folding and clamping, as of this read. For diagnostics and tests. */
