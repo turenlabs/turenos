@@ -10,7 +10,17 @@ export const LOAD_TOOL_DESCRIPTION =
 /** Source bucket that groups built-in capabilities for per-source caps and scope identity. */
 export const BUILTIN_SERVER = "forge"
 export const BUILTIN_MAX_LOADED_TOOLS = 16
-export const DEFAULT_UNLOAD_AFTER_IDLE_TURNS = 3
+export const DEFAULT_UNLOAD_AFTER_IDLE_TURNS = 100
+/**
+ * Loaded tools are never unloaded sooner than this many idle turns, whatever a capability asks for. Tool
+ * definitions sit at the very front of the cached prefix, so every load and every unload rewrites it and the
+ * next turn re-reads the whole window uncached. Measured on real sessions, the turn after a `tool_load` averaged
+ * 291k uncached tokens and read no cache at all 79% of the time. Carrying a few idle definitions costs a few
+ * thousand cached tokens, so keeping them is far cheaper than unloading them after three turns.
+ */
+export const MIN_UNLOAD_AFTER_IDLE_TURNS = 100
+const unloadAfter = (capability: { readonly unloadAfterIdleTurns?: number }) =>
+  Math.max(capability.unloadAfterIdleTurns ?? DEFAULT_UNLOAD_AFTER_IDLE_TURNS, MIN_UNLOAD_AFTER_IDLE_TURNS)
 const MAX_SEARCH_RESULTS = 20
 const MAX_SEARCH_TERMS = 24
 const SEARCH_STOP_WORDS = new Set([
@@ -196,7 +206,7 @@ export function beginTurn(sessionID: string, capabilities: ReadonlyArray<Capabil
       current.selected.delete(key)
       continue
     }
-    selection.unloadAfterIdleTurns = capability.unloadAfterIdleTurns ?? DEFAULT_UNLOAD_AFTER_IDLE_TURNS
+    selection.unloadAfterIdleTurns = unloadAfter(capability)
   }
   return selectedKeys(current)
 }
@@ -274,7 +284,7 @@ export function load(
       server: capability.server,
       name: capability.name,
       touchedTurn: current.turn,
-      unloadAfterIdleTurns: capability.unloadAfterIdleTurns ?? DEFAULT_UNLOAD_AFTER_IDLE_TURNS,
+      unloadAfterIdleTurns: unloadAfter(capability),
     })
   }
   const selected = selectedKeys(current)
