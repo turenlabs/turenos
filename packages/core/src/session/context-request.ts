@@ -2,7 +2,7 @@ export * as SessionContextRequest from "./context-request"
 
 import { createHash } from "node:crypto"
 import { Message } from "@turenlabs/llm"
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, sql } from "drizzle-orm"
 import { Effect, Schema } from "effect"
 import type { Database } from "../database/database"
 import { SessionMessage } from "./message"
@@ -45,6 +45,29 @@ const hydratedLimit = 16
  */
 const hydrated = new Map<string, Map<string, string>>()
 
+/**
+ * The frame this process last saved for a Session, with the stored row's shape at that moment. The next prepare
+ * reads only the row's small columns and its byte size; when they still match it reuses this frame instead of
+ * reading, parsing, rehydrating and schema-decoding megabytes it wrote a moment ago. Nothing but `save` writes
+ * the row, so a match means the stored frame is the one cached. A miss, including another process having saved,
+ * simply loads from the database as before. Bounded to a few Sessions: it holds whole frames.
+ */
+type Cached = {
+  readonly generation: number
+  readonly identity: string
+  readonly baseline_seq: number
+  readonly size: number
+  readonly frame: Frame
+  readonly known: Map<string, string>
+}
+const cachedLimit = 4
+const cached = new Map<string, Cached>()
+const remember = (sessionID: string, value: Cached) => {
+  cached.delete(sessionID)
+  if (cached.size >= cachedLimit) cached.delete(cached.keys().next().value!)
+  cached.set(sessionID, value)
+}
+
 export type Reason = "initial" | "baseline" | "configuration" | "history" | "pressure"
 type DatabaseService = Database.Interface["db"]
 
@@ -55,13 +78,89 @@ export const prepare = Effect.fn("SessionContextRequest.prepare")(function* (
 ) {
   const sources = input.history.map((entry) => ({ seq: entry.seq, digest: digest(entry.message) }))
   const stored = yield* db
-    .select()
+    .select({
+      generation: SessionContextRequestTable.generation,
+      identity: SessionContextRequestTable.identity,
+      baseline_seq: SessionContextRequestTable.baseline_seq,
+      size: sql<number>`octet_length(${SessionContextRequestTable.data})`,
+    })
     .from(SessionContextRequestTable)
     .where(eq(SessionContextRequestTable.session_id, sessionID))
     .get()
     .pipe(Effect.orDie)
-  if (!stored) return { generation: 1, reason: "initial" as Reason, frame: undefined, sources }
+  if (!stored) {
+    cached.delete(sessionID)
+    return { generation: 1, reason: "initial" as Reason, frame: undefined, sources }
+  }
+  const last = cached.get(sessionID)
+  // Save removes every blob the frame it writes does not reference, so the Session's blob rows are exactly the
+  // cached frame's blobs. A missing one is the same lost-blob case `load` reports, so it must not be a hit.
+  const matches =
+    last?.generation === stored.generation &&
+    last.identity === stored.identity &&
+    last.baseline_seq === stored.baseline_seq &&
+    last.size === stored.size &&
+    (last.known.size === 0 || (yield* blobCount(db, sessionID)) === last.known.size)
+  const loaded = matches ? last : yield* load(db, sessionID)
+  // A frame that lost a blob cannot be replayed byte-for-byte, so rebuild it like a history change.
+  if (loaded === undefined)
+    return { generation: stored.generation + 1, reason: "history" as Reason, frame: undefined, sources }
+  const frame = loaded.frame
+  const reason: Reason | undefined =
+    stored.baseline_seq !== input.baselineSeq
+      ? "baseline"
+      : stored.identity !== input.identity
+        ? "configuration"
+        : frame.sources.some((source, index) => {
+              const current = sources[index]
+              return current?.seq !== source.seq || current.digest !== source.digest
+            })
+          ? "history"
+          : undefined
+  if (reason === undefined && loaded.known.size > 0) {
+    hydrated.delete(sessionID)
+    if (hydrated.size >= hydratedLimit) hydrated.delete(hydrated.keys().next().value!)
+    hydrated.set(sessionID, loaded.known)
+  }
+  return {
+    generation: stored.generation + (reason === undefined ? 0 : 1),
+    reason,
+    frame: reason === undefined ? frame : undefined,
+    sources,
+  }
+})
 
+type Part = { readonly value: unknown; readonly blobs: ReadonlyMap<string, string> }
+const entryParts = new WeakMap<SessionMessage.Message, Part>()
+const messageParts = new WeakMap<Message, Part>()
+const encodeEntryMessage = Schema.encodeSync(SessionMessage.Message)
+const encodeMessage = Schema.encodeSync(Message)
+
+const rewritten = (encoded: unknown, externalize: (into: Map<string, string>) => (value: string) => string): Part => {
+  const blobs = new Map<string, string>()
+  return { value: rewrite(encoded, externalize(blobs)), blobs }
+}
+
+const blobCount = (db: DatabaseService, sessionID: SessionSchema.ID) =>
+  db
+    .select({ count: sql<number>`count(*)` })
+    .from(SessionContextBlobTable)
+    .where(eq(SessionContextBlobTable.session_id, sessionID))
+    .get()
+    .pipe(
+      Effect.map((row) => row?.count ?? 0),
+      Effect.orDie,
+    )
+
+/** Reads, rehydrates and decodes the stored frame; undefined when a referenced blob is gone. */
+const load = Effect.fnUntraced(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
+  const stored = yield* db
+    .select({ data: SessionContextRequestTable.data })
+    .from(SessionContextRequestTable)
+    .where(eq(SessionContextRequestTable.session_id, sessionID))
+    .get()
+    .pipe(Effect.orDie)
+  if (!stored) return undefined
   const data: unknown = stored.data
   const envelope = typeof data === "object" && data !== null && marker in data && "frame" in data ? data : undefined
   const wrapped = envelope !== undefined
@@ -89,10 +188,7 @@ export const prepare = Effect.fn("SessionContextRequest.prepare")(function* (
       .pipe(Effect.orDie)
     for (const row of rows) blobs.set(row.sha256, row.data)
   }
-  // A frame that lost a blob cannot be replayed byte-for-byte, so rebuild it like a history change.
-  if (blobs.size < refs.size)
-    return { generation: stored.generation + 1, reason: "history" as Reason, frame: undefined, sources }
-
+  if (blobs.size < refs.size) return undefined
   const frame = yield* Schema.decodeUnknownEffect(Frame)(
     wrapped
       ? rewrite(body, (value) => {
@@ -101,28 +197,7 @@ export const prepare = Effect.fn("SessionContextRequest.prepare")(function* (
         })
       : body,
   ).pipe(Effect.orDie)
-  const reason: Reason | undefined =
-    stored.baseline_seq !== input.baselineSeq
-      ? "baseline"
-      : stored.identity !== input.identity
-        ? "configuration"
-        : frame.sources.some((source, index) => {
-              const current = sources[index]
-              return current?.seq !== source.seq || current.digest !== source.digest
-            })
-          ? "history"
-          : undefined
-  if (reason === undefined && blobs.size > 0) {
-    hydrated.delete(sessionID)
-    if (hydrated.size >= hydratedLimit) hydrated.delete(hydrated.keys().next().value!)
-    hydrated.set(sessionID, new Map([...blobs].map(([sha256, value]) => [value, sha256])))
-  }
-  return {
-    generation: stored.generation + (reason === undefined ? 0 : 1),
-    reason,
-    frame: reason === undefined ? frame : undefined,
-    sources,
-  }
+  return { frame, known: new Map([...blobs].map(([sha256, value]) => [value, sha256])) }
 })
 
 export const save = Effect.fn("SessionContextRequest.save")(function* (
@@ -130,19 +205,39 @@ export const save = Effect.fn("SessionContextRequest.save")(function* (
   sessionID: SessionSchema.ID,
   input: { baselineSeq: number; identity: string; generation: number; reason?: Reason; frame: Frame },
 ) {
-  const encoded = yield* Schema.encodeEffect(Frame)(input.frame).pipe(Effect.orDie)
   const known = hydrated.get(sessionID)
   hydrated.delete(sessionID)
   const blobs = new Map<string, string>()
-  const data = rewrite(encoded, (value) => {
+  const externalize = (into: Map<string, string>) => (value: string) => {
     // A short string shaped like a reference is externalized too, so hydration never mistakes it for one.
     if (value.length < externalizeThreshold && !refPattern.test(value)) return value
     // Hashing and SQLite text binding replace lone surrogates, so such strings stay inline, where JSON escapes them.
     if (!value.isWellFormed()) return value
     const sha256 = known?.get(value) ?? createHash("sha256").update(value).digest("hex")
-    blobs.set(sha256, value)
+    into.set(sha256, value)
     return refPrefix + sha256
-  })
+  }
+  // A frame is its previous frame plus a few messages, so each message is encoded and rewritten once and the
+  // result reused for as long as the message object lives. Encoding the whole frame every turn was a full copy,
+  // and a second full copy to rewrite it, of history that had not changed.
+  const part = <T extends object>(memo: WeakMap<T, Part>, item: T, encode: (item: T) => unknown) => {
+    const hit = memo.get(item)
+    const reused = hit ?? rewritten(encode(item), externalize)
+    if (!hit) memo.set(item, reused)
+    if (reused.blobs.size > 0) for (const [sha256, value] of reused.blobs) blobs.set(sha256, value)
+    return reused.value
+  }
+  const data = {
+    entries: input.frame.entries.map((entry) => ({
+      seq: entry.seq,
+      message: part(entryParts, entry.message, encodeEntryMessage),
+    })),
+    messages: input.frame.messages.map((message) => part(messageParts, message, encodeMessage)),
+    // Digests are 64 hex characters and the turn is a message ID: neither can reach the externalization
+    // threshold or look like a blob reference, so copying them through `rewrite` only allocates.
+    sources: input.frame.sources,
+    turn: input.frame.turn,
+  }
   const values = {
     data: blobs.size > 0 ? { [marker]: 1, frame: data } : data,
     generation: input.generation,
@@ -189,7 +284,23 @@ export const save = Effect.fn("SessionContextRequest.save")(function* (
       }),
     )
     .pipe(Effect.orDie)
+  const written = yield* db
+    .select({ size: sql<number>`octet_length(${SessionContextRequestTable.data})` })
+    .from(SessionContextRequestTable)
+    .where(eq(SessionContextRequestTable.session_id, sessionID))
+    .get()
+    .pipe(Effect.orDie)
+  if (written)
+    remember(sessionID, {
+      generation: input.generation,
+      identity: input.identity,
+      baseline_seq: input.baselineSeq,
+      size: written.size,
+      frame: input.frame,
+      known: new Map([...blobs].map(([sha256, value]) => [value, sha256])),
+    })
 })
+
 
 /** Copies JSON-shaped data with every string leaf passed through `map`; object keys and other values are kept. */
 function rewrite(value: unknown, map: (value: string) => string): unknown {
@@ -199,7 +310,20 @@ function rewrite(value: unknown, map: (value: string) => string): unknown {
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rewrite(item, map)]))
 }
 
+// A message's digest only changes when the message does, and a changed message is a new object (decoded rows are
+// replaced, never edited in place), so identity is a sound key. Without this, every turn re-encodes and re-hashes
+// the whole history to learn that nothing before the newest messages moved.
+const digests = new WeakMap<SessionMessage.Message, string>()
+
 function digest(message: SessionMessage.Message) {
+  const known = digests.get(message)
+  if (known !== undefined) return known
+  const value = computeDigest(message)
+  digests.set(message, value)
+  return value
+}
+
+function computeDigest(message: SessionMessage.Message) {
   const encoded = Schema.encodeSync(SessionMessage.Message)(message)
   // Pruning marks durable raw history after rendering; it must not rewrite a saved prefix.
   const value =
