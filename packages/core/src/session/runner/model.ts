@@ -9,6 +9,7 @@ import { OpenAIResponses } from "@turenlabs/llm/protocols/openai-responses"
 import { AmazonBedrock, Azure, OpenRouter, XAI } from "@turenlabs/llm/providers"
 import { Auth, type AnyRoute } from "@turenlabs/llm/route"
 import { Context, Effect, Layer, Schema } from "effect"
+import { Headers } from "effect/unstable/http"
 import { produce } from "immer"
 import { AISDK, markXaiOAuthModel } from "../../aisdk"
 import { Catalog } from "../../catalog"
@@ -1032,7 +1033,9 @@ const chatGPTOAuth = (
     withDefaults(model, OpenAIResponses.route)
       .with({
         endpoint: { baseURL: OpenAICodex.API_ENDPOINT, path: "" },
-        auth: Auth.headers(OpenAICodex.authorizationHeaders(credential.access, accountID)),
+        auth: Auth.headers(OpenAICodex.authorizationHeaders(credential.access, accountID)).andThen(
+          Auth.custom((input) => Effect.succeed(Headers.setAll(input.headers, OpenAICodex.affinityHeaders(input.request)))),
+        ),
       })
       // The Codex endpoint is not the Responses API: it answers
       // `max_output_tokens` with HTTP 400 `{"detail":"Unsupported parameter:
