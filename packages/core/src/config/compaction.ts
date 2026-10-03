@@ -30,6 +30,12 @@ export class Info extends Schema.Class<Info>("ConfigV2.Compaction")({
    * generations. Costs one extra, short summarizer-model call per compaction.
    */
   ledger: Schema.Boolean.pipe(Schema.optional),
+  /**
+   * Write the checkpoint in the background as the window nears its target, so reaching the target
+   * commits a finished summary instead of stopping the turn to write one. Costs nothing extra when
+   * the session compacts anyway; a session that ends first has paid for one unused summary.
+   */
+  background: Schema.Boolean.pipe(Schema.optional),
   keep: Keep.pipe(Schema.optional),
   buffer: NonNegativeInt.pipe(Schema.optional),
 }) {}

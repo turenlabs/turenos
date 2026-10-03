@@ -288,13 +288,17 @@ describe("payload: long history", () => {
             `[payload] post-compaction request does not end with the resume directive; final user text: ${JSON.stringify(texts.at(-1))}`,
           )
       } else {
-        // This fixture remains below the declared context window, so every request sees full history.
-        expectEqual("request count", records.length, TURNS)
+        // This fixture remains below the compaction target, so every turn sees full history. It does
+        // end past the point where background compaction starts, so the summarizer may have been
+        // asked ahead of need. That request is silent: it commits nothing, which is why no
+        // checkpoint exists here, and it is not a turn.
+        const turns = records.filter((record) => !summarizerRequest(record.request))
+        expectEqual("request count", turns.length, TURNS)
         for (let turn = 1; turn <= TURNS; turn++) {
-          const texts = requestUserTexts(records[turn - 1]!.request)
+          const texts = requestUserTexts(turns[turn - 1]!.request)
           expectEqual(`request #${turn - 1} user texts`, JSON.stringify(texts), JSON.stringify(prompts.slice(0, turn)))
         }
-        expectEqual("unconsumed behaviors (armed summarizer only)", ctx.provider.queued(), 1)
+        expectEqual("summarizer requests", records.length - turns.length, 1 - ctx.provider.queued())
       }
     }),
   )
