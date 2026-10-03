@@ -245,6 +245,32 @@ Recent work
     expect(messages.at(-1)?.content).toEqual([{ type: "text", text: expect.stringContaining("memory_write") }])
   })
 
+  test.each(["auto", "manual"] as const)(
+    "tells the agent after a %s checkpoint that earlier history is still searchable",
+    (reason) => {
+      const messages = toLLMMessages(
+        [
+          SessionMessage.Compaction.make({
+            id: id(`recall_${reason}`),
+            type: "compaction",
+            reason,
+            summary: "Earlier work",
+            recent: "",
+            time: { created },
+          }),
+        ],
+        model,
+      )
+      const text = JSON.stringify(messages.at(-1)?.content)
+
+      // Conditional on the tool, because an agent profile can withhold it, and phrased so that it points at
+      // recovery rather than at the summary being wrong.
+      expect(text).toContain("session_recall")
+      expect(text).toContain("still stored")
+      expect(text).toContain("tool is available")
+    },
+  )
+
   test("only treats a newer assistant message after the latest checkpoint as continuation", () => {
     const assistant = SessionMessage.Assistant.make({
       id: id("after_checkpoint"),
