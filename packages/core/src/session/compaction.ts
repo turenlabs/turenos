@@ -375,6 +375,7 @@ type Settings = {
   readonly pruneMedia: boolean
   readonly dedupOutputs: boolean
   readonly ledger: boolean
+  readonly background: boolean
   readonly buffer: number
   readonly tokens: number
   readonly turns: number
@@ -424,9 +425,43 @@ export class FailedError extends Schema.TaggedErrorClass<FailedError>()("Session
   }
 }
 
-export type Outcome = { readonly ok: true } | { readonly ok: false; readonly reason: FailureReason }
+/**
+ * A checkpoint written ahead of need. It is only ever valid against the history it was cut from:
+ * `base` is the checkpoint that history started at, and `throughID` the last message it summarized.
+ */
+export type Prepared = {
+  readonly base: SessionMessage.ID | undefined
+  readonly throughSeq: number
+  readonly throughID: SessionMessage.ID
+  readonly text: string
+  readonly recent: string
+  readonly ledger: readonly string[]
+}
+
+export type Outcome =
+  | { readonly ok: true; readonly prepared?: Prepared }
+  | { readonly ok: false; readonly reason: FailureReason }
 
 const COMPACTED: Outcome = { ok: true }
+
+/**
+ * Background compaction starts at this fraction of the compaction target. Late enough that a
+ * session which stops here has wasted little, early enough that a summary (tens of seconds on a
+ * large history) is usually finished before the target is reached.
+ */
+const BACKGROUND_START = 0.8
+
+type Background =
+  | {
+      readonly type: "running"
+      readonly base: SessionMessage.ID | undefined
+      readonly fiber: Fiber.Fiber<Prepared | undefined>
+    }
+  | { readonly type: "ready"; readonly base: SessionMessage.ID | undefined; readonly prepared: Prepared }
+  | { readonly type: "failed"; readonly base: SessionMessage.ID | undefined }
+
+const latestCheckpoint = (entries: readonly Entry[]) =>
+  entries.find((entry) => entry.message.type === "compaction")?.message
 
 /**
  * Resolution of the hidden `compaction` agent: its PROMPT_COMPACTION system prompt and its
@@ -614,6 +649,7 @@ const settings = (documents: readonly Config.Entry[]) => {
       pruneMedia: current.pruneMedia ?? result.pruneMedia,
       dedupOutputs: current.dedupOutputs ?? result.dedupOutputs,
       ledger: current.ledger ?? result.ledger,
+      background: current.background ?? result.background,
       buffer: current.buffer ?? result.buffer,
       tokens: current.keep?.tokens ?? result.tokens,
       turns: current.keep?.turns ?? result.turns,
@@ -638,6 +674,7 @@ const settings = (documents: readonly Config.Entry[]) => {
       // recall-per-token of five strategies, and the only one that does not decay across
       // generations. See the ledger section above.
       ledger: true,
+      background: true,
       buffer: DEFAULT_BUFFER,
       tokens: DEFAULT_KEEP_TOKENS,
       turns: DEFAULT_KEEP_TURNS,
@@ -1547,7 +1584,13 @@ export const make = (dependencies: Dependencies) => {
     return result.entries
   })
 
-  const run = Effect.fn("SessionCompaction.run")(function* (input: Input, mode: Reason) {
+  /**
+   * `silent` is the background path: the same selection, prompt and validation, but nothing is
+   * published and nothing is committed. The checkpoint comes back as `prepared`, to be committed
+   * later against whatever the history has become. A failure is just a decline, because there is
+   * no started compaction for it to end, and a mechanical fallback is never prepared ahead of need.
+   */
+  const run = Effect.fn("SessionCompaction.run")(function* (input: Input, mode: Reason, silent = false) {
     const config = yield* loadSettings
     const declaredContext = input.model.route.defaults.limits?.context
     // Overflow recovery reaches here without a gate check: the provider itself just said the
@@ -1682,14 +1725,16 @@ export const make = (dependencies: Dependencies) => {
         }),
       )
     const messageID = SessionMessage.ID.create()
-    yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
-      sessionID: input.sessionID,
-      messageID,
-      timestamp: yield* DateTime.now,
-      reason: mode,
-    })
+    if (!silent)
+      yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
+        sessionID: input.sessionID,
+        messageID,
+        timestamp: yield* DateTime.now,
+        reason: mode,
+      })
     const publishInterrupted = () =>
       Effect.gen(function* () {
+        if (silent) return
         yield* dependencies.events.publish(SessionEvent.Compaction.Failed, {
           sessionID: input.sessionID,
           messageID,
@@ -1742,6 +1787,7 @@ export const make = (dependencies: Dependencies) => {
                 if (opening !== null) summaryOpeningChecked = true
                 if (opening?.[1]?.trim() === SUMMARY_HEADINGS[0]) yield* Deferred.succeed(extractionReady, undefined)
               }
+              if (silent) return
               // Defined since the V2 substrate landed and never published, so a compaction was a
               // silent multi-second stall with no stream to render.
               yield* dependencies.events.publish(SessionEvent.Compaction.Delta, {
@@ -1761,13 +1807,14 @@ export const make = (dependencies: Dependencies) => {
           }),
           Effect.catchDefect((defect) =>
             Effect.gen(function* () {
-              yield* dependencies.events.publish(SessionEvent.Compaction.Failed, {
-                sessionID: input.sessionID,
-                messageID,
-                timestamp: yield* DateTime.now,
-                mode,
-                reason: "providerFailed",
-              })
+              if (!silent)
+                yield* dependencies.events.publish(SessionEvent.Compaction.Failed, {
+                  sessionID: input.sessionID,
+                  messageID,
+                  timestamp: yield* DateTime.now,
+                  mode,
+                  reason: "providerFailed",
+                })
               return yield* Effect.die(defect)
             }),
           ),
@@ -1815,14 +1862,15 @@ export const make = (dependencies: Dependencies) => {
     }
     const summary = summarized.summary
     const failed = Effect.fnUntraced(function* (reason: FailureReason) {
-      yield* dependencies.events.publish(SessionEvent.Compaction.Failed, {
-        sessionID: input.sessionID,
-        messageID,
-        timestamp: yield* DateTime.now,
-        mode,
-        reason,
-        ...(summarized.failure === undefined ? {} : { detail: elide(summarized.failure, 500, " … ") }),
-      })
+      if (!silent)
+        yield* dependencies.events.publish(SessionEvent.Compaction.Failed, {
+          sessionID: input.sessionID,
+          messageID,
+          timestamp: yield* DateTime.now,
+          mode,
+          reason,
+          ...(summarized.failure === undefined ? {} : { detail: elide(summarized.failure, 500, " … ") }),
+        })
       return yield* decline(input, reason, mode)
     })
     const rejection: FailureReason | undefined =
@@ -1844,7 +1892,8 @@ export const make = (dependencies: Dependencies) => {
      * instead, and a healthy transcript is never traded for an excerpt.
      */
     const loadBearing = Token.estimate(selected.head) >= config.tokens
-    if (rejection !== undefined && !loadBearing) return yield* failed(rejection)
+    // Ahead of need there is nothing to rescue, so a bad summary is simply not prepared.
+    if (rejection !== undefined && (silent || !loadBearing)) return yield* failed(rejection)
     if (rejection !== undefined)
       yield* Effect.logWarning("Compaction fell back to a mechanical checkpoint").pipe(
         Effect.annotateLogs({
@@ -1879,6 +1928,24 @@ export const make = (dependencies: Dependencies) => {
                   carried,
                   yield* restore(Fiber.join(extraction)).pipe(Effect.onInterrupt(publishInterrupted)),
                 )
+        if (silent) {
+          const through =
+            selected.throughSeq === undefined
+              ? undefined
+              : input.entries.find((entry) => entry.seq === selected.throughSeq)
+          if (through === undefined) return yield* decline(input, "emptyConversation", mode)
+          return {
+            ok: true,
+            prepared: {
+              base: previousSummary?.id,
+              throughSeq: through.seq,
+              throughID: through.message.id,
+              text: checkpoint,
+              recent: selected.recent,
+              ledger,
+            },
+          } as const
+        }
         // Once extraction completes, commit the one successful terminal event atomically with
         // respect to cancellation. Otherwise an interrupt racing this transaction can append a
         // Failed event after Ended durably committed for the same message ID.
@@ -1987,9 +2054,95 @@ export const make = (dependencies: Dependencies) => {
           { context, input: input.model.route.defaults.limits?.input },
           Math.max(Math.min(output, OUTPUT_RESERVE_CAP), buffer),
         )
-    )
+    ) {
+      if (config.background && occupancy >= contextTarget(context) * BACKGROUND_START) yield* prepareInBackground(input)
       return yield* skip(input, "notNeeded")
+    }
+    if (config.background && (yield* commitBackground(input, context))) return true
     return yield* compactAfterOverflow(input)
+  })
+
+  /**
+   * Whether a prepared checkpoint still describes this history: the same checkpoint generation, the
+   * message it cut at still present (a revert removes it), and a result that actually gets the
+   * request back under the target. Anything else is discarded rather than committed.
+   */
+  const usable = (input: BudgetInput, prepared: Prepared, context: number) =>
+    latestCheckpoint(input.entries)?.id === prepared.base &&
+    input.entries.some((entry) => entry.seq === prepared.throughSeq && entry.message.id === prepared.throughID) &&
+    estimate({ system: input.request.system, tools: input.request.tools }) +
+      estimate(
+        input.entries
+          .filter((entry) => entry.seq > prepared.throughSeq && entry.message.type !== "compaction")
+          .map((entry) => entry.message),
+      ) +
+      Token.estimate(prepared.text + prepared.recent) <
+      contextTarget(context)
+
+  // Process-local on purpose, like the session coordinator: a prepared checkpoint is an optimization
+  // over a history that can change under it, so it is never persisted and is re-validated at use.
+  const background = new Map<string, Background>()
+
+  /** Starts one silent summary per checkpoint generation as the window approaches its target. */
+  const prepareInBackground = Effect.fnUntraced(function* (input: BudgetInput) {
+    const base = latestCheckpoint(input.entries)?.id
+    const existing = background.get(input.sessionID)
+    // `base` is undefined before the first checkpoint, so presence has to be checked on its own.
+    if (existing !== undefined && existing.base === base) return
+    if (existing?.type === "running") yield* Fiber.interrupt(existing.fiber)
+    const fiber = yield* run(input, "auto", true).pipe(
+      Effect.map((outcome) => (outcome.ok ? outcome.prepared : undefined)),
+      // Nothing may escape a fiber nobody is watching. A failed attempt leaves a marker so the next
+      // turn does not start another one; the blocking path still works exactly as before.
+      Effect.catchCause(() => Effect.succeed(undefined)),
+      Effect.tap((prepared) =>
+        Effect.sync(() => {
+          const current = background.get(input.sessionID)
+          if (current?.type !== "running" || current.base !== base) return
+          background.set(input.sessionID, prepared ? { type: "ready", base, prepared } : { type: "failed", base })
+        }),
+      ),
+      Effect.forkDetach,
+    )
+    background.set(input.sessionID, { type: "running", base, fiber })
+  })
+
+  /**
+   * Commits a checkpoint written ahead of need, waiting for it only if it is still being written.
+   * Returns false whenever it cannot, and the caller falls through to the ordinary blocking
+   * compaction, so this can only ever make the transition faster.
+   */
+  const commitBackground = Effect.fnUntraced(function* (input: BudgetInput, context: number) {
+    const state = background.get(input.sessionID)
+    if (state === undefined) return false
+    background.delete(input.sessionID)
+    const prepared =
+      state.type === "ready" ? state.prepared : state.type === "running" ? yield* Fiber.join(state.fiber) : undefined
+    if (prepared === undefined || !usable(input, prepared, context)) return false
+    const messageID = SessionMessage.ID.create()
+    // Both events commit together, like a handoff: there is no model call left to interrupt, and a
+    // lone `Started` would leave a checkpoint that never ends.
+    yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
+          sessionID: input.sessionID,
+          messageID,
+          timestamp: yield* DateTime.now,
+          reason: "auto",
+        })
+        yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
+          sessionID: input.sessionID,
+          messageID,
+          timestamp: yield* DateTime.now,
+          reason: "auto",
+          text: prepared.text,
+          recent: prepared.recent,
+          ...(prepared.ledger.length === 0 ? {} : { ledger: prepared.ledger }),
+          throughSeq: prepared.throughSeq,
+        })
+      }),
+    )
+    return true
   })
   return {
     compact,
