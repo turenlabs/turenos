@@ -1,11 +1,7 @@
-import * as http from "node:http"
-import * as tls from "node:tls"
-import { constants, enableCompileCache } from "node:module"
-import { join } from "node:path"
 import { monitorEventLoopDelay, performance } from "node:perf_hooks"
 import { watchOrphaned } from "./orphan-watch"
 import { IS_DEV } from "./constants"
-import { createSidecarProfiler, parseProfileCommand } from "./profiler/sidecar-profiler"
+import { parseProfileCommand } from "./profiler/sidecar-profiler"
 import type { SidecarProfileCommand, SidecarProfileMessage } from "./profiler/sidecar-profiler"
 import type { CredentialVault } from "./secret-key"
 import { rendererCorsOrigins } from "./window-security"
@@ -15,22 +11,13 @@ import type { ProxyCommand, ProxyReply } from "./security-proxy-bridge"
 import { randomUUID } from "node:crypto"
 import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
 
-type NodeHttpWithEnvProxy = typeof http & {
-  setGlobalProxyFromEnv: () => void
-}
-
-type NodeTlsWithSystemCertificates = typeof tls & {
-  getCACertificates: (type: "default" | "system") => string[]
-  setDefaultCACertificates: (certificates: string[]) => void
-}
-
 type StartCommand = {
   type: "start"
   hostname: string
   port: number
   password: string
   userDataPath: string
-  credentialVault: CredentialVault
+  credentialVault: Omit<CredentialVault, "key"> & { key: string }
 }
 
 type StopCommand = { type: "stop" }
@@ -45,8 +32,9 @@ type SidecarMessage =
   | ProxyCommand
 
 type ParentPort = {
-  postMessage(message: SidecarMessage): void
-  on(event: "message", listener: (event: { data: unknown }) => void): void
+  postMessage(message: SidecarMessage): boolean
+  on(event: "message", listener: (message: unknown) => void): unknown
+  on(event: "disconnect", listener: () => void): unknown
 }
 
 type Listener = {
@@ -58,6 +46,8 @@ type Listener = {
 const ORPHAN_STOP_TIMEOUT_MS = 5_000
 
 const parentPort = getParentPort()
+Object.assign(process, { resourcesPath: process.env.FORGE_RESOURCES_PATH })
+if (!process.versions.bun) throw new Error("Forge server sidecar requires Bun")
 let listener: Listener | undefined
 let startupDiagnostics: ReturnType<typeof armStartupDiagnostics> | undefined
 
@@ -65,11 +55,17 @@ let startupDiagnostics: ReturnType<typeof armStartupDiagnostics> | undefined
  * Only ever constructed in a dev build. `IS_DEV` folds to a literal, so a
  * shipped build has no profiler here at all - not merely a disabled one.
  */
-const profiler = IS_DEV ? createSidecarProfiler() : undefined
-const proxyPending = new Map<string, { resolve: (result: SecurityProxy.Result) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+const proxyPending = new Map<
+  string,
+  {
+    resolve: (result: SecurityProxy.Result) => void
+    reject: (error: Error) => void
+    timer: ReturnType<typeof setTimeout>
+  }
+>()
 
-parentPort.on("message", (event) => {
-  const reply = parseProxyReply(event.data)
+parentPort.on("message", (data) => {
+  const reply = parseProxyReply(data)
   if (reply) {
     const pending = proxyPending.get(reply.id)
     if (!pending) return
@@ -79,7 +75,7 @@ parentPort.on("message", (event) => {
     else pending.resolve(reply.result)
     return
   }
-  const store = parseProxyRequest(event.data)
+  const store = parseProxyRequest(data)
   if (store) {
     const pending = listener?.securityProxy(store.command) ?? Promise.reject(new Error("Sidecar is not ready"))
     void pending.then(
@@ -88,7 +84,7 @@ parentPort.on("message", (event) => {
     )
     return
   }
-  const command = parseCommand(event.data)
+  const command = parseCommand(data)
   if (!command) return
   if (command.type === "stop") {
     // Attribution for supervised-respawn diagnostics: a stop the parent asked
@@ -101,7 +97,10 @@ parentPort.on("message", (event) => {
     void start(command)
     return
   }
-  void profiler?.handle(command, notifyParent)
+  if (command.type === "profile-start")
+    notifyParent({ type: "profile-started", ok: false, error: "CPU profiling is unsupported by the Bun sidecar" })
+  if (command.type === "profile-stop")
+    notifyParent({ type: "profile-stopped", ok: false, error: "CPU profiling is unsupported by the Bun sidecar" })
 })
 
 watchParent()
@@ -131,17 +130,6 @@ async function start(command: StartCommand) {
     startupDiagnostics.trace("start")
     prepareSidecarEnv(command.password, command.userDataPath)
     ensureLoopbackNoProxy()
-    useSystemCertificates()
-    useEnvProxy()
-    // V8 spends ~245ms of every cold start parsing the server bundle before a
-    // line of it runs. The cache trades a few MB under userData for skipping
-    // that on each launch after the first, and must be armed before the import.
-    // A rejected cache is only a lost optimisation, so report it rather than
-    // failing start - but report it, or the win silently stops reproducing.
-    const cache = enableCompileCache(join(command.userDataPath, "compile-cache"))
-    if (cache.status === constants.compileCacheStatus.FAILED) {
-      process.stderr.write(`sidecar compile cache unavailable: ${cache.message ?? "unknown reason"}\n`)
-    }
     startupDiagnostics.trace("server-import.started")
     const { Server } = await import("virtual:forge-server")
     startupDiagnostics.trace("server-import.completed")
@@ -153,7 +141,7 @@ async function start(command: StartCommand) {
       username: "forge",
       password: command.password,
       cors: rendererCorsOrigins(),
-      credentialVault: command.credentialVault,
+      credentialVault: { ...command.credentialVault, key: Buffer.from(command.credentialVault.key, "base64") },
       securityProxy: requestSecurityProxy,
     })
     startupDiagnostics.trace("server-listen.completed")
@@ -165,10 +153,6 @@ async function start(command: StartCommand) {
 }
 
 async function stop() {
-  // Drop any in-flight profile before teardown. Serialising a long profile can
-  // take hundreds of milliseconds and quitting must not get slower, so a run
-  // that is still going when the app quits is discarded rather than saved.
-  profiler?.abort()
   for (const pending of proxyPending.values()) {
     clearTimeout(pending.timer)
     pending.reject(new Error("Sidecar stopped"))
@@ -273,25 +257,6 @@ function ensureLoopbackNoProxy() {
   upsert("no_proxy")
 }
 
-function useSystemCertificates() {
-  try {
-    const nodeTls = tls as NodeTlsWithSystemCertificates
-    nodeTls.setDefaultCACertificates([
-      ...new Set([...nodeTls.getCACertificates("default"), ...nodeTls.getCACertificates("system")]),
-    ])
-  } catch (error) {
-    console.warn("failed to load system certificates", error)
-  }
-}
-
-function useEnvProxy() {
-  try {
-    ;(http as NodeHttpWithEnvProxy).setGlobalProxyFromEnv()
-  } catch (error) {
-    console.warn("failed to load proxy environment", error)
-  }
-}
-
 function parseCommand(value: unknown): SidecarCommand | undefined {
   if (!value || typeof value !== "object") return
   const command = value as Partial<StartCommand | StopCommand>
@@ -306,7 +271,10 @@ function parseCommand(value: unknown): SidecarCommand | undefined {
   if (typeof command.userDataPath !== "string") return
   if (!command.credentialVault || typeof command.credentialVault !== "object") return
   if (typeof command.credentialVault.keyID !== "string" || command.credentialVault.keyID.length === 0) return
-  if (!(command.credentialVault.key instanceof Uint8Array) || command.credentialVault.key.byteLength !== 32) return
+  if (typeof command.credentialVault.key !== "string" || !/^[A-Za-z0-9+/]{43}=$/.test(command.credentialVault.key))
+    return
+  const key = Buffer.from(command.credentialVault.key, "base64")
+  if (key.byteLength !== 32 || key.toString("base64") !== command.credentialVault.key) return
   return {
     type: "start",
     hostname: command.hostname,
@@ -323,7 +291,14 @@ function serializeError(error: unknown) {
 }
 
 function getParentPort() {
-  const port = process.parentPort as ParentPort | undefined
-  if (!port) throw new Error("Sidecar parent port unavailable")
+  if (typeof process.send !== "function") throw new Error("Sidecar IPC channel unavailable")
+  const port: ParentPort = {
+    postMessage: (message) => process.send!(message),
+    on: (event, listener) => process.on(event, listener as never),
+  }
+  port.on("disconnect", () => {
+    void stop()
+    setTimeout(() => process.exit(1), ORPHAN_STOP_TIMEOUT_MS).unref?.()
+  })
   return port
 }

@@ -71,6 +71,7 @@
     "@parcel/watcher-win32-x64": "2.5.1"
   },
   "devDependencies": {
+    "@turenlabs/script": "workspace:*",
     "@actions/artifact": "6.2.1",
     "@electron/asar": "3.4.1",
     "@lydell/node-pty": "catalog:",
