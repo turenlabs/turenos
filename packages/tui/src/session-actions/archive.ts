@@ -1,0 +1,31 @@
+import { TextRenderable } from "@opentui/core"
+import { color } from "../theme"
+import { recipient, selectedSession, type SessionActionsContext } from "./context"
+import { updateSession } from "./update"
+
+export function archiveSession(ctx: SessionActionsContext): void {
+  const session = selectedSession(ctx)
+  if (!session) return
+  const restore = session.time.archived !== undefined
+  const action = restore ? "restore" : "archive"
+  const dialog = ctx.dialogs.open(restore ? "Restore session" : "Archive session", false, 23)
+  if (!dialog) return
+  recipient(ctx, dialog, session)
+  dialog.form.add(
+    new TextRenderable(ctx.renderer, {
+      content:
+        "Archiving hides recent history; it does not interrupt running work.\nTask-owned sessions may reject this change.",
+      fg: color.text,
+      wrapMode: "word",
+    }),
+  )
+  const confirmation = ctx.dialogs.input(dialog, `Type ${action} to confirm`)
+  // Capture once for this confirmation, not on each ambiguous-failure retry.
+  const archived = restore ? null : Date.now()
+  dialog.submit = async () => {
+    if (confirmation.value !== action) throw new Error(`Type ${action} to confirm.`)
+    await updateSession(ctx, dialog, session, { archived })
+  }
+  dialog.error.content = `Ctrl+S Confirm ${action} - Esc cancel`
+  confirmation.focus()
+}
