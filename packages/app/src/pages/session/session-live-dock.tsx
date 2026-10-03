@@ -2,6 +2,7 @@ import { For, Show } from "solid-js"
 import { Icon } from "@turenlabs/ui/icon"
 import type { Todo } from "@turenlabs/sdk/v2"
 import type { SessionLiveView } from "@/session-live-view"
+import { SessionLiveMetrics } from "./session-live-metrics"
 import "./session-live-dock.css"
 
 export const SESSION_LIVE_VIEWS = [
@@ -67,6 +68,7 @@ export function SessionLiveDock(props: {
           </button>
         )}
       </For>
+      <SessionLiveMetrics />
     </nav>
   )
 }
