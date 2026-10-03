@@ -1,12 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.34",
+  "version": "1.0.38",
   "name": "@turenlabs/core",
   "type": "module",
   "license": "MIT",
   "private": true,
   "scripts": {
     "bench:compaction": "bun run script/bench-compaction.ts",
+    "bench:projector": "bun run script/bench-projector.ts",
     "bench:tool-routing": "bun run test/benchmark/tool-routing.ts",
     "bench:zero-mem": "bun run test/benchmark/zero-mem.ts",
     "db": "bun drizzle-kit",

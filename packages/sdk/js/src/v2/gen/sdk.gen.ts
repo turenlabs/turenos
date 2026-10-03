@@ -4670,12 +4670,13 @@ export class History extends HeyApiClient {
   /**
    * List sync events
    *
-   * List sync events for all aggregates. Keys are aggregate IDs the client already knows about, values are the last known sequence ID. Events with seq > value are returned for those aggregates. Aggregates not listed in the input get their full history.
+   * List sync events for all aggregates. Keys are aggregate IDs the client already knows about, values are the last known sequence ID. Events with seq > value are returned for those aggregates. Aggregates not listed in the input get their full history, paged: results are capped at `limit` events (default 500); resubmit with the returned per-aggregate state to continue.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
       workspace?: string
+      limit?: string
       body?: {
         [key: string]: number
       }
@@ -4689,6 +4690,7 @@ export class History extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
+            { in: "query", key: "limit" },
             { key: "body", map: "body" },
           ],
         },

@@ -73,6 +73,11 @@ const render = (state: State) => {
   const available = new Set(state.agents.map((agent) => agent.id))
   return [
     "Use durable specialized subagents when independent work can run in parallel or when a separate review perspective materially improves confidence.",
+    "<when_to_delegate>",
+    "  Delegate when the work splits into two or more independent lanes that each need more than a few tool calls, when raw output would flood your context and only a summary matters, or when an independent review of a high-risk change is worth having.",
+    "  Do not delegate a lookup you can finish in a few tool calls, work whose next step depends on the result, a single small edit, or work where two workers would touch the same files. Each child starts without your context, so delegating has a cost.",
+    "  Brief every child completely: the goal, the relevant file:line context, the exact deliverable and its format, and any write roots. It cannot see this conversation.",
+    "</when_to_delegate>",
     "<subagent_workflow>",
     `  1. Use ${spawnName} for independent exploration or research assignments in the same provider turn so they run in parallel; it returns after admission, not after child completion.`,
     ...(state.limit === undefined

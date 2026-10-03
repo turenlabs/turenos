@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, ne, or } from "drizzle-orm"
+import { and, asc, desc, eq, gt, ne, or, sql } from "drizzle-orm"
 import { Effect, Schema } from "effect"
 import { Database } from "../database/database"
 import { MessageDecodeError } from "./error"
@@ -9,6 +9,15 @@ import { SessionContextEpochTable, SessionMessageTable } from "./sql"
 type DatabaseService = Database.Interface["db"]
 
 const decode = Schema.decodeUnknownEffect(SessionMessage.Message)
+
+// Decoded messages are immutable once landed, and every write path changes the
+// stored JSON text, so the raw column text is a safe content discriminator. A
+// cache hit skips both the JSON.parse and the schema decode that otherwise run
+// for every row on every drain — the dominant allocation cost on long sessions.
+const decodeCache = new Map<SessionMessage.ID, { data: string; message: SessionMessage.Message }>()
+const DECODE_CACHE_LIMIT = 8192
+
+export const decodeStats = { hits: 0, misses: 0 }
 
 export const latestCompaction = Effect.fnUntraced(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
   const row = yield* db
@@ -57,7 +66,13 @@ const messageRows = Effect.fnUntraced(function* (
   baselineSeq?: number,
 ) {
   const rows = yield* db
-    .select()
+    .select({
+      id: SessionMessageTable.id,
+      session_id: SessionMessageTable.session_id,
+      type: SessionMessageTable.type,
+      seq: SessionMessageTable.seq,
+      data: sql<string>`${SessionMessageTable.data}`,
+    })
     .from(SessionMessageTable)
     .where(
       and(
@@ -89,8 +104,22 @@ const messageRows = Effect.fnUntraced(function* (
   return checkpoint ? [checkpoint, ...rows.filter((row) => row.id !== compaction.id)] : rows
 })
 
-const decodeMessageRow = (row: typeof SessionMessageTable.$inferSelect) =>
-  decode({ ...row.data, id: row.id, type: row.type }).pipe(
+type MessageRow = {
+  id: SessionMessage.ID
+  session_id: string
+  type: SessionMessage.Type
+  seq: number
+  data: string
+}
+
+const decodeMessageRow = (row: MessageRow) => {
+  const cached = decodeCache.get(row.id)
+  if (cached !== undefined && cached.data === row.data) {
+    decodeStats.hits++
+    return Effect.succeed(cached.message)
+  }
+  decodeStats.misses++
+  return decode({ ...JSON.parse(row.data), id: row.id, type: row.type }).pipe(
     Effect.mapError(
       () =>
         new MessageDecodeError({
@@ -98,7 +127,21 @@ const decodeMessageRow = (row: typeof SessionMessageTable.$inferSelect) =>
           messageID: SessionMessage.ID.make(row.id),
         }),
     ),
+    Effect.tap((message) =>
+      Effect.sync(() => {
+        if (decodeCache.size >= DECODE_CACHE_LIMIT) {
+          // Map iterates in insertion order, so the leading keys are the oldest reads.
+          let drop = Math.ceil(DECODE_CACHE_LIMIT / 10)
+          for (const key of decodeCache.keys()) {
+            if (drop-- <= 0) break
+            decodeCache.delete(key)
+          }
+        }
+        decodeCache.set(row.id, { data: row.data, message })
+      }),
+    ),
   )
+}
 
 export const load = Effect.fn("SessionHistory.load")(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
   return (yield* entries(db, sessionID)).map((entry) => entry.message)

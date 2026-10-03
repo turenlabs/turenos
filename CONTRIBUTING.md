@@ -86,6 +86,16 @@ docs, run:
 bun .agents/skills/turen-documentation/scripts/check.ts docs
 ```
 
+Before opening a pull request, list the docs your diff can make wrong:
+
+```bash
+bun .agents/skills/turen-diff-documentation/scripts/affected.ts
+```
+
+It finds pages that cite changed, deleted or renamed files, names the diff removed, and new env vars and CLI options
+nothing documents. The [`turen-diff-documentation`](.agents/skills/turen-diff-documentation/SKILL.md) skill covers the
+rest of the check, including behavior changes no name reveals.
+
 The method is the [`turen-documentation`](.agents/skills/turen-documentation/SKILL.md) skill in `.agents/skills/`.
 Coding agents are told to read it by the root `AGENTS.md`; not every agent discovers `.agents/skills/` on its own
 (TurenOS loads skill folders only when a `forge.json` lists them under `skills`). The `AGENTS.md` files are maintained

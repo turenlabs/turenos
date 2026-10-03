@@ -169,7 +169,8 @@ export const dict = {
   "provider.connect.localServer.endpoint.description":
     "Optional. Defaults are used unless your server listens somewhere else.",
   "provider.connect.localServer.endpoint.invalid": "Use a local http(s) address such as http://127.0.0.1:8080",
-  "provider.connect.localServer.notReady": "{{provider}} is not reachable at {{endpoint}}. Start the server, then connect.",
+  "provider.connect.localServer.notReady":
+    "{{provider}} is not reachable at {{endpoint}}. Start the server, then connect.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen gives you access to a curated set of reliable optimized models for coding agents.",
   "provider.connect.opencodeZen.line2":
@@ -765,6 +766,25 @@ export const dict = {
   "home.killSwitch.success.description": "All running agents were stopped.",
   "home.killSwitch.failed": "Kill switch failed",
   "home.providerTip": "Connect to 75+ providers to use other models, including Claude, GPT, Gemini, etc",
+  "tips.label": "Tip of the day",
+  "tips.browse": "Browse tips",
+  "tips.dialog.title": "Tips",
+  "tips.hideToday": "Hide for today",
+  "tips.disable": "Turn off daily tips",
+  "tips.enable": "Show daily tips",
+  "tips.saveFailed": "Could not save your tip preference. This change applies only until you leave this page.",
+  "tips.context.title": "Add context before you chat",
+  "tips.context.body": "Type @ in a prompt to find files and add them as context before sending.",
+  "tips.commands.title": "Find actions quickly",
+  "tips.commands.body": "Open the command palette to find navigation, model, and workspace actions.",
+  "tips.extensions.title": "Explore the extension catalog",
+  "tips.extensions.body": "Open Extend to find skills, MCP tools, and data sources you can use in a session.",
+  "tips.worktree.title": "Keep changes separate",
+  "tips.worktree.body": "In a Git project, choose a worktree before sending your first prompt.",
+  "tips.model.title": "Choose the right model",
+  "tips.model.body": "Use the controls above the composer to pick a model and its thinking effort.",
+  "tips.providers.title": "Explore providers",
+  "tips.providers.body": "Open Settings → Cloud Providers to connect additional models when you need them.",
 
   "session.tab.session": "Session",
   "session.tab.review": "Review",
@@ -1189,8 +1209,7 @@ export const dict = {
     "Allow the background reviewer to propose and apply bounded Harness changes automatically",
   "settings.general.row.harnessSelfModification.enabled": "Enabled",
   "settings.general.row.automations.title": "Automations",
-  "settings.general.row.automations.description":
-    "Enable scheduled workflows and the Automations workspace",
+  "settings.general.row.automations.description": "Enable scheduled workflows and the Automations workspace",
   "memory.title": "Memory",
   "memory.form.title": "Memory entry",
   "memory.add": "Add memory",
@@ -1410,8 +1429,7 @@ export const dict = {
   "settings.localProviders.connected.empty": "No local providers are running",
   "settings.localProviders.section.available": "Available providers",
   "settings.localProviders.section.removed": "Removed providers",
-  "settings.localProviders.removed.description":
-    "Removed for this machine. Restore to offer its models again.",
+  "settings.localProviders.removed.description": "Removed for this machine. Restore to offer its models again.",
   "settings.localProviders.offline.description": "Configured but not reachable right now.",
   "settings.localProviders.available.claudeCode": "Runs Claude through the Claude Code CLI using your Claude sign-in.",
   "settings.localProviders.available.museCode": "Runs models through the Muse Code CLI using its own local sign-in.",

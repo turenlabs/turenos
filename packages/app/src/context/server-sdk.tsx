@@ -148,8 +148,14 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   // Exponential reconnect backoff: a down server shouldn't get an SSE attempt
   // every 250ms forever. Reset when a stream actually delivers an event.
   let failures = 0
-  const HEARTBEAT_TIMEOUT_MS = 15_000
+  // Server heartbeats land every 10s; keep several intervals of slack so a
+  // saturated sidecar that delays a write doesn't abort a healthy stream.
+  const HEARTBEAT_TIMEOUT_MS = 45_000
   let lastEventAt = Date.now()
+  // Resume cursor for the next connect: id of the last bus event this stream
+  // delivered. Synthetic server.connected/heartbeat ids are excluded — they are
+  // never in the server backlog, so sending one would always read as a gap.
+  let lastEventId: string | undefined
   let heartbeat: ReturnType<typeof setTimeout> | undefined
   const resetHeartbeat = () => {
     lastEventAt = Date.now()
@@ -182,6 +188,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
         try {
           const events = await eventSdk.global.event({
             signal: attempt.signal,
+            headers: lastEventId === undefined ? undefined : { "Last-Event-ID": lastEventId },
             onSseError: (error) => {
               if (isStreamClosed(error, attempt?.signal)) return
               if (streamErrorLogged) return
@@ -199,6 +206,11 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
             resetHeartbeat()
             failures = 0
             streamErrorLogged = false
+            const type: string = event.payload.type
+            const id = event.payload.id
+            if (typeof id === "string" && type !== "server.connected" && type !== "server.heartbeat") {
+              lastEventId = id
+            }
             if (event.payload.type !== "sync") {
               // Canonicalized so dir-scoped subscribers match regardless of how
               // the server spelled this directory.

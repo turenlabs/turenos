@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
-import { Effect, Layer } from "effect"
+import { ConfigProvider, Effect, Layer } from "effect"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { FSUtil } from "@turenlabs/core/fs-util"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -9,6 +9,7 @@ import { FileSystemSearch } from "@turenlabs/core/filesystem/search"
 import { Location } from "@turenlabs/core/location"
 import { Ripgrep } from "@turenlabs/core/ripgrep"
 import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
+import { Fff } from "#fff"
 import { location } from "../fixture/location"
 import { tmpdir } from "../fixture/tmpdir"
 import { testEffect } from "../lib/effect"
@@ -85,6 +86,59 @@ test("indexes each parent directory once for search", async () => {
     )
 
     expect(result.map((entry) => entry.path)).toContain(RelativePath.make(path.join("nested", "deep") + path.sep))
+  } finally {
+    await tmp[Symbol.asyncDispose]()
+  }
+})
+
+// Without fff both selections resolve to ripgrep, so the test could not tell them apart.
+test.skipIf(!Fff.available())("uses ripgrep instead of fff when the file watcher is disabled", async () => {
+  const tmp = await tmpdir()
+  try {
+    await fs.writeFile(path.join(tmp.path, "early.ts"), "needle\n")
+
+    const runtime = AppNodeBuilder.build(
+      LayerNode.make({
+        service: FileSystemSearch.Service,
+        layer: FileSystemSearch.locationLayer,
+        deps: [FSUtil.node, Location.node, Ripgrep.node],
+      }),
+      [
+        [
+          Location.node,
+          Layer.succeed(
+            Location.Service,
+            Location.Service.of(location(Location.Ref.make({ directory: AbsolutePath.make(tmp.path) }))),
+          ),
+        ],
+      ],
+    ).pipe(
+      Layer.provide(
+        ConfigProvider.layer(ConfigProvider.fromUnknown({ FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER: "true" })),
+      ),
+    )
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const search = yield* FileSystemSearch.Service
+        // The initial ripgrep scan runs in a forked fiber, so wait for it before adding the late file.
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const early = yield* search.find({ query: "early", type: "file", limit: 10 })
+          if (early.length > 0) break
+          yield* Effect.sleep("10 millis")
+        }
+        yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "late.ts"), "needle\n"))
+        // ripgrep runs live per call, so glob sees the new file.
+        const globbed = yield* search.glob({ pattern: "*.ts", limit: 10 })
+        // The ripgrep find index is a one-shot snapshot. fff would have picked the file up through its watcher.
+        yield* Effect.sleep("1500 millis")
+        const found = yield* search.find({ query: "late", type: "file", limit: 10 })
+        return { globbed: globbed.map((entry) => entry.path).sort(), found: found.map((entry) => entry.path) }
+      }).pipe(Effect.scoped, Effect.provide(runtime)),
+    )
+
+    expect(result.globbed).toEqual([RelativePath.make("early.ts"), RelativePath.make("late.ts")])
+    expect(result.found).not.toContain(RelativePath.make("late.ts"))
   } finally {
     await tmp[Symbol.asyncDispose]()
   }

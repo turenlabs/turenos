@@ -13,9 +13,15 @@ import { SessionV2 } from "@turenlabs/core/session"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { WorkspaceV2 } from "@turenlabs/core/workspace"
 import path from "path"
-import { Cause, Context, Duration, Effect, Exit, Layer, Option, Schema, Stream } from "effect"
+import { Cause, Clock, Context, Duration, Effect, Exit, Layer, Option, Schema, Stream } from "effect"
 
-const POLL_INTERVAL = Duration.seconds(5)
+// Longest sleep with nothing known to be due. Changes from this process wake the scheduler at once; this only
+// bounds how late a loop written by another process sharing the database is noticed, which includes a new
+// interval loop's first run because interval loops are born due.
+const IDLE_CAP = Duration.seconds(60)
+// Shortest gap between checks, so a due time that claimDue does not act on cannot spin the database.
+const MIN_DELAY = Duration.millis(250)
+const ERROR_DELAY = Duration.seconds(1)
 const LEASE_MS = Duration.toMillis(Duration.minutes(5))
 const RENEW_INTERVAL = Duration.minutes(1)
 const CANCELLATION_INTERVAL = Duration.seconds(1)
@@ -280,7 +286,8 @@ const layer = Layer.effect(
         (run) => runClaimed(run),
         { discard: true },
       )
-    }).pipe(Effect.catchCause((cause) => Effect.logError("Loop scheduler scan failed", { cause: Cause.pretty(cause) })))
+      return due.length
+    })
 
     const fireAndRun = (
       loopID: string,
@@ -314,7 +321,7 @@ const layer = Layer.effect(
 
     const queueFileEvent = (file: string) =>
       Effect.gen(function* () {
-        const actives = yield* loops.list()
+        const actives = yield* loops.listFileChange()
         for (const info of actives) {
           if (info.status !== "active") continue
           if (info.eventTrigger?.type !== "file-change") continue
@@ -396,13 +403,49 @@ const layer = Layer.effect(
       Effect.forkScoped,
     )
 
-    yield* scan.pipe(Effect.andThen(Effect.sleep(POLL_INTERVAL)), Effect.forever, Effect.forkScoped)
+    yield* pollDue(loops, scan).pipe(Effect.forkScoped)
     yield* fileStream
     yield* sessionSuccess
     yield* sessionFailure
     return Service.of({})
   }),
 )
+
+/**
+ * Claims due runs when `nextWakeAt` says there is work and otherwise sleeps until it, a local change or the idle
+ * cap. The first pass scans unconditionally so a crashed process's stale leases are recovered at startup.
+ * Exported with a minimal Loop surface so tests can drive it without a database. `scan` returns how many rows
+ * `claimDue` returned.
+ */
+export function pollDue<E, R>(
+  loops: Pick<Loop.Interface, "nextWakeAt" | "awaitChange">,
+  scan: Effect.Effect<number, E, R>,
+) {
+  const pass = (startup: boolean) =>
+    Effect.gen(function* () {
+      // Capture before reading so a change between the read and the sleep still wakes this pass.
+      const changed = yield* loops.awaitChange()
+      const now = yield* Clock.currentTimeMillis
+      const next = startup ? now : yield* loops.nextWakeAt(now)
+      const due = next !== undefined && next <= now
+      if (!due) {
+        const delay =
+          next === undefined ? IDLE_CAP : Duration.min(IDLE_CAP, Duration.max(MIN_DELAY, Duration.millis(next - now)))
+        yield* Effect.race(Effect.sleep(delay), changed)
+      }
+      if (due) {
+        const claimed = yield* scan
+        if (claimed === 0 && !startup) yield* Effect.race(Effect.sleep(MIN_DELAY), changed)
+      }
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logError("Loop scheduler scan failed", { cause: Cause.pretty(cause) }).pipe(
+          Effect.andThen(Effect.sleep(ERROR_DELAY)),
+        ),
+      ),
+    )
+  return pass(true).pipe(Effect.andThen(pass(false).pipe(Effect.forever)))
+}
 
 function recordSkippedStep(
   loops: Loop.Interface,

@@ -27,15 +27,28 @@ Detached completions enqueue a concise advisory notification to the same
 session. Command output remains untrusted tool data and is not interpolated into
 the notification. Quick inline results do not send duplicate notifications.
 
+Interrupting a running session cancels the shell jobs that session owns, and
+the interrupt cascade does the same for each running child session. The
+cancelled jobs send no completion notification, and notifications already
+admitted from earlier shell jobs but not yet promoted are cancelled, so a job
+cannot wake the session again after an interrupt. `shell_job status` still
+reports `cancelled`. Interrupting an idle session leaves its jobs alone. Jobs
+owned by another server process are never signalled and keep their normal
+notification.
+
 Command approval, working-directory checks, delegated command grants, and shell
 safety checks all run before job admission. Other sessions cannot read, wait on,
 or cancel the job. There are at most four active jobs per session and 32 per
 server process, counted across all sessions.
 
-Repeating the same tool-call identity reconciles the existing job rather than
-executing the command again. Durable records are observations, not instructions
-to resume after a restart. Lost process ownership is reported as `interrupted`;
-TurenOS never replays the command or terminates a stored command PID on recovery.
+Repeating the same tool-call identity reconciles the existing retained job
+rather than executing the command again. Retention deletes finished jobs whose
+delivery is not `pending` once they are older than `retention.toolOutputDays`
+(14 days by default; `0` keeps them). After a record is deleted, the job reads
+as not found and repeating its identity starts the command again. Durable
+records are observations, not instructions to resume after a restart. Lost
+process ownership is reported as `interrupted`; TurenOS never replays the
+command or terminates a stored command PID on recovery.
 
 ## Source
 

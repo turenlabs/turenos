@@ -50,5 +50,7 @@ names are compatibility identifiers and must not be renamed. See [Secure storage
 and [`packages/core/src/secret-vault.ts`](../../packages/core/src/secret-vault.ts).
 
 Retention rewrites derived message and tool settlement copies but does not rewrite the append-only
-event authority. Sweeps are bounded and scheduled globally because all Locations share the database.
+event authority. The same sweep deletes finished shell-job records and their captured output once they are
+older than `retention.toolOutputDays`; running, stopping and undelivered jobs are kept. Sweeps are bounded
+and scheduled globally because all Locations share the database.
 See [`packages/core/src/retention.ts`](../../packages/core/src/retention.ts).

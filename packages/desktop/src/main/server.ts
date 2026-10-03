@@ -1,5 +1,3 @@
-import { mkdirSync } from "node:fs"
-import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { app, utilityProcess } from "electron"
@@ -88,17 +86,9 @@ export async function spawnLocalServer(
   const child = utilityProcess.fork(sidecar, [], {
     cwd: process.cwd(),
     env: createSidecarEnv(),
-    // The default ~4GB V8 old-space ceiling is reached by large workspaces long
-    // before the process is otherwise unhealthy — give the sidecar headroom so a
-    // heavy turn transient survives instead of crashing the session mid-prompt.
-    // Heap snapshots are armed only at the real ceiling: V8's native near-limit
-    // mechanism fires when the process is actually dying, so a busy sidecar
-    // never pays a full-heap serialization while it is still healthy.
-    execArgv: [
-      "--max-old-space-size=8192",
-      "--heapsnapshot-near-heap-limit=3",
-      `--diagnostic-dir=${diagnosticDir()}`,
-    ],
+    // The sidecar's V8 heap ceiling is a fixed 4 GB under Electron (pointer compression), and
+    // --max-old-space-size does not raise it, so memory has to be bounded where it is retained.
+    // The heap watchdog in the sidecar logs usage as it climbs.
     serviceName: SIDECAR_SERVICE_NAME,
     stdio: "pipe",
   })
@@ -391,18 +381,7 @@ function createSidecarEnv(): Record<string, string> {
   )
   if (app.isPackaged) env.FORGE_VIGIL_PATH = join(process.resourcesPath, "vigil")
   if (!app.isPackaged) env.FORGE_DISABLE_CHANNEL_DB = "1"
-  // Packaged sidecars can't be re-run under a debugger after an OOM, so arm the
-  // heap-snapshot watchdog by default. The flag stays overridable to "0".
-  if (app.isPackaged) env.FORGE_AUTO_HEAP_SNAPSHOT ??= "1"
   return env
-}
-
-// Near-limit snapshots must land where the support bundle looks for sidecar
-// logs, so mirror the sidecar's Global.Path.log (~/.local/share/forge/log).
-function diagnosticDir() {
-  const dir = join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "forge", "log")
-  mkdirSync(dir, { recursive: true })
-  return dir
 }
 
 function delay(ms: number) {

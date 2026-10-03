@@ -23,14 +23,43 @@ import { GlobalUpgradeInput } from "../groups/global"
 import { Database } from "@turenlabs/core/database/database"
 import { ServerDescriptor } from "@/server/descriptor"
 
-function eventData(data: unknown): Sse.Event {
-  return {
+// Every subscriber receives the same GlobalBusEvent object, so serializing per
+// connection multiplies JSON.stringify cost by subscriber count — measurable
+// under token-delta bursts with several attached streams. Cache the rendered
+// frame on the event itself; entries die with the event once it leaves the
+// backlog, so the map cannot grow unboundedly.
+const frames = new WeakMap<GlobalBusEvent, Sse.Event>()
+
+function eventData(data: GlobalBusEvent): Sse.Event {
+  const hit = frames.get(data)
+  if (hit) return hit
+  // Wire ids let spec-compliant clients resume via Last-Event-ID. Synthetic
+  // events are never replayed so they must not poison the client's cursor.
+  const id = data.payload?.id
+  const synthetic = data.payload?.type === "server.connected" || data.payload?.type === "server.heartbeat"
+  const value: Sse.Event = {
     _tag: "Event",
     event: "message",
-    id: undefined,
+    id: synthetic || typeof id !== "string" ? undefined : id,
     data: JSON.stringify(data),
   }
+  frames.set(data, value)
+  return value
 }
+
+// The outbound half of the SSE response, extracted so the write-batching
+// contract is directly testable: each element emitted is one socket write.
+// Grouped bursts join into a single write — under load the ungrouped stream
+// issued one write per event, saturating the loop in WriteString while health
+// and storage requests starved.
+export const encodeEvents = <E, R>(events: Stream.Stream<GlobalBusEvent, E, R>) =>
+  events.pipe(
+    Stream.map(eventData),
+    Stream.pipeThroughChannel(Sse.encode()),
+    Stream.groupedWithin(256, "10 millis"),
+    Stream.map((chunk) => chunk.join("")),
+    Stream.encodeText,
+  )
 
 function parseBody(body: string) {
   try {
@@ -50,11 +79,16 @@ function parseBody(body: string) {
 // EventV2 pubsub bound (8192) so only a genuinely stalled consumer overflows.
 const subscriberCapacity = 8192
 
-function eventResponse() {
+function eventResponse(request: HttpServerRequest.HttpServerRequest) {
   return Effect.gen(function* () {
     yield* Effect.logInfo("global event connected")
-    const events = Stream.callback<GlobalBusEvent, EventV2.SubscriberOverflowError>(
-      (queue) => {
+    const cursor = request.headers["last-event-id"]
+    const events = Stream.unwrap(
+      Effect.gen(function* () {
+        const queue = yield* Queue.make<GlobalBusEvent, EventV2.SubscriberOverflowError>({
+          capacity: subscriberCapacity,
+          strategy: "dropping",
+        })
         const handler = (event: GlobalBusEvent) => {
           if (Queue.offerUnsafe(queue, event)) return
           Queue.failCauseUnsafe(
@@ -62,24 +96,38 @@ function eventResponse() {
             Cause.fail(new EventV2.SubscriberOverflowError({ capacity: subscriberCapacity })),
           )
         }
-        return Effect.acquireRelease(
-          Effect.sync(() => GlobalBus.on("event", handler)),
-          () => Effect.sync(() => GlobalBus.off("event", handler)),
+        // Subscribe and snapshot the backlog in one synchronous block: Node is
+        // single-threaded, so no emit can interleave — replayed events cover
+        // the gap up to now and the handler covers everything after, with no
+        // overlap.
+        const replay = yield* Effect.sync(() => {
+          GlobalBus.on("event", handler)
+          const backlog = cursor === undefined ? undefined : GlobalBus.eventsAfter(cursor)
+          return backlog !== undefined && backlog.length < subscriberCapacity ? backlog : undefined
+        })
+        const resume = cursor === undefined ? "initial" : replay === undefined ? "gap" : "ok"
+        const connected: GlobalBusEvent = {
+          directory: "global",
+          payload: { id: EventV2.ID.create(), type: "server.connected", properties: { resume } },
+        }
+        return Stream.make(connected, ...(replay ?? [])).pipe(
+          Stream.concat(Stream.fromQueue(queue)),
+          Stream.ensuring(
+            Effect.suspend(() => {
+              GlobalBus.off("event", handler)
+              return Queue.shutdown(queue)
+            }),
+          ),
         )
-      },
-      { bufferSize: subscriberCapacity, strategy: "dropping" },
+      }),
     )
-    const heartbeat = Stream.tick("10 seconds").pipe(
+    const heartbeat: Stream.Stream<GlobalBusEvent> = Stream.tick("10 seconds").pipe(
       Stream.drop(1),
       Stream.map(() => ({ payload: { id: EventV2.ID.create(), type: "server.heartbeat", properties: {} } })),
     )
 
     return HttpServerResponse.stream(
-      Stream.make({ payload: { id: EventV2.ID.create(), type: "server.connected", properties: {} } }).pipe(
-        Stream.concat(events.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }))),
-        Stream.map(eventData),
-        Stream.pipeThroughChannel(Sse.encode()),
-        Stream.encodeText,
+      encodeEvents(events.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }))).pipe(
         Stream.ensuring(Effect.logInfo("global event disconnected")),
       ),
       {
@@ -118,8 +166,10 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       return info
     })
 
-    const event = Effect.fn("GlobalHttpApi.event")(function* () {
-      return yield* eventResponse()
+    const event = Effect.fn("GlobalHttpApi.event")(function* (ctx: {
+      request: HttpServerRequest.HttpServerRequest
+    }) {
+      return yield* eventResponse(ctx.request)
     })
 
     const configGet = Effect.fn("GlobalHttpApi.configGet")(function* () {

@@ -107,6 +107,7 @@ export const eventError = (route: string, message: string, raw?: string) =>
  */
 export const describeError = (error: unknown): string => {
   const seen = new Set<unknown>()
+  const seenParts = new Set<string>()
   const parts: string[] = []
   let current = error
   while (current !== undefined && current !== null && !seen.has(current)) {
@@ -122,9 +123,15 @@ export const describeError = (error: unknown): string => {
             typeof current === "bigint"
           ? String(current)
           : ""
-    if (text && !parts.includes(text)) parts.push(text)
+    if (text && !seenParts.has(text)) {
+      parts.push(text)
+      seenParts.add(text)
+    }
     const code = current instanceof Error ? (current as { code?: unknown }).code : undefined
-    if (typeof code === "string" && !parts.includes(code)) parts.push(code)
+    if (typeof code === "string" && !seenParts.has(code)) {
+      parts.push(code)
+      seenParts.add(code)
+    }
     current = current instanceof Error ? (current as { cause?: unknown }).cause : undefined
   }
   return parts.length > 0 ? parts.join(": ") : "unknown error"
@@ -152,7 +159,10 @@ export const parseJson = (route: string, input: string, message: string) =>
  * (OpenAI Chat `system` content, OpenAI Responses `system` content, Gemini
  * `systemInstruction.parts[].text`).
  */
-export const joinText = (parts: ReadonlyArray<{ readonly text: string }>) => parts.map((part) => part.text).join("\n")
+export const joinText = (parts: ReadonlyArray<{ readonly text: string }>) => {
+  if (parts.length === 1) return parts[0]?.text ?? ""
+  return parts.map((part) => part.text).join("\n")
+}
 
 const escapeSystemUpdateText = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")

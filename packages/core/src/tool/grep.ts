@@ -21,7 +21,8 @@ export const Input = Schema.Struct({
     description: "Regex pattern to search for in file contents",
   }),
   path: RelativePath.pipe(Schema.optional).annotate({
-    description: "Relative directory to search. Defaults to the active Location.",
+    description:
+      "Literal relative file or directory to search; no glob or shell expansion. Defaults to the active Location.",
   }),
   include: FileSystem.GrepInput.fields.include.annotate({
     description: 'File glob to include in the search (for example, "*.js" or "*.{ts,tsx}")',
@@ -87,12 +88,16 @@ const layer = Layer.effectDiscard(
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
               const target = path.resolve(location.directory, input.path ?? ".")
-              const info = yield* fs.stat(target).pipe(Effect.catch(() => Effect.succeed(undefined)))
+              const info = yield* fs.stat(target)
+              if (info.type !== "Directory" && info.type !== "File")
+                return yield* Effect.fail(
+                  new ToolFailure({ message: `Search path is not a file or directory: ${input.path ?? "."}` }),
+                )
               return yield* ripgrep
                 .grep({
-                  cwd: info?.type === "Directory" ? target : path.dirname(target),
+                  cwd: info.type === "Directory" ? target : path.dirname(target),
                   pattern: input.pattern,
-                  file: info?.type === "File" ? path.basename(target) : undefined,
+                  file: info.type === "File" ? path.basename(target) : undefined,
                   include: input.include,
                   limit: input.limit ?? Number.MAX_SAFE_INTEGER,
                 })
@@ -106,10 +111,7 @@ const layer = Layer.effectDiscard(
                           path: RelativePath.make(
                             path.relative(
                               location.directory,
-                              path.resolve(
-                                info?.type === "Directory" ? target : path.dirname(target),
-                                match.entry.path,
-                              ),
+                              path.resolve(info.type === "Directory" ? target : path.dirname(target), match.entry.path),
                             ),
                           ),
                         }),
@@ -117,7 +119,19 @@ const layer = Layer.effectDiscard(
                     ),
                   ),
                 )
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to grep for ${input.pattern}` }))),
+            }).pipe(
+              Effect.mapError(
+                (error) =>
+                  new ToolFailure({
+                    message:
+                      error instanceof PermissionV2.BlockedError
+                        ? `Permission denied: grep ${input.path ?? "."}`
+                        : error instanceof PermissionV2.CorrectedError
+                          ? error.feedback
+                          : `Unable to grep for ${input.pattern} in ${input.path ?? "."}: ${error.message}`,
+                  }),
+              ),
+            ),
         }),
       })
       .pipe(Effect.orDie)

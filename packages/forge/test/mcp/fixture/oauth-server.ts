@@ -29,6 +29,7 @@ export function serveOAuthMcp(options: OAuthMcpOptions = {}) {
       const toolName = options.toolName ?? "test_tool"
       const sessions = new Map<string, Session>()
       let listToolsCalls = 0
+      let mcpRequests = 0
       let requiresAuth = true
 
       // One Server + transport pair per session -- Server accepts a single
@@ -122,6 +123,7 @@ export function serveOAuthMcp(options: OAuthMcpOptions = {}) {
           if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 })
 
           if (request.method === "GET") return new Response(null, { status: 405 })
+          mcpRequests++
 
           if (requiresAuth && request.headers.get("authorization") !== "Bearer replacement-token") {
             if (options.unauthorizedDelay) await Bun.sleep(options.unauthorizedDelay)
@@ -145,6 +147,7 @@ export function serveOAuthMcp(options: OAuthMcpOptions = {}) {
           requiresAuth = false
         },
         listToolsCalls: () => listToolsCalls,
+        mcpRequests: () => mcpRequests,
         close: async () => {
           await http.stop(true)
           for (const session of sessions.values()) {

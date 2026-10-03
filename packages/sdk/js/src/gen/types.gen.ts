@@ -1755,7 +1755,7 @@ export type GlobalEvent = {
         id: string
         type: "server.connected"
         properties: {
-          [key: string]: unknown
+          resume?: "initial" | "ok" | "gap"
         }
       }
     | {
@@ -7573,7 +7573,7 @@ export type ServerConnected = {
   }
   location?: LocationRef
   data: {
-    [key: string]: unknown
+    resume?: "initial" | "ok" | "gap"
   }
 }
 
@@ -9117,7 +9117,7 @@ export type EventServerConnected = {
   id: string
   type: "server.connected"
   properties: {
-    [key: string]: unknown
+    resume?: "initial" | "ok" | "gap"
   }
 }
 
@@ -12971,6 +12971,7 @@ export type SyncHistoryListData = {
   query?: {
     directory?: string
     workspace?: string
+    limit?: string
   }
   url: "/sync/history"
 }

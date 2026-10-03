@@ -11,9 +11,9 @@ describe("SessionGoalContext", () => {
   })
 
   test("keeps the full objective at bounded-turn re-anchoring", () => {
-    const objective = "Preserve the complete objective <without drift>"
+    const objective = "Preserve & complete the objective <without drift>"
     const prompt = GoalContext.continuation({ objective })
 
-    expect(prompt).toContain("Preserve the complete objective &lt;without drift&gt;")
+    expect(prompt).toContain("Preserve &amp; complete the objective &lt;without drift&gt;")
   })
 })

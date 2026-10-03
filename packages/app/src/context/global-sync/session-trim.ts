@@ -22,7 +22,8 @@ export function takeRecentSessions(sessions: Session[], limit: number, cutoff: n
     if (seen.has(session.id)) continue
     seen.add(session.id)
     if (sessionUpdatedAt(session) <= cutoff) continue
-    const index = selected.findIndex((x) => compareSessionRecent(session, x) < 0)
+    if (selected.length >= limit && compareSessionRecent(session, selected[selected.length - 1]!) >= 0) continue
+    const index = selected.findIndex((item) => compareSessionRecent(session, item) < 0)
     if (index === -1) selected.push(session)
     if (index !== -1) selected.splice(index, 0, session)
     if (selected.length > limit) selected.pop()

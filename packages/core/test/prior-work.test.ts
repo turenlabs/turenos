@@ -20,7 +20,6 @@ import {
 } from "@turenlabs/core/prior-work/sql"
 import { Project } from "@turenlabs/core/project"
 import { AbsolutePath } from "@turenlabs/core/schema"
-import { SecretPlaceholder } from "@turenlabs/core/secret-placeholder"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 
@@ -438,7 +437,13 @@ describe("PriorWork records", () => {
         const first = yield* at(tmp.path, (service) => service.get({ id: created.id, revision: 1 }))
         expect(first.revision?.summary).toBe("Session token is compared with ==")
         expect(first.revision?.observation).toEqual({ basis: "unknown" })
-        expect(first.revision?.recordingCapture).toBeUndefined()
+        // Capture is off by default: the attempted baseline is explicitly unavailable, never omitted.
+        expect(first.revision?.recordingCapture).toEqual({
+          scheme: "fp_v1",
+          capture_revision: 1,
+          status: "unavailable",
+          reason: "disabled",
+        })
         const head = yield* at(tmp.path, (service) => service.get({ id: created.id }))
         expect(head.record.headRevision).toBe(2)
         expect(head.revision?.summary).toBe("Comparison is constant-time after all")
@@ -914,20 +919,31 @@ describe("PriorWork input screening", () => {
     TIMEOUT,
   )
 
-  it.effect(
-    "walks every string and fails closed on values it cannot read",
+  it.live(
+    "uses the secret-output guard's walk and fails closed on values it cannot read",
     () =>
-      Effect.sync(() => {
-        expect(SecretPlaceholder.containsPlaceholder({ a: [{ b: "clean" }], c: 1, d: null, e: true })).toBe(false)
-        expect(SecretPlaceholder.containsPlaceholder({ a: [{ b: "x [SECRET:v1" }] })).toBe(true)
-        expect(SecretPlaceholder.containsPlaceholder({ "[SECRET:v1:k": 1 })).toBe(true)
-        expect(SecretPlaceholder.containsPlaceholder(Number.NaN)).toBe(true)
-        expect(SecretPlaceholder.containsPlaceholder(10n)).toBe(true)
-        expect(SecretPlaceholder.containsPlaceholder(new Map())).toBe(true)
+      Effect.gen(function* () {
+        const tmp = yield* scratch
+        yield* Effect.promise(() => repository(tmp.path))
         const deep = Array.from({ length: 100 }).reduce<unknown>((inner) => [inner], "leaf")
-        expect(SecretPlaceholder.containsPlaceholder(deep)).toBe(true)
-        const shared = { value: "clean" }
-        expect(SecretPlaceholder.containsPlaceholder([shared, shared])).toBe(false)
+        const refused = yield* Effect.forEach(
+          [
+            prepared({ detail: Number.NaN }),
+            prepared({ detail: 10n }),
+            prepared({ detail: new Map() }),
+            prepared({ detail: deep }),
+          ],
+          (input) => at(tmp.path, (service) => service.record({ prepared: input }, agent())).pipe(Effect.flip),
+        )
+        refused.forEach((failure) =>
+          expect(failure._tag === "PriorWork.InvalidInput" && failure.reason).toBe("placeholder"),
+        )
+        // A shared clean reference is not a cycle, so the record is written.
+        const shared = { kind: "command", ref: "bun test" }
+        const written = yield* at(tmp.path, (service) =>
+          service.record({ prepared: prepared({ evidence: [shared, shared] }) }, agent()),
+        )
+        expect(written.replayed).toBe(false)
       }),
     TIMEOUT,
   )

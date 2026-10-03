@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import { DateTime, Effect, Layer } from "effect"
-import { eq, sql } from "drizzle-orm"
+import { TestClock } from "effect/testing"
+import { StringChunk, eq, sql } from "drizzle-orm"
 import { Database } from "@turenlabs/core/database/database"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -411,5 +412,122 @@ describe("SessionReplay index", () => {
         messageID: assistantMessageID,
       })
     }),
+  )
+})
+
+describe("SessionReplay backfill loop", () => {
+  // The loop sleeps on the TestClock but reads SQLite in real time, so each virtual step waits for the fiber to settle.
+  const settle = Effect.promise(() => Bun.sleep(15))
+  const advance = (seconds: number) =>
+    Effect.gen(function* () {
+      for (let index = 0; index < seconds * 4; index++) {
+        yield* TestClock.adjust("250 millis")
+        yield* settle
+      }
+    })
+  const counted = (db: ReturnType<typeof Database.primary>) => {
+    const probes = { work: 0, legacy: 0 }
+    const wrapped = new Proxy(db, {
+      get(target, key, receiver) {
+        if (key !== "get") return Reflect.get(target, key, receiver)
+        return (...args: Parameters<typeof target.get>) => {
+          const query = args[0]
+          const text =
+            typeof query === "string"
+              ? query
+              : query
+                  .getSQL()
+                  .queryChunks.flatMap((chunk) => (chunk instanceof StringChunk ? chunk.value : []))
+                  .join("")
+          if (text.includes("AS work")) probes.work++
+          if (text.includes("session_replay'")) probes.legacy++
+          return target.get(...args)
+        }
+      },
+    })
+    return { probes, db: wrapped }
+  }
+  const pendingCount = (db: ReturnType<typeof Database.primary>) =>
+    db
+      .get<{ count: number }>(sql.raw("SELECT count(*) AS count FROM session_replay_pending_v3"))
+      .pipe(Effect.map((row) => row?.count))
+
+  it.effect(
+    "backs off after completion and returns to fast polling when work is queued",
+    () =>
+      Effect.gen(function* () {
+        const session = yield* SessionV2.Service
+        const events = yield* EventV2.Service
+        const base = Database.primary((yield* Database.Service).db)
+        yield* session.create({ location })
+        yield* SessionReplay.ensure(base)
+        yield* SessionReplay.enable(base)
+        const watched = counted(base)
+        yield* SessionReplay.backfill(watched.db).pipe(Effect.forkScoped({ startImmediately: true }))
+        yield* settle
+        expect(yield* SessionReplay.status(base)).toMatchObject({ status: "ready" })
+
+        const start = watched.probes.work
+        yield* advance(60)
+        // Idle sleeps are 1, 2, 4, 8 then 10 s, so a minute holds about eight probes instead of sixty.
+        expect(watched.probes.work - start).toBeLessThanOrEqual(10)
+        expect(watched.probes.work - start).toBeGreaterThanOrEqual(5)
+        expect(watched.probes.legacy).toBe(1)
+
+        const created = yield* session.create({ location })
+        yield* events.publish(SessionEvent.ContextUpdated, {
+          sessionID: created.id,
+          timestamp: DateTime.makeUnsafe(Date.parse("2026-08-20T12:00:00.000Z")),
+          messageID: SessionMessage.ID.create(),
+          text: "queued after backoff",
+        })
+        expect(yield* pendingCount(base)).toBeGreaterThan(0)
+        // Wakes land at 0, 1, 3, 7, 15, 25, 35, 45, 55 and 65 s of virtual time; the clock is at 60 s.
+        yield* advance(4)
+        expect(yield* pendingCount(base)).toBeGreaterThan(0)
+        yield* advance(1)
+        expect(yield* pendingCount(base)).toBe(0)
+
+        // The pass that found work restarts the idle sequence at 1 s.
+        const reset = watched.probes.work
+        yield* advance(4)
+        expect(watched.probes.work - reset).toBeGreaterThanOrEqual(2)
+      }),
+    30_000,
+  )
+
+  it.effect(
+    "search drains one batch inline and the backed-off loop finishes a small burst within the cap",
+    () =>
+      Effect.gen(function* () {
+        const session = yield* SessionV2.Service
+        const events = yield* EventV2.Service
+        const db = Database.primary((yield* Database.Service).db)
+        const created = yield* session.create({ location })
+        yield* session.replay({ query: "backoffmarker", limit: 50 })
+        yield* advance(30)
+
+        yield* Effect.forEach(
+          Array.from({ length: 20 }, (_, index) => index),
+          (index) =>
+            events.publish(SessionEvent.ContextUpdated, {
+              sessionID: created.id,
+              timestamp: DateTime.makeUnsafe(Date.parse("2026-08-20T12:00:00.000Z") + index),
+              messageID: SessionMessage.ID.create(),
+              text: `backoffmarker ${index}`,
+            }),
+        )
+        expect(yield* pendingCount(db)).toBe(20)
+
+        const inline = yield* session.replay({ query: "backoffmarker", limit: 50 })
+        expect(inline.entries.length).toBeGreaterThanOrEqual(16)
+        expect(inline.entries.length).toBeLessThan(20)
+        expect(yield* pendingCount(db)).toBeGreaterThan(0)
+
+        yield* advance(11)
+        expect(yield* pendingCount(db)).toBe(0)
+        expect((yield* session.replay({ query: "backoffmarker", limit: 50 })).entries).toHaveLength(20)
+      }),
+    60_000,
   )
 })

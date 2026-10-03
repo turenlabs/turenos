@@ -11,6 +11,9 @@ import { VcsEvent } from "@turenlabs/schema/vcs-event"
 const PATCH_CONTEXT_LINES = 2_147_483_647
 const MAX_PATCH_BYTES = 10_000_000
 const MAX_TOTAL_PATCH_BYTES = 10_000_000
+// Each remaining untracked stat is a git process, so only this many files get counts; later ones report 0/0.
+export const MAX_UNTRACKED_STATS = 500
+const STAT_CONCURRENCY = 8
 type DiffOptions = {
   readonly context?: number
 }
@@ -136,10 +139,25 @@ const nativePatch = Effect.fnUntraced(function* (
           context: options?.context ?? PATCH_CONTEXT_LINES,
           maxOutputBytes: MAX_PATCH_BYTES,
         })
-  if (!result.truncated && result.text) return result.text
+  if (!result.truncated && result.text) return { patch: result.text, complete: true }
 
-  return emptyPatch(item.file)
+  return { patch: emptyPatch(item.file), complete: !result.truncated }
 })
+
+// An untracked patch adds every line, so counting "+" lines after the first hunk header matches numstat.
+// color.ui=always wraps headers and lines in escapes, so strip them before counting.
+const addedLines = (patch: string) => {
+  const text = patch.replace(/\u001b\[[0-9;]*m/g, "")
+  const start = text.indexOf("\n@@")
+  if (start === -1) return 0
+  let count = 0
+  let index = text.indexOf("\n", start + 1)
+  while (index !== -1 && index + 1 < text.length) {
+    if (text[index + 1] === "+") count++
+    index = text.indexOf("\n", index + 1)
+  }
+  return count
+}
 
 const totalPatch = (file: string, patch: string, total: number) => {
   if (total + Buffer.byteLength(patch) <= MAX_TOTAL_PATCH_BYTES) return { patch, capped: false }
@@ -155,11 +173,11 @@ const patchForItem = Effect.fnUntraced(function* (
   capped: boolean,
   options?: DiffOptions,
 ) {
-  if (capped) return emptyPatch(item.file)
+  if (capped) return { patch: emptyPatch(item.file), complete: false }
 
   const batched = batch.patches.get(item.file)
-  if (batched !== undefined) return batched
-  if (item.code !== "??" && batch.capped) return emptyPatch(item.file)
+  if (batched !== undefined) return { patch: batched, complete: false }
+  if (item.code !== "??" && batch.capped) return { patch: emptyPatch(item.file), complete: false }
   return yield* nativePatch(git, cwd, ref, item, options)
 })
 
@@ -175,13 +193,25 @@ const files = Effect.fnUntraced(function* (
   const next: FileDiff[] = []
   let total = 0
   let capped = false
+  let stats = 0
+  // Patch output goes through textconv drivers but numstat counts the original file, so patch counts are only trusted without one.
+  const textconv =
+    list.some((item) => item.status === "added" && !map.has(item.file)) &&
+    (yield* git.run(["config", "--get-regexp", "^diff\\..*\\.textconv$"], { cwd })).exitCode === 0
 
   for (const item of list.toSorted((a, b) => a.file.localeCompare(b.file))) {
-    const stat = map.get(item.file) ?? (item.status === "added" ? yield* git.statUntracked(cwd, item.file) : undefined)
-    const patch = yield* patchForItem(git, cwd, ref, item, batch, capped, options)
+    const raw = yield* patchForItem(git, cwd, ref, item, batch, capped, options)
+    const counted =
+      map.get(item.file) ??
+      (item.status === "added" && (item.code === "??" || !ref) && raw.complete && !textconv
+        ? { additions: addedLines(raw.patch), deletions: 0 }
+        : undefined)
+    const fallback = !counted && item.status === "added" && stats < MAX_UNTRACKED_STATS
+    if (fallback) stats++
+    const stat = fallback ? yield* git.statUntracked(cwd, item.file) : counted
     const result: { patch: string; capped: boolean } = capped
-      ? { patch, capped: true }
-      : totalPatch(item.file, patch, total)
+      ? { patch: raw.patch, capped: true }
+      : totalPatch(item.file, raw.patch, total)
     capped = capped || result.capped
     if (!capped) {
       total += Buffer.byteLength(result.patch)
@@ -354,21 +384,23 @@ const layer: Layer.Layer<Service, never, Git.Service | EventV2Bridge.Service> = 
           { concurrency: 2 },
         )
         const map = nums(stats)
-        return yield* Effect.forEach(
-          list.toSorted((a, b) => a.file.localeCompare(b.file)),
-          (item) =>
-            Effect.gen(function* () {
-              const stat =
-                map.get(item.file) ??
-                (item.status === "added" ? yield* git.statUntracked(ctx.worktree, item.file) : undefined)
-              return {
-                file: item.file,
-                additions: stat?.additions ?? 0,
-                deletions: stat?.deletions ?? 0,
-                status: item.status,
-              } satisfies FileStatus
-            }),
-        )
+        const sorted = list.toSorted((a, b) => a.file.localeCompare(b.file))
+        const pending = sorted
+          .filter((item) => item.status === "added" && !map.has(item.file))
+          .slice(0, MAX_UNTRACKED_STATS)
+        const counted = yield* Effect.forEach(pending, (item) => git.statUntracked(ctx.worktree, item.file), {
+          concurrency: STAT_CONCURRENCY,
+        })
+        const untracked = new Map(pending.map((item, index) => [item.file, counted[index]] as const))
+        return sorted.map((item) => {
+          const stat = map.get(item.file) ?? untracked.get(item.file)
+          return {
+            file: item.file,
+            additions: stat?.additions ?? 0,
+            deletions: stat?.deletions ?? 0,
+            status: item.status,
+          } satisfies FileStatus
+        })
       }),
       diff: Effect.fn("Vcs.diff")(function* (mode: Mode, options?: DiffOptions) {
         const value = yield* InstanceState.get(state)

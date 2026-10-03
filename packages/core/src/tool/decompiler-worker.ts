@@ -14,6 +14,7 @@ type Module = {
   readonly _free_string: (pointer: number) => void
   readonly _init_decompiler: () => void
   readonly UTF8ToString: (pointer: number) => string
+  readonly stringToUTF8: (text: string, pointer: number, maxBytes: number) => number
   readonly ccall: (
     name: string,
     returnType: string,
@@ -31,7 +32,7 @@ type Request = {
 
 type Response =
   | { readonly id: number; readonly type: "started" }
-  | { readonly id: number; readonly type: "completed"; readonly code: string }
+  | { readonly id: number; readonly type: "completed"; readonly code: string; readonly heapBytes: number }
   | { readonly id: number; readonly type: "failed"; readonly error: string }
 
 if (!parentPort) throw new Error("Decompiler worker requires a parent port")
@@ -60,34 +61,57 @@ port.on("message", (request: Request) => {
 async function handle(request: Request) {
   port.postMessage({ id: request.id, type: "started" } satisfies Response)
   const spec = specification(request.input.architecture, request.input.endianness)
-  const files = await loadSpec(spec)
-  const slaPointer = module._malloc(files.sla.length)
-  module.HEAPU8.set(files.sla, slaPointer)
+  const code = decompile(spec, await loadSpec(spec), request.input)
+  // Posted after the result and every buffer are freed, so a request whose cleanup throws gets only
+  // the "failed" message and the runtime replaces this worker.
+  port.postMessage({
+    id: request.id,
+    type: "completed",
+    code,
+    heapBytes: module.HEAPU8.length,
+  } satisfies Response)
+}
+
+function decompile(spec: Spec, files: SpecFiles, input: Input) {
+  // Strings go through heap buffers instead of ccall's "string" type, which copies them onto the
+  // wasm stack and only restores the stack pointer when the call returns normally.
+  const pointers: number[] = []
+  const allocate = (size: number) => {
+    const pointer = module._malloc(size)
+    if (pointer === 0) throw new Error(`Decompiler could not allocate ${size} bytes`)
+    pointers.push(pointer)
+    return pointer
+  }
+  const allocateString = (text: string) => {
+    const size = Buffer.byteLength(text) + 1
+    const pointer = allocate(size)
+    module.stringToUTF8(text, pointer, size)
+    return pointer
+  }
   try {
+    const slaPointer = allocate(files.sla.length)
+    module.HEAPU8.set(files.sla, slaPointer)
     const resultPointer = module.ccall(
       "decompile_pcode",
       "number",
-      ["number", "number", "string", "string", "string", "string"],
+      ["number", "number", "number", "number", "number", "number"],
       [
         slaPointer,
         files.sla.length,
-        files.pspec,
-        files.cspec,
-        binaryImage(spec.id, request.input.bytes, request.input.baseAddress),
-        `0x${request.input.address.toString(16)}`,
+        allocateString(files.pspec),
+        allocateString(files.cspec),
+        allocateString(binaryImage(spec.id, input.bytes, input.baseAddress)),
+        allocateString(`0x${input.address.toString(16)}`),
       ],
     )
+    if (resultPointer === 0) throw new Error("Decompiler could not allocate its result")
     try {
-      port.postMessage({
-        id: request.id,
-        type: "completed",
-        code: module.UTF8ToString(resultPointer),
-      } satisfies Response)
+      return module.UTF8ToString(resultPointer)
     } finally {
       module._free_string(resultPointer)
     }
   } finally {
-    module._free(slaPointer)
+    pointers.forEach((pointer) => module._free(pointer))
   }
 }
 

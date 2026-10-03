@@ -7,8 +7,9 @@ verified assets to the public repository.
 1. Resolve the release source (public `main` HEAD at dispatch, or an existing
    draft's target commit), check that its `VERSION` equals the requested
    version, and validate repository identities and publishing access.
-2. Require the release source's public `test`/`typecheck` checks to be green. The gate passes when every
-   check run with either name succeeded, so it passes if only one of the two exists.
+2. Require the release source's public `test` and `typecheck` checks to be green. Each check name is
+   queried separately, and only its latest attempt counts, so a passing re-run replaces an earlier failure.
+   The gate passes only when both checks exist and every latest run of each succeeded.
 3. Check out `turenlabs/turenos` at the release commit, build every platform on
    private runners, and sign/notarize with private credentials.
 4. Create a public **draft** release and upload all signed assets to it.
@@ -143,6 +144,14 @@ After publication, anonymous verification checks the latest release inventory, a
 update-feed bytes, and a size-checked range request for every desktop architecture. Homebrew
 edits change only the four platform URLs/checksums and an existing version field. The GitHub
 Contents API's blob SHA prevents overwriting a concurrent formula edit.
+
+## Desktop bundle contents
+
+Desktop build output is minified. Renderer source maps are generated (as hidden maps) only when `SENTRY_AUTH_TOKEN`,
+`SENTRY_ORG` and `SENTRY_PROJECT` are set; the Sentry plugin uploads them and deletes them from `out/` before packaging.
+Main and preload get no maps. `electron-builder.config.ts` excludes `out/**/*.map` from `app.asar`, and
+`packages/desktop/scripts/verify-no-sourcemaps.ts`, the last step of `bun run build`, fails if any map is left in `out/`
+other than the third-party wasm maps shipped through `extraResources`.
 
 ## Local verification and tests
 

@@ -1,6 +1,6 @@
 export * as SessionProjector from "./projector"
 
-import { and, desc, eq, gt, inArray, isNotNull, or, sql, type AnyColumn } from "drizzle-orm"
+import { and, desc, eq, gt, inArray, isNotNull, or, sql, type AnyColumn, type SQL } from "drizzle-orm"
 import { DateTime, Effect, Layer, Schema } from "effect"
 import { Database } from "../database/database"
 import { EventV2 } from "../event"
@@ -34,6 +34,8 @@ type DatabaseService = Database.Interface["db"]
 
 const decodeMessage = Schema.decodeUnknownSync(SessionMessage.Message)
 const encodeMessage = Schema.encodeSync(SessionMessage.Message)
+const decodePart = Schema.decodeUnknownSync(Schema.fromJsonString(SessionMessage.AssistantContent))
+const encodePart = Schema.encodeSync(Schema.fromJsonString(SessionMessage.AssistantContent))
 
 export class SessionAlreadyProjected extends Error {}
 
@@ -375,7 +377,7 @@ function run(db: DatabaseService, event: SessionEvent.Event) {
   return Effect.gen(function* () {
     const decodeRow = (row: typeof SessionMessageTable.$inferSelect) =>
       decodeMessage({ ...row.data, id: row.id, type: row.type })
-    const updateMessage = (message: SessionMessage.Message) => {
+    const updateShell = (message: SessionMessage.Shell) => {
       if (event.durable === undefined) return Effect.die("Durable Session event is missing aggregate sequence")
       const encoded = encodeMessage(message)
       const { id, type, ...data } = encoded
@@ -391,13 +393,33 @@ function run(db: DatabaseService, event: SessionEvent.Event) {
         .run()
         .pipe(Effect.orDie)
     }
+    // Assistant rows change by patching the stored JSON in place: only the part an event touches is
+    // decoded or encoded, so the JavaScript codec cost of an event does not grow with the rest of the message.
+    const patchAssistant = (messageID: SessionMessage.ID, data: SQL) => {
+      if (event.durable === undefined) return Effect.die("Durable Session event is missing aggregate sequence")
+      return db
+        .update(SessionMessageTable)
+        .set({ data })
+        .where(
+          and(
+            eq(SessionMessageTable.id, messageID),
+            eq(SessionMessageTable.session_id, event.data.sessionID),
+            eq(SessionMessageTable.type, "assistant"),
+          ),
+        )
+        .run()
+        .pipe(Effect.orDie, Effect.asVoid)
+    }
     const appendMessage = (message: SessionMessage.Message) => insertMessage(db, event, message)
     const adapter: SessionMessageUpdater.Adapter = {
-      getCurrentAssistant() {
+      getCurrentAssistantID() {
         return Effect.gen(function* () {
           // A newer turn supersedes stale incomplete rows; never resume an older assistant projection.
           const row = yield* db
-            .select()
+            .select({
+              id: SessionMessageTable.id,
+              completed: sql<number | null>`json_extract(${SessionMessageTable.data}, '$.time.completed')`,
+            })
             .from(SessionMessageTable)
             .where(
               and(eq(SessionMessageTable.session_id, event.data.sessionID), eq(SessionMessageTable.type, "assistant")),
@@ -406,28 +428,96 @@ function run(db: DatabaseService, event: SessionEvent.Event) {
             .limit(1)
             .get()
             .pipe(Effect.orDie)
-          if (!row) return
-          const message = decodeRow(row)
-          return message.type === "assistant" && !message.time.completed ? message : undefined
+          return row?.completed === null ? row.id : undefined
         })
       },
-      getAssistant(messageID) {
+      getPart(messageID, type, id) {
         return Effect.gen(function* () {
           const row = yield* db
-            .select()
-            .from(SessionMessageTable)
-            .where(
-              and(
-                eq(SessionMessageTable.id, messageID),
-                eq(SessionMessageTable.session_id, event.data.sessionID),
-                eq(SessionMessageTable.type, "assistant"),
-              ),
+            .get<{ part: string } | undefined>(
+              sql`SELECT part.value AS part
+                FROM session_message, json_each(session_message.data, '$.content') AS part
+                WHERE session_message.id = ${messageID}
+                  AND session_message.session_id = ${event.data.sessionID}
+                  AND session_message.type = 'assistant'
+                  AND json_extract(part.value, '$.type') = ${type}
+                  AND json_extract(part.value, '$.id') = ${id}
+                ORDER BY part.key DESC
+                LIMIT 1`,
             )
-            .get()
             .pipe(Effect.orDie)
           if (!row) return
-          const message = decodeRow(row)
-          return message.type === "assistant" ? message : undefined
+          return decodePart(row.part)
+        })
+      },
+      appendPart(messageID, part) {
+        return patchAssistant(
+          messageID,
+          sql`json_insert(${SessionMessageTable.data}, '$.content[#]', json(${encodePart(part)}))`,
+        )
+      },
+      replacePart(messageID, part) {
+        return patchAssistant(
+          messageID,
+          sql`json_set(${SessionMessageTable.data},
+            (SELECT '$.content[' || part.key || ']'
+              FROM json_each(session_message.data, '$.content') AS part
+              WHERE json_extract(part.value, '$.type') = ${part.type}
+                AND json_extract(part.value, '$.id') = ${part.id}
+              ORDER BY part.key DESC
+              LIMIT 1),
+            json(${encodePart(part)}))`,
+        )
+      },
+      setFields(messageID, fields) {
+        const assignments = [
+          fields.completed === undefined
+            ? undefined
+            : sql`'$.time.completed', json(${JSON.stringify(DateTime.toEpochMillis(fields.completed))})`,
+          fields.finish === undefined ? undefined : sql`'$.finish', ${fields.finish}`,
+          fields.cost === undefined ? undefined : sql`'$.cost', json(${JSON.stringify(fields.cost)})`,
+          fields.tokens === undefined ? undefined : sql`'$.tokens', json(${JSON.stringify(fields.tokens)})`,
+          fields.error === undefined ? undefined : sql`'$.error', json(${JSON.stringify(fields.error)})`,
+          // RFC 7396 merge: a null member removes the key, as encoding an undefined field does.
+          fields.snapshot === undefined
+            ? undefined
+            : sql`'$.snapshot', json_patch(
+                coalesce(json_extract(${SessionMessageTable.data}, '$.snapshot'), '{}'),
+                json(${JSON.stringify({ end: fields.snapshot.end ?? null, files: fields.snapshot.files ?? null })}))`,
+        ].filter((item): item is SQL => item !== undefined)
+        if (assignments.length === 0) return Effect.void
+        return patchAssistant(messageID, sql`json_set(${SessionMessageTable.data}, ${sql.join(assignments, sql`, `)})`)
+      },
+      markPruned(messageID, callIDs, timestamp) {
+        return Effect.gen(function* () {
+          const rows = yield* db
+            .all<{ position: number }>(
+              sql`SELECT part.key AS position
+                FROM session_message, json_each(session_message.data, '$.content') AS part
+                WHERE session_message.id = ${messageID}
+                  AND session_message.session_id = ${event.data.sessionID}
+                  AND session_message.type = 'assistant'
+                  AND json_extract(part.value, '$.type') = 'tool'
+                  AND json_extract(part.value, '$.id') IN (${sql.join([...callIDs], sql`, `)})
+                  AND json_extract(part.value, '$.state.status') = 'completed'
+                  AND json_extract(part.value, '$.time.pruned') IS NULL`,
+            )
+            .pipe(Effect.orDie)
+          if (rows.length === 0) return
+          // Bound as JSON text: node:sqlite binds an integer-valued number as REAL and would store `30.0`.
+          const marked = JSON.stringify(DateTime.toEpochMillis(timestamp))
+          // SQLite caps a function at 127 arguments, so one json_set takes a bounded batch of positions.
+          for (let start = 0; start < rows.length; start += 50) {
+            yield* patchAssistant(
+              messageID,
+              sql`json_set(${SessionMessageTable.data}, ${sql.join(
+                rows
+                  .slice(start, start + 50)
+                  .map((row) => sql`${`$.content[${row.position}].time.pruned`}, json(${marked})`),
+                sql`, `,
+              )})`,
+            )
+          }
         })
       },
       getCurrentShell(callID) {
@@ -444,8 +534,7 @@ function run(db: DatabaseService, event: SessionEvent.Event) {
             .find((message): message is SessionMessage.Shell => message.type === "shell" && message.callID === callID)
         })
       },
-      updateAssistant: updateMessage,
-      updateShell: updateMessage,
+      updateShell,
       appendMessage,
     }
     yield* SessionMessageUpdater.update(adapter, event)

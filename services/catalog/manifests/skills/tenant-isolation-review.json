@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/tenant-isolation-review",
+  "name": "Tenant Isolation Review",
+  "description": "Trace tenant-scoped authorization across reads, writes, caches, and asynchronous work",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "contributions": [
+    {
+      "type": "skill",
+      "id": "tenant-isolation-review",
+      "name": "Tenant Isolation Review",
+      "description": "Review a bounded multi-tenant code change for cross-tenant data access or mutation",
+      "instructions": "Use for authorized review of code paths that bind actors, tenants, and resources.",
+      "adapter": "skill:tenant-isolation-review",
+      "secrets": [],
+      "defaultEnabled": false,
+      "source": {
+        "type": "catalog",
+        "content": "# Tenant Isolation Review\n\n## Use when\nUse for an authorized review of code that binds authenticated actors to tenants, organizations, workspaces, accounts, or tenant-owned resources. Do not use for generic authentication review, infrastructure configuration, live production testing, or broad code review with no tenant-scoped behavior.\n\n## Inputs\nRequire the changed paths or diff, actor and membership model, tenant/resource ownership rules, relevant entry points, and the expected isolation property. Ask for missing evidence rather than inferring authorization from a URL, request field, or database record. Use `glob`, `read`, `grep`, and `lsp` only in the approved workspace. If a required tool is unavailable, identify the missing inspection and do not claim it was verified.\n\n## Workflow\n1. Bound the change and list the actors, tenant identities, membership roles, resource types, and entry points involved. Treat tenant IDs supplied by clients as untrusted until traced to an authorization check.\n2. Trace identity from the authenticated request or trusted job context through route, service, repository, and storage calls. Use `read`, `grep`, `glob`, and `lsp` to follow callers and distinguish trusted identity from copied or defaulted fields.\n3. Audit reads independently: inspect direct lookup, list, search, count, export, and nested-resource paths. Verify server-side tenant and ownership constraints apply before data is returned, including when callers provide another tenant's object ID.\n4. Audit writes independently: inspect create, update, delete, bulk, import, and relationship changes. Verify authorization occurs before mutation, tenant ownership cannot be reassigned through untrusted input, and referenced objects belong to the same authorized tenant.\n5. Follow caches and asynchronous paths: check tenant-scoped cache keys and invalidation, queue/event payloads, retries, scheduled jobs, and export workers. Verify tenant context is preserved and authorization is rechecked where execution is delayed or membership can change.\n6. Challenge each candidate against adjacent code and tests. Build a negative regression case with tenant A attempting to read and mutate tenant B's resource, plus relevant role and list/bulk variants. Rank only defects supported by a concrete control-flow path; recommend the smallest safe fix and test.\n\n## Evidence rules\nCite exact paths, symbols, and line ranges. Separate observed code or test behavior from assumptions and hypotheses. A tenant ID in a request or query is not proof of authorization. When code, tests, or supplied deployment context conflict, show both observations and the evidence needed to resolve them rather than choosing silently. State the exploit preconditions, impact, confidence, and missing runtime or deployment evidence; do not label an unverified hypothesis as a finding.\n\n## Output\n- Scope, actors, tenant model, and entry points reviewed.\n- Read-path and write-path verdicts, including surfaces not reviewed.\n- Confirmed findings ordered by severity with exact evidence and exploit preconditions.\n- Minimal remediation and regression tests showing tenant A denied access to tenant B.\n- Assumptions, unavailable tools, confidence, and residual risks.\n\n## Stop conditions\nStop and ask one focused question if the authenticated actor, trusted tenant source, ownership rule, or required entry point is missing. Stop before testing a live service, real customer data, or a state-changing operation without explicit authorization. If the change exceeds 40 files or 20 entry points, ask to narrow the scope. Mark missing evidence as unverified rather than filling gaps by assumption.\n\n## Safety\nInspect only the explicitly authorized repository and supplied scope. Do not enumerate tenant IDs, access another customer's data, probe production, exploit external services, seed or mutate production records, or weaken authorization to make a test pass. This skill reviews and proposes; it does not authorize code changes or live actions.\n\n## Quality bar\nBefore reporting no finding, verify that each in-scope protected read and write has an identified server-side authorization path; inspect list/search/export and delayed/cache paths for tenant separation; and check that privileged cross-tenant exceptions are explicit and justified. Every finding must name a reachable operation, the failed control, and the expected denial test.\n\n## Bound and confidence\nReview at most 40 files and 20 entry points per task; request a narrower slice when exceeded. Use high confidence only when the actor-to-resource path and failed authorization control are visible, medium when one link depends on supplied context, and low for hypotheses that must not be presented as confirmed findings."
+      },
+      "requires": ["read", "grep", "glob", "lsp"]
+    }
+  ],
+  "versions": [
+    { "version": "1.0.0", "published": "2026-09-28" }
+  ]
+}

@@ -107,9 +107,8 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
   const username = opts.username ?? process.env.FORGE_SERVER_USERNAME ?? Flag.FORGE_SERVER_USERNAME
   Flag.FORGE_SERVER_USERNAME = username
   // The desktop sidecar reaches listen() without passing the CLI middleware that
-  // arms this, so FORGE_AUTO_HEAP_SNAPSHOT has to be armed here or packaged
-  // processes can never self-capture a heap profile when memory climbs.
-  Heap.start()
+  // starts the heap watchdog, so it has to start here.
+  Heap.start({ announce: true })
   // Binding a non-loopback interface exposes every privileged API on the LAN, so a
   // password is mandatory there unless the caller explicitly opts into insecure mode.
   if (!password && !opts.insecure && !isLoopbackHostname(opts.hostname)) {

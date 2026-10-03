@@ -4,6 +4,7 @@ import { ExtensionCatalog, ExtensionManifestPolicy } from "@turenlabs/extensions
 import { Schema } from "effect"
 
 const expected = [
+  "turenlabs/agentic-prompt-injection-review",
   "turenlabs/atlassian-security-context",
   "turenlabs/attack",
   "turenlabs/automox",
@@ -55,6 +56,7 @@ const expected = [
   "turenlabs/native-audit",
   "turenlabs/notion",
   "turenlabs/nvd",
+  "turenlabs/oauth-security-review",
   "turenlabs/onepassword",
   "turenlabs/opengrep",
   "turenlabs/osv",
@@ -65,11 +67,13 @@ const expected = [
   "turenlabs/secure-code-review",
   "turenlabs/semgrep-hosted",
   "turenlabs/sentry",
+  "turenlabs/slsa-provenance-review",
   "turenlabs/socket",
   "turenlabs/software-architecture-reviewer",
   "turenlabs/sonarqube-cloud-security",
   "turenlabs/technical-security-blog",
   "turenlabs/tenable",
+  "turenlabs/tenant-isolation-review",
   "turenlabs/test-strategy",
   "turenlabs/threat-hunter",
   "turenlabs/threat-intel-brief",
@@ -153,7 +157,7 @@ describe("ExtensionCatalog", () => {
     const skills = ExtensionCatalog.manifests.flatMap((manifest) =>
       manifest.contributions.filter((contribution) => contribution.type === "skill"),
     )
-    expect(skills.length).toBe(17)
+    expect(skills.length).toBe(21)
     expect(
       skills.every((contribution) => {
         if (contribution.source.type === "catalog") return contribution.source.content.length > 0
@@ -175,6 +179,53 @@ describe("ExtensionCatalog", () => {
     expect(contribution.source.content).toContain(
       "If this enforcement cannot be proven in the reviewed deployment, do not enable mutating tools",
     )
+  })
+
+  test("bounds SLSA review to v1 file provenance and policy-approved parameters", () => {
+    const contribution = ExtensionCatalog.get("turenlabs/slsa-provenance-review")?.contributions[0]
+    if (contribution?.type !== "skill" || contribution.source.type !== "catalog") {
+      throw new Error("Expected SLSA Build Provenance Review to be a catalog skill")
+    }
+    expect(contribution.source.content).toContain("https://slsa.dev/provenance/v1")
+    expect(contribution.source.content).toContain(
+      "Do not use it for SLSA provenance v0.2 or other predicate versions, container image or npm package verification",
+    )
+    expect(contribution.source.content).toContain(
+      "any additional parameter requires the policy owner's explicit documented approval and rationale",
+    )
+    expect(contribution.source.content).toContain(
+      "Stop with `FAIL` for a digest/signature/source/builder mismatch or an external parameter not approved by policy",
+    )
+    expect(contribution.source.content).toContain("Stop with `INCONCLUSIVE` for v0.2")
+    expect(contribution.source.content).toContain(
+      "bounded, read-only invocation of an already-installed, trusted verifier",
+    )
+    expect(contribution.source.content).toContain("Never install or execute the artifact, build scripts, package hooks")
+    expect(contribution.source.content).toContain("Do not install or update a verifier")
+    expect(contribution.source.content).toContain("at most three verifier invocations")
+  })
+
+  test("grounds OAuth/OIDC review in role-specific evidence and primary standards", () => {
+    const contribution = ExtensionCatalog.get("turenlabs/oauth-security-review")?.contributions[0]
+    if (contribution?.type !== "skill" || contribution.source.type !== "catalog") {
+      throw new Error("Expected OAuth/OIDC Security Review to be a catalog skill")
+    }
+    expect(contribution.defaultEnabled).toBe(false)
+    expect(contribution.requires).toEqual(["read", "grep", "glob", "lsp", "webfetch", "edit", "write", "bash"])
+    expect(contribution.source.content).toContain(
+      "Remain read-only unless the user explicitly authorizes a fix; writes and local tests require that explicit authorization.",
+    )
+    expect(contribution.source.content).toContain("otherwise provide the plan without writes or test execution")
+    expect(contribution.source.content).toContain("RFC 9700 requires PKCE for public clients")
+    expect(contribution.source.content).toContain("Never treat decoding a JWT as signature validation")
+    expect(contribution.source.content).toContain("validate it as specified by that extension")
+    expect(contribution.source.content).toContain("implementations without such extensions to ignore `azp`")
+    expect(contribution.source.content).toContain("do not require `azp` solely because `aud` has multiple values")
+    expect(contribution.source.content).toContain("that `aud` contains the client ID and no untrusted audiences")
+    expect(contribution.source.content).not.toContain("If `azp` is present, verify it equals the client ID")
+    expect(contribution.source.content).not.toContain("SHOULD require it when `aud` has multiple values")
+    expect(contribution.source.content).toContain("never a clean bill of health")
+    expect(contribution.source.content).toContain("https://openid.net/specs/openid-connect-core-1_0-errata2.html")
   })
 
   test("rejects invalid or duplicate executable declarations", () => {
@@ -772,9 +823,12 @@ describe("ExtensionCatalog", () => {
     ).not.toThrow()
     expect(() =>
       ExtensionManifestPolicy.validateManifestPolicy(
-        officialManaged({}, {
-          configuration: [{ id: "region", label: "Region", required: true, default: "other", options: ["us", "eu"] }],
-        }),
+        officialManaged(
+          {},
+          {
+            configuration: [{ id: "region", label: "Region", required: true, default: "other", options: ["us", "eu"] }],
+          },
+        ),
       ),
     ).toThrow("must be one of its options")
   })
@@ -789,9 +843,7 @@ describe("ExtensionCatalog", () => {
     expect(ExtensionCatalog.dataEndpoint("security:kev")).toBe(
       "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json",
     )
-    expect(ExtensionCatalog.dataEndpoint("security:hibp", "passwords")).toBe(
-      "https://api.pwnedpasswords.com/range",
-    )
+    expect(ExtensionCatalog.dataEndpoint("security:hibp", "passwords")).toBe("https://api.pwnedpasswords.com/range")
     expect(() => ExtensionCatalog.dataEndpoint("security:hibp")).toThrow("address one by name")
     expect(() => ExtensionCatalog.dataEndpoint("security:kev", "missing")).toThrow("not declared")
 

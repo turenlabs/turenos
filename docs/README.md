@@ -76,6 +76,8 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
     captures, macros, .NET IL, archives, and packer evidence.
   - [Secure storage](./systems/secure-storage.md): encrypting credentials and sensitive files with the OS-protected
     Secret Vault.
+  - [Secret output protection](./systems/secret-output-protection.md): masking credentials in tool output and model
+    requests, the boundaries it covers, and how it fails closed.
   - [Legacy session shares](./systems/legacy-shares.md): revoking public share links created by older builds.
   - [Batou write scanning](./systems/batou.md): the opt-in SAST scanner that can block agent file writes.
   - [Intel feeds](./systems/intel-feeds.md): the vulnerability and security-news feeds every server polls for the Home
@@ -190,7 +192,9 @@ These READMEs are short entry points into their area; their long-form documentat
 - **Checks.** After any docs change, run `bun .agents/skills/turen-documentation/scripts/check.ts docs`. It catches
   broken links, anchors and cited paths and unindexed pages; it can't tell whether a page is true. To move or rename
   pages, use `bun .agents/skills/turen-documentation/scripts/move.ts <moves-file>`, which rewrites every link the move
-  would break.
+  would break. Before a pull request, `bun .agents/skills/turen-diff-documentation/scripts/affected.ts` lists the pages
+  its diff can make wrong; the [`turen-diff-documentation`](../.agents/skills/turen-diff-documentation/SKILL.md) skill
+  is the full check.
 
 The complete method, including where a new page goes, page conventions, and templates, is
 [`.agents/skills/turen-documentation/SKILL.md`](../.agents/skills/turen-documentation/SKILL.md), with an audit method in

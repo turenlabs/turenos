@@ -50,7 +50,7 @@ Work is bounded:
 
 Protection fails closed: the original text is never used in place of text the guard could not process. Failure is scoped so that it does not wedge the Session:
 
-- Provider requests: history is re-sent every turn, so each part is protected independently. A stored part the guard cannot process (written by an older build, deeper than the walk allows, or over the byte budget) is replaced by `[Content withheld: secret redaction failed]`, and the rest of the request proceeds. If no snapshot can be acquired, the turn ends with a visible step failure before any provider request is made.
+- Provider requests: history is re-sent every turn, so each part is protected independently. A stored part the guard cannot process (written by an older build, deeper than the walk allows, or over the byte budget) is replaced by `[Content withheld: secret redaction failed]`, and the rest of the request proceeds. Parts the guard leaves unchanged are kept as the same objects, and a request with nothing to protect is passed on as built rather than copied. If no snapshot can be acquired, the turn ends with a visible step failure before any provider request is made.
 - Tool settlement: without a snapshot, the tool is not executed and the call settles with an error. Output that cannot be protected settles as a fixed "withheld" error.
 - Durable tool records: every tool call still receives a terminal event. A result that cannot be protected is stored as a fixed failure. Cleanup and step failures use fixed text when protection is unavailable.
 - Compaction declines with `protectionUnavailable` and sends nothing. Title generation is skipped and the Session keeps its placeholder name.
@@ -99,3 +99,13 @@ Regression tests use synthetic credentials and isolated storage. They cover:
 Separate tests verify normal media and optional-field compatibility, failure behavior, and interruption.
 
 These tests do not claim a secret-bearing wire capture for every runtime or a live external-provider audit. Run tests from their package directories; the repository root deliberately refuses test execution.
+
+## Source
+
+- [`packages/core/src/secret-redaction.ts`](../../packages/core/src/secret-redaction.ts): detectors, references, budgets, and the mutation check.
+- [`packages/core/src/secret-output.ts`](../../packages/core/src/secret-output.ts): per-operation snapshots of configured credentials.
+- [`packages/core/src/tool/registry.ts`](../../packages/core/src/tool/registry.ts) and [`packages/core/src/tool-output-store.ts`](../../packages/core/src/tool-output-store.ts): tool settlement and overflow retention.
+- [`packages/core/src/session/disclosure.ts`](../../packages/core/src/session/disclosure.ts) and [`packages/core/src/session/runner/llm.ts`](../../packages/core/src/session/runner/llm.ts): model requests.
+- [`packages/core/src/shell-job.ts`](../../packages/core/src/shell-job.ts) and [`packages/core/src/session/shell.ts`](../../packages/core/src/session/shell.ts): shell jobs and direct shell.
+- [`packages/forge/src/tool/secret-output.ts`](../../packages/forge/src/tool/secret-output.ts), [`packages/forge/src/session/disclosure.ts`](../../packages/forge/src/session/disclosure.ts), and [`packages/forge/src/tool/shell.ts`](../../packages/forge/src/tool/shell.ts): the legacy Forge paths.
+- [`specs/secret-output-guard.md`](../../specs/secret-output-guard.md): the design contract.

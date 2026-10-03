@@ -736,12 +736,15 @@ function formatMcpResourceTemplate(template: Record<string, unknown> & { client:
 }
 
 export function formatMcpResourceContent(server: string, uri: string, content: { contents: unknown }) {
-  const items = (Array.isArray(content.contents) ? content.contents : [content.contents]).filter(isRecord)
+  const items = Array.isArray(content.contents) ? content.contents : [content.contents]
   const text: string[] = []
   const attachments: Omit<SessionV1.FilePart, "id" | "sessionID" | "messageID">[] = []
   let attachmentBytes = 0
+  let itemCount = 0
 
   for (const item of items) {
+    if (!isRecord(item)) continue
+    itemCount++
     const itemUri = typeof item.uri === "string" ? item.uri : uri
     const mime = typeof item.mimeType === "string" ? item.mimeType : "application/octet-stream"
     if (typeof item.text === "string") {
@@ -780,7 +783,7 @@ export function formatMcpResourceContent(server: string, uri: string, content: {
   }
 
   return {
-    contents: items.length,
+    contents: itemCount,
     attachments,
     text: text.join("\n\n") || `MCP resource ${uri} from ${server} returned no contents.`,
   }

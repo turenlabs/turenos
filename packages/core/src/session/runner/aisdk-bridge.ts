@@ -59,6 +59,8 @@ const transportError = (method: string, message: string) =>
     }),
   })
 
+const decodeToolInput = Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)
+
 const invalidOutput = (message: string, raw?: string, sanitize = (value: string) => value) =>
   new LLMError({
     module: "AISDKBridge",
@@ -572,7 +574,7 @@ const streamEvent = (
         }),
       ])
     case "tool-call":
-      return Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(event.input).pipe(
+      return decodeToolInput(event.input).pipe(
         Effect.mapError(() => invalidOutput("AI SDK bridge received invalid tool-call JSON", event.input, sanitize)),
         Effect.map((input) => [
           LLMEvent.toolCall({
