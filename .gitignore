@@ -1,6 +1,8 @@
 .DS_Store
 node_modules
 .worktrees
+# Claude Code worktrees: each is a full checkout, and file search would index every copy
+.claude/worktrees/
 .sst
 .env
 .env.local
