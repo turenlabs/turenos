@@ -115,6 +115,7 @@ export async function discoverVersionedPackageFiles() {
     "services",
     "target",
     "tools",
+    "vendor",
   ])
 
   async function scan(directory: string, relative: string): Promise<string[]> {
