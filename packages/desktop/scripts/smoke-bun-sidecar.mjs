@@ -144,8 +144,11 @@ try {
     method: "POST",
     headers: { ...headers, "content-type": "application/json", "x-forge-directory": directory },
     body: JSON.stringify({
-      command: process.execPath,
-      args: ["-e", "setInterval(() => {}, 1000)"],
+      command: path.join(resources, process.platform === "win32" ? "bun.exe" : "bun"),
+      args: [
+        "-e",
+        'process.stdin.setEncoding("utf8"); process.stdin.on("data", (data) => process.stdout.write("pty-response:" + data))',
+      ],
       title: "Bun native PTY smoke",
     }),
   })
@@ -163,9 +166,10 @@ try {
   const socket = new WebSocket(
     `ws://127.0.0.1:${new URL(first.url).port}/pty/${pty.id}/connect?directory=${encodeURIComponent(directory)}&ticket=${encodeURIComponent(ticket.ticket)}`,
   )
+  let terminalOutput = ""
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Timed out waiting for PTY websocket data")), 10_000)
-    socket.addEventListener("open", () => socket.send("bun-smoke-pty\n"), { once: true })
+    socket.addEventListener("open", () => socket.send("bun-smoke-pty\r\n"), { once: true })
     socket.addEventListener(
       "message",
       async (event) => {
@@ -175,7 +179,8 @@ try {
             : typeof event.data?.text === "function"
               ? await event.data.text()
               : Buffer.from(event.data).toString("utf8")
-        if (!data.includes("bun-smoke-pty")) return
+        terminalOutput += data
+        if (!terminalOutput.includes("pty-response:bun-smoke-pty")) return
         clearTimeout(timer)
         resolve()
       },
