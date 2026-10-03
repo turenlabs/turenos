@@ -87,7 +87,8 @@ With the conversation focused, `Enter` opens the primary action: reply, review a
 - `Tab` reveals launch settings and moves between fields; `Shift+Tab` moves backward.
 - `Esc` keeps a message draft; `F4` discards the local draft. Neither action stops server work.
 - In a reply, `Ctrl+T` selects Steer or Queue before the first submission. The server controls delivery timing.
-- After an ambiguous network failure, retry the original submission. Its identifiers and delivery mode are retained. For an attempted launch, `Ctrl+O` inspects its session before retrying.
+- After an ambiguous network failure (no answer, a timeout, a 5xx or a 409), retry the original submission. Its identifiers and delivery mode are retained. For an attempted launch, `Ctrl+O` inspects its session before retrying.
+- A submission the server definitely refused (any other 4xx) admitted nothing, so the draft unlocks for editing and keeps its ID for the next send. A draft that fails a local check (length, a mention, a command lookup) is never locked.
 
 Press `F2`, or type `/editor`, to compose the message in `$EDITOR` (`$VISUAL` takes precedence). The TUI releases the terminal while the editor runs and takes it back when it exits; saving returns the text to your draft. Quitting without saving, or exiting non-zero such as `:cq` in vim, leaves the draft unchanged. GUI editors must block, for example `EDITOR='code --wait'`. Your draft is written to a private file that is removed afterwards even if the editor fails, and nothing is sent. A draft whose submission is already locked for retry cannot be rewritten this way: retry it, or press `F4` to discard it first.
 
@@ -107,7 +108,7 @@ Add a line range with `#`: `@src/auth.ts#20` attaches one line and `@src/auth.ts
 
 A space, bracket, quote, or trailing `#number` ends a bare mention, so paths containing them use a quoted form: `@"src/app/(auth)/page.tsx"`, with any range after the closing quote as `@"my notes.md"#3-9`. Completion writes whichever form parses back to the exact path it offered, and a path it cannot represent is not offered at all — so completing a result never attaches a shorter, different file.
 
-Mentions are sent as the server's native file parts, not as text pasted into your prompt. **The server opens the file**; this client never reads it, so `@` works the same against a remote server as a local one. Relative paths resolve against the session's directory on the server, and a mention whose path is malformed or whose range is invalid stays ordinary prompt text instead of silently attaching something else. A message with no mention is sent exactly as before.
+Mentions are sent as the server's native file parts, not as text pasted into your prompt. **The server opens the file**; this client never reads it, so `@` works the same against a remote server as a local one. Relative paths resolve against the session's directory on the server, and a mention whose path is malformed or whose range is invalid (`@a.ts#5-`) stays ordinary prompt text instead of silently attaching something else. A line under the editor lists what the message will attach. A path outside the session's folder (absolute, `..` or `~`) is flagged there, and the first send stops to say so; send again to attach it anyway, or edit the mention. A message with no mention is sent exactly as before.
 
 `@` needs the server's file-search route. An older server without it reports `File search unavailable`; you can still type a path yourself, and it is still attached. Search results that are absolute or that escape the requested directory are rejected rather than attached.
 
@@ -195,7 +196,7 @@ Use `Ctrl+P` for rename, archive/restore, delete, or parent-session navigation. 
 
 `Ctrl+C` first closes a form and keeps a message draft. Press it again within three seconds to quit and lose local drafts. From the dashboard, quitting with saved drafts also asks for a second `q` or `Ctrl+C`. During a pending request, the first `Ctrl+C` warns instead of immediately abandoning its result; a second press quits, but remote work may continue. `PgUp`/`PgDn` scroll by approximately one visible page, not a fixed line count.
 
-Permissions initially select Reject; choose deliberately and confirm with `Ctrl+S`. When the server names a rule it can save for the request, **Allow always** also appears and lists the patterns it would allow from now on; saved rules can be reviewed and removed in [Settings](#settings-and-intel). In questions, Ctrl+R opens rejection confirmation; Ctrl+S confirms it, while Enter alone does not reject. Interrupt requires typing `stop` and confirming with `Ctrl+S`. `/kill` interrupts the session and cancels its active subagent tasks; it requires typing `kill` and confirming with `Ctrl+S`. Closing a request dialog does not answer it.
+Permissions initially select Reject; choose deliberately and confirm with `Ctrl+S`. When the server names a rule it can save for the request, **Allow always** also appears and lists the patterns it would allow from now on; saved rules can be reviewed and removed in [Settings](#settings-and-intel). In questions, Ctrl+R opens rejection confirmation; Ctrl+S confirms it, while Enter alone does not reject. Interrupt requires typing `stop` and confirming with `Ctrl+S`. `/kill` interrupts the session and cancels its active subagent tasks; it requires typing `kill` and confirming with `Ctrl+S`. Tasks that finished in the meantime are counted as not listed; if a cancel fails, the dialog stays open with the counts (`N cancelled, M failed, K not listed`) and `Ctrl+S` retries. Only the first 50 tasks are checked, and the message says when there were more. Closing a request dialog does not answer it.
 
 ## Terminal and automation tabs
 
@@ -208,7 +209,7 @@ Press `2` or choose **Terminal processes** in `Ctrl+P` to see the server's termi
 | `R`     | Rename the selected terminal.                                                               |
 | `d`     | Close the selected terminal after `Ctrl+S`; a running process ends with it.                 |
 
-Attaching hands the whole terminal to the server's shell, the way the desktop's terminal pane does: its output replays, your keystrokes go to it, and its size follows this window. A dropped connection reconnects from where it left off. When the shell exits or the terminal is closed elsewhere, the dashboard returns. `T` in a session attaches to that session's **shared terminal**, which the agent's terminal tool also uses, and creates it on first use.
+Attaching hands the whole terminal to the server's shell, the way the desktop's terminal pane does: its output replays, your keystrokes go to it, and its size follows this window. A dropped connection reconnects from where it left off, and keys typed while it reconnects are sent once it does (up to 64 KiB). A terminal that ended while disconnected returns you to the dashboard as exited. When the shell exits or the terminal is closed elsewhere, the dashboard returns. `T` in a session attaches to that session's **shared terminal**, which the agent's terminal tool also uses, and creates it on first use.
 
 A server that returns `404` for the terminal route shows an explicit unavailable message while keeping sessions and agent launch available. Other inventory errors remain visible; press `r` to retry.
 

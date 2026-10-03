@@ -45,7 +45,7 @@ python3 script/visual-audit.py /run/user/1000/tva --built --sizes 60x24 120x36
 - The fixture server answers `GET /global/health` as a server the client verifies, and every request lands in `evidence.json`. A request outside the allowed set fails the `safety` check.
 - Exit status 1 means a check failed; `summary.md` and `evidence.json` at the output root describe the latest run. The runner hashes `src/**/*.ts` at the start and end and fails if source changed during capture.
 - The PNGs are reconstructions of tmux cells, not screenshots of a GUI terminal, and a pass is not a visual review. Open a few and look.
-- Remove the output directory and `packages/tui/dist` afterwards.
+- Remove the output directory and the package's `dist` build output afterwards.
 
 ## Source
 
