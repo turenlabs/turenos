@@ -15,6 +15,7 @@ Packages with their own rules have an `AGENTS.md`; read it before changing that 
 
 - `packages/core/AGENTS.md`: V2 Session Core rules and the database schema and migrations; `packages/core/src/tool/AGENTS.md` covers built-in tools.
 - `packages/forge/AGENTS.md`: extension catalog, module shape, Effect rules, and headless `serve`.
+- `packages/tui/AGENTS.md`: the OpenTUI terminal client's commands, feature-folder layout, size limits, TUI invariants, and the private-tmux rule for PTY audits.
 - `packages/llm/AGENTS.md`: the LLM package, with nested files for routes, providers, protocols, and recorded tests.
 - `packages/desktop/AGENTS.md`: Electron IPC boundaries and packaged dev builds.
 - `packages/app/AGENTS.md`, `packages/codemode/AGENTS.md`, `packages/effect-drizzle-sqlite/AGENTS.md`, `packages/extensions/AGENTS.md`, and `packages/schema/AGENTS.md`.

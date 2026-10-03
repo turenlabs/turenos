@@ -1,6 +1,6 @@
-# GUI parity
+# TUI and Desktop parity
 
-Turen TUI and TurenOS Desktop are two clients of the same server: sessions, agents, the session harness, tools, and settings live on the server, so work started in one client can be continued in the other. This page maps the desktop's features to the TUI as of TurenOS 1.0.32. Keys are dashboard keys; every feature is also in `Ctrl+P`.
+The TurenOS terminal client and TurenOS Desktop are two clients of the same server: sessions, agents, the session harness, tools, and settings live on the server, so work started in one client can be continued in the other. This page maps the desktop's features to the TUI as of TurenOS 1.0.32. Keys are dashboard keys; every feature is also in `Ctrl+P`.
 
 ## Sessions and conversation
 

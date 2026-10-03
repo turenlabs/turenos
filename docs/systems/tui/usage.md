@@ -1,17 +1,19 @@
-# Usage
+# TUI usage
 
-Run Turen TUI in an interactive terminal against a TurenOS server. Sessions, tools, and model execution stay on that server; this client never executes server tools locally.
+Run the TurenOS terminal client in an interactive terminal against a TurenOS server. Sessions, tools, and model execution stay on that server; this client never executes server tools locally.
 
 ## Connect and switch servers
 
-Install dependencies with the [pinned Bun version](../../package.json), then run from the repository root:
+Install dependencies with Bun (the version pinned in the root `package.json`), then run from the repository root:
 
 ```sh
-npm exec --yes --package=bun@1.4.2 -- bun install --frozen-lockfile
-npm exec --yes --package=bun@1.4.2 -- bun run start                # TurenOS on this computer
-npm exec --yes --package=bun@1.4.2 -- bun run start -- --server lab # a saved server
-npm exec --yes --package=bun@1.4.2 -- bun run start -- --dir /srv/project https://turen.example
+bun install --frozen-lockfile
+bun run tui                                   # TurenOS on this computer
+bun run tui -- --server lab                   # a saved server
+bun run tui -- --dir /srv/project https://turen.example
 ```
+
+`bun run tui` runs `bun --cwd packages/tui start`, so `bun --cwd packages/tui start -- <options>` is equivalent, as is `bun src/cli.ts <options>` from `packages/tui`. The `turen-tui` bin in `packages/tui/package.json` points at `src/cli.ts`.
 
 Without a URL, the TUI opens the first TurenOS it finds on this computer:
 
@@ -50,7 +52,7 @@ Switching replaces the dashboard, and unsent drafts do not follow you to another
 }
 ```
 
-The [standalone CLI](../../src/cli.ts) accepts `bun run start -- [options] [url]`:
+The CLI (`packages/tui/src/cli.ts`) accepts `bun run tui -- [options] [url]`:
 
 | Argument                | Purpose                                                                       |
 | ----------------------- | ----------------------------------------------------------------------------- |
@@ -66,11 +68,11 @@ URL precedence is the positional URL, then `TURENOS_SERVER_URL`, then local disc
 
 Provide the server password through `FORGE_SERVER_PASSWORD` in the process environment, not a CLI password argument or URL. An explicitly empty value disables authentication and discovery. Use a trusted environment/secret mechanism rather than putting a real password in shell history.
 
-`--discover-auth` is off by default. On Linux, only for `http://127.0.0.1:4096` and only when `FORGE_SERVER_PASSWORD` is unset, it may read the same user's `turenos.service` process environment. This requires trust in the local listener: matching process ownership does not prove that the listener belongs to that service. Discovery does not inspect a remote server or start/restart the service. See [tui-auth.ts](../../src/tui-auth.ts) for the boundary.
+`--discover-auth` is off by default. On Linux, only for `http://127.0.0.1:4096` and only when `FORGE_SERVER_PASSWORD` is unset, it may read the same user's `turenos.service` process environment. This requires trust in the local listener: matching process ownership does not prove that the listener belongs to that service. Discovery does not inspect a remote server or start/restart the service. See `packages/tui/src/tui-auth.ts` for the boundary.
 
 Server credentials require HTTPS, except HTTP to numeric loopback `127.0.0.1` or `[::1]`, such as an already established SSH tunnel. `localhost`, private LAN addresses, and other loopback addresses do not receive this authenticated-HTTP exception. Unauthenticated HTTP is permitted, but does not protect session content. Prefer HTTPS for remote use. Redirects are refused rather than forwarding credentials.
 
-The CLI needs Bun and the complete installed `node_modules` tree, including OpenTUI's native dependencies. Copying only the executable source file is not a standalone installation. No compiled binary build or server is bundled. Running these commands does not change an installed helper or restart an existing server.
+The CLI needs Bun and the complete installed `node_modules` tree, including OpenTUI's native dependencies. No compiled binary build or server is bundled. Running these commands does not change an installed helper or restart an existing server.
 
 ## Send and retain drafts
 
@@ -305,7 +307,7 @@ To disconnect or remove a provider, or to see usage and plan limits, use [Settin
 
 Provider credentials and custom-provider configuration are **server-global**, not private to the selected session or directory. Secret entry is hidden, and `Ctrl+U` clears it. Provider secret operations require HTTPS or the same numeric-loopback exception even when the server itself needs no password.
 
-A saved key and refreshed catalog do not prove that the key was accepted by the model provider or chosen by the server's execution path. In the source snapshot, native V2 stored credentials take precedence over legacy credentials saved through these routes. Check the server's active integration and configuration before replacing more credentials; this client does not resolve that precedence. Custom configuration and its optional key are separate writes, so refresh before retrying a partial or unconfirmed save. See [remote compatibility](../architecture/overview.md#remote-compatibility).
+A saved key and refreshed catalog do not prove that the key was accepted by the model provider or chosen by the server's execution path. The server may prefer native V2 stored credentials over legacy credentials saved through these routes. Check the server's active integration and configuration before replacing more credentials; this client does not resolve that precedence. Custom configuration and its optional key are separate writes, so refresh before retrying a partial or unconfirmed save. See [remote compatibility](./README.md#remote-compatibility).
 
 ## Finder layout
 
@@ -337,4 +339,4 @@ The layout requires at least 60 columns by 24 rows. Enlarge the terminal if the 
 
 The client polls for updates and marks retained data stale when disconnected. Press `i` for connection details and `r` to refresh. Authentication errors require checking the server credentials; unsupported routes or invalid response shapes require checking server compatibility, not bypassing validation.
 
-The TUI covers most of what the desktop app does with a server; [GUI parity](../reference/gui-parity.md) lists each desktop feature, where it is in the TUI, and what is left to the desktop. See [development](development.md) for verification scope.
+The TUI covers most of what the desktop app does with a server; [GUI parity](./gui-parity.md) lists each desktop feature, where it is in the TUI, and what is left to the desktop. See [TUI development](../../development/tui.md) for verification scope.

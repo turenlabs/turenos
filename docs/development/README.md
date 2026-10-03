@@ -9,6 +9,7 @@ live in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) and the operator procedures i
   `packages/forge` tests.
 - [Desktop sidecar profiler](./desktop-profiler.md): recording a V8 CPU profile of the local sidecar in dev-channel
   Desktop builds.
+- [TUI development](./tui.md): testing `packages/tui`, its size limits, fixture rules and the PTY audit.
 
 The Effect patterns used in `packages/forge` are specified beside that package, in
 [`packages/forge/specs/effect/`](../../packages/forge/specs/effect/): the [Effect guide](../../packages/forge/specs/effect/guide.md),

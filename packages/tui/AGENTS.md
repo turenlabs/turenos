@@ -1,38 +1,29 @@
 # Turen TUI
 
-## Boundaries
-
-- This is the independent Bun client, not sibling `turenos/`. `src/cli.ts` starts `src/index.ts`; execution and persistent session data remain on the server. Never restart a live server for client tests.
-- `@turenlabs/client` resolves to copied generated files in `vendor/client/`. Preserve the narrow patch and sync procedure in `docs/reference/provenance.md`; do not add monorepo workspace dependencies or guess endpoint contracts.
-- Live text uses the global `/api/event` fetch in `src/live-events.ts`, not the removed generated subscription. Polling is reconciliation/fallback, not the only update path.
-- Server discovery and switching live in `src/servers.ts` and `src/server-picker.ts`. Local servers come only from records their owners publish: the desktop's `attach.json`, the shim's `~/.forge/run`, and `/etc/turenos/attach.json`. Never write a password to disk or put a secret in argv. Never start a second server over data a running desktop owns, because session drains are process-local.
-- `mountApp` mounts the new dashboard before disposing the old one. Anything a dashboard registers on the renderer must be released in its `dispose()`, or it leaks across server switches.
-- Current operator/auth guidance is `docs/guides/usage.md`; verification details are in `docs/guides/development.md`. Keep dated audit evidence distinct from current behavior.
+`packages/tui` is the OpenTUI terminal client (TypeScript, Bun). It renders locally; sessions, tools and model execution stay on the server. System page: `docs/systems/tui/README.md`.
 
 ## Commands
 
-- Put Bun **1.4.2** on `PATH`: test/build scripts invoke `bun` again, so an absolute path on only the outer invocation does not pin the nested runtime.
-- From this root: `bun install --frozen-lockfile`, then `bun typecheck`, `bun run test`, and `bun run format:check` (the CI checks).
-- Focused tests need the script's timeout too: `bun test test/conversation-scroll.test.ts test/dashboard.test.ts --timeout 30000`.
-- `bun run build` writes ignored `dist/cli.js` with external packages, not a standalone executable. Keep Bun and intact `node_modules`/native dependencies; smoke-test with `bun dist/cli.js --help`. Building does not replace launchers or restart clients.
-- Prettier excludes `vendor/`, `bun.lock`, and `script/*.py`; a formatting pass does not check those files.
+Run from `packages/tui` unless noted.
 
-## TUI Invariants
+- `bun run test` (tests need the script's `--timeout 30000`; a focused run is `bun test test/dashboard.test.ts --timeout 30000`), `bun typecheck`, `bun run build` (writes ignored `dist/cli.js`).
+- Run `bun run tui` from the repository root, where the root `package.json` defines it, to start the client (it runs `bun --cwd packages/tui start`).
+- PTY audit, after `bun run build`: `python3 script/visual-audit.py /run/user/1000/tva --built`. The output path must be outside the repo and short (the tmux socket path must stay under 104 bytes). Do not edit `src` during capture, because the audit hashes source. Delete the output directory and `dist` afterwards. Details: `docs/development/tui.md`.
+- Any other tmux use runs on a private socket, `tmux -L <name> ...`. Never touch the default tmux server, and never `kill-server` without `-L`.
 
-- Preserve exact key modifiers, modal focus, captured recipients, retry IDs, transport limits, and credential restrictions. Local slash admission must cover keyboard and mouse submission, not just Enter.
-- `parentID` is navigation metadata, not proof of task ownership. Child drafts must never be silently transferred or sent to the main session; startup cannot assume a main thread is in the latest session page.
-- Size reply editors with `editor.lineInfo.lineSources.length`; `virtualLineCount` can be viewport-limited. Reserve the scrollbar column rather than letting it cover wrapped text.
-- Test reading positions during prepend-plus-stream updates, width reflow, and docked replies, not only while following the tail. Use native logical-line/display-column mapping rather than implementing word wrapping.
+## Layout and limits
 
-## Terminal Verification
+- `src/<feature>/` holds the implementation; a façade `src/<feature>.ts` beside it (`src/index.ts` for `dashboard/`) exposes the feature's controls. Add to a feature folder rather than a new top-level file.
+- No `src` file over 400 lines and no function over 60 lines (blank lines and comments excluded). Both are errors in the root `.oxlintrc.json`, checked by `bun run lint` from the repository root; they keep each feature in small modules. Split by feature instead of raising the limits.
+- The only TurenOS runtime dependency is `@turenlabs/client` (workspace): never import Core, Server or Protocol, and do not guess endpoint contracts the generated client lacks.
 
-- Input/layout changes require renderer tests and real PTYs. Use synthetic fixtures, never production transcripts or credentials; keep generated evidence outside the checkout/Git.
-- Keyboard fixtures use `mockInput.pressEnter()`, `pressArrow(...)`, and `pressKey("ESCAPE")`; wait for the expected frame after modal transitions before typing again.
-- The PTY runner is not in CI. It needs tmux, Python 3 with Pillow, and DejaVu Sans Mono fonts. Build first for `--built`; do not edit source during capture, which checks source hashes.
+## Invariants
 
-```sh
-bun run build
-python3 script/visual-audit.py /tmp/turen-tui-audit --built --sizes 60x24 120x36
-```
-
-- Inspect terminal-cell captures as well as check counts; reconstructed PNGs and synthetic-server passes are not production or cross-platform verification.
+- Preserve exact key modifiers, modal focus, captured request recipients, retry IDs, transport limits and credential restrictions. Local slash admission covers keyboard and mouse submission, not only Enter.
+- Anything a dashboard registers on the renderer is released in its `dispose()` (`src/dashboard/lifecycle.ts`), or it leaks across server switches. `mountApp` mounts the new dashboard before disposing the old one.
+- Size reply editors with `editor.lineInfo.lineSources.length`; `virtualLineCount` can be viewport-limited. Reserve the scrollbar column.
+- `parentID` is navigation metadata, not proof of task ownership. Never transfer or send a child's draft to the main session.
+- Live text comes from the global `/api/event` stream (`src/live-events/`); polling is reconciliation, not the only update path.
+- Local servers come only from records their owners publish. Never write a password to disk or put a secret in argv. Never start a second server over data a running desktop owns.
+- Test reading positions during prepend-plus-stream updates, width reflow and docked replies, not only at the tail. Use the native logical-line mapping, not custom word wrapping.
+- Tests and audits use synthetic fixtures only: no production transcripts or credentials. Never restart a live server or client to test the client. Keyboard fixtures use `mockInput.pressEnter()`, `pressArrow(...)` and `pressKey("ESCAPE")`, then wait for the expected frame after a modal transition.
