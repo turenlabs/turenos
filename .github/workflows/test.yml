@@ -40,6 +40,7 @@ jobs:
           - { name: "forge (3/4)", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=3/4" }
           - { name: "forge (4/4)", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/forge, command: "bun run test --shard=4/4" }
           - { name: "desktop", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/desktop, command: "bun run test" }
+          - { name: "tui", host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest, directory: packages/tui, command: "bun run test" }
           - {
               name: "packages (linux)",
               host: blacksmith-4vcpu-ubuntu-2404, github_host: ubuntu-latest,
