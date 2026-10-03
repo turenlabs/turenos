@@ -61,7 +61,13 @@ export type Options = {
 }
 
 /** A server's address and credentials as published by its owner. */
-export type AttachRecord = { url: string; username: string; password: string }
+export type AttachRecord = {
+  url: string
+  username: string
+  password: string
+  /** The identity its owner published; a server that names a different one is not the record's owner. */
+  serverID?: string
+}
 
 /** The resolved, read-only environment every servers operation runs against. */
 export type Context = {

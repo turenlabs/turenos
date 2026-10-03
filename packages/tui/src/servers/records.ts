@@ -3,6 +3,7 @@ import { open, readlink } from "node:fs/promises"
 import { hostname } from "node:os"
 import { join } from "node:path"
 import { isRecord } from "../response-validation"
+import { writtenSinceStart } from "./freshness"
 import { parseJSON, validUsername } from "./text"
 import type { AttachRecord, Context } from "./types"
 
@@ -27,6 +28,7 @@ export async function desktopRecord(ctx: Context, file: string) {
   const value = text === undefined ? undefined : parseJSON(text)
   const record = attachRecord(value)
   if (!record || !isRecord(value) || !alive(value.pid)) return undefined
+  if (!(await writtenSinceStart(value.pid as number, [file]))) return undefined
   return record
 }
 
@@ -38,6 +40,8 @@ export async function shimRecord(ctx: Context) {
     ),
   )
   if (!alive(Number(pid?.trim())) || !password?.trim()) return undefined
+  if (!(await writtenSinceStart(Number(pid?.trim()), ["server.pid", "server.auth"].map((name) => join(directory, name)))))
+    return undefined
   return shimState([
     `FORGE_REMOTE ${JSON.stringify({ port: Number(port?.trim()), username: "forge", password: password.trim() })}`,
   ])
@@ -99,7 +103,8 @@ export function attachRecord(value: unknown): AttachRecord | undefined {
     return undefined
   if (typeof value.password !== "string" || !value.password || value.password.length > 1024) return undefined
   if (typeof value.username !== "string" || !validUsername(value.username)) return undefined
-  return { url: url.origin, username: value.username, password: value.password }
+  const serverID = typeof value.serverID === "string" && value.serverID ? value.serverID : undefined
+  return { url: url.origin, username: value.username, password: value.password, ...(serverID && { serverID }) }
 }
 
 /** Opens a file only when its owner could not have been another user and nobody else can rewrite it. */

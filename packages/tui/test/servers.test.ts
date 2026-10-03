@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
 import { hostname, tmpdir } from "node:os"
 import { join } from "node:path"
@@ -486,5 +486,75 @@ console.log("forge server listening on http://127.0.0.1:" + listener.port)
     const servers = local(home, { forge })
     const entry = (await servers.scan()).find((item) => item.target.kind === "headless")!
     await expect(servers.resolve(entry.target)).rejects.toThrow("TurenOS is running and owns your local data")
+  })
+})
+
+describe("record identity", () => {
+  const hour = 3600 * 1000
+
+  async function age(file: string, ms: number) {
+    const time = new Date(Date.now() - ms)
+    await utimes(file, time, time)
+  }
+
+  test("a desktop record last written before its pid started is not trusted or sent credentials", async () => {
+    const home = await scratch()
+    let requests = 0
+    const listener = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch() {
+        requests++
+        return Response.json({ healthy: true })
+      },
+    })
+    cleanup.push(() => listener.stop(true))
+    // This test process started seconds ago, so a record a day old predates it: the pid was reused.
+    await age(await desktop(home, listener.url.origin), 24 * hour)
+    expect(await local(home).scan()).toEqual([])
+    expect(requests).toBe(0)
+  })
+
+  test("a record written after its process started is trusted", async () => {
+    const home = await scratch()
+    await desktop(home, server().url.origin)
+    expect(await local(home).scan()).toHaveLength(1)
+  })
+
+  test("a quick-connect state older than its pid is ignored", async () => {
+    const home = await scratch()
+    const run = join(home, ".forge", "run")
+    await mkdir(run, { recursive: true })
+    for (const [name, value] of [
+      ["server.pid", String(process.pid)],
+      ["server.port", "4321"],
+      ["server.auth", "secret"],
+    ] as const) {
+      await writeFile(join(run, name), value, { mode: 0o600 })
+      await age(join(run, name), 24 * hour)
+    }
+    expect(await local(home).scan()).toEqual([])
+  })
+
+  async function persistent(url: string, serverID: string) {
+    const home = await scratch()
+    const record = join(home, "attach.json")
+    await writeFile(record, JSON.stringify({ version: 1, serverID, url, username: "forge", password: "secret" }))
+    return local(home, { platform: "linux", uid: undefined, persistentRecord: record })
+  }
+
+  test("a server whose serverID differs from the record's is refused", async () => {
+    const servers = await persistent(server("secret", { "/global/server": { serverID: "srv_other" } }).url.origin, "srv_1")
+    await expect(servers.resolve((await servers.preferred())!)).rejects.toThrow("not the server that published")
+  })
+
+  test("a server whose descriptor carries no serverID is refused", async () => {
+    const servers = await persistent(server("secret", { "/global/server": { mode: "persistent" } }).url.origin, "srv_1")
+    await expect(servers.resolve((await servers.preferred())!)).rejects.toThrow("not the server that published")
+  })
+
+  test("a server whose serverID matches the record's is accepted", async () => {
+    const servers = await persistent(server("secret", { "/global/server": { serverID: "srv_1" } }).url.origin, "srv_1")
+    expect((await servers.resolve((await servers.preferred())!)).version).toBe("1.0.32")
   })
 })

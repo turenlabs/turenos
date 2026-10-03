@@ -21,6 +21,10 @@ export async function verified(
     close?.()
     throw new Error(unreachable)
   }
+  if (record.serverID && !(await sameServer(record, signal))) {
+    close?.()
+    throw new Error(`${target.name} is not the server that published this record. Restart it, then try again.`)
+  }
   return {
     target,
     url: record.url,
@@ -31,14 +35,30 @@ export async function verified(
   }
 }
 
-async function health(record: AttachRecord, signal: AbortSignal) {
-  const response = await fetch(new URL("/global/health", record.url), {
+/**
+ * Servers that publish `GET /global/server` name themselves; a 404 is a server that predates it, with
+ * nothing to compare. Any other answer that does not carry the record's serverID is refused.
+ */
+async function sameServer(record: AttachRecord, signal: AbortSignal) {
+  const response = await request(record, "/global/server", signal)
+  if (response?.status === 404) return true
+  if (!response?.ok) return false
+  const body = parseJSON((await response.text()).slice(0, 65536))
+  return isRecord(body) && body.serverID === record.serverID
+}
+
+function request(record: AttachRecord, path: string, signal: AbortSignal) {
+  return fetch(new URL(path, record.url), {
     headers: record.password
       ? { Authorization: `Basic ${Buffer.from(`${record.username}:${record.password}`).toString("base64")}` }
       : {},
     redirect: "error",
     signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]),
   }).catch(() => undefined)
+}
+
+async function health(record: AttachRecord, signal: AbortSignal) {
+  const response = await request(record, "/global/health", signal)
   if (!response) return { ok: false, status: 0 }
   const body = response.ok ? parseJSON((await response.text()).slice(0, 65536)) : undefined
   await response.body?.cancel().catch(() => {})
