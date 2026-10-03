@@ -2482,7 +2482,8 @@ describe("the pre-flight gate budgets against the model's real window", () => {
   const OPUS_5 = { context: 1_000_000, output: 128_000 }
 
   test("a conversation inside Opus 5's 1M window is left alone", async () => {
-    expect(await gate(400_000, OPUS_5)).toBe(false)
+    // Below the 400k token cap; a misread 200k window would have compacted this.
+    expect(await gate(350_000, OPUS_5)).toBe(false)
   })
 
   test("the same conversation would have been compacted against the old 200k figure", async () => {
@@ -2504,7 +2505,7 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     expect(await gate(950_000, GPT_5_6_SOL)).toBe(true)
     // Removing the hard input cap does not disable the soft context target.
     expect(await gate(950_000, { context: 1_050_000, output: 128_000 })).toBe(true)
-    expect(await gate(700_000, GPT_5_6_SOL)).toBe(false)
+    expect(await gate(350_000, GPT_5_6_SOL)).toBe(false)
   })
 
   // github-copilot/gpt-5-mini: { context: 264000, input: 128000, output: 64000 }.
@@ -2527,7 +2528,7 @@ describe("the pre-flight gate budgets against the model's real window", () => {
 
   // k3: { context: 1048576, output: 131072 }. No input cap, and none invented.
   test("a model with no published input cap budgets against context alone", async () => {
-    expect(await gate(700_000, { context: 1_048_576, output: 131_072 })).toBe(false)
+    expect(await gate(350_000, { context: 1_048_576, output: 131_072 })).toBe(false)
     expect(await gate(1_030_000, { context: 1_048_576, output: 131_072 })).toBe(true)
   })
 
@@ -2600,6 +2601,24 @@ describe("the pre-flight gate budgets against the model's real window", () => {
         ...history(),
         entry(user(`target_u_${tokens}`, "start")),
         measuredTurn(`target_${tokens}`, { input: tokens }),
+      ]
+      expect(SessionCompaction.needsPruning({ entries, model: request.model, request })).toBe(expected)
+      expect(await gateWith(entries, request)).toBe(expected)
+    }
+  })
+
+  test("a million-token window prunes and compacts at the token cap, not at 75%", async () => {
+    expect(SessionCompaction.CONTEXT_TARGET_TOKEN_CAP).toBe(400_000)
+    const request = requestOf(1, { context: 1_050_000, output: 10_000 })
+    for (const [tokens, expected] of [
+      [399_800, false],
+      [400_000, true],
+      [600_000, true],
+    ] as const) {
+      const entries = [
+        ...history(),
+        entry(user(`cap_u_${tokens}`, "start")),
+        measuredTurn(`cap_${tokens}`, { input: tokens }),
       ]
       expect(SessionCompaction.needsPruning({ entries, model: request.model, request })).toBe(expected)
       expect(await gateWith(entries, request)).toBe(expected)

@@ -23,6 +23,14 @@ import { toLLMMessages } from "./runner/to-llm-message"
 
 const DEFAULT_BUFFER = 20_000
 export const CONTEXT_TARGET = 0.75
+/**
+ * Absolute ceiling on the pruning and compaction target. A fraction alone lets a million-token window
+ * ride up to ~790k tokens, where every turn re-reads the whole prompt: measured on real sessions, median
+ * time to first frame grew from 2.8s to 9.1s even with a warm cache, and per-turn cost grew roughly in
+ * proportion. Windows under ~530k are unaffected because the fraction is already lower.
+ */
+export const CONTEXT_TARGET_TOKEN_CAP = 400_000
+const contextTarget = (context: number) => Math.min(Math.floor(context * CONTEXT_TARGET), CONTEXT_TARGET_TOKEN_CAP)
 // Measured against a real 24/7 corpus (533 sessions, 5.6 days): at 8k the median
 // preserved tail was a single message — mean message is ~1.8k wire tokens — and
 // tail-only fact recall was 5.9%. 16k keeps ~4 messages for 18.7% recall, the best
@@ -1320,7 +1328,7 @@ export const needsPruning = (input: {
   const context = input.model.route.defaults.limits?.context
   if (context === undefined || !Number.isFinite(context) || context <= 0) return false
   const occupancy = reportedOccupancy(input.entries, input.model) ?? estimateRequest(input.request)
-  return occupancy >= Math.floor(context * CONTEXT_TARGET)
+  return occupancy >= contextTarget(context)
 }
 
 /**
@@ -1922,7 +1930,7 @@ export const make = (dependencies: Dependencies) => {
     // checkpoint; the media-aware character estimate only until then.
     const occupancy = reportedOccupancy(input.measured ?? input.entries, input.model) ?? estimateRequest(input.request)
     if (
-      occupancy < Math.floor(context * CONTEXT_TARGET) &&
+      occupancy < contextTarget(context) &&
       occupancy + REQUEST_MARGIN_TOKENS <=
         usableBudget(
           { context, input: input.model.route.defaults.limits?.input },
