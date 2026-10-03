@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { chmod, lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises"
+import { chmod, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { Effect } from "effect"
 import { sql } from "drizzle-orm"
 import { Database } from "@turenlabs/core/database/database"
@@ -10,7 +10,7 @@ import { ServerOwner } from "@turenlabs/core/database/server-owner"
 import { VaultVerification } from "@turenlabs/core/database/vault-verification"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 import { PersistentLinux } from "@/persistent/linux"
-import { placeDatabase } from "@/cli/cmd/persistent"
+import { activate, keyFromText, placeDatabase, resolveKey, withInstallLock } from "@/cli/cmd/persistent"
 import { tmpdir } from "../fixture/fixture"
 
 const plan: PersistentLinux.Plan = {
@@ -383,6 +383,12 @@ describe("PersistentLinux", () => {
     expect(wrong.verification).toBe("invalid")
 
     const before = await readFile(source)
+    // Creating the fixture may have left an owner lock; the import must not be blamed for that one.
+    await Promise.all(
+      (await readdir(tmp.path))
+        .filter((name) => name.startsWith("quick.db.owner.lock"))
+        .map((name) => rm(path.join(tmp.path, name))),
+    )
     await placeDatabase(
       { ...plan, dataRoot: tmp.path },
       facts,
@@ -390,6 +396,7 @@ describe("PersistentLinux", () => {
       source,
     )
     expect(await readFile(source)).toEqual(before)
+    expect((await readdir(tmp.path)).filter((name) => name.startsWith("quick.db.owner.lock"))).toEqual([])
 
     const release = await Database.acquireOwnerLock(target, {
       mode: "persistent",
@@ -459,5 +466,103 @@ describe("PersistentLinux", () => {
       })
       expect(yield* db.get(sql`SELECT count(*) AS count FROM migration`)).toEqual({ count: migrations.length })
     }).pipe(Effect.scoped, Effect.runPromise)
+  })
+
+  test("an import keeps an owner lock the source already had", async () => {
+    await using tmp = await tmpdir()
+    const source = path.join(tmp.path, "quick.db")
+    await mkdir(path.dirname(PersistentLinux.databasePath(tmp.path)), { recursive: true })
+    const key = { keyID: "desktop-key", key: new Uint8Array(32).fill(3) }
+    await Effect.gen(function* () {
+      const database = yield* Database.Service
+      const db = Database.primary(database.db)
+      yield* VaultVerification.verify(db, database.databaseUUID, SecretVault.make(key))
+      yield* ServerOwner.claim(db, { mode: "quick-connect", keyID: key.keyID })
+    }).pipe(Effect.provide(Database.layerFromPath(source)), Effect.scoped, Effect.runPromise)
+    ;(await Database.acquireOwnerLock(source))()
+    const lock = `${source}.owner.lock`
+    expect(await lstat(lock).then(() => true)).toBe(true)
+    await placeDatabase(
+      { ...plan, dataRoot: tmp.path },
+      facts,
+      { ...key, encoded: Buffer.from(key.key).toString("base64") },
+      source,
+    )
+    expect(await lstat(lock).then(() => true)).toBe(true)
+  })
+
+  test("the attach record is published only after the service is healthy and its key verified", async () => {
+    const key = { keyID: "k1", encoded: Buffer.alloc(32, 1).toString("base64"), key: new Uint8Array(32).fill(1) }
+    const log: string[] = []
+    const publish = async () => void log.push("publish")
+    const descriptor = (keyID: string) => ({ serverID: plan.serverID, keyID, mode: "persistent" })
+
+    await activate(plan, facts, key, "pw", {
+      start: async () => (log.push("start"), descriptor("k1")),
+      publish,
+    })
+    expect(log).toEqual(["start", "publish"])
+
+    log.length = 0
+    await expect(
+      activate(plan, facts, key, "pw", {
+        start: async () => {
+          log.push("start")
+          throw new Error("the service did not become healthy within 60 seconds")
+        },
+        publish,
+      }),
+    ).rejects.toThrow("did not become healthy")
+    expect(log).toEqual(["start"])
+
+    log.length = 0
+    await expect(
+      activate(plan, facts, key, "pw", { start: async () => (log.push("start"), descriptor("other")), publish }),
+    ).rejects.toThrow("expected k1")
+    expect(log).toEqual(["start"])
+  })
+
+  test("a second install fails fast while one holds the lock, and a crashed install's lock is taken over", async () => {
+    await using tmp = await tmpdir()
+    const lock = path.join(tmp.path, "install.lock")
+    const entered: string[] = []
+    await withInstallLock(lock, async () => {
+      await expect(withInstallLock(lock, async () => entered.push("second"))).rejects.toThrow(
+        "another install is running",
+      )
+    })
+    expect(entered).toEqual([])
+    expect(await lstat(lock).catch(() => undefined)).toBeUndefined()
+
+    const dead = Bun.spawn(["true"])
+    await dead.exited
+    await writeFile(lock, `${dead.pid}\n`)
+    await withInstallLock(lock, async () => entered.push("after crash"))
+    expect(entered).toEqual(["after crash"])
+    expect(await lstat(lock).catch(() => undefined)).toBeUndefined()
+
+    await writeFile(lock, "")
+    await expect(withInstallLock(lock, async () => entered.push("unknown owner"))).rejects.toThrow(
+      "another install is running",
+    )
+  })
+
+  test("a key on stdin is exactly a key ID and a key, and rejections never echo it", () => {
+    const encoded = Buffer.alloc(32, 7).toString("base64")
+    expect(keyFromText(`desktop-key\n${encoded}\n`)).toMatchObject({ keyID: "desktop-key", encoded })
+    const extra = `desktop-key\n${encoded}\nsecret-trailing-line\n`
+    expect(() => keyFromText(extra)).toThrow("more than two lines")
+    expect(() => keyFromText(extra)).not.toThrow(encoded)
+    expect(() => keyFromText(extra)).not.toThrow("secret-trailing-line")
+  })
+
+  test("a recovery file left by a failed install says how to continue instead of deadlocking", async () => {
+    await using tmp = await tmpdir()
+    const recovery = path.join(tmp.path, "recovery.key")
+    await writeFile(recovery, "old-key\nold\n")
+    await expect(resolveKey({ "recovery-file": recovery }, facts, plan)).rejects.toThrow(
+      /already exists; refusing to replace it.*delete it and re-run.*--key-stdin/,
+    )
+    expect(await readFile(recovery, "utf8")).toBe("old-key\nold\n")
   })
 })

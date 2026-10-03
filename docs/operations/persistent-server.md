@@ -106,9 +106,14 @@ is refused.
    `/etc/credstore/forge-secret-vault-key-id`, then encrypts the key into
    `/etc/credstore.encrypted/forge-secret-vault-key` through `systemd-creds encrypt` on stdin.
 3. Generates the HTTP password and encrypts it as `forge-server-password`.
-4. Writes `/etc/turenos/attach.json` (`0640 root:turenos-operators`, creating the group if needed) and
-   `/etc/systemd/system/turenos.service`, then enables and restarts the service.
+4. Writes `/etc/systemd/system/turenos.service`, then enables and restarts the service.
 5. Waits for `/global/server` and checks the server ID, key ID, and mode.
+6. Only then writes `/etc/turenos/attach.json` (`0640 root:turenos-operators`, creating the group if needed). A server
+   that never became healthy leaves no record, so it cannot block quick connect on this host.
+
+Only one `install --apply` runs at a time (a PID lock at `/run/turenos-install.lock`); a second fails with "another
+install is running". A recovery file left by an install that failed before finishing makes the re-run refuse with the
+steps to take: delete it if nothing was sealed with it, or import the key it holds with `--key-stdin`.
 
 Move the recovery copy offline, then delete it from the host. Host-bound encryption (host key or TPM2) isn't a backup.
 Add every user who may attach to `turenos-operators`, then reboot once and confirm that the service comes back with the
@@ -151,7 +156,8 @@ directory in it may be group- or other-writable; `install` refuses the import ot
 as root follows the WAL, SHM, and lock file names beside a database and changes the ownership of what it opens, and a
 tree copy must not have entries swapped under it. `--import-db` verifies the key against the source, then takes the
 source's owner lock, which refuses a server still running on it. It copies the database with `VACUUM INTO` into the
-pinned data root and leaves the original untouched as rollback material. It applies pending schema migrations to the
+pinned data root and leaves the original untouched as rollback material, apart from removing the owner lock files the
+import itself created beside it. It applies pending schema migrations to the
 verified destination, then **promotes** the copy: the owner
 record becomes `persistent` for the new server ID. Older quick-connect binaries don't take the owner lock, so always
 stop the daemon first. Because the promoted data lives outside the default path, an older desktop can only start a
