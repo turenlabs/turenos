@@ -52,6 +52,29 @@ describe("Database owner lock", () => {
     release()
   })
 
+  test("lets exactly one of several simultaneous starters acquire a fresh lock", async () => {
+    const worker = fileURLToPath(new URL("./fixture/database-owner-lock-race-worker.ts", import.meta.url))
+    await using tmp = await tmpdir()
+    for (let round = 0; round < 4; round++) {
+      const filename = path.join(tmp.path, `race-${round}.sqlite`)
+      const startAt = Date.now() + 1500
+      const children = Array.from({ length: 8 }, () =>
+        Bun.spawn([process.execPath, worker, filename, String(startAt)], { stdout: "pipe", stderr: "pipe" }),
+      )
+      const results = await Promise.all(
+        children.map(async (child) => {
+          const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()])
+          await child.exited
+          return stdout.trim() || stderr.trim()
+        }),
+      )
+      expect(results.filter((result) => result === "acquired")).toHaveLength(1)
+      expect(results.filter((result) => result !== "acquired")).toEqual(
+        Array(7).fill(`Database is already owned by another server: ${filename}`),
+      )
+    }
+  }, 60_000)
+
   test("shares one process lock across independent layer scopes", async () => {
     await using tmp = await tmpdir()
     const filename = path.join(tmp.path, "instance.sqlite")
