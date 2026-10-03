@@ -658,11 +658,6 @@ def main():
         capture(f"{kind}-edited")
         return "lpha preserved"
 
-    def focus_conversation():
-        # A dashboard that just connected has no focused pane (the server picker closes without
-        # restoring focus), so Enter, "/" and End do nothing until Tab moves focus to the conversation.
-        key("Tab")
-
     def choose_session(query, expected):
         key("C-k")
         wait(FINDER)
@@ -932,7 +927,8 @@ def main():
 
             with scenario("keyboard-workflow", width, height):
                 start = len(result["requests"])
-                focus_conversation()
+                if width >= 90:
+                    key("Enter")
                 key("Enter")
                 wait("Your message")
                 key("Up")
@@ -975,7 +971,8 @@ def main():
 
             with scenario("slash-commands", width, height):
                 start = len(result["requests"])
-                focus_conversation()
+                if width >= 90:
+                    key("Enter")
                 key("/", literal=True)
                 wait("Your message")
                 key("hel", literal=True)
@@ -1037,7 +1034,8 @@ def main():
 
             with scenario("wrapped-text", width, height):
                 start = len(result["requests"])
-                focus_conversation()
+                if width >= 90:
+                    key("Enter")
                 key("PPage", "PPage")
                 marker = re.search(r"WRAP_\d+", frame()).group(0)
                 capture("wrapped-reading")
@@ -1091,7 +1089,8 @@ def main():
 
             with scenario("transcript-scroll", width, height):
                 start = len(result["requests"])
-                focus_conversation()
+                if width >= 90:
+                    key("Enter")
                 for _ in range(12):
                     key("PPage")
                     if "Earlier prompt from the previous page." in frame():

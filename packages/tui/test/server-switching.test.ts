@@ -146,3 +146,33 @@ test("without a local server the picker explains why and q quits", async () => {
   view.mockInput.pressKey("q")
   expect(quits()).toBe(1)
 })
+
+test("a freshly connected dashboard has keyboard focus, so Enter opens the reply editor", async () => {
+  const { view, screen } = await setup()
+  await screen("alpha says hello")
+  expect(view.renderer.currentFocusedRenderable).toBeTruthy()
+  // First Enter opens the focused session from the list; the second opens its reply editor.
+  view.mockInput.pressEnter()
+  await view.renderOnce()
+  view.mockInput.pressEnter()
+  await screen("Your message")
+})
+
+test("a dashboard reached by switching servers also has keyboard focus", async () => {
+  const { view, screen } = await setup()
+  await screen("alpha says hello")
+  view.mockInput.pressKey("s")
+  await screen("THIS COMPUTER")
+  view.mockInput.pressArrow("down")
+  view.mockInput.pressEnter()
+  await screen("beta needs a password")
+  await view.mockInput.typeText("b-secret")
+  view.mockInput.pressEnter()
+  await screen("beta says hello")
+  expect(view.renderer.currentFocusedRenderable).toBeTruthy()
+  // First Enter opens the focused session from the list; the second opens its reply editor.
+  view.mockInput.pressEnter()
+  await view.renderOnce()
+  view.mockInput.pressEnter()
+  await screen("Your message")
+})

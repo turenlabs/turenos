@@ -38,7 +38,7 @@ export async function connect(picker: Picker, target: Target) {
     await picker.hooks.connect(target, attempt.signal, (text) => {
       if (!attempt.signal.aborted) say(picker, text)
     })
-    if (!attempt.signal.aborted) close(picker, false)
+    if (!attempt.signal.aborted) close(picker)
   } catch (error) {
     if (attempt.signal.aborted || !picker.view) return
     picker.mode = "list"
