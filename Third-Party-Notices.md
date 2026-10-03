@@ -116,6 +116,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@dnd-kit/solid` | `0.5.0` | MIT | [source](https://github.com/clauderic/dnd-kit) |
 | `@dnd-kit/state` | `0.5.0` | MIT | [source](https://github.com/clauderic/dnd-kit) |
 | `@effect/opentelemetry` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
+| `@effect/platform-bun` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
 | `@effect/platform-node` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
 | `@effect/platform-node-shared` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
 | `@effect/sql-sqlite-bun` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
@@ -428,7 +429,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `browser-fs-access` | `0.29.1` | Apache-2.0 | [source](git+https://github.com/GoogleChromeLabs/browser-fs-access.git) |
 | `buffer-equal-constant-time` | `1.0.1` | BSD-3-Clause | [source](git@github.com:goinstant/buffer-equal-constant-time.git) |
 | `builder-util-runtime` | `9.7.0` | MIT | [source](git+https://github.com/electron-userland/electron-builder.git) |
-| `bun-pty` | `0.4.8` | MIT | [source](git+https://github.com/sursaone/bun-pty.git) |
 | `bundle-name` | `4.1.0` | MIT | [source](sindresorhus/bundle-name) |
 | `bytes` | `3.1.2` | MIT | [source](visionmedia/bytes.js) |
 | `cacache` | `20.0.4` | ISC | [source](git+https://github.com/npm/cacache.git) |
