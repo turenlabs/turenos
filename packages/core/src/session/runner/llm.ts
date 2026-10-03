@@ -350,6 +350,13 @@ const layer = Layer.effect(
     const config = yield* Config.Service
     const permission = yield* PermissionV2.Service
     const snapshots = yield* Snapshot.Service
+    // The tree captured when a step ended, handed to the next step of the same drain as its baseline. Capturing
+    // walks the whole worktree (about 290ms in a large repository, twice per step), and the end of one step and the
+    // start of the next are the same moment: only the runner's own bookkeeping lies between them, and every tool
+    // has already settled. Consumed once, dropped when the drain ends, and ignored once older than a few seconds,
+    // so a baseline is never carried across a user turn, where the person may have edited files.
+    const carriedSnapshots = new Map<SessionSchema.ID, { readonly snapshot: string; readonly at: number }>()
+    const CARRIED_SNAPSHOT_MAX_AGE_MS = 5_000
     const database = yield* Database.Service
     // Resolved once, like every other collaborator in this layer, and passed as a plain value into
     // `SessionRunnerAttachment.materialize` -- that function's callers are typed with `R = never`,
@@ -1231,8 +1238,11 @@ const layer = Layer.effect(
             : getGoal(session.id),
       })
       // Advances when a mid-turn steer closes one assistant message and opens the next.
-      let startSnapshot = yield* snapshots.capture()
-      yield* startupPhase("snapshot_captured", { captured: startSnapshot !== undefined })
+      const carried = carriedSnapshots.get(sessionID)
+      carriedSnapshots.delete(sessionID)
+      const reusable = carried !== undefined && Date.now() - carried.at <= CARRIED_SNAPSHOT_MAX_AGE_MS
+      let startSnapshot = reusable ? (carried.snapshot as Snapshot.ID) : yield* snapshots.capture()
+      yield* startupPhase("snapshot_captured", { captured: startSnapshot !== undefined, reused: reusable })
       // From here on the publisher owns failure reporting for this turn. Provisionally: the
       // publisher only opens the durable step on the first content frame, so if the turn ends
       // with the step never opened, the settlement block below hands the responsibility back.
@@ -1864,6 +1874,7 @@ const layer = Layer.effect(
           }
           if (stepSettlement && !publisher.hasProviderError() && !turnInterrupted) {
             const endSnapshot = yield* snapshots.capture()
+            if (endSnapshot !== undefined) carriedSnapshots.set(sessionID, { snapshot: endSnapshot, at: Date.now() })
             const files =
               startSnapshot && endSnapshot
                 ? yield* snapshots
@@ -2192,6 +2203,8 @@ const layer = Layer.effect(
               cause: exit._tag === "Failure" ? Cause.pretty(exit.cause) : undefined,
               progress: turnProgress.get(input.sessionID),
             }).pipe(
+              // A baseline never outlives its drain: the next one starts from a fresh capture.
+              Effect.andThen(Effect.sync(() => carriedSnapshots.delete(input.sessionID))),
               Effect.andThen(
                 exit._tag === "Success"
                   ? Effect.void
