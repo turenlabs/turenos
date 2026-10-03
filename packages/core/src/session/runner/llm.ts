@@ -64,10 +64,12 @@ import { SessionRunnerRetry } from "./retry"
 import { SessionRunnerTitle } from "./title"
 import { GoalContext } from "./goal-context"
 import { SessionRunnerAttachment } from "./attachment"
+import { CacheAffinity } from "./cache-affinity"
 import { ClaudeCodeMcp } from "./claude-code-mcp-namespace"
 import { toLLMMessages } from "./to-llm-message"
 import { MAX_STEPS_PROMPT } from "./max-steps"
 import { Snapshot } from "../../snapshot"
+import { OpenAICodex } from "../../plugin/provider/openai-codex"
 import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
@@ -1039,8 +1041,30 @@ const layer = Layer.effect(
       const insertion = boundary === -1 ? messages.length : boundary
       const request = LLM.request({
         model,
-        providerOptions: { openai: { promptCacheKey } },
-        metadata: claudeMcpToken ? ClaudeCodeMcp.requestMetadata(claudeMcpToken) : undefined,
+        // One session-derived key for every provider that takes one in the body. OpenRouter reads its own
+        // namespace and forwards the key to upstreams that cache on it. A model that opted in to a chat-body
+        // key (see `sendsPromptCacheKey`) also gets it under its provider ID, which is where the AI SDK
+        // bridge looks for a bridged package such as Venice.
+        providerOptions: {
+          openai: { promptCacheKey },
+          openrouter: { promptCacheKey },
+          ...(model.compatibility?.promptCacheKey === true ? { [String(modelRef.providerID)]: { promptCacheKey } } : {}),
+        },
+        // Providers that pin a conversation to one server or replica with a header.
+        http: {
+          headers: CacheAffinity.headers({
+            providerID: String(modelRef.providerID),
+            baseURL: model.route.endpoint.baseURL,
+            key: promptCacheKey,
+            parentSessionID: session.parentID === undefined ? undefined : String(session.parentID),
+          }),
+        },
+        metadata: {
+          ...(claudeMcpToken ? ClaudeCodeMcp.requestMetadata(claudeMcpToken) : {}),
+          // Compactions so far; routes that tell the provider which context window a request belongs to read it.
+          [OpenAICodex.CONTEXT_WINDOW_METADATA_KEY]: history.filter((entry) => entry.message.type === "compaction")
+            .length,
+        },
         system: base,
         messages: [
           ...(prepared.frame?.messages ?? []),

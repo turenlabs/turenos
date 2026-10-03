@@ -9,6 +9,7 @@ import { OpenAIResponses } from "@turenlabs/llm/protocols/openai-responses"
 import { AmazonBedrock, Azure, OpenRouter, XAI } from "@turenlabs/llm/providers"
 import { Auth, type AnyRoute } from "@turenlabs/llm/route"
 import { Context, Effect, Layer, Schema } from "effect"
+import { Headers } from "effect/unstable/http"
 import { produce } from "immer"
 import { AISDK, markXaiOAuthModel } from "../../aisdk"
 import { Catalog } from "../../catalog"
@@ -792,6 +793,16 @@ const moonshotCompatible = (model: ModelV2.Info) =>
   model.providerID === ProviderV2.ID.make("kimi-for-coding") ||
   model.api.id.toLowerCase().includes("kimi")
 
+/**
+ * Providers that take a `prompt_cache_key` in an OpenAI Chat body and cache on it. This is the set the v1
+ * runtime sent it to: opencode's gateway and Venice, plus any provider that opts in with `setCacheKey`.
+ * Everything else stays off because many OpenAI-compatible servers reject fields they do not know.
+ */
+const sendsPromptCacheKey = (model: ModelV2.Info) =>
+  String(model.providerID).startsWith("opencode") ||
+  model.providerID === ProviderV2.ID.make("venice") ||
+  model.request.body.setCacheKey === true
+
 // `reasoning_content` is the only echo-back field the OpenAI Chat body carries; `reasoning` and
 // `reasoning_details` belong to OpenRouter, which resolves through its own adapter below.
 const openAICompatibility = (model: ModelV2.Info) => {
@@ -799,6 +810,7 @@ const openAICompatibility = (model: ModelV2.Info) => {
     ...(moonshotCompatible(model) ? { toolSchema: "moonshot" as const } : {}),
     ...(model.capabilities.interleaved?.field === "reasoning_content" ? { reasoningPassback: true } : {}),
     ...(acceptsMedia(model) ? {} : { mediaInput: false }),
+    ...(sendsPromptCacheKey(model) ? { promptCacheKey: true } : {}),
   }
   return Object.keys(compatibility).length === 0 ? undefined : compatibility
 }
@@ -821,6 +833,7 @@ const withOpenAICompatibility = (resolved: Model, model: ModelV2.Info): Model =>
       maxOutputTokens: existing.maxOutputTokens,
       reasoningPassback: existing.reasoningPassback ?? patch.reasoningPassback,
       mediaInput: existing.mediaInput ?? patch.mediaInput,
+      promptCacheKey: existing.promptCacheKey ?? patch.promptCacheKey,
     }),
   })
 }
@@ -1032,7 +1045,9 @@ const chatGPTOAuth = (
     withDefaults(model, OpenAIResponses.route)
       .with({
         endpoint: { baseURL: OpenAICodex.API_ENDPOINT, path: "" },
-        auth: Auth.headers(OpenAICodex.authorizationHeaders(credential.access, accountID)),
+        auth: Auth.headers(OpenAICodex.authorizationHeaders(credential.access, accountID)).andThen(
+          Auth.custom((input) => Effect.succeed(Headers.setAll(input.headers, OpenAICodex.affinityHeaders(input.request)))),
+        ),
       })
       // The Codex endpoint is not the Responses API: it answers
       // `max_output_tokens` with HTTP 400 `{"detail":"Unsupported parameter:
