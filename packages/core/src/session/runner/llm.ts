@@ -717,6 +717,7 @@ const layer = Layer.effect(
       const accountedGoalAtStart = agent.id === AgentV2.ID.make("plan") ? undefined : lifecycleGoalAtStart
       yield* resetReflectionContext(session.id)
       const initialized = yield* SessionContextEpoch.initialize(db, loadSystemContext(agent, session.id), session.id)
+      yield* startupPhase("context_epoch_initialized", { initialized: initialized !== undefined })
       const toolFibers = yield* FiberSet.make<void, ToolOutputStore.Error>()
       const goalUpdateFibers = yield* FiberSet.make<void, ToolOutputStore.Error>()
       // A turn cannot finish until its tool fibers do, and a fiber can wait on something that may
@@ -792,12 +793,14 @@ const layer = Layer.effect(
       }
       const isLastStep = agent.info?.steps !== undefined && currentStep >= agent.info.steps
       const toolsDisabled = agent.info?.tools === false || isLastStep
+      // The two run side by side, so each reports when it finishes: the one that finishes last is the wait.
       const [system, resolvedModel] = yield* Effect.all(
         [
-          initialized
+          (initialized
             ? Effect.succeed(initialized)
-            : SessionContextEpoch.prepare(db, events, loadSystemContext(agent, session.id), session.id),
-          models.resolve(session, agent.info?.request),
+            : SessionContextEpoch.prepare(db, events, loadSystemContext(agent, session.id), session.id)
+          ).pipe(Effect.tap(() => startupPhase("system_context_ready", { prepared: initialized === undefined }))),
+          models.resolve(session, agent.info?.request).pipe(Effect.tap(() => startupPhase("model_resolved"))),
         ] as const,
         { concurrency: "unbounded" },
       )
