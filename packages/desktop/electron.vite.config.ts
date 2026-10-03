@@ -117,7 +117,10 @@ const require = __cjs_mod__.createRequire(import.meta.url);
       {
         name: "forge:copy-server-assets",
         async writeBundle() {
-          await fs.cp(FORGE_SERVER_DIST, "./out/main/server", { recursive: true })
+          await fs.cp(FORGE_SERVER_DIST, "./out/main/server", {
+            recursive: true,
+            filter: (source) => !source.endsWith(".map"),
+          })
           for (const l of await fs.readdir(FORGE_SERVER_DIST)) {
             if (l.endsWith(".wasm")) {
               await fs.copyFile(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/${l}`)

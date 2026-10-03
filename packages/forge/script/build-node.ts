@@ -99,13 +99,15 @@ const nativePackages = [
 // build's chunks behind and the directory grows without bound.
 await rm("./dist/node", { recursive: true, force: true })
 
+const sourcemapsFlag = process.argv.includes("--sourcemaps")
+
 const nodeBuild = await Bun.build({
   target: "bun",
   entrypoints: ["./src/node.ts", "./script/native-check.ts"],
   outdir: "./dist/node",
   format: "esm",
   naming: { entry: "[name].js" },
-  sourcemap: "linked",
+  sourcemap: sourcemapsFlag ? "linked" : "none",
   // Without splitting, Bun inlines dynamic imports back into the entry, so
   // deferred modules would still be parsed on every server start.
   splitting: true,
@@ -141,7 +143,7 @@ const workerBuild = await Bun.build({
   ],
   outdir: "./dist/node",
   format: "esm",
-  sourcemap: "linked",
+  sourcemap: sourcemapsFlag ? "linked" : "none",
   splitting: true,
   naming: {
     entry: "[name].js",
