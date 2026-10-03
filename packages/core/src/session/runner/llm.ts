@@ -1042,8 +1042,14 @@ const layer = Layer.effect(
       const request = LLM.request({
         model,
         // One session-derived key for every provider that takes one in the body. OpenRouter reads its own
-        // namespace and forwards the key to upstreams that cache on it.
-        providerOptions: { openai: { promptCacheKey }, openrouter: { promptCacheKey } },
+        // namespace and forwards the key to upstreams that cache on it. A model that opted in to a chat-body
+        // key (see `sendsPromptCacheKey`) also gets it under its provider ID, which is where the AI SDK
+        // bridge looks for a bridged package such as Venice.
+        providerOptions: {
+          openai: { promptCacheKey },
+          openrouter: { promptCacheKey },
+          ...(model.compatibility?.promptCacheKey === true ? { [String(modelRef.providerID)]: { promptCacheKey } } : {}),
+        },
         // Providers that pin a conversation to one server or replica with a header.
         http: {
           headers: CacheAffinity.headers({

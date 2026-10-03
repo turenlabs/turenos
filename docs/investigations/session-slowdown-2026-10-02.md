@@ -232,7 +232,8 @@ Other providers (same PR):
 - OpenRouter's own `promptCacheKey` option was never set by the runner, so it had no body key either. The runner now sets it, and OpenRouter also gets `x-session-id`, its explicit sticky-routing key.
 - The compaction cap is provider-agnostic: it keys off the model's declared context limit. It reaches the Claude Code bridge too (its catalog limit is 1M for Opus), and the Claude Code limits test now pins that.
 - opencode and opencode-go get nothing extra, since their route already carries `x-opencode-session`. The data agrees they did not need it: `opencode-go` had a 98.9% hit rate over 181 turns.
-- Not done: a body `prompt_cache_key` for providers on the OpenAI Chat protocol. v1 set one for Venice and opencode models, and the V2 chat protocol does not emit it. It needs a change in `packages/llm`, and several of those providers go through the AI SDK bridge. Claude Code and Muse use a local CLI, so request headers do not apply to them.
+- Body `prompt_cache_key` for providers on the OpenAI Chat protocol: v1 sent one to opencode and Venice (and to any provider with `setCacheKey`), and V2's chat protocol never emitted it. Now `ModelCompatibility.promptCacheKey` (opt-in, `packages/llm`) makes the chat protocol emit it, `sendsPromptCacheKey` in `model.ts` turns it on for exactly the v1 set, and the runner also passes the key under the provider's own namespace so the AI SDK bridge hands it to bridged packages. It is opt-in because many OpenAI-compatible servers reject unknown fields. Tested through the native compatible-chat route; the Venice bridge path is covered by the flag and typecheck but not by a live call.
+- Claude Code and Muse use a local CLI, so request headers and body keys do not apply to them.
 
 Not sent, deliberately: `x-codex-installation-id` (a stable per-install identifier sent to a third party), turn metadata, routing hint and the subagent marker (attribution, not affinity).
 
