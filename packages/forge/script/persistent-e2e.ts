@@ -2,10 +2,12 @@
 /**
  * End-to-end harness for `forge persistent` on a real Linux systemd host, driven over ssh.
  *
- *   bun script/persistent-e2e.ts --host user@linux-host [--bin dist/forge-linux-x64-baseline/bin]
- *   bun script/persistent-e2e.ts --host user@linux-host --restore
+ *   bun script/persistent-e2e.ts --host user@linux-host --disposable [--bin dist/forge-linux-x64-baseline/bin]
+ *   bun script/persistent-e2e.ts --host user@linux-host --disposable --restore
  *
- * The host needs passwordless sudo and must be disposable for testing: the harness owns the
+ * The host needs passwordless sudo and must be disposable for testing. The harness refuses to touch
+ * anything without --disposable and a /etc/turenos-e2e-disposable marker file on the host (create it
+ * with `sudo touch /etc/turenos-e2e-disposable` on a host you can lose). The harness owns the
  * fixed persistent-server paths (turenos.service, /etc/credstore*, /etc/turenos/attach.json) while it
  * runs. It moves whatever is installed there into /root/turenos-e2e-backup first and puts it back
  * afterwards; if a run dies before that, `--restore` finishes the job. It never touches the
@@ -22,6 +24,8 @@ const args = parseArgs({
     // Use a forge already installed on the host (root-owned, in root-only directories) instead of uploading.
     "remote-bin": { type: "string" },
     restore: { type: "boolean", default: false },
+    // The run stops and removes the real turenos.service on the host; see the header.
+    disposable: { type: "boolean", default: false },
   },
 }).values
 if (!args.host) throw new Error("--host user@linux-host is required")
@@ -49,6 +53,17 @@ const owned = [
   "/etc/credstore.encrypted/forge-secret-vault-key",
   "/etc/credstore.encrypted/forge-server-password",
 ]
+
+const marker = "/etc/turenos-e2e-disposable"
+
+if (!args.disposable) {
+  console.error(
+    `Refusing to run: this harness stops and removes turenos.service, ${owned.slice(1).join(", ")} on ${args.host} ` +
+      `(backed up to ${E2E.backup} and restored afterwards, but the service is down meanwhile), and runs sudo over ssh.\n` +
+      `Re-run with --disposable against a host you can lose, after creating ${marker} on it.`,
+  )
+  process.exit(1)
+}
 
 const shq = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`
 
@@ -87,6 +102,13 @@ async function ok(script: string, options?: { root?: boolean; input?: string }) 
   const result = await remote(script, options)
   if (result.code !== 0) throw new Error(`remote command failed (${result.code}): ${script}\n${result.output.trim()}`)
   return result.stdout.trim()
+}
+
+if ((await remote(`test -f ${marker}`, { root: false })).code !== 0) {
+  console.error(
+    `Refusing to run: ${args.host} has no ${marker}. Create it on a disposable host to allow this harness to run.`,
+  )
+  process.exit(1)
 }
 
 function expect(condition: unknown, message: string) {
