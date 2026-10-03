@@ -322,7 +322,7 @@ const verifyPackage: NonNullable<Configuration["afterPack"]> = async (context) =
     wasmAssets.map(async (file) => {
       const packaged = file.startsWith("server/")
         ? await readFile(path.join(resources, file))
-        : extractFile(archive, path.join("out", "main", file))
+        : extractFile(archive, `out/main/${file}`)
       if ((await readFile(path.join(mainOutput, file))).equals(packaged)) return
       throw new Error(`Packaged WASM artifact differs from the desktop build: ${file}`)
     }),
@@ -409,6 +409,10 @@ const getBase = (appId: string): Configuration => ({
     {
       from: "out/main/server/",
       to: "server/",
+      // The GPL source tarball contains unsigned Mach-O stubs; Apple rejects
+      // notarization when it ships inside the bundle. SOURCE.json and the
+      // license files still ship. Same exclusion as binaryToolsResource.
+      filter: ["**/*", "!static-unpack/*-source.tar.gz"],
     },
     {
       from: "out/main/server/node_modules/",
