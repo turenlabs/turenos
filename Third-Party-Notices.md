@@ -915,7 +915,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `stylis` | `4.4.0` | MIT | [source](https://github.com/thysultan/stylis.js) |
 | `sumchecker` | `3.0.1` | Apache-2.0 | [source](git+https://github.com/malept/sumchecker.git) |
 | `tagged-tag` | `1.0.0` | MIT | [source](sindresorhus/tagged-tag) |
-| `tailwindcss` | `4.1.11` | MIT | [source](https://github.com/tailwindlabs/tailwindcss.git) |
+| `tailwindcss` | `4.3.3` | MIT | [source](https://github.com/tailwindlabs/tailwindcss.git) |
 | `tar` | `7.5.22` | BlueOak-1.0.0 | [source](https://github.com/isaacs/node-tar.git) |
 | `thread-stream` | `4.2.0` | MIT | [source](git+https://github.com/mcollina/thread-stream.git) |
 | `three` | `0.169.0` | MIT | [source](https://github.com/mrdoob/three.js) |
