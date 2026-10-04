@@ -17,6 +17,8 @@
     "build": "bun build src/cli.ts --target=bun --packages=external --outdir=dist",
     "start": "bun src/cli.ts",
     "test": "bun test --timeout 30000",
+    "test:e2e": "bun test --timeout 120000 ./e2e/*.e2e.ts",
+    "sandbox": "bun script/sandbox.ts",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
