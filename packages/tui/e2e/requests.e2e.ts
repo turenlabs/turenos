@@ -57,7 +57,8 @@ test("a running turn stops from the action row's x, and reads as interrupted", a
 
 test("Esc twice stops a running turn without the typed confirmation", async () => {
   await tui.reply("another slow story")
-  await tui.waitFor("word2")
+  // "word2" from the previous slow story is still on screen; wait for this turn to be running.
+  await tui.waitFor("x to stop)")
   await tui.keys("Escape")
   await tui.waitFor("Press Esc again to stop this turn")
   await tui.keys("Escape")
