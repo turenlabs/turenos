@@ -52,13 +52,15 @@ runs:
       run: echo "dir=$(bun pm cache)" >> "$GITHUB_OUTPUT"
 
     # Cache archives from the previous Windows volume must not be restored under the new layout.
+    # Hash only the tracked root lockfile: after install, `**/bun.lock` also matches lockfiles that
+    # dependencies ship inside node_modules, so a key computed then never matches this one.
     - name: Restore Bun dependencies
       if: inputs.dependency-cache == 'true'
       id: bun-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.cache.outputs.dir }}
-        key: ${{ runner.os }}-bun-${{ runner.os == 'Windows' && 'checkout-volume-v1-' || '' }}${{ hashFiles('**/bun.lock') }}
+        key: ${{ runner.os }}-bun-${{ runner.os == 'Windows' && 'checkout-volume-v1-' || '' }}${{ hashFiles('bun.lock') }}
         restore-keys: |
           ${{ runner.os }}-bun-${{ runner.os == 'Windows' && 'checkout-volume-v1-' || '' }}
 
@@ -83,4 +85,4 @@ runs:
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.cache.outputs.dir }}
-        key: ${{ runner.os }}-bun-${{ runner.os == 'Windows' && 'checkout-volume-v1-' || '' }}${{ hashFiles('**/bun.lock') }}
+        key: ${{ steps.bun-cache.outputs.cache-primary-key }}
