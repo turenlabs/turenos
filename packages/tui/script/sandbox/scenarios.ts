@@ -105,6 +105,9 @@ export function plan(messages: Message[], tools: string[]): Plan {
   const user = messages.findLast((message) => message.role === "user")
   const prompt = text(user?.content)
   if (/^generate a title for this conversation:/i.test(prompt)) return { kind: "text", text: title(prompt), delay: 0 }
+  // Server notices (a child's result, room updates) arrive as user messages that quote the human's
+  // instruction inside a tag; answering their trigger word again would loop forever.
+  if (prompt.trimStart().startsWith("<")) return { kind: "text", text: "Noted.", delay: 5 }
   // A delegated child answers plainly; otherwise it would see the trigger word and delegate again.
   if (messages.some((message) => message.role === "user" && text(message.content).includes(childMarker)))
     return { kind: "text", text: "Child summary: README.md introduces the sandbox project.", delay: 10 }
