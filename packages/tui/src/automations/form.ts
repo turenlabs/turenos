@@ -1,4 +1,4 @@
-import { TextRenderable } from "@opentui/core"
+import { RenderableEvents, TextRenderable, type InputRenderable } from "@opentui/core"
 import { identifier, object } from "../response-validation"
 import { label } from "../state"
 import { color } from "../theme"
@@ -15,7 +15,7 @@ export function form(ctx: AutomationsContext, loop?: Loop) {
   const prompt = dialogs.input(dialog, "Prompt the agent runs each time", loop?.prompt ?? "")
   const schedule = dialogs.input(
     dialog,
-    "Schedule: every 15m, every 2h, or cron (0 9 * * 1-5)",
+    "Schedule: every 2h, or cron (0 9 * * 1-5)",
     loop ? scheduleInput(loop) : "every 1h",
   )
   const folder = loop
@@ -25,6 +25,7 @@ export function form(ctx: AutomationsContext, loop?: Loop) {
         "Folder on the server",
         session?.location.directory ?? state.snapshot?.location.directory ?? "",
       )
+  for (const field of [name, prompt, schedule, folder]) if (field) markFocus(field)
   let created = false
   dialog.submit = async () => {
     const when = parseSchedule(schedule.value)
@@ -46,6 +47,20 @@ export function form(ctx: AutomationsContext, loop?: Loop) {
   }
   dialog.error.content = "Tab next field · Ctrl+S save · Esc cancel"
   name.focus()
+}
+
+/** Prefixes the focused field's caption with an arrow, so focus shows in plain text as well as by colour. */
+function markFocus(field: InputRenderable) {
+  const caption = field.parent?.getChildren()[field.parent.getChildren().indexOf(field) - 1]
+  if (!(caption instanceof TextRenderable)) return
+  const text = caption.plainText
+  // A closing dialog blurs its field after the caption is already gone.
+  const paint = () => {
+    if (!caption.isDestroyed) caption.content = `${field.focused ? "▶ " : "  "}${text}`
+  }
+  field.on(RenderableEvents.FOCUSED, paint)
+  field.on(RenderableEvents.BLURRED, paint)
+  paint()
 }
 
 export function remove(ctx: AutomationsContext, loop: Loop) {

@@ -1,0 +1,146 @@
+/** The Keyboard shortcuts text: sections of [keys, what they do]. Keys stay under 16 columns. */
+export const helpSections: [string, [string, string][]][] = [
+  [
+    "ESSENTIALS",
+    [
+      ["Enter", "opens the primary action; sends from the editor"],
+      ["n · f", "new session · reply"],
+      ["Up", "recalls the previous message in an empty editor"],
+      ["Esc Esc", "stops the running turn; on an idle session, opens undo"],
+      ["x · /stop", "stops it after you type stop and Ctrl+S; /kill also cancels its tasks"],
+      ["Shift+Enter", "adds a line (Alt+Enter too); Ctrl+S also sends"],
+      ["Esc", "closes the dialog and keeps the draft"],
+      ["F4", "discard local draft"],
+      ["/ · Ctrl+P", "commands in the conversation or editor · all actions"],
+      ["Ctrl+C", "cancels a form; repeat to quit with drafts"],
+      ["q", "quits the dashboard; repeat if drafts are saved"],
+    ],
+  ],
+  [
+    "SESSION VIEWS",
+    [
+      ["d", "Changes: uncommitted, branch, or last turn (m switches); @ mentions a file"],
+      ["e", "Files: browse and read; Enter opens a folder, ← goes up, @ mentions"],
+      ["T", "the session's shared terminal (the agent uses it too)"],
+      ["t", "Tasks and to-dos"],
+      ["u", "queued messages: Enter sends now, Ctrl+E edits"],
+      ["w · H · i", "swarm room (lanes, entries, Tab to post) · harness · details"],
+      ["/tools · /trace", "the agent's tools and MCP servers · the event log"],
+      ["Context", "the action row shows the context window: Context 45% · 90k/200k"],
+    ],
+  ],
+  [
+    "TERMINALS AND AUTOMATIONS",
+    [
+      ["2", "Terminals: Enter attaches full-screen, Ctrl+] detaches"],
+      ["a · R · d", "new terminal · rename · close"],
+      ["3", "Automations: Enter manages (run now, pause, edit, runs, delete)"],
+      ["a · E · d", "new automation (every 30m, every 1d, or cron) · edit · delete"],
+    ],
+  ],
+  [
+    "SETTINGS AND INTEL",
+    [
+      [
+        ",",
+        "Settings: providers, usage and limits, extensions, memories, agents' default models, permission checks and saved rules, servers, appearance",
+      ],
+      ["Extensions", "Enter on/off · s secret · c setting · o sign in"],
+      ["Memories", "a add · E edit · Ctrl+D delete"],
+      ["I", "Intel: advisories, known-exploited CVEs, news; m list · f feeds · p poll"],
+      ["Ctrl+P", "then Stop all agents (or /stop-all) interrupts every running session on the server"],
+    ],
+  ],
+  [
+    "SERVERS AND HARNESS",
+    [
+      ["s", "or click the server name opens the server picker"],
+      [
+        "This computer",
+        "the running TurenOS app first, then this host's quick-connect or persistent server, or a private forge serve",
+      ],
+      ["Picker", "Enter connect · a add URL or user@host · d remove · r rescan"],
+      ["SSH", "servers need key or agent login; the TUI opens its own tunnel"],
+      ["Passwords", "are asked once and kept only until you quit"],
+      [
+        "H · /harness",
+        "the session's harness tools, guidance, and reviewer proposals; every change confirms with Ctrl+S",
+      ],
+    ],
+  ],
+  [
+    "FILES AND SHELL",
+    [
+      ["@", "searches the server's files; Up/Down choose, Tab or Enter completes, Esc closes the list"],
+      ["@folder", "keeps searching; a file ends the mention"],
+      ["@path#12", "or @path#12-40 attaches only those lines"],
+      ["", "The server reads mentioned files; this client does not"],
+      ["!", "at the start of a message runs a server shell command; its output arrives as a transcript message"],
+    ],
+  ],
+  [
+    "DASHBOARD (no form or search open)",
+    [
+      ["Ctrl+K", "switch session · Alt+Left/Right hop"],
+      ["/", "commands in the conversation; find or filter in the sidebar"],
+      ["Ctrl+X · t", "subagent browser · Tasks"],
+      ["1 · 2 · 3", "Sessions · Terminals · Automations"],
+      ["Up/Down", "select; Enter focuses the conversation, then replies"],
+      ["Tab", "Tab / Shift+Tab switch panes; b / Ctrl+B sidebar"],
+      ["PgUp/PgDn", "scroll a page · r refresh"],
+      ["h · [ · ]", "History / Recent · older · newer history page"],
+      ["i", "session and connection details"],
+      ["Ctrl+Y", "or right-click copies selected text; F6 toggles terminal native selection and its right-click menu"],
+      ["tmux", "Ctrl+B twice sends the sidebar shortcut"],
+    ],
+  ],
+  [
+    "EDITING AND DRAFTS",
+    [
+      ["Ctrl+D · Ctrl+K", "delete forward · delete to line end"],
+      ["Ctrl+A", "line start; Alt+Left/Right word motion"],
+      ["F2 · Ctrl+G", "or /editor composes the draft in $EDITOR"],
+      ["Esc first", "then Ctrl+K or Alt+Left/Right to switch"],
+      ["Ctrl+N", "new session; also works in drafts and the switcher"],
+      ["Tab", "Tab / Shift+Tab next / previous field; click Settings reveals launch settings"],
+      ["Reply", "Ctrl+T Steer/Queue before sending · PgUp/PgDn reads the conversation"],
+      ["Ctrl+O", "inspect the attempted launch session"],
+      ["", "Drafts last until quit; discard does not stop server work."],
+    ],
+  ],
+  [
+    "PICKERS AND MODELS",
+    [
+      ["Up/Down", "choose · Enter select · Esc back"],
+      [
+        "Sessions",
+        "type anytime; Tab stays in search; F2 Recent / All / Archived; F3 older and Shift+F3 newer title search",
+      ],
+      ["PgUp/PgDn", "or the wheel browse; click a result to open"],
+      ["Ctrl+O", "open an older session by ID"],
+      ["t · Ctrl+P", "Tasks · rename, archive/restore, delete, or open parent"],
+      ["m · Ctrl+L", "session model · model in New session"],
+      ["Tab", "New session settings: folder, agent, model, new git worktree"],
+      ["/agent", "chooses the agent; /compact confirms summarization"],
+      ["Models", "F2 provider setup · Ctrl+R refresh"],
+      ["Providers", "Enter continue/save · Ctrl+U clear key; credentials and configuration are server-global"],
+    ],
+  ],
+  [
+    "REQUESTS",
+    [
+      ["Undo/Redo", "Ctrl+D shows the staged patch before confirming"],
+      ["p · o · x", "permission · question · stop (interrupt) the running turn"],
+      [
+        "Permission",
+        "opens on Reject; 1 Reject · 2 Allow once · 3 Allow always, then Ctrl+S to send (always saves the server's rule)",
+      ],
+      ["Questions", "arrows choose · Space toggles multiple · Enter selects/continues · Left/Right changes question"],
+      ["Review", "answers, then Enter / Ctrl+S sends"],
+      ["Custom", "answer: Enter saves · Ctrl+B back to choices"],
+      ["Ctrl+R", "opens rejection; Ctrl+S confirms"],
+      ["Interrupt", "type stop · Ctrl+S confirm"],
+      ["Esc", "closes without responding; PgUp/PgDn scrolls forms"],
+    ],
+  ],
+]

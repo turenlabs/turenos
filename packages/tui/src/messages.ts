@@ -263,9 +263,12 @@ export function transcript(messages: MessagesListOutput["data"], raw = false) {
         return `AGENT UPDATE\n${raw ? display(message.text) : boardMessage(message.text)}`
       if (message.type === "user" && message.source && message.source !== "user")
         return `${sourceLabel[message.source].toUpperCase()}\n${notice(message.source, message.text, raw)}`
-      if ("text" in message) return `${display(message.type, 64).toUpperCase()}\n${display(message.text)}`
+      // A label over nothing reads as a cut-off turn.
+      if ("text" in message)
+        return message.text.trim() ? `${display(message.type, 64).toUpperCase()}\n${display(message.text)}` : ""
       return `[${display((message as { type?: string }).type ?? "unknown", 64)}]`
     })
+    .filter(Boolean)
     .join("\n\n")
   if (text.length <= 80000) return text
   return `[earlier history shortened]\n${text.slice(-80000)}`

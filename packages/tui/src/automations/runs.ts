@@ -2,6 +2,7 @@ import { SelectRenderable, TextRenderable } from "@opentui/core"
 import { matchesKey } from "../keys"
 import { errorText } from "../server"
 import { label } from "../state"
+import { stamp } from "../menus/stamp"
 import { color } from "../theme"
 import type { AutomationsContext, Loop } from "./types"
 
@@ -33,7 +34,7 @@ export function runs(ctx: AutomationsContext, loop: Loop) {
       items = result.slice(0, 50)
       text.content = items.length ? `${items.length} recent run${items.length === 1 ? "" : "s"}` : "No runs yet."
       list.options = items.map((run) => ({
-        name: `${run.status} · ${new Date(run.time.created).toLocaleString()} · ${run.trigger}`,
+        name: `${run.status} · ${run.time?.created === undefined ? label(run.id) : stamp(run.time.created)} · ${run.trigger}`,
         description: run.error ? label(run.error, 200) : run.sessionID ? "Enter opens its session" : "",
       }))
       dialog.error.content = keys

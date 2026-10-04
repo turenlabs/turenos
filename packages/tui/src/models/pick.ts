@@ -1,4 +1,5 @@
 import { SelectRenderable, TextRenderable, type InputRenderable } from "@opentui/core"
+import { setRows } from "../dialogs/size"
 import { matchesKey } from "../keys"
 import type { Connection } from "../server"
 import { errorText } from "../server"
@@ -24,7 +25,7 @@ type View = {
 
 export function pick(ctx: ModelsContext, target: ModelTarget) {
   if (ctx.state.closed || !ctx.dialogs.navigate()) return
-  const dialog = ctx.dialogs.open("Choose model", false, 26)
+  const dialog = ctx.dialogs.open("Choose model")
   if (!dialog) return
   dialog.recipient = target.recipient
   const setup = () => {
@@ -36,7 +37,8 @@ export function pick(ctx: ModelsContext, target: ModelTarget) {
   const query = ctx.dialogs.input(dialog, "Find a model or provider", "", "Type to filter connected models")
   query.maxLength = 256
   const select = new SelectRenderable(ctx.renderer, {
-    height: 8,
+    flexShrink: 1,
+    height: 2,
     minHeight: 2,
     options: [],
     showDescription: true,
@@ -48,7 +50,9 @@ export function pick(ctx: ModelsContext, target: ModelTarget) {
     selectedBackgroundColor: color.selected,
     selectedTextColor: color.accent,
   })
-  dialog.form.add(select)
+  // The list is the dialog: it sits outside the scrolling header, takes its rows and shrinks with the screen.
+  dialog.form.flexShrink = 0
+  dialog.frame.add(select, dialog.frame.getChildren().indexOf(dialog.error))
   ctx.dialogs.track(dialog, select)
   const view: View = { ctx, target, dialog, query, select, matches: [], loading: false }
   query.on("input", () => update(view))
@@ -80,26 +84,21 @@ export function pick(ctx: ModelsContext, target: ModelTarget) {
 }
 
 function addHeader(ctx: ModelsContext, dialog: ModalState, target: ModelTarget, setup: () => void) {
+  const current = target.recipient?.model
+    ? modelIdentity(target.recipient.model)
+    : label(target.current || "Server default", 150)
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
       content: target.recipient
-        ? `For: ${label(target.recipient.title || target.recipient.id, 80)}\n${target.recipient.id}\nApplies to subsequent turns, not the in-flight response.\nA different model uses its default variant.`
-        : "For this launch draft. Selecting a model does not send the task.",
+        ? `For: ${label(target.recipient.title || target.recipient.id, 80)} · from the next turn\nCurrent: ${current}`
+        : `For this launch draft. Selecting a model does not send the task.\nCurrent: ${current}`,
       fg: color.muted,
-    }),
-  )
-  dialog.form.add(
-    new TextRenderable(ctx.renderer, {
-      content: `${label(target.directory, 150)}\nCurrent: ${target.recipient?.model ? modelIdentity(target.recipient.model) : label(target.current || "Server default", 150)}`,
-      fg: color.text,
-      marginBottom: 1,
     }),
   )
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
       content: "+ Connect provider / add custom model  F2",
       fg: color.accent,
-      marginBottom: 1,
       onMouseDown: (event) => {
         if (event.button !== 0) return
         event.preventDefault()
@@ -132,6 +131,7 @@ function update(view: View) {
     name: `${model.ref === target.current ? "* " : "  "}${label(model.name, 150)}`,
     description: label(model.description, 2048),
   }))
+  setRows(select, view.matches.length * 2)
   select.setSelectedIndex(
     Math.max(
       0,

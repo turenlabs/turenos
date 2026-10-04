@@ -923,7 +923,7 @@ def main():
                 key("Live", literal=True)
                 wait("[completed] Live worker")
                 plain = capture("roster-live-update")
-                check("Tasks in session root" in plain and "Live" in plain, "open task roster refreshes without leaving picker")
+                check("Root-wide recent and active tasks" in plain and "Live" in plain, "open task roster refreshes without leaving picker")
 
             with scenario("keyboard-workflow", width, height):
                 start = len(result["requests"])
@@ -991,7 +991,7 @@ def main():
                 writes = writes_since(start)
                 check(len(writes) == 1 and writes[0]["path"] == "/api/session/ses_review/command" and writes[0]["body"]["arguments"] == " recent changes" and writes[0]["body"].get("resume") is True and "delivery" not in writes[0]["body"], "server slash command preserves arguments and uses command endpoint", writes)
                 key("C-x")
-                wait("Tasks in session root")
+                wait("Root-wide recent and active tasks")
                 capture("subagent-browser")
                 check(len(writes_since(start)) == 1, "Ctrl+X opens subagent browser without sending")
 
@@ -1137,13 +1137,13 @@ def main():
                 key("?", literal=True)
                 wait("Keyboard shortcuts")
                 top = capture("help-top")
-                check("ESSENTIALS" in top and "F4 discard" in top, "help starts at essentials with current discard key")
+                check("ESSENTIALS" in top and re.search(r"F4\s+discard", top), "help starts at essentials with current discard key")
                 for _ in range(10):
                     key("NPage")
-                    if "REQUESTS" in frame() and "Interrupt: type stop" in frame():
+                    if re.search(r"Interrupt\s+type stop", frame()):
                         break
                 bottom = capture("help-bottom")
-                check("Interrupt: type stop" in bottom and "ESSENTIALS" not in bottom, "Page Down reaches help bottom")
+                check(re.search(r"Interrupt\s+type stop", bottom) and "ESSENTIALS" not in bottom, "Page Down reaches help bottom")
                 key("PPage")
                 check(frame() != bottom, "Page Up moves back through help")
                 key("Escape")
@@ -1196,7 +1196,7 @@ def main():
                 left = top.splitlines()[query_row].index(FINDER)
                 right = top.splitlines()[query_row].index("│", left)
                 ordered = sorted((session for session in inventory if not session.get("parentID")), key=lambda session: session["location"]["directory"])
-                check("Finder child" not in top and ("ses_review" in top if width >= 110 else DIRECTORY not in top), "picker keeps compact groups and exposes selected-session details on desktop")
+                check("Finder child" not in top and "ses_review" in top and DIRECTORY in top, "picker keeps compact groups and exposes selected-session details under the list")
                 for _ in range(len(ordered)):
                     if finder_position()[0] == 1:
                         break
@@ -1205,16 +1205,16 @@ def main():
                 key("NPage")
                 position, count = finder_position()
                 plain = capture("finder-page-down")
-                check(position > 2 and count == len(ordered) and f"> {ordered[position - 1]['title']}" in plain and FINDER in plain.splitlines()[query_row], "Page Down moves highlight by a page while search stays fixed")
+                check(position > 2 and count == len(ordered) and f"▶ {ordered[position - 1]['title']}" in plain and FINDER in plain.splitlines()[query_row], "Page Down moves highlight by a page while search stays fixed")
                 key("PPage")
                 check(finder_position()[0] == 1, "Page Up restores first finder result")
                 key("C-Home", "Down", "Down")
                 position, _ = finder_position()
-                selected_row = next(i for i, line in enumerate(frame().splitlines()) if "> " + ordered[position - 1]["title"] in line)
-                x = frame().splitlines()[selected_row].index("> ") + 3
+                selected_row = next(i for i, line in enumerate(frame().splitlines()) if "▶ " + ordered[position - 1]["title"] in line)
+                x = frame().splitlines()[selected_row].index("▶ ") + 3
                 mouse(65, x, selected_row)
                 plain = capture("finder-wheel-down")
-                check(finder_position()[0] == position + 3 and f"> {ordered[position + 2]['title']}" in plain, "wheel down moves and reveals the selected finder row")
+                check(finder_position()[0] == position + 3 and f"▶ {ordered[position + 2]['title']}" in plain, "wheel down moves and reveals the selected finder row")
                 mouse(64, x, selected_row)
                 check(finder_position()[0] == position, "wheel up reverses finder movement")
                 for _ in range(len(ordered)):
@@ -1222,13 +1222,13 @@ def main():
                         break
                     key("NPage")
                 plain = capture("finder-last-page")
-                check(finder_position() == (len(ordered), len(ordered)) and "> " + ordered[-1]["title"] in plain and FINDER in plain.splitlines()[query_row], "paging reaches final project without scrolling search away")
+                check(finder_position() == (len(ordered), len(ordered)) and "▶ " + ordered[-1]["title"] in plain and FINDER in plain.splitlines()[query_row], "paging reaches final project without scrolling search away")
                 resized = (120, 36) if width == 60 else (60, 24)
                 tmux("resize-window", "-t", "audit:0", "-x", str(resized[0]), "-y", str(resized[1]))
                 wait(FINDER)
                 plain = capture("finder-resized")
                 check("Live transcript end" not in plain and "Read marker" not in plain, "resized modal masks underlying conversation text")
-                check(finder_position() == (len(ordered), len(ordered)) and "> " + ordered[-1]["title"] in plain, "finder resize keeps highlighted result visible and preserves selection")
+                check(finder_position() == (len(ordered), len(ordered)) and "▶ " + ordered[-1]["title"] in plain, "finder resize keeps highlighted result visible and preserves selection")
                 tmux("resize-window", "-t", "audit:0", "-x", "59", "-y", "23")
                 wait("Resize the terminal")
                 key("Enter", "NPage")
@@ -1242,9 +1242,12 @@ def main():
                 key("session 29", literal=True)
                 wait("1/1")
                 plain = capture("finder-typing-after-browsing")
-                check("Finder session 29" in plain.splitlines()[query_row] and "> Finder session 29" in plain, "Tab and Shift+Tab retain search focus after paging, wheel, and resize")
+                # The dialog is as tall as its results and centred, so the search row moves with the result count: it is the text row above the scope tabs.
+                lines = plain.splitlines()
+                search = next(line for line in reversed(lines[:next(i for i, line in enumerate(lines) if "[Recent]" in line)]) if line.strip(" │╭╮╰╯─"))
+                check("Finder session 29" in search and "▶ Finder session 29" in plain, "Tab and Shift+Tab retain search focus after paging, wheel, and resize")
                 check(not writes_since(start) and not any(re.match(r"/api/session/ses_finder_\d+/", r["path"]) for r in result["requests"][start:]), "finder browsing neither mutates nor loads another conversation")
-                row = next(i for i, line in enumerate(plain.splitlines()) if "> Finder session 29" in line)
+                row = next(i for i, line in enumerate(plain.splitlines()) if "▶ Finder session 29" in line)
                 mouse(0, plain.splitlines()[row].index("Finder session 29"), row)
                 wait("Fixture session: ses_finder_29")
                 check(True, "clicking finder title opens its exact synthetic session")
@@ -1254,7 +1257,7 @@ def main():
                 wait("/24")
                 key("NPage")
                 plain = capture("finder-unselected-target")
-                row, match = next((i, match) for i, line in enumerate(plain.splitlines()) if "> " not in line and (match := re.search(r"  (Finder session (\d+))", line)))
+                row, match = next((i, match) for i, line in enumerate(plain.splitlines()) if "▶ " not in line and (match := re.search(r"  (Finder session (\d+))", line)))
                 target = f"ses_finder_{match[2]}"
                 mouse(0, match.start(1), row)
                 wait(f"Fixture session: {target}")

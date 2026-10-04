@@ -1,6 +1,7 @@
 import { SelectRenderable } from "@opentui/core"
 import { display } from "../../messages"
 import { color } from "../../theme"
+import { compactRows } from "../../dialogs/size"
 import { matchesKey } from "../../keys"
 import { advance, answers, editCustom, text, type QuestionFlow, type Questions } from "./flow"
 
@@ -20,7 +21,8 @@ export function renderQuestionPage(flow: QuestionFlow, question: Questions[numbe
       : []),
   ]
   const choice = new SelectRenderable(ctx.renderer, {
-    height: Math.max(1, Math.min(3, options().length)),
+    // Every option shows; the form scrolls if the dialog is short. A shorter list hid the last row behind a stray thumb.
+    height: Math.max(1, options().length),
     flexShrink: 0,
     options: options(),
     selectedIndex: draft.cursors[page],
@@ -29,19 +31,22 @@ export function renderQuestionPage(flow: QuestionFlow, question: Questions[numbe
     textColor: color.text,
     selectedTextColor: color.accent,
     selectedBackgroundColor: color.selected,
-    showScrollIndicator: true,
   })
   flow.picker = choice
   dialog.form.add(choice)
   ctx.dialogs.track(dialog, choice)
   const description = text(flow, "")
+  description.fg = color.muted
   const describe = () => {
     const index = choice.getSelectedIndex()
     draft.cursors[page] = index
     const option = question.options[index]
+    // The row above already names the option, so only its explanation shows, dimmed under the list.
     description.content = option
-      ? `${display(option.label)}\n${display(option.description)}`
-      : `Type your own answer${draft.custom[page] ? `\n${display(draft.custom[page]!)}` : ""}`
+      ? display(option.description)
+      : draft.custom[page]
+        ? display(draft.custom[page]!)
+        : "Select to type your own answer"
   }
   choice.on("selectionChanged", describe)
   describe()
@@ -104,5 +109,6 @@ function footer(flow: QuestionFlow, question: Questions[number]) {
   const keys = question.multiple
     ? "↑↓ Move · Space Toggle · Enter Next"
     : `↑↓ Move · Enter Choose, then ${last ? "review answers" : "next question"}`
+  if (flow.ctx.renderer.height < compactRows) return `${keys}\n←/→ Question · Ctrl+R Reject · Esc close`
   return `${keys}\n←/→ Question · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject · Esc close`
 }

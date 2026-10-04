@@ -290,7 +290,15 @@ function fixture(
           },
         ])
       if (url.pathname === "/api/loop/loop_check/run")
-        return Response.json([{ id: "run_check", loopID: "loop_check", status: "succeeded" }])
+        return Response.json([
+          {
+            id: "run_check",
+            loopID: "loop_check",
+            status: "succeeded",
+            time: { created: 1_700_000_000_000, updated: 1_700_000_000_000 },
+          },
+          { id: "run_partial", loopID: "loop_check", status: "failed" },
+        ])
       if (url.pathname === "/api/agent") {
         if (options.agentDelay) await Bun.sleep(options.agentDelay)
         const directory = url.searchParams.get("location[directory]") ?? "/srv/project"
@@ -580,7 +588,7 @@ for (const picker of ["k", "p"] as const) {
     }
     if (picker === "k") {
       await view.renderOnce()
-      expect(view.captureCharFrame()).toContain("> Review the server")
+      expect(view.captureCharFrame()).toContain("▶ Review the server")
       expect(view.renderer.currentFocusedEditor?.plainText).toBe("")
     }
     view.mockInput.pressKey("LINEFEED")
@@ -804,7 +812,7 @@ for (const [width, height] of [
     expect(spans.map((span) => span.fg)).toContainEqual(RGBA.fromHex("#fff3cd"))
     expect(spans.map((span) => span.fg)).toContainEqual(RGBA.fromHex("#eee5ff"))
     expect(frame).toContain("Directory: /srv/project")
-    expect(frame).toContain("Settings · Tab")
+    expect(frame).toContain("Tab settings")
     expect(frame).toContain("[ Send (Enter) ]")
     const editor = view.renderer.currentFocusedEditor!
     expect(editor).toBeDefined()
@@ -901,7 +909,7 @@ test("CSI-u shifted punctuation uses delivered text, with essentials-first help 
   view.mockInput.pressKey("\x1b[47:63;2;63u")
   const help = await waitForFrame(view, (frame) => frame.includes("Keyboard shortcuts"))
   expect(help).toContain("ESSENTIALS")
-  expect(help).toContain("F4 discard local draft")
+  expect(help).toMatch(/F4\s+discard local draft/)
   expect(help).toContain("PgUp/PgDn scroll · Esc close")
   view.mockInput.pressKey("\x1b[6~")
   const scrolled = await waitForFrame(view, (frame) => !frame.includes("ESSENTIALS"))
@@ -1010,8 +1018,8 @@ test("stopping a session is discoverable from help, the palette and the slash li
   await waitForFrame(view, (frame) => frame.includes("x Stop"))
   view.mockInput.pressKey("?")
   const help = await waitForFrame(view, (frame) => frame.includes("Keyboard shortcuts"))
-  expect(help).toContain("Esc Esc stops the selected session")
-  expect(help).toContain("x or /stop stops it")
+  expect(help).toMatch(/Esc Esc\s+stops the running turn/)
+  expect(help).toMatch(/x · \/stop\s+stops it/)
   view.mockInput.pressEscape()
   await waitForFrame(view, (frame) => !frame.includes("Keyboard shortcuts"))
   view.mockInput.pressKey("p", { ctrl: true })
@@ -1047,7 +1055,7 @@ test("permission submission defaults to Reject and extra modifiers cannot confir
     await view.mockInput.pressKeys([enter])
     await view.renderOnce()
     expect(view.renderer.currentFocusedRenderable).toBe(choice)
-    expect(view.captureCharFrame()).toContain("Ctrl+S Send")
+    expect(view.captureCharFrame()).toContain("Ctrl+S Reject")
     expect(server.posts).toHaveLength(0)
   }
   for (const modifier of ["shift", "meta", "super", "hyper"] as const) {
@@ -1309,7 +1317,8 @@ for (const [schedule, text] of [
     const list = descendants(view.renderer.root).find((node) => node instanceof SessionListRenderable)
     expect(list?.options[0]?.description).toBe(`${text} · /srv/project`)
     expect(frame).toContain("Review overnight changes")
-    expect(frame).toContain("succeeded · run_check")
+    expect(frame).toMatch(/succeeded · \d{4}-\d{2}-\d{2} \d{2}:\d{2}/)
+    expect(frame).toContain("failed · run_partial")
     expect(frame).not.toContain("[object Object]")
   })
 }
@@ -1677,12 +1686,12 @@ test("startup prefers the main thread and Ctrl+X browses subagents without sendi
   expect(server.reads).toContain("/api/session/ses_root/message")
   expect(server.reads).not.toContain("/api/session/ses_running/message")
   view.mockInput.pressKey("x", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("Tasks in session root") && frame.includes(task.description))
+  await waitForFrame(view, (frame) => frame.includes("Search task description") && frame.includes(task.description))
   view.mockInput.pressEnter()
-  await waitForFrame(view, (frame) => !frame.includes("Tasks in session root"))
+  await waitForFrame(view, (frame) => !frame.includes("Search task description"))
   expect(server.reads).toContain("/api/session/ses_running/message")
   await dashboard.refresh()
-  expect(view.captureCharFrame()).not.toContain("Tasks in session root")
+  expect(view.captureCharFrame()).not.toContain("Search task description")
   expect(server.posts).toHaveLength(0)
 })
 
@@ -2486,7 +2495,7 @@ test("a narrow launch keeps the selected session's target and settings visible",
   await view.mockInput.typeText("Inspect this directory")
   await view.renderOnce()
   expect(view.captureCharFrame()).toContain("Directory: /srv/tools")
-  expect(view.captureCharFrame()).toContain("Settings · Tab")
+  expect(view.captureCharFrame()).toContain("Tab settings")
   expect(view.captureCharFrame()).not.toContain("Server default")
   expect(view.captureCharFrame()).not.toContain("Model · optional")
   expect(view.captureCharFrame()).toContain("Inspect this directory")
@@ -2610,7 +2619,7 @@ test("mouse navigation matches the view and composer labels", async () => {
   const action = descendants(view.renderer.root).find(
     (node) => node instanceof TextRenderable && node.plainText.startsWith("f Reply"),
   ) as TextRenderable
-  expect(action.plainText).toBe("f Reply · / Commands · Enter")
+  expect(action.plainText).toBe("f Reply · / Commands")
   await click("f Reply")
   await waitForFrame(view, (frame) => frame.includes("Reply to Review the server"))
   await view.mockInput.typeText("Keep while switching tabs")
@@ -2753,8 +2762,8 @@ test("clicking Settings reveals launch controls and preserves custom choices in 
   expect(view.captureCharFrame()).not.toContain("Directory on the server")
   expect(view.captureCharFrame()).not.toContain("Model · optional")
   const lines = view.captureCharFrame().split("\n")
-  const y = lines.findIndex((line) => line.includes("Settings · Tab"))
-  await view.mockMouse.click(lines[y]!.indexOf("Settings · Tab") + 1, y)
+  const y = lines.findIndex((line) => line.includes("Tab settings"))
+  await view.mockMouse.click(lines[y]!.indexOf("Tab settings") + 1, y)
   view.mockInput.pressTab()
   await waitForFrame(view, (frame) => frame.includes("Server default") && !frame.includes("Loading agents"))
   view.mockInput.pressArrow("down")
@@ -2763,7 +2772,7 @@ test("clicking Settings reveals launch controls and preserves custom choices in 
   view.mockInput.pressEscape()
   await waitForFrame(view, (frame) => frame.includes("Draft kept"))
   view.mockInput.pressKey("n")
-  await waitForFrame(view, (frame) => frame.includes("Settings · Tab · build · test/local"))
+  await waitForFrame(view, (frame) => frame.includes("Tab settings · build · test/local"))
   expect(view.captureCharFrame()).not.toContain("Model · optional")
   expect(view.captureCharFrame()).toContain("A short task")
   expect(server.posts).toHaveLength(0)
@@ -2849,7 +2858,7 @@ for (const width of [60, 120]) {
     cleanup.push(() => view.renderer.destroy())
     await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
     view.mockInput.pressKey("k", { ctrl: true })
-    await waitForFrame(view, (frame) => frame.includes("> Browse 0"))
+    await waitForFrame(view, (frame) => frame.includes("▶ Browse 0"))
     const input = view.renderer.currentFocusedEditor!
     const y = input.y
     const list = descendants(view.renderer.root)
@@ -2860,40 +2869,40 @@ for (const width of [60, 120]) {
     expect(list.scrollTop).toBeGreaterThan(6)
     await view.mockMouse.scroll(list.viewport.x + 2, list.viewport.y + 1, "down")
     await view.renderOnce()
-    expect(view.captureCharFrame()).toMatch(/> Browse 3\b/)
+    expect(view.captureCharFrame()).toMatch(/▶ Browse 3\b/)
     expect(list.scrollTop).toBe(7)
     for (let index = 0; index < 3; index++) view.mockInput.pressKey("\x1b[6~")
     await view.renderOnce()
-    const selected = view.captureCharFrame().match(/> Browse (\d+)/)![1]
+    const selected = view.captureCharFrame().match(/▶ Browse (\d+)/)![1]
     expect(Number(selected)).toBeGreaterThan(0)
     expect(input.y).toBe(y)
     expect(input.focused).toBe(true)
     await view.mockInput.typeText("Browse")
     await view.renderOnce()
-    expect(view.captureCharFrame()).toContain(`> Browse ${selected}`)
+    expect(view.captureCharFrame()).toContain(`▶ Browse ${selected}`)
     view.mockInput.pressKey("u", { ctrl: true })
     view.mockInput.pressTab()
     view.mockInput.pressTab({ shift: true })
     await view.renderOnce()
-    expect(view.captureCharFrame()).toContain(`> Browse ${selected}`)
+    expect(view.captureCharFrame()).toContain(`▶ Browse ${selected}`)
     await view.mockMouse.click(slider.x, slider.y + Math.floor(slider.height / 2))
     expect(input.focused).toBe(true)
     await view.mockMouse.scroll(list.viewport.x + 2, list.viewport.y + 1, "up")
     await view.renderOnce()
-    expect(view.captureCharFrame().match(/> Browse (\d+)/)![1]).not.toBe(selected)
+    expect(view.captureCharFrame().match(/▶ Browse (\d+)/)![1]).not.toBe(selected)
     expect(input.focused).toBe(true)
     view.resize(60, 24)
     await view.renderOnce()
     expect(input.y).toBeLessThan(list.viewport.y)
     expect(view.captureCharFrame()).toContain("Search title")
-    expect(view.captureCharFrame()).toContain("> Browse")
+    expect(view.captureCharFrame()).toContain("▶ Browse")
     view.resize(59, 23)
     await view.renderOnce()
     expect(view.captureCharFrame()).toContain("Resize the terminal")
     view.resize(60, 24)
     await view.renderOnce()
     await view.mockInput.typeText("project-39")
-    await waitForFrame(view, (frame) => frame.includes("> Browse 39"))
+    await waitForFrame(view, (frame) => frame.includes("▶ Browse 39"))
     expect(input.plainText).toBe("project-39")
     expect(server.reads).not.toContain("/api/session/ses_browse_39/message")
     view.mockInput.pressEnter()
@@ -2925,7 +2934,7 @@ for (const line of [0]) {
     cleanup.push(() => view.renderer.destroy())
     await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
     view.mockInput.pressKey("k", { ctrl: true })
-    await waitForFrame(view, (frame) => frame.includes("> Browse 0"))
+    await waitForFrame(view, (frame) => frame.includes("▶ Browse 0"))
     for (let index = 0; index < 3; index++) view.mockInput.pressKey("\x1b[6~")
     await view.renderOnce()
     const list = descendants(view.renderer.root)
@@ -2940,7 +2949,7 @@ for (const line of [0]) {
     ) as TextRenderable
     expect(row).toBeDefined()
     const number = row.plainText.match(/Browse (\d+)/)![1]
-    expect(view.captureCharFrame()).not.toContain(`> Browse ${number}\n`)
+    expect(view.captureCharFrame()).not.toContain(`▶ Browse ${number}\n`)
     await view.mockMouse.click(row.x + 3, row.y + line, 2)
     expect(view.renderer.currentFocusedEditor?.focused).toBe(true)
     expect(server.reads).not.toContain(`/api/session/ses_browse_${number}/message`)
@@ -2963,10 +2972,10 @@ test("finder shows main sessions by default without excluding children from sear
   cleanup.push(() => view.renderer.destroy())
   await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
   view.mockInput.pressKey("k", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("> Review the server"))
+  await waitForFrame(view, (frame) => frame.includes("▶ Review the server"))
   expect(view.captureCharFrame()).not.toContain("Delegate investigation")
   await view.mockInput.typeText("Delegate")
-  await waitForFrame(view, (frame) => frame.includes("> Delegate investigation"))
+  await waitForFrame(view, (frame) => frame.includes("▶ Delegate investigation"))
   expect(view.captureCharFrame()).toContain("[child]")
   expect(view.captureCharFrame()).toContain("1/1")
   view.mockInput.pressEscape()
@@ -3001,7 +3010,7 @@ test("Ctrl+K finds sessions across projects and Escape leaves the current sessio
   await waitForFrame(view, (frame) => !frame.includes("Switch session") && frame.includes("/srv/backend"))
   expect(view.captureCharFrame()).toContain("Inspect API latency")
   view.mockInput.pressKey("k", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("> Review the server"))
+  await waitForFrame(view, (frame) => frame.includes("▶ Review the server"))
   view.mockInput.pressEnter()
   await waitForFrame(view, (frame) => !frame.includes("Switch session") && frame.includes("Review the server"))
   expect(server.posts).toHaveLength(0)
@@ -3338,13 +3347,14 @@ for (const form of ["permission", "question", "interrupt"] as const) {
       return [rows[y]!.indexOf(label) + 1, y] as const
     })
     view.mockInput.pressKey(form === "permission" ? "p" : form === "question" ? "o" : "x")
-    await waitForFrame(view, (frame) => frame.includes(form === "question" ? "Question 1 of 1" : "Ctrl+S Send"))
+    const send = form === "permission" ? "Ctrl+S Reject" : "Ctrl+S Send"
+    await waitForFrame(view, (frame) => frame.includes(form === "question" ? "Question 1 of 1" : send))
     if (form === "question") {
       view.mockInput.pressEnter()
       await waitForFrame(view, (frame) => frame.includes("Review answers"))
       view.mockInput.pressKey("s", { ctrl: true })
     }
-    const hint = form === "question" ? "Submitting…" : "Ctrl+S Send"
+    const hint = form === "question" ? "Submitting…" : send
     await waitForFrame(view, (frame) => frame.includes(hint))
     view.mockInput.pressKey("k", { ctrl: true })
     view.mockInput.pressArrow("right", { meta: true })
@@ -3417,7 +3427,7 @@ for (const submitted of [false, true]) {
     view.mockInput.pressEscape()
     await waitForFrame(view, (frame) => frame.includes("Draft kept"))
     view.mockInput.pressKey("n")
-    await waitForFrame(view, (frame) => frame.includes("Settings · Tab · build"))
+    await waitForFrame(view, (frame) => frame.includes("Tab settings · build"))
     if (submitted) {
       view.mockInput.pressKey("s", { ctrl: true })
       await waitForFrame(view, (frame) => frame.includes("Ctrl+O inspect"))
@@ -3437,7 +3447,7 @@ for (const submitted of [false, true]) {
     view.mockInput.pressTab()
     await waitForFrame(view, (frame) => frame.includes("Server default") && !frame.includes("Loading agents"))
     expect(view.captureCharFrame()).toContain(submitted ? "Directory: /srv/project" : "Directory: /srv/other")
-    if (!submitted) expect(view.captureCharFrame()).not.toContain("Settings · Tab · build")
+    if (!submitted) expect(view.captureCharFrame()).not.toContain("Tab settings · build")
     view.mockInput.pressKey("s", { ctrl: true })
     await waitForFrame(view, (frame) => frame.includes("Task sent."))
     expect(server.posts.filter((post) => post.path === "/api/session")).toHaveLength(1)
@@ -3732,7 +3742,7 @@ test("clicking draft labels and non-field space leaves its editor ready for typi
     await view.mockInput.typeText("Still typing in the draft")
     expect(editor.plainText).toBe("Still typing in the draft")
     await view.renderOnce()
-    if (key === "n") await view.mockMouse.click(editor.x + 2, editor.y + editor.height + 1)
+    if (key === "n") await view.mockMouse.click(editor.x + 2, editor.y + editor.height)
     if (key === "f") await clickText(view, "Steer")
     expect(editor.focused).toBe(true)
     await view.mockInput.typeText(" after clicking")

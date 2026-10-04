@@ -13,6 +13,8 @@ export type TaskPicker = {
   dialog: ModalState
   query: InputRenderable
   todos: TextRenderable
+  /** The empty state, shown in the list area where the rows would be. */
+  empty: TextRenderable
   detail: Detail
   tasks: LoadedTask[]
   revision: string
@@ -41,7 +43,7 @@ function paint(picker: TaskPicker, index: number) {
   const selected = index === picker.selected
   row.bg = selected ? color.accent : color.panel
   row.fg = selected ? color.bg : task.status === "failed" ? color.error : color.text
-  row.content = `${selected ? ">" : " "} [${task.status}] ${label(task.description, 200)}\n  ${label(task.agent)} - ${task.childSessionID}\n  ${task.error ? `Failure: ${label(task.error, 500)}` : `Task: ${task.id}`}`
+  row.content = `${selected ? "▶" : " "} [${task.status}] ${label(task.description, 200)}\n  ${label(task.agent)} · ${task.childSessionID}\n  ${task.error ? `Failure: ${label(task.error, 500)}` : `Task: ${task.id}`}`
 }
 
 export function choose(picker: TaskPicker, index: number) {
@@ -50,11 +52,13 @@ export function choose(picker: TaskPicker, index: number) {
   paint(picker, previous)
   paint(picker, picker.selected)
   reveal(picker)
+  picker.empty.visible = !picker.matches.length
+  picker.empty.content = picker.tasks.length
+    ? "No matching loaded tasks."
+    : "No tasks yet. Subagent work started in this session appears here."
   picker.dialog.error.content = picker.matches.length
-    ? `${picker.selected + 1}/${picker.matches.length} - Up/Down choose - Enter open - Esc close\nPgUp/PgDn page${picker.detail.tasks.cursor.next ? " - Older tasks are not loaded" : ""}`
-    : picker.tasks.length
-      ? "No matching loaded tasks - Esc close"
-      : "No tasks yet - subagent work started in this session appears here - Esc close"
+    ? `${picker.selected + 1}/${picker.matches.length} · ↑/↓ choose · Enter open · Esc close\nPgUp/PgDn page${picker.detail.tasks.cursor.next ? " · Older tasks are not loaded" : ""}`
+    : "Esc close"
 }
 
 /** Re-matches the search terms, rebuilds the rows and keeps the previously chosen task selected when it survives. */

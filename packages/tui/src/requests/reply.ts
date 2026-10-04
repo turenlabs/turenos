@@ -5,6 +5,7 @@ import { color } from "../theme"
 import { matchesKey } from "../keys"
 import { outsideNotice } from "../mentions/outside"
 import { promptPayload } from "../prompt-files"
+import { followText } from "../suggest/editor-height"
 import { showAttachments } from "./attachments"
 import { openBlockedReply } from "./blocked-reply"
 import { maxDrafts, maxMessageLength, newMessageID, replyBlocked, type RequestContext } from "./context"
@@ -81,9 +82,12 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
     const mode = !live ? "Send" : draft.delivery === "queue" ? "Queue" : "Steer"
     heading.content = `${mode} · Reply to ${label(session.title, 100)}${session.revert ? " · undo staged" : ""}`
     heading.fg = session.revert ? color.warning : color.muted
-    const hint = session.revert
-      ? `Enter Send + commit undo · Alt+Enter newline\nEsc keep · F4 discard${live ? " · Ctrl+T mode" : ""}`
-      : `Enter Send · Shift/Alt+Enter newline\nEsc keep · F4 discard${live ? " · Ctrl+T mode" : ""}`
+    const listed = (dialog.suggestionRows ?? 0) + (dialog.mentionRows ?? 0) > 0
+    const hint = listed
+      ? `Up/Down choose · Tab complete\nEnter pick · Esc close list · F4 discard`
+      : session.revert
+        ? `Enter Send + commit undo · Alt+Enter newline\nEsc keep · F4 discard${live ? " · Ctrl+T mode" : ""}`
+        : `Enter Send · Shift/Alt+Enter newline\nEsc keep · F4 discard${live ? " · Ctrl+T mode" : ""}`
     // A refresh may repaint the hint, but never over a message that replaced it.
     if (!shown.content || dialog.error.content === shown.content) dialog.error.content = hint
     shown.content = dialog.error.content
@@ -105,25 +109,13 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
   return delivery
 }
 
-/** The reply editor, sized from `lineInfo.lineSources.length` (virtualLineCount can be viewport-limited). */
+/** The reply editor, one row for a short message and growing with the text. */
 function createReplyEditor(ctx: RequestContext, dialog: ModalState, draft: MessageDraft) {
   const task = ctx.dialogs.prompt(dialog, "Your message", draft.text, draft.cursor)
   dialog.editor = task
   dialog.editorLocked = () => draft.submitted !== undefined
-  task.height = Math.max(3, Math.min(6, task.lineInfo.lineSources.length))
   task.marginBottom = 0
-  const contentChanged = task.onContentChange
-  const resizeTask = () => {
-    const height = Math.max(3, Math.min(6, task.lineInfo.lineSources.length))
-    if (task.height === height) return
-    task.height = height
-    ctx.dialogs.resize()
-  }
-  task.onContentChange = (event) => {
-    contentChanged?.(event)
-    resizeTask()
-  }
-  task.onSizeChange = resizeTask
+  followText(task, 1, 6, ctx.dialogs.resize)
   return task
 }
 

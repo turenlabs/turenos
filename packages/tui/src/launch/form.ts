@@ -1,4 +1,5 @@
 import { TextRenderable } from "@opentui/core"
+import { followText } from "../suggest/editor-height"
 import { color } from "../theme"
 import type { LaunchDeps, LaunchForm, LaunchStore } from "./context"
 import { summarize } from "./summary"
@@ -16,6 +17,7 @@ export function buildForm(
   const { renderer, state, dialogs } = deps
   // Keep the prompt usable alongside the compact mark on small terminals.
   dialog.frame.gap = 0
+  hugContent(dialog)
   const ui = { settingsOpen: false }
   const logo = createLogo(renderer, state, dialog, ui)
   const context = createContext(renderer, dialog, () => {
@@ -26,6 +28,7 @@ export function buildForm(
   dialog.frame.add(logo.logo, 0)
   const task = dialogs.prompt(dialog, "What would you like to do?", current.prompt, current.cursor)
   dialog.editorLocked = () => !!current.start.input()
+  followText(task, 3, 8)
   const directory = dialogs.input(dialog, "Directory on the server", current.directory)
   dialog.form.add(new TextRenderable(renderer, { content: "Agent · ↑/↓ to choose", fg: color.muted }))
   const agent = createAgentSelect(renderer, current.agent)
@@ -89,4 +92,12 @@ function collapseSettings(dialog: ModalState, ui: { settingsOpen: boolean }, res
       field.visible = true
     })
   }
+}
+
+/** The dialog is as tall as its content, not a fixed block with empty rows above Send. */
+function hugContent(dialog: ModalState) {
+  dialog.frame.height = "auto"
+  dialog.form.flexGrow = 0
+  dialog.form.flexShrink = 1
+  dialog.form.content.minHeight = 0
 }

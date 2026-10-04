@@ -2,6 +2,7 @@ import { TextRenderable } from "@opentui/core"
 import { display } from "../messages"
 import { label, type DashboardState } from "../state"
 import { color } from "../theme"
+import { stamp } from "./stamp"
 import type { MenuContext } from "./context"
 
 type Snapshot = NonNullable<DashboardState["snapshot"]>
@@ -16,17 +17,13 @@ export function information(ctx: MenuContext, address: string) {
   const session = state.tab === "sessions" ? snapshot?.sessions.find((item) => item.id === state.selected) : undefined
   const result = state.detail?.sessionID === session?.id ? state.detail : undefined
   const tasks = new Map([...(result?.tasks.data ?? []), ...(result?.tasks.active ?? [])].map((task) => [task.id, task]))
-  const sessionMeta = session ? sessionLines(session) : []
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
       content: [
-        sessionMeta.length ? display(sessionMeta.join("\n"), 6000) : "",
-        result
-          ? `${result.permissions.length} permissions · ${result.questions.length} questions · ${result.pending.length} queued inputs`
-          : "",
+        session ? `SESSION\n${display(sessionLines(session, result).join("\n"), 6000)}` : "",
         tasks.size ? taskLines(tasks.values()) : "",
-        `SERVER\n${label(address, 1000)}\n${state.connected ? "Connected" : state.connectionError || "Connecting…"}`,
-        snapshot ? snapshotLines(snapshot, state.connected) : "",
+        snapshot ? snapshotLines(snapshot, state.connected, session?.location.directory) : "",
+        `SERVER\n${label(serverAddress(address), 1000)}\n${state.connected ? "Connected" : state.connectionError || "Connecting…"}`,
       ]
         .filter(Boolean)
         .join("\n\n"),
@@ -38,27 +35,32 @@ export function information(ctx: MenuContext, address: string) {
   dialog.form.focus()
 }
 
-function sessionLines(session: Session) {
+/** The address arrives as "host:port · url"; when the URL already holds the host, only the URL is shown. */
+function serverAddress(address: string) {
+  const [host, url] = address.split(" · ")
+  return url?.includes(host!) ? url : address
+}
+
+function sessionLines(session: Session, result: Detail | undefined) {
   const modelStr = session.model
     ? `${session.model.providerID}/${session.model.id}${session.model.variant ? ` (${session.model.variant})` : ""}`
     : "server default"
-  const lines = [
+  return [
     label(session.title || "Untitled session", 200),
     ...(session.time.archived !== undefined ? ["Archived · Ctrl+P restore brings it back to the lists"] : []),
     `Session ID: ${session.id}`,
     ...(session.parentID ? [`Parent ID: ${session.parentID}`] : []),
     `Directory: ${session.location.directory}`,
-    `Agent: ${session.agent ?? "server default"}`,
-    `Model: ${modelStr}`,
+    `Agent: ${session.agent ?? "server default"} · Model: ${modelStr}`,
+    `Created: ${stamp(session.time.created)}`,
+    ...(session.time.updated ? [`Updated: ${stamp(session.time.updated)}`] : []),
+    ...(session.tokens ? [tokenLine(session)] : []),
+    ...(result
+      ? [
+          `${result.permissions.length} permissions · ${result.questions.length} questions · ${result.pending.length} queued inputs`,
+        ]
+      : []),
   ]
-  if (session.time) {
-    lines.push(
-      `Created: ${new Date(session.time.created).toLocaleString()}` +
-        (session.time.updated ? ` · Updated: ${new Date(session.time.updated).toLocaleString()}` : ""),
-    )
-  }
-  if (session.tokens) lines.push(tokenLine(session))
-  return lines
 }
 
 function tokenLine(session: Session) {
@@ -77,6 +79,22 @@ function taskLines(tasks: Iterable<Detail["tasks"]["data"][number]>) {
   )
 }
 
-function snapshotLines(snapshot: Snapshot, connected: boolean) {
-  return `${label(snapshot.location.directory, 4096)}\nUpdated ${new Date(snapshot.updated).toLocaleString()}${connected ? "" : " (stale)"}\n${Object.keys(snapshot.active).length} running agents\n${snapshot.inventoryErrors.terminals ? `Terminal inventory unavailable: ${snapshot.inventoryErrors.terminals}` : snapshot.terminalsAvailable ? `${snapshot.terminals.length} managed terminals` : "Terminal inventory unavailable on this server version"}${snapshot.inventoryErrors.automations ? `\nAutomations unavailable: ${snapshot.inventoryErrors.automations}` : ""}`
+/** The project's inventory; its folder is left out when the session block above already shows it. */
+function snapshotLines(snapshot: Snapshot, connected: boolean, sessionDirectory: string | undefined) {
+  const directory = snapshot.location.directory === sessionDirectory ? [] : [label(snapshot.location.directory, 4096)]
+  const terminals = snapshot.inventoryErrors.terminals
+    ? `Terminal inventory unavailable: ${snapshot.inventoryErrors.terminals}`
+    : snapshot.terminalsAvailable
+      ? `${snapshot.terminals.length} managed terminals`
+      : "Terminal inventory unavailable on this server version"
+  return [
+    "PROJECT",
+    ...directory,
+    `Updated: ${stamp(snapshot.updated)}${connected ? "" : " (stale)"}`,
+    `${Object.keys(snapshot.active).length} running agents`,
+    terminals,
+    ...(snapshot.inventoryErrors.automations
+      ? [`Automations unavailable: ${snapshot.inventoryErrors.automations}`]
+      : []),
+  ].join("\n")
 }

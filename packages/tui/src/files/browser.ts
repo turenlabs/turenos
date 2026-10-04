@@ -3,11 +3,13 @@ import type { Panel } from "../panel"
 import { choice, object, optional, string } from "../response-validation"
 import { errorText, type Connection, type Session } from "../server"
 import { label, type DashboardState } from "../state"
+import { fitHeading, panelWidth } from "../changes/heading"
 import { entryList, type Entry } from "./entries"
 
 const MAX_LINES = 5000
 
-export const KEYS = "↑↓ choose · Enter open · ← or Backspace up · PgUp/PgDn scroll · @ mention in reply · Esc close"
+/** Hint parts by priority: the trailing ones drop first when the panel is narrow. */
+const HINTS = ["↑↓ choose", "Enter open", "← up", "@ mention in reply", "PgUp/PgDn scroll"]
 
 export type FilesContext = { state: DashboardState; connection: Connection }
 
@@ -33,9 +35,10 @@ export async function listFolder(b: FileBrowser, path: string, select = "") {
       (left, right) =>
         Number(right.type === "directory") - Number(left.type === "directory") || left.name.localeCompare(right.name),
     )
-    b.panel.heading.content = `${label(b.directory, 120)}/${label(b.folder, 120)}`
+    b.panel.fit("heading", () => (b.panel.heading.content = fitPath(b)))
+    // The trailing slash marks a folder, so the selection arrow is the only leading glyph.
     b.panel.list.options = b.entries.map((entry) => ({
-      name: `${entry.type === "directory" ? "▸ " : "  "}${label(entry.name, 120)}${entry.type === "directory" ? "/" : ""}${entry.ignored ? " (ignored)" : ""}`,
+      name: `${label(entry.name, 120)}${entry.type === "directory" ? "/" : ""}${entry.ignored ? " (ignored)" : ""}`,
       description: "",
     }))
     b.panel.list.setSelectedIndex(
@@ -44,12 +47,17 @@ export async function listFolder(b: FileBrowser, path: string, select = "") {
         b.entries.findIndex((entry) => entry.path === select),
       ),
     )
-    b.panel.dialog.error.content = KEYS
+    b.panel.hints(HINTS, ["Esc close"])
     void preview(b)
   } catch (error) {
     if (version !== b.request || state.modal !== b.panel.dialog) return
     b.panel.show(`Could not list ${b.folder || "this folder"}: ${errorText(error)}`)
   }
+}
+
+/** The folder's path, cut from the left so the folder being browsed stays visible. */
+function fitPath(b: FileBrowser) {
+  return fitHeading(panelWidth(b.panel), "", `${label(b.directory, 400)}/${label(b.folder, 400)}`, "", "start")
 }
 
 export async function preview(b: FileBrowser) {

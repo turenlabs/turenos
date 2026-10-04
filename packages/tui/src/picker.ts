@@ -1,5 +1,6 @@
 import { SelectRenderable, TextRenderable, type CliRenderer, type ScrollBoxRenderable } from "@opentui/core"
 import type { Dialogs } from "./dialogs"
+import { setRows } from "./dialogs/size"
 import { matchesKey } from "./keys"
 import { errorText } from "./server"
 import type { DashboardState } from "./state"
@@ -36,7 +37,7 @@ export function openPicker(
   const form = dialog.form
   form.add(text)
   let choices = input.choices
-  // The list takes the rows the dialog has and scrolls; a fixed height clipped it on small terminals.
+  // The list is as tall as its rows and shrinks, with a scroll thumb, when the screen has fewer.
   form.flexGrow = 0
   form.flexShrink = 0
   const list = choiceList(renderer)
@@ -58,6 +59,7 @@ export function openPicker(
     const keep = input.memory?.get(input.title) ?? 0
     choices = next
     list.options = next.map((choice) => ({ name: choice.name, description: choice.description ?? "" }))
+    setRows(list, next.length * 2)
     list.setSelectedIndex(Math.max(0, Math.min(keep, next.length - 1)))
   }
   set(choices)
@@ -68,11 +70,12 @@ export function openPicker(
 
 function choiceList(renderer: CliRenderer) {
   return new SelectRenderable(renderer, {
-    flexGrow: 1,
+    flexGrow: 0,
     flexShrink: 1,
     minHeight: 2,
     options: [],
     showDescription: true,
+    showScrollIndicator: true,
     backgroundColor: color.panel,
     textColor: color.text,
     descriptionColor: color.muted,

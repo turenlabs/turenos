@@ -1,10 +1,10 @@
 import { label } from "../state"
 import type { DashboardState } from "../state"
-import { headerLeft, headerRight, sidebarTitle, scheduleText } from "../chrome"
+import { headerLeft, headerRight, scheduleText } from "../chrome"
 import { sessionRows, type SidebarRow } from "../session-list"
 import { folderContains } from "../working-folders"
 import { renderActions } from "./actions"
-import { renderTabs } from "./status"
+import { renderSidebarTitle, renderTabs } from "./status"
 import type { DashboardContext } from "./context"
 
 type Snapshot = NonNullable<DashboardState["snapshot"]>
@@ -80,7 +80,8 @@ function defaultSelection(state: DashboardState, snapshot: Snapshot) {
 }
 
 function renderSidebar(d: DashboardContext, snapshot: Snapshot) {
-  d.ui.sidebarHeading.content = sidebarTitle(d.state, d.state.rows.length)
+  renderSidebarTitle(d)
+  renderEmptyList(d)
   d.ui.folders.content = ` Working folders${snapshot.workingFolders ? ` · ${snapshot.workingFolders.length}` : ""}${snapshot.folderError ? " !" : ""}`
   const emptyFolders = (snapshot.workingFolders ?? []).filter(
     (directory) => !snapshot.sessions.some((session) => folderContains(directory, session.location.directory)),
@@ -93,4 +94,16 @@ function renderSidebar(d: DashboardContext, snapshot: Snapshot) {
     .join("\n")
   d.ui.heading.content = d.renderer.width < 90 ? "TurenOS" : headerLeft(snapshot)
   d.ui.running.content = headerRight(d.state, snapshot)
+}
+
+function renderEmptyList(d: DashboardContext) {
+  const empty = d.state.rows.length === 0
+  d.ui.emptyList.visible = empty
+  d.ui.emptyList.content = d.state.query
+    ? "Nothing matches the filter."
+    : d.state.tab === "sessions"
+      ? "No sessions yet. n starts one."
+      : d.state.tab === "terminals"
+        ? "No terminals yet. a opens one."
+        : "No automations yet. a adds one."
 }

@@ -15,5 +15,7 @@ export function toggleMotion(d: DashboardContext) {
 
 export function toggleSidebar(d: DashboardContext) {
   d.state.sidebarHidden = d.ui.sidebar.visible
+  // An opened sidebar takes the keys, so the footer's "Focus: sidebar" is true.
+  if (!d.state.sidebarHidden) d.state.detailFocused = false
   resize(d)
 }

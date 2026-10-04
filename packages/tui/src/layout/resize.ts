@@ -1,15 +1,16 @@
-import type { CliRenderer } from "@opentui/core"
+import type { CliRenderer, Renderable } from "@opentui/core"
 import { color, layout } from "../theme"
 import type { DashboardState } from "../state"
 import { footerShortcuts } from "../chrome"
 import { folderContains } from "../working-folders"
+import { sizeFloating } from "../dialogs/size"
 import type { LayoutParts } from "./parts"
 
 /** Re-applies size- and modal-dependent visibility and dimensions to every part. */
 export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts: LayoutParts) {
   const narrow = renderer.width < layout.narrowBreakpoint
   resizeSizeNotice(renderer, state, parts)
-  resizeTopbar(renderer, state, parts)
+  resizeTopbar(state, parts)
   resizeBody(parts, narrow)
   resizeSidebar(renderer, state, parts, narrow)
   resizeMain(state, parts, narrow)
@@ -23,8 +24,7 @@ function resizeSizeNotice(renderer: CliRenderer, state: DashboardState, parts: L
   parts.sizeText.content = `Resize the terminal\n\nTurenOS needs at least ${layout.minWidth} columns × ${layout.minHeight} rows.\nCurrent size: ${renderer.width} × ${renderer.height}.\n\n${state.modal ? "Your draft stays open while you resize.\n" : ""}q / Ctrl+C quits.`
 }
 
-function resizeTopbar(renderer: CliRenderer, state: DashboardState, parts: LayoutParts) {
-  parts.running.visible = renderer.width >= 70
+function resizeTopbar(state: DashboardState, parts: LayoutParts) {
   parts.modelButton.content = state.modal ? (state.modal.chooseModel ? "Models Ctrl+L" : "Models") : "Models m"
   parts.modelButton.fg = !state.modal || (state.modal.chooseModel && !state.modal.busy) ? color.accent : color.muted
   parts.switchButton.content = state.modal ? "Sessions" : "Sessions Ctrl+K"
@@ -73,12 +73,33 @@ function resizeMain(state: DashboardState, parts: LayoutParts, narrow: boolean) 
 }
 
 function resizeDockedModal(renderer: CliRenderer, state: DashboardState) {
-  if (!state.modal?.docked) return
-  const editorHeight = state.modal.editor ? Math.max(3, Math.min(6, state.modal.editor.lineInfo.lineSources.length)) : 0
-  state.modal.box.height = Math.min(
+  const modal = state.modal
+  if (!modal) return
+  sizeFloating(renderer, modal)
+  if (!modal.docked) return
+  if (!modal.editor) {
+    // A request dialog is as tall as its content, up to all but the top rows.
+    const cap = Math.max(Math.floor(renderer.height / 2), renderer.height - 10)
+    modal.box.height = "auto"
+    modal.box.maxHeight = cap
+    modal.frame.height = "auto"
+    modal.frame.maxHeight = cap
+    return
+  }
+  // A reply editor keeps the lower half and is as tall as its wrapped text, 1-6 rows, counted from
+  // lineSources (virtualLineCount can be viewport-limited). Set here as well as by followText:
+  // text set programmatically does not fire the content-change hook.
+  const editorHeight = Math.max(1, Math.min(6, modal.editor.lineInfo.lineSources.length))
+  modal.editor.height = editorHeight
+  modal.frame.height = "100%"
+  modal.box.height = Math.min(
     Math.floor(renderer.height / 2),
-    state.modal.editor
-      ? editorHeight + state.modal.error.height + 3 + (state.modal.suggestionRows ?? 0) + (state.modal.mentionRows ?? 0)
-      : state.modal.height,
+    editorHeight + requestedHeight(modal.error) + 3 + (modal.suggestionRows ?? 0) + (modal.mentionRows ?? 0),
   )
+}
+
+/** The height just assigned: a renderable's `height` getter keeps the previous layout until the next render. */
+function requestedHeight(node: Renderable) {
+  const height = node.getLayoutNode().getHeight().value
+  return Number.isFinite(height) ? height : node.height
 }

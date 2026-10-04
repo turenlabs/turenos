@@ -31,12 +31,12 @@ export function escapeStop(ctx: RequestContext, rewind: () => void) {
   const action = Object.hasOwn(ctx.state.snapshot.active, id) ? "stop" : "rewind"
   if (action === "rewind" && !ctx.state.connected) return false
   if (ctx.stopArmed?.sessionID !== id || ctx.stopArmed.action !== action || ctx.stopArmed.until < Date.now()) {
-    if (action === "rewind" && ctx.state.detail?.sessionID === id && !ctx.state.detail.messages.length)
+    if (action === "rewind" && ctx.state.detail?.sessionID === id && !ctx.state.detail.messages.length) {
       ctx.say("Nothing to undo in this session.")
-    else {
-      ctx.stopArmed = { sessionID: id, until: Date.now() + 2000, action }
-      ctx.say(action === "stop" ? "Press Esc again to stop this turn" : "Press Esc again to rewind")
+      return true
     }
+    ctx.stopArmed = { sessionID: id, until: Date.now() + 2000, action }
+    ctx.say(action === "stop" ? "Press Esc again to stop this turn" : "Press Esc again to rewind")
     return true
   }
   ctx.stopArmed = undefined

@@ -4,7 +4,7 @@ import { matchesKey } from "./keys"
 import { mentionInReply, openPanel, type Drafts } from "./panel"
 import type { Connection } from "./server"
 import type { DashboardState } from "./state"
-import { cycle, load, showFile, type Review } from "./changes/review"
+import { cycle, load, paint, showFile, type Review } from "./changes/review"
 
 /**
  * The desktop's review panel: the working tree's uncommitted changes, the branch against its base,
@@ -27,8 +27,9 @@ export function createChanges(
     if (!panel) return
     panel.dialog.recipient = session
     panel.dialog.error.marginRight = 2
-    const review: Review = { state, connection, session, panel, mode: "git", files: [], request: 0 }
+    const review: Review = { state, connection, session, panel, mode: "git", files: [], loaded: false, request: 0 }
     panel.list.on("selectionChanged", () => showFile(review))
+    panel.fit("rows", () => paint(review))
     panel.dialog.key = (key) => {
       const action = matchesKey(key, "r", { ctrl: true })
         ? () => load(review)

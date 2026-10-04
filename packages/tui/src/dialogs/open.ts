@@ -11,18 +11,22 @@ export function open(ctx: DialogContext, title: string, inline = false, height =
   const placement = { inline, docked, sidebar }
   const overlay = createOverlay(ctx, docked)
   attachOverlay(ctx, overlay, placement)
-  const frame = createFrame(ctx, title, height, placement)
+  const frame = createFrame(ctx, title, placement)
   overlay.add(frame)
+  // Floating dialogs are as tall as their hint, so a one-line hint does not leave a blank row.
+  const floating = !inline && !docked && !sidebar
   const error = new TextRenderable(ctx.renderer, {
     content: "Tab next · Shift+Tab back · Ctrl+Enter / Ctrl+S submit · Esc close",
     fg: color.muted,
-    height: 2,
+    height: floating ? undefined : 2,
     flexShrink: 0,
   })
+  // Floating and docked forms follow their content; the content's default 100% minimum would stretch them.
   const form = new ScrollBoxRenderable(ctx.renderer, {
-    flexGrow: 1,
+    flexGrow: floating ? 0 : 1,
     minHeight: 1,
-    contentOptions: { flexDirection: "column", paddingRight: 1 },
+    ...(inline || sidebar ? {} : { flexShrink: 1 }),
+    contentOptions: { flexDirection: "column", paddingRight: 1, ...(inline || sidebar ? {} : { minHeight: 0 }) },
   })
   frame.add(form)
   frame.add(error)
@@ -75,13 +79,13 @@ function attachOverlay(ctx: DialogContext, overlay: BoxRenderable, placement: Pl
   if (!placement.inline && !placement.docked) (placement.sidebar ? ctx.ui.sidebar : ctx.ui.root).add(overlay)
 }
 
-function createFrame(ctx: DialogContext, title: string, height: number, placement: Placement) {
+function createFrame(ctx: DialogContext, title: string, placement: Placement) {
   const full = placement.inline || placement.docked || placement.sidebar
   return new BoxRenderable(ctx.renderer, {
     width: full ? "100%" : "95%",
-    height: full ? "100%" : "95%",
+    height: full ? "100%" : "auto",
     maxWidth: placement.docked ? undefined : placement.inline ? 88 : 70,
-    maxHeight: placement.docked ? undefined : placement.inline ? 32 : height,
+    maxHeight: placement.docked ? undefined : placement.inline ? 32 : Math.max(1, ctx.renderer.height - 2),
     border: placement.docked ? ["left"] : true,
     borderStyle: "rounded",
     borderColor: placement.docked ? color.focus : color.border,

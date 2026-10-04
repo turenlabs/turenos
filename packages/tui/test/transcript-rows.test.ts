@@ -87,3 +87,11 @@ test("tool descriptions end at a word with an ellipsis", () => {
   expect(line.endsWith(" …")).toBe(false)
   expect(description).toContain(line.slice(line.indexOf("—") + 2, -1))
 })
+
+test("a user message with no text adds no bare label to the transcript", () => {
+  const messages = [
+    { id: "msg_1", type: "user", text: "hello", time: { created: 1 } },
+    { id: "msg_2", type: "user", text: "  \n", time: { created: 2 } },
+  ] as Message[]
+  expect(transcript(messages)).toBe("USER\nhello")
+})

@@ -4,32 +4,16 @@ import { label } from "../state"
 import { color } from "../theme"
 import { printableKey } from "../keys"
 import type { ModalState } from "../state"
-import { recipient, type RequestContext } from "./context"
+import type { RequestContext } from "./context"
 
 export function permission(ctx: RequestContext) {
   const request = ctx.state.detail?.permissions[0]
   if (!request || ctx.state.detail?.sessionID !== ctx.state.selected)
     return ctx.say("No pending permission for the selected session.")
   trackShown(ctx, `${request.sessionID}:${request.id}`)
-  const dialog = ctx.dialogs.open("Permission request", false, Math.min(28, 18 + request.resources.length), true)
+  const dialog = ctx.dialogs.open("Permission request", false, 24, true)
   if (!dialog) return
-  dialog.form.add(
-    new TextRenderable(ctx.renderer, {
-      content: "Permission request",
-      fg: color.text,
-      attributes: TextAttributes.BOLD,
-      height: 1,
-      flexShrink: 0,
-    }),
-  )
-  recipient(ctx, dialog, request.sessionID)
-  dialog.form.add(
-    new TextRenderable(ctx.renderer, {
-      content: `${display(request.action)}\n\n${request.resources.map((resource) => display(resource, 1000)).join("\n")}`,
-      fg: color.text,
-      wrapMode: "word",
-    }),
-  )
+  describe(ctx, dialog, request)
   // "Always" saves the server's own rule for this request, so it is offered only when the server names one.
   const always = request.save?.length
     ? `Also allow ${request.save.map((pattern) => display(pattern, 200)).join(", ")} from now on`
@@ -64,17 +48,63 @@ export function permission(ctx: RequestContext) {
   choice.focus()
 }
 
+type Request = NonNullable<RequestContext["state"]["detail"]>["permissions"][number]
+
+/** The heading, one dim line naming the session and folder, and the action with its resources. */
+function describe(ctx: RequestContext, dialog: ModalState, request: Request) {
+  dialog.form.add(
+    new TextRenderable(ctx.renderer, {
+      content: "Permission request",
+      fg: color.text,
+      attributes: TextAttributes.BOLD,
+      height: 1,
+      flexShrink: 0,
+    }),
+  )
+  const session = ctx.state.snapshot?.sessions.find((item) => item.id === request.sessionID)
+  dialog.recipient = session
+  dialog.form.add(
+    new TextRenderable(ctx.renderer, {
+      content: [label(session?.title ?? request.sessionID, 80), label(session?.location.directory ?? "", 200)]
+        .filter(Boolean)
+        .join(" · "),
+      fg: color.muted,
+      height: 1,
+      flexShrink: 0,
+      truncate: true,
+      wrapMode: "none",
+    }),
+  )
+  dialog.form.add(
+    new TextRenderable(ctx.renderer, {
+      content: `${display(request.action)}\n${request.resources.map((resource) => display(resource, 1000)).join("\n")}`,
+      fg: color.text,
+      wrapMode: "word",
+    }),
+  )
+}
+
 /** Digits pick a row, Up/Down keep the chosen row on screen, and the hints name each key. */
 function wireChoice(dialog: ModalState, choice: SelectRenderable) {
   // Up/Down move the select inside a scrolling form; keep the chosen row visible so Ctrl+S never sends blind.
-  choice.on("selectionChanged", () => showChoice(dialog, choice))
+  choice.on("selectionChanged", () => {
+    showChoice(dialog, choice)
+    hint(dialog, choice)
+  })
   dialog.key = (key) => {
     const index = ["1", "2", "3"].indexOf(printableKey(key))
     if (index < 0 || index >= choice.options.length) return false
     choice.setSelectedIndex(index)
     return true
   }
-  dialog.error.content = `${choice.options.map((option, index) => `${index + 1} ${option.name}`).join(" · ")}\nCtrl+S Send · Esc close · PgUp/PgDn scroll`
+  hint(dialog, choice)
+}
+
+/** Names the digits and what Ctrl+S does with the row that is selected now. */
+function hint(dialog: ModalState, choice: SelectRenderable) {
+  const keys = choice.options.map((option, index) => `${index + 1} ${option.name}`).join(" · ")
+  const chosen = choice.options[choice.getSelectedIndex()]?.name ?? "Reject"
+  dialog.error.content = `${keys}\nCtrl+S ${chosen} · Esc close · PgUp/PgDn scroll`
 }
 
 function showChoice(dialog: ModalState, choice: SelectRenderable) {

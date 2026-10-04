@@ -4,7 +4,7 @@ import type { ModalState } from "../state"
 import type { MenuContext } from "./context"
 import type { Scope, ScopeButton } from "./switcher-state"
 
-/** Search field, scope tabs, new-session row and details pane, in their fixed dialog order. */
+/** Search field, scope tabs, new-session row, results and the selected session's details, in their fixed dialog order. */
 export function buildSwitcherView(
   ctx: MenuContext,
   dialog: ModalState,
@@ -55,11 +55,14 @@ export function buildSwitcherView(
   )
   const details = new TextRenderable(renderer, {
     content: "",
-    height: 4,
+    height: 2,
+    width: "100%",
     flexShrink: 0,
     fg: color.muted,
-    wrapMode: "word",
+    wrapMode: "none",
+    truncate: true,
   })
-  dialog.frame.add(details, 3)
+  // Under the results, next to the hint, so it reads as the selected row's details.
+  dialog.frame.add(details, 4)
   return { query, scopeButtons, details }
 }

@@ -35,6 +35,18 @@ export function mergeLocal(items: readonly Choice[], local: readonly LocalComman
   return fuzzyFilter([...merged.values()], query, (item) => item.name)
 }
 
-export function describe(item: Choice) {
-  return `/${item.name} - ${display(item.description ?? "", 120).replace(/\s/g, " ")}`
+/** `/name - description`, with the description cut at a word and an ellipsis, or dropped when little of it fits. */
+export function describe(item: Choice, width = Infinity) {
+  const name = `/${item.name}`
+  const description = display(item.description ?? "", 120)
+    .replace(/\s+/g, " ")
+    .trim()
+  if (!description) return name
+  const full = `${name} - ${description}`
+  if (full.length <= width) return full
+  const room = width - name.length - 3 - 1
+  const head = description.slice(0, Math.max(0, room + 1))
+  const cut = /\s$/.test(head) ? head.trimEnd() : head.replace(/\s+\S*$/, "")
+  // A stub such as "Sk…" says nothing, so the name stands alone.
+  return cut.length < 8 || room < 8 ? name : `${name} - ${cut}…`
 }

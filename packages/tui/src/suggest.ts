@@ -1,6 +1,6 @@
 import type { CliRenderer, KeyEvent } from "@opentui/core"
 import type { DashboardState } from "./state"
-import { close, dismiss, hide, move, replace, usable } from "./suggest/popup-ops"
+import { close, dismiss, hide, move, paint, replace, usable } from "./suggest/popup-ops"
 import { createPopupState, type PopupOptions } from "./suggest/popup-state"
 import { refresh } from "./suggest/refresh"
 
@@ -25,6 +25,15 @@ export function createSuggestionPopup<T>(
     previous?.(event)
     refresh(popup)
   }
+
+  // Rows are fitted to the editor's width, so a resize repaints an open list. A textarea reports no
+  // resize, but the list text beside it does, with the same width.
+  const shown = { width: 0 }
+  popup.suggestions.on("line-info-change", () => {
+    if (popup.suggestions.width === shown.width) return
+    shown.width = popup.suggestions.width
+    if (popup.suggestions.visible && popup.choices.length) paint(popup)
+  })
 
   return {
     refresh: () => refresh(popup),

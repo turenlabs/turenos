@@ -15,15 +15,16 @@ export function openTasks(ctx: SessionActionsContext): void {
   const detail = state.detail?.sessionID === session.id ? state.detail : undefined
   if (!detail) return ctx.say("Refresh this session's details before opening tasks.")
   const tasks = loadedTasks(detail)
-  const dialog = dialogs.open("Tasks in session root", false, 32)
+  const dialog = dialogs.open("Tasks", false, 32)
   if (!dialog) return
   dialog.frame.maxWidth = 96
-  const { query, todos } = addTaskWidgets(ctx, dialog, detail)
+  const { query, todos, empty } = addTaskWidgets(ctx, dialog, detail)
   const picker: TaskPicker = {
     ctx,
     dialog,
     query,
     todos,
+    empty,
     detail,
     tasks,
     revision: JSON.stringify(detail.tasks),
@@ -104,6 +105,8 @@ function addTaskWidgets(ctx: SessionActionsContext, dialog: ModalState, detail: 
     truncate: true,
   })
   dialog.frame.add(todos, 2)
+  const empty = new TextRenderable(ctx.renderer, { content: "", fg: color.muted, wrapMode: "word", flexShrink: 0 })
+  dialog.form.add(empty)
   ctx.dialogs.track(dialog, query)
-  return { query, todos }
+  return { query, todos, empty }
 }

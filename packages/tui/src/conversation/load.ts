@@ -1,4 +1,5 @@
 import { display } from "../messages"
+import { stamp } from "../menus/stamp"
 import { errorText } from "../server"
 import { scheduleText, welcomeBody } from "../chrome"
 import { label, type DashboardState } from "../state"
@@ -96,8 +97,8 @@ function showWelcome(c: Conversation, snapshot: Snapshot) {
         : state.tab === "terminals" && !snapshot.terminalsAvailable
           ? "Global terminal inventory is unavailable on this server version.\n\nUpdate the server to inspect terminal processes.\nSessions and agent launch are available."
           : state.tab === "terminals"
-            ? "No terminals yet · a new terminal"
-            : "No automations yet · a new automation",
+            ? "No terminals yet. Press a to add one."
+            : "No automations yet. Press a to add one.",
   )
   ui.sessionTitle.content = "Welcome to TurenOS"
 }
@@ -110,8 +111,9 @@ function showTerminal(c: Conversation, snapshot: Snapshot, id: string) {
   ui.context.content = `${label(item.status)} · ${label(item.cwd, 250)}`
   ui.sessionTitle.content = item.title ? `Terminal · ${label(item.title, 150)}` : "Terminal"
   ui.renderContent(
+    // The title and folder are already in the heading and context line above.
     display(
-      `PID ${item.pid}  ·  ${item.status}${item.exitCode !== undefined ? `  ·  exit ${item.exitCode}` : ""}\n\n${item.title}\n${item.cwd}\n\n$ ${[item.command, ...item.args].join(" ")}\n\n${item.id}\n\n${item.status === "running" ? "Enter attaches (Ctrl+] detaches) · " : ""}a new terminal · R rename · d close`,
+      `PID ${item.pid}  ·  ${item.status}${item.exitCode !== undefined ? `  ·  exit ${item.exitCode}` : ""}\n\n$ ${[item.command, ...item.args].join(" ")}\n\nID ${item.id}\n\n${item.status === "running" ? "Enter attaches (Ctrl+] detaches)\n" : ""}a add terminal · R rename · d close`,
     ),
   )
 }
@@ -127,7 +129,7 @@ async function showAutomation(c: Conversation, snapshot: Snapshot, id: string, v
     ? `Trigger: ${scheduleText(item.schedule, item.eventTrigger)}\nSchedule: ${scheduleText(item.schedule)}`
     : scheduleText(item.schedule)
   const overview = display(
-    `${item.name} · ${item.status}\n\n${item.location.directory}\n${triggerDetails}\nNext run: ${typeof item.nextRunAt === "number" ? new Date(item.nextRunAt).toLocaleString() : "unscheduled"}\n\n${item.prompt}\n\n${item.id}\n\nEnter manage (run now, pause, edit, runs) · a new · E edit · d delete`,
+    `${triggerDetails}\nNext run: ${typeof item.nextRunAt === "number" ? stamp(item.nextRunAt) : "unscheduled"}\n\n${item.prompt}\n\nID ${item.id}\n\nEnter manage (run now, pause, edit, runs)\na add · E edit · d delete`,
   )
   ui.renderContent(overview)
   const runs = await c.connection.runs(id).catch((error: unknown) => errorText(error))
@@ -138,7 +140,11 @@ async function showAutomation(c: Conversation, snapshot: Snapshot, id: string, v
         ? `Run history unavailable: ${runs}\nPress r to retry.`
         : runs
             .slice(0, 10)
-            .map((run) => `${label(run.status)} · ${label(run.id)}`)
+            // A run without its creation time (a malformed item) shows its ID rather than failing the pane.
+            .map(
+              (run) =>
+                `${label(run.status)} · ${run.time?.created === undefined ? label(run.id) : stamp(run.time.created)}`,
+            )
             .join("\n") || "No runs yet."
     }`,
   )

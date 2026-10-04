@@ -12,7 +12,8 @@ const MODES: Record<Mode, string> = {
 }
 const STATUS: Record<string, string> = { added: "A", deleted: "D", modified: "M" }
 
-export const KEYS = "↑↓ file · PgUp/PgDn scroll · m mode · @ mention in reply · Ctrl+R refresh · Esc close"
+/** Hint parts by priority: the trailing ones drop first when the panel is narrow. */
+const HINTS = ["↑↓ file", "m mode", "@ mention in reply", "PgUp/PgDn scroll", "Ctrl+R refresh"]
 
 /** One open Changes panel: the mode shown, its files, and the latest request that may still paint. */
 export type Review = {
@@ -22,38 +23,25 @@ export type Review = {
   panel: Panel
   mode: Mode
   files: FileDiff[]
+  /** Set once the files are fetched, so a resize does not paint a stale heading over "loading…". */
+  loaded: boolean
   request: number
 }
 
 export async function load(r: Review) {
-  const { panel, session } = r
+  const { panel } = r
   const version = ++r.request
+  r.loaded = false
   panel.heading.content = `${MODES[r.mode]} · loading…`
   try {
     const result = await fetchDiff(r)
     if (version !== r.request || r.state.modal !== panel.dialog) return
     r.files = result
-    const added = r.files.reduce((total, file) => total + file.additions, 0)
-    const removed = r.files.reduce((total, file) => total + file.deletions, 0)
-    panel.heading.content = fitHeading(
-      panelWidth(panel),
-      `${MODES[r.mode]} · ${r.files.length} file${r.files.length === 1 ? "" : "s"} +${added} -${removed} · `,
-      label(session.location.directory, 400),
-      "",
-      "start",
-    )
-    panel.list.options = r.files.map((file) => ({
-      name: fitRow(
-        panelWidth(panel),
-        `${STATUS[file.status ?? ""] ?? "M"} `,
-        label(file.file, 200),
-        `  +${file.additions} -${file.deletions}`,
-      ),
-      description: "",
-    }))
+    r.loaded = true
+    paint(r)
     panel.list.setSelectedIndex(0)
     showFile(r)
-    panel.dialog.error.content = KEYS
+    panel.hints(HINTS, ["Esc close"])
   } catch (error) {
     if (version !== r.request || r.state.modal !== panel.dialog) return
     r.files = []
@@ -61,6 +49,30 @@ export async function load(r: Review) {
     panel.show(`${MODES[r.mode]} unavailable: ${errorText(error)}`)
     panel.dialog.error.content = `m mode · Ctrl+R retry · Esc close`
   }
+}
+
+/** Heading and rows fitted to the panel's current width; the paths shorten, the counts stay whole. */
+export function paint(r: Review) {
+  if (!r.loaded) return
+  const { panel } = r
+  const added = r.files.reduce((total, file) => total + file.additions, 0)
+  const removed = r.files.reduce((total, file) => total + file.deletions, 0)
+  panel.heading.content = fitHeading(
+    panelWidth(panel),
+    `${MODES[r.mode]} · ${r.files.length} file${r.files.length === 1 ? "" : "s"} +${added} -${removed} · `,
+    label(r.session.location.directory, 400),
+    "",
+    "start",
+  )
+  panel.list.options = r.files.map((file) => ({
+    name: fitRow(
+      panelWidth(panel),
+      `${STATUS[file.status ?? ""] ?? "M"} `,
+      label(file.file, 200),
+      `  +${file.additions} -${file.deletions}`,
+    ),
+    description: "",
+  }))
 }
 
 export function showFile(r: Review) {

@@ -5,6 +5,7 @@ import { createFooter, createSizeNotice } from "./layout/footer"
 import { focusLayout, watchPaneFocus } from "./layout/focus"
 import { createMain } from "./layout/main"
 import type { LayoutParts } from "./layout/parts"
+import { fitDrawer } from "./layout/drawer"
 import { resizeLayout } from "./layout/resize"
 import { createSidebar, createTabButtons } from "./layout/sidebar"
 import { createTopbar } from "./layout/topbar"
@@ -32,7 +33,10 @@ export function createLayout(renderer: CliRenderer, state: DashboardState) {
   watchPaneFocus(renderer, state, parts)
   renderer.setCursorPosition(0, 0, false)
   return exposedLayout(parts, {
-    resize: () => resizeLayout(renderer, state, parts),
+    resize: () => {
+      resizeLayout(renderer, state, parts)
+      fitDrawer(renderer, state, parts)
+    },
     focus: () => focusLayout(renderer, state, parts),
   })
 }
@@ -58,6 +62,7 @@ function exposedLayout(parts: LayoutParts, actions: { resize: () => void; focus:
     search: parts.search,
     folders: parts.folders,
     emptyFolders: parts.emptyFolders,
+    emptyList: parts.emptyList,
     list: parts.list,
     sessionTitle: parts.sessionTitle,
     context: parts.context,

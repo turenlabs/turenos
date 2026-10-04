@@ -36,6 +36,7 @@ export function createSlashPopup(
     locked,
     rows: (count) => {
       dialog.suggestionRows = count
+      dialog.refresh?.()
       env.onChange()
     },
     // More rows when the terminal is tall; the reply editor and its dock keep the rest.

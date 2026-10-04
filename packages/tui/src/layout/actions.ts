@@ -4,7 +4,7 @@ import { color } from "../theme"
 /** Builds the composer prompt and the secondary action row under the transcript. */
 export function createActions(renderer: CliRenderer, main: BoxRenderable) {
   const actions = new BoxRenderable(renderer, {
-    height: 3,
+    height: 2,
     flexShrink: 0,
     flexDirection: "column",
     paddingX: 2,

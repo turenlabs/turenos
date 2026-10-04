@@ -43,7 +43,7 @@ export function createHistoryActions(renderer: CliRenderer, main: BoxRenderable)
     height: 1,
     flexShrink: 0,
     flexDirection: "row",
-    gap: 3,
+    gap: 2,
   })
   main.add(historyActions)
   const older = new TextRenderable(renderer, { content: "[ Older", fg: color.accent })
@@ -67,7 +67,8 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
     scrollY: true,
     scrollX: false,
     stickyScroll: false,
-    contentOptions: { flexDirection: "column", paddingRight: 1 },
+    // One column under the scrollbar and one gap, so wrapped text never touches the thumb.
+    contentOptions: { flexDirection: "column", paddingRight: 2 },
   })
   main.add(detail)
   const content = new TextRenderable(renderer, {

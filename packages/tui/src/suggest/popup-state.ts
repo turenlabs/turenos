@@ -17,7 +17,8 @@ export type PopupOptions<T> = {
   /** How many choices the popup lists at once; three when absent. */
   window?: () => number
   filter: (items: readonly T[], query: string) => T[]
-  line: (item: T) => string
+  /** One list row without its two-column marker; `width` is the columns left for it. */
+  line: (item: T, width: number) => string
   messages: { loading: string; error: string; empty?: string | ((query: string) => string) }
 }
 

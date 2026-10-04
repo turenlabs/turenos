@@ -2,7 +2,9 @@ import { BoxRenderable, SelectRenderable, TextRenderable, type CliRenderer } fro
 import type { Dialogs } from "./dialogs"
 import { mentionText } from "./prompt-files"
 import type { Session } from "./server"
+import type { ModalState } from "./state"
 import { color } from "./theme"
+import { fitHints } from "./changes/heading"
 
 export type Drafts = { mention: (session: Session, text: string) => boolean; reply: () => void }
 
@@ -15,13 +17,17 @@ export function openPanel(renderer: CliRenderer, dialogs: Dialogs, title: string
   const dialog = dialogs.open(title, false, 999)
   if (!dialog) return undefined
   dialog.frame.maxWidth = 220
-  dialog.frame.maxHeight = undefined
   dialog.frame.width = "98%"
-  dialog.frame.height = "96%"
+  // Whole rows: a fractional percent height lets the list overlap the hint. The dialog size rule caps it below the screen.
+  dialog.frame.height = "100%"
+  // The hint is at most two whole lines; a fixed height keeps it from growing into the list.
+  dialog.error.height = 2
   const heading = new TextRenderable(renderer, {
     content: "",
     fg: color.muted,
     height: 1,
+    // A fixed width, so a long heading cannot widen its own box past the frame.
+    width: "100%",
     flexShrink: 0,
     wrapMode: "none",
     truncate: true,
@@ -46,7 +52,7 @@ export function openPanel(renderer: CliRenderer, dialogs: Dialogs, title: string
   row.add(dialog.form)
   dialog.frame.add(heading, index)
   dialog.frame.add(row, index + 1)
-  const body = new TextRenderable(renderer, { content: "", fg: color.text, wrapMode: "none", selectable: true })
+  const body = new TextRenderable(renderer, { content: "", fg: color.text, wrapMode: "word", selectable: true })
   dialog.form.add(body)
   dialogs.track(dialog, list)
   list.focus()
@@ -55,6 +61,7 @@ export function openPanel(renderer: CliRenderer, dialogs: Dialogs, title: string
     heading,
     list,
     body,
+    ...fitting(renderer, row, dialog),
     /** Replaces the right pane and scrolls it back to the top. */
     show(content: TextRenderable["content"] | string) {
       body.content = content
@@ -64,6 +71,28 @@ export function openPanel(renderer: CliRenderer, dialogs: Dialogs, title: string
 }
 
 export type Panel = NonNullable<ReturnType<typeof openPanel>>
+
+/** Heading, rows and hints are fitted to the laid-out width, so each repaints when the width changes. */
+function fitting(renderer: CliRenderer, row: BoxRenderable, dialog: ModalState) {
+  const fits = new Map<string, () => void>()
+  // A text box does not report its own resize; the row beside it spans the same inner width and does.
+  row.onSizeChange = () => fits.forEach((fit) => fit())
+  const panel = {
+    /** Columns of the heading line: the laid-out width, or the frame's share of the screen before layout. */
+    width: () => (row.width > 1 ? row.width : Math.floor(Math.min(220, renderer.width * 0.98)) - 4),
+    /** Runs `paint` now and again whenever the panel's width changes; a later paint of the same name replaces it. */
+    fit(name: string, paint: () => void) {
+      fits.set(name, paint)
+      paint()
+    },
+    /** Key hints that drop their trailing optional parts, never "Esc close", to fit two whole lines. */
+    hints(optional: string[], essential: string[]) {
+      // The error line keeps a two-column margin beside the frame's edge.
+      panel.fit("hints", () => (dialog.error.content = fitHints(panel.width() - 2, optional, essential)))
+    },
+  }
+  return panel
+}
 
 /** Adds `@path` to the session's reply draft and switches to the reply editor. */
 export function mentionInReply(

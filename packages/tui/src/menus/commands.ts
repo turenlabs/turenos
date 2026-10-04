@@ -1,11 +1,12 @@
 import { SelectRenderable } from "@opentui/core"
 import { color } from "../theme"
 import { matchesKey } from "../keys"
+import { listRows, setRows } from "../dialogs/size"
 import { fuzzyRank } from "../suggest/fuzzy"
 import type { MenuContext } from "./context"
 
 export function commands(ctx: MenuContext, actions: { name: string; description: string; run: () => void }[]) {
-  const dialog = ctx.dialogs.open("Commands", false, 26)
+  const dialog = ctx.dialogs.open("Commands")
   if (!dialog) return
   const query = ctx.dialogs.input(dialog, "Find a command")
   const choices = actions.map((action) => ({
@@ -14,9 +15,10 @@ export function commands(ctx: MenuContext, actions: { name: string; description:
     name: `${action.name}  · ${action.description}`,
   }))
   let matches = choices
+  // The caption, the field and its spacer are the other three rows; the list keeps the rest and never exceeds its matches.
+  const rows = () => Math.min(Math.max(1, matches.length), listRows(ctx.renderer, 4))
   const select = new SelectRenderable(ctx.renderer, {
-    // Take the rows the terminal has to spare; the dialog frame clips the rest.
-    height: Math.max(6, Math.min(14, ctx.renderer.height - 14)),
+    height: rows(),
     options: choices,
     showDescription: false,
     showScrollIndicator: true,
@@ -31,6 +33,7 @@ export function commands(ctx: MenuContext, actions: { name: string; description:
   query.on("input", () => {
     matches = rank(choices, query.value.toLowerCase().trim())
     select.options = matches
+    setRows(select, rows())
     select.setSelectedIndex(0)
     position()
   })

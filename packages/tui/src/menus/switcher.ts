@@ -5,8 +5,9 @@ import type { DashboardState } from "../state"
 import { color } from "../theme"
 import { folderContains } from "../working-folders"
 import type { MenuContext } from "./context"
+import { fitHints } from "../changes/heading"
 import { openByID } from "./open-by-id"
-import { describe, inFolders, paint, rank, rebuildRows, reveal } from "./switcher-rows"
+import { describe, inFolders, innerWidth, paint, rank, rebuildRows, reveal } from "./switcher-rows"
 import type { Scope, Switcher } from "./switcher-state"
 import { buildSwitcherView } from "./switcher-view"
 
@@ -44,6 +45,7 @@ export function openSwitcher(ctx: MenuContext, initialScope: Scope = "recent", s
   }
   const resize = () => describe(s)
   ctx.renderer.on("resize", resize)
+  fitOnResize(s)
   s.details.once(RenderableEvents.DESTROYED, () => ctx.renderer.off("resize", resize))
   dialog.submit = () => submit(s)
   s.query.on("input", () => onInput(s))
@@ -65,6 +67,18 @@ export function openSwitcher(ctx: MenuContext, initialScope: Scope = "recent", s
   dialog.key = (key) => onKey(s, key)
   changeScope(s, initialScope)
   s.query.focus()
+}
+
+/** Hints and details are cut to the laid-out width, which changes after the resize event. */
+function fitOnResize(s: Switcher) {
+  let width = 0
+  s.dialog.frame.onSizeChange = () => {
+    // A height change alone must not replace a failure message shown in the hint.
+    if (s.dialog.frame.width === width) return
+    width = s.dialog.frame.width
+    s.dialog.error.content = hint(s)
+    describe(s)
+  }
 }
 
 function loadedSessions(state: DashboardState, sidebar: boolean) {
@@ -100,10 +114,24 @@ function choose(s: Switcher, index: number) {
 function hint(s: Switcher) {
   if (s.loading) return "Searching server...\nEsc cancel"
   if (s.failure) return `${s.failure}\nF3 Retry · Esc close`
+  const count = s.matches.length ? `${s.selected + 1}/${s.matches.length}` : ""
   if (s.scope !== "recent")
-    return `${s.matches.length ? `${s.selected + 1}/${s.matches.length}` : "No matching titles"} · Enter open · Esc close\nF3 Older · Shift+F3 Newer · F2 Scope`
+    return `${s.matches.length ? `${count} · Enter open · Esc close` : "No matching titles"}\nF3 Older · Shift+F3 Newer · F2 Scope`
   if (s.matches.length)
-    return `${s.selected + 1}/${s.matches.length} · ↑/↓ choose · Enter open · Esc close\nType to find children · F2 All · Ctrl+O ID${s.details.visible ? " · PgUp/Dn page · Ctrl+Home/End first/last" : ""}`
+    return fitHints(
+      innerWidth(s),
+      [
+        count,
+        "↑/↓ choose",
+        "Enter open",
+        "Type to find children",
+        "F2 All",
+        "Ctrl+O ID",
+        "PgUp/Dn page",
+        "Ctrl+Home/End first/last",
+      ],
+      ["Esc close"],
+    )
   return s.query.value.trim()
     ? "No matching loaded sessions.\nF2 Search server · Ctrl+O Open older session by ID"
     : "No loaded main sessions.\nType to find children · F2 All · Ctrl+O ID"

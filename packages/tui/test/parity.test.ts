@@ -93,10 +93,10 @@ test("the agent's to-do list shows in the action row and the Tasks view", async 
   })
   await screen("t Tasks · 1/3 to-dos")
   view.mockInput.pressKey("t")
-  const frame = await screen("TO-DOS · 1/3 to-dos")
-  expect(frame).toContain("[x] Read the parser")
-  expect(frame).toContain("[>] Fix the off-by-one")
-  expect(frame).toContain("[ ] Add a regression test")
+  const frame = await screen("TO-DOS · 1/3 done")
+  expect(frame).toContain("● Read the parser")
+  expect(frame).toContain("▶ Fix the off-by-one")
+  expect(frame).toContain("○ Add a regression test")
 })
 
 test("the context meter uses the newest request's prompt and the model's published window", async () => {

@@ -1,9 +1,25 @@
 import type { Panel } from "../panel"
 
-/** Columns the panel's heading line may use: the frame less its border and padding. */
+/** Columns the panel's heading line may use. */
 export function panelWidth(panel: Panel) {
-  const width = panel.dialog.frame.width
-  return Math.max(20, (typeof width === "number" && width > 0 ? width : (process.stdout.columns ?? 80)) - 4)
+  return Math.max(20, panel.width())
+}
+
+/** Hint parts packed into at most two lines that break only between parts; low-value parts go first. */
+export function fitHints(width: number, optional: string[], essential: string[]) {
+  for (let keep = optional.length; keep >= 0; keep--) {
+    const lines = packParts(width, [...optional.slice(0, keep), ...essential])
+    if (lines.length <= 2 || keep === 0) return lines.slice(0, 2).join("\n")
+  }
+  return ""
+}
+
+function packParts(width: number, parts: string[]) {
+  return parts.reduce<string[]>((lines, part) => {
+    const last = lines.at(-1)
+    if (last === undefined || last.length + 3 + part.length > width) return [...lines, part]
+    return [...lines.slice(0, -1), `${last} · ${part}`]
+  }, [])
 }
 
 /** `lead` and `trail` stay whole; `middle` loses its start (a path) or its end (prose) to fit. */

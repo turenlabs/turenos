@@ -15,5 +15,5 @@ export function summarize(form: LaunchForm) {
     .map((value) => label(value!))
   context.height = current.variant ? 3 : 2
   if (workspace.getSelectedIndex() === 1 && !current.worktree?.directory) custom.push("new worktree")
-  context.content = `Directory: ${label(directory.value, 4096)}\nSettings · Tab${custom.length ? ` · ${custom.join(" · ")}` : ""} · Ctrl+L Models${current.variant ? `\nModel variant ${label(current.variant)}` : ""}`
+  context.content = `Directory: ${label(directory.value, 4096)}\nTab settings${custom.length ? ` · ${custom.join(" · ")}` : ""}${current.variant ? `\nModel variant ${label(current.variant)}` : ""}`
 }

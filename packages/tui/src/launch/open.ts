@@ -23,7 +23,7 @@ export function openLaunch(deps: LaunchDeps, store: LaunchStore, reopen: () => v
   dialog.error.height = submitted ? 4 : 2
   dialog.error.content = submitted
     ? `Session: ${current.start.sessionID}\nCtrl+O inspect · Enter retry · Esc keep · F4 discard`
-    : "Enter Send · Shift/Alt+Enter newline\nEsc keep · Ctrl+L Models · F4 discard"
+    : "Enter Send · Shift/Alt+Enter newline\nEsc keep · F4 discard"
   const target = () => ({ directory: form.directory.value.trim() })
   const locked = () => !!current.start.input()
   deps.slash.attach(dialog, form.task, target, locked)

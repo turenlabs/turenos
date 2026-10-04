@@ -15,7 +15,7 @@ export function providers(ctx: SettingsContext) {
       picker.set([
         {
           name: "Connect a provider…",
-          description: "API key, OAuth, or a custom OpenAI-compatible endpoint",
+          description: "API key, OAuth or custom endpoint",
           run: () => ctx.hooks.connectProvider(() => void providers(ctx)),
         },
         {
@@ -28,7 +28,7 @@ export function providers(ctx: SettingsContext) {
           .toSorted((a, b) => Number(b.connected) - Number(a.connected) || a.name.localeCompare(b.name))
           .map((provider) => ({
             name: `${provider.connected ? "●" : "○"} ${label(provider.name, 60)}`,
-            description: provider.connected ? `${provider.id} · connected` : provider.id,
+            description: `${provider.id} · ${provider.connected ? "connected" : "not connected"}`,
             run: () => providerActions(ctx, provider, where),
           })),
       ])

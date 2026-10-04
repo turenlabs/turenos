@@ -61,12 +61,12 @@ test("schedules show the largest whole unit", () => {
 test("narrow footer names the tab and how to reach the hidden sidebar; wide footer names the focus", () => {
   const state = createDashboardState()
   state.tab = "terminals"
-  expect(statusline(state, undefined, 80)).toStartWith("2/3 Terminals")
+  expect(statusline(state, undefined, 80)).toStartWith("View 2/3 Terminals")
   expect(footerShortcuts(80, false)).toContain("b sidebar")
   expect(footerShortcuts(60, false)).toContain("b sidebar")
   expect(footerShortcuts(120, true)).toContain("Tab pane")
   state.tab = "sessions"
-  expect(statusline(state, undefined, 120)).toContain("Focus: sessions")
+  expect(statusline(state, undefined, 120)).toContain("Focus: sidebar")
   state.detailFocused = true
   expect(statusline(state, undefined, 120)).toContain("Focus: transcript")
 })

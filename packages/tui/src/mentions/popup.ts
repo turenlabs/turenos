@@ -39,6 +39,7 @@ export function createMentionPopup(
     locked,
     rows: (count) => {
       dialog.mentionRows = count
+      dialog.refresh?.()
       env.onChange()
     },
     match(text, cursor) {

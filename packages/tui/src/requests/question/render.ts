@@ -1,4 +1,5 @@
 import { display } from "../../messages"
+import { compactRows } from "../../dialogs/size"
 import { label } from "../../state"
 import { answers, text, type QuestionFlow } from "./flow"
 import { renderQuestionPage } from "./page"
@@ -12,7 +13,8 @@ export function render(flow: QuestionFlow) {
   dialog.index = 0
   for (const child of dialog.form.getChildren()) child.destroyRecursively()
   dialog.form.scrollTo(0)
-  dialog.error.height = 3
+  // The key hints take two rows on a short terminal and three otherwise.
+  dialog.error.height = flow.ctx.renderer.height < compactRows ? 2 : 3
   flow.heading.content = flow.reject
     ? "Reject question request?"
     : flow.review
@@ -43,8 +45,11 @@ function renderReview(flow: QuestionFlow) {
     event.preventDefault()
     if (event.button === 0 && !flow.dialog.busy) void flow.ctx.dialogs.submit()
   }
+  flow.dialog.error.height = 2
   flow.dialog.error.content =
-    "Enter / Ctrl+S Submit answers\n← Edit · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject · Esc close"
+    flow.ctx.renderer.height < compactRows
+      ? "← Edit · PgUp/PgDn Scroll\nCtrl+R Reject · Esc close"
+      : "← Edit · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject · Esc close"
   flow.dialog.form.focus()
 }
 

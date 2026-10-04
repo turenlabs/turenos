@@ -54,12 +54,18 @@ export function dismiss<T>(popup: PopupState<T>) {
 export function paint<T>(popup: PopupState<T>) {
   const size = popup.options.window?.() ?? 3
   const start = Math.max(0, popup.selected - size + 1)
+  // The list is never wrapped, so each row is fitted to the editor's width, which is the dialog's text width.
+  const width = popup.options.editor.width > 4 ? popup.options.editor.width - 2 : Infinity
   const lines = popup.choices.slice(start, start + size).map((item, index) => {
-    return `${start + index === popup.selected ? ">" : " "} ${popup.options.line(item)}`
+    return `${start + index === popup.selected ? ">" : " "} ${clip(popup.options.line(item, width), width)}`
   })
   if (popup.choices.length > size) lines.push(`  ${popup.selected + 1}/${popup.choices.length}`)
   popup.suggestions.content = lines.join("\n")
   show(popup, lines.length)
+}
+
+function clip(text: string, width: number) {
+  return text.length <= width ? text : `${text.slice(0, Math.max(0, width - 1))}…`
 }
 
 export function move<T>(popup: PopupState<T>, event: KeyEvent) {

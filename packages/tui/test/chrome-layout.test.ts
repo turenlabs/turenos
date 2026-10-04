@@ -76,7 +76,7 @@ for (const width of [60, 160]) {
       expect(rows[primaryRow + 1]).toContain("h History")
       expect(rows[primaryRow + 1]).toContain("i Details")
       expect(rows[primaryRow + 1]).toContain("t Tasks")
-      expect(ui.actions.height).toBe(3)
+      expect(ui.actions.height).toBe(2)
       expect(ui.composer.width).toBeGreaterThanOrEqual(primary.length)
       expect(view.captureCharFrame()).toContain("Conversation stays visible")
       expect(ui.sizeNotice.visible).toBe(false)

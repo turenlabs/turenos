@@ -37,42 +37,52 @@ export function headerRight(state: DashboardState, snapshot: Snapshot | undefine
   const running = Object.keys(snapshot.active).length
   if (state.tab === "sessions") return running ? `● ${running} running` : "idle"
   if (state.tab === "terminals")
-    return snapshot.terminalsAvailable ? `${snapshot.terminals.length} terminals` : "Terminals unavailable"
-  return snapshot.inventoryErrors.automations ? "Automations unavailable" : `${snapshot.loops.length} automations`
+    return snapshot.terminalsAvailable ? count(state, snapshot.terminals.length, "terminal") : "Terminals unavailable"
+  return snapshot.inventoryErrors.automations
+    ? "Automations unavailable"
+    : count(state, snapshot.loops.length, "automation")
 }
 
-export function sidebarTitle(state: DashboardState, count: number) {
+/** "1 terminal", "3 terminals", or "2 of 3 terminals" when one is selected, so a hidden sidebar still says there are more. */
+function count(state: DashboardState, total: number, noun: string) {
+  const position = state.rows.findIndex((row) => row.id === state.selected) + 1
+  if (total === 1 || !position) return `${total} ${noun}${total === 1 ? "" : "s"}`
+  return `${position} of ${total} ${noun}s`
+}
+
+/** The sidebar heading; the narrow drawer adds how to close it. */
+export function sidebarTitle(state: DashboardState, count: number, drawer = false) {
   const name = state.tab === "sessions" ? "Sessions" : state.tab === "terminals" ? "Terminals" : "Automations"
-  if (state.query) return `${name} · ${count} found`
-  return `${name} · ${count}`
+  return `${name} · ${count}${state.query ? " found" : ""}${drawer ? " · b close" : ""}`
 }
 
+/**
+ * The footer's left side. It never repeats the line above the transcript (view, Working, Needs input);
+ * it names the stream, the pane that has the keys, and the agent and model.
+ */
 export function statusline(state: DashboardState, snapshot: Snapshot | undefined, width: number) {
-  const mode =
-    state.tab === "sessions"
-      ? state.history
-        ? "History"
-        : "Transcript"
-      : state.tab === "terminals"
-        ? "Terminals"
-        : "Automations"
-  const working = state.detail && snapshot && Object.hasOwn(snapshot.active, state.detail.sessionID) ? " · Working" : ""
-  const needsInput = state.detail?.permissions.length || state.detail?.questions.length ? " · Needs input" : ""
   const narrow = width < layout.narrowBreakpoint
+  const hidden = state.sidebarHidden ?? narrow
+  const names = { sessions: "Sessions", terminals: "Terminals", automations: "Automations" }
   // Narrow footers share their row with the shortcuts, so only the unusual stream state is spelled out.
   const live =
     state.tab === "sessions" && !state.history && state.connected && !(narrow && state.streamStatus === "live")
-      ? ` · ${state.streamStatus === "live" ? "Live" : "Polling"}`
+      ? state.streamStatus === "live"
+        ? "Live"
+        : "Polling"
       : ""
-  const tab = narrow ? `${["sessions", "terminals", "automations"].indexOf(state.tab) + 1}/3 ` : ""
-  const focus = `Focus: ${state.detailFocused ? "transcript" : state.tab}`
-  const hidden = state.sidebarHidden ?? narrow
-  if (narrow) return hidden ? `${tab}${mode}${needsInput || working}${live}` : `${tab}${focus}${needsInput || working}`
-  const base = `${tab}${mode}${needsInput || working}${live}${hidden ? "" : ` · ${focus}`}`
+  const focus = hidden
+    ? ""
+    : `Focus: ${state.detailFocused ? (state.tab === "sessions" ? "transcript" : "detail") : "sidebar"}`
+  if (narrow) {
+    const view = `View ${["sessions", "terminals", "automations"].indexOf(state.tab) + 1}/3`
+    return [hidden ? `${view} ${names[state.tab]}` : view, hidden ? live : focus].filter(Boolean).join(" · ")
+  }
+  const base = [state.tab === "sessions" ? "" : names[state.tab], live, focus].filter(Boolean).join(" · ")
   const extra = agentModel(state, snapshot)
   // The shortcuts keep their row; the agent and model go first when the two would not fit together.
   const room = width - 4 - footerShortcuts(width, !hidden).length - 2
-  return extra && base.length + 3 + extra.length <= room ? `${base} · ${extra}` : base
+  return extra && base.length + 3 + extra.length <= room ? [base, extra].filter(Boolean).join(" · ") : base
 }
 
 /** "build · sandbox/scripted": the selected session's agent and model, else the latest reply's, else the server default. */
@@ -139,4 +149,13 @@ export function welcomeBody(
     ", Settings · I Intel",
     "? Help",
   ].join("\n")
+}
+
+/** Shortens a path to `width` columns by dropping leading folders (`…/shots/project`), never cutting inside a name. */
+export function fitPath(path: string, width: number) {
+  if (path.length <= width) return path
+  const parts = path.split("/").filter(Boolean)
+  const kept = parts.findIndex((_, index) => `…/${parts.slice(index).join("/")}`.length <= width)
+  if (kept < 0) return `…${path.slice(path.length - Math.max(1, width - 1))}`
+  return `…/${parts.slice(kept).join("/")}`
 }

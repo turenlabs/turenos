@@ -33,7 +33,7 @@ export function createSidebar(renderer: CliRenderer, tabButtons: TabButtons) {
     flexShrink: 0,
   })
   sidebar.add(sidebarHeading)
-  const viewSwitch = new BoxRenderable(renderer, { flexDirection: "row", flexShrink: 0, height: 1, gap: 1 })
+  const viewSwitch = new BoxRenderable(renderer, { flexDirection: "row", flexShrink: 0, height: 1 })
   sidebar.add(viewSwitch)
   for (const { button } of tabButtons) viewSwitch.add(button)
   const sidebarActions = new TextRenderable(renderer, {
@@ -50,17 +50,33 @@ export function createSidebar(renderer: CliRenderer, tabButtons: TabButtons) {
     flexShrink: 0,
   })
   sidebar.add(folders)
-  const emptyFolders = new TextRenderable(renderer, {
-    content: "",
-    visible: false,
-    fg: color.muted,
-    height: 1,
-    flexShrink: 0,
-    wrapMode: "none",
-    truncate: true,
-  })
+  return {
+    sidebar,
+    sidebarHeading,
+    sidebarActions,
+    folders,
+    ...createEmptyNotes(renderer, sidebar),
+    ...createSearchAndList(renderer, sidebar),
+  }
+}
+
+/** One muted line each for working folders without sessions and for a list with no rows. */
+function createEmptyNotes(renderer: CliRenderer, sidebar: BoxRenderable) {
+  const note = () =>
+    new TextRenderable(renderer, {
+      content: "",
+      visible: false,
+      fg: color.muted,
+      height: 1,
+      flexShrink: 0,
+      wrapMode: "none",
+      truncate: true,
+    })
+  const emptyFolders = note()
+  const emptyList = note()
   sidebar.add(emptyFolders)
-  return { sidebar, sidebarHeading, sidebarActions, folders, emptyFolders, ...createSearchAndList(renderer, sidebar) }
+  sidebar.add(emptyList)
+  return { emptyFolders, emptyList }
 }
 
 function createSearchAndList(renderer: CliRenderer, sidebar: BoxRenderable) {

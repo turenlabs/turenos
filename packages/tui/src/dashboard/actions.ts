@@ -26,7 +26,7 @@ export function renderActions(d: DashboardContext) {
         ? "f Owning session (read-only)"
         : reply
   const staged = state.snapshot?.sessions.find((session) => session.id === state.selected)?.revert
-  ui.composer.content = `${primary}${staged ? " · commits undo" : ""} · Enter`
+  ui.composer.content = `${primary}${staged ? " · commits undo" : ""}`
   ui.composer.fg =
     !state.connected || pending?.permissions.length || pending?.questions.length ? color.warning : color.text
   ui.composer.visible = !state.connected || (state.tab === "sessions" && !!state.selected)

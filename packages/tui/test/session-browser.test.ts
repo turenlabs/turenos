@@ -169,8 +169,8 @@ test("Recent starts with mains, searches loaded children by metadata, and keeps 
   expect(recent).toContain("1/1")
   for (const value of ["rendering", "/srv/child-project", "auditor", "ses_child"]) {
     app.query(value)
-    const frame = await app.screen("> Investigate rendering")
-    expect(frame).toContain("[child] | current * [draft]")
+    const frame = await app.screen("▶ Investigate rendering")
+    expect(frame).toContain("[child] · current * [draft]")
     expect(frame).not.toContain("[task]")
     expect(frame.split("\n").filter((line) => line.includes(child.title))).toHaveLength(1)
     expect(app.input().focused).toBe(true)
@@ -179,9 +179,9 @@ test("Recent starts with mains, searches loaded children by metadata, and keeps 
   expect(await app.screen("Main conversation")).not.toContain(child.title)
   app.query("ses_")
   app.view.mockInput.pressArrow("down")
-  await app.screen("> Investigate rendering")
+  await app.screen("▶ Investigate rendering")
   app.query("ses_ ")
-  await app.screen("> Investigate rendering")
+  await app.screen("▶ Investigate rendering")
   expect(app.calls).toEqual([])
   app.view.mockInput.pressEnter()
   expect(app.opened).toEqual([{ id: child.id, inspect: false, session: child }])
@@ -200,7 +200,10 @@ test("Recent project headings reuse compact path and workspace disambiguation", 
   const frame = await app.screen("Workspace main")
   for (const heading of ["alpha/project", "beta/project", "unique [default]", "unique [ws_one]"])
     expect(frame).toContain(heading)
-  expect(frame).not.toContain("/srv/")
+  // The selected session's own path sits under the list; the headings carry only the compact form.
+  expect(frame.split("\n").filter((line) => line.includes("/srv/"))).toEqual([
+    expect.stringContaining("/srv/alpha/project"),
+  ])
   expect(frame).toContain("1/4")
   expect(app.input().focused).toBe(true)
 })
@@ -337,6 +340,8 @@ test("scope buttons stay fixed, F2 cycles, and Archived avoids redundant row lab
   app.view.resize(60, 24)
   app.menus.switcher()
   await app.screen("[Recent]")
+  // The single project has no heading row, so the first page fits and the second one scrolls.
+  app.view.mockInput.pressKey("\x1b[6~")
   app.view.mockInput.pressKey("\x1b[6~")
   await app.view.renderOnce()
   expect(app.state.modal!.form.scrollTop).toBeGreaterThan(0)
@@ -420,10 +425,10 @@ test("older and newer opaque cursors omit filters and empty boundaries keep visi
   await app.screen("First remote page")
   expect(app.searches().at(-1)?.query).toEqual({ search: "remote", archived: "true", order: "desc", limit: "100" })
   app.view.mockInput.pressArrow("down")
-  await app.screen("> Second remote row")
+  await app.screen("▶ Second remote row")
   app.view.mockInput.pressKey("F3", { shift: true })
   const boundary = await app.screen("End of results; current page kept.")
-  expect(boundary).toContain("> Second remote row")
+  expect(boundary).toContain("▶ Second remote row")
   expect(boundary).toContain("First remote page")
   expect(app.searches().at(-1)?.query).toEqual({ cursor: "empty-newer", limit: "100" })
 
@@ -438,7 +443,7 @@ test("older and newer opaque cursors omit filters and empty boundaries keep visi
   await app.screen("First remote page")
   expect(app.searches().at(-1)?.query).toEqual({ cursor: newer, limit: "100" })
   app.view.mockInput.pressKey("F3")
-  await app.screen("> Oldest remote page")
+  await app.screen("▶ Oldest remote page")
   expect(app.input().focused).toBe(true)
   // Click an unselected title, not the keyboard selection.
   await app.click("Clicked remote target")
