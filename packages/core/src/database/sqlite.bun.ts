@@ -185,18 +185,8 @@ export const layer = (config: Config) => {
 
 export function acquireExclusiveLock(filename: string) {
   const native = new Database(filename, { readwrite: true, create: true })
-  try {
-    native.run("PRAGMA busy_timeout = 0")
-    // Take the lock before any setup write: with no busy timeout, two starters setting the table up
-    // first could each fail on the other's write and both report the database as owned. The
-    // transaction is never committed, so the table only ever exists inside the held lock.
-    native.run("BEGIN EXCLUSIVE")
-    native.run("CREATE TABLE IF NOT EXISTS owner_lock (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)")
-    native.run("INSERT OR IGNORE INTO owner_lock (id, value) VALUES (1, '')")
-    native.run("UPDATE owner_lock SET value = value WHERE id = 1")
-    return { close: () => native.close() }
-  } catch (error) {
-    native.close()
-    throw error
-  }
+  return Sqlite.exclusiveLock(
+    (sql) => native.run(sql),
+    () => native.close(),
+  )
 }
