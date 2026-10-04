@@ -152,6 +152,7 @@
     "@tanstack/virtual-core@3.17.3": "patches/@tanstack%2Fvirtual-core@3.17.3.patch",
     "ghostty-web@github:anomalyco/ghostty-web#513463a": "patches/ghostty-web@0.3.0.patch",
     "pacote@21.5.1": "patches/pacote@21.5.1.patch",
-    "@ff-labs/fff-bun@0.9.4": "patches/@ff-labs%2Ffff-bun@0.9.4.patch"
+    "@ff-labs/fff-bun@0.9.4": "patches/@ff-labs%2Ffff-bun@0.9.4.patch",
+    "vite-plugin-icons-spritesheet@3.0.1": "patches/vite-plugin-icons-spritesheet@3.0.1.patch"
   }
 }
