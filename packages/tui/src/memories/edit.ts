@@ -5,7 +5,7 @@ import { color } from "../theme"
 import { KINDS, type MemoriesContext, type Memory, type Place } from "./types"
 
 /** The memory form; saving or leaving returns to the list through `reopen`. */
-export function edit(ctx: MemoriesContext, place: Place, item: Memory | undefined, reopen: () => void) {
+export function edit(ctx: MemoriesContext, place: Place, item: Memory | undefined, reopen: (note?: string) => void) {
   const { dialogs } = ctx
   const memories = ctx.connection.client.memories
   dialogs.close(false)
@@ -20,6 +20,7 @@ export function edit(ctx: MemoriesContext, place: Place, item: Memory | undefine
     else kind.moveDown()
     return true
   }
+  let done = ""
   dialog.submit = async () => {
     if (!title.value.trim() || !body.plainText.trim()) throw new Error("Enter a title and a body.")
     const fields = { kind: KINDS[kind.getSelectedIndex()]!, title: title.value.trim(), body: body.plainText }
@@ -33,10 +34,11 @@ export function edit(ctx: MemoriesContext, place: Place, item: Memory | undefine
         ...fields,
       })
     else await memories.create({ wingID: place.wingID, roomID: place.roomID!, ...fields })
-    ctx.say(item ? "Memory saved." : "Memory added.")
+    done = item ? "Memory saved." : "Memory added."
+    ctx.say(done)
   }
-  dialog.afterSubmit = reopen
-  dialog.back = reopen
+  dialog.afterSubmit = () => reopen(done)
+  dialog.back = () => reopen()
   dialog.error.content = "Tab next field · ↑↓ change kind · Ctrl+S save · Esc cancel"
   title.focus()
 }

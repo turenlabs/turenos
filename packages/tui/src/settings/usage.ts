@@ -1,18 +1,19 @@
 import { array, numeric, object, optional, string } from "../response-validation"
 import { label } from "../state"
 import { color } from "../theme"
-import { directory, section, type SettingsContext } from "./shared"
+import { directory, section, trail, type SettingsContext } from "./shared"
 
 export function usage(ctx: SettingsContext) {
   return section(
     ctx,
-    "Usage and limits",
+    trail("Usage and limits"),
     () => ctx.connection.api("/provider/usage", { directory: directory(ctx) }).then(object),
     (result, picker) => {
       picker.text.content = usageText(result)
       picker.text.fg = color.text
       picker.set([{ name: "Refresh", run: () => usage(ctx) }])
     },
+    "refresh",
   )
 }
 

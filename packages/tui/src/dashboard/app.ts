@@ -75,7 +75,7 @@ async function connectDashboard(
   try {
     dashboard = mountDashboard(host.renderer, connection, endpoint.url, host.finish, {
       server: serverLabel(endpoint.target),
-      servers: () => host.picker.open(),
+      servers: (back) => host.picker.open(undefined, "muted", back),
       blocked: host.picker.visible,
     })
   } catch (error) {

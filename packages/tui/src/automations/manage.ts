@@ -8,9 +8,9 @@ import { runs } from "./runs"
 import type { AutomationsContext, Loop } from "./types"
 
 /** The action menu for one automation: run now, pause or resume, runs, edit, delete. */
-export function manage(ctx: AutomationsContext, loop: Loop) {
+export function manage(ctx: AutomationsContext, loop: Loop, selected = 0) {
   const { dialogs } = ctx
-  const dialog = dialogs.open(label(loop.name, 60), false, 20)
+  const dialog = dialogs.open(`Automation › ${label(loop.name, 50)}`, false, 20)
   if (!dialog) return
   const loops = ctx.connection.client.loops
   const toggle =
@@ -20,13 +20,14 @@ export function manage(ctx: AutomationsContext, loop: Loop) {
   const actions = [
     { name: "Run now", run: () => act(ctx, loop, "Started a run.", () => loops.runNow({ loopID: loop.id })) },
     { name: toggle[0], run: () => act(ctx, loop, toggle[1], () => toggle[2]({ loopID: loop.id })) },
-    { name: "Runs", run: () => runs(ctx, loop) },
-    { name: "Edit", run: () => form(ctx, loop) },
-    { name: "Delete", run: () => remove(ctx, loop) },
+    { name: "Runs", run: () => runs(ctx, loop, () => manage(ctx, loop, 2)) },
+    { name: "Edit", run: () => form(ctx, loop, () => manage(ctx, loop, 3)) },
+    { name: "Delete", run: () => remove(ctx, loop, () => manage(ctx, loop, 4)) },
   ]
   const list = new SelectRenderable(ctx.renderer, {
     height: actions.length,
     options: actions.map((action) => ({ name: action.name, description: "" })),
+    selectedIndex: selected,
     showDescription: false,
     backgroundColor: color.panel,
     textColor: color.text,
@@ -48,12 +49,12 @@ export function manage(ctx: AutomationsContext, loop: Loop) {
     actions[list.getSelectedIndex()]?.run()
     return true
   }
-  dialog.error.content = "Enter choose · Esc close"
+  dialog.error.content = "↑↓ choose · Enter select · Esc close"
   list.focus()
 }
 
 function act(ctx: AutomationsContext, loop: Loop, done: string, request: () => Promise<unknown>) {
-  const dialog = ctx.dialogs.open(label(loop.name, 60), false, 12)
+  const dialog = ctx.dialogs.open(`Automation › ${label(loop.name, 50)}`, false, 12)
   if (!dialog) return
   dialog.form.add(new TextRenderable(ctx.renderer, { content: "Working…", fg: color.muted }))
   dialog.submit = async () => {

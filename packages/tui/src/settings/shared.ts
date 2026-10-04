@@ -9,7 +9,8 @@ export type SettingsHooks = {
   connectProvider: (back: () => void) => void
   extensions: (back: () => void) => void
   memories: (back: () => void) => void
-  servers?: () => void
+  /** Opens the server picker; `back` reopens the caller when the picker closes with Esc. */
+  servers?: (back?: () => void) => void
   appearance: () => Choice[]
 }
 
@@ -30,6 +31,11 @@ export type SettingsContext = {
   notice: string
 }
 
+/** A section's dialog title names its parents, as in `Settings › Providers`. */
+export function trail(...parts: string[]) {
+  return ["Settings", ...parts].join(" › ")
+}
+
 export function directory(ctx: SettingsContext) {
   return (
     ctx.state.snapshot?.sessions.find((item) => item.id === ctx.state.selected)?.location.directory ??
@@ -44,12 +50,14 @@ export function section<T>(
   title: string,
   work: () => Promise<T>,
   fill: (value: T, picker: Picker) => void,
+  /** What Enter does on a row, for the hint. */
+  verb = "open",
 ) {
   return openSection(
     ctx.renderer,
     ctx.dialogs,
     ctx.state,
-    { title, back: ctx.open, memory: ctx.memory },
+    { title, back: ctx.open, memory: ctx.memory, verb },
     work,
     (value, picker) => {
       fill(value, picker)

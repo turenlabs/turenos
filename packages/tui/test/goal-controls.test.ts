@@ -439,6 +439,6 @@ test.each(["direct", "resize"])("60x24 keeps warning and actual clear input visi
   const field = app.state.modal!.fields[0] as InputRenderable
   expect(app.view.captureCharFrame().split("\n")[field.y]).toContain("clearer")
   app.submit()
-  await app.waitFor((frame) => frame.includes("Type clear exactly"))
+  await app.waitFor((frame) => frame.includes("Type clear to confirm"))
   expect(app.writes()).toHaveLength(0)
 })

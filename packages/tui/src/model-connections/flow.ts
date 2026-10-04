@@ -16,19 +16,55 @@ export type Flow = {
   done: () => void
   controller: AbortController
   answers: Map<string, string>
+  /** Typed non-secret text per form field; shared by the flows that Esc restarts, so going back keeps it. */
+  drafts: Map<string, string>
   current?: ModalState
   /** Restarts the flow from the provider list; Enter on a failed request runs it. */
   reload: () => void
+  /** A flow at the same place with a live abort scope, for the step Esc returns to after this one's dialog closed. */
+  fresh: () => Flow
 }
 
 export type FlowDeps = Pick<Flow, "renderer" | "state" | "connection" | "dialogs" | "say">
 
-export function createFlow(deps: FlowDeps, directory: string, done: () => void, reload: (flow: Flow) => void): Flow {
+export function createFlow(
+  deps: FlowDeps,
+  directory: string,
+  done: () => void,
+  reload: (flow: Flow) => void,
+  drafts = new Map<string, string>(),
+): Flow {
   const controller = new AbortController()
   const answers = new Map<string, string>()
   controller.signal.addEventListener("abort", () => answers.clear(), { once: true })
-  const flow: Flow = { ...deps, directory, done, controller, answers, reload: () => reload(flow) }
+  const flow: Flow = {
+    ...deps,
+    directory,
+    done,
+    controller,
+    answers,
+    drafts,
+    reload: () => reload(flow),
+    fresh: () => createFlow(deps, directory, done, reload, drafts),
+  }
   return flow
+}
+
+/**
+ * Esc on a form goes back one step: the dialog's close aborts this flow, so the parent step runs
+ * on a fresh one, and without `done`, which only the top of the flow calls.
+ */
+export function stepBack(flow: Flow, parent: (flow: Flow) => void) {
+  return () => parent(flow.fresh())
+}
+
+/** Ctrl+S runs `save` in a form that submits through Enter; the form's dialog stays open for the flow's own next step. */
+export function saveWithCtrlS(dialog: ModalState, save: () => void) {
+  dialog.submit = async () => {}
+  dialog.beforeSubmit = () => {
+    save()
+    return true
+  }
 }
 
 export function closeFlowDialog(flow: Flow) {
@@ -85,7 +121,7 @@ export function wait<T>(
   dialog.form.add(
     new TextRenderable(flow.renderer, { content: instructions || title, fg: color.text, wrapMode: "word" }),
   )
-  dialog.error.content = "Esc cancel waiting; a request already sent may still save on the server."
+  dialog.error.content = "Esc cancel waiting · a request already sent may still save on the server"
   dialog.form.focus()
   void (async () => {
     try {
@@ -103,7 +139,7 @@ export function wait<T>(
         error instanceof Error && error.message === partial
           ? partial
           : "Provider request could not be confirmed. Check the connection and entered settings. Refresh providers before retrying."
-      dialog.error.content = `${message}\nEnter refresh providers | Esc go back`
+      dialog.error.content = `${message}\nEnter refresh providers · Esc back`
       dialog.error.fg = color.error
       dialog.error.height = 5
       dialog.key = (key) => {

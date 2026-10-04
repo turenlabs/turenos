@@ -35,6 +35,7 @@ export async function submitLaunch(form: LaunchForm) {
     variant: current.variant,
   }
   form.store.draft = undefined
+  form.store.settings = undefined
   if (state.closed) return
   const folderError = await syncFolder(form)
   openSession(session.id, false, session)

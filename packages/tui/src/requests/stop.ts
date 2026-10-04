@@ -1,6 +1,7 @@
 import { TextRenderable, TextAttributes } from "@opentui/core"
 import { errorText, httpStatus } from "../server"
 import { color } from "../theme"
+import { requireWord } from "../dialogs/fields"
 import { waiting } from "../queue/inputs"
 import { recipient, type RequestContext } from "./context"
 
@@ -8,14 +9,14 @@ export function interrupt(ctx: RequestContext) {
   if (ctx.state.tab !== "sessions" || !ctx.state.selected) return ctx.say("Select a session to interrupt.")
   const id = ctx.state.selected
   const confirmation = openConfirmation(ctx, id, {
-    title: "Interrupt session",
+    title: "Stop session",
     height: 19,
     body: "Stop the current work in this session?\n\nType stop, then Ctrl+S to confirm.",
-    hint: "Ctrl+S Send · Esc close",
+    hint: "Ctrl+S stop · Esc close",
+    word: "stop",
   })
   if (!confirmation) return
   confirmation.dialog.submit = async () => {
-    if (confirmation.input.value !== "stop") throw new Error("Type stop to confirm interruption.")
     await ctx.connection.client.sessions.interrupt({ sessionID: id })
     ctx.say(stopped(ctx, id))
   }
@@ -64,11 +65,11 @@ export function kill(ctx: RequestContext) {
     title: "Kill session",
     height: 20,
     body: "Interrupt this session and cancel its active subagent tasks?\nCancelled tasks cannot resume.\n\nType kill, then Ctrl+S to confirm.",
-    hint: "Ctrl+S Kill · Esc close",
+    hint: "Ctrl+S kill · Esc close",
+    word: "kill",
   })
   if (!confirmation) return
   confirmation.dialog.submit = async () => {
-    if (confirmation.input.value !== "kill") throw new Error("Type kill to confirm.")
     await ctx.connection.client.sessions.interrupt({ sessionID: id })
     const result = await cancelActiveTasks(ctx, id)
     const summary = `${result.cancelled} cancelled, ${result.failed} failed, ${result.gone} not listed`
@@ -93,22 +94,22 @@ export function stopAll(ctx: RequestContext) {
       wrapMode: "word",
     }),
   )
-  const confirmation = ctx.dialogs.input(dialog, "Confirmation")
+  const confirmation = ctx.dialogs.input(dialog, "Confirmation (type stop all)")
   dialog.submit = async () => {
-    if (confirmation.value !== "stop all") throw new Error("Type stop all to confirm.")
     const result = await ctx.connection.client.sessions.interruptAll()
     if (result.failed) throw new Error(`${result.failed} session(s) did not stop; ${result.interrupted} stopped.`)
     ctx.say(result.interrupted ? `Stopped ${result.interrupted} session(s).` : "Nothing was running.")
   }
-  dialog.error.content = "Ctrl+S Stop all · Esc close"
+  dialog.error.content = "Ctrl+S stop all · Esc close"
+  requireWord(dialog, confirmation, "stop all", ctx.dialogs.resize)
   confirmation.focus()
 }
 
-/** The typed-confirmation dialog shared by interrupt and kill; the caller sets `dialog.submit`. */
+/** The typed-confirmation dialog shared by stop and kill; the caller sets `dialog.submit`. */
 function openConfirmation(
   ctx: RequestContext,
   sessionID: string,
-  options: { title: string; height: number; body: string; hint: string },
+  options: { title: string; height: number; body: string; hint: string; word: string },
 ) {
   const dialog = ctx.dialogs.open(options.title, false, options.height, true)
   if (!dialog) return
@@ -123,8 +124,9 @@ function openConfirmation(
   )
   recipient(ctx, dialog, sessionID)
   dialog.form.add(new TextRenderable(ctx.renderer, { content: options.body, fg: color.text }))
-  const input = ctx.dialogs.input(dialog, "Confirmation")
+  const input = ctx.dialogs.input(dialog, `Confirmation (type ${options.word})`)
   dialog.error.content = options.hint
+  requireWord(dialog, input, options.word, ctx.dialogs.resize)
   ctx.dialogs.resize()
   input.focus()
   return { dialog, input }

@@ -1024,7 +1024,7 @@ test("stopping a session is discoverable from help, the palette and the slash li
   await waitForFrame(view, (frame) => !frame.includes("Keyboard shortcuts"))
   view.mockInput.pressKey("p", { ctrl: true })
   await view.mockInput.typeText("stop")
-  const palette = await waitForFrame(view, (frame) => frame.includes("Stop session (interrupt)"))
+  const palette = await waitForFrame(view, (frame) => frame.includes("Stop session"))
   expect(palette).toContain("Stop all agents")
   view.mockInput.pressEnter()
   await waitForFrame(view, (frame) => frame.includes("Type stop"))
@@ -1438,7 +1438,7 @@ test.each([false, true])(
     view.mockInput.pressKey("p", { ctrl: true })
     await view.mockInput.typeText("Undo conversation turn")
     view.mockInput.pressEnter()
-    await waitForFrame(view, (frame) => frame.includes("Type undo"))
+    await waitForFrame(view, (frame) => frame.includes("type undo"))
     await view.mockInput.typeText("undo")
     view.mockInput.pressKey("s", { ctrl: true })
     await waitForFrame(view, (frame) => frame.includes("UNDO STAGED") && !frame.includes("Undo conversation?"))
@@ -1459,7 +1459,7 @@ test.each([false, true])(
     view.mockInput.pressKey("p", { ctrl: true })
     await view.mockInput.typeText("Redo conversation turn")
     view.mockInput.pressEnter()
-    await waitForFrame(view, (frame) => frame.includes("Type redo"))
+    await waitForFrame(view, (frame) => frame.includes("type redo"))
     await view.mockInput.typeText("redo")
     view.mockInput.pressKey("s", { ctrl: true })
     await waitForFrame(
@@ -2641,7 +2641,7 @@ test("command selection remains visible at the minimum supported size", async ()
   await view.mockInput.typeText("Refresh")
   await view.renderOnce()
   expect(view.captureCharFrame()).toContain("Refresh")
-  expect(view.captureCharFrame()).toContain("Enter open")
+  expect(view.captureCharFrame()).toContain("Enter run")
   const select = descendants(view.renderer.root)
     .filter((node) => node instanceof SelectRenderable)
     .at(-1)!
@@ -3347,7 +3347,7 @@ for (const form of ["permission", "question", "interrupt"] as const) {
       return [rows[y]!.indexOf(label) + 1, y] as const
     })
     view.mockInput.pressKey(form === "permission" ? "p" : form === "question" ? "o" : "x")
-    const send = form === "permission" ? "Ctrl+S Reject" : "Ctrl+S Send"
+    const send = form === "permission" ? "Ctrl+S Reject" : "Ctrl+S stop"
     await waitForFrame(view, (frame) => frame.includes(form === "question" ? "Question 1 of 1" : send))
     if (form === "question") {
       view.mockInput.pressEnter()
@@ -3617,7 +3617,7 @@ test("queued reply keeps its visible delivery mode and identity after an uncerta
   view.mockInput.pressKey("f")
   await waitForFrame(view, (frame) => frame.includes("Queue · Reply to"))
   view.mockInput.pressKey("s", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("Reply sent."))
+  await waitForFrame(view, (frame) => frame.includes("Reply queued."))
   expect(server.posts).toHaveLength(2)
   expect(server.posts[0]).toEqual(server.posts[1])
   expect(server.posts[0]?.body.delivery).toBe("queue")

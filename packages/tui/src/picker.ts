@@ -22,6 +22,8 @@ export function openPicker(
     back?: () => void
     height?: number
     keys?: string
+    /** What Enter does on a row, for the default hint: "open" for a submenu, "toggle" for a switch. */
+    verb?: string
     /** Remembers the cursor by title, so reopening the picker after an action keeps the selected row. */
     memory?: Map<string, number>
   },
@@ -44,7 +46,8 @@ export function openPicker(
   dialog.frame.add(list, dialog.frame.getChildren().indexOf(dialog.error))
   dialogs.track(dialog, list)
   dialog.back = input.back
-  dialog.error.content = input.keys ?? "↑↓ choose · Enter open · Esc back"
+  dialog.error.content =
+    input.keys ?? `↑↓ choose · Enter ${input.verb ?? "select"} · Esc ${input.back ? "back" : "close"}`
   dialog.key = (key) => {
     if (!matchesKey(key, "enter")) return false
     const choice = choices[list.getSelectedIndex()]
@@ -100,7 +103,7 @@ export async function openSection<T>(
   renderer: CliRenderer,
   dialogs: Dialogs,
   state: Pick<DashboardState, "modal">,
-  input: { title: string; back?: () => void; keys?: string; memory?: Map<string, number> },
+  input: { title: string; back?: () => void; keys?: string; verb?: string; memory?: Map<string, number> },
   work: () => Promise<T>,
   fill: (value: T, picker: Picker) => void,
 ) {
@@ -110,6 +113,7 @@ export async function openSection<T>(
     choices: [],
     back: input.back,
     keys: input.keys,
+    verb: input.verb,
     memory: input.memory,
   })
   if (!picker) return
@@ -120,6 +124,14 @@ export async function openSection<T>(
     if (state.modal === picker.dialog) {
       picker.text.content = `${input.title} unavailable: ${errorText(error)}`
       picker.fit()
+      picker.set([
+        {
+          name: "Refresh",
+          description: "Try again",
+          run: () => openSection(renderer, dialogs, state, input, work, fill),
+        },
+      ])
+      picker.dialog.error.content = `↑↓ choose · Enter refresh · Esc ${input.back ? "back" : "close"}`
     }
   }
 }

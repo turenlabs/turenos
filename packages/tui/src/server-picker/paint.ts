@@ -19,6 +19,8 @@ export function paint(picker: Picker) {
   view.heading.content = current
     ? `Connected to ${label(serverLabel(current.target), 80)}${current.connected ? "" : " (disconnected)"} · choose a server`
     : "Choose a TurenOS server"
+  view.frame.title =
+    picker.mode === "add" ? " Servers › Add server " : picker.mode === "password" ? " Servers › Password " : " Servers "
   view.list.visible = picker.mode === "list" || picker.mode === "connecting"
   view.fields.visible = picker.mode === "add" || picker.mode === "password"
   view.rows.forEach((row) => row.destroyRecursively())
@@ -60,7 +62,7 @@ function entryRows(picker: Picker, currentID: Target["id"] | undefined, offsets:
     const active = currentID === entry.target.id
     const chosen = index === picker.selected
     const row = new TextRenderable(renderer, {
-      content: `${chosen ? "›" : " "} ${active ? "●" : "○"} ${label(entry.target.name, 64).padEnd(width)}  ${label(entry.detail, 200)}${active ? "  · current" : ""}`,
+      content: `${chosen ? "▶" : " "} ${active ? "●" : "○"} ${label(entry.target.name, 64).padEnd(width)}  ${label(entry.detail, 200)}${active ? "  · current" : ""}`,
       fg: active ? color.accent : color.text,
       bg: chosen ? color.selected : undefined,
       height: 1,
@@ -88,7 +90,7 @@ function scrollToSelected(picker: Picker, view: View, top: number) {
 
 function keyHint(picker: Picker, hasCurrent: boolean) {
   if (picker.mode === "connecting") return "Esc cancel"
-  if (picker.mode === "add") return "Tab next field · Enter save · Esc cancel"
-  if (picker.mode === "password") return "Enter connect · Ctrl+U clear · Esc cancel"
+  if (picker.mode === "add") return "Tab next field · Enter / Ctrl+S save · Esc back"
+  if (picker.mode === "password") return "Enter connect · Ctrl+U clear · Esc back"
   return `↑↓ choose · Enter connect · a add · d remove · r rescan${hasCurrent ? " · Esc back" : ""} · q quit`
 }

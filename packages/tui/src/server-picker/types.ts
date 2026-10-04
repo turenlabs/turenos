@@ -20,6 +20,7 @@ export type Hooks = {
 
 export type View = {
   overlay: BoxRenderable
+  frame: BoxRenderable
   logo: TextRenderable
   heading: TextRenderable
   list: ScrollBoxRenderable
@@ -39,6 +40,10 @@ export type Picker = {
   selected: number
   mode: "list" | "connecting" | "add" | "password"
   controller: AbortController | undefined
+  /** The server the next scan puts the cursor on; set when the picker opens. */
+  focusID: string | undefined
+  /** Where Esc returns instead of closing to the dashboard, when another menu opened the picker. */
+  back: (() => void) | undefined
   armed: { action: "switch" | "remove" | "quit"; id: string; until: number } | undefined
   scanning: ReturnType<typeof setInterval> | undefined
   form: { inputs: InputRenderable[]; index: number } | undefined

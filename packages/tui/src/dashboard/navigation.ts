@@ -12,6 +12,8 @@ export function changeTab(d: DashboardContext, tab: Tab) {
   d.c.conversation.rememberPosition()
   d.run.views.set(state.tab, { selected: state.selected, query: state.query })
   state.tab = tab
+  // A notice about the tab being left (for example "Terminal closed.") would read as news about this one.
+  d.say("")
   state.selected = d.run.views.get(tab)?.selected ?? ""
   state.detail = undefined
   state.history = false

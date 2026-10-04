@@ -1,11 +1,10 @@
 import type { CliRenderer } from "@opentui/core"
 import type { Dialogs } from "./dialogs"
 import { openPanel } from "./panel"
-import { openSection } from "./picker"
 import { object } from "./response-validation"
 import type { Connection } from "./server"
 import { label, type DashboardState } from "./state"
-import { toolText } from "./inspect/tool-text"
+import { openTools } from "./inspect/tools"
 import { describe, load, pageKey, type TraceView } from "./inspect/trace"
 
 /**
@@ -31,11 +30,10 @@ export function createInspect(
     if (!session || !dialogs.navigate()) return
     const model = session.model ?? lastModel(state, session.id)
     if (!model) return say("No model is known for this session yet. Send a message first, or choose one with m.")
-    return openSection(
+    return openTools(
       renderer,
       dialogs,
       state,
-      { title: "Tools" },
       () =>
         connection
           .api("/experimental/tool", {
@@ -43,11 +41,8 @@ export function createInspect(
             query: { provider: model.providerID, model: model.id, sessionID: session.id },
           })
           .then(object),
-      (snapshot, picker) => {
-        picker.text.content = toolText(snapshot, session.model ? "" : " (server default)")
-        picker.dialog.error.content = "PgUp/PgDn scroll · Enter refresh · Esc back"
-        picker.set([{ name: "Refresh", run: tools }])
-      },
+      tools,
+      session.model ? "" : " (server default)",
     )
   }
 

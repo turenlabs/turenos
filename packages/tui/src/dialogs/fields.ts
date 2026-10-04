@@ -1,4 +1,4 @@
-import { InputRenderable, TextareaRenderable, TextRenderable, TextAttributes } from "@opentui/core"
+import { InputRenderable, TextareaRenderable, TextRenderable, TextAttributes, fg, t } from "@opentui/core"
 import { color } from "../theme"
 import type { Field, ModalState } from "../state"
 import type { DialogContext } from "./context"
@@ -23,7 +23,60 @@ export function input(ctx: DialogContext, dialog: ModalState, label: string, val
     field.focus()
   }
   track(ctx, dialog, field)
+  clearStaleError(ctx, dialog, field)
   return field
+}
+
+const hints = new WeakMap<ModalState, { content: string; height: TextRenderable["height"] }>()
+
+/** The text a TextRenderable shows, whatever way its content was set. */
+function plain(text: TextRenderable) {
+  return text.content.chunks.map((chunk) => chunk.text).join("")
+}
+
+/** The message the shared submit path shows after a failed attempt. */
+function failed(text: TextRenderable) {
+  return plain(text).includes("Ctrl+S retry")
+}
+
+/** Editing a field drops a failure message and brings back the hint the dialog started with. */
+function clearStaleError(ctx: DialogContext, dialog: ModalState, field: InputRenderable) {
+  const remember = () => {
+    if (!hints.has(dialog) && !failed(dialog.error))
+      hints.set(dialog, { content: plain(dialog.error), height: dialog.error.height })
+  }
+  field.on("focused", remember)
+  field.on("input", () => {
+    remember()
+    const hint = hints.get(dialog)
+    if (!hint || !failed(dialog.error)) return
+    dialog.error.content = hint.content
+    dialog.error.height = hint.height
+    dialog.error.fg = color.muted
+    ctx.ui.resize()
+  })
+}
+
+/**
+ * Blocks submitting until the field holds `word`. The mismatch shows above the dialog's own hint,
+ * so the footer keeps its verb, and clears as soon as the text changes.
+ */
+export function requireWord(dialog: ModalState, field: InputRenderable, word: string, resize: () => void) {
+  const mismatch = `! Type ${word} to confirm.`
+  let hint = ""
+  field.on("input", () => {
+    if (!plain(dialog.error).startsWith(mismatch)) return
+    dialog.error.content = hint
+    resize()
+  })
+  const previous = dialog.beforeSubmit
+  dialog.beforeSubmit = () => {
+    if (field.value.trim() === word) return previous?.() ?? false
+    if (!plain(dialog.error).startsWith(mismatch)) hint = plain(dialog.error)
+    dialog.error.content = t`${fg(color.error)(mismatch)}\n${fg(color.muted)(hint)}`
+    resize()
+    return true
+  }
 }
 
 export function prompt(ctx: DialogContext, dialog: ModalState, label: string, value = "", cursor = value.length) {

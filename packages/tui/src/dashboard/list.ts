@@ -104,6 +104,6 @@ function renderEmptyList(d: DashboardContext) {
     : d.state.tab === "sessions"
       ? "No sessions yet. n starts one."
       : d.state.tab === "terminals"
-        ? "No terminals yet. a opens one."
+        ? "No terminals yet. Enter or a opens one."
         : "No automations yet. a adds one."
 }

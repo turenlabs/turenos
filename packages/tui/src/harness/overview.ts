@@ -66,7 +66,7 @@ async function refresh(view: Overview) {
     choices.options = view.actions.map((action) => ({ name: title(action), description: "" }))
     choices.visible = view.actions.length > 0
     text.content = describe(session, harness)
-    dialog.error.content = `${view.actions.length ? "Enter chooses a change to confirm · " : ""}Ctrl+R refresh · Esc close${ctx.blocked(session.id) ? "\nTask-owned session: read-only." : ""}`
+    dialog.error.content = `${view.actions.length ? "Enter choose · " : ""}Ctrl+R refresh · Esc close${ctx.blocked(session.id) ? "\nTask-owned session: read-only." : ""}`
   } catch (error) {
     if (version !== view.request || ctx.state.modal !== dialog) return
     view.actions = []

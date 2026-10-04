@@ -13,7 +13,7 @@ export function createGoalControls(
   say: (message: string, error?: boolean) => void,
   blocked: (id: string) => boolean,
 ) {
-  const env: GoalEnv = { renderer, state, connection, dialogs, say, blocked }
+  const env: GoalEnv = { renderer, state, connection, dialogs, say, blocked, drafts: new Map() }
   return {
     open() {
       const selected =

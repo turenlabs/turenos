@@ -1,6 +1,7 @@
 import { StyledText, fg } from "@opentui/core"
 import { matchesKey } from "../keys"
 import { display } from "../messages"
+import { fitHints } from "../changes/heading"
 import { openPanel } from "../panel"
 import { errorText } from "../server"
 import { label } from "../state"
@@ -11,16 +12,33 @@ import type { MemoriesContext, Memory, Place } from "./types"
 type Panel = NonNullable<ReturnType<typeof openPanel>>
 
 /** The open memory list; `armed` is the memory a first Ctrl+D has marked for deletion. */
-type View = { ctx: MemoriesContext; panel: Panel; place: Place; items: Memory[]; armed: string }
+type View = { ctx: MemoriesContext; panel: Panel; place: Place; items: Memory[]; armed: string; note: string }
 
-const keys = "↑↓ choose · a add · E edit · Ctrl+D delete · Ctrl+R refresh · Esc back"
+/** The hint fits two lines at any width; a note takes the first line and leaves one of hints. */
+function hints(view: View, note = "") {
+  const { panel } = view
+  view.note = note
+  panel.fit(
+    "hints",
+    () =>
+      (panel.dialog.error.content = view.note
+        ? `${view.note}\n${fitHints(panel.width() - 2, [], ["a add", "E edit", "Ctrl+D delete", "Esc back"])}`
+        : fitHints(
+            panel.width() - 2,
+            ["↑↓ choose", "a add", "E edit", "Ctrl+R refresh"],
+            ["Ctrl+D delete", "Esc back"],
+          )),
+  )
+}
 
-export function browse(ctx: MemoriesContext, place: Place, back: () => void) {
-  const panel = openPanel(ctx.renderer, ctx.dialogs, `Memories · ${label(place.name, 60)}`)
+/** `note` reports what the form or action that reopened the list just did. */
+export function browse(ctx: MemoriesContext, place: Place, back: () => void, note = "") {
+  const title = `${ctx.root} › ${label(place.name, 60)}${place.room ? ` › ${label(place.room, 60)}` : ""}`
+  const panel = openPanel(ctx.renderer, ctx.dialogs, title)
   if (!panel) return
   panel.dialog.back = back
-  const view: View = { ctx, panel, place, items: [], armed: "" }
-  const reopen = () => browse(ctx, place, back)
+  const view: View = { ctx, panel, place, items: [], armed: "", note }
+  const reopen = (done?: string) => browse(ctx, place, back, done)
   panel.list.on("selectionChanged", () => describe(view))
   panel.dialog.key = (key) => {
     const item = view.items[panel.list.getSelectedIndex()]
@@ -31,8 +49,7 @@ export function browse(ctx: MemoriesContext, place: Place, back: () => void) {
         : key.sequence === "a" && place.roomID
           ? () => edit(ctx, place, undefined, reopen)
           : key.sequence === "a"
-            ? () =>
-                void (panel.dialog.error.content = `All rooms is a read-only view; open a room to add a memory.\n${keys}`)
+            ? () => hints(view, "All rooms is a read-only view; open a room to add a memory.")
             : key.sequence === "E" && item
               ? () => edit(ctx, place, item, reopen)
               : undefined
@@ -40,6 +57,7 @@ export function browse(ctx: MemoriesContext, place: Place, back: () => void) {
     void action()
     return true
   }
+  hints(view, note)
   void load(view)
 }
 
@@ -56,7 +74,7 @@ async function load(view: View) {
       name: `[${item.kind}] ${label(item.title, 60)}`,
       description: "",
     }))
-    panel.dialog.error.content = keys
+    hints(view, view.note)
     describe(view)
   } catch (error) {
     if (ctx.state.modal === panel.dialog) panel.show(`Memories unavailable: ${errorText(error)}`)
@@ -87,11 +105,15 @@ function remove(view: View) {
   if (!item) return
   if (view.armed !== item.id) {
     view.armed = item.id
-    panel.dialog.error.content = `Ctrl+D again deletes "${label(item.title, 40)}".\n${keys}`
+    hints(view, `Ctrl+D again deletes "${label(item.title, 40)}".`)
     return
   }
   void view.ctx.connection.client.memories.remove({ drawerID: item.id, wingID: item.wingID }).then(
-    () => load(view),
-    (error: unknown) => (panel.dialog.error.content = `! ${errorText(error)}\n${keys}`),
+    () => {
+      view.ctx.say(`Deleted "${label(item.title, 40)}".`)
+      hints(view, `Deleted "${label(item.title, 40)}".`)
+      return load(view)
+    },
+    (error: unknown) => hints(view, `! ${errorText(error)}`),
   )
 }

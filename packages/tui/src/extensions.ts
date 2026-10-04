@@ -16,7 +16,7 @@ export function createExtensions(
   dialogs: Dialogs,
   directory: () => string,
 ) {
-  const ctx = { renderer, state, connection, dialogs, directory }
+  const ctx = { renderer, state, connection, dialogs, directory, drafts: new Map<string, string>() }
   return { open: (back?: () => void) => openExtensions(ctx, back) }
 }
 

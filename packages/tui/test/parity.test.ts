@@ -95,7 +95,7 @@ test("the agent's to-do list shows in the action row and the Tasks view", async 
   view.mockInput.pressKey("t")
   const frame = await screen("TO-DOS · 1/3 done")
   expect(frame).toContain("● Read the parser")
-  expect(frame).toContain("▶ Fix the off-by-one")
+  expect(frame).toContain("◐ Fix the off-by-one")
   expect(frame).toContain("○ Add a regression test")
 })
 

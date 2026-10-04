@@ -229,7 +229,7 @@ test("confirmation does not truncate a longer word into an accepted action", asy
   const app = await fixture()
   await app.ready()
   await app.confirm("undone")
-  await app.waitFor((frame) => frame.includes("Type undo exactly"))
+  await app.waitFor((frame) => frame.includes("Type undo to confirm"))
   expect(app.view.renderer.currentFocusedEditor?.plainText).toBe("undone")
   expect(app.posts()).toHaveLength(0)
 })
@@ -252,7 +252,7 @@ test.each(["direct", "resize"])(
     if (mode === "resize") app.view.resize(60, 24)
     await app.waitFor(
       (frame) =>
-        frame.includes("Conversation only") && frame.includes("Conversation + files") && frame.includes("Type undo"),
+        frame.includes("Conversation only") && frame.includes("Conversation + files") && frame.includes("type undo"),
     )
     const field = app.view.renderer.currentFocusedEditor!
     await app.view.mockInput.typeText("undo")
@@ -303,12 +303,12 @@ test("undo inspection and Enter are read-only; captures target, defaults files f
   const app = await fixture()
   await app.ready()
   const frame = await app.waitFor((frame) => frame.includes("Latest real prompt"))
-  expect(frame).toContain("stops active work")
+  expect(frame).not.toContain("stops active work")
   expect(frame).toContain("next reply commits")
   expect(app.posts()).toEqual([])
   app.view.mockInput.pressEnter()
   app.submit()
-  await app.waitFor((frame) => frame.includes("exactly"))
+  await app.waitFor((frame) => frame.includes("to confirm"))
   expect(app.posts()).toEqual([])
   app.state.selected = "ses_elsewhere"
   await app.confirm()

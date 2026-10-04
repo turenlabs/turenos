@@ -8,7 +8,7 @@ import type { HarnessContext } from "./context"
 import { proposalText } from "./text"
 
 export function confirm(ctx: HarnessContext, session: Session, action: Action, back: () => void) {
-  const dialog = ctx.dialogs.open(`${title(action).split(":")[0]}?`, false, 34)
+  const dialog = ctx.dialogs.open(`Harness › ${title(action).split(":")[0]}?`, false, 34)
   if (!dialog) return
   dialog.recipient = session
   dialog.frame.add(
@@ -20,7 +20,7 @@ export function confirm(ctx: HarnessContext, session: Session, action: Action, b
             ? "Confirm replaces the harness this session's agent runs with on its next turn."
             : "Confirm changes the tools and guidance this session's agent runs with on its next turn.",
       fg: action.kind === "reject" ? color.warning : color.error,
-      height: 1,
+      wrapMode: "word",
       flexShrink: 0,
     }),
     0,
@@ -31,7 +31,7 @@ export function confirm(ctx: HarnessContext, session: Session, action: Action, b
       fg: color.text,
     }),
   )
-  dialog.error.content = "Ctrl+S confirms · Esc back; nothing changed yet."
+  dialog.error.content = `Ctrl+S ${verb(action)} · Esc back\nNothing changed yet.`
   dialog.back = back
   dialog.key = (key) => matchesKey(key, "enter")
   // After an uncertain result, retries only read state: a repeated write could apply twice.
@@ -59,6 +59,10 @@ export function confirm(ctx: HarnessContext, session: Session, action: Action, b
     }
     ctx.say(completed(action))
   }
+}
+
+function verb(action: Action) {
+  return action.kind === "rollback" ? "roll back" : action.kind
 }
 
 function completed(action: Action) {

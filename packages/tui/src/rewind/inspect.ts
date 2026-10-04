@@ -27,7 +27,7 @@ export async function load(flow: RewindFlow) {
   } catch (error) {
     if (flow.state.closed || flow.state.modal !== flow.dialog) return
     flow.preview.content = `Cannot inspect rewind: ${errorText(error)}`
-    flow.dialog.error.content = "Read-only; nothing changed. Ctrl+R retry / Esc close"
+    flow.dialog.error.content = "Read-only; nothing changed. Ctrl+R retry · Esc close"
   } finally {
     flow.loading = false
   }

@@ -23,6 +23,8 @@ export function createServerPicker(renderer: CliRenderer, servers: Servers, hook
     selected: 0,
     mode: "list",
     controller: undefined,
+    focusID: undefined,
+    back: undefined,
     armed: undefined,
     scanning: undefined,
     form: undefined,
@@ -32,9 +34,11 @@ export function createServerPicker(renderer: CliRenderer, servers: Servers, hook
     choose: () => choose(picker),
   }
 
-  function open(note?: string, tone: Tone = "muted") {
+  function open(note?: string, tone: Tone = "muted", back?: () => void) {
     if (!picker.view) {
       picker.view = buildView(renderer)
+      picker.back = back
+      picker.focusID = hooks.current()?.target.id
       renderer.currentFocusedRenderable?.blur()
       renderer.keyInput.on("keypress", picker.listeners.keypress)
       renderer.on("resize", picker.listeners.resize)

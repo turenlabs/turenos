@@ -32,14 +32,12 @@ export function buildView(renderer: CliRenderer): View {
   const keys = new TextRenderable(renderer, {
     content: "",
     fg: color.muted,
-    height: 1,
     flexShrink: 0,
-    wrapMode: "none",
-    truncate: true,
+    wrapMode: "word",
   })
   for (const item of [logo, heading, list, fields, status, keys]) frame.add(item)
   renderer.root.add(overlay)
-  return { overlay, logo, heading, list, fields, status, keys, rows: [] }
+  return { overlay, frame, logo, heading, list, fields, status, keys, rows: [] }
 }
 
 function overlayBox(renderer: CliRenderer) {

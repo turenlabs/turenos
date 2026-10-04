@@ -17,10 +17,14 @@ async function settings(routes: Parameters<typeof dashboard>[0], steps: number) 
 }
 
 test("disconnecting a provider deletes its credential, then retires cached clients", async () => {
+  let connected = ["openai"]
   const { server, view, screen } = await settings(
     {
-      "GET /provider": () => catalog,
-      "DELETE /auth/openai": () => true,
+      "GET /provider": () => ({ ...catalog, connected }),
+      "DELETE /auth/openai": () => {
+        connected = []
+        return true
+      },
       "POST /global/dispose": () => true,
     },
     0,
@@ -209,7 +213,7 @@ test("Intel lists advisories, switches to known-exploited CVEs, and toggles feed
     },
   })
   view.mockInput.pressKey("I")
-  expect(await screen("Heap overflow in the parser.")).toContain("CRITICAL Parser overflow")
+  expect(await screen("Heap overflow in the parser.")).toContain("CRIT Parser overflow")
   view.mockInput.pressKey("m")
   await screen("CVE-2026-1 Auth bypass")
   view.mockInput.pressKey("f")
@@ -256,7 +260,7 @@ test("memories are browsed by wing and room, and added with a kind and title", a
   view.mockInput.pressTab()
   await confirm("The suite flakes when run in parallel.")
   // Saving returns to the room.
-  await screen("Memories · turen · Tooling")
+  await screen("Memories › turen › Tooling")
   expect(server.requests.find((item) => item.method === "POST")?.body).toMatchObject({
     wingID: "wng_1",
     roomID: "rom_1",

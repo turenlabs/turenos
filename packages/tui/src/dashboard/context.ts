@@ -35,7 +35,7 @@ export type DashboardOptions = {
   /** The connected server, shown in the header. */
   server?: string
   /** Opens the server picker; its absence hides server switching. */
-  servers?: () => void
+  servers?: (back?: () => void) => void
   /** True while another surface, such as the server picker, owns the keyboard. */
   blocked?: () => boolean
 }

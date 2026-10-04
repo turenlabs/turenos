@@ -19,7 +19,7 @@ export function restoreDraft(ctx: RequestContext, session: Session, messageID: s
     text: display(text, maxMessageLength),
     id: newMessageID(),
     recipient: session,
-    delivery: "steer",
+    delivery: ctx.deliveries.get(session.id) ?? "steer",
     restoredFrom: messageID,
   })
   return true

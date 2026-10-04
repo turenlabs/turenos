@@ -15,29 +15,28 @@ export type IntelContext = {
 }
 
 /** The feed list: Enter turns a feed on or off. `back` reopens the Intel panel. */
-export function feeds(ctx: IntelContext, back: () => void) {
+export function feeds(ctx: IntelContext, back: () => void, note = "") {
   const intel = ctx.connection.client["server.intel"]
   ctx.dialogs.close(false)
   return openSection(
     ctx.renderer,
     ctx.dialogs,
     ctx.state,
-    { title: "Intel feeds", back, memory: ctx.memory, keys: "↑↓ choose · Enter on/off · Esc back" },
+    { title: "Intel › Feeds", back, memory: ctx.memory, keys: "↑↓ choose · Enter toggle · Esc back" },
     intel.feeds,
     (list, picker) => {
-      picker.text.content = "Enter turns a feed on or off. Feeds are polled on the server every six hours."
+      picker.text.content = `${note ? `${note}\n` : ""}Enter turns a feed on or off. Feeds are polled on the server every six hours.`
       picker.set(
         list.map((feed) => ({
           name: `${feed.enabled ? "●" : "○"} ${label(feed.name, 60)} · ${feed.kind}`,
           description: label(feed.url, 120),
           run: async () => {
-            try {
-              await intel.feedUpdate({ feedID: feed.id, enabled: !feed.enabled })
-              ctx.say(`${feed.name} ${feed.enabled ? "off" : "on"}.`)
-            } catch (error) {
-              ctx.say(errorText(error), true)
-            }
-            await feeds(ctx, back)
+            const result = await intel.feedUpdate({ feedID: feed.id, enabled: !feed.enabled }).then(
+              () => `${feed.name} turned ${feed.enabled ? "off" : "on"}.`,
+              (error: unknown) => `! ${errorText(error)}`,
+            )
+            ctx.say(result, result.startsWith("!"))
+            await feeds(ctx, back, result)
           },
         })),
       )

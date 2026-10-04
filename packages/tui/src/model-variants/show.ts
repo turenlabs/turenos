@@ -118,12 +118,12 @@ async function load(view: View) {
     }))
     select.setSelectedIndex(Math.max(0, view.rows.indexOf(target.current)))
     view.ready = true
-    dialog.error.content = "Up/Down choose - Enter / Ctrl+S select\nEsc back - Ctrl+R reload"
+    dialog.error.content = "Up/Down choose · Enter / Ctrl+S select\nEsc back · Ctrl+R reload"
     select.focus()
   } catch (error) {
     if (ctx.state.closed || ctx.state.modal !== dialog) return
     dialog.error.height = 3
-    dialog.error.content = `Cannot load variants: ${errorText(error)}\nCtrl+R retry - Esc back`
+    dialog.error.content = `Cannot load variants: ${errorText(error)}\nCtrl+R retry · Esc back`
   } finally {
     view.loading = false
   }

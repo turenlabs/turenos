@@ -100,9 +100,9 @@ function wireChoice(dialog: ModalState, choice: SelectRenderable) {
   hint(dialog, choice)
 }
 
-/** Names the digits and what Ctrl+S does with the row that is selected now. */
+/** Names the digits, the arrows and what Ctrl+S does with the row that is selected now. Enter does not confirm. */
 function hint(dialog: ModalState, choice: SelectRenderable) {
-  const keys = choice.options.map((option, index) => `${index + 1} ${option.name}`).join(" · ")
+  const keys = `↑↓ or ${choice.options.map((option, index) => `${index + 1} ${option.name}`).join(" · ")}`
   const chosen = choice.options[choice.getSelectedIndex()]?.name ?? "Reject"
   dialog.error.content = `${keys}\nCtrl+S ${chosen} · Esc close · PgUp/PgDn scroll`
 }

@@ -10,6 +10,7 @@ type Intel = Connection["client"]["server.intel"]
 
 export const TITLES: Record<Mode, string> = { advisories: "Advisories", kev: "Known exploited (KEV)", news: "News" }
 export const PAGE = 50
+const TAG: Record<string, string> = { critical: "CRIT", high: "HIGH", medium: "MED", low: "LOW", info: "INFO" }
 const SEVERITY: Record<string, string> = {
   critical: color.error,
   high: color.error,
@@ -34,7 +35,7 @@ async function advisories(intel: Intel, page: number) {
       optional(item.url, string)
       const severity = string(item.severity, 16)
       return {
-        title: `${severity.toUpperCase()} ${string(item.title, 2000)}`,
+        title: `${TAG[severity] ?? severity.toUpperCase()} ${string(item.title, 2000)}`,
         meta: `${string(item.id, 256)} · ${string(item.source, 256)} · ${date(item.publishedAt)}${typeof item.cvss === "number" ? ` · CVSS ${item.cvss}` : ""}`,
         body: `${display((item.summary as string | undefined) ?? "", 8000)}${item.url ? `\n\n${label(item.url as string, 500)}` : ""}`,
         tone: SEVERITY[severity] ?? color.muted,

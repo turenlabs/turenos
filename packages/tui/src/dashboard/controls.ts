@@ -220,7 +220,7 @@ function createSettingsControls(d: DashboardContext) {
     connectProvider: (back) => d.c.models.connect(back),
     extensions: d.c.extensions.open,
     memories: (back) => void d.c.memories.open(back),
-    servers: d.options.servers ? () => openServers(d) : undefined,
+    servers: d.options.servers ? (back) => openServers(d, back) : undefined,
     appearance: () => [
       { name: state.reducedMotion ? "Turn animation on" : "Reduce motion", run: () => toggleMotion(d) },
       {
@@ -280,6 +280,7 @@ function createNavigationControls(d: DashboardContext) {
     launch: launch.open,
     openSession: d.openSession,
     hasDraft: requests.hasDraft,
+    say: d.say,
   })
   return { models, launch, sessions, menus }
 }

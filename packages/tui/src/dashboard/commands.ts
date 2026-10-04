@@ -118,8 +118,12 @@ function sessionCommands(d: DashboardContext): Command[] {
     { name: "Archive / restore session", description: "Hide or restore history", run: c.sessions.archive },
     { name: "Delete session", description: "Permanently, with its subagents", run: c.sessions.remove },
     { name: "Tasks and subagents", description: "Ctrl+X / t", run: c.sessions.tasks },
-    { name: "Go to parent session", description: "Open parent", run: c.sessions.parent },
+    ...(hasParent(d) ? [{ name: "Go to parent session", description: "Open parent", run: c.sessions.parent }] : []),
   ]
+}
+
+function hasParent(d: DashboardContext) {
+  return !!d.state.snapshot?.sessions.find((session) => session.id === d.state.selected)?.parentID
 }
 
 function modelCommands(d: DashboardContext): Command[] {
@@ -178,7 +182,7 @@ function terminalCommands(d: DashboardContext): Command[] {
     { name: "Review permission", description: "p", run: c.requests.permission },
     { name: "Answer question", description: "o", run: c.requests.question },
     { name: "Reject question", description: "Confirm without answering", run: () => c.requests.question(true) },
-    { name: "Stop session (interrupt)", description: "x · /stop", run: c.requests.interrupt },
+    { name: "Stop session", description: "x · /stop · interrupt the running turn", run: c.requests.interrupt },
     { name: "Kill session (stop and cancel tasks)", description: "/kill", run: c.requests.kill },
     { name: "Stop all agents", description: "Kill switch for this server", run: c.requests.stopAll },
   ]
@@ -191,7 +195,7 @@ function viewCommands(d: DashboardContext): Command[] {
     { name: "Refresh", description: "r", run: () => void d.refresh() },
     { name: "Keyboard help", description: "?", run: c.menus.help },
     { name: "Copy selected text", description: "Ctrl+Y / right-click", run: c.copy.copySelection },
-    { name: "Toggle terminal mouse selection", description: "F6 / native right-click menu", run: c.copy.toggleMouse },
+    { name: "Toggle terminal mouse selection", description: "F6", run: c.copy.toggleMouse },
     { name: "Session history / live transcript", description: "h", run: c.conversation.toggleHistory },
     {
       name: d.state.rawResponses ? "Show formatted responses" : "Show raw responses",
@@ -204,7 +208,7 @@ function viewCommands(d: DashboardContext): Command[] {
     { name: "Toggle sidebar", description: "b / Ctrl+B", run: () => toggleSidebar(d) },
     {
       name: "Toggle reduced motion",
-      description: d.state.reducedMotion ? "Animation off" : "Animation on",
+      description: d.state.reducedMotion ? "Now on · animation off" : "Now off · animation on",
       run: () => toggleMotion(d),
     },
     { name: "Quit dashboard", description: "q / Ctrl+C", run: () => quit(d) },

@@ -13,7 +13,13 @@ const MODES: Record<Mode, string> = {
 const STATUS: Record<string, string> = { added: "A", deleted: "D", modified: "M" }
 
 /** Hint parts by priority: the trailing ones drop first when the panel is narrow. */
-const HINTS = ["↑↓ file", "m mode", "@ mention in reply", "PgUp/PgDn scroll", "Ctrl+R refresh"]
+const HINTS = [
+  "↑↓ file",
+  "m mode: uncommitted · branch · last turn",
+  "@ mention in reply",
+  "PgUp/PgDn scroll",
+  "Ctrl+R refresh",
+]
 
 /** One open Changes panel: the mode shown, its files, and the latest request that may still paint. */
 export type Review = {
@@ -47,7 +53,7 @@ export async function load(r: Review) {
     r.files = []
     panel.list.options = []
     panel.show(`${MODES[r.mode]} unavailable: ${errorText(error)}`)
-    panel.dialog.error.content = `m mode · Ctrl+R retry · Esc close`
+    panel.dialog.error.content = "m mode: uncommitted · branch · last turn\nCtrl+R retry · Esc close"
   }
 }
 

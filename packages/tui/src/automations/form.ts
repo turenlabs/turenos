@@ -1,15 +1,21 @@
-import { RenderableEvents, TextRenderable, type InputRenderable } from "@opentui/core"
+import { TextRenderable } from "@opentui/core"
 import { identifier, object } from "../response-validation"
 import { label } from "../state"
 import { color } from "../theme"
+import { markFocus } from "./focus"
 import { parseSchedule, scheduleInput, scheduleProblem } from "./schedule"
 import type { AutomationsContext, Loop } from "./types"
 
-/** The create form, or the edit form when `loop` is given. */
-export function form(ctx: AutomationsContext, loop?: Loop) {
+/** The create form, or the edit form when `loop` is given; `back` returns to the menu that opened it. */
+export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
   const { dialogs, state } = ctx
-  const dialog = dialogs.open(loop ? "Edit automation" : "New automation", false, 30)
+  const dialog = dialogs.open(
+    loop ? (back ? `Automation › ${label(loop.name, 40)} › Edit` : "Edit automation") : "New automation",
+    false,
+    30,
+  )
   if (!dialog) return
+  dialog.back = back
   const session = state.snapshot?.sessions.find((item) => item.id === state.selected)
   const name = dialogs.input(dialog, "Name", loop?.name ?? "")
   const prompt = dialogs.input(dialog, "Prompt the agent runs each time", loop?.prompt ?? "")
@@ -45,27 +51,18 @@ export function form(ctx: AutomationsContext, loop?: Loop) {
     identifier(result.id)
     ctx.say("Automation created.")
   }
-  dialog.error.content = "Tab next field · Ctrl+S save · Esc cancel"
+  dialog.error.content = `Tab next field · Ctrl+S save · Esc ${back ? "back" : "cancel"}`
   name.focus()
 }
 
-/** Prefixes the focused field's caption with an arrow, so focus shows in plain text as well as by colour. */
-function markFocus(field: InputRenderable) {
-  const caption = field.parent?.getChildren()[field.parent.getChildren().indexOf(field) - 1]
-  if (!(caption instanceof TextRenderable)) return
-  const text = caption.plainText
-  // A closing dialog blurs its field after the caption is already gone.
-  const paint = () => {
-    if (!caption.isDestroyed) caption.content = `${field.focused ? "▶ " : "  "}${text}`
-  }
-  field.on(RenderableEvents.FOCUSED, paint)
-  field.on(RenderableEvents.BLURRED, paint)
-  paint()
-}
-
-export function remove(ctx: AutomationsContext, loop: Loop) {
-  const dialog = ctx.dialogs.open("Delete automation", false, 16)
+export function remove(ctx: AutomationsContext, loop: Loop, back?: () => void) {
+  const dialog = ctx.dialogs.open(
+    back ? `Automation › ${label(loop.name, 40)} › Delete` : "Delete automation",
+    false,
+    16,
+  )
   if (!dialog) return
+  dialog.back = back
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
       content: `${label(loop.name, 100)}\nFuture runs stop. Sessions it already started are kept.`,

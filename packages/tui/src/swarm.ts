@@ -18,6 +18,9 @@ export function createSwarmRoom(
   dialogs: Dialogs,
   say: (message: string, error?: boolean) => void,
 ) {
+  /** Unsent post text by session, so Esc closes the room without losing what was typed. */
+  const drafts = new Map<string, string>()
+
   function open() {
     const session = state.snapshot?.sessions.find((item) => item.id === state.selected)
     if (state.tab !== "sessions" || !session) return say("Select a session first.")
@@ -27,7 +30,8 @@ export function createSwarmRoom(
     panel.dialog.recipient = session
     panel.dialog.error.marginRight = 2
     const post = new InputRenderable(renderer, {
-      placeholder: "Post as a human member · Enter sends",
+      placeholder: "Post as a human member · Enter posts",
+      value: drafts.get(session.id) ?? "",
       maxLength: 8000,
       flexShrink: 0,
       marginRight: 2,
@@ -38,6 +42,11 @@ export function createSwarmRoom(
     })
     panel.dialog.frame.add(post, panel.dialog.frame.getChildren().indexOf(panel.dialog.error))
     dialogs.track(panel.dialog, post)
+    panel.dialog.save = () => {
+      if (!post.value.trim()) return void drafts.delete(session.id)
+      drafts.set(session.id, post.value)
+      say("Post draft kept · w to resume")
+    }
     const view: SwarmView = { state, connection, session, panel, post, entries: [], head: 0, loading: false }
     panel.dialog.refresh = () => void load(view)
     panel.dialog.key = (key) => {

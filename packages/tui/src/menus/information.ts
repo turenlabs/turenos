@@ -31,7 +31,7 @@ export function information(ctx: MenuContext, address: string) {
       wrapMode: "word",
     }),
   )
-  dialog.error.content = "Page Up / Down scroll · Esc close"
+  dialog.error.content = "PgUp/PgDn scroll · Esc close"
   dialog.form.focus()
 }
 
@@ -42,8 +42,13 @@ function serverAddress(address: string) {
 }
 
 function sessionLines(session: Session, result: Detail | undefined) {
-  const modelStr = session.model
-    ? `${session.model.providerID}/${session.model.id}${session.model.variant ? ` (${session.model.variant})` : ""}`
+  // The footer shows the same fallback: what the latest reply actually ran with.
+  const reply = result?.messages.findLast((message) => message.type === "assistant")
+  const model =
+    session.model ??
+    (reply && (reply.model.providerID !== "unknown" || reply.model.id !== "unknown") ? reply.model : undefined)
+  const modelStr = model
+    ? `${model.providerID}/${model.id}${model.variant ? ` (${model.variant})` : ""}`
     : "server default"
   return [
     label(session.title || "Untitled session", 200),
@@ -51,7 +56,7 @@ function sessionLines(session: Session, result: Detail | undefined) {
     `Session ID: ${session.id}`,
     ...(session.parentID ? [`Parent ID: ${session.parentID}`] : []),
     `Directory: ${session.location.directory}`,
-    `Agent: ${session.agent ?? "server default"} · Model: ${modelStr}`,
+    `Agent: ${session.agent ?? reply?.agent ?? "server default"} · Model: ${modelStr}`,
     `Created: ${stamp(session.time.created)}`,
     ...(session.time.updated ? [`Updated: ${stamp(session.time.updated)}`] : []),
     ...(session.tokens ? [tokenLine(session)] : []),

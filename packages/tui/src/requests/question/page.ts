@@ -109,6 +109,6 @@ function footer(flow: QuestionFlow, question: Questions[number]) {
   const keys = question.multiple
     ? "↑↓ Move · Space Toggle · Enter Next"
     : `↑↓ Move · Enter Choose, then ${last ? "review answers" : "next question"}`
-  if (flow.ctx.renderer.height < compactRows) return `${keys}\n←/→ Question · Ctrl+R Reject · Esc close`
-  return `${keys}\n←/→ Question · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject · Esc close`
+  if (flow.ctx.renderer.height < compactRows) return `${keys}\n←/→ Question · Ctrl+R Reject request · Esc close`
+  return `${keys}\n←/→ Question · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject request · Esc close`
 }

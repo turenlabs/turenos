@@ -31,10 +31,10 @@ function close(d: DashboardContext) {
   d.onQuit()
 }
 
-export function openServers(d: DashboardContext) {
+export function openServers(d: DashboardContext, back?: () => void) {
   if (!d.options.servers || d.state.modal?.busy) return
   d.run.quitArmedUntil = 0
-  d.options.servers()
+  d.options.servers(back)
 }
 
 /** Registers the dashboard's renderer listeners; `dispose` releases exactly these. */

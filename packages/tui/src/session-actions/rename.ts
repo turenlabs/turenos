@@ -12,7 +12,7 @@ export function renameSession(ctx: SessionActionsContext): void {
   const title = ctx.dialogs.input(dialog, "Title (1-200 characters)", display(session.title, 64000))
   title.maxLength = 200
   dialog.submit = () => updateSession(ctx, dialog, session, { title: title.value })
-  dialog.error.content = "Enter / Ctrl+S Save title - Esc cancel"
+  dialog.error.content = "Enter / Ctrl+S save · Esc close"
   dialog.key = (key) => {
     if (!matchesKey(key, "enter")) return false
     void ctx.dialogs.submit()

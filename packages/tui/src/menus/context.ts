@@ -7,6 +7,7 @@ export type MenuActions = {
   launch: () => void
   openSession: (id: string, inspect?: boolean, session?: Session) => void
   hasDraft: (id: string) => boolean
+  say: (message: string, error?: boolean) => void
 }
 
 /** What every menu dialog needs from the dashboard. */

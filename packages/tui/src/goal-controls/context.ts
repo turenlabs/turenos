@@ -14,6 +14,8 @@ export type GoalEnv = {
   dialogs: Dialogs
   say: (message: string, error?: boolean) => void
   blocked: (id: string) => boolean
+  /** Objective text typed into a Set or Edit confirmation, kept per session so going back does not lose it. */
+  drafts: Map<string, string>
 }
 
 export function current(env: GoalEnv, session: Session, dialog?: ModalState) {

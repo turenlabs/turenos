@@ -3,7 +3,7 @@ import { label } from "../state"
 import { agents } from "./agents"
 import { permissions } from "./permissions"
 import { providers } from "./providers"
-import type { SettingsContext } from "./shared"
+import { trail, type SettingsContext } from "./shared"
 import { usage } from "./usage"
 
 export function openMenu(ctx: SettingsContext) {
@@ -33,7 +33,9 @@ export function openMenu(ctx: SettingsContext) {
       { name: "Memories", description: "What agents remember across sessions", run: () => hooks.memories(ctx.open) },
       { name: "Agents", description: "Each agent's default model", run: () => agents(ctx) },
       { name: "Permissions", description: "Permission checks and saved rules", run: () => permissions(ctx) },
-      ...(hooks.servers ? [{ name: "Servers", description: "Switch or add TurenOS servers", run: hooks.servers }] : []),
+      ...(hooks.servers
+        ? [{ name: "Servers", description: "Switch or add TurenOS servers", run: () => servers(ctx) }]
+        : []),
       {
         name: "Appearance",
         description: "Motion and transcript display on this computer",
@@ -43,9 +45,15 @@ export function openMenu(ctx: SettingsContext) {
   })
 }
 
+/** Servers opened from here close back to Settings. */
+function servers(ctx: SettingsContext) {
+  ctx.hooks.servers?.(ctx.open)
+}
+
 function appearance(ctx: SettingsContext) {
   openPicker(ctx.renderer, ctx.dialogs, {
-    title: "Appearance",
+    title: trail("Appearance"),
+    verb: "toggle",
     text: "Only this client changes.",
     back: ctx.open,
     memory: ctx.memory,

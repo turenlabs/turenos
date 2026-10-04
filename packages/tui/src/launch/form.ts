@@ -1,4 +1,5 @@
-import { TextRenderable } from "@opentui/core"
+import { TextAttributes, TextRenderable } from "@opentui/core"
+import { markFocus } from "../automations/focus"
 import { followText } from "../suggest/editor-height"
 import { color } from "../theme"
 import type { LaunchDeps, LaunchForm, LaunchStore } from "./context"
@@ -19,6 +20,11 @@ export function buildForm(
   dialog.frame.gap = 0
   hugContent(dialog)
   const ui = { settingsOpen: false }
+  const task = dialogs.prompt(dialog, "What would you like to do?", current.prompt, current.cursor)
+  dialog.editorLocked = () => !!current.start.input()
+  followText(task, 3, 8)
+  const { directory, agent, model, workspace } = addSettings(deps, dialog, current)
+  // Both go above the form, so creating them after its fields keeps the layout.
   const logo = createLogo(renderer, state, dialog, ui)
   const context = createContext(renderer, dialog, () => {
     directory.focus()
@@ -26,25 +32,8 @@ export function buildForm(
   })
   dialog.frame.add(context, 0)
   dialog.frame.add(logo.logo, 0)
-  const task = dialogs.prompt(dialog, "What would you like to do?", current.prompt, current.cursor)
-  dialog.editorLocked = () => !!current.start.input()
-  followText(task, 3, 8)
-  const directory = dialogs.input(dialog, "Directory on the server", current.directory)
-  dialog.form.add(new TextRenderable(renderer, { content: "Agent · ↑/↓ to choose", fg: color.muted }))
-  const agent = createAgentSelect(renderer, current.agent)
-  dialog.form.add(agent)
-  dialogs.track(dialog, agent)
-  const model = dialogs.input(
-    dialog,
-    "Model · Ctrl+L browse, or enter provider/model",
-    current.model,
-    "Use server default",
-  )
-  dialog.form.add(new TextRenderable(renderer, { content: "Workspace · ↑/↓ to choose", fg: color.muted }))
-  const workspace = createWorkspaceSelect(renderer, current.isolate)
-  dialog.form.add(workspace)
-  dialogs.track(dialog, workspace)
-  collapseSettings(dialog, ui, logo.resize)
+  collapseSettings(dialog, ui, logo.resize, store)
+  for (const field of [task, directory, agent, model, workspace]) markFocus(field)
   agent.setSelectedIndex(current.agent ? 1 : 0)
   const form: LaunchForm = {
     deps,
@@ -67,6 +56,30 @@ export function buildForm(
   return form
 }
 
+/** The part Tab reveals: directory, agent, model and workspace under one heading. */
+function addSettings(deps: LaunchDeps, dialog: ModalState, current: LaunchDraft) {
+  const { renderer, dialogs } = deps
+  dialog.form.add(
+    new TextRenderable(renderer, { content: "Settings", fg: color.text, attributes: TextAttributes.BOLD }),
+  )
+  const directory = dialogs.input(dialog, "Directory on the server", current.directory)
+  dialog.form.add(new TextRenderable(renderer, { content: "Agent · ↑/↓ to choose", fg: color.muted }))
+  const agent = createAgentSelect(renderer, current.agent)
+  dialog.form.add(agent)
+  dialogs.track(dialog, agent)
+  const model = dialogs.input(
+    dialog,
+    "Model · Ctrl+L browse, or enter provider/model",
+    current.model,
+    "Use server default",
+  )
+  dialog.form.add(new TextRenderable(renderer, { content: "Workspace · ↑/↓ to choose", fg: color.muted }))
+  const workspace = createWorkspaceSelect(renderer, current.isolate)
+  dialog.form.add(workspace)
+  dialogs.track(dialog, workspace)
+  return { directory, agent, model, workspace }
+}
+
 function wireSummary(form: LaunchForm) {
   const summary = () => summarize(form)
   form.directory.on("input", summary)
@@ -79,19 +92,27 @@ function wireSummary(form: LaunchForm) {
   summary()
 }
 
-/** Hides the agent, model and workspace fields until Tab or a click on the summary reveals them. */
-function collapseSettings(dialog: ModalState, ui: { settingsOpen: boolean }, resizeLogo: () => void) {
+/** Hides the settings fields until Tab or a click on the summary reveals them, unless they were open before. */
+function collapseSettings(
+  dialog: ModalState,
+  ui: { settingsOpen: boolean },
+  resizeLogo: () => void,
+  store: LaunchStore,
+) {
   const settings = dialog.form.getChildren().slice(2)
   settings.forEach((field) => {
     field.visible = false
   })
   dialog.settings = () => {
     ui.settingsOpen = true
+    // Once opened they stay open when the dialog reopens after a model choice, Esc or Ctrl+L.
+    store.settings = true
     resizeLogo()
     settings.forEach((field) => {
       field.visible = true
     })
   }
+  if (store.settings) dialog.settings()
 }
 
 /** The dialog is as tall as its content, not a fixed block with empty rows above Send. */

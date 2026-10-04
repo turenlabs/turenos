@@ -4,6 +4,7 @@ import { display } from "../messages"
 import { label } from "../state"
 import { color } from "../theme"
 import type { RewindAction, RewindEnv, RewindFlow } from "./flow"
+import { requireWord } from "../dialogs/fields"
 import { hasFiles } from "./session"
 import type { ModalState } from "../state"
 import type { Session } from "../server"
@@ -17,10 +18,20 @@ const tone: Record<DiffTone, string> = {
 
 /** Adds the warning, session label, read-only preview and staged-change panes to a fresh dialog. */
 export function addPanels(env: RewindEnv, dialog: ModalState, session: Session, action: RewindAction) {
+  const running = Object.hasOwn(env.state.snapshot?.active ?? {}, session.id)
+  const warning = [
+    ...(running ? ["Confirm stops active work in this session."] : []),
+    ...(action === "undo"
+      ? ["File mode restores affected files NOW."]
+      : hasFiles(session.revert)
+        ? ["Redo restores staged files NOW."]
+        : []),
+    "The next reply commits any remaining undo stage.",
+  ]
   dialog.frame.add(
     new TextRenderable(env.renderer, {
-      content: `Confirm stops active work in this session.\n${action === "redo" && hasFiles(session.revert) ? "Redo restores staged files NOW." : "File mode restores affected files NOW."}\nThe next reply commits any remaining undo stage.`,
-      height: 3,
+      content: warning.join("\n"),
+      height: warning.length,
       flexShrink: 0,
       fg: color.error,
       wrapMode: "word",
@@ -77,11 +88,17 @@ export function previewText(flow: RewindFlow) {
 export function addConfirmation(flow: RewindFlow) {
   const { renderer, dialog, dialogs, action } = flow
   const controls = new BoxRenderable(renderer, {
-    height: action === "undo" ? 4 : 2,
+    height: action === "undo" ? 5 : 2,
     flexShrink: 0,
     flexDirection: "column",
   })
   dialog.frame.add(controls, dialog.frame.getChildren().indexOf(dialog.error))
+  const captions: { field: SelectRenderable | InputRenderable; text: TextRenderable; name: string }[] = []
+  const caption = (field: SelectRenderable | InputRenderable, name: string) => {
+    const text = new TextRenderable(renderer, { content: "", fg: color.muted, height: 1 })
+    controls.add(text)
+    return { field, text, name }
+  }
   if (action === "undo") {
     flow.files = new SelectRenderable(renderer, {
       height: 2,
@@ -96,28 +113,33 @@ export function addConfirmation(flow: RewindFlow) {
       selectedBackgroundColor: color.selected,
       selectedTextColor: color.accent,
     })
+    const label = caption(flow.files, "File mode (↑/↓ choose)")
     controls.add(flow.files)
+    captions.push(label)
     dialogs.track(dialog, flow.files)
   }
-  controls.add(
-    new TextRenderable(renderer, {
-      content: `Type ${action} to confirm, then Ctrl+S`,
-      fg: color.muted,
-      height: 1,
-    }),
-  )
   flow.confirmation = new InputRenderable(renderer, {
-    placeholder: action,
     maxLength: 32,
     width: "100%",
     backgroundColor: color.bg,
     focusedBackgroundColor: color.selected,
     textColor: color.text,
-    placeholderColor: color.muted,
   })
+  captions.push(caption(flow.confirmation, `Confirmation (type ${action})`))
   controls.add(flow.confirmation)
   dialogs.track(dialog, flow.confirmation)
-  dialog.error.content = `Type ${action} + Ctrl+S confirm; Enter does not confirm\nTab chooses file mode / confirmation.${flow.summary ? " Ctrl+D shows the staged patch." : ""} Esc cancel`
+  // Focus has no other plain-text cue between the mode list and the typed word.
+  const paintFocus = () =>
+    captions.forEach((item) => {
+      if (!item.text.isDestroyed) item.text.content = `${item.field.focused ? "» " : "  "}${item.name}`
+    })
+  captions.forEach((item) => {
+    item.field.on("focused", paintFocus)
+    item.field.on("blurred", paintFocus)
+  })
+  requireWord(dialog, flow.confirmation, action, dialogs.resize)
+  dialog.error.content = `Ctrl+S ${action} · Enter does not confirm\n${action === "undo" ? "Tab chooses file mode / confirmation. " : ""}${flow.summary ? "Ctrl+D shows the staged patch · PgUp/PgDn scroll · " : ""}Esc close`
   flow.ready = true
   flow.confirmation.focus()
+  paintFocus()
 }

@@ -1,3 +1,4 @@
+import { fitHeading, panelWidth } from "../changes/heading"
 import { display } from "../messages"
 import type { Panel } from "../panel"
 import { array, identifier, numeric, object, string } from "../response-validation"
@@ -38,15 +39,20 @@ export async function load(t: TraceView, page?: string) {
     })
     t.cursor = result.cursor
     panel.heading.content = `${t.events.length} events${t.events[0] ? ` · #${t.events[0].seq}–#${t.events.at(-1)!.seq}` : ""}`
-    panel.list.options = t.events.map((event) => ({
-      name: `#${event.seq} ${label(event.type, 60)}`,
-      description: "",
-    }))
+    panel.fit("rows", () => paintRows(t))
     panel.dialog.error.content = KEYS
     describe(t)
   } catch (error) {
     if (t.state.modal === panel.dialog) panel.show(`Trace unavailable: ${errorText(error)}`)
   }
+}
+
+/** Event names fitted to the list column with an ellipsis, so a long name never ends mid-word unmarked. */
+function paintRows(t: TraceView) {
+  const width = Math.max(24, Math.floor(panelWidth(t.panel) * 0.34)) - 4
+  const names = t.events.map((event) => fitHeading(width, `#${event.seq} `, label(event.type, 256), "", "end"))
+  if (names.join("\n") === t.panel.list.options.map((option) => option.name).join("\n")) return
+  t.panel.list.options = names.map((name) => ({ name, description: "" }))
 }
 
 export function describe(t: TraceView) {

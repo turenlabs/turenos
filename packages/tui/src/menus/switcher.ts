@@ -11,7 +11,7 @@ import { describe, inFolders, innerWidth, paint, rank, rebuildRows, reveal } fro
 import type { Scope, Switcher } from "./switcher-state"
 import { buildSwitcherView } from "./switcher-view"
 
-export function openSwitcher(ctx: MenuContext, initialScope: Scope = "recent", sidebar = false) {
+export function openSwitcher(ctx: MenuContext, initialScope: Scope = "recent", sidebar = false, search = "") {
   const { state, dialogs } = ctx
   if (!dialogs.navigate()) return
   const sessions = loadedSessions(state, sidebar)
@@ -65,6 +65,7 @@ export function openSwitcher(ctx: MenuContext, initialScope: Scope = "recent", s
   dialog.form.content.on("resize", () => reveal(s))
   dialog.form.viewport.on("resize", () => reveal(s))
   dialog.key = (key) => onKey(s, key)
+  s.query.value = search
   changeScope(s, initialScope)
   s.query.focus()
 }
@@ -112,29 +113,36 @@ function choose(s: Switcher, index: number) {
 }
 
 function hint(s: Switcher) {
-  if (s.loading) return "Searching server...\nEsc cancel"
+  if (s.loading) return "Searching server...\nEsc close"
   if (s.failure) return `${s.failure}\nF3 Retry · Esc close`
-  const count = s.matches.length ? `${s.selected + 1}/${s.matches.length}` : ""
-  if (s.scope !== "recent")
-    return `${s.matches.length ? `${count} · Enter open · Esc close` : "No matching titles"}\nF3 Older · Shift+F3 Newer · F2 Scope`
   if (s.matches.length)
     return fitHints(
       innerWidth(s),
       [
-        count,
+        `${s.selected + 1}/${s.matches.length}`,
         "↑/↓ choose",
         "Enter open",
-        "Type to find children",
-        "F2 All",
+        ...(s.scope === "recent" ? ["Type to find children"] : ["F3 Older", "Shift+F3 Newer"]),
+        `F2 ${nextScope[s.scope]}`,
         "Ctrl+O ID",
         "PgUp/Dn page",
         "Ctrl+Home/End first/last",
       ],
       ["Esc close"],
     )
-  return s.query.value.trim()
-    ? "No matching loaded sessions.\nF2 Search server · Ctrl+O Open older session by ID"
-    : "No loaded main sessions.\nType to find children · F2 All · Ctrl+O ID"
+  if (s.scope === "recent")
+    return s.query.value.trim()
+      ? `${empty(s)}\nF2 Search server · Ctrl+O Open older session by ID`
+      : `${empty(s)}\nType to find children · F2 All · Ctrl+O ID`
+  return `${empty(s)}\nF2 ${nextScope[s.scope]} · Ctrl+O ID · Esc close`
+}
+
+const nextScope = { recent: "All", all: "Archived", archived: "Recent" }
+
+function empty(s: Switcher) {
+  if (s.query.value.trim()) return s.scope === "recent" ? "No matching loaded sessions." : "No matching titles."
+  if (s.scope === "archived") return "No archived sessions. Archive one with Ctrl+P > Archive."
+  return s.scope === "all" ? "No sessions on this server." : "No loaded main sessions."
 }
 
 function open(s: Switcher, index = s.selected) {
@@ -213,6 +221,7 @@ function changeScope(s: Switcher, value: Scope) {
   s.controller?.abort()
   ++s.version
   s.scope = value
+  s.dialog.frame.title = ` Switch session${value === "recent" ? "" : ` › ${scopeNames[value]}`} `
   s.remote = []
   s.cursors = {}
   s.failure = ""
@@ -252,9 +261,11 @@ function onKey(s: Switcher, key: KeyEvent) {
     return true
   }
   if (matchesKey(key, "o", { ctrl: true })) {
-    const id = s.query.value.trim()
+    const typed = s.query.value
+    const id = typed.trim()
+    const scope = s.scope
     s.ctx.dialogs.close(false)
-    openByID(s.ctx, id.startsWith("ses_") ? id : "")
+    openByID(s.ctx, id.startsWith("ses_") ? id : "", () => openSwitcher(s.ctx, scope, s.sidebar, typed))
     return true
   }
   if (matchesKey(key, "n", { ctrl: true })) {

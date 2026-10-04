@@ -11,6 +11,15 @@ export function close(picker: Picker, restore = true) {
   picker.form = undefined
   picker.secret = undefined
   picker.armed = undefined
+  picker.back = undefined
+  picker.focusID = undefined
   picker.mode = "list"
   if (restore) picker.hooks.closed()
+}
+
+/** Esc or choosing the current server: back to the menu that opened Servers, else to the dashboard. */
+export function leave(picker: Picker) {
+  const back = picker.back
+  close(picker, !back)
+  back?.()
 }

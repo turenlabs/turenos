@@ -1,7 +1,7 @@
 import type { KeyEvent } from "@opentui/core"
 import { matchesKey, printableKey } from "../keys"
 import { cancel, choose, move, quit, remove } from "./connect"
-import { close } from "./close"
+import { leave } from "./close"
 import { add } from "./fields"
 import { fieldKey } from "./form-keys"
 import { say } from "./paint"
@@ -26,6 +26,6 @@ export function keypress(picker: Picker, key: KeyEvent) {
     say(picker, "Rescanned.")
     return void rescan(picker)
   }
-  if ((matchesKey(key, "escape") || character === "s") && picker.hooks.current()) return close(picker)
+  if ((matchesKey(key, "escape") || character === "s") && picker.hooks.current()) return leave(picker)
   if (character === "q" || matchesKey(key, "c", { ctrl: true })) return quit(picker)
 }

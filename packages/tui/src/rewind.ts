@@ -51,7 +51,7 @@ function open(env: RewindEnv, action: RewindAction) {
     hasAcknowledgement: false,
   }
   renderChanges(flow)
-  dialog.error.content = "Loading (read-only) ... Esc cancel"
+  dialog.error.content = "Loading (read-only) ... Esc close"
   dialog.submit = () => submit(flow)
   dialog.key = (key) => {
     if (matchesKey(key, "enter")) return true

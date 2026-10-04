@@ -155,7 +155,7 @@ async function fixture(options: { status?: Proposal["status"]; owned?: boolean }
     expect(index).toBeGreaterThanOrEqual(0)
     field.setSelectedIndex(index)
     view.mockInput.pressEnter()
-    await waitFor((frame) => frame.includes("Ctrl+S confirms"))
+    await waitFor((frame) => frame.includes("Nothing changed yet"))
   }
   return { remote, writes, state, view, notices, waitFor, controls, choose }
 }

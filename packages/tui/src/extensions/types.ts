@@ -34,4 +34,6 @@ export type ExtensionsContext = {
   connection: Connection
   dialogs: Dialogs
   directory: () => string
+  /** Non-secret text typed into a setting form, kept when Esc goes back to the list of fields. */
+  drafts: Map<string, string>
 }

@@ -4,7 +4,7 @@ import { matchesKey } from "./keys"
 import { mentionInReply, openPanel, type Drafts } from "./panel"
 import type { Connection } from "./server"
 import type { DashboardState } from "./state"
-import { enter, listFolder, preview, up, type FileBrowser, type FilesContext } from "./files/browser"
+import { enter, listFolder, preview, refresh, up, type FileBrowser, type FilesContext } from "./files/browser"
 
 /**
  * The desktop's file browser for the selected session's folder on the server: folders open in
@@ -39,14 +39,16 @@ export function createFiles(
     }
     panel.list.on("selectionChanged", () => void preview(browser))
     panel.dialog.key = (key) => {
-      const action = matchesKey(key, "enter")
-        ? () => enter(browser)
-        : matchesKey(key, "left") || matchesKey(key, "backspace")
-          ? () => up(browser)
-          : key.sequence === "@"
-            ? () =>
-                mentionInReply(panel, dialogs, session, browser.entries[panel.list.getSelectedIndex()]?.path, drafts)
-            : undefined
+      const bindings: [boolean, () => unknown][] = [
+        [matchesKey(key, "enter"), () => enter(browser)],
+        [matchesKey(key, "r", { ctrl: true }), () => refresh(browser)],
+        [matchesKey(key, "left") || matchesKey(key, "backspace"), () => up(browser)],
+        [
+          key.sequence === "@",
+          () => mentionInReply(panel, dialogs, session, browser.entries[panel.list.getSelectedIndex()]?.path, drafts),
+        ],
+      ]
+      const action = bindings.find((binding) => binding[0])?.[1]
       if (!action) return false
       void action()
       return true

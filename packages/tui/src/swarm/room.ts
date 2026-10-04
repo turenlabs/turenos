@@ -20,7 +20,7 @@ const KIND: Partial<Record<Entry["kind"], string>> = {
   release: color.muted,
 }
 
-export const KEYS = "↑↓ lanes · PgUp/PgDn read · Tab post box · Enter sends · Ctrl+R refresh · Esc close"
+export const KEYS = "↑↓ lanes · PgUp/PgDn read · Tab post box · Enter post · Ctrl+R refresh · Esc close"
 
 /** One open Swarm room panel: the entries read so far and the head to resume from. */
 export type SwarmView = {

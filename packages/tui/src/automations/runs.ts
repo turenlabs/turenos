@@ -6,13 +6,14 @@ import { stamp } from "../menus/stamp"
 import { color } from "../theme"
 import type { AutomationsContext, Loop } from "./types"
 
-const keys = "Enter open run's session · Ctrl+D cancel a running run · Esc close"
+const keys = "↑↓ choose · Enter open session · Ctrl+D twice cancel a live run · Esc back"
 
 /** Recent runs of one automation; Enter opens a run's session, a double Ctrl+D cancels a live run. */
-export function runs(ctx: AutomationsContext, loop: Loop) {
+export function runs(ctx: AutomationsContext, loop: Loop, back: () => void) {
   const { dialogs, state, connection } = ctx
-  const dialog = dialogs.open(`Runs · ${label(loop.name, 50)}`, false, 30)
+  const dialog = dialogs.open(`Automation › ${label(loop.name, 40)} › Runs`, false, 30)
   if (!dialog) return
+  dialog.back = back
   const text = new TextRenderable(ctx.renderer, { content: "Loading runs…", fg: color.muted })
   dialog.form.add(text)
   const list = new SelectRenderable(ctx.renderer, {
@@ -35,7 +36,7 @@ export function runs(ctx: AutomationsContext, loop: Loop) {
       text.content = items.length ? `${items.length} recent run${items.length === 1 ? "" : "s"}` : "No runs yet."
       list.options = items.map((run) => ({
         name: `${run.status} · ${run.time?.created === undefined ? label(run.id) : stamp(run.time.created)} · ${run.trigger}`,
-        description: run.error ? label(run.error, 200) : run.sessionID ? "Enter opens its session" : "",
+        description: run.error ? label(run.error, 200) : "",
       }))
       dialog.error.content = keys
     },
@@ -62,6 +63,6 @@ export function runs(ctx: AutomationsContext, loop: Loop) {
     )
     return true
   }
-  dialog.error.content = "Esc close"
+  dialog.error.content = "Esc back"
   list.focus()
 }

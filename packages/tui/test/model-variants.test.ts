@@ -369,7 +369,7 @@ test("known task ownership and unknown session model block opening without netwo
   app.remote.owned = false
   app.state.snapshot!.sessions = app.state.snapshot!.sessions.map((session) => ({ ...session, model: undefined }))
   app.variants.open()
-  expect(app.notices.at(-1)).toContain("no known model")
+  expect(app.notices.at(-1)).toContain("Press m")
   expect(app.requests).toEqual([])
 })
 

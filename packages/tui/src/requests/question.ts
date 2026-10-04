@@ -57,6 +57,11 @@ function createFlow(
     review: draft.review,
     reject: reject || draft.reject,
     render: () => render(flow),
+    // The closed dialog saved the draft; back from the rejection confirmation resumes the answers, not the rejection.
+    reopen: () => {
+      draft.reject = false
+      question(ctx)
+    },
   }
   return flow
 }

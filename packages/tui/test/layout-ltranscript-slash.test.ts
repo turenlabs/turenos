@@ -60,7 +60,7 @@ for (const [width, height] of [
     const list = dialog.form.getChildren().find((child) => child.id === `${editor.id}-slash`) as TextRenderable
     const row = list.plainText.split("\n")[0]!
     expect(row.length).toBeLessThanOrEqual(editor.width)
-    expect(row).toMatch(/^> \/customize-forge( - .*[^\s]…)?$/)
+    expect(row).toMatch(/^▶ \/customize-forge( - .*[^\s]…)?$/)
   })
 }
 

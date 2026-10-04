@@ -1,7 +1,7 @@
 import { InputRenderable, TextRenderable } from "@opentui/core"
 import { matchesKey } from "../keys"
 import type { Detail } from "../server"
-import type { ModalState } from "../state"
+import { label, type ModalState } from "../state"
 import { color } from "../theme"
 import { openSessionById } from "./update"
 import { selectedSession, type SessionActionsContext } from "./context"
@@ -15,7 +15,7 @@ export function openTasks(ctx: SessionActionsContext): void {
   const detail = state.detail?.sessionID === session.id ? state.detail : undefined
   if (!detail) return ctx.say("Refresh this session's details before opening tasks.")
   const tasks = loadedTasks(detail)
-  const dialog = dialogs.open("Tasks", false, 32)
+  const dialog = dialogs.open(`${label(session.title || session.id, 40)} › Tasks`, false, 32)
   if (!dialog) return
   dialog.frame.maxWidth = 96
   const { query, todos, empty } = addTaskWidgets(ctx, dialog, detail)

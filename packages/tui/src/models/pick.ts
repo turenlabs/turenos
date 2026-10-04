@@ -21,6 +21,8 @@ type View = {
   catalog?: Awaited<ReturnType<Connection["providers"]["list"]>>
   matches: Row[]
   loading: boolean
+  /** Whether the filter holds text; its field is already destroyed when Esc runs `back`. */
+  filtered: boolean
 }
 
 export function pick(ctx: ModelsContext, target: ModelTarget) {
@@ -54,8 +56,11 @@ export function pick(ctx: ModelsContext, target: ModelTarget) {
   dialog.form.flexShrink = 0
   dialog.frame.add(select, dialog.frame.getChildren().indexOf(dialog.error))
   ctx.dialogs.track(dialog, select)
-  const view: View = { ctx, target, dialog, query, select, matches: [], loading: false }
-  query.on("input", () => update(view))
+  const view: View = { ctx, target, dialog, query, select, matches: [], loading: false, filtered: false }
+  query.on("input", () => {
+    view.filtered = !!query.value
+    update(view)
+  })
   select.on("itemSelected", () => void choose(view))
   dialog.key = (key) => {
     if (matchesKey(key, "f2")) {
@@ -78,7 +83,8 @@ export function pick(ctx: ModelsContext, target: ModelTarget) {
   }
   // Navigation may leave the picker; only explicit Back reopens the draft.
   dialog.allowNavigation = true
-  dialog.back = target.cancel
+  // Esc with filter text clears the filter first: the picker reopens unfiltered; the next Esc leaves.
+  dialog.back = () => (view.filtered ? pick(ctx, target) : target.cancel?.())
   query.focus()
   void load(view)
 }
@@ -111,7 +117,7 @@ function addHeader(ctx: ModelsContext, dialog: ModalState, target: ModelTarget, 
 function update(view: View) {
   const { catalog, query, select, target, dialog } = view
   if (!catalog) return
-  const selected = view.matches[select.getSelectedIndex()]?.ref
+  const selected = view.matches[select.getSelectedIndex()]?.ref ?? target.current
   const terms = query.value.toLowerCase().trim().split(/\s+/).filter(Boolean)
   const rows = [
     ...(!target.recipient

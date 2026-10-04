@@ -1,6 +1,7 @@
 import { TextRenderable } from "@opentui/core"
+import { requireWord } from "../dialogs/fields"
 import { color } from "../theme"
-import { recipient, selectedSession, type SessionActionsContext } from "./context"
+import { announceOpen, recipient, selectedSession, type SessionActionsContext } from "./context"
 
 export function deleteSession(ctx: SessionActionsContext): void {
   const session = selectedSession(ctx)
@@ -16,15 +17,16 @@ export function deleteSession(ctx: SessionActionsContext): void {
       wrapMode: "word",
     }),
   )
-  const confirmation = ctx.dialogs.input(dialog, "Type delete to confirm")
+  const confirmation = ctx.dialogs.input(dialog, "Confirmation (type delete)")
   dialog.submit = async () => {
-    if (confirmation.value !== "delete") throw new Error("Type delete to confirm.")
     if (!ctx.state.connected) throw new Error("Reconnect before deleting a session.")
     await ctx.connection.deleteSession(session)
     if (ctx.state.closed) return
     ctx.onDelete(session.id)
     ctx.say("Session deleted.")
   }
-  dialog.error.content = "Ctrl+S Delete - Esc cancel"
+  announceOpen(ctx, dialog, session, "Session deleted.")
+  dialog.error.content = "Ctrl+S delete · Esc close"
+  requireWord(dialog, confirmation, "delete", ctx.dialogs.resize)
   confirmation.focus()
 }

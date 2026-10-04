@@ -228,6 +228,8 @@ for (const options of [{ lookupStatus: 404 }, { lookupID: "ses_wrong" }]) {
     expect(app.requests.filter((request) => request.method !== "GET")).toEqual([])
     expect(app.remote.session.model?.variant).toBe("high")
     expect(app.state.modal?.busy).toBe(false)
+    // The first Esc clears the filter text; the second leaves.
+    app.view.mockInput.pressEscape()
     app.view.mockInput.pressEscape()
     expect(app.state.modal).toBeUndefined()
   })

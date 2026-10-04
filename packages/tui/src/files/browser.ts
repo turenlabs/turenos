@@ -9,7 +9,14 @@ import { entryList, type Entry } from "./entries"
 const MAX_LINES = 5000
 
 /** Hint parts by priority: the trailing ones drop first when the panel is narrow. */
-const HINTS = ["↑↓ choose", "Enter open", "← up", "@ mention in reply", "PgUp/PgDn scroll"]
+const HINTS = [
+  "↑↓ choose",
+  "Enter open folder",
+  "←/Backspace up",
+  "@ mention in reply",
+  "PgUp/PgDn scroll",
+  "Ctrl+R refresh",
+]
 
 export type FilesContext = { state: DashboardState; connection: Connection }
 
@@ -99,6 +106,11 @@ function numbered(text: string) {
 export function enter(b: FileBrowser) {
   const entry = b.entries[b.panel.list.getSelectedIndex()]
   if (entry?.type === "directory") return listFolder(b, entry.path)
+}
+
+/** Lists the open folder again and keeps the selected entry. */
+export function refresh(b: FileBrowser) {
+  return listFolder(b, b.folder, b.entries[b.panel.list.getSelectedIndex()]?.path)
 }
 
 export function up(b: FileBrowser) {

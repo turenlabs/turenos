@@ -35,3 +35,11 @@ export function recipient(ctx: SessionActionsContext, dialog: ModalState, sessio
     }),
   )
 }
+
+/** After a dialog moves the dashboard to another session, the status names the one now open. */
+export function announceOpen(ctx: SessionActionsContext, dialog: ModalState, closed: Session, message: string) {
+  dialog.afterSubmit = () => {
+    const open = ctx.state.snapshot?.sessions.find((item) => item.id === ctx.state.selected)
+    ctx.say(open && open.id !== closed.id ? `${message} Now showing ${label(open.title || open.id, 60)}.` : message)
+  }
+}

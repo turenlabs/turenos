@@ -5,6 +5,7 @@ import type { LaunchDeps, LaunchForm, LaunchStore } from "./context"
 import { adoptSubmission, saveDraft } from "./draft"
 import { buildForm } from "./form"
 import { submitLaunch } from "./submit"
+import { color } from "../theme"
 
 /** Opens the New session dialog over the kept draft, or over a fresh one for the working directory. */
 export function openLaunch(deps: LaunchDeps, store: LaunchStore, reopen: () => void) {
@@ -20,10 +21,12 @@ export function openLaunch(deps: LaunchDeps, store: LaunchStore, reopen: () => v
   const form = buildForm(deps, store, reopen, dialog, current)
   bindActions(form)
   dialog.reference = submitted ? current.start.sessionID : undefined
-  dialog.error.height = submitted ? 4 : 2
-  dialog.error.content = submitted
+  const hint = submitted
     ? `Session: ${current.start.sessionID}\nCtrl+O inspect · Enter retry · Esc keep · F4 discard`
     : "Enter Send · Shift/Alt+Enter newline\nEsc keep · F4 discard"
+  dialog.error.height = submitted ? 4 : 2
+  dialog.error.content = hint
+  clearErrorOnEdit(form, hint, dialog.error.height)
   const target = () => ({ directory: form.directory.value.trim() })
   const locked = () => !!current.start.input()
   deps.slash.attach(dialog, form.task, target, locked)
@@ -31,6 +34,20 @@ export function openLaunch(deps: LaunchDeps, store: LaunchStore, reopen: () => v
   dialogs.resize()
   form.task.focus()
   void loadAgents(form)
+}
+
+/** A failed send leaves its styled message up; typing in the task brings the dialog's own hint back. */
+function clearErrorOnEdit(form: LaunchForm, hint: string, height: number) {
+  const { dialog, task } = form
+  const limit = task.onContentChange
+  task.onContentChange = (event) => {
+    limit?.(event)
+    if (typeof dialog.error.content === "string") return
+    dialog.error.content = hint
+    dialog.error.height = height
+    dialog.error.fg = color.muted
+    form.deps.dialogs.resize()
+  }
 }
 
 function startDraft(deps: LaunchDeps, store: LaunchStore): LaunchDraft {
@@ -63,6 +80,7 @@ function bindActions(form: LaunchForm) {
   }
   dialog.discard = () => {
     form.store.draft = undefined
+    form.store.settings = undefined
   }
   dialog.chooseModel = () => chooseModel(form)
   dialog.chooseAgent = () => chooseAgent(form)

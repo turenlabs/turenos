@@ -21,6 +21,9 @@ export function routeKey(d: DashboardContext, key: KeyEvent) {
   if (chordKey(d, key)) return
   cancelReadingPosition(d, key)
   if (capitalKey(d, key)) return
+  // Leaving History comes first, so Esc never arms a rewind from a view that is only for reading.
+  if (matchesKey(key, "escape") && d.state.history && d.state.tab === "sessions")
+    return run(key, () => d.c.conversation.toggleHistory())
   if (matchesKey(key, "escape") && d.c.requests.escapeStop(d.c.rewind.undo)) return key.preventDefault()
   if (tabKey(d, key)) return
   if (characterKey(d, key)) return
@@ -31,7 +34,10 @@ export function routeKey(d: DashboardContext, key: KeyEvent) {
 function globalKey(d: DashboardContext, key: KeyEvent) {
   if (matchesKey(key, "c", { ctrl: true })) {
     key.preventDefault()
+    const dialog = d.state.modal && !d.state.modal.busy && !d.state.modal.save ? d.state.modal : undefined
     quit(d)
+    // Without a saved draft, quit only closed the dialog, which the user should be told.
+    if (dialog && !d.state.modal && !d.state.closed) d.say("Closed.")
     return true
   }
   if (printableKey(key) !== "q") d.run.quitArmedUntil = 0

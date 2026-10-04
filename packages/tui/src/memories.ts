@@ -15,6 +15,9 @@ export function createMemories(
   dialogs: Dialogs,
   say: (message: string, error?: boolean) => void,
 ) {
-  const ctx = { renderer, state, connection, dialogs, say }
-  return { open: (back?: () => void) => openWings(ctx, back) }
+  return {
+    // Opened from Settings (with `back`), every level's title trails it.
+    open: (back?: () => void) =>
+      openWings({ renderer, state, connection, dialogs, say, root: back ? "Settings › Memories" : "Memories" }, back),
+  }
 }

@@ -9,7 +9,6 @@ export async function submitGoal(flow: GoalSubmission) {
   const { action, session } = flow
   current(flow.env, session, flow.dialog)
   if (flow.env.blocked(session.id)) throw new Error(TASK_OWNED)
-  if (flow.typed && flow.typed.value !== "clear") throw new Error("Type clear exactly, then Ctrl+S.")
   const objective = checkedObjective(flow)
   const intent = flow.intent ?? newIntent(flow, objective)
   const { goal: next, remote } = await fresh(flow.env, session, flow.dialog)
@@ -20,6 +19,8 @@ export async function submitGoal(flow: GoalSubmission) {
   }
   if (session.revert?.messageID !== remote.revert?.messageID)
     throw new Error("Undo boundary changed. No write sent; close and reopen Goal.")
+  // A running goal's revision moves every turn; pausing the same active goal re-bases on what was just read.
+  if (action === "Pause" && !flow.attempted && !flow.conflict && rebased(flow, next)) flow.base = next
   if (flow.conflict || !sameGoal(flow.base, next)) {
     flow.conflict = true
     throw new Error("Goal revision changed. No overwrite; Esc to inspect and confirm again.")
@@ -30,9 +31,21 @@ export async function submitGoal(flow: GoalSubmission) {
   flow.intent = intent
   flow.attempted = true
   await write(flow, intent)
-  flow.env.say(
-    `Goal ${action.toLowerCase()} acknowledged. ${flow.starts ? "Execution requested." : action === "Pause" || action === "Clear" ? "Active work stopped." : "Objective updated."} Reply drafts unchanged.`,
-  )
+  flow.env.drafts.delete(`${session.id}:${action}`)
+  flow.env.say(outcome(flow))
+}
+
+function rebased(flow: GoalSubmission, next: Goal) {
+  return !!flow.base && !!next && next.id === flow.base.id && next.status === "active" && flow.base.status === "active"
+}
+
+function outcome(flow: GoalSubmission) {
+  const running = Object.hasOwn(flow.env.state.snapshot?.active ?? {}, flow.session.id)
+  const stopped = running ? " Active work stopped." : ""
+  if (flow.action === "Set") return "Goal set. The agent starts on it now."
+  if (flow.action === "Resume") return "Goal resumed. The agent continues."
+  if (flow.action === "Edit") return flow.starts ? "Goal updated. The agent continues with it." : "Goal updated."
+  return flow.action === "Pause" ? `Goal paused.${stopped}` : `Goal cleared.${stopped}`
 }
 
 /** Validates the objective; once a write has gone out, retries must keep the original. */

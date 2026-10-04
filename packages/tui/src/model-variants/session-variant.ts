@@ -11,20 +11,31 @@ export function openForSession(ctx: VariantsContext) {
   if (!selected) return say("Select a session first.", true)
   if (!state.connected) return say("Reconnect before choosing a variant.", true)
   if (ctx.blocked(selected.id)) return say("Task-owned subagent: use its owning session. Nothing changed.", true)
-  if (!selected.model) return say("This session has no known model. Choose a model first.", true)
+  const effective = effectiveModel(state, selected)
+  if (!effective) return say("This session has no model yet. Press m to choose one.", true)
   const session = structuredClone(selected)
-  const model = { providerID: selected.model.providerID, id: selected.model.id }
+  const model = { providerID: effective.providerID, id: effective.id }
   const attempt = { attempted: false, acknowledged: false }
   show(
     ctx,
     {
       directory: session.location.directory,
       model,
-      current: session.model?.variant,
+      current: effective.variant,
       choose: (variant, currentOnly) => chooseVariant(ctx, session, model, attempt, variant, currentOnly),
     },
     session,
   )
+}
+
+/** The model the footer shows: the session's own, else the latest reply's. */
+function effectiveModel(state: VariantsContext["state"], session: Session) {
+  if (session.model) return session.model
+  const reply =
+    state.detail?.sessionID === session.id
+      ? state.detail.messages.findLast((item) => item.type === "assistant")
+      : undefined
+  return reply && (reply.model.providerID !== "unknown" || reply.model.id !== "unknown") ? reply.model : undefined
 }
 
 type Attempt = { attempted: boolean; acknowledged: boolean }
@@ -84,7 +95,8 @@ async function fresh(ctx: VariantsContext, session: Session, model: { providerID
     current.location.workspaceID !== session.location.workspaceID
   )
     throw new Error("Session identity changed. Close and reopen this control.")
-  if (current.model?.providerID !== model.providerID || current.model.id !== model.id)
+  // A session that never chose a model runs the one the footer shows, so it may still have none.
+  if (current.model ? current.model.providerID !== model.providerID || current.model.id !== model.id : !!session.model)
     throw new Error("Model identity changed. Close and reopen this control.")
   return current
 }

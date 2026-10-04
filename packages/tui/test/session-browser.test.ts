@@ -83,6 +83,7 @@ async function fixture() {
   const menus = createMenus(view.renderer, state, dialogs, connection, {
     launch: () => notices.push("launch"),
     hasDraft: (id) => drafts.has(id),
+    say: (message) => notices.push(message),
     openSession: (id, inspect, current) => {
       opened.push({ id, inspect, session: current })
       state.selected = id

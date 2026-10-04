@@ -5,20 +5,25 @@ import { color } from "../theme"
 import { matchesKey } from "../keys"
 import type { MenuContext } from "./context"
 
-export function workingFolders(ctx: MenuContext) {
+/** The menu context plus the dashboard's status line, which announces the result of an open or close. */
+export type FoldersContext = MenuContext
+
+const INTRO =
+  "Open folders are shared with the GUI. Closing only hides a folder; it does not delete sessions or stop work."
+
+export function workingFolders(ctx: FoldersContext) {
   const { state, dialogs, connection, renderer } = ctx
   if (!dialogs.navigate()) return
-  const dialog = dialogs.open("Working folders", false, 28)
+  const dialog = dialogs.open("Working folders › Open", false, 28)
   if (!dialog) return
-  dialog.form.add(
-    new TextRenderable(renderer, {
-      content:
-        "Open folders are shared with the GUI. Closing only hides a folder; it does not delete sessions or stop work.",
-      fg: color.muted,
-    }),
-  )
   let directories = state.snapshot?.workingFolders ?? []
+  const note = new TextRenderable(renderer, { content: "", fg: color.muted, wrapMode: "word" })
+  dialog.form.add(note)
   const list = folderList(ctx, dialog, directories)
+  const describe = () => {
+    note.content = `${INTRO}\n${directories.length ? `Open folders (${directories.length}): choose one to fill the field` : "No folders are open."}`
+  }
+  describe()
   const directory = dialogs.input(
     dialog,
     "Directory on the server",
@@ -31,7 +36,8 @@ export function workingFolders(ctx: MenuContext) {
   let closing = false
   const hint = () => {
     dialog.error.height = 3
-    dialog.error.content = `Ctrl+S ${closing ? "Close folder in both clients" : "Open folder in both clients"}\nCtrl+R ${closing ? "Open" : "Close"} mode · Tab switch field\nEsc cancel`
+    dialog.frame.title = ` Working folders › ${closing ? "Close" : "Open"} `
+    dialog.error.content = `Ctrl+S ${closing ? "Close folder in both clients" : "Open folder in both clients"}\nCtrl+R switch to ${closing ? "Open" : "Close"} mode · Tab switch field\nEsc close`
     dialog.error.fg = closing ? color.warning : color.muted
   }
   hint()
@@ -48,6 +54,7 @@ export function workingFolders(ctx: MenuContext) {
     .then((result) => {
       if (state.closed || state.modal !== dialog || dialog.busy) return
       directories = result ?? []
+      describe()
       replacing = true
       list.options = directories.map((value) => ({ name: label(value, 512), description: "" }))
       replacing = false
@@ -59,7 +66,7 @@ export function workingFolders(ctx: MenuContext) {
   directory.focus()
 }
 
-async function applyFolder(ctx: MenuContext, target: string, closing: boolean) {
+async function applyFolder(ctx: FoldersContext, target: string, closing: boolean) {
   const { state, connection } = ctx
   if (!closing) await requireFolder(ctx, target)
   const result = await (closing ? connection.folders.close(target) : connection.folders.open(target))
@@ -67,6 +74,7 @@ async function applyFolder(ctx: MenuContext, target: string, closing: boolean) {
   if (state.snapshot) state.snapshot.workingFolders = result
   if (!closing) state.workingDirectory = target
   else if (state.workingDirectory === target) state.workingDirectory = undefined
+  ctx.actions.say(`${closing ? "Closed" : "Opened"} ${label(target, 200)} in both clients.`)
 }
 
 /** Opening a folder the server cannot read would only fail later, as an HTTP 500 on session creation. */

@@ -24,6 +24,8 @@ export type LaunchDeps = {
 /** What survives between dialog openings: the kept draft and the last launched agent/model. */
 export type LaunchStore = {
   draft?: LaunchDraft
+  /** The settings fields were opened, so the dialog reopens with them showing. */
+  settings?: boolean
   defaults?: Pick<LaunchDraft, "directory" | "agent" | "model" | "variant">
 }
 

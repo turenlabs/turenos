@@ -36,7 +36,7 @@ export type Dock = {
   acting: boolean
 }
 
-export const keys = "Enter send now · Ctrl+E edit · Ctrl+D discard · Ctrl+R refresh · Esc close"
+export const keys = "Enter send now · Ctrl+E edit · Ctrl+D twice discard · Ctrl+R refresh · Esc close"
 
 export async function refresh(dock: Dock, note = "") {
   const { ctx, session, dialog, text, list } = dock
@@ -90,7 +90,8 @@ export async function act(dock: Dock, kind: "steer" | "edit" | "cancel") {
     if (kind === "edit" && !ctx.drafts.restore(session, messageID, input.prompt.text)) return keep(dock, input)
     if (kind === "edit") {
       ctx.dialogs.close(false)
-      return ctx.drafts.reply()
+      ctx.drafts.reply()
+      return ctx.say("Message taken out of the queue and reopened for editing. Ctrl+T switches Steer and Queue.")
     }
     await refresh(dock, kind === "steer" ? "Sent now; the agent reads it at its next step." : "Discarded.")
   } catch (error) {

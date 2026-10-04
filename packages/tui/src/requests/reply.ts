@@ -41,8 +41,9 @@ function openReply(ctx: RequestContext, session: Session) {
   dialog.save = () => {
     draft.text = draft.submitted ?? task.plainText
     draft.cursor = task.cursorOffset
-    if (!draft.text && draft.submitted === undefined) ctx.messages.delete(sessionID)
-    ctx.say("Message draft kept · f to resume")
+    // An empty editor leaves no draft, so there is nothing to resume.
+    if (draft.text || draft.submitted !== undefined) return ctx.say("Message draft kept · f to resume")
+    ctx.messages.delete(sessionID)
   }
   dialog.discard = () => {
     ctx.messages.delete(sessionID)
@@ -166,7 +167,15 @@ async function submitReply(
     throw ownedError(ctx, sessionID, error)
   }
   ctx.messages.delete(sessionID)
-  ctx.say(draft.shell ? "Shell command sent to the server." : "Reply sent.")
+  ctx.say(draft.shell ? "Shell command sent to the server." : sentStatus(ctx, sessionID, draft))
+}
+
+/** Queue and Steer only differ while the agent runs, so the status says which one happened then. */
+function sentStatus(ctx: RequestContext, sessionID: string, draft: MessageDraft) {
+  if (draft.command || !running(ctx, sessionID)) return "Reply sent."
+  return draft.delivery === "queue"
+    ? "Reply queued. The agent reads it when it is idle."
+    : "Reply sent. The agent reads it at its next step."
 }
 
 /** Decides, once per draft, whether the text is a shell command, a slash command or a prompt. */

@@ -5,7 +5,7 @@ import type { Connection } from "../server"
 import type { DashboardState } from "../state"
 
 export type Memory = MemoriesListOutput[number]
-export type Place = { wingID: string; roomID?: string; name: string }
+export type Place = { wingID: string; roomID?: string; name: string; room?: string }
 
 export type MemoriesContext = {
   renderer: CliRenderer
@@ -13,6 +13,8 @@ export type MemoriesContext = {
   connection: Connection
   dialogs: Dialogs
   say: (message: string, error?: boolean) => void
+  /** The title every level of this visit starts from, such as `Settings › Memories`. */
+  root: string
 }
 
 export const KINDS = ["note", "fact", "decision", "observation"] as const

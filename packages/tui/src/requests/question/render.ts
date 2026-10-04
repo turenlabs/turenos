@@ -15,6 +15,7 @@ export function render(flow: QuestionFlow) {
   dialog.form.scrollTo(0)
   // The key hints take two rows on a short terminal and three otherwise.
   dialog.error.height = flow.ctx.renderer.height < compactRows ? 2 : 3
+  dialog.back = flow.reject ? flow.reopen : undefined
   flow.heading.content = flow.reject
     ? "Reject question request?"
     : flow.review
@@ -32,7 +33,7 @@ export function render(flow: QuestionFlow) {
 
 function renderReject(flow: QuestionFlow) {
   text(flow, "No answers will be sent. Ctrl+S confirms rejection; Ctrl+R returns to your answers.")
-  flow.dialog.error.content = "Ctrl+S Confirm rejection\nCtrl+R Answer instead\nCtrl+K Sessions · Esc close"
+  flow.dialog.error.content = "Ctrl+S Confirm rejection\nCtrl+R Answer instead\nCtrl+K Sessions · Esc back"
   flow.dialog.form.focus()
 }
 
@@ -48,13 +49,13 @@ function renderReview(flow: QuestionFlow) {
   flow.dialog.error.height = 2
   flow.dialog.error.content =
     flow.ctx.renderer.height < compactRows
-      ? "← Edit · PgUp/PgDn Scroll\nCtrl+R Reject · Esc close"
-      : "← Edit · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject · Esc close"
+      ? "← Edit · PgUp/PgDn Scroll\nCtrl+R Reject request · Esc close"
+      : "← Edit · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject request · Esc close"
   flow.dialog.form.focus()
 }
 
 function renderEmpty(flow: QuestionFlow) {
   text(flow, "This request has no questions. Close or reject it.")
-  flow.dialog.error.content = "Ctrl+R Reject · Esc close"
+  flow.dialog.error.content = "Ctrl+R Reject request · Esc close"
   flow.dialog.form.focus()
 }

@@ -19,6 +19,8 @@ export type QuestionFlow = {
   picker?: SelectRenderable
   /** Repaints the dialog for the current page; set by the opener so these helpers do not import the renderer. */
   render: () => void
+  /** Reopens the question dialog on the answers; set by the opener, which owns the dialog's lifecycle. */
+  reopen: () => void
 }
 
 export function answers(flow: QuestionFlow) {
@@ -64,7 +66,7 @@ export function editCustom(flow: QuestionFlow, restore = false) {
 
 export function advance(flow: QuestionFlow) {
   if (!answers(flow)[flow.page]?.length) {
-    flow.dialog.error.content = "Choose an answer before continuing.\nEsc close · Ctrl+R Reject"
+    flow.dialog.error.content = "Choose an answer before continuing.\nEsc close · Ctrl+R Reject request"
     return
   }
   if (flow.page < flow.questions.length - 1) flow.page++

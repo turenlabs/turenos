@@ -1,5 +1,5 @@
 import { PasswordRequired, type Target } from "../servers"
-import { close } from "./close"
+import { close, leave } from "./close"
 import { password } from "./fields"
 import { paint, say } from "./paint"
 import { rescan } from "./scan"
@@ -16,7 +16,7 @@ export function choose(picker: Picker) {
   const entry = picker.entries[picker.selected]
   if (!entry) return
   const current = picker.hooks.current()
-  if (current?.target.id === entry.target.id && current.connected) return close(picker)
+  if (current?.target.id === entry.target.id && current.connected) return leave(picker)
   const drafts = picker.hooks.drafts()
   if (drafts && !confirmed(picker, "switch", entry.target.id))
     return say(

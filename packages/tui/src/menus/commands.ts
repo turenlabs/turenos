@@ -1,4 +1,4 @@
-import { SelectRenderable } from "@opentui/core"
+import { SelectRenderable, type KeyEvent } from "@opentui/core"
 import { color } from "../theme"
 import { matchesKey } from "../keys"
 import { listRows, setRows } from "../dialogs/size"
@@ -15,13 +15,12 @@ export function commands(ctx: MenuContext, actions: { name: string; description:
     name: `${action.name}  · ${action.description}`,
   }))
   let matches = choices
-  // The caption, the field and its spacer are the other three rows; the list keeps the rest and never exceeds its matches.
-  const rows = () => Math.min(Math.max(1, matches.length), listRows(ctx.renderer, 4))
+  // The caption, the field, its spacer and the hint's gap are the other rows; the list keeps the rest, so the form never scrolls.
+  const rows = () => Math.min(Math.max(1, matches.length), listRows(ctx.renderer, 5))
   const select = new SelectRenderable(ctx.renderer, {
     height: rows(),
     options: choices,
     showDescription: false,
-    showScrollIndicator: true,
     backgroundColor: color.panel,
     textColor: color.text,
     selectedTextColor: color.accent,
@@ -29,7 +28,7 @@ export function commands(ctx: MenuContext, actions: { name: string; description:
   })
   dialog.form.add(select)
   ctx.dialogs.track(dialog, select)
-  dialog.error.content = "Type to search · ↑/↓ choose · Enter open · Esc close"
+  dialog.error.content = "Type to search · ↑/↓ choose · Enter run · Esc close"
   query.on("input", () => {
     matches = rank(choices, query.value.toLowerCase().trim())
     select.options = matches
@@ -40,7 +39,7 @@ export function commands(ctx: MenuContext, actions: { name: string; description:
   const position = () => {
     const at = matches.length ? `${select.getSelectedIndex() + 1}/${matches.length} · ` : ""
     dialog.error.content = matches.length
-      ? `${at}↑/↓ choose · Enter open · Esc close`
+      ? `${at}↑/↓ choose · Enter run · Esc close`
       : "No matching commands · Esc close"
   }
   select.on("selectionChanged", position)
@@ -57,12 +56,21 @@ export function commands(ctx: MenuContext, actions: { name: string; description:
       ctx.dialogs.reveal(dialog, select)
       return true
     }
+    if (page(select, key, rows())) return true
     if (!matchesKey(key, "enter")) return false
     open()
     return true
   }
   select.on("itemSelected", open)
   query.focus()
+}
+
+/** Paging moves the choice; letting it scroll the form would carry the search field out of view. */
+function page(select: SelectRenderable, key: KeyEvent, rows: number) {
+  if (!matchesKey(key, "pageup") && !matchesKey(key, "pagedown")) return false
+  const step = (key.name === "pageup" ? -1 : 1) * Math.max(1, rows - 1)
+  select.setSelectedIndex(Math.max(0, Math.min(select.options.length - 1, select.getSelectedIndex() + step)))
+  return true
 }
 
 /** Names rank prefix, then word start, then letters in order; a description mention comes last. */

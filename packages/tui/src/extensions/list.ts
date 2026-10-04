@@ -1,4 +1,6 @@
-import { matchesKey } from "../keys"
+import type { KeyEvent } from "@opentui/core"
+import { fitHeading, fitHints, panelWidth } from "../changes/heading"
+import { matchesKey, printableKey } from "../keys"
 import { openPanel } from "../panel"
 import { errorText } from "../server"
 import { label } from "../state"
@@ -9,40 +11,33 @@ import type { Extension, ExtensionsContext } from "./types"
 
 type Panel = NonNullable<ReturnType<typeof openPanel>>
 
-/** The open Extensions panel and the list it shows. */
-type View = { ctx: ExtensionsContext; panel: Panel; back?: () => void; items: Extension[]; select?: string }
+/** The open Extensions panel, the list it shows, and the filter and last result that shape it. */
+type View = {
+  ctx: ExtensionsContext
+  panel: Panel
+  back?: () => void
+  all: Extension[]
+  items: Extension[]
+  select?: string
+  filter: string
+  /** True while `/` has the keyboard: printable keys edit the filter instead of acting on a row. */
+  typing: boolean
+  note: string
+}
 
-const keys = "↑↓ choose · Enter on/off · s secret · c setting · o sign in · Ctrl+R refresh · Esc back"
-
-/** `select` is the extension to land on, so returning from its secrets keeps the cursor. */
-export function openExtensions(ctx: ExtensionsContext, back?: () => void, select?: string) {
+/** `select` is the extension to land on and `note` what the form that returned here just did. */
+export function openExtensions(ctx: ExtensionsContext, back?: () => void, select?: string, note = "") {
   if (!ctx.dialogs.navigate()) return
-  const panel = openPanel(ctx.renderer, ctx.dialogs, "Extensions")
+  const root = back ? "Settings › Extensions" : "Extensions"
+  const panel = openPanel(ctx.renderer, ctx.dialogs, root)
   if (!panel) return
-  panel.dialog.back = back
-  const view: View = { ctx, panel, back, items: [], select }
+  const view: View = { ctx, panel, back, all: [], items: [], select, filter: "", typing: false, note }
+  // Esc clears a filter first by reopening the list without it; the next Esc goes back.
+  panel.dialog.back = () => (view.filter ? openExtensions(ctx, back, chosen(view)?.id) : back?.())
   panel.list.on("selectionChanged", () => describe(view))
   panel.dialog.key = (key) => {
-    const item = view.items[panel.list.getSelectedIndex()]
-    const action = matchesKey(key, "r", { ctrl: true })
-      ? () => load(view)
-      : !item
-        ? undefined
-        : matchesKey(key, "enter")
-          ? () => update(view, item, { enabled: !item.enabled }, item.enabled ? "Turned off." : "Turned on.")
-          : key.sequence === "s"
-            ? () => field(view, "secret")
-            : key.sequence === "c"
-              ? () => field(view, "setting")
-              : key.sequence === "o"
-                ? () =>
-                    update(
-                      view,
-                      item,
-                      { enabled: true, connect: true },
-                      "Sign-in started; the server opens it in a browser on its computer.",
-                    )
-                : undefined
+    if (view.typing) return typeFilter(view, key)
+    const action = actionFor(view, key)
     if (!action) return false
     void action()
     return true
@@ -51,13 +46,59 @@ export function openExtensions(ctx: ExtensionsContext, back?: () => void, select
   void load(view)
 }
 
+function chosen(view: View) {
+  return view.items[view.panel.list.getSelectedIndex()]
+}
+
+function actionFor(view: View, key: KeyEvent) {
+  const item = chosen(view)
+  if (matchesKey(key, "r", { ctrl: true })) return () => load(view)
+  if (key.sequence === "/") return () => startFilter(view)
+  if (!item) return undefined
+  if (matchesKey(key, "enter"))
+    return () => update(view, item, { enabled: !item.enabled }, item.enabled ? "Turned off." : "Turned on.")
+  if (key.sequence === "s") return () => field(view, "secret")
+  if (key.sequence === "c") return () => field(view, "setting")
+  if (key.sequence === "o") return () => signIn(view, item)
+  return undefined
+}
+
+function startFilter(view: View) {
+  view.typing = true
+  view.note = ""
+  show(view, view.all, chosen(view)?.id)
+}
+
+function typeFilter(view: View, key: KeyEvent) {
+  if (matchesKey(key, "enter")) view.typing = false
+  else if (matchesKey(key, "backspace")) view.filter = view.filter.slice(0, -1)
+  else if (printableKey(key)) view.filter += printableKey(key)
+  else return false
+  show(view, view.all, chosen(view)?.id)
+  return true
+}
+
 function show(view: View, list: Extension[], select?: string) {
   const { ctx, panel } = view
-  view.items = list.toSorted((a, b) => Number(b.enabled) - Number(a.enabled) || a.name.localeCompare(b.name))
-  const enabled = view.items.filter((item) => item.enabled).length
-  panel.heading.content = `${enabled} of ${view.items.length} enabled · ${label(ctx.directory(), 120)}`
+  view.all = list.toSorted((a, b) => Number(b.enabled) - Number(a.enabled) || a.name.localeCompare(b.name))
+  const terms = view.filter.toLowerCase().split(/\s+/).filter(Boolean)
+  view.items = view.all.filter((item) => terms.every((term) => `${item.name} ${item.id}`.toLowerCase().includes(term)))
+  const enabled = view.all.filter((item) => item.enabled).length
+  const filter =
+    view.typing || view.filter ? `Filter: ${view.filter}${view.typing ? "▏" : ""} · ${view.items.length} shown · ` : ""
+  panel.fit(
+    "heading",
+    () =>
+      (panel.heading.content = fitHeading(
+        panelWidth(panel),
+        `${filter}${enabled} of ${view.all.length} enabled · `,
+        label(ctx.directory(), 120),
+        "",
+        "start",
+      )),
+  )
   panel.list.options = view.items.map((item) => ({
-    name: `${item.enabled ? "●" : "○"} ${label(item.name, 40)} · ${item.status}`,
+    name: `${item.enabled ? "●" : "○"} ${label(item.name, 120)} · ${item.status}`,
     description: "",
   }))
   panel.list.setSelectedIndex(
@@ -66,13 +107,39 @@ function show(view: View, list: Extension[], select?: string) {
       view.items.findIndex((item) => item.id === select),
     ),
   )
-  panel.dialog.error.content = keys
+  hints(view)
   describe(view)
 }
 
+/** Offers only the keys the selected extension can use; a note takes the first of the two lines. */
+function hints(view: View) {
+  const { panel } = view
+  const item = chosen(view)
+  const contributions = item?.contributions ?? []
+  const optional = [
+    "↑↓ choose",
+    "/ filter",
+    ...(contributions.some((entry) => entry.secrets.length) ? ["s secret"] : []),
+    ...(contributions.some((entry) => entry.configuration.length) ? ["c setting"] : []),
+    ...(contributions.some((entry) => entry.authentication && entry.authentication !== "none") ? ["o sign in"] : []),
+    "Ctrl+R refresh",
+  ]
+  panel.fit(
+    "hints",
+    () =>
+      (panel.dialog.error.content = view.typing
+        ? "Type to filter · Backspace edit · Enter keep · Esc clear"
+        : view.note
+          ? `${view.note}\n${fitHints(panel.width() - 2, [], ["Enter on/off", "/ filter", "Esc back"])}`
+          : fitHints(panel.width() - 2, optional, ["Enter on/off", "Esc back"])),
+  )
+}
+
 function describe(view: View) {
-  const item = view.items[view.panel.list.getSelectedIndex()]
-  if (!item) return view.panel.show("No extensions on this server.")
+  const item = chosen(view)
+  hints(view)
+  if (!item)
+    return view.panel.show(view.all.length ? "No extension matches the filter." : "No extensions on this server.")
   view.panel.show(details(item))
 }
 
@@ -80,8 +147,7 @@ async function load(view: View) {
   const { ctx, panel } = view
   try {
     const result = extensionList(await ctx.connection.api("/extension", { directory: ctx.directory() }))
-    if (ctx.state.modal === panel.dialog)
-      show(view, result, view.items[panel.list.getSelectedIndex()]?.id ?? view.select)
+    if (ctx.state.modal === panel.dialog) show(view, result, chosen(view)?.id ?? view.select)
   } catch (error) {
     if (ctx.state.modal === panel.dialog) panel.show(`Extensions unavailable: ${errorText(error)}`)
   }
@@ -99,16 +165,25 @@ async function update(view: View, item: Extension, change: Record<string, unknow
   }
 }
 
+function signIn(view: View, item: Extension) {
+  const hasSignIn = item.contributions.some((entry) => entry.authentication && entry.authentication !== "none")
+  if (!hasSignIn) return note(view, "This extension has no sign-in.")
+  const started = "Sign-in started; the server opens it in a browser on its computer."
+  return update(view, item, { enabled: true, connect: true }, item.enabled ? started : `Turned on. ${started}`)
+}
+
 function note(view: View, text: string) {
-  view.panel.dialog.error.content = `${text}\n${keys}`
+  view.note = text
+  hints(view)
 }
 
 function field(view: View, kind: "secret" | "setting") {
-  const item = view.items[view.panel.list.getSelectedIndex()]
+  const item = chosen(view)
   const fields =
     item?.contributions.flatMap((contribution) =>
       kind === "secret" ? contribution.secrets : contribution.configuration,
     ) ?? []
   if (!item || !fields.length) return note(view, `This extension has no ${kind}s.`)
-  pickField(view.ctx, item, fields, kind, () => openExtensions(view.ctx, view.back, item.id))
+  const root = view.back ? "Settings › Extensions" : "Extensions"
+  pickField(view.ctx, item, fields, kind, (done) => openExtensions(view.ctx, view.back, item.id, done), root)
 }

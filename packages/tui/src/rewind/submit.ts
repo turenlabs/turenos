@@ -38,7 +38,6 @@ export async function submit(flow: RewindFlow) {
 /** Validates the typed confirmation and freezes the file mode and target on the first submit. */
 function prepareIntent(flow: RewindFlow): Intent {
   if (!flow.ready || !flow.confirmation) throw new Error("Wait for read-only inspection to finish successfully.")
-  if (flow.confirmation.value !== flow.action) throw new Error(`Type ${flow.action} exactly, then Ctrl+S.`)
   if (flow.intent && flow.action === "undo" && (flow.files?.getSelectedIndex() === 1) !== flow.intent.files)
     throw new Error("Retry keeps the original file mode. Close and reopen this control to change it.")
   if (!flow.intent) {

@@ -22,7 +22,7 @@ export function fieldKey(picker: Picker, key: KeyEvent) {
     form.index = (form.index + (key.shift ? -1 : 1) + form.inputs.length) % form.inputs.length
     return form.inputs[form.index]!.focus()
   }
-  if (!matchesKey(key, "enter")) return
+  if (!matchesKey(key, "enter") && !(form && matchesKey(key, "s", { ctrl: true }))) return
   key.preventDefault()
   if (secret) return submitPassword(picker, secret)
   if (form)

@@ -242,6 +242,10 @@ test("Escape never sends; rejection requires deliberate mode and confirmation", 
   expect(await f.settle()).toContain("Reject question request?")
   await f.enter()
   expect(f.posts).toEqual([])
+  // Esc leaves the confirmation for the question it came from; a second Esc closes the dialog.
+  f.view.mockInput.pressKey("ESCAPE")
+  expect(await f.settle()).not.toContain("Reject question request?")
+  expect(f.state.modal).toBeDefined()
   f.view.mockInput.pressKey("ESCAPE")
   await f.settle()
   expect(f.state.modal).toBeUndefined()

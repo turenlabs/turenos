@@ -97,7 +97,7 @@ function showWelcome(c: Conversation, snapshot: Snapshot) {
         : state.tab === "terminals" && !snapshot.terminalsAvailable
           ? "Global terminal inventory is unavailable on this server version.\n\nUpdate the server to inspect terminal processes.\nSessions and agent launch are available."
           : state.tab === "terminals"
-            ? "No terminals yet. Press a to add one."
+            ? "No terminals yet. Press Enter or a to open one."
             : "No automations yet. Press a to add one.",
   )
   ui.sessionTitle.content = "Welcome to TurenOS"

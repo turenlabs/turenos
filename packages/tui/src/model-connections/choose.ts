@@ -17,7 +17,7 @@ export function choose(flow: Flow, dialog: ModalState, choices: Choice[], search
     minHeight: 2,
     options: choices,
     showDescription: true,
-    showSelectionIndicator: false,
+    showSelectionIndicator: true,
     showScrollIndicator: true,
     backgroundColor: color.panel,
     textColor: color.text,
@@ -40,7 +40,7 @@ export function choose(flow: Flow, dialog: ModalState, choices: Choice[], search
     // A typed filter selects its best match; the pinned custom row would otherwise win Enter.
     select.setSelectedIndex(Math.max(0, !terms.length && selected ? matches.indexOf(selected) : 0))
     dialog.error.content = matches.length
-      ? "Up/Down choose | Enter continue | Tab focus | Esc go back"
+      ? "↑↓ choose · Enter continue · Tab focus · Esc back"
       : "No matches. Clear the search to see providers and custom setup."
   }
   const pick = () => {
