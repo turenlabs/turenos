@@ -1,5 +1,5 @@
 import type { MessagesListOutput, QuestionsListOutput } from "@turenlabs/client"
-import { assistantHeader } from "./messages/header"
+import { assistantHeader, chip } from "./messages/header"
 import { noticeLine } from "./messages/notice"
 import { shellBlock, shellOutcome } from "./messages/shell"
 import { todoChecklist } from "./messages/todos"
@@ -232,13 +232,15 @@ function assistantPreview(message: Extract<Message, { type: "assistant" }>) {
   return preview(`Tool activity: ${summary}. Status unavailable.`)
 }
 
-export function transcript(messages: MessagesListOutput["data"], raw = false) {
+/** The readable transcript; `rich` marks role labels as chips for the dashboard's Markdown view. */
+export function transcript(messages: MessagesListOutput["data"], raw = false, rich = false) {
+  const chips = rich && !raw
   const text = messages
     .map((message) => {
       if (message.type === "assistant") {
         // Keep metadata and distinct response parts in separate Markdown blocks.
         return [
-          assistantHeader(message),
+          assistantHeader(message, chips),
           ...message.content
             .map((part) => {
               if (part.type === "reasoning") {
@@ -265,7 +267,9 @@ export function transcript(messages: MessagesListOutput["data"], raw = false) {
         return `${sourceLabel[message.source].toUpperCase()}\n${notice(message.source, message.text, raw)}`
       // A label over nothing reads as a cut-off turn.
       if ("text" in message)
-        return message.text.trim() ? `${display(message.type, 64).toUpperCase()}\n${display(message.text)}` : ""
+        return message.text.trim()
+          ? `${chips ? chip(display(message.type, 64).toUpperCase()) : display(message.type, 64).toUpperCase()}\n${display(message.text)}`
+          : ""
       return `[${display((message as { type?: string }).type ?? "unknown", 64)}]`
     })
     .filter(Boolean)

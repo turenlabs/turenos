@@ -3,14 +3,15 @@ export const color = {
   panel: "#18222e",
   text: "#f2f5f7",
   muted: "#b0bdca",
+  // Keyboard focus, links and interactive labels. Amber and yellow are kept for attention.
   accent: "#7cc8f8",
-  focus: "#ffc66d",
   border: "#8092a5",
   selected: "#31465a",
   warning: "#f5d76d",
   error: "#ff9d97",
   added: "#8fe0a4",
-  removed: "#ff9d97",
+  // Darker than `error` so removed lines stay apart from added ones under red-green colour blindness.
+  removed: "#f47067",
 }
 
 export const layout = {

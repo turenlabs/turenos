@@ -363,3 +363,18 @@ test("a provider failure reads as its status and the provider's own message, raw
   expect(latestMessage([turn([], body)])).toContain('Error: HTTP 401: key "abc" refused')
   expect(transcript([turn([], "Model is overloaded")])).toContain("ERROR: Model is overloaded")
 })
+
+test("the dashboard's rich transcript marks role labels as chips; plain text for agents is unchanged", () => {
+  const messages = [
+    { id: "msg_u", type: "user", text: "hello", time: { created: 1 } },
+    turn([{ type: "text", id: "part_t", text: "hi there", time: { created: 1 } }]),
+  ] as unknown as MessagesListOutput["data"]
+  const plain = transcript(messages)
+  expect(plain).toStartWith("USER\nhello")
+  expect(plain).toContain("build · test/model")
+  expect(plain).not.toContain("`")
+  const rich = transcript(messages, false, true)
+  expect(rich).toStartWith("`USER`\nhello")
+  expect(rich).toContain("`build` · test/model")
+  expect(transcript(messages, true, true)).not.toContain("`")
+})

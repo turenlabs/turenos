@@ -88,7 +88,7 @@ function createFrame(ctx: DialogContext, title: string, placement: Placement) {
     maxHeight: placement.docked ? undefined : placement.inline ? 32 : Math.max(1, ctx.renderer.height - 2),
     border: placement.docked ? ["left"] : true,
     borderStyle: "rounded",
-    borderColor: placement.docked ? color.focus : color.border,
+    borderColor: placement.docked ? color.accent : color.border,
     title: ` ${title} `,
     titleColor: color.text,
     padding: placement.docked ? 0 : 1,

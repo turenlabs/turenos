@@ -145,7 +145,7 @@ test("focus retains the existing high-contrast pane cues", async () => {
   ui.focus()
   await renderOnce()
   expect(ui.detail.focused).toBe(true)
-  expect(ui.actions.borderColor).toEqual(RGBA.fromHex(color.focus))
+  expect(ui.actions.borderColor).toEqual(RGBA.fromHex(color.accent))
   expect(ui.sidebarHeading.fg).toEqual(RGBA.fromHex(color.muted))
   state.detailFocused = false
   ui.focus()

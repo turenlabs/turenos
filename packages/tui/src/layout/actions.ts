@@ -10,7 +10,7 @@ export function createActions(renderer: CliRenderer, main: BoxRenderable) {
     paddingX: 2,
     backgroundColor: color.panel,
     border: ["left"],
-    borderColor: color.focus,
+    borderColor: color.accent,
     marginTop: 1,
   })
   main.add(actions)

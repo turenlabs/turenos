@@ -29,5 +29,5 @@ export function focusLayout(renderer: CliRenderer, state: DashboardState, parts:
 function showFocusedPane(renderer: CliRenderer, state: DashboardState, parts: LayoutParts) {
   parts.footer.content = statusline(state, state.snapshot, renderer.width)
   parts.sidebarHeading.fg = state.detailFocused ? color.muted : color.accent
-  parts.actions.borderColor = state.detailFocused ? color.focus : color.border
+  parts.actions.borderColor = state.detailFocused ? color.accent : color.border
 }

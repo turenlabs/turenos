@@ -131,7 +131,7 @@ test("renders readable headings, emphasis, code and tables, then replaces the co
   const view = await setup()
   expect(view.markdown.syntaxStyle.getStyle("markup.heading.1")?.fg).toEqual(RGBA.fromHex(color.accent))
   expect(view.markdown.syntaxStyle.getStyle("markup.raw.block")?.bg).toEqual(RGBA.fromHex(color.panel))
-  expect(view.markdown.syntaxStyle.getStyle("markup.link")?.fg).toEqual(RGBA.fromHex(color.focus))
+  expect(view.markdown.syntaxStyle.getStyle("markup.link")?.fg).toEqual(RGBA.fromHex(color.accent))
   view.markdown.content = [
     "# Review complete",
     "The **session switcher** keeps _your place_.",
@@ -289,4 +289,17 @@ test("normalizeMarkdown keeps target-less brackets as text: JSON blocks fenced, 
   expect(normalizeMarkdown("```\n[x] code\n```\n[y] text")).toBe("```\n[x] code\n```\n`[y]` text")
   expect(normalizeMarkdown("already \\[escaped] and an [open bracket")).toBe("already \\[escaped] and an [open bracket")
   expect(normalizeMarkdown('{\n  "a": 1\n]')).toBe('{\n  "a": 1\n]')
+})
+
+test("a role chip renders its words in the accent colour without backticks", async () => {
+  const view = await setup()
+  view.markdown.content = "`USER`\nhello there"
+  const frame = await rendered(view, "hello there")
+  expect(frame).toMatch(/^USER *$/m)
+  expect(frame).not.toContain("`")
+  const user = view
+    .captureSpans()
+    .lines.flatMap((line) => line.spans)
+    .find((span) => span.text.includes("USER"))
+  expect(user?.fg).toEqual(RGBA.fromHex(color.accent))
 })

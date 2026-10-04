@@ -13,8 +13,9 @@ export function markdownStyle() {
     "markup.raw": { fg: color.accent, bg: color.panel },
     "markup.raw.block": { fg: color.text, bg: color.panel },
     "markup.list": { fg: color.accent },
-    "markup.link": { fg: color.focus },
-    "markup.link.label": { fg: color.focus, underline: true },
+    // Links read as links (blue, underlined); amber stays for things that need attention.
+    "markup.link": { fg: color.accent },
+    "markup.link.label": { fg: color.accent, underline: true },
     "markup.link.url": { fg: color.muted },
     "markup.quote": { fg: color.muted, italic: true },
     conceal: { fg: "#484848" },

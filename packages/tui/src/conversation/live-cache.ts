@@ -24,7 +24,7 @@ export function mergeLive(c: Conversation, messages: Messages, older = false) {
         }
   const incoming = messages.map((message) => ({
     id: message.id,
-    formatted: transcript([message]),
+    formatted: transcript([message], false, true),
     raw: transcript([message], true),
   }))
   if (

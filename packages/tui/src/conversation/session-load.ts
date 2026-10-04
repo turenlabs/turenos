@@ -102,7 +102,7 @@ function paintResult(c: Conversation, id: string, result: Detail, questionPrevie
     drawLive(c)
     return
   }
-  const content = transcript(result.messages, state.rawResponses) || "No messages yet."
+  const content = transcript(result.messages, state.rawResponses, true) || "No messages yet."
   const staged = stagedMessageID(c) ? "UNDO STAGED - this History view includes later, staged-away messages.\n\n" : ""
   ui.renderContent(`${questionPreview ? `${questionPreview}\n\n` : ""}${staged}${content}`, !questionPreview)
   syncLayout(c)
