@@ -73,8 +73,8 @@ export default defineConfig(({ command }) => ({
       "import.meta.env.FORGE_CHANNEL": JSON.stringify(channel),
     },
     build: {
-      minify: command === "build" && "esbuild",
-      rollupOptions: {
+      minify: command === "build",
+      rolldownOptions: {
         input: { index: "src/main/index.ts" },
       },
       externalizeDeps: { exclude: ["@turenlabs/schema", "@turenlabs/protocol"] },
@@ -214,8 +214,8 @@ export default defineConfig(({ command }) => ({
       "import.meta.env.FORGE_CHANNEL": JSON.stringify(channel),
     },
     build: {
-      minify: command === "build" && "esbuild",
-      rollupOptions: {
+      minify: command === "build",
+      rolldownOptions: {
         input: { index: "src/preload/index.ts", "security-browser": "src/preload/security-browser.ts" },
         output: {
           format: "cjs",
@@ -229,10 +229,12 @@ export default defineConfig(({ command }) => ({
     publicDir: "../../../app/public",
     root: "src/renderer",
     build: {
-      minify: command === "build" && "esbuild",
+      minify: command === "build",
+      // Vite 8's default; Vite 7 minified CSS with esbuild instead.
+      cssMinify: "lightningcss",
       // Hidden maps exist only when the Sentry plugin uploads and deletes them.
       sourcemap: sentry ? "hidden" : false,
-      rollupOptions: {
+      rolldownOptions: {
         input: {
           main: "src/renderer/index.html",
           securityBrowser: "src/renderer/security-browser.html",

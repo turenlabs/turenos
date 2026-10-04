@@ -12,14 +12,7 @@ const fileAccess = createRequire(entry).resolve("browser-fs-access")
 const download = fileURLToPath(new URL("./src/components/whiteboard/download.ts", import.meta.url))
 const plugin = whiteboardPlugin()
 const transpiler = new Bun.Transpiler({ loader: "js" })
-const loads = []
-const resolves = []
-plugin.config().optimizeDeps.esbuildOptions.plugins[0].setup({
-  onResolve: (options, resolve) => resolves.push({ options, resolve }),
-  onLoad: (options, load) => {
-    if (!options.namespace) loads.push({ options, load })
-  },
-})
+const optimizer = plugin.config().optimizeDeps.rolldownOptions.plugins[0]
 
 test("only editor file access is adapted in both bundlers", () => {
   const importer = path.join(root, "dist/prod/index.js")
@@ -31,8 +24,9 @@ test("only editor file access is adapted in both bundlers", () => {
   expect(plugin.load(id)).toContain("fileOpen, directoryOpen, supported")
   expect(plugin.resolveId("browser-fs-access", "/src/unrelated.ts")).toBeUndefined()
   expect(plugin.resolveId("other-library", importer)).toBeUndefined()
-  expect(resolves[0].resolve({ importer }).path).toBe(id)
-  expect(resolves[0].resolve({ importer: "/src/unrelated.ts" })).toBeUndefined()
+  expect(optimizer.resolveId("browser-fs-access", importer)).toBe(id)
+  expect(optimizer.resolveId("browser-fs-access", "/src/unrelated.ts")).toBeUndefined()
+  expect(optimizer.load(id)).toBe(plugin.load(id))
 })
 
 for (const mode of ["dev", "prod"]) {
@@ -47,13 +41,8 @@ for (const mode of ["dev", "prod"]) {
     for (const module of modules) {
       const result = plugin.transform(module.code, module.id)
       expect(result).toBeDefined()
-      expect(loads[0].options.filter.test(module.id)).toBe(true)
-      expect(loads[0].load({ path: module.id })).toEqual({
-        contents: result.code,
-        loader: "js",
-        resolveDir: path.dirname(module.id),
-      })
-      expect(loads[0].load({ path: "/unrelated/dist/index.js" })).toBeUndefined()
+      expect(optimizer.transform(module.code, module.id)).toEqual(result)
+      expect(optimizer.transform(module.code, "/unrelated/dist/index.js")).toBeUndefined()
       // The CDN declaration stays intact; only the call using it is gone.
       expect(result.code.split("ASSETS_FALLBACK_URL").length).toBe(module.code.split("ASSETS_FALLBACK_URL").length - 1)
       expect(result.code).toContain("ASSETS_FALLBACK_URL")
@@ -71,6 +60,7 @@ test("transform fails closed, remains package-scoped, and keeps prebundling", ()
   expect(plugin.transform("new URL(baseUrl, location.origin)", "/src/app.js")).toBeUndefined()
   expect(plugin.transform("fonts.add(Font.ASSETS_FALLBACK_URL)", id + ".map")).toBeUndefined()
   expect(plugin.config().optimizeDeps.exclude).toBeUndefined()
+  expect(plugin.config().optimizeDeps.esbuildOptions).toBeUndefined()
   expect(plugin.config().optimizeDeps.include).toContain("@excalidraw/excalidraw")
   expect(plugin.config().resolve.dedupe).toEqual(["react", "react-dom"])
   expect(
@@ -85,35 +75,33 @@ test("transform fails closed, remains package-scoped, and keeps prebundling", ()
 })
 
 test("optimizer links the installed editor and its CommonJS dependencies into browser ESM", async () => {
-  const { build } = createRequire(createRequire(import.meta.url).resolve("vite"))("esbuild")
-  const result = await build({
-    ...plugin.config().optimizeDeps.esbuildOptions,
-    entryPoints: [path.join(root, "dist/dev/index.js")],
-    bundle: true,
-    format: "esm",
+  const { rolldown } = createRequire(createRequire(import.meta.url).resolve("vite"))("rolldown")
+  const bundle = await rolldown({
+    input: path.join(root, "dist/dev/index.js"),
+    plugins: plugin.config().optimizeDeps.rolldownOptions.plugins,
     platform: "browser",
-    conditions: ["browser", "development"],
-    define: { "process.env.NODE_ENV": '"development"' },
-    loader: { ".woff2": "file", ".ttf": "file", ".wasm": "file" },
-    outdir: "whiteboard-test-output",
-    write: false,
-    metafile: true,
+    resolve: { conditionNames: ["browser", "development"] },
+    transform: { define: { "process.env.NODE_ENV": '"development"' } },
+    moduleTypes: { ".woff2": "asset", ".ttf": "asset", ".wasm": "asset" },
     logLevel: "silent",
   })
-  expect(Object.keys(result.metafile.inputs).some((id) => id.includes("es6-promise-pool"))).toBe(true)
-  const output = result.outputFiles.find((file) => path.basename(file.path) === "index.js")
-  expect(output).toBeDefined()
-  expect(() => transpiler.transformSync(output.text)).not.toThrow()
-  expect(
-    Object.values(result.metafile.outputs)
-      .flatMap((file) => file.imports)
-      .filter((item) => item.external),
-  ).toEqual([])
-  expect(output.text).toContain("ASSETS_FALLBACK_URL")
-  expect(output.text).toContain('document.createElement("a")')
-  expect(Object.keys(result.metafile.inputs).some((id) => id.endsWith("/whiteboard/download.ts"))).toBe(true)
+  const chunks = (await bundle.generate({ format: "esm" })).output.filter((file) => file.type === "chunk")
+  await bundle.close()
+  const modules = chunks.flatMap((chunk) => chunk.moduleIds)
+  const code = chunks.map((chunk) => chunk.code).join("\n")
+  const entry = chunks.find((chunk) => chunk.isEntry)
+  expect(entry).toBeDefined()
+  expect(modules.some((id) => id.includes("es6-promise-pool"))).toBe(true)
+  expect(() => transpiler.transformSync(entry.code)).not.toThrow()
+  // Every import is an emitted chunk, so nothing is left external.
+  const names = new Set(chunks.map((chunk) => chunk.fileName))
+  expect(chunks.flatMap((chunk) => chunk.imports).filter((name) => !names.has(name))).toEqual([])
+  expect(code).toContain("ASSETS_FALLBACK_URL")
+  expect(code).not.toMatch(/\.push\(\s*new URL\([^)]*ASSETS_FALLBACK_URL/)
+  expect(code).toContain('document.createElement("a")')
+  expect(modules.some((id) => id.replaceAll("\\", "/").endsWith("/whiteboard/download.ts"))).toBe(true)
   // The optimizer emits outside the package root, so Vite does not patch twice.
-  expect(plugin.transform(output.text, output.path)).toBeUndefined()
+  expect(plugin.transform(entry.code, path.join("/node_modules/.vite/deps", entry.fileName))).toBeUndefined()
 }, 30000)
 
 const emitted = []
