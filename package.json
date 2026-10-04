@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "forge",
-  "version": "1.0.38",
+  "version": "1.0.40",
   "description": "TurenOS, the batteries-included security engineering workbench",
   "private": true,
   "type": "module",
@@ -24,12 +24,14 @@
   "workspaces": {
     "packages": [
       "packages/*",
-      "packages/sdk/js"
+      "packages/sdk/js",
+      "vendor/*"
     ],
     "catalog": {
       "@babel/core": "7.29.7",
       "@effect/opentelemetry": "4.0.0-beta.83",
       "@effect/platform-node": "4.0.0-beta.83",
+      "@effect/platform-bun": "4.0.0-beta.83",
       "@effect/sql-sqlite-bun": "4.0.0-beta.83",
       "@npmcli/arborist": "9.4.0",
       "@types/bun": "1.4.0",
@@ -77,7 +79,7 @@
       "@solidjs/router": "0.15.4",
       "@solidjs/start": "https://pkg.pr.new/@solidjs/start@dfb2020",
       "@sentry/solid": "10.36.0",
-      "@sentry/vite-plugin": "4.6.0",
+      "@sentry/vite-plugin": "5.4.0",
       "solid-js": "1.9.15",
       "vite-plugin-solid": "2.11.10",
       "@lydell/node-pty": "1.2.0-beta.12"
@@ -85,6 +87,7 @@
   },
   "devDependencies": {
     "@actions/artifact": "6.2.1",
+    "@turenlabs/script-deobfuscate-wasm": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/mime-types": "3.0.1",
     "@typescript/native-preview": "catalog:",
@@ -131,7 +134,9 @@
     "@types/node": "catalog:",
     "poe-oauth": "0.0.14",
     "fastify": "5.12.5",
-    "hono": "4.13.9"
+    "hono": "4.13.9",
+    "http-cache-semantics": "workspace:*",
+    "sass": "1.104.1"
   },
   "patchedDependencies": {
     "@ff-labs/fff-bun@0.9.3": "patches/@ff-labs%2Ffff-bun@0.9.3.patch",

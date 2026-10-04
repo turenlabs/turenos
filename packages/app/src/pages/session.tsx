@@ -143,6 +143,7 @@ import {
   type SessionLiveView,
   type SessionTimelineItem,
 } from "./session/session-live-prototype"
+import { SessionLiveMetrics } from "./session/session-live-metrics"
 import { sessionTranscriptVisible } from "./session/session-live-status"
 import SecurityProxyPage from "./security-proxy"
 
@@ -2470,7 +2471,9 @@ export default function Page() {
               onViewChange={setLiveDockView}
               agents={liveAgents}
               todos={composer.todos}
-            />
+            >
+              <SessionLiveMetrics />
+            </SessionLiveDock>
           </Show>
         }
         promptInput={
@@ -2483,7 +2486,9 @@ export default function Page() {
                   onViewChange={setLiveDockView}
                   agents={liveAgents}
                   todos={composer.todos}
-                />
+                >
+                  <SessionLiveMetrics />
+                </SessionLiveDock>
               </Show>
             }
             ref={(el) => {

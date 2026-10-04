@@ -467,4 +467,77 @@ describe("SessionContextRequest", () => {
       expect(yield* blobRows(db)).toEqual([])
     }),
   )
+
+  describe("saved frame reuse", () => {
+    it.effect("hands back the frame it just saved instead of decoding the row again", () =>
+      Effect.gen(function* () {
+        const db = yield* setup
+        const frame = yield* seed(db)
+        const loaded = yield* SessionContextRequest.prepare(db, sessionID, { ...configuration, history })
+
+        expect(loaded.reason).toBeUndefined()
+        expect(loaded.frame).toBe(frame)
+      }),
+    )
+
+    it.effect("does not trust the saved frame once the stored row differs", () =>
+      Effect.gen(function* () {
+        const db = yield* setup
+        const frame = yield* seed(db)
+        // Another writer replaced the row with a different frame of a different size.
+        const replaced = { ...frame, turn: "turn-written-by-someone-else" }
+        yield* db.update(SessionContextRequestTable).set({ data: encodeFrame(replaced) }).run()
+        const loaded = yield* SessionContextRequest.prepare(db, sessionID, { ...configuration, history })
+
+        expect(loaded.frame).toEqual(replaced)
+        expect(loaded.frame).not.toBe(frame)
+        expect(loaded.frame!.turn).toBe("turn-written-by-someone-else")
+      }),
+    )
+
+    it.effect("does not trust the saved frame after the generation moves", () =>
+      Effect.gen(function* () {
+        const db = yield* setup
+        const frame = yield* seed(db)
+        yield* db.update(SessionContextRequestTable).set({ generation: 7 }).run()
+        const loaded = yield* SessionContextRequest.prepare(db, sessionID, { ...configuration, history })
+
+        expect(loaded.generation).toBe(7)
+        expect(loaded.frame).toEqual(frame)
+        expect(loaded.frame).not.toBe(frame)
+      }),
+    )
+
+    it.effect("keeps every append byte-identical to encoding the whole frame and keeps its blob", () =>
+      Effect.gen(function* () {
+        const db = yield* setup
+        const uri = largeURI(100 * 1024)
+        const first = [attachmentEntry(1, uri)]
+        let saved = yield* saveFrame(db, first, attachmentFrame(first, uri, "turn-1"))
+        // Each append reuses the previous frame's message objects, the case that is encoded once and reused.
+        for (const seq of [3, 5, 7]) {
+          const entries = [...saved.entries, entry(seq)]
+          const prepared = yield* SessionContextRequest.prepare(db, sessionID, { ...configuration, history: entries })
+          expect(prepared.reason).toBeUndefined()
+          saved = {
+            entries,
+            messages: [...prepared.frame!.messages, Message.assistant(`reply ${seq}`)],
+            sources: prepared.sources,
+            turn: `turn-${seq}`,
+          }
+          yield* SessionContextRequest.save(db, sessionID, { ...configuration, ...prepared, frame: saved })
+
+          expect(yield* blobRows(db)).toHaveLength(1)
+          const stored = JSON.parse(yield* rowText(db))
+          // Same bytes as encoding the frame from scratch, with the one large string replaced by its reference.
+          const blob = (yield* blobRows(db))[0]!
+          const expected = JSON.stringify({ forge_context_blobs: 1, frame: encodeFrame(saved) }).replaceAll(
+            JSON.stringify(uri),
+            JSON.stringify(`forge-context-blob:sha256:${blob.sha256}`),
+          )
+          expect(JSON.stringify(stored)).toBe(expected)
+        }
+      }),
+    )
+  })
 })

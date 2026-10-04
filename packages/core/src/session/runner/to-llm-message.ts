@@ -276,6 +276,11 @@ function toLLMMessage(message: SessionMessage.Message, model: Model): Message[] 
   }
 }
 
+// Compaction condenses history but does not delete it. Saying so, in the one message that always follows a
+// checkpoint, is what stops the agent from guessing at an exact command, path or error the summary dropped.
+const RECALL_HINT =
+  "The full earlier history is still stored: if the checkpoint leaves out a detail you need, such as an exact command, error or path, and the session_recall tool is available, search for it there instead of guessing or asking the user."
+
 /**
  * A request that ends on a checkpoint is the post-compaction continuation turn:
  * the checkpoint itself disclaims being an instruction ("historical context,
@@ -283,8 +288,8 @@ function toLLMMessage(message: SessionMessage.Message, model: Model): Message[] 
  * obedient move is to stop and ask what to do next. Any later request has real
  * messages after the checkpoint and never carries this.
  */
-const CONTINUE_AFTER_CHECKPOINT = `The checkpoint above ends mid-task. Resume immediately: act on the most recent [User] instruction and the summary's next move without asking for confirmation. If the summary lists Durable Memories and the memory_write tool is available, persist the ones not already stored first — compaction has condensed the history they came from. Ask the user only if you are genuinely blocked on input only they can provide.`
-const CONTINUE_AFTER_MANUAL_CHECKPOINT = `Act on the most recent user instruction. If the checkpoint lists Durable Memories and the memory_write tool is available, persist the ones not already stored first. Do not ask the user to repeat context that is already present in the checkpoint.`
+const CONTINUE_AFTER_CHECKPOINT = `The checkpoint above ends mid-task. Resume immediately: act on the most recent [User] instruction and the summary's next move without asking for confirmation. If the summary lists Durable Memories and the memory_write tool is available, persist the ones not already stored first — compaction has condensed the history they came from. ${RECALL_HINT} Ask the user only if you are genuinely blocked on input only they can provide.`
+const CONTINUE_AFTER_MANUAL_CHECKPOINT = `Act on the most recent user instruction. If the checkpoint lists Durable Memories and the memory_write tool is available, persist the ones not already stored first. Do not ask the user to repeat context that is already present in the checkpoint. ${RECALL_HINT}`
 
 /** Translate projected V2 Session history into canonical @turenlabs/llm context. */
 export const toLLMMessages = (messages: readonly SessionMessage.Message[], model: Model) => {

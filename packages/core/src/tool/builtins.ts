@@ -5,6 +5,7 @@ import { Layer } from "effect"
 import { AutomationTool } from "./automation"
 import { BashTool } from "./bash"
 import { CodeSearchTool } from "./code-search"
+import { ContextTool } from "./context"
 import { ApplyPatchTool } from "./apply-patch"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
@@ -12,6 +13,7 @@ import { GoalTool } from "./goal"
 import { GrepTool } from "./grep"
 import { QuestionTool } from "./question"
 import { ReadTool } from "./read"
+import { RecallTool } from "./recall"
 import { SkillTool } from "./skill"
 import { TodoWriteTool } from "./todowrite"
 import { WebFetchTool } from "./webfetch"
@@ -34,6 +36,7 @@ import { BinwalkScanTools } from "./binwalk-scan-tools"
 import { BinaryDiffTools } from "./binary-diff-tools"
 import { CodecTools } from "./codec-tools"
 import { SourcemapTools } from "./sourcemap-tools"
+import { ScriptDeobfuscateTools } from "./script-deobfuscate-tools"
 import { JsonQueryTools } from "./json-query-tools"
 import { FuzzyHashTools } from "./fuzzy-hash-tools"
 import { CryptoMarkersTools } from "./crypto-markers-tools"
@@ -82,12 +85,14 @@ export const node = makeLocationNode({
     AutomationTool.node,
     BashTool.node,
     CodeSearchTool.node,
+    ContextTool.node,
     EditTool.node,
     GlobTool.node,
     GoalTool.node,
     GrepTool.node,
     QuestionTool.node,
     ReadTool.node,
+    RecallTool.node,
     SkillTool.node,
     TodoWriteTool.node,
     WebFetchTool.node,
@@ -114,6 +119,7 @@ export const node = makeLocationNode({
     BinaryDiffTools.node,
     CodecTools.node,
     SourcemapTools.node,
+    ScriptDeobfuscateTools.node,
     JsonQueryTools.node,
     FuzzyHashTools.node,
     CryptoMarkersTools.node,

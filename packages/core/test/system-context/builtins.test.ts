@@ -6,6 +6,7 @@ import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Location } from "@turenlabs/core/location"
 import { FSUtil } from "@turenlabs/core/fs-util"
 import { Global } from "@turenlabs/core/global"
+import { SessionContextManagement } from "@turenlabs/core/session/context-management"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { SystemContext } from "@turenlabs/core/system-context"
 import { SystemContextBuiltIns } from "@turenlabs/core/system-context/builtins"
@@ -95,6 +96,8 @@ describe("SystemContextBuiltIns", () => {
           "Search memory when prior decisions, constraints, preferences, or diagnosed failures may affect the task.",
           "Write memory only for stable information likely to matter in a later session; do not store secrets, routine progress, transient state, or facts already maintained in source-controlled documentation.",
           "Permanently forget memory only when the user explicitly requests it.",
+          "",
+          SessionContextManagement.GUIDANCE,
           "",
           "Todo workflow:",
           "- When the `todowrite` tool is available, use it for non-trivial work that has multiple concrete steps.",
@@ -188,6 +191,8 @@ describe("SystemContextBuiltIns", () => {
           "Search memory when prior decisions, constraints, preferences, or diagnosed failures may affect the task.",
           "Write memory only for stable information likely to matter in a later session; do not store secrets, routine progress, transient state, or facts already maintained in source-controlled documentation.",
           "Permanently forget memory only when the user explicitly requests it.",
+          "",
+          SessionContextManagement.GUIDANCE,
           "",
           "Todo workflow:",
           "- When the `todowrite` tool is available, use it for non-trivial work that has multiple concrete steps.",

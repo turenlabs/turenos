@@ -1,5 +1,6 @@
 import type { ProviderUsageResponse } from "@turenlabs/sdk/v2/client"
 import { ServerConnection } from "@/context/server"
+import type { ServerCtx } from "@/context/global"
 import type { useAgentsPanel } from "@/components/agents-panel-state"
 
 type Usage = ProviderUsageResponse["providers"][number]
@@ -20,8 +21,14 @@ export function effectiveWorkspaceTab(automationsEnabled: boolean, selected: Wor
 type Panel = ReturnType<typeof useAgentsPanel>
 
 export function providerUsageQuery(panel: Panel) {
-  const connection = panel.focusedServer()
-  const ctx = panel.focusedServerCtx()
+  return providerUsageServerQuery(panel.focusedServer(), panel.focusedServerCtx())
+}
+
+/**
+ * Same query keyed off a bare connection + server context, for consumers that
+ * live outside the agents panel (e.g. the session live dock).
+ */
+export function providerUsageServerQuery(connection: ServerConnection.Any | undefined, ctx: ServerCtx | undefined) {
   const server = connection ? ServerConnection.key(connection) : undefined
   return {
     queryKey: ["provider", "usage", server],

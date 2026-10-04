@@ -110,12 +110,12 @@ test("finds the exact WASM assets referenced by the desktop bundle", async () =>
 
   const assets = await referencedWasmAssets(directory)
   expect(assets).toEqual([
-    path.join("chunks", "tree-sitter-bash-live.wasm"),
-    path.join("chunks", "tree-sitter-live.wasm"),
-    path.join("chunks", "tree-sitter-powershell-live.wasm"),
+    "chunks/tree-sitter-bash-live.wasm",
+    "chunks/tree-sitter-live.wasm",
+    "chunks/tree-sitter-powershell-live.wasm",
   ])
   expect(missingTreeSitterAssets(assets)).toEqual([])
-  expect(missingTreeSitterAssets([path.join("chunks", "tree-sitter-stale.wasm")])).toEqual(["Bash", "PowerShell"])
+  expect(missingTreeSitterAssets(["chunks/tree-sitter-stale.wasm"])).toEqual(["Bash", "PowerShell"])
   await rm(directory, { recursive: true })
 })
 
@@ -171,14 +171,21 @@ for (const channel of channels) {
     expect(config.files).toContain("!out/main/chunks/binary-tools/**/*")
     expect(config.files).toContain("!out/main/chunks/static-analysis/**/*")
     expect(config.files).toContain("!out/main/chunks/forensic-tools/**/*")
+    expect(config.files).toContain("!out/main/server/**/*")
+    expect(config.files).toContain("!resources/bun*")
     expect(config.asarUnpack).toBeUndefined()
     expect(config.publish).toEqual([
       { provider: "github", owner: "turenlabs", repo: "turenos", channel: `latest-${process.arch}` },
     ])
     expect(config.extraResources).toContainEqual({
+      from: "out/main/server/",
+      to: "server/",
+      filter: ["**/*", "!static-unpack/*-source.tar.gz"],
+    })
+    expect(config.extraResources).toContainEqual({
       from: "resources/",
       to: ".",
-      filter: ["forge-cli*", "vigil/**"],
+      filter: ["forge-cli*", "bun*", "vigil/**"],
     })
     expect(config.extraResources).toContainEqual(noticeResource)
     expect(config.extraResources).toContainEqual(thinkingOrbsLicenseResource)

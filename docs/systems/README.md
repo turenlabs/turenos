@@ -12,11 +12,17 @@ its compatibility spelling. See [Branding](../architecture/branding.md).
 
 TurenOS is the user-facing web UI and Desktop application. The `forge` CLI is a supporting utility
 for headless servers, SSH/WSL backends, and backend administration, not a parallel user-facing
-product. Desktop loads its local server directly in an Electron utility process; SSH and managed
+product. Desktop loads its local server directly in a bundled Bun child process; SSH and managed
 WSL backends use the native executable's `serve` command. The CLI row in the catalog below describes commands
 that still exist, not a requirement to preserve a separate CLI product. See
 [Architecture](../architecture/README.md#system-shape) for process boundaries and
 [Branding](../architecture/branding.md#product-and-backend-roles) for naming policy.
+
+The sidecar supervisor uses an absolute bundled Bun executable and JSON IPC.
+Desktop builds download the pinned target Bun package; the app does not download Bun at startup.
+The executable and target-specific native libraries ship outside `app.asar`.
+See [runtime staging](../../packages/desktop/scripts/stage-bun.ts) and
+[packaged runtime details](../architecture/README.md#system-shape).
 
 ```mermaid
 flowchart TB

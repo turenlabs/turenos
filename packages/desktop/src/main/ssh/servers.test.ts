@@ -23,8 +23,9 @@ const ready = (): SshConnection => ({
 })
 
 const deps = {
-  // Paths without a test seam (the post-connect forge check) must fail fast rather than start a
-  // real ssh master that waits on a prompt and outlives the test run.
+  // Never run real SSH. Paths without a test seam (the post-connect forge check, or a cleanup path
+  // that bypasses the injected connection) must fail fast on a missing binary rather than start an
+  // ssh master that waits on a prompt and outlives the test run.
   binary: "/nonexistent/forge-test-ssh",
   controlDir: "/tmp/forge-ssh-test",
   credentialVault: { keyID: "v1", key: new Uint8Array(32) },

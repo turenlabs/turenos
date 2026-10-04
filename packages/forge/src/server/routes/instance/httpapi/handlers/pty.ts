@@ -6,7 +6,7 @@ import { Pty } from "@turenlabs/core/pty"
 import { PtyProtocol } from "@turenlabs/core/pty/protocol"
 import { PtyID } from "@turenlabs/core/pty/schema"
 import { PtyTicket } from "@turenlabs/core/pty/ticket"
-import { LocationServiceMap, locationServiceMapLayer } from "@turenlabs/core/location-services"
+import { LocationServiceMap } from "@turenlabs/core/location-services"
 import { Location } from "@turenlabs/core/location"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { Shell } from "@turenlabs/core/shell"
@@ -161,7 +161,7 @@ export const ptyHandlers = HttpApiBuilder.group(InstanceHttpApi, "pty", (handler
       .handle("remove", remove)
       .handle("connectToken", connectToken)
   }),
-).pipe(Layer.provide(locationServiceMapLayer))
+)
 
 export const ptyConnectHandlers = HttpApiBuilder.group(PtyConnectApi, "pty-connect", (handlers) =>
   Effect.gen(function* () {
@@ -274,4 +274,4 @@ export const ptyConnectHandlers = HttpApiBuilder.group(PtyConnectApi, "pty-conne
       }),
     )
   }),
-).pipe(Layer.provide(locationServiceMapLayer))
+)

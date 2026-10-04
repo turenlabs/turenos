@@ -116,6 +116,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@dnd-kit/solid` | `0.5.0` | MIT | [source](https://github.com/clauderic/dnd-kit) |
 | `@dnd-kit/state` | `0.5.0` | MIT | [source](https://github.com/clauderic/dnd-kit) |
 | `@effect/opentelemetry` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
+| `@effect/platform-bun` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
 | `@effect/platform-node` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
 | `@effect/platform-node-shared` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
 | `@effect/sql-sqlite-bun` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
@@ -214,9 +215,9 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@opentelemetry/sdk-trace-base` | `2.11.0` | Apache-2.0 | [source](open-telemetry/opentelemetry-js) |
 | `@opentelemetry/sdk-trace-node` | `2.11.0` | Apache-2.0 | [source](open-telemetry/opentelemetry-js) |
 | `@opentelemetry/semantic-conventions` | `1.41.1` | Apache-2.0 | [source](open-telemetry/opentelemetry-js) |
-| `@parcel/watcher` | `2.5.1` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
-| `@parcel/watcher-linux-x64-glibc` | `2.5.1` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
-| `@parcel/watcher-linux-x64-musl` | `2.5.1` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
+| `@parcel/watcher` | `2.6.0` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
+| `@parcel/watcher-linux-x64-glibc` | `2.6.0` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
+| `@parcel/watcher-linux-x64-musl` | `2.6.0` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
 | `@pierre/diffs` | `1.2.10` | apache-2.0 | Not declared |
 | `@pierre/theme` | `1.0.3` | MIT | [source](https://github.com/pierrecomputer/theme) |
 | `@pierre/theming` | `0.0.1` | apache-2.0 | Not declared |
@@ -406,7 +407,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `ajv-formats` | `3.0.1` | MIT | [source](git+https://github.com/ajv-validator/ajv-formats.git) |
 | `ansi-regex` | `6.2.2` | MIT | [source](chalk/ansi-regex) |
 | `ansi-styles` | `6.2.3` | MIT | [source](chalk/ansi-styles) |
-| `anymatch` | `3.1.3` | ISC | [source](https://github.com/micromatch/anymatch) |
 | `argparse` | `1.0.10` | MIT | [source](nodeca/argparse) |
 | `argparse` | `2.0.1` | Python-2.0 | [source](nodeca/argparse) |
 | `aria-hidden` | `1.2.6` | MIT | [source](git+https://github.com/theKashey/aria-hidden.git) |
@@ -419,16 +419,13 @@ Each row identifies a resolved package and version, its declared license, and it
 | `before-after-hook` | `4.0.0` | Apache-2.0 | [source](github:gr2m/before-after-hook) |
 | `bignumber.js` | `9.3.1` | MIT | [source](https://github.com/MikeMcl/bignumber.js.git) |
 | `bin-links` | `6.0.2` | ISC | [source](git+https://github.com/npm/bin-links.git) |
-| `binary-extensions` | `2.3.0` | MIT | [source](sindresorhus/binary-extensions) |
 | `body-parser` | `2.3.0` | MIT | [source](expressjs/body-parser) |
 | `bonjour-service` | `1.3.0` | MIT | [source](https://github.com/onlxltd/bonjour-service.git) |
 | `bowser` | `2.14.1` | MIT | [source](git+https://github.com/bowser-js/bowser.git) |
 | `brace-expansion` | `5.0.12` | MIT | [source](git+https://github.com/juliangruber/brace-expansion.git) |
-| `braces` | `3.0.3` | MIT | [source](micromatch/braces) |
 | `browser-fs-access` | `0.29.1` | Apache-2.0 | [source](git+https://github.com/GoogleChromeLabs/browser-fs-access.git) |
 | `buffer-equal-constant-time` | `1.0.1` | BSD-3-Clause | [source](git@github.com:goinstant/buffer-equal-constant-time.git) |
 | `builder-util-runtime` | `9.7.0` | MIT | [source](git+https://github.com/electron-userland/electron-builder.git) |
-| `bun-pty` | `0.4.8` | MIT | [source](git+https://github.com/sursaone/bun-pty.git) |
 | `bundle-name` | `4.1.0` | MIT | [source](sindresorhus/bundle-name) |
 | `bytes` | `3.1.2` | MIT | [source](visionmedia/bytes.js) |
 | `cacache` | `20.0.4` | ISC | [source](git+https://github.com/npm/cacache.git) |
@@ -440,8 +437,8 @@ Each row identifies a resolved package and version, its declared license, and it
 | `character-entities-legacy` | `3.0.0` | MIT | [source](wooorm/character-entities-legacy) |
 | `chevrotain` | `11.0.3` | Apache-2.0 | [source](git://github.com/Chevrotain/chevrotain.git) |
 | `chevrotain-allstar` | `0.3.1` | MIT | [source](https://github.com/langium/chevrotain-allstar) |
-| `chokidar` | `3.6.0` | MIT | [source](git+https://github.com/paulmillr/chokidar.git) |
 | `chokidar` | `4.0.3` | MIT | [source](git+https://github.com/paulmillr/chokidar.git) |
+| `chokidar` | `5.0.0` | MIT | [source](git+https://github.com/paulmillr/chokidar.git) |
 | `chownr` | `3.0.0` | BlueOak-1.0.0 | [source](git://github.com/isaacs/chownr.git) |
 | `ci-info` | `4.4.0` | MIT | [source](github:watson/ci-info) |
 | `cli-truncate` | `4.0.0` | MIT | [source](sindresorhus/cli-truncate) |
@@ -520,7 +517,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `denque` | `2.1.0` | Apache-2.0 | [source](git+https://github.com/invertase/denque.git) |
 | `depd` | `2.0.0` | MIT | [source](dougwilson/nodejs-depd) |
 | `dequal` | `2.0.3` | MIT | [source](lukeed/dequal) |
-| `detect-libc` | `1.0.3` | Apache-2.0 | [source](git://github.com/lovell/detect-libc) |
 | `detect-libc` | `2.1.2` | Apache-2.0 | [source](git://github.com/lovell/detect-libc.git) |
 | `detect-node-es` | `1.1.0` | MIT | [source](https://github.com/thekashey/detect-node) |
 | `devlop` | `1.1.0` | MIT | [source](wooorm/devlop) |
@@ -589,7 +585,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `fastq` | `1.20.1` | ISC | [source](git+https://github.com/mcollina/fastq.git) |
 | `fdir` | `6.5.0` | MIT | [source](git+https://github.com/thecodrr/fdir.git) |
 | `fetch-blob` | `3.2.0` | MIT | [source](https://github.com/node-fetch/fetch-blob.git) |
-| `fill-range` | `7.1.1` | MIT | [source](jonschlinkert/fill-range) |
 | `finalhandler` | `2.1.1` | MIT | [source](pillarjs/finalhandler) |
 | `find-my-way` | `9.9.0` | MIT | [source](git+https://github.com/delvedor/find-my-way.git) |
 | `find-my-way-ts` | `0.1.6` | MIT | [source](git+https://github.com/tim-smart/find-my-way-ts.git) |
@@ -613,7 +608,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `ghostty-web` | `0.3.0` | MIT | [source](https://github.com/coder/ghostty-web.git) |
 | `gitlab-ai-provider` | `6.11.1` | MIT | [source](git+https://gitlab.com/vglafirov/gitlab-ai-provider.git) |
 | `glob` | `13.0.5` | BlueOak-1.0.0 | [source](git@github.com:isaacs/node-glob.git) |
-| `glob-parent` | `5.1.2` | ISC | [source](gulpjs/glob-parent) |
 | `glur` | `1.1.2` | MIT | [source](nodeca/glur) |
 | `google-auth-library` | `10.5.0` | Apache-2.0 | [source](googleapis/google-auth-library-nodejs.git) |
 | `google-logging-utils` | `1.1.3` | Apache-2.0 | [source](https://github.com/googleapis/google-cloud-node-core.git) |
@@ -632,7 +626,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `hosted-git-info` | `9.0.3` | ISC | [source](git+https://github.com/npm/hosted-git-info.git) |
 | `html-void-elements` | `3.0.0` | MIT | [source](wooorm/html-void-elements) |
 | `htmlparser2` | `8.0.2` | MIT | [source](git://github.com/fb55/htmlparser2.git) |
-| `http-cache-semantics` | `4.2.0` | BSD-2-Clause | [source](git+https://github.com/kornelski/http-cache-semantics.git) |
+| `http-cache-semantics` | `4.2.1` | BSD-2-Clause | [source](git+https://github.com/kornelski/http-cache-semantics.git) |
 | `http-errors` | `2.0.1` | MIT | [source](jshttp/http-errors) |
 | `http-proxy-agent` | `7.0.2` | MIT | [source](https://github.com/TooTallNate/proxy-agents.git) |
 | `https-proxy-agent` | `7.0.6` | MIT | [source](https://github.com/TooTallNate/proxy-agents.git) |
@@ -642,7 +636,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `ignore-walk` | `8.0.0` | ISC | [source](git+https://github.com/npm/ignore-walk.git) |
 | `image-blob-reduce` | `3.0.1` | MIT | [source](nodeca/image-blob-reduce) |
 | `immer` | `11.1.4` | MIT | [source](https://github.com/immerjs/immer.git) |
-| `immutable` | `4.3.9` | MIT | [source](git://github.com/immutable-js/immutable-js.git) |
+| `immutable` | `5.1.9` | MIT | [source](git://github.com/immutable-js/immutable-js.git) |
 | `import-meta-resolve` | `4.2.0` | MIT | [source](wooorm/import-meta-resolve) |
 | `inherits` | `2.0.4` | ISC | [source](git://github.com/isaacs/inherits) |
 | `ini` | `6.0.0` | ISC | [source](git+https://github.com/npm/ini.git) |
@@ -653,14 +647,12 @@ Each row identifies a resolved package and version, its declared license, and it
 | `ip-address` | `10.7.1` | MIT | [source](https://github.com/beaugunderson/ip-address.git) |
 | `ipaddr.js` | `1.9.1` | MIT | [source](git://github.com/whitequark/ipaddr.js) |
 | `ipaddr.js` | `2.4.0` | MIT | [source](git://github.com/whitequark/ipaddr.js) |
-| `is-binary-path` | `2.1.0` | MIT | [source](sindresorhus/is-binary-path) |
 | `is-docker` | `3.0.0` | MIT | [source](sindresorhus/is-docker) |
 | `is-extendable` | `0.1.1` | MIT | [source](jonschlinkert/is-extendable) |
 | `is-extglob` | `2.1.1` | MIT | [source](jonschlinkert/is-extglob) |
 | `is-fullwidth-code-point` | `4.0.0` | MIT | [source](sindresorhus/is-fullwidth-code-point) |
 | `is-glob` | `4.0.3` | MIT | [source](micromatch/is-glob) |
 | `is-inside-container` | `1.0.0` | MIT | [source](sindresorhus/is-inside-container) |
-| `is-number` | `7.0.0` | MIT | [source](jonschlinkert/is-number) |
 | `is-plain-obj` | `1.1.0` | MIT | [source](sindresorhus/is-plain-obj) |
 | `is-promise` | `4.0.0` | MIT | [source](https://github.com/then/is-promise.git) |
 | `is-wsl` | `3.1.1` | MIT | [source](sindresorhus/is-wsl) |
@@ -723,7 +715,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `micromark-util-sanitize-uri` | `2.0.1` | MIT | [source](https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri) |
 | `micromark-util-symbol` | `2.0.1` | MIT | [source](https://github.com/micromark/micromark/tree/main/packages/micromark-util-symbol) |
 | `micromark-util-types` | `2.0.2` | MIT | [source](https://github.com/micromark/micromark/tree/main/packages/micromark-util-types) |
-| `micromatch` | `4.0.8` | MIT | [source](micromatch/micromatch) |
 | `mime` | `4.1.0` | MIT | [source](https://github.com/broofa/mime) |
 | `mime-db` | `1.54.0` | MIT | [source](jshttp/mime-db) |
 | `mime-types` | `3.0.2` | MIT | [source](jshttp/mime-types) |
@@ -764,7 +755,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `node-gyp-build` | `4.8.4` | MIT | [source](https://github.com/prebuild/node-gyp-build.git) |
 | `node-gyp-build-optional-packages` | `5.2.2` | MIT | [source](https://github.com/prebuild/node-gyp-build.git) |
 | `nopt` | `9.0.0` | ISC | [source](git+https://github.com/npm/nopt.git) |
-| `normalize-path` | `3.0.0` | MIT | [source](jonschlinkert/normalize-path) |
 | `npm-bundled` | `5.0.0` | ISC | [source](git+https://github.com/npm/npm-bundled.git) |
 | `npm-install-checks` | `8.0.0` | BSD-2-Clause | [source](git+https://github.com/npm/npm-install-checks.git) |
 | `npm-normalize-package-bin` | `5.0.0` | ISC | [source](git+https://github.com/npm/npm-normalize-package-bin.git) |
@@ -801,7 +791,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `perfect-freehand` | `1.2.0` | MIT | [source](https://github.com/steveruizok/perfect-freehand) |
 | `pica` | `7.1.1` | MIT | [source](nodeca/pica) |
 | `picocolors` | `1.1.1` | ISC | [source](alexeyraspopov/picocolors) |
-| `picomatch` | `2.3.2` | MIT | [source](micromatch/picomatch) |
 | `picomatch` | `4.0.4` | MIT | [source](micromatch/picomatch) |
 | `pino` | `10.3.1` | MIT | [source](git+https://github.com/pinojs/pino.git) |
 | `pino-abstract-transport` | `3.0.0` | MIT | [source](git+https://github.com/pinojs/pino-abstract-transport.git) |
@@ -840,8 +829,8 @@ Each row identifies a resolved package and version, its declared license, and it
 | `react-remove-scroll-bar` | `2.3.8` | MIT | [source](https://github.com/theKashey/react-remove-scroll-bar) |
 | `react-style-singleton` | `2.2.3` | MIT | [source](https://github.com/theKashey/react-style-singleton) |
 | `read-cmd-shim` | `6.0.0` | ISC | [source](git+https://github.com/npm/read-cmd-shim.git) |
-| `readdirp` | `3.6.0` | MIT | [source](git://github.com/paulmillr/readdirp.git) |
 | `readdirp` | `4.1.2` | MIT | [source](git://github.com/paulmillr/readdirp.git) |
+| `readdirp` | `5.0.0` | MIT | [source](https://github.com/paulmillr/readdirp.git) |
 | `real-require` | `0.2.0` | MIT | [source](git+https://github.com/pinojs/real-require.git) |
 | `real-require` | `1.0.0` | MIT | [source](git+https://github.com/pinojs/real-require.git) |
 | `redis-errors` | `1.2.0` | MIT | [source](git+https://github.com/NodeRedis/redis-errors.git) |
@@ -865,7 +854,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `safe-regex2` | `5.1.1` | MIT | [source](git://github.com/fastify/safe-regex2.git) |
 | `safe-stable-stringify` | `2.5.0` | MIT | [source](git+https://github.com/BridgeAR/safe-stable-stringify.git) |
 | `safer-buffer` | `2.1.2` | MIT | [source](git+https://github.com/ChALkeR/safer-buffer.git) |
-| `sass` | `1.51.0` | MIT | [source](https://github.com/sass/dart-sass) |
+| `sass` | `1.104.1` | MIT | [source](https://github.com/sass/dart-sass) |
 | `sax` | `1.6.0` | BlueOak-1.0.0 | [source](git+ssh://git@github.com/isaacs/sax-js.git) |
 | `scheduler` | `0.26.0` | MIT | [source](https://github.com/facebook/react.git) |
 | `section-matter` | `1.0.0` | MIT | [source](jonschlinkert/section-matter) |
@@ -936,7 +925,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `tinyglobby` | `0.2.17` | MIT | [source](git+https://github.com/SuperchupuDev/tinyglobby.git) |
 | `tldts` | `7.4.10` | MIT | [source](git+ssh://git@github.com/remusao/tldts.git) |
 | `tldts-core` | `7.4.10` | MIT | [source](git+ssh://git@github.com/remusao/tldts.git) |
-| `to-regex-range` | `5.0.1` | MIT | [source](micromatch/to-regex-range) |
 | `toad-cache` | `3.7.1` | MIT | [source](git+https://github.com/kibertoad/toad-cache.git) |
 | `toidentifier` | `1.0.1` | MIT | [source](component/toidentifier) |
 | `toml` | `4.3.0` | MIT | [source](git://github.com/BinaryMuse/toml-node.git) |
@@ -1019,6 +1007,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `zustand` | `4.5.7` | MIT | [source](git+https://github.com/pmndrs/zustand.git) |
 | `zwitch` | `2.0.4` | MIT | [source](wooorm/zwitch) |
 
-Inventory total: **997 resolved packages**.
+Inventory total: **985 resolved packages**.
 
 This file is regenerated during the desktop prebuild. Do not edit generated inventory content by hand.

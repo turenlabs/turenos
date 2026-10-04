@@ -92,6 +92,23 @@ const OpenAIResponsesInputItem = Schema.Union([
     call_id: Schema.String,
     output: OpenAIResponsesFunctionCallOutput,
   }),
+  // Client-executed tool search. The model asks for tools with `tool_search_call`; the application answers with
+  // `tool_search_output`, whose `tools` are definitions injected at the end of the context window. Appending
+  // them there, instead of changing the request's `tools`, keeps the cached prefix intact.
+  // https://developers.openai.com/api/docs/guides/tools-tool-search
+  Schema.Struct({
+    type: Schema.tag("tool_search_call"),
+    call_id: Schema.String,
+    execution: Schema.Literal("client"),
+    arguments: Schema.Unknown,
+  }),
+  Schema.Struct({
+    type: Schema.tag("tool_search_output"),
+    call_id: Schema.String,
+    status: Schema.Literal("completed"),
+    execution: Schema.Literal("client"),
+    tools: Schema.Array(JsonObject),
+  }),
 ])
 type OpenAIResponsesInputItem = Schema.Schema.Type<typeof OpenAIResponsesInputItem>
 
@@ -111,8 +128,22 @@ const OpenAIResponsesTool = Schema.Struct({
   description: Schema.String,
   parameters: JsonObject,
   strict: Schema.optional(Schema.Boolean),
+  defer_loading: Schema.optional(Schema.Boolean),
 })
 type OpenAIResponsesTool = Schema.Schema.Type<typeof OpenAIResponsesTool>
+
+// Declares that the application searches for tools. Only the client-executed form is supported: the
+// application owns discovery and replies with `tool_search_output`.
+const OpenAIResponsesToolSearch = Schema.Struct({
+  type: Schema.tag("tool_search"),
+  execution: Schema.Literal("client"),
+  description: Schema.String,
+  parameters: JsonObject,
+})
+type OpenAIResponsesToolSearch = Schema.Schema.Type<typeof OpenAIResponsesToolSearch>
+
+/** The tool the model calls to find more tools. Matches the name core registers it under. */
+export const TOOL_SEARCH_TOOL_NAME = "tool_search"
 
 const OpenAIResponsesToolChoice = Schema.Union([
   Schema.Literals(["auto", "none", "required"]),
@@ -127,7 +158,7 @@ const OpenAIResponsesCoreFields = {
   model: Schema.String,
   input: Schema.Array(OpenAIResponsesInputItem),
   instructions: Schema.optional(Schema.String),
-  tools: optionalArray(OpenAIResponsesTool),
+  tools: optionalArray(Schema.Union([OpenAIResponsesTool, OpenAIResponsesToolSearch])),
   tool_choice: Schema.optional(OpenAIResponsesToolChoice),
   store: Schema.optional(Schema.Boolean),
   service_tier: Schema.optional(OpenAIOptions.OpenAIServiceTier),
@@ -181,7 +212,9 @@ const OpenAIResponsesStreamItem = Schema.Struct({
   id: Schema.optional(Schema.String),
   call_id: Schema.optional(Schema.String),
   name: Schema.optional(Schema.String),
-  arguments: Schema.optional(Schema.String),
+  // A string for `function_call`, a JSON object for `tool_search_call`.
+  arguments: Schema.optional(Schema.Unknown),
+  execution: Schema.optional(Schema.String),
   // Hosted (provider-executed) tool fields. Each hosted tool item carries its
   // own subset of these — we capture them generically so we can surface the
   // call's typed input portion and round-trip the full result payload without
@@ -279,6 +312,43 @@ const lowerTool = (tool: ToolDefinition, inputSchema: JsonSchema): OpenAIRespons
   strict: false,
 })
 
+// Native tool search applies only when the caller asked for it and the request actually offers a `tool_search`.
+const toolSearchMode = (request: LLMRequest) =>
+  OpenAIOptions.toolSearch(request) === "client" && request.tools.some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME)
+
+const lowerToolSearch = (tool: ToolDefinition, inputSchema: JsonSchema): OpenAIResponsesToolSearch => ({
+  type: "tool_search",
+  execution: "client",
+  description: tool.description,
+  parameters: ToolSchemaProjection.openAI(inputSchema),
+})
+
+// A `tool_search` result carries the definitions it loaded as `{ name, description, inputSchema }`. They become
+// ordinary function tools marked `defer_loading`, the shape the API expects inside `tool_search_output`.
+const lowerLoadedTools = (
+  part: ToolResultPart,
+  toolSchemaCompatibility: Parameters<typeof ToolSchemaProjection.modelCompatibility>[1],
+) => {
+  const value = part.result.type === "json" ? part.result.value : undefined
+  const tools = ProviderShared.isRecord(value) && Array.isArray(value.tools) ? value.tools : []
+  return tools.flatMap((tool): OpenAIResponsesTool[] => {
+    if (!ProviderShared.isRecord(tool) || typeof tool.name !== "string" || !ProviderShared.isRecord(tool.inputSchema))
+      return []
+    return [
+      {
+        type: "function",
+        name: tool.name,
+        description: typeof tool.description === "string" ? tool.description : "",
+        defer_loading: true,
+        parameters: ToolSchemaProjection.openAI(
+          ToolSchemaProjection.modelCompatibility(tool.inputSchema as JsonSchema, toolSchemaCompatibility),
+        ),
+        strict: false,
+      },
+    ]
+  })
+}
+
 const lowerToolChoice = (toolChoice: NonNullable<LLMRequest["toolChoice"]>) =>
   ProviderShared.matchToolChoice("OpenAI Responses", toolChoice, {
     auto: () => "auto" as const,
@@ -362,6 +432,10 @@ const lowerMessages = Effect.fn("OpenAIResponses.lowerMessages")(function* (requ
     request.system.length === 0 ? [] : [{ role: "system", content: ProviderShared.joinText(request.system) }]
   const input: OpenAIResponsesInputItem[] = [...system]
   const store = OpenAIOptions.store(request)
+  // Calls lowered as `tool_search_call`, so their results lower as `tool_search_output`. Decided per call, not per
+  // name, so a result is never paired with the wrong kind of call.
+  const searching = toolSearchMode(request)
+  const toolSearchCalls = new Set<string>()
   const usedCallIDs = new Set(
     request.messages.flatMap((message) =>
       message.content.flatMap((part) =>
@@ -450,6 +524,16 @@ const lowerMessages = Effect.fn("OpenAIResponses.lowerMessages")(function* (requ
         if (part.type === "tool-call") {
           flushText()
           if (part.providerExecuted === true) continue
+          if (searching && part.name === TOOL_SEARCH_TOOL_NAME) {
+            toolSearchCalls.add(part.id)
+            input.push({
+              type: "tool_search_call",
+              call_id: lowerCallID(part.id),
+              execution: "client",
+              arguments: part.input,
+            })
+            continue
+          }
           input.push(lowerToolCall(part, lowerCallID(part.id)))
           continue
         }
@@ -475,6 +559,16 @@ const lowerMessages = Effect.fn("OpenAIResponses.lowerMessages")(function* (requ
     for (const part of message.content) {
       if (!ProviderShared.supportsContent(part, ["tool-result"]))
         return yield* ProviderShared.unsupportedContent("OpenAI Responses", "tool", ["tool-result"])
+      if (toolSearchCalls.has(part.id)) {
+        input.push({
+          type: "tool_search_output",
+          call_id: lowerCallID(part.id),
+          status: "completed",
+          execution: "client",
+          tools: lowerLoadedTools(part, request.model.compatibility?.toolSchema),
+        })
+        continue
+      }
       input.push({
         type: "function_call_output",
         call_id: lowerCallID(part.id),
@@ -527,9 +621,12 @@ const fromRequest = Effect.fn("OpenAIResponses.fromRequest")(function* (request:
     tools:
       request.tools.length === 0
         ? undefined
-        : request.tools.map((tool) =>
-            lowerTool(tool, ToolSchemaProjection.modelCompatibility(tool.inputSchema, toolSchemaCompatibility)),
-          ),
+        : request.tools.map((tool) => {
+            const schema = ToolSchemaProjection.modelCompatibility(tool.inputSchema, toolSchemaCompatibility)
+            return toolSearchMode(request) && tool.name === TOOL_SEARCH_TOOL_NAME
+              ? lowerToolSearch(tool, schema)
+              : lowerTool(tool, schema)
+          }),
     tool_choice: request.toolChoice ? yield* lowerToolChoice(request.toolChoice) : undefined,
     stream: true as const,
     max_output_tokens: request.model.compatibility?.maxOutputTokens === false ? undefined : generation?.maxTokens,
@@ -603,6 +700,10 @@ const HOSTED_TOOLS = {
 >
 
 type HostedToolType = keyof typeof HOSTED_TOOLS
+
+// `function_call` arguments stream as a JSON string; `tool_search_call` carries an object (see below).
+const functionArguments = (item: OpenAIResponsesStreamItem) =>
+  typeof item.arguments === "string" ? item.arguments : undefined
 
 const isHostedToolItem = (
   item: OpenAIResponsesStreamItem,
@@ -729,7 +830,7 @@ const onOutputItemAdded = (state: ParserState, event: OpenAIResponsesEvent): Ste
       tools: ToolStream.start(state.tools, item.id, {
         id: item.call_id ?? item.id,
         name: item.name ?? "",
-        input: item.arguments ?? "",
+        input: functionArguments(item) ?? "",
         providerMetadata,
       }),
     },
@@ -889,10 +990,11 @@ const onOutputItemDone = Effect.fn("OpenAIResponses.onOutputItemDone")(function*
     const tools = state.tools[item.id]
       ? state.tools
       : ToolStream.start(state.tools, item.id, { id: item.call_id, name: item.name })
+    const args = functionArguments(item)
     const result =
-      item.arguments === undefined
+      args === undefined
         ? yield* ToolStream.finish(ADAPTER, tools, item.id)
-        : yield* ToolStream.finishWithInput(ADAPTER, tools, item.id, item.arguments)
+        : yield* ToolStream.finishWithInput(ADAPTER, tools, item.id, args)
     const events: LLMEvent[] = []
     const resultEvents = result.events ?? []
     const completed = resultEvents.some((event) => LLMEvent.is.toolCall(event) || LLMEvent.is.toolError(event))
@@ -905,6 +1007,32 @@ const onOutputItemDone = Effect.fn("OpenAIResponses.onOutputItemDone")(function*
         hasFunctionCall: completed ? true : state.hasFunctionCall,
         tools: result.tools,
         completedTools: completed ? new Set([...state.completedTools, item.id]) : state.completedTools,
+      },
+      events,
+    ] satisfies StepResult
+  }
+
+  // The model asking us to find tools. It arrives whole, with `arguments` already an object, and is surfaced as an
+  // ordinary client tool call so the caller runs it like any other and replies with its result. Only the
+  // client-executed form is handled: a server-executed search carries its own output and needs no reply.
+  if (item.type === "tool_search_call" && item.execution === "client" && item.call_id) {
+    if (state.completedTools.has(item.call_id)) return [state, NO_EVENTS] satisfies StepResult
+    const events: LLMEvent[] = []
+    const lifecycle = Lifecycle.stepStart(state.lifecycle, events)
+    events.push(
+      LLMEvent.toolCall({
+        id: item.call_id,
+        name: TOOL_SEARCH_TOOL_NAME,
+        input: item.arguments ?? {},
+        ...(item.id ? { providerMetadata: openaiMetadata({ itemId: item.id }) } : {}),
+      }),
+    )
+    return [
+      {
+        ...state,
+        lifecycle,
+        hasFunctionCall: true,
+        completedTools: new Set([...state.completedTools, item.call_id]),
       },
       events,
     ] satisfies StepResult

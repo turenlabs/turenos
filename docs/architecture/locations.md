@@ -22,8 +22,11 @@ flowchart TB
 
 `LayerNode` encodes the graph and checks dependency and scope tags while the graph is built.
 `buildLocationServiceMap` hoists global nodes and constructs one fresh Location layer per reference,
-with an idle lifetime for cached entries. The map is the seam where a future remote placement
-implementation can replace local Location services without changing API contracts.
+with an idle lifetime for cached entries. A reference is its directory plus workspace; an absent
+workspace and an explicitly undefined one are the same reference. The server builds one map, and
+session, file, and PTY routes all read from it, so each directory gets one set of Location services.
+The map is the seam where a future remote placement implementation can replace local Location
+services without changing API contracts.
 
 - [`packages/core/src/effect/layer-node.ts`](../../packages/core/src/effect/layer-node.ts) defines
   dependency checking, tags, hoisting, replacement, and compilation.

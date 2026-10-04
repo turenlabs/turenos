@@ -1,5 +1,5 @@
-// Measures SessionHistory row-decode cost against a real database file: cold read, warm
-// (decode-cache) read, and the toLLMMessages lowering pass, for the largest sessions found.
+// Measures SessionHistory load cost against a real database file: a first read, a second read with
+// the database cache warm, and the toLLMMessages lowering pass, for the largest sessions found.
 //
 //   FORGE_DB=/path/to/forge.db bun run script/bench-history.ts [--sessions 5]
 //
@@ -52,29 +52,27 @@ const program = Effect.gen(function* () {
 
   for (const row of sessions) {
     const sessionID = SessionSchema.ID.make(row.session_id)
-    const before = { ...SessionHistory.decodeStats }
 
+    // Two loads: the first reads cold pages, the second shows the cost with the database cache warm. Nothing is
+    // cached above the database, so the second is what every turn pays.
     let t0 = performance.now()
-    const cold = yield* SessionHistory.entries(db, sessionID)
-    const coldMs = performance.now() - t0
+    yield* SessionHistory.entries(db, sessionID)
+    const firstMs = performance.now() - t0
 
     t0 = performance.now()
-    const warm = yield* SessionHistory.entries(db, sessionID)
-    const warmMs = performance.now() - t0
+    const entries = yield* SessionHistory.entries(db, sessionID)
+    const secondMs = performance.now() - t0
 
     t0 = performance.now()
     const lowered = toLLMMessages(
-      warm.map((entry) => entry.message),
+      entries.map((entry) => entry.message),
       model,
     )
     const lowerMs = performance.now() - t0
 
-    const hits = SessionHistory.decodeStats.hits - before.hits
-    const misses = SessionHistory.decodeStats.misses - before.misses
     console.log(
       `${row.session_id.slice(0, 24)}  rows=${row.n}  json=${(row.bytes / 1048576).toFixed(1)}MB  ` +
-        `cold=${coldMs.toFixed(0)}ms  warm=${warmMs.toFixed(0)}ms  lower=${lowerMs.toFixed(0)}ms  ` +
-        `decodes=${misses} hits=${hits}  llmMsgs=${lowered.length}`,
+        `first=${firstMs.toFixed(0)}ms  second=${secondMs.toFixed(0)}ms  lower=${lowerMs.toFixed(0)}ms  llmMsgs=${lowered.length}`,
     )
   }
 })

@@ -347,7 +347,7 @@ describe("SessionV2 human transcript", () => {
 })
 
 describe("SessionHistory decode cache", () => {
-  it.effect("decodes each landed row once and re-decodes after in-place updates", () =>
+  it.effect("loads the same history each time and shows an in-place update on the next load", () =>
     Effect.gen(function* () {
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
@@ -358,15 +358,11 @@ describe("SessionHistory decode cache", () => {
       }
       yield* SessionInput.promoteSteers(database.db, events, created.id, Number.MAX_SAFE_INTEGER)
 
-      const misses = () => SessionHistory.decodeStats.misses
-      const before = misses()
       const first = yield* SessionHistory.entries(database.db, created.id)
       expect(first).toHaveLength(3)
-      expect(misses() - before).toBe(3)
 
       const second = yield* SessionHistory.entries(database.db, created.id)
       expect(second).toEqual(first)
-      expect(misses() - before).toBe(3)
 
       const target = first[0]?.message
       expect(target?.type).toBe("user")
@@ -387,7 +383,6 @@ describe("SessionHistory decode cache", () => {
       const third = yield* SessionHistory.entries(database.db, created.id)
       const edited = third[0]?.message
       expect(edited?.type === "user" && edited.text).toBe("turn 0 edited")
-      expect(misses() - before).toBe(4)
     }),
   )
 })

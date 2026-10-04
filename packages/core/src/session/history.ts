@@ -10,14 +10,6 @@ type DatabaseService = Database.Interface["db"]
 
 const decode = Schema.decodeUnknownEffect(SessionMessage.Message)
 
-// Decoded messages are immutable once landed, and every write path changes the
-// stored JSON text, so the raw column text is a safe content discriminator. A
-// cache hit skips both the JSON.parse and the schema decode that otherwise run
-// for every row on every drain — the dominant allocation cost on long sessions.
-const decodeCache = new Map<SessionMessage.ID, { data: string; message: SessionMessage.Message }>()
-const DECODE_CACHE_LIMIT = 8192
-
-export const decodeStats = { hits: 0, misses: 0 }
 
 export const latestCompaction = Effect.fnUntraced(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
   const row = yield* db
@@ -112,14 +104,11 @@ type MessageRow = {
   data: string
 }
 
-const decodeMessageRow = (row: MessageRow) => {
-  const cached = decodeCache.get(row.id)
-  if (cached !== undefined && cached.data === row.data) {
-    decodeStats.hits++
-    return Effect.succeed(cached.message)
-  }
-  decodeStats.misses++
-  return decode({ ...JSON.parse(row.data), id: row.id, type: row.type }).pipe(
+// Not cached. A cache of decoded rows (the previous design) held the raw text and the decoded copy of the
+// newest 8,192 rows, about 330 MB of strings and 650,000 objects, to skip 10 to 45 ms of parse and decode per
+// turn on real sessions, next to a database read that it did not skip.
+const decodeMessageRow = (row: MessageRow) =>
+  decode({ ...JSON.parse(row.data), id: row.id, type: row.type }).pipe(
     Effect.mapError(
       () =>
         new MessageDecodeError({
@@ -127,21 +116,7 @@ const decodeMessageRow = (row: MessageRow) => {
           messageID: SessionMessage.ID.make(row.id),
         }),
     ),
-    Effect.tap((message) =>
-      Effect.sync(() => {
-        if (decodeCache.size >= DECODE_CACHE_LIMIT) {
-          // Map iterates in insertion order, so the leading keys are the oldest reads.
-          let drop = Math.ceil(DECODE_CACHE_LIMIT / 10)
-          for (const key of decodeCache.keys()) {
-            if (drop-- <= 0) break
-            decodeCache.delete(key)
-          }
-        }
-        decodeCache.set(row.id, { data: row.data, message })
-      }),
-    ),
   )
-}
 
 export const load = Effect.fn("SessionHistory.load")(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
   return (yield* entries(db, sessionID)).map((entry) => entry.message)

@@ -55,6 +55,7 @@ export const INDEPENDENTLY_VERSIONED_PACKAGE_FILES = [
   "packages/ripgrep-wasm/package.json",
   "packages/rtf-inspect-wasm/package.json",
   "packages/sourcemap-wasm/package.json",
+  "packages/script-deobfuscate-wasm/package.json",
   "packages/sqlite-inspect-wasm/package.json",
   "packages/squashfs-wasm/package.json",
   "packages/static-analysis-wasm/package.json",
@@ -114,6 +115,7 @@ export async function discoverVersionedPackageFiles() {
     "services",
     "target",
     "tools",
+    "vendor",
   ])
 
   async function scan(directory: string, relative: string): Promise<string[]> {

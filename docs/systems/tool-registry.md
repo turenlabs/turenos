@@ -42,6 +42,18 @@ keeps rarely used capabilities out of context. The model finds deferred tools wi
 over the MCP subset. A direct call to a deferred tool that wasn't selected still executes, and any allow rule other than
 the catch-all `*` whose action pattern matches the tool keeps it inline.
 
+### Native tool search
+
+Selecting a tool with `tool_load` changes the request's `tools`, which sit at the front of the cached prefix, so every
+load re-reads the whole window uncached. With `FORGE_NATIVE_TOOL_SEARCH=true`, a turn on the OpenAI Responses route with a
+GPT-5.4 or later model uses the provider's client-executed tool search instead (`packages/core/src/tool/native-tool-search.ts`).
+The request declares `tool_search` once and its advertised tools never change. `tool_search` loads the best matches
+(default 8, at most 20) and returns their definitions, which the protocol sends back as a `tool_search_output` item that
+the provider injects at the end of the context window. `tool_load` is not advertised, loaded tools stay callable but
+are never advertised, and a `tool_search` result is never pruned because it holds those definitions. The flag is off by
+default until `packages/core/script/smoke-tool-search.ts` confirms the backend accepts it. Every other route and model
+keeps the `tool_search` and `tool_load` pair.
+
 ## Interceptors
 
 Registered interceptors run inside settlement, for every call that reaches a real tool (subagent calls included):
@@ -82,6 +94,8 @@ session tools supplied by `SessionToolSnapshot`. The legacy runtime builds its l
 | `code_search`                                                                                  | Ranked code search over the Location index                                                                       | V2            | no                          | `packages/core/src/tool/code-search.ts`                                                                                         |
 | `todowrite`, `question`, `skill`                                                               | Todo list, user questions, skill loading                                                                         | V2 and legacy | no                          | `packages/core/src/tool/todowrite.ts`, `question.ts`, `skill.ts`; `packages/forge/src/tool/todo.ts`, `question.ts`, `skill.ts`  |
 | `get_goal`, `create_goal`, `update_goal`                                                       | Session goal state                                                                                               | V2            | no                          | `packages/core/src/tool/goal.ts`                                                                                                |
+| `session_context`, `session_checkpoint`                                                        | Read context fill, cache state and cost; replace earlier history with an agent-written checkpoint                | V2            | no                          | `packages/core/src/tool/context.ts`                                                                                             |
+| `session_recall`                                                                               | Search this session's own earlier history, even after compaction, and read events around a match                 | V2            | no                          | `packages/core/src/tool/recall.ts`                                                                                              |
 | `reflection_state`, `reflection_read`, `reflection_complete`                                   | Durable predictions and hypotheses                                                                               | V2            | no                          | `packages/core/src/tool/reflection.ts`                                                                                          |
 | `memory_search`, `memory_read`, `memory_write`, `memory_forget`                                | Project [memory](./memory.md)                                                                                    | V2            | `memory_forget` only        | `packages/core/src/tool/memory.ts`                                                                                              |
 | `automation_list`, `automation_create`, `automation_update`                                    | [Automations](./automations/README.md)                                                                           | V2            | yes                         | `packages/core/src/tool/automation.ts`                                                                                          |

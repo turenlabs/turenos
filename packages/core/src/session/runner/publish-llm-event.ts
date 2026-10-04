@@ -179,32 +179,35 @@ const settledOutput = (value: ToolOutput | undefined, result: ToolResultValue): 
 function boundedToolOutput(value: SettledOutput): SettledOutput {
   if ("error" in value) return value
   // Provider-executed results are stored both as display content and as a compatibility result.
-  // Bound the shared display half before the caller derives the second representation.
-  let structured =
-    estimatedJsonBytes({ structured: value.structured, content: [] }, MAX_DURABLE_TOOL_OUTPUT_BYTES) <=
-    MAX_DURABLE_TOOL_OUTPUT_BYTES
-      ? value.structured
-      : { truncated: true }
+  // Bound the shared display half before the caller derives the second representation. Items are
+  // sized once each against the remaining budget — re-walking the whole candidate per item made
+  // large outputs quadratic in both walk time and allocation.
+  let structured = value.structured
+  let size = estimatedJsonBytes({ structured, content: [] }, MAX_DURABLE_TOOL_OUTPUT_BYTES)
+  if (size > MAX_DURABLE_TOOL_OUTPUT_BYTES) {
+    structured = { truncated: true }
+    size = estimatedJsonBytes({ structured, content: [] }, MAX_DURABLE_TOOL_OUTPUT_BYTES)
+  }
   const content: Array<ToolOutput["content"][number]> = []
   const marker = { type: "text" as const, text: DURABLE_TOOL_OUTPUT_TRUNCATION.trimStart() }
+  const remaining = () => MAX_DURABLE_TOOL_OUTPUT_BYTES - size
+  const reset = () => {
+    structured = { truncated: true }
+    content.length = 0
+    content.push(marker)
+  }
 
   for (const item of value.content) {
-    const candidate = { structured, content: [...content, item] }
-    if (estimatedJsonBytes(candidate, MAX_DURABLE_TOOL_OUTPUT_BYTES) <= MAX_DURABLE_TOOL_OUTPUT_BYTES) {
+    const itemBytes = estimatedJsonBytes(item, remaining())
+    if (size + 1 + itemBytes <= MAX_DURABLE_TOOL_OUTPUT_BYTES) {
       content.push(item)
+      size += 1 + itemBytes
       continue
     }
     if (item.type !== "text") {
-      if (
-        estimatedJsonBytes({ structured, content: [...content, marker] }, MAX_DURABLE_TOOL_OUTPUT_BYTES) <=
-        MAX_DURABLE_TOOL_OUTPUT_BYTES
-      )
-        content.push(marker)
-      else {
-        structured = { truncated: true }
-        content.length = 0
-        content.push(marker)
-      }
+      const markerBytes = estimatedJsonBytes(marker, remaining())
+      if (size + 1 + markerBytes <= MAX_DURABLE_TOOL_OUTPUT_BYTES) content.push(marker)
+      else reset()
       break
     }
 
@@ -213,24 +216,14 @@ function boundedToolOutput(value: SettledOutput): SettledOutput {
     while (low < high) {
       const middle = Math.ceil((low + high) / 2)
       const text = `${safePrefix(item.text, middle)}${DURABLE_TOOL_OUTPUT_TRUNCATION}`
-      if (
-        estimatedJsonBytes({ structured, content: [...content, { ...item, text }] }, MAX_DURABLE_TOOL_OUTPUT_BYTES) <=
-        MAX_DURABLE_TOOL_OUTPUT_BYTES
-      )
-        low = middle
+      const bytes = estimatedJsonBytes({ ...item, text }, remaining())
+      if (size + 1 + bytes <= MAX_DURABLE_TOOL_OUTPUT_BYTES) low = middle
       else high = middle - 1
     }
     const text = `${safePrefix(item.text, low)}${DURABLE_TOOL_OUTPUT_TRUNCATION}`
-    if (
-      estimatedJsonBytes({ structured, content: [...content, { ...item, text }] }, MAX_DURABLE_TOOL_OUTPUT_BYTES) <=
-      MAX_DURABLE_TOOL_OUTPUT_BYTES
-    )
-      content.push({ ...item, text })
-    else {
-      structured = { truncated: true }
-      content.length = 0
-      content.push(marker)
-    }
+    const bytes = estimatedJsonBytes({ ...item, text }, remaining())
+    if (size + 1 + bytes <= MAX_DURABLE_TOOL_OUTPUT_BYTES) content.push({ ...item, text })
+    else reset()
     break
   }
 

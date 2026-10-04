@@ -1,13 +1,12 @@
 import "./init-projectors"
 
-import { NodeHttpServer } from "@effect/platform-node"
+import { BunHttpServer } from "@effect/platform-bun"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { memoMap as sharedMemoMap } from "@turenlabs/core/effect/memo-map"
 import { Cause, ConfigProvider, Context, Effect, Exit, Layer, Scope } from "effect"
 import { MCP } from "@/mcp"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
 import { OpenApi } from "effect/unstable/httpapi"
-import { createServer } from "node:http"
 import { performance } from "node:perf_hooks"
 import { MDNS } from "./mdns"
 import { HttpApiApp } from "./routes/instance/httpapi/server"
@@ -69,7 +68,6 @@ type ListenerState = {
   scope: Scope.Scope
   memoMap: Layer.MemoMap
   server: Context.Service.Shape<typeof HttpServer.HttpServer>
-  http: ListenerServer
   websockets: WebSocketTracker.Interface
   securityProxy: SecurityProxyStore.Interface
   database: Database.Interface
@@ -77,12 +75,6 @@ type ListenerState = {
 type EffectListener = Omit<Listener, "stop"> & {
   stop: (close?: boolean) => Effect.Effect<void>
 }
-
-interface ListenerServer {
-  readonly closeAll: Effect.Effect<void>
-}
-
-class ListenerServerService extends Context.Service<ListenerServerService, ListenerServer>()("@forge/ListenerServer") {}
 
 export const Default = lazy(() => {
   const handler = HttpApiApp.webHandler().handler
@@ -233,7 +225,19 @@ function startWithPortFallback(opts: ListenOptions, facts: ServerDescriptor.List
   if (opts.port !== 0) return startListener(opts, opts.port, facts)
   // Match the legacy listener port-resolution behavior: explicit `0` prefers
   // 4096 first, then any free port.
-  return startListener(opts, 4096, facts).pipe(Effect.catch(() => startListener(opts, 0, facts)))
+  return startListener(opts, 4096, facts).pipe(
+    Effect.catchCause((cause) => {
+      if (Cause.hasFails(cause) && !Cause.hasDies(cause) && !Cause.hasInterrupts(cause)) {
+        return startListener(opts, 0, facts)
+      }
+      const reason = cause.reasons.length === 1 ? cause.reasons[0] : undefined
+      const defect = reason && Cause.isDieReason(reason) ? reason.defect : undefined
+      if (defect instanceof Error && "code" in defect && defect.code === "EADDRINUSE") {
+        return startListener(opts, 0, facts)
+      }
+      return Effect.failCause(cause)
+    }),
+  )
 }
 
 /**
@@ -277,7 +281,6 @@ function startListener(opts: ListenOptions, port: number, facts: ServerDescripto
         scope,
         memoMap,
         server: Context.get(ctx, HttpServer.HttpServer),
-        http: Context.get(ctx, ListenerServerService),
         websockets: Context.get(ctx, WebSocketTracker.Service),
         securityProxy: Context.get(ctx, SecurityProxyStore.Service),
         database: Context.get(ctx, Database.Service),
@@ -393,7 +396,7 @@ function makeStop(state: ListenerState, unpublishMdns: Effect.Effect<void>, list
 }
 
 function forceClose(state: ListenerState) {
-  return Effect.all([state.http.closeAll, state.websockets.closeAll], { concurrency: "unbounded", discard: true })
+  return state.websockets.closeAll
 }
 
 function startupTrace(stage: string, startedAt: number) {
@@ -402,30 +405,7 @@ function startupTrace(stage: string, startedAt: number) {
 }
 
 function serverLayer(opts: { port: number; hostname: string }) {
-  const server = createServer()
-  const serverRef = { closeStarted: false, forceStop: false }
-  const close = server.close.bind(server)
-  // Keep shutdown owned by NodeHttpServer, but honor listener.stop(true) by
-  // force-closing active HTTP sockets when its finalizer calls server.close().
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- Node's overloads don't preserve a monkey-patched method assignment.
-  server.close = ((callback?: Parameters<typeof server.close>[0]) => {
-    serverRef.closeStarted = true
-    const result = close(callback)
-    if (serverRef.forceStop) server.closeAllConnections()
-    return result
-  }) as typeof server.close
-
-  return Layer.mergeAll(
-    NodeHttpServer.layer(() => server, { port: opts.port, host: opts.hostname, gracefulShutdownTimeout: "1 second" }),
-    Layer.succeed(ListenerServerService)(
-      ListenerServerService.of({
-        closeAll: Effect.sync(() => {
-          serverRef.forceStop = true
-          if (serverRef.closeStarted) server.closeAllConnections()
-        }),
-      }),
-    ),
-  )
+  return BunHttpServer.layer({ port: opts.port, hostname: opts.hostname, gracefulShutdownTimeout: "1 second" })
 }
 
 export * as Server from "./server"

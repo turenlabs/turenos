@@ -196,13 +196,7 @@ const CLAUDE_TIMEOUT_MS = 5_000
 /** `detached` puts the child in its own process group so teardown reaps grandchildren too. */
 const GROUP_KILL = process.platform !== "win32"
 
-/**
- * `node:child_process`, not `Bun.spawn`. The desktop app runs this server inside
- * an Electron `utilityProcess.fork`, which is plain Node -- `Bun` is undefined
- * there, so a Bun API throws on the first call and the whole Claude Code panel
- * silently reports "Current quota could not be loaded". See the import-boundary
- * test that keeps Bun APIs out of this package's runtime source.
- */
+/** Keep process-group cleanup and bounded output consistent across platforms. */
 function runClaude(executable: string) {
   return new Promise<string>((resolve, reject) => {
     // batou:ignore injection -- `executable` is a `which`-resolved path from a
