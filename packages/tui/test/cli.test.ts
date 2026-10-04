@@ -4,6 +4,8 @@ import { version } from "../package.json"
 import { parseCli } from "../src/cli"
 import { CliError } from "../src/tui-auth"
 
+const nonTty =
+  "The dashboard needs an interactive terminal. For scripts and agents, use the commands in turen-tui --help (e.g. turen-tui sessions --json)."
 const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url))
 
 async function run(args: string[], env: NodeJS.ProcessEnv = {}) {
@@ -257,7 +259,7 @@ describe("CLI entrypoint", () => {
     const result = await run([cli, "--discover-auth"], { FORGE_SERVER_PASSWORD: "test-only-password" })
     expect(result).toEqual({
       stdout: "",
-      stderr: "turen-tui: The TurenOS dashboard requires an interactive terminal on stdin and stdout.\n",
+      stderr: `turen-tui: ${nonTty}\n`,
       exitCode: 1,
     })
   })
@@ -287,7 +289,7 @@ describe("CLI entrypoint", () => {
       const result = await probe(["--discover-auth"], tty)
       expect(result.exitCode).toBe(1)
       expect(result.stdout).toBe("")
-      expect(result.stderr).toBe("The TurenOS dashboard requires an interactive terminal on stdin and stdout.\n")
+      expect(result.stderr).toBe(`${nonTty}\n`)
     })
   }
 

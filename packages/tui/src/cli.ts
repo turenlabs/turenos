@@ -5,6 +5,8 @@ import { dirname } from "node:path"
 import { version } from "../package.json"
 import { CliError, resolveTuiAuth } from "./tui-auth"
 import { checkDirectory } from "./response-validation"
+import { checkUsername, origin } from "./agent/address"
+import { agentOverview, isAgentCommand } from "./agent/words"
 
 const help = `Usage: turen-tui [url] [options]
 
@@ -28,7 +30,9 @@ Password: FORGE_SERVER_PASSWORD only; an explicitly empty value disables auth
 and discovery. There is no password flag. Credentials require HTTPS except for
 HTTP on 127.0.0.1 or [::1]. Saved servers live in
 $XDG_CONFIG_HOME/turen-tui/servers.json and never store passwords.
-Both stdin and stdout must be interactive terminals.`
+The dashboard needs an interactive terminal on stdin and stdout.
+
+${agentOverview}`
 
 export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   try {
@@ -84,30 +88,6 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   }
 }
 
-function origin(address: string) {
-  const url = address.length <= 8192 ? URL.parse(address) : null
-  if (!url || !/^https?:\/\//i.test(address) || (url.protocol !== "http:" && url.protocol !== "https:")) {
-    throw new CliError({
-      message: "The server URL must be a valid http:// or https:// origin (at most 8192 characters).",
-    })
-  }
-  if (url.username || url.password || address.includes("@")) {
-    throw new CliError({ message: "Use --username and FORGE_SERVER_PASSWORD for server authentication." })
-  }
-  // Check the original text too: URL parsing erases empty delimiters, whitespace, and dot segments.
-  if (address.includes("?") || address.includes("#")) {
-    throw new CliError({ message: "The server URL must not include a query string or fragment." })
-  }
-  if (
-    url.pathname !== "/" ||
-    address.trim() !== address ||
-    !/^https?:\/\/[^/\\\s\u0000-\u001f\u007f]+\/?$/i.test(address)
-  ) {
-    throw new CliError({ message: "Use the server's origin URL without a path prefix." })
-  }
-  return url
-}
-
 // Bun exits the process on unhandled rejections and uncaught exceptions, which
 // kills the whole dashboard window and drops every server connection. Log the
 // failure and keep running; the dashboard's own reconnect loops recover.
@@ -130,11 +110,20 @@ process.on("unhandledRejection", (reason) => reportCrash("unhandledRejection", r
 process.on("uncaughtException", (error) => reportCrash("uncaughtException", error))
 
 export async function main(args = process.argv.slice(2)) {
+  if (isAgentCommand(args[0])) {
+    // Agent commands never need a terminal and never load the renderer.
+    const { runAgent, processIo } = await import("./agent")
+    process.exitCode = await runAgent(args, processIo())
+    return
+  }
   const options = parseCli(args)
   if (options.kind === "help") return console.log(help)
   if (options.kind === "version") return console.log(version)
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new CliError({ message: "The TurenOS dashboard requires an interactive terminal on stdin and stdout." })
+    throw new CliError({
+      message:
+        "The dashboard needs an interactive terminal. For scripts and agents, use the commands in turen-tui --help (e.g. turen-tui sessions --json).",
+    })
   }
   // Discovered servers publish their own credentials; only an explicit URL needs these.
   const auth = options.url
@@ -145,14 +134,7 @@ export async function main(args = process.argv.slice(2)) {
         env: process.env,
       })
     : { username: options.username ?? process.env.FORGE_SERVER_USERNAME ?? "forge" }
-  if (
-    !auth.username ||
-    auth.username.length > 512 ||
-    auth.username.includes(":") ||
-    /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(auth.username)
-  ) {
-    throw new CliError({ message: "Use a valid username without ':' or control characters (at most 512 characters)." })
-  }
+  checkUsername(auth.username)
   const { runTui } = await import("./index")
   await runTui(
     options.url && "password" in auth

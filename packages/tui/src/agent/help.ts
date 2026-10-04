@@ -1,0 +1,63 @@
+import type { AgentCommand } from "./words"
+
+const target = `Server options (all commands):
+  --url <origin>      Server to use (else TURENOS_SERVER_URL, else the local TurenOS)
+  --server <name>     A saved server instead
+  --username <name>   Basic auth username (else FORGE_SERVER_USERNAME, else forge)
+  --discover-auth     Discover local auth for http://127.0.0.1:4096 (Linux, same user)
+  --json              Print one JSON document; errors become {"error": {"message"}}
+The password comes only from FORGE_SERVER_PASSWORD. Exit codes: 0 done, 1 failed, 2 usage,
+3 needs input, 4 timeout.`
+
+const commands: Record<AgentCommand, string> = {
+  sessions: `Usage: turen-tui sessions [--dir <path>] [--limit N] [--all]
+
+List recent sessions: id, state, updated time, directory, parent and title.
+State is running, needs-input (a pending permission or question) or idle.
+  --dir <path>   Only sessions in this server directory
+  --limit N      How many to list (1-100, default 30)
+  --all          Include archived sessions`,
+  show: `Usage: turen-tui show <session> [--limit N] [--all] [--raw]
+
+Print the transcript and any pending requests with the commands that resolve them.
+  --limit N   Latest N messages (1-30, default 30)
+  --all       Follow the history to its start, oldest first (at most 2,000 messages)
+  --raw       Show reasoning and tool output as plain text`,
+  send: `Usage: turen-tui send <session> [text | -] [--queue] [--wait] [--timeout S] [--id msg_...]
+       turen-tui send --new [text | -] [--dir D] [--model provider/model] [--variant V] [--agent A]
+                      [--wait] [--timeout S] [--id msg_...] [--session-id ses_...]
+
+Reply to a session, or start one with --new. The text is the argument, or stdin for "-" or no
+argument. A leading / runs a server command and a leading ! runs a shell command on the server;
+neither supports --queue. Delivery is steer unless --queue.
+  --wait        Wait for the reply (exit 3 if the session needs input, 4 on timeout)
+  --timeout S   Seconds to wait, default 600, 0 for no limit
+  --id          Message ID. After "Outcome unknown", retry with the same ID: the server drops duplicates
+  --allow-outside   Attach @file mentions that leave the session directory`,
+  wait: `Usage: turen-tui wait <session> [--timeout S]
+
+Block until the session is idle (prints its last reply) or needs input (prints the requests, exit 3).
+Exit 4 on timeout (default 600 s, 0 for no limit).`,
+  pending: `Usage: turen-tui pending [<session>]
+
+List pending permissions and questions for one session, or for every running session.`,
+  approve: `Usage: turen-tui approve <session> <permission-id> [--always]
+
+Allow a permission request once. --always also saves the rule the request offers.`,
+  reject: `Usage: turen-tui reject <session> <permission-id>
+
+Reject a permission request.`,
+  answer: `Usage: turen-tui answer <session> <question-id> (--choice <label>... | --answers <json> | --reject)
+
+  --choice <label>   For a request with one question; repeat it to select several options
+  --answers <json>   A JSON array with one array of labels per question, e.g. '[["Red"],["Yes"]]'
+  --reject           Dismiss the question
+A label outside the options is accepted only when the question allows custom answers.`,
+  stop: `Usage: turen-tui stop <session> [--tasks]
+
+Interrupt the session's current work. --tasks also cancels its active subagent tasks.`,
+}
+
+export function commandHelp(command: AgentCommand) {
+  return `${commands[command]}\n\n${target}\n`
+}
