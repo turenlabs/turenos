@@ -48,35 +48,38 @@ const isToolResultValue = (value: unknown): value is ToolResultValue =>
   (value.type === "text" || value.type === "json" || value.type === "error" || value.type === "content") &&
   "value" in value
 
-export const ToolResultValue = Object.assign(
-  Schema.Union([
-    Schema.Struct({
-      type: Schema.Literal("json"),
-      value: Schema.Unknown,
-    }),
-    Schema.Struct({
-      type: Schema.Literal("text"),
-      value: Schema.Unknown,
-    }),
-    Schema.Struct({
-      type: Schema.Literal("error"),
-      value: Schema.Unknown,
-    }),
-    Schema.Struct({
-      type: Schema.Literal("content"),
-      value: Schema.Array(ToolContent),
-    }),
-  ]).annotate({ identifier: "LLM.ToolResult" }),
-  {
-    is: isToolResultValue,
-    make: (value: unknown, type: ToolResultValue["type"] = "json"): ToolResultValue => {
-      if (isToolResultValue(value)) return value
-      if (type === "content") return { type, value: Array.isArray(value) ? value : [] }
-      return { type, value }
-    },
+// The type derives from the bare schema, not from the merged const below: `make` and `is` mention
+// `ToolResultValue`, so deriving it from the const makes the alias circular with its own initializer.
+// tsgo resolves that differently per checker, and a checker that enters the cycle from the alias
+// leaves the schema's services as `any`, which fails `Schema.encodeSync(Message)` with TS2345.
+const toolResultValueSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("json"),
+    value: Schema.Unknown,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("text"),
+    value: Schema.Unknown,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("error"),
+    value: Schema.Unknown,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("content"),
+    value: Schema.Array(ToolContent),
+  }),
+]).annotate({ identifier: "LLM.ToolResult" })
+export type ToolResultValue = Schema.Schema.Type<typeof toolResultValueSchema>
+
+export const ToolResultValue = Object.assign(toolResultValueSchema, {
+  is: isToolResultValue,
+  make: (value: unknown, type: ToolResultValue["type"] = "json"): ToolResultValue => {
+    if (isToolResultValue(value)) return value
+    if (type === "content") return { type, value: Array.isArray(value) ? value : [] }
+    return { type, value }
   },
-)
-export type ToolResultValue = Schema.Schema.Type<typeof ToolResultValue>
+})
 
 export interface ToolOutput {
   readonly structured: unknown
