@@ -16,7 +16,7 @@
     "./index.css": "./src/index.css"
   },
   "scripts": {
-    "typecheck": "tsgo -b",
+    "typecheck": "tsgo -b --force",
     "start": "vite",
     "dev": "vite",
     "build": "vite build",
