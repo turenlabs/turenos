@@ -1091,4 +1091,4 @@ export const iconNames = [
   "3d",
 ] as const
 
-export type IconName = (typeof iconNames)[number]
+export type IconName = typeof iconNames[number]

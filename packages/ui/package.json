@@ -60,7 +60,8 @@
     "test": "bun test src --only-failures",
     "dev": "vite",
     "generate:tailwind": "bun run script/tailwind.ts",
-    "generate:v2-oc2": "bun run script/build-oc2-v2-overrides.ts"
+    "generate:v2-oc2": "bun run script/build-oc2-v2-overrides.ts",
+    "generate:provider-icons": "bun run script/provider-icons.ts"
   },
   "devDependencies": {
     "@solidjs/meta": "catalog:",

@@ -19,6 +19,7 @@ export const iconNames = [
   "tencent-coding-plan",
   "synthetic",
   "submodel",
+  "subconscious",
   "stepfun",
   "stackit",
   "siliconflow",
@@ -109,4 +110,4 @@ export const iconNames = [
   "302ai",
 ] as const
 
-export type IconName = (typeof iconNames)[number]
+export type IconName = typeof iconNames[number]

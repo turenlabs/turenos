@@ -1,26 +1,24 @@
 import { defineConfig } from "vite"
 import solidPlugin from "vite-plugin-solid"
 import { iconsSpritesheet } from "vite-plugin-icons-spritesheet"
-import fs from "fs"
 
-const excludedProviderIcons = new Set<string>()
-
+// The plugin regenerates on every SVG change, without batching. With `formatter: "prettier"` each
+// regeneration also starts one process per generated file, so a burst of icon changes (a branch
+// switch, `generate:provider-icons`) started hundreds at once. Without a formatter it regenerates
+// in-process; the outputs are listed in .prettierignore instead.
 export default defineConfig({
   plugins: [
     solidPlugin(),
-    providerIconsPlugin(),
     iconsSpritesheet([
       {
         withTypes: true,
         inputDir: "src/assets/icons/file-types",
         outputDir: "src/components/file-icons",
-        formatter: "prettier",
       },
       {
         withTypes: true,
         inputDir: "src/assets/icons/provider",
         outputDir: "src/components/provider-icons",
-        formatter: "prettier",
         iconNameTransformer: (iconName) => iconName,
       },
     ]),
@@ -33,29 +31,3 @@ export default defineConfig({
     format: "es",
   },
 })
-
-function providerIconsPlugin() {
-  return {
-    name: "provider-icons-plugin",
-    configureServer() {
-      void fetchProviderIcons()
-    },
-    buildStart() {
-      void fetchProviderIcons()
-    },
-  }
-}
-
-async function fetchProviderIcons() {
-  const url = process.env.FORGE_MODELS_URL || "https://models.dev"
-  const providers = await fetch(`${url}/api.json`)
-    .then((res) => res.json())
-    .then((json) => Object.keys(json).filter((provider) => !excludedProviderIcons.has(provider)))
-  await Promise.all(
-    providers.map((provider) =>
-      fetch(`${url}/logos/${provider}.svg`)
-        .then((res) => res.text())
-        .then((svg) => fs.writeFileSync(`./src/assets/icons/provider/${provider}.svg`, svg)),
-    ),
-  )
-}
