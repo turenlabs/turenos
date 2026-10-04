@@ -10,7 +10,7 @@
   "scripts": {
     "generate": "bun run script/generate.ts",
     "check": "bun run script/generate.ts --check",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsgo --noEmit --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo --checkers 1",
     "test": "bun test"
   },
   "dependencies": {

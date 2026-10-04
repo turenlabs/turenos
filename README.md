@@ -79,7 +79,8 @@ bun dev                 # TurenOS Desktop
 Common tasks:
 
 ```bash
-bun run lint            # repo-wide lint (warnings allowed, errors fail)
+bun run lint            # repo-wide lint without type information, about a second
+bun run lint:types      # adds the type-aware rules CI runs; needs about 9 GB (warnings allowed, errors fail)
 bun run verify:wasm     # validate packages/*-wasm checksum manifests
 
 # Rebuild a WASM tool into packages/<target>-wasm (needs its toolchain;

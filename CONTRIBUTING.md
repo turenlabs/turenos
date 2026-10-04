@@ -31,12 +31,15 @@ bun --cwd packages/desktop build
 Common checks:
 
 ```bash
-bun run lint
+bun run lint                           # without type information; fast
+bun run lint:types                     # adds the type-aware rules CI runs; needs about 9 GB
 bun run license:check                  # third-party license inventory; `bun run license:generate` rewrites it
 bun --cwd packages/desktop typecheck
 bun --cwd packages/app typecheck
 bun --cwd packages/forge typecheck
 ```
+
+`bun typecheck` is incremental after its first run in a package.
 
 Run `bun typecheck` from a package folder; don't call `tsc` directly. To work on the web UI without Electron, start the
 backend from `packages/forge` with `bun run --conditions=browser ./src/index.ts serve --port 4096`, then run
