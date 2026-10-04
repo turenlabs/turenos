@@ -32,7 +32,13 @@ function literalBrackets(text: string) {
   return fenceJson(text)
     .split(/(```[\s\S]*?```|`+[^`\n]*`+)/g)
     .map((piece, i) =>
-      i % 2 === 1 ? piece : piece.replace(/(^|[^\\!`\]])\[([^[\]\n`]{1,200})\](?![(:[])/g, "$1`[$2]`"),
+      i % 2 === 1
+        ? piece
+        : piece
+            .replace(/(^|[^\\!`\]])\[([^[\]\n`]{1,200})\](?![(:[])/g, "$1`[$2]`")
+            // The paragraph highlighter reads `_` before a digit as emphasis even inside a word, so
+            // `ses_4ab6 … msg_01` turned italic and lost both underscores. A code span keeps the text.
+            .replace(/(?<![\w`/:(=.-])([A-Za-z][\w.-]*_\d[\w.-]*)(?![\w`/(])/g, "`$1`"),
     )
     .join("")
 }

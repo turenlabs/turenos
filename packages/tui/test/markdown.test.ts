@@ -303,3 +303,16 @@ test("a role chip renders its words in the accent colour without backticks", asy
     .find((span) => span.text.includes("USER"))
   expect(user?.fg).toEqual(RGBA.fromHex(color.accent))
 })
+
+test("identifiers with an underscore before a digit keep their underscores; real emphasis still works", async () => {
+  expect(normalizeMarkdown("ids ses_4ab6 and msg_01 here")).toBe("ids `ses_4ab6` and `msg_01` here")
+  expect(normalizeMarkdown("snake_case_name and _real emphasis_")).toBe("snake_case_name and _real emphasis_")
+  expect(normalizeMarkdown("[docs](https://x.test/a_1/b) and src/file_1.ts")).toBe(
+    "[docs](https://x.test/a_1/b) and src/file_1.ts",
+  )
+  const view = await setup()
+  view.markdown.content = "ids ses_4ab6 and msg_01 here\nthen _real emphasis_ end"
+  const frame = await rendered(view, "end")
+  expect(frame).toContain("ids ses_4ab6 and msg_01 here")
+  expect(frame).toContain("then real emphasis end")
+})
