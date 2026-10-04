@@ -145,6 +145,7 @@ sh ~/.forge/bin/forge-remote stop
 sudo install -d -m 700 /root/turenos-import
 sudo cp -a --no-preserve=ownership ~/.local/share/forge /root/turenos-import/data   # forge.db, -wal, snapshots, plans, ...
 sudo cp -a --no-preserve=ownership ~/.config/forge /root/turenos-import/config      # optional: config, agents, MCP servers
+sudo chmod -R go-w /root/turenos-import                                             # cp -a keeps directory modes; see below
 printf '%s\n%s\n' "$KEY_ID" "$KEY_BASE64" | sudo forge persistent install --user alice --apply \
   --key-stdin --import-db /root/turenos-import/data/forge.db \
   --import-data /root/turenos-import/data --import-config /root/turenos-import/config
@@ -157,17 +158,23 @@ three, or accept that history diffs and reverts fail for older sessions and that
 configuration. `--import-data` skips database files (they come from `--import-db`), `log`, and `repos` (a regenerable
 clone cache). Nothing from `~/.cache` or `~/.local/state` is needed.
 
-Every `--import-*` source must sit in a directory another account cannot write, because root reads it. For
-`--import-data` and `--import-config`, the staged directory and every entry under it must also be owned by root, and no
-directory in it may be group- or other-writable; `install` refuses the import otherwise (copy with root ownership, not
-`cp -a` as a user): SQLite running
-as root follows the WAL, SHM, and lock file names beside a database and changes the ownership of what it opens, and a
-tree copy must not have entries swapped under it. `--import-db` verifies the key against the source, then takes the
-source's owner lock, which refuses a server still running on it. It copies the database with `VACUUM INTO` into the
-pinned data root and leaves the original untouched as rollback material, apart from removing the owner lock files the
-import itself created beside it. It applies pending schema migrations to the
-verified destination, then **promotes** the copy: the owner
-record becomes `persistent` for the new server ID. Older quick-connect binaries don't take the owner lock, so always
+Every `--import-*` source must sit in a directory another account cannot write, because root reads it: its parent and
+every directory above that must be writable only by root. SQLite running as root follows the WAL, SHM, and lock file
+names beside a database and changes the ownership of what it opens, so `--import-db` needs the copied database and its
+`-wal` file in such a directory.
+
+`--import-data` and `--import-config` copy a whole tree, so they check it first and refuse the import otherwise. The
+staged directory and every copied entry under it (not the skipped `log`, `repos`, and database files) must be owned by
+root, and no directory in it may be group- or other-writable, so the account whose data this is cannot swap entries
+under root while they are copied. `cp -a` keeps directory modes, and on a host with umask 002 (the user-private groups
+on Debian and Ubuntu) a user's directories are `0775`. Copy as root, as above, and run `chmod -R go-w` on the staging
+directory afterwards.
+
+`--import-db` verifies the key against the source, then takes the source's owner lock, which refuses a server still
+running on it. It copies the database with `VACUUM INTO` into the pinned data root and leaves the original untouched as
+rollback material, apart from removing the owner lock files the import itself created beside it. It applies pending
+schema migrations to the verified destination, then **promotes** the copy: the owner record becomes `persistent` for
+the new server ID. Older quick-connect binaries don't take the owner lock, so always
 stop the daemon first. Because the promoted data lives outside the default path, an older desktop can only start a
 separate, empty quick-connect server. It can never open the promoted database.
 
