@@ -16,8 +16,32 @@ export function normalizeMarkdown(text: string): string {
     .map((part, i) => {
       if (i % 2 === 1) return part
       // "[completed] bash" and "[x] task" rows are status text; Markdown reads them as a link and conceals the brackets, so keep them in a code span.
-      const rows = part.replace(/^([ \t]*)\[([^\]\n]{1,40})\](?=[ \t]|$)/gm, "$1`[$2]`")
+      const rows = literalBrackets(part.replace(/^([ \t]*)\[([^\]\n]{1,40})\](?=[ \t]|$)/gm, "$1`[$2]`"))
       return rows.replace(/^([ \t]*(?:\d+[.)]|[-*+]))[ \t]*\n(?!\n)(?![ \t]*(?:\d+[.)]|[-*+])\s)[ \t]*(?=\S)/gm, "$1 ")
     })
     .join("")
+}
+
+/**
+ * A bracketed span with no link target is text, but OpenTUI's Markdown conceals its brackets and
+ * styles it as a link label (a JSON array in a reply reads as one underlined link), and it prints
+ * backslash escapes literally. So JSON standing on its own lines becomes a fenced json block, and an
+ * inline `[text]` not followed by `(`, `:` or `[` becomes a code span, as status rows already are.
+ */
+function literalBrackets(text: string) {
+  return fenceJson(text)
+    .split(/(```[\s\S]*?```|`+[^`\n]*`+)/g)
+    .map((piece, i) =>
+      i % 2 === 1 ? piece : piece.replace(/(^|[^\\!`\]])\[([^[\]\n`]{1,200})\](?![(:[])/g, "$1`[$2]`"),
+    )
+    .join("")
+}
+
+/** A line that is only `[` or `{`, through the first unindented line that closes it. */
+function fenceJson(text: string) {
+  return text.replace(
+    /^([[{])[ \t]*\n([\s\S]*?)\n([\]}])[ \t]*$/gm,
+    (block, open: string, body: string, close: string) =>
+      (open === "[") === (close === "]") ? `\`\`\`json\n${open}\n${body}\n${close}\n\`\`\`` : block,
+  )
 }

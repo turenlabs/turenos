@@ -267,3 +267,26 @@ test("normalizeMarkdown keeps status-row brackets and leaves links and code alon
   )
   expect(normalizeMarkdown("```\n[x] code\n```")).toBe("```\n[x] code\n```")
 })
+
+test("a bracketed span with no link target keeps its brackets and plain style", async () => {
+  const view = await setup()
+  view.markdown.content =
+    'Done: it returned:\n\n[\n  {\n    "status": "completed"\n  }\n]\n\nSee [the docs](https://x.test) and [note] here.'
+  const frame = await rendered(view, "here.")
+  expect(frame).toMatch(/^\[ *$/m)
+  expect(frame).toContain('"status": "completed"')
+  expect(frame).toMatch(/^\] *$/m)
+  expect(frame).toContain("[note] here.")
+  expect(frame).toContain("the docs")
+  expect(frame).not.toContain("[the docs]")
+})
+
+test("normalizeMarkdown keeps target-less brackets as text: JSON blocks fenced, inline spans as code", () => {
+  expect(normalizeMarkdown('Result:\n\n[\n  {"a": [1, 2]}\n]')).toBe('Result:\n\n```json\n[\n  {"a": [1, 2]}\n]\n```')
+  expect(normalizeMarkdown("a [note] b, `[kept]`, ![img](x.png), [docs](https://x.test) [r][ref]")).toBe(
+    "a `[note]` b, `[kept]`, ![img](x.png), [docs](https://x.test) [r][ref]",
+  )
+  expect(normalizeMarkdown("```\n[x] code\n```\n[y] text")).toBe("```\n[x] code\n```\n`[y]` text")
+  expect(normalizeMarkdown("already \\[escaped] and an [open bracket")).toBe("already \\[escaped] and an [open bracket")
+  expect(normalizeMarkdown('{\n  "a": 1\n]')).toBe('{\n  "a": 1\n]')
+})
