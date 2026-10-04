@@ -242,6 +242,8 @@ jobs:
         uses: ./.github/actions/setup-bun
         with:
           install-flags: --frozen-lockfile
+          # Restoring the cache takes longer than downloading on Windows, as in the unit jobs above.
+          dependency-cache: ${{ runner.os != 'Windows' }}
       - name: Verify Bun native terminal
         run: bun --cwd packages/script test ../core/test/pty/native-terminal.test.ts --timeout 15000
       - name: Build Forge Bun backend

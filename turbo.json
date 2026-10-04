@@ -3,7 +3,10 @@
   "globalEnv": ["CI"],
   "globalPassThroughEnv": ["CI"],
   "tasks": {
-    "typecheck": {},
+    // Each package type-checks its workspace dependencies' source, but this task's hash covers only its own files,
+    // so a cached pass can hide errors a dependency change caused. Re-enable caching once "dependsOn": ["^typecheck"]
+    // works, which needs the core -> codemode -> server -> core package cycle broken.
+    "typecheck": { "cache": false },
     "build": {
       "dependsOn": [],
       "outputs": ["dist/**"]
