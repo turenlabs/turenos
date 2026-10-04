@@ -110,6 +110,9 @@ export function parseSystemdVersion(output: string) {
 
 /** The unit reads every secret through systemd credentials; nothing secret is in the unit text. */
 export function unit(plan: Plan) {
+  // A newline in any value would start a new unit line, so this holds even for a caller that skipped validate().
+  const unsafe = Object.entries(plan).find(([, value]) => typeof value === "string" && /[\x00-\x1f\x7f]/.test(value))
+  if (unsafe) throw new Error(`refusing to render a unit: ${unsafe[0]} contains a control character`)
   const encrypted = (name: string) => join(plan.credstoreEncrypted, name)
   return [
     "[Unit]",
@@ -180,7 +183,7 @@ const SERVER_ID = /^[A-Za-z0-9._-]{1,128}$/
 // Values are written into a systemd unit, so anything that could split or reinterpret a line is refused.
 const UNIT_PATH = /^(\/[A-Za-z0-9._+-]+)+$/
 
-function validate(plan: Plan) {
+export function validate(plan: Plan) {
   const problems: string[] = []
   if (!USER_NAME.test(plan.user)) problems.push(`invalid service user name: ${plan.user}`)
   if (!SERVER_ID.test(plan.serverID)) problems.push(`server ID may contain only letters, digits, ".", "_", and "-"`)

@@ -154,12 +154,22 @@ const PreflightCommand = cmd<{}, PlanArgs>({
   },
 })
 
+/** The unit text for `forge persistent unit`; an operator may install it by hand, so it gets install's checks. */
+export async function renderUnit(args: PlanArgs, runner = PersistentLinux.run) {
+  const { target, shown, conflicts } = await plan(args, runner)
+  const problems = [...conflicts, ...PersistentLinux.validate(target)]
+  // On stderr: stdout carries the unit, and a redirect must never capture problem lines.
+  for (const problem of problems) console.error(`Problem:      ${problem}`)
+  if (problems.length) throw refuse("the unit was not printed")
+  return PersistentLinux.unit(shown)
+}
+
 const UnitCommand = cmd<{}, PlanArgs>({
   command: "unit",
   describe: "print the systemd unit for a persistent server",
   builder: planOptions as never,
   async handler(args) {
-    process.stdout.write(PersistentLinux.unit((await plan(args)).shown))
+    process.stdout.write(await renderUnit(args))
   },
 })
 

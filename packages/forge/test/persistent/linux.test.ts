@@ -10,7 +10,15 @@ import { ServerOwner } from "@turenlabs/core/database/server-owner"
 import { VaultVerification } from "@turenlabs/core/database/vault-verification"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 import { PersistentLinux } from "@/persistent/linux"
-import { activate, installLocked, keyFromText, placeDatabase, resolveKey, withInstallLock } from "@/cli/cmd/persistent"
+import {
+  activate,
+  installLocked,
+  keyFromText,
+  placeDatabase,
+  renderUnit,
+  resolveKey,
+  withInstallLock,
+} from "@/cli/cmd/persistent"
 import { tmpdir } from "../fixture/fixture"
 
 const plan: PersistentLinux.Plan = {
@@ -127,6 +135,33 @@ describe("PersistentLinux", () => {
     expect(problems({}, { forgeBinSafe: false })).toEqual([
       "/usr/local/bin/forge must be a root-owned file in directories writable only by root; pass --forge-bin",
     ])
+  })
+
+  test("the unit refuses a control character in any value, so no caller can split a line", () => {
+    expect(() => PersistentLinux.unit({ ...plan, user: "alice\nExecStartPre=/bin/sh -c id" })).toThrow(
+      "user contains a control character",
+    )
+    expect(() => PersistentLinux.unit({ ...plan, forgeBin: "/usr/local/bin/forge\r" })).toThrow(
+      "forgeBin contains a control character",
+    )
+    expect(() => PersistentLinux.unit({ ...plan, serverID: "srv_test\0" })).toThrow("serverID")
+    // The dry run and `unit` show a fresh server's ID as a placeholder, which is not a control character.
+    expect(PersistentLinux.unit({ ...plan, serverID: "<assigned by install --apply>" })).toContain(
+      "Environment=FORGE_SERVER_ID=<assigned by install --apply>\n",
+    )
+  })
+
+  test("the unit command checks its plan like install and prints nothing for an unsafe one", async () => {
+    const passwd = async () => ({ code: 0, stdout: "turen:x:1000:1000::/home/turen:/bin/sh\n", stderr: "" })
+    const forgeBin = "/opt/test-forge/bin/forge"
+    const args = { "server-id": "srv_test", "data-root": "/var/lib/turenos", port: 4096, "forge-bin": forgeBin }
+    expect(await renderUnit({ ...args, user: "turen" }, passwd)).toBe(PersistentLinux.unit({ ...plan, forgeBin }))
+    for (const unsafe of [
+      { user: "alice\nExecStartPre=/bin/sh -c id" },
+      { user: "turen", "data-root": "/var/lib/x\nExecStartPre=/bin/sh" },
+      { user: "turen", port: 80 },
+    ])
+      await expect(renderUnit({ ...args, ...unsafe }, passwd)).rejects.toThrow("the unit was not printed")
   })
 
   test("the data root cannot redirect root through planted links", async () => {
