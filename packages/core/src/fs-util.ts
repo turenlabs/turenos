@@ -1,5 +1,5 @@
 import { NodeFileSystem } from "@effect/platform-node"
-import { dirname, isAbsolute, join, relative, resolve as pathResolve, sep } from "path"
+import { dirname, extname, isAbsolute, join, relative, resolve as pathResolve, sep } from "path"
 import { realpathSync } from "fs"
 import * as NFS from "fs/promises"
 import { lookup } from "mime-types"
@@ -220,9 +220,18 @@ export namespace FSUtil {
 
   export const node = makeGlobalNode({ service: Service, layer: layer, deps: [filesystem] })
 
+  // mime-types maps .ts and .mts to MPEG transport streams (video/mp2t). In a workspace they are
+  // TypeScript, and a video type makes the runner send the source to the provider as media.
+  const sourceTypes: Record<string, string> = {
+    ".ts": "text/x-typescript",
+    ".mts": "text/x-typescript",
+    ".cts": "text/x-typescript",
+    ".tsx": "text/x-typescript",
+  }
+
   // Pure helpers that don't need Effect (path manipulation, sync operations)
   export function mimeType(p: string): string {
-    return lookup(p) || "application/octet-stream"
+    return sourceTypes[extname(p).toLowerCase()] ?? (lookup(p) || "application/octet-stream")
   }
 
   export function normalizePath(p: string): string {
