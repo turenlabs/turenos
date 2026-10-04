@@ -87,6 +87,13 @@ package versions and environment policy; manifests do not gain arbitrary process
 [`packages/forge/src/mcp/integration.ts`](../../packages/forge/src/mcp/integration.ts), and
 [`packages/forge/src/mcp/package-runtime.ts`](../../packages/forge/src/mcp/package-runtime.ts).
 
+`MCP.authenticate` accepts only HTTP(S) authorization URLs before passing them to its authorization callback or
+browser launcher. A non-HTTP(S) URL reaching this check fails with `Authorization URL must be http(s)` and discards the
+pending transport, callback wait, OAuth state, and PKCE verifier. Invalid authorization metadata can fail earlier during SDK discovery;
+that failure also closes the transport and clears the attempt's OAuth state and verifier. This scheme check is not a
+host allowlist or a guarantee about later browser redirects. See
+[`packages/forge/src/mcp/index.ts`](../../packages/forge/src/mcp/index.ts).
+
 ## Event and sync boundary
 
 `EventV2Bridge` attaches a Location to direct product events and publishes them to the local event

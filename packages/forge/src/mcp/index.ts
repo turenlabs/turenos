@@ -1696,9 +1696,23 @@ const layer = (allowUnmanaged: boolean, managedRetryMs = MANAGED_RETRY_MS) =>
           Effect.andThen(auth.clearOAuthState(mcpName)),
           Effect.andThen(auth.clearCodeVerifier(mcpName)),
         )
+        // The server's metadata chose this URL, and `open` hands any scheme to the OS: a hosted MCP
+        // must not get to launch a local protocol handler or a file: target.
+        const authorization = yield* Effect.try({
+          try: () => new URL(result.authorizationUrl),
+          catch: () => undefined,
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (
+          authorization === undefined ||
+          (authorization.protocol !== "https:" && authorization.protocol !== "http:")
+        ) {
+          yield* cleanup
+          yield* Effect.logError("MCP OAuth authorization URL rejected", { mcpName })
+          return { status: "failed", error: "Authorization URL must be http(s)" } satisfies Status
+        }
         onAuthorization?.(result.authorizationUrl)
 
-        const authorizationOrigin = new URL(result.authorizationUrl).origin
+        const authorizationOrigin = authorization.origin
         yield* Effect.logInfo("MCP OAuth browser launch started", { mcpName, authorizationOrigin })
         const opened = yield* browser.open(result.authorizationUrl).pipe(
           Effect.tap(() => Effect.logInfo("MCP OAuth browser launch completed", { mcpName, authorizationOrigin })),
