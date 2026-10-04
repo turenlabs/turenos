@@ -112,9 +112,16 @@ is refused.
 6. Only then writes `/etc/turenos/attach.json` (`0640 root:turenos-operators`, creating the group if needed). A server
    that never became healthy leaves no record, so it cannot block quick connect on this host.
 
-Only one `install --apply` runs at a time (a PID lock at `/run/turenos-install.lock`); a second fails with "another
-install is running". A recovery file left by an install that failed before finishing makes the re-run refuse with the
-steps to take: delete it if nothing was sealed with it, or import the key it holds with `--key-stdin`.
+Only one `install --apply` runs at a time. The lock is a file holding the owner's PID at `/run/turenos-install.lock`
+(root-only, cleared on reboot). It is taken after the root and Linux checks pass and held through planning. A second
+install fails with "another install is running". If the owner has exited, as after a crash, the next install takes the
+lock over, serialized through a short-lived `/run/turenos-install.lock.takeover` guard file. A live owner, an empty or
+unreadable PID, or a guard that is present reports the same message; when no install is running, delete the lock file
+(and the guard, if a crash left it) and re-run. As non-root or off Linux, `install --apply` never touches `/run`: it
+prints the preflight problem ("setup must run as root (for example with sudo)" or "persistent Linux setup runs only on
+Linux") and fails with "preflight failed; nothing was changed". A recovery file left by an install that failed before
+finishing makes the re-run refuse with the steps to take: delete it if nothing was sealed with it, or import the key it
+holds with `--key-stdin`.
 
 Move the recovery copy offline, then delete it from the host. Host-bound encryption (host key or TPM2) isn't a backup.
 Add every user who may attach to `turenos-operators`, then reboot once and confirm that the service comes back with the

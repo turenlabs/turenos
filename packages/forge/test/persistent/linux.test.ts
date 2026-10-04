@@ -10,7 +10,7 @@ import { ServerOwner } from "@turenlabs/core/database/server-owner"
 import { VaultVerification } from "@turenlabs/core/database/vault-verification"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 import { PersistentLinux } from "@/persistent/linux"
-import { activate, keyFromText, placeDatabase, resolveKey, withInstallLock } from "@/cli/cmd/persistent"
+import { activate, installLocked, keyFromText, placeDatabase, resolveKey, withInstallLock } from "@/cli/cmd/persistent"
 import { tmpdir } from "../fixture/fixture"
 
 const plan: PersistentLinux.Plan = {
@@ -546,6 +546,51 @@ describe("PersistentLinux", () => {
       "another install is running",
     )
   })
+
+  test("a takeover waits for its guard and a release leaves a lock that is no longer this process's", async () => {
+    await using tmp = await tmpdir()
+    const lock = path.join(tmp.path, "install.lock")
+    const guard = `${lock}.takeover`
+    const dead = Bun.spawn(["true"])
+    await dead.exited
+    const entered: string[] = []
+
+    // Another contender is mid-takeover: the lock is not touched and this one backs off.
+    await writeFile(lock, `${dead.pid}\n`)
+    await writeFile(guard, "")
+    await expect(withInstallLock(lock, async () => entered.push("guarded"))).rejects.toThrow(
+      /another install is running.*install\.lock\.takeover/,
+    )
+    expect(entered).toEqual([])
+    expect(await readFile(lock, "utf8")).toBe(`${dead.pid}\n`)
+    await rm(guard)
+
+    // A takeover releases its guard, whether or not it won.
+    await withInstallLock(lock, async () => entered.push("taken over"))
+    expect(entered).toEqual(["taken over"])
+    expect(await lstat(guard).catch(() => undefined)).toBeUndefined()
+    await writeFile(lock, `${process.pid}\n`)
+    await expect(withInstallLock(lock, async () => entered.push("live owner"))).rejects.toThrow("another install")
+    expect(await lstat(guard).catch(() => undefined)).toBeUndefined()
+    await rm(lock)
+
+    // Whoever now holds the path owns it; the displaced run leaves it alone.
+    await withInstallLock(lock, async () => writeFile(lock, `${dead.pid}\n`))
+    expect(await readFile(lock, "utf8")).toBe(`${dead.pid}\n`)
+  })
+
+  test.skipIf(process.platform !== "linux" || process.getuid?.() === 0)(
+    "apply without root is refused as a preflight problem and never touches the lock",
+    async () => {
+      await using tmp = await tmpdir()
+      // A path whose parent is missing would fail with ENOENT if the lock were attempted.
+      const lock = path.join(tmp.path, "missing", "install.lock")
+      await expect(installLocked({ apply: true, user: "root" }, lock)).rejects.toThrow(
+        "preflight failed; nothing was changed",
+      )
+      expect(await lstat(path.dirname(lock)).catch(() => undefined)).toBeUndefined()
+    },
+  )
 
   test("a key on stdin is exactly a key ID and a key, and rejections never echo it", () => {
     const encoded = Buffer.alloc(32, 7).toString("base64")

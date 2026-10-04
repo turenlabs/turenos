@@ -36,7 +36,10 @@ const planOptions = (yargs: Argv) =>
       type: "number",
       describe: `loopback listener port (default: the installed unit's, or ${PersistentLinux.defaults.port})`,
     })
-    .option("forge-bin", { type: "string", describe: "forge binary the service runs (default: this binary)" })
+    .option("forge-bin", {
+      type: "string",
+      describe: "forge binary the service runs (default: the installed unit's, or this binary)",
+    })
     .option("server-id", {
       type: "string",
       describe: "stable server ID (defaults to the installed unit's, or a new one)",
@@ -191,31 +194,59 @@ const InstallCommand = cmd<{}, InstallArgs>({
         type: "string",
         describe: "where to write the recovery copy of a newly generated key (required for a fresh key)",
       })) as never,
-  // The lock covers planning too: facts gathered before another install finishes would be stale.
-  handler: (args) => (args.apply ? withInstallLock(installLockPath, () => install(args)) : install(args)),
+  handler: (args) => installLocked(args),
 })
 
 // /run is writable only by root, unlike the sticky /run/lock, and is cleared on reboot.
 const installLockPath = "/run/turenos-install.lock"
+
+export function installLocked(args: InstallArgs, lockPath = installLockPath) {
+  // Off Linux or without root the lock cannot be taken, and install() reports that as a preflight
+  // problem before it changes anything, so the refusal is not replaced by an error from open().
+  if (!args.apply || process.platform !== "linux" || process.getuid?.() !== 0) return install(args)
+  // The lock covers planning too: facts gathered before another install finishes would be stale.
+  return withInstallLock(lockPath, () => install(args))
+}
 
 /**
  * Two installs interleaving could pair one run's key ID with the other's key blob, so only one may
  * run. The lock file holds the owner's PID; a file whose owner is gone is left over from a crash.
  */
 export async function withInstallLock<T>(lockPath: string, work: () => Promise<T>) {
-  const busy = () => refuse(`another install is running (lock ${lockPath}); if none is, delete that file and re-run`)
-  const create = () => open(lockPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
-  const handle = await create().catch(async (error: NodeJS.ErrnoException) => {
+  const guardPath = `${lockPath}.takeover`
+  const busy = () =>
+    refuse(`another install is running (lock ${lockPath}); if none is, delete that file (and ${guardPath}) and re-run`)
+  const create = (path: string) => open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
+  const handle = await create(lockPath).catch(async (error: NodeJS.ErrnoException) => {
     if (error.code !== "EEXIST") throw error
-    const pid = Number((await readFile(lockPath, "utf8").catch(() => "")).trim())
-    if (!(pid > 0) || isRunning(pid)) throw busy()
-    await rm(lockPath, { force: true })
-    return create().catch(() => {
-      throw busy()
-    })
+    // Deleting a lock cannot be made conditional on its content, so two contenders that both saw the
+    // same dead PID could each delete the other's fresh lock. Only the holder of this exclusive guard
+    // may delete one, and it checks the owner again after winning. A stale guard is never taken over,
+    // for the same reason; a crash inside this window leaves it for an operator to delete.
+    await create(guardPath).then(
+      (guard) => guard.close(),
+      (guardError: NodeJS.ErrnoException) => {
+        throw guardError.code === "EEXIST" ? busy() : guardError
+      },
+    )
+    try {
+      const pid = Number((await readFile(lockPath, "utf8").catch(() => "")).trim())
+      if (!(pid > 0) || isRunning(pid)) throw busy()
+      await rm(lockPath, { force: true })
+      return await create(lockPath).catch(() => {
+        throw busy()
+      })
+    } finally {
+      await rm(guardPath, { force: true })
+    }
   })
   await handle.writeFile(`${process.pid}\n`).finally(() => handle.close())
-  return work().finally(() => rm(lockPath, { force: true }))
+  // Only the owner file this process wrote is removed; nothing can legitimately replace a live
+  // owner's file, so a changed one is somebody else's and stays.
+  return work().finally(async () => {
+    if ((await readFile(lockPath, "utf8").catch(() => "")).trim() === String(process.pid))
+      await rm(lockPath, { force: true })
+  })
 }
 
 function isRunning(pid: number) {
