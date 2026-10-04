@@ -2,6 +2,7 @@ export * as SubagentTool from "./subagent"
 
 import { ToolFailure } from "@turenlabs/llm"
 import { LobbySession } from "@turenlabs/schema/lobby-session"
+import { TeamBoard } from "@turenlabs/schema/team-board"
 import { Context, DateTime, Effect, Layer, Option, Schema } from "effect"
 import path from "path"
 import { AgentV2 } from "../agent"
@@ -54,6 +55,7 @@ export function toolPermissions(permissions: PermissionV2.Ruleset): PermissionV2
       "webfetch",
       "websearch",
       "skill",
+      "question",
       "todowrite",
       "session_context",
       "session_checkpoint",
@@ -74,6 +76,8 @@ export function toolPermissions(permissions: PermissionV2.Ruleset): PermissionV2
       peekName,
       agentDocName,
       notifyParentName,
+      TeamBoard.postToolName,
+      TeamBoard.readToolName,
       SwarmRoomTool.postName,
       SwarmRoomTool.readName,
       SwarmRoomTool.claimName,

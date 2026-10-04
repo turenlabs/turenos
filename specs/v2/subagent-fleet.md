@@ -64,6 +64,8 @@ One process-global promotion fiber, owned by `SessionExecutionLocal`, watches th
 
 Task-owned Sessions receive basic filesystem, search, shell, web, skill, task-tracking, context, and coordination tools by default. Existing command grants and write roots still limit shell and file changes.
 
+Basic tools include `question`, `board_read`, and `board_post`. Children can request user input and share board notes without a specialist grant.
+
 Whiteboard, browser, automation, specialist analysis, application, and MCP tools are excluded unless the child's captured agent permissions contain a matching non-catch-all rule. A catch-all allow rule does not grant specialist tools. Parent and ancestor permission ceilings still apply.
 
 The tool snapshot filters registered names separately from leaf permission actions. Excluded tools stay absent from definitions, discovery results, and loadable capabilities. Direct calls to excluded names return an unknown-tool error. Native tool search uses the same filter. Root Session tool availability remains unchanged.

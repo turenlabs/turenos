@@ -20,6 +20,7 @@ import { SessionToolProvider } from "@turenlabs/core/tool/session-provider"
 import { SessionToolSnapshot } from "@turenlabs/core/tool/session-snapshot"
 import { ShellJobTool } from "@turenlabs/core/tool/shell-job"
 import { SubagentTool } from "@turenlabs/core/tool/subagent"
+import { TeamBoardTool } from "@turenlabs/core/tool/team-board"
 import { Tool } from "@turenlabs/core/tool/tool"
 import { Tools } from "@turenlabs/core/tool/tools"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
@@ -169,13 +170,16 @@ const materialize = (sessionID: SessionSchema.ID, permissions?: PermissionV2.Rul
     return yield* snapshots.materialize({ sessionID, directory, model, agent, permissions })
   })
 
-describe("SessionToolSnapshot tool discovery", () => {
+describe("child Session tool discovery", () => {
   childIt.effect("limits child discovery and direct calls to basic tools despite catch-all permissions", () =>
     Effect.gen(function* () {
       const sessionID = yield* setup("basic-child")
       const tools = yield* Tools.Service
       yield* tools.register({
         read: fixtureInline,
+        question: fixtureInline,
+        [TeamBoardTool.readName]: fixtureInline,
+        [TeamBoardTool.postName]: fixtureInline,
         whiteboard_draw: Tool.withPermission(fixtureInline, "read"),
         automation_create: fixtureInline,
         browser_start: fixtureInline,
@@ -183,6 +187,9 @@ describe("SessionToolSnapshot tool discovery", () => {
       const result = yield* materialize(sessionID)
       const names = result.materialization.definitions.map((definition) => definition.name)
       expect(names).toContain("read")
+      expect(names).toContain("question")
+      expect(names).toContain(TeamBoardTool.readName)
+      expect(names).toContain(TeamBoardTool.postName)
       expect(names).not.toContain("fixture_inline")
       expect(result.snapshot.deferred.available).toEqual([])
       expect(result.snapshot.broker.capabilities).toEqual([])
@@ -265,7 +272,9 @@ describe("SessionToolSnapshot tool discovery", () => {
       expect(result.snapshot.broker.capabilities).toEqual([])
     }),
   )
+})
 
+describe("normal Session tool discovery", () => {
   it.effect("withholds deferred built-ins from definitions while cataloging them", () =>
     Effect.gen(function* () {
       const sessionID = yield* setup("catalog")
