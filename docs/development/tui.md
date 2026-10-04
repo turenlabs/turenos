@@ -29,6 +29,85 @@ The tests (`packages/tui/test/`) drive the real client against synthetic HTTP fi
 
 Input and layout changes need both renderer tests and a real PTY. Preserve exact shortcut modifiers, captured request recipients, retry identifiers, transport limits, secret handling and focus when dialogs close or asynchronous responses arrive. Test reading positions during prepend-plus-stream updates, width reflow and docked replies, not only while following the tail. Exercise controls at 60x24 as well as larger sizes.
 
+## Testing a feature
+
+The checks build on each other, from fastest to most real:
+
+1. **Renderer test** (`test/`, runs in CI): the behavior against a synthetic fixture, including the failure paths a real server rarely produces.
+2. **Sandbox check**: the same feature against a real server from this checkout, driven by hand or by an agent (below). It catches contract drift that fixtures can't, such as a field the server names differently.
+3. **End-to-end scenario** (`e2e/`): when the feature crosses the server boundary, keep the sandbox check as a scenario so it stays checked.
+4. **PTY audit**: for layout and terminal-mode changes, at every size it covers.
+
+## Sandbox
+
+`packages/tui/script/sandbox.ts` (`bun run sandbox`) starts a throwaway TurenOS server from this checkout's `packages/forge` source, with a scripted OpenAI-compatible model, isolated data and a seeded git project, and runs the TUI against it. People run the TUI in their own terminal; agents and tests run it in a tmux server private to the sandbox and read the screen as plain text.
+
+```sh
+cd packages/tui
+bun run sandbox start demo      # 5-60 s; prints the URL, the project folder and the model's trigger words
+bun run sandbox tui demo        # people: the TUI in this terminal, connected to the sandbox
+bun run sandbox stop demo       # stops the processes it started and deletes the run directory
+```
+
+An agent, or a script, drives the TUI in the background instead:
+
+```sh
+bun run sandbox launch demo --size 80x24      # default 120x36; --cli dist/cli.js runs a build
+bun run sandbox wait demo "Connected"         # polls the screen; --regex, --timeout <ms> (default 15 s)
+bun run sandbox keys demo n                   # tmux key names: Enter Escape C-s Up PageDown F2 BTab; S-Enter, M-Enter
+bun run sandbox type demo "please run the marker"
+bun run sandbox keys demo Enter
+bun run sandbox screen demo                   # plain text, as an agent reads it; --color keeps the SGR codes
+bun run sandbox idle demo                     # waits until the server reports no running session
+bun run sandbox attach demo                   # a person watches or takes over; detach with Ctrl+B d
+```
+
+`settle` waits until the screen stops changing, `resize <W>x<H>` resizes the terminal, `close` ends the TUI (relaunch with `launch`), and `list` shows the sandboxes. `api <name> <METHOD> <path> [json]` sends an authenticated request to the sandbox server, for seeding state or checking what the server holds. `exec <name> -- <command>` runs a command with the sandbox's environment, `TURENOS_SERVER_URL` and `FORGE_SERVER_PASSWORD` set, for example `bun run sandbox exec demo -- bun src/cli.ts sessions --json`. After `keys` sends Escape it pauses 120 ms, because Escape followed at once by another byte reads as Alt+key.
+
+### Scripted model
+
+The latest user message chooses the reply by the first trigger word it contains. Anything else gets a short reply that lists the words.
+
+| Word        | Reply                                                                           |
+| ----------- | ------------------------------------------------------------------------------- |
+| `run`       | A `bash` call, `echo sandbox-marker && ls`; permission checks make it ask first |
+| `ask twice` | Two questions, the second multiple choice                                       |
+| `ask me`    | One single-choice question (Red or Blue)                                        |
+| `write`     | A `write` call creating `notes.md`                                              |
+| `edit`      | An `edit` call changing `42` to `43` in `answer.ts`                             |
+| `read`      | A `read` call on `README.md`                                                    |
+| `todo`      | A `todowrite` call with three to-dos in three states                            |
+| `delegate`  | A `spawn_agent` call; the child session answers plainly                         |
+| `slow`      | About 40 s of streamed words, for interrupting                                  |
+| `long`      | Sixty varied paragraphs, for scrolling and history                              |
+| `markdown`  | Headings, lists, code, a table, a link and a quote                              |
+| `think`     | Reasoning before the answer                                                     |
+| `fail`      | HTTP 401, which the server does not retry                                       |
+| `flaky`     | HTTP 503 five times, then a reply; the server retries on its own                |
+
+After a tool result the model replies `Done: the <tool> tool returned:` with the result, so a scenario finishes in one turn. Titles come from the first words of the first message.
+
+### Isolation
+
+- Everything lives in `$XDG_RUNTIME_DIR/turen-tui-sandbox/<name>` (`TUREN_SANDBOX_ROOT` overrides; it must be outside the repository): home, XDG directories, the project, logs (`server.log`, `model.log`, `tui.log`) and `sandbox.json`. The tmux socket sits there too, so the path stays short; tmux refuses socket paths of 104 bytes or more.
+- The server, the model and the TUI get an environment built from an allowlist (`PATH`, locale, user and shell), so the owner's API keys, server URLs and `TMUX` never reach them. The server runs with `FORGE_DISABLE_MODELS_FETCH`, `FORGE_DISABLE_AUTOUPDATE` and `FORGE_DISABLE_CLAUDE_CODE`, and a throwaway vault key.
+- The sandbox password is random per start and kept in a `0600` file in the run directory, which the TUI's shell reads, so it never appears in an argument list. The run directory is deleted on `stop`.
+- Where `systemd-run --user` works, the server and the model run in their own scope capped at 3 GB (`--memory-max <size>`, or `0` for no cap).
+- Permission checks are turned on (`PUT /global/permission-checks`) and the config sets `bash` to ask, unless `start` gets `--no-permissions`.
+- The TUI always gets the sandbox URL. Its server picker still discovers what this machine publishes, such as `/etc/turenos/attach.json`, and lists a headless server on port 4096 because `FORGE_SERVER_PASSWORD` is set. Never select those from a sandbox.
+
+## End-to-end tests
+
+`packages/tui/e2e/*.e2e.ts` drive the TUI from `src` against a sandbox per file, through the same driver (`e2e/support.ts`). Bun skips them in `bun run test`, so CI does not run them; they need tmux and take a few minutes:
+
+```sh
+cd packages/tui
+bun run test:e2e                              # every scenario file
+bun test ./e2e/requests.e2e.ts --timeout 120000
+```
+
+The files cover the conversation (streaming, Markdown, reasoning, scrolling, recall), requests (permissions, questions, stopping, provider errors and retries), panels (Changes, Files, Tasks, subagents), the Terminals and Automations tabs, the 60x24 layout with resizing and quitting, and the agent commands with the dashboard watching. Tests in a file share one sandbox and run in order. Assert on what the screen says and, where the server is the truth, on `api()` and `idle()`; a scenario that waits for text should wait for the specific line, not sleep.
+
 ## PTY audit
 
 `packages/tui/script/visual-audit.py` runs the current source, or the built `dist/cli.js` with `--built`, in isolated tmux PTYs against a synthetic HTTP fixture server and reconstructs PNGs of the terminal cells with Pillow. It needs Bun, tmux, Python 3 with Pillow, and DejaVu Sans Mono (regular, bold, oblique, bold-oblique). It is not part of CI and never installs those tools.
@@ -51,5 +130,7 @@ python3 script/visual-audit.py /run/user/1000/tva --built --sizes 60x24 120x36
 
 - `packages/tui/package.json`
 - `packages/tui/test/support.ts`
+- `packages/tui/script/sandbox.ts`, `packages/tui/script/sandbox/server.ts`, `packages/tui/script/sandbox/terminal.ts`, `packages/tui/script/sandbox/scenarios.ts`
+- `packages/tui/e2e/support.ts`
 - `packages/tui/script/visual-audit.py`
 - `.oxlintrc.json`

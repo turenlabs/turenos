@@ -64,6 +64,8 @@ The CLI (`packages/tui/src/cli.ts`) accepts `bun run tui -- [options] [url]`:
 | `-h`, `--help`          | Show available options without opening the UI.                                |
 | `-v`, `--version`       | Show the client version without opening the UI.                               |
 
+The dashboard needs an interactive terminal on stdin and stdout. Without one, use the [agent commands](./agent-commands.md) (`turen-tui sessions`, `send`, `wait` and the others), which take the same server options.
+
 URL precedence is the positional URL, then `TURENOS_SERVER_URL`, then local discovery. `--discover-auth` without a URL keeps its original `http://127.0.0.1:4096` target. `--server` cannot be combined with a URL. Username precedence is `--username`, then `FORGE_SERVER_USERNAME`, then a discovered username, then `forge`. Discovered servers publish their own username. Omitting `--dir` leaves location selection to the server.
 
 Provide the server password through `FORGE_SERVER_PASSWORD` in the process environment, not a CLI password argument or URL. An explicitly empty value disables authentication and discovery. Use a trusted environment/secret mechanism rather than putting a real password in shell history.
@@ -86,11 +88,11 @@ With the conversation focused, `Enter` opens the primary action: reply, review a
 - `Shift+Enter` or `Alt+Enter` inserts a newline. Terminal key encoding must distinguish the modifier.
 - `Tab` reveals launch settings and moves between fields; `Shift+Tab` moves backward.
 - `Esc` keeps a message draft; `F4` discards the local draft. Neither action stops server work.
-- In a reply, `Ctrl+T` selects Steer or Queue before the first submission. The server controls delivery timing.
+- A reply to an idle session is labelled **Send**. While the session runs, the label shows **Steer** or **Queue**, and `Ctrl+T` switches between them before the first submission; the choice is remembered per session until you quit. The server controls delivery timing.
 - After an ambiguous network failure (no answer, a timeout, a 5xx or a 409), retry the original submission. Its identifiers and delivery mode are retained. For an attempted launch, `Ctrl+O` inspects its session before retrying.
 - A submission the server definitely refused (any other 4xx) admitted nothing, so the draft unlocks for editing and keeps its ID for the next send. A draft that fails a local check (length, a mention, a command lookup) is never locked.
 
-Press `F2`, or type `/editor`, to compose the message in `$EDITOR` (`$VISUAL` takes precedence). The TUI releases the terminal while the editor runs and takes it back when it exits; saving returns the text to your draft. Quitting without saving, or exiting non-zero such as `:cq` in vim, leaves the draft unchanged. GUI editors must block, for example `EDITOR='code --wait'`. Your draft is written to a private file that is removed afterwards even if the editor fails, and nothing is sent. A draft whose submission is already locked for retry cannot be rewritten this way: retry it, or press `F4` to discard it first.
+Press `F2` or `Ctrl+G`, or type `/editor`, to compose the message in `$EDITOR` (`$VISUAL` takes precedence). The TUI releases the terminal while the editor runs and takes it back when it exits; saving returns the text to your draft. Quitting without saving, or exiting non-zero such as `:cq` in vim, leaves the draft unchanged. GUI editors must block, for example `EDITOR='code --wait'`. Your draft is written to a private file that is removed afterwards even if the editor fails, and nothing is sent. A draft whose submission is already locked for retry cannot be rewritten this way: retry it, or press `F4` to discard it first.
 
 Drafts and reading positions live only in this TUI process. There is **no disk draft persistence**; quitting loses unsent drafts. A request already sent may have reached the server even if no acknowledgement arrived. Discarding or quitting is not cancellation; use the explicit interrupt action when needed.
 
@@ -110,9 +112,9 @@ A space, bracket, quote, or trailing `#number` ends a bare mention, so paths con
 
 Mentions are sent as the server's native file parts, not as text pasted into your prompt. **The server opens the file**; this client never reads it, so `@` works the same against a remote server as a local one. Relative paths resolve against the session's directory on the server, and a mention whose path is malformed or whose range is invalid (`@a.ts#5-`) stays ordinary prompt text instead of silently attaching something else. A line under the editor lists what the message will attach. A path outside the session's folder (absolute, `..` or `~`) is flagged there, and the first send stops to say so; send again to attach it anyway, or edit the mention. A message with no mention is sent exactly as before.
 
-`@` needs the server's file-search route. An older server without it reports `File search unavailable`; you can still type a path yourself, and it is still attached. Search results that are absolute or that escape the requested directory are rejected rather than attached.
+A bare `@` asks for a file name or path and searches nothing. A mention whose search found no file stays prompt text, and the line under the editor says no file matches; absolute and escaping paths are flagged instead, as above. `@` needs the server's file-search route. An older server without it reports `File search unavailable`; you can still type a path yourself, and it is still attached. Search results that are absolute or that escape the requested directory are rejected rather than attached.
 
-Start a message with `!` to run a shell command on the server, such as `!git status`. The command runs in the session, and its output arrives as a transcript message. This is a single command submission, not an interactive shell: there is no keyboard input, attach, or kill control. For an interactive shell, press `T` for the session's shared terminal or open one on the [Terminals tab](#terminal-and-automation-tabs). Like slash commands, `!` does not support Queue — press `Ctrl+T` to choose Steer first. An ambiguous failure retries the original command with its original message ID.
+Start a message with `!` to run a shell command on the server, such as `!git status`; the line under the editor says it is a shell command. The command runs in the session, and its output arrives as a transcript message headed `[completed] $ git status`, or `[failed · exit 1] $ …` when it exits non-zero; an empty result reads `(no output)`. This is a single command submission, not an interactive shell: there is no keyboard input, attach, or kill control. For an interactive shell, press `T` for the session's shared terminal or open one on the [Terminals tab](#terminal-and-automation-tabs). Like slash commands, `!` does not support Queue — press `Ctrl+T` to choose Steer first. An ambiguous failure retries the original command with its original message ID.
 
 ## Copy and mouse
 
@@ -124,7 +126,7 @@ Press `F6` to release mouse capture and use your terminal's native text selectio
 
 In a known task-owned child's conversation, `/` opens a local command palette instead of the blocked reply editor. `/help`, `/sessions`, and `/subagents` remain available; `/main` offers the explicit owning-session reply action. Server commands still require a writable session.
 
-With the conversation pane focused, press `/` to open reply command entry directly. An existing reply draft is reopened unchanged, never replaced with `/`. In a new-session or reply editor, type `/` to discover commands. `Up`/`Down` chooses a suggestion and `Tab` completes it. `Enter` on a partial name completes it; `Enter` on an exact name runs the local action or submits the server command. `Ctrl+S`, `Ctrl+Enter`, and the Send button use the same command handling. Submission waits while suggestions are loading; press submit again when ready. Add arguments after a server command name as ordinary text.
+With the conversation pane focused, press `/` to open reply command entry directly. An existing reply draft is reopened unchanged, never replaced with `/`. In a new-session or reply editor, type `/` to discover commands. Matching is fuzzy: a prefix ranks first, then a word start, then letters in order, so `/cmp` finds `/compact`; the list shows its position, such as `3/12`. `Up`/`Down` chooses a suggestion and `Tab` completes it. The first `Esc` closes the list and keeps the draft; the next one closes the editor. `Enter` on a partial name completes it; `Enter` on an exact name runs the local action or submits the server command. `Ctrl+S`, `Ctrl+Enter`, and the Send button use the same command handling. Submission waits while suggestions are loading; press submit again when ready. Add arguments after a server command name as ordinary text.
 
 TUI actions include `/help`, `/new`, `/sessions`, `/model`, `/agent`, `/compact`, `/undo`, `/redo`, `/history`, `/tasks`, `/rename`, `/editor`, `/stop`, `/kill`, and `/commands`. Actions reuse the existing UI, including interruption and compaction confirmation. `/agent` changes the current session's agent for subsequent turns; in a new-session draft it opens that draft's agent setting instead. `/compact` requests server-side context summarization after `Ctrl+S` confirmation and never automatically interrupts busy work. Server-defined commands come from the selected server directory and execute through its command API; templates are not expanded locally. Unknown slash names and absolute paths remain ordinary prompt text when command discovery succeeds. Command admission does not support Queue: use `Ctrl+T` to select Steer first. Ambiguous retries preserve the original command, arguments, and request ID.
 
@@ -138,41 +140,42 @@ Additional TUI actions are `/goal` for the [session goal overview](#session-goal
 
 Dashboard shortcuts apply when no form or search is open:
 
-| Key                         | Action                                                                            |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| `Ctrl+P` / `?`              | Commands / keyboard help.                                                         |
-| `s`                         | Server picker: switch between this computer, saved, and Desktop SSH servers.      |
-| `H`                         | Session harness: tools, guidance, reviewer runs and proposals.                    |
-| `d` / `e`                   | Changes (uncommitted, branch, last turn) / Files of the selected session.         |
-| `T`                         | The session's shared terminal, full-screen; `Ctrl+]` detaches.                    |
-| `u` / `w`                   | Queued messages (send now, edit, discard) / swarm room.                           |
-| `,` / `I`                   | Settings / Intel (advisories, known-exploited CVEs, news).                        |
-| `Ctrl+K`                    | Session picker from either dashboard pane (or inside question modals).            |
-| `/`                         | Command entry in the conversation; finder/filter in the sidebar or other tabs.    |
-| `Ctrl+X` / `t`              | Subagent browser: root-wide recent and active tasks; Enter opens a child.         |
-| `Alt+Left` / `Alt+Right`    | Previous / next loaded session in history.                                        |
-| `1` / `2` / `3`             | Sessions / terminals / automations; `a` adds and `d` removes on the last two.     |
-| `Up` / `Down`, `Enter`      | Select an item; Enter focuses the conversation, then opens its primary action.    |
-| `Tab` / `Shift+Tab`         | Switch panes (or navigate fields in dialog modals).                               |
-| `b` / `Ctrl+B`              | Toggle sidebar. With tmux's default prefix, send `Ctrl+B` twice.                  |
-| `PgUp` / `PgDn`             | Scroll conversation; when docked, reads history behind the composer.              |
-| `j` / `k`                   | Scroll conversation down/up (or move selection down/up in session list).          |
-| `Home` / `End`              | Jump to beginning / end of conversation (or first / last session in list).        |
-| `h`, `[` / `]`              | Toggle History/Live transcript, then older/newer history page.                    |
-| `i` / `r`                   | Details / refresh session and server inventories.                                 |
-| `m`                         | Choose the selected session's model (Ctrl+L in new session launch).               |
-| `p` / `o` / `x`             | Permission / question / interrupt confirmation.                                   |
-| `Ctrl+S` / `Ctrl+Enter`     | Submit / send from composer or any active modal.                                  |
-| `Shift+Enter` / `Alt+Enter` | Insert a newline in message editor without submitting.                            |
-| `Up` (empty editor)         | Recall latest prompt into message editor.                                         |
-| `@`                         | Search the server's files; Tab/Enter completes, Esc closes the list.              |
-| `!` (start of a message)    | Run one shell command on the server and show its output in the transcript.        |
-| `Ctrl+D` (undo / redo)      | Show or hide the staged patch before confirming a rewind.                         |
-| `F2` (message editor)       | Compose the draft in `$EDITOR`; the TUI resumes when the editor exits.            |
-| `F4`                        | Discard local draft in composer modals.                                           |
-| `Ctrl+Y`                    | Copy selected text via OSC 52 terminal clipboard.                                 |
-| `F6`                        | Toggle mouse capture (switch between TUI clicking and native terminal selection). |
-| `q` / `Ctrl+C`              | Quit dashboard / cancel current form; repeat to confirm quitting with drafts.     |
+| Key                         | Action                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `Ctrl+P` / `?`              | Commands / keyboard help.                                                                               |
+| `s`                         | Server picker: switch between this computer, saved, and Desktop SSH servers.                            |
+| `H`                         | Session harness: tools, guidance, reviewer runs and proposals.                                          |
+| `d` / `e`                   | Changes (uncommitted, branch, last turn) / Files of the selected session.                               |
+| `T`                         | The session's shared terminal, full-screen; `Ctrl+]` detaches.                                          |
+| `u` / `w`                   | Queued messages (send now, edit, discard) / swarm room.                                                 |
+| `,` / `I`                   | Settings / Intel (advisories, known-exploited CVEs, news).                                              |
+| `Ctrl+K`                    | Session picker from either dashboard pane (or inside question modals).                                  |
+| `/`                         | Command entry in the conversation; finder/filter in the sidebar or other tabs.                          |
+| `Ctrl+X` / `t`              | Subagent browser: root-wide recent and active tasks; Enter opens a child.                               |
+| `Alt+Left` / `Alt+Right`    | Previous / next loaded session in history.                                                              |
+| `1` / `2` / `3`             | Sessions / terminals / automations; `a` adds and `d` removes on the last two.                           |
+| `Up` / `Down`, `Enter`      | Select an item; Enter focuses the conversation, then opens its primary action.                          |
+| `Tab` / `Shift+Tab`         | Switch panes (or navigate fields in dialog modals).                                                     |
+| `b` / `Ctrl+B`              | Toggle sidebar. With tmux's default prefix, send `Ctrl+B` twice.                                        |
+| `PgUp` / `PgDn`             | Scroll conversation; when docked, reads history behind the composer.                                    |
+| `j` / `k`                   | Scroll conversation down/up (or move selection down/up in session list).                                |
+| `Home` / `End`              | Jump to beginning / end of conversation (or first / last session in list).                              |
+| `h`, `[` / `]`              | Toggle History/Live transcript, then older/newer history page.                                          |
+| `i` / `r`                   | Details / refresh session and server inventories.                                                       |
+| `m`                         | Choose the selected session's model (Ctrl+L in new session launch).                                     |
+| `p` / `o` / `x`             | Permission / question / interrupt confirmation.                                                         |
+| `Esc` `Esc`                 | Interrupt the selected session's running turn, or open undo when it is idle (no dialog or editor open). |
+| `Ctrl+S` / `Ctrl+Enter`     | Submit / send from composer or any active modal.                                                        |
+| `Shift+Enter` / `Alt+Enter` | Insert a newline in message editor without submitting.                                                  |
+| `Up` (empty editor)         | Recall latest prompt into message editor.                                                               |
+| `@`                         | Search the server's files; Tab/Enter completes, Esc closes the list.                                    |
+| `!` (start of a message)    | Run one shell command on the server and show its output in the transcript.                              |
+| `Ctrl+D` (undo / redo)      | Show or hide the staged patch before confirming a rewind.                                               |
+| `F2` (message editor)       | Compose the draft in `$EDITOR`; the TUI resumes when the editor exits.                                  |
+| `F4`                        | Discard local draft in composer modals.                                                                 |
+| `Ctrl+Y`                    | Copy selected text via OSC 52 terminal clipboard.                                                       |
+| `F6`                        | Toggle mouse capture (switch between TUI clicking and native terminal selection).                       |
+| `q` / `Ctrl+C`              | Quit dashboard / cancel current form; repeat to confirm quitting with drafts.                           |
 
 In the **session picker**, `F2` cycles Recent, All sessions, and Archived. An empty Recent search shows main sessions only, with compact, disambiguated project headings. Typing searches all loaded metadata, including children by title, path, agent, or ID. All sessions searches unarchived titles on the server, while Archived searches archived titles. The label "All sessions" is not an archive-inclusive search. `F3` loads older remote results, `Shift+F3` newer results, and `F3` retries a failed search. `Ctrl+O` opens a session by its exact ID. These keys are context-specific: `F2` in the model picker opens provider setup instead.
 
@@ -180,11 +183,11 @@ Startup prefers a main session (one without a `parentID`) from the loaded snapsh
 
 The right pane groups session titles by their server project directory. Its highlighted line is the selected session; `*` marks running work. Clicking the selected row while a form is open keeps input focus in that form. Refreshing unchanged selection no longer scrolls the sidebar back to that row; explicit navigation still reveals the selected item. The finder also groups results by directory, shows one line per session, and marks the current session. Project headings are not selectable. Recent search still matches title, directory, agent, and session ID without displaying all that metadata on every row.
 
-The main pane starts with the selected session's **latest six messages**, including tool results. Scroll up with the wheel, `Page Up`, or focused `Up`/`k` to reveal earlier prompts and replies without switching modes. Reaching the top loads more history and keeps your reading position. It follows new output while you are at the bottom; scrolling up pauses following. `End` in the conversation returns to the bottom. `h` opens the expanded history view, where `[` and `]` browse the complete session page by page; `h` returns to the recent transcript. Recent scrollback is bounded; a notice directs you to expanded history when its limit is reached.
+The main pane starts with the selected session's **latest six messages**, including tool results. Scroll up with the wheel, `Page Up`, or focused `Up`/`k` to reveal earlier prompts and replies without switching modes. Reaching the top loads more history and keeps your reading position. It follows new output while you are at the bottom; scrolling up pauses following, and the line above the transcript adds `↓ new output below · End` when text arrives below you. Sending a message returns to the bottom. `End` in the conversation returns to the bottom. `h` opens the expanded history view, where `[` and `]` browse the complete session page by page; `h` returns to the recent transcript. Recent scrollback is bounded; a notice directs you to expanded history when its limit is reached.
 
 The recent transcript streams text, reasoning, and tool activity through the server's live event channel, including while composing a reply. `Live` in the footer means the channel is connected; `Polling` means snapshots are providing updates while the client reconnects or the server lacks live-event support. Snapshot refreshes reconcile completed output; fragments missed before a usable snapshot or during disconnection are not replayable and catch up from snapshots/full completion events. History pages stay stationary. An open Tasks picker refreshes statuses and membership without clearing its filter or moving its selection.
 
-New pending questions open automatically inside the selected session's frame, with the transcript still visible above them, when no active message editor, search, other dialog, or pending permission is blocking them. Escape dismisses the question without answering; the same request does not reopen on every refresh. Press `o` to reopen it manually. Questions resolved elsewhere close when refreshed. These are requests for the selected session, not an aggregate of all descendant sessions.
+New permission requests and questions open automatically inside the selected session's frame (a permission first), with the transcript still visible above them, when no active message editor, search, other dialog, or pending permission is blocking them. Escape dismisses the question without answering; the same request does not reopen on every refresh. Press `o` to reopen it manually. Questions resolved elsewhere close when refreshed. These are requests for the selected session, not an aggregate of all descendant sessions.
 
 `Ctrl+K` temporarily opens the session picker without sending an answer. Cancelling the picker or returning to the request's session resumes the question, including selections, review/rejection state, custom text, and its cursor. Switching is blocked while an answer/rejection is being submitted. The last 16 question drafts are retained only in this client process; changed question content resets an old draft, and resolved requests discard it.
 
@@ -196,7 +199,7 @@ Use `Ctrl+P` for rename, archive/restore, delete, or parent-session navigation. 
 
 `Ctrl+C` first closes a form and keeps a message draft. Press it again within three seconds to quit and lose local drafts. From the dashboard, quitting with saved drafts also asks for a second `q` or `Ctrl+C`. During a pending request, the first `Ctrl+C` warns instead of immediately abandoning its result; a second press quits, but remote work may continue. `PgUp`/`PgDn` scroll by approximately one visible page, not a fixed line count.
 
-Permissions initially select Reject; choose deliberately and confirm with `Ctrl+S`. When the server names a rule it can save for the request, **Allow always** also appears and lists the patterns it would allow from now on; saved rules can be reviewed and removed in [Settings](#settings-and-intel). In questions, Ctrl+R opens rejection confirmation; Ctrl+S confirms it, while Enter alone does not reject. Interrupt requires typing `stop` and confirming with `Ctrl+S`. `/kill` interrupts the session and cancels its active subagent tasks; it requires typing `kill` and confirming with `Ctrl+S`. Tasks that finished in the meantime are counted as not listed; if a cancel fails, the dialog stays open with the counts (`N cancelled, M failed, K not listed`) and `Ctrl+S` retries. Only the first 50 tasks are checked, and the message says when there were more. Closing a request dialog does not answer it.
+Permissions initially select Reject; choose deliberately with the arrows or `1` Reject, `2` Allow once, `3` Allow always, and confirm with `Ctrl+S`. The status line then says what was sent (`Permission rejected.`, `Allowed once.`, `Allowed always.`). When the server names a rule it can save for the request, **Allow always** also appears and lists the patterns it would allow from now on; saved rules can be reviewed and removed in [Settings](#settings-and-intel). In questions, Ctrl+R opens rejection confirmation; Ctrl+S confirms it, while Enter alone does not reject. Interrupt (`x`, `/stop`) requires typing `stop` and confirming with `Ctrl+S`. On the dashboard, with no dialog or editor open, `Esc` twice within two seconds interrupts the selected session's running turn directly; the first `Esc` only says to press it again. On an idle session the same `Esc` `Esc` opens the undo dialog (`/undo`), which still asks for its own confirmation. After an interrupt, queued messages are held rather than sent; the status line says how many, and `u` sends or discards them. `/kill` interrupts the session and cancels its active subagent tasks; it requires typing `kill` and confirming with `Ctrl+S`. Tasks that finished in the meantime are counted as not listed; if a cancel fails, the dialog stays open with the counts (`N cancelled, M failed, K not listed`) and `Ctrl+S` retries. Only the first 50 tasks are checked, and the message says when there were more. Closing a request dialog does not answer it.
 
 ## Terminal and automation tabs
 
@@ -335,6 +338,10 @@ Session loading stabilizes scroll positioning synchronously before rendering new
 Numbered markdown lists (supporting both dot `1.` and paren `1)` list markers) are normalized to keep the numbering and following text on single logical lines rather than splitting markers across lines, while preserving fenced code blocks and indentations intact.
 
 The terminal hardware cursor is hidden by default across all dashboard views, conversation panes, and overlays, becoming visible only inside active text inputs and editors. Paged history reading positions are completely decoupled from live event streams, ensuring cursor states and terminal artifacts do not leak during transcript navigation.
+
+While a turn runs, the line above the transcript reads `Working (12s · x to stop)`, or `Running bash (4s · x to stop)` while a tool runs. When the server is waiting to retry a failed model request, it reads `Retrying in 8s (attempt 3 · x to stop): HTTP 503: <the provider's message>` instead, so a retrying turn never looks stuck. Assistant headers end with the turn's duration once it completes, and a provider failure reads `ERROR: HTTP 401: <the provider's message>` (raw responses keep the full body).
+
+The footer names the focused pane (`Focus: sessions` or `Focus: transcript`) and, when there is room, the selected session's agent and model (`build · provider/model`, or `server default`). Below 90 columns, where the sidebar starts hidden, it shows `b sidebar` and which tab is open (`1/3`). The action row keeps whole entries and drops the least useful ones first when space is short; `x Stop`, `u N queued` and the context meter (`Ctx 45%` when narrow) stay.
 
 The layout requires at least 60 columns by 24 rows. Enlarge the terminal if the size notice appears. Activity uses a compact dotted orb alongside its status label: Unicode Braille cells display orbiting particles on one line. Use a terminal font with Braille glyph support. Enable reduced motion through `Ctrl+P` or set `TURENOS_REDUCED_MOTION=1` before startup; this freezes the orb without hiding its labels.
 

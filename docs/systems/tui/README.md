@@ -2,7 +2,7 @@
 
 The TUI (`packages/tui`, `@turenlabs/tui`) is a keyboard-first terminal client for a running TurenOS server, written in TypeScript on Bun and OpenTUI. It renders locally and keeps only process-local interaction state (drafts, reading positions, preferences); sessions, tools, model execution and persistent data stay on the server, so work started here continues in TurenOS Desktop and the reverse. It is a source CLI: it needs Bun and the installed `node_modules`, including OpenTUI's native modules. There is no compiled binary and no bundled server.
 
-[Usage](./usage.md) covers keys, connecting and commands, [GUI parity](./gui-parity.md) maps desktop features to TUI keys, and [TUI development](../../development/tui.md) covers tests and the PTY audit.
+[Usage](./usage.md) covers keys, connecting and commands, [agent commands](./agent-commands.md) covers the non-interactive commands for scripts and coding agents, [GUI parity](./gui-parity.md) maps desktop features to TUI keys, and [TUI development](../../development/tui.md) covers tests, the sandbox and the PTY audit.
 
 ## Process shape
 
@@ -13,7 +13,7 @@ src/cli.ts -> runTui (src/index.ts) -> mountApp (src/dashboard/app.ts)
 dashboard -> Connection (src/server/) -> HTTP(S) TurenOS server, directly or through a private SSH tunnel
 ```
 
-`src/cli.ts` parses arguments and `src/tui-auth.ts` resolves credentials for an explicit URL. `runTui` requires an interactive stdin and stdout, starts the OpenTUI renderer and hands it to `mountApp`. `mountApp` owns the server picker and the dashboard for the connected server. It resolves a target to an endpoint and mounts the new dashboard before disposing the old one, so a failed switch leaves the current dashboard untouched. `dispose()` removes the dashboard's key and resize listeners, timers, live stream, connection and renderables without destroying the renderer. The package depends on the workspace `@turenlabs/client` (the generated Promise client) and on no other TurenOS runtime package.
+`src/cli.ts` parses arguments and `src/tui-auth.ts` resolves credentials for an explicit URL. A first argument that names an agent command (`sessions`, `show`, `send`, `wait`, `pending`, `approve`, `reject`, `answer`, `stop`) runs it from `src/agent/` instead and never starts the renderer. `runTui` requires an interactive stdin and stdout, starts the OpenTUI renderer and hands it to `mountApp`. `mountApp` owns the server picker and the dashboard for the connected server. It resolves a target to an endpoint and mounts the new dashboard before disposing the old one, so a failed switch leaves the current dashboard untouched. `dispose()` removes the dashboard's key and resize listeners, timers, live stream, connection and renderables without destroying the renderer. The package depends on the workspace `@turenlabs/client` (the generated Promise client) and on no other TurenOS runtime package.
 
 ## Module map
 
@@ -22,6 +22,7 @@ Every feature folder under `packages/tui/src/` has a façade module beside it (`
 | Area                | Paths under `src/`                                                                        | Responsibility                                                                                                                             |
 | ------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | Entry               | `cli.ts`, `tui-auth.ts`, `index.ts`, `terminal-exit.ts`                                   | Argument parsing, credential resolution, `runTui`, and restoring terminal input state on exit.                                             |
+| Agent commands      | `agent/`                                                                                  | The non-interactive commands: targeting, sending with retry IDs, waiting, requests and plain or JSON output.                               |
 | Dashboard           | `dashboard/`, `state.ts`                                                                  | `mountApp` and `mountDashboard`, key routing, pointer handling, commands, refresh polling, and the process-local `DashboardState`.         |
 | Layout and chrome   | `layout/`, `chrome.ts`, `theme.ts`, `activity.ts`, `logo.ts`, `context-meter.ts`          | Sidebar, transcript pane, footer and resize handling; labels, colors, reduced-motion activity indicator and the context-window meter.      |
 | Input and dialogs   | `dialogs/`, `keys.ts`, `secret-field.ts`, `panel.ts`, `picker.ts`, `copy.ts`, `editor.ts` | Modal focus, exact-modifier shortcuts, masked password field, split-pane and list dialogs, selection copy, and `$VISUAL`/`$EDITOR` drafts. |
@@ -118,7 +119,7 @@ The code started in the standalone `turen-tui` repository, which derived from th
 
 ## Source
 
-- `packages/tui/src/cli.ts`, `packages/tui/src/tui-auth.ts`, `packages/tui/src/index.ts`
+- `packages/tui/src/cli.ts`, `packages/tui/src/tui-auth.ts`, `packages/tui/src/index.ts`, `packages/tui/src/agent.ts`
 - `packages/tui/src/dashboard/app.ts`, `packages/tui/src/dashboard/refresh.ts`
 - `packages/tui/src/server/transport.ts`, `packages/tui/src/server/snapshot.ts`, `packages/tui/src/api.ts`
 - `packages/tui/src/providers/request.ts`, `packages/tui/src/response-validation.ts`
