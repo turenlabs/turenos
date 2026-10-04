@@ -248,8 +248,7 @@ jobs:
           # x64. runs_artifacts skips steps that would execute the binary
           # (Windows x64 cannot run arm64). install_flags gives the frozen
           # workspace install all-arch .node variants, so build.ts can keep
-          # --skip-install instead of re-resolving the tree (which trips
-          # tree-sitter-powershell's node-gyp script on Windows).
+          # --skip-install instead of re-resolving the tree.
           - host: windows-11-arm
             runner: blacksmith-8vcpu-windows-2025
             artifact: runtime-windows-unsigned-arm64
