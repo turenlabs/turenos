@@ -14,9 +14,11 @@ export type PopupOptions<T> = {
   scope: (query: string) => string
   load: (query: string, signal: AbortSignal) => Promise<readonly T[]>
   debounce?: number
+  /** How many choices the popup lists at once; three when absent. */
+  window?: () => number
   filter: (items: readonly T[], query: string) => T[]
   line: (item: T) => string
-  messages: { loading: string; error: string; empty?: string }
+  messages: { loading: string; error: string; empty?: string | ((query: string) => string) }
 }
 
 /** Everything one popup mutates; the operations in `popup-ops` and `refresh` take it explicitly. */
@@ -33,6 +35,8 @@ export type PopupState<T> = {
   scope: string
   trigger: Trigger
   rows: number
+  /** The editor text an Esc closed the list for; the list stays closed until the text changes. */
+  dismissed: string | undefined
   timer: ReturnType<typeof setTimeout> | undefined
   pending: AbortController | undefined
 }
@@ -47,7 +51,7 @@ export function createPopupState<T>(
     content: "",
     visible: false,
     height: 1,
-    maxHeight: 3,
+    maxHeight: 9,
     flexShrink: 0,
     wrapMode: "none",
     fg: color.muted,
@@ -67,6 +71,7 @@ export function createPopupState<T>(
     scope: "",
     trigger: { query: "", start: 0, end: 0 },
     rows: 0,
+    dismissed: undefined,
     timer: undefined,
     pending: undefined,
   }

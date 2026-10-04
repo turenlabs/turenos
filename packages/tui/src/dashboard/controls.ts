@@ -217,7 +217,7 @@ function createWorkspaceControls(d: DashboardContext) {
 function createSettingsControls(d: DashboardContext) {
   const { renderer, state, connection, say } = d
   const settings = createSettings(renderer, state, connection, d.c.dialogs, say, {
-    connectProvider: () => d.c.models.connect(),
+    connectProvider: (back) => d.c.models.connect(back),
     extensions: d.c.extensions.open,
     memories: (back) => void d.c.memories.open(back),
     servers: d.options.servers ? () => openServers(d) : undefined,

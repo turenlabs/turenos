@@ -1,4 +1,5 @@
 import type { CliRenderer } from "@opentui/core"
+import { statusline } from "../chrome"
 import { color } from "../theme"
 import type { DashboardState } from "../state"
 import type { LayoutParts } from "./parts"
@@ -9,7 +10,7 @@ export function watchPaneFocus(renderer: CliRenderer, state: DashboardState, par
     pane.on("focused", () => {
       if (state.modal || state.searching) return
       state.detailFocused = pane === parts.detail
-      showFocusedPane(state, parts)
+      showFocusedPane(renderer, state, parts)
       renderer.setCursorPosition(0, 0, false)
     })
 }
@@ -22,10 +23,11 @@ export function focusLayout(renderer: CliRenderer, state: DashboardState, parts:
   if (state.detailFocused) parts.detail.focus()
   if (!state.detailFocused) parts.list.focus()
   renderer.setCursorPosition(0, 0, false)
-  showFocusedPane(state, parts)
+  showFocusedPane(renderer, state, parts)
 }
 
-function showFocusedPane(state: DashboardState, parts: LayoutParts) {
+function showFocusedPane(renderer: CliRenderer, state: DashboardState, parts: LayoutParts) {
+  parts.footer.content = statusline(state, state.snapshot, renderer.width)
   parts.sidebarHeading.fg = state.detailFocused ? color.muted : color.accent
   parts.actions.borderColor = state.detailFocused ? color.focus : color.border
 }

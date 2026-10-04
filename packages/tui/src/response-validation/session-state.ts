@@ -4,6 +4,7 @@ import {
   clip,
   identifier,
   invalid,
+  isRecord,
   location,
   modelRef,
   name,
@@ -143,6 +144,7 @@ function contentPart(value: unknown) {
   const state = object(part.state)
   choice(state.status, ["pending", "running", "completed", "error"])
   if (state.status === "pending") return
+  toolInput(state)
   state.content = omit(array(state.content, Infinity), 128, (count) => ({
     type: "text",
     text: `[${count} outputs omitted]`,
@@ -154,4 +156,20 @@ function contentPart(value: unknown) {
     else string(content.uri)
   }
   if (state.status === "error") clip(object(state.error), "message")
+}
+
+// The one-line tool summary reads only these input fields. A wrong type or an
+// oversized value is skipped or clipped, never a reason to reject the page.
+const SUMMARY_FIELDS = ["command", "pattern", "query", "url", "filePath", "path", "file"]
+const SUMMARY_LIMIT = 1024
+
+function toolInput(state: Record<string, unknown>) {
+  if (!isRecord(state.input)) return
+  const input = state.input
+  for (const key of SUMMARY_FIELDS) {
+    const value = input[key]
+    if (value === undefined) continue
+    if (typeof value !== "string") delete input[key]
+    else if (value.length > SUMMARY_LIMIT) input[key] = value.slice(0, SUMMARY_LIMIT)
+  }
 }

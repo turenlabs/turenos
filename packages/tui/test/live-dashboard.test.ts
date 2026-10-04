@@ -382,5 +382,5 @@ test("the Working marker clears at the final step end without waiting for the po
     cost: 0,
     tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
   })
-  await f.wait(() => !/Working [\u2800-\u28ff]{3}|· Working/.test(f.view.captureCharFrame()))
+  await f.wait(() => !/Working \(x to stop\) [\u2800-\u28ff]{3}|· Working/.test(f.view.captureCharFrame()))
 }, 10000)

@@ -4,6 +4,10 @@ import type { PopupState } from "./popup-state"
 export function refresh<T>(popup: PopupState<T>) {
   if (!usable(popup)) return hide(popup)
   const options = popup.options
+  if (popup.dismissed !== undefined) {
+    if (popup.dismissed === options.editor.plainText) return show(popup, 0)
+    popup.dismissed = undefined
+  }
   const next = options.match(options.editor.plainText, options.editor.cursorOffset)
   if (!next) {
     show(popup, 0)
@@ -33,7 +37,8 @@ export function refresh<T>(popup: PopupState<T>) {
   }
   popup.choices = options.filter(popup.inventory, popup.query)
   if (!popup.choices.length && options.messages.empty) {
-    popup.suggestions.content = options.messages.empty
+    popup.suggestions.content =
+      typeof options.messages.empty === "function" ? options.messages.empty(popup.query) : options.messages.empty
     show(popup, 1)
     return
   }

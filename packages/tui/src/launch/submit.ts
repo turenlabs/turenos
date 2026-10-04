@@ -16,6 +16,7 @@ export async function submitLaunch(form: LaunchForm) {
     if (notice.message) throw new Error(notice.message)
     await prepare(form)
   }
+  state.sentMessages.add(current.start.messageID)
   const session = await current
     .start({
       directory: current.directory,

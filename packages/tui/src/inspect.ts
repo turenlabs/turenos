@@ -29,8 +29,8 @@ export function createInspect(
   function tools() {
     const session = selected()
     if (!session || !dialogs.navigate()) return
-    if (!session.model) return say("This session has no model yet; the tools depend on it. m chooses one.")
-    const model = session.model
+    const model = session.model ?? lastModel(state, session.id)
+    if (!model) return say("No model is known for this session yet. Send a message first, or choose one with m.")
     return openSection(
       renderer,
       dialogs,
@@ -44,7 +44,8 @@ export function createInspect(
           })
           .then(object),
       (snapshot, picker) => {
-        picker.text.content = toolText(snapshot)
+        picker.text.content = toolText(snapshot, session.model ? "" : " (server default)")
+        picker.dialog.error.content = "PgUp/PgDn scroll · Enter refresh · Esc back"
         picker.set([{ name: "Refresh", run: tools }])
       },
     )
@@ -62,4 +63,10 @@ export function createInspect(
   }
 
   return { tools, trace }
+}
+
+/** A session on the server default model carries none; its latest reply says which one ran. */
+function lastModel(state: DashboardState, sessionID: string) {
+  if (state.detail?.sessionID !== sessionID) return undefined
+  return state.detail.messages.findLast((message) => message.type === "assistant")?.model
 }

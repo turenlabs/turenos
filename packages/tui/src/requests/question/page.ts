@@ -2,7 +2,7 @@ import { SelectRenderable } from "@opentui/core"
 import { display } from "../../messages"
 import { color } from "../../theme"
 import { matchesKey } from "../../keys"
-import { advance, editCustom, text, type QuestionFlow, type Questions } from "./flow"
+import { advance, answers, editCustom, text, type QuestionFlow, type Questions } from "./flow"
 
 /** One question's page: a select of its options (plus "Type your own answer") and a description line. */
 export function renderQuestionPage(flow: QuestionFlow, question: Questions[number]) {
@@ -51,7 +51,7 @@ export function renderQuestionPage(flow: QuestionFlow, question: Questions[numbe
       advance(flow)
     else select(false)
   })
-  dialog.error.content = `${question.multiple ? "↑↓ Move · Space Toggle · Enter Next" : "↑↓ Move · Enter Select"}\n←/→ Question · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject · Esc close`
+  dialog.error.content = footer(flow, question)
   // Handle Space here; native Select owns arrow movement, not toggling.
   choice.onKeyDown = (key) => {
     if (!matchesKey(key, "space") || flow.input) return
@@ -96,4 +96,13 @@ function selectOption(
   selections[page]!.add(index)
   customOn[page] = false
   advance(flow)
+}
+
+/** The key hints, which say where Enter goes so choosing and moving on is never a surprise. */
+function footer(flow: QuestionFlow, question: Questions[number]) {
+  const last = answers(flow).every((answer, index) => index === flow.page || answer.length > 0)
+  const keys = question.multiple
+    ? "↑↓ Move · Space Toggle · Enter Next"
+    : `↑↓ Move · Enter Choose, then ${last ? "review answers" : "next question"}`
+  return `${keys}\n←/→ Question · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject · Esc close`
 }

@@ -47,7 +47,7 @@ export async function refresh(dock: Dock, note = "") {
     dock.inputs = result.toSorted((a, b) => a.admittedSeq - b.admittedSeq)
     list.options = dock.inputs.map((input) => ({
       name: label(input.prompt.text, 90),
-      description: `${input.delivery === "queue" ? "Queued until the agent is idle" : "Steering · delivered at the next step"} · ${new Date(input.timeCreated).toLocaleTimeString()}`,
+      description: `${delivery(input, Object.hasOwn(ctx.state.snapshot?.active ?? {}, session.id))} · ${new Date(input.timeCreated).toLocaleTimeString()}`,
     }))
     list.visible = dock.inputs.length > 0
     text.content = dock.inputs.length
@@ -60,6 +60,12 @@ export async function refresh(dock: Dock, note = "") {
     text.content = `Queued messages unavailable: ${errorText(error)}`
     dialog.error.content = "Ctrl+R retry · Esc close"
   }
+}
+
+/** An idle session delivers nothing by itself, so a leftover message is held rather than waiting for the agent. */
+function delivery(input: Input, running: boolean) {
+  if (!running) return "Held · agent is idle · Enter sends now"
+  return input.delivery === "queue" ? "Queued until the agent is idle" : "Steering · delivered at the next step"
 }
 
 export async function act(dock: Dock, kind: "steer" | "edit" | "cancel") {

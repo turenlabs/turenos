@@ -188,6 +188,17 @@ test("loaded actions remain responsive during a slow background refresh", async 
   }
 })
 
+test("Edit opens with the cursor after the prefilled objective and the overview is not called read-only", async () => {
+  const app = await fixture()
+  await app.open()
+  expect(app.view.captureCharFrame()).not.toContain("Read-only.")
+  await app.choose("Edit")
+  const editor = app.state.modal!.fields[0] as TextareaRenderable
+  expect(editor.cursorOffset).toBe("Original objective".length)
+  await app.view.mockInput.typeText(" edited")
+  expect(editor.plainText).toBe("Original objective edited")
+})
+
 test("Set is explicit, Enter inserts newline, Ctrl+S starts with captured settings", async () => {
   const app = await fixture(null)
   await app.open()

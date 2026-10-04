@@ -2,6 +2,7 @@ import type { LiveEvent } from "../live-events"
 import type { LiveSession } from "./context"
 import { current, dropSession, paint, snapshot } from "./schedule"
 import { settleBusy, trackSequence } from "./sequence"
+import { trackRetry } from "./retry"
 
 /** Consumes the global event stream, reconnecting with backoff and falling back to polling between attempts. */
 export async function run(s: LiveSession) {
@@ -32,6 +33,7 @@ function handle(s: LiveSession, event: LiveEvent) {
   if (event.type === "server.connected") return connected(s)
   const sessionID = event.data.sessionID
   settleBusy(s, event)
+  if (trackRetry(state, event)) s.hooks.status()
   // Deltas are not durable and cannot be replayed, so a jump can only be repaired by refetching the transcript.
   const gap = trackSequence(s, event)
   if (typeof sessionID === "string" && /^session\.next\.revert\.(staged|cleared|committed)$/.test(event.type)) {

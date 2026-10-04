@@ -25,7 +25,7 @@ export async function fetchPage(intel: Intel, mode: Mode, page: number): Promise
 }
 
 async function advisories(intel: Intel, page: number) {
-  const result = await intel.advisories({ page, pageSize: PAGE, sort: "publishedAt", order: "desc" })
+  const result = await intel.advisories({ page, pageSize: PAGE, sort: "severity", order: "desc" })
   return {
     total: numeric(result.total),
     items: array(result.items, 1000).map((value) => {

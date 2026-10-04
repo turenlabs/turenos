@@ -80,9 +80,9 @@ function serverSlash(d: DashboardContext): Command[] {
     ...(d.options.servers
       ? [{ name: "servers", description: "Switch TurenOS server", run: () => openServers(d) }]
       : []),
-    { name: "stop", description: "Confirm interruption", run: c.requests.interrupt },
-    { name: "kill", description: "Interrupt session and cancel its tasks", run: c.requests.kill },
-    { name: "stop-all", description: "Stop every running agent on this server", run: c.requests.stopAll },
+    { name: "stop", description: "Stop this session (interrupt); confirm with stop", run: c.requests.interrupt },
+    { name: "kill", description: "Stop this session and cancel its tasks", run: c.requests.kill },
+    { name: "stop-all", description: "Stop every running agent on this server (kill switch)", run: c.requests.stopAll },
     { name: "commands", description: "All TUI actions", run: () => openCommands(d) },
   ]
 }
@@ -178,8 +178,8 @@ function terminalCommands(d: DashboardContext): Command[] {
     { name: "Review permission", description: "p", run: c.requests.permission },
     { name: "Answer question", description: "o", run: c.requests.question },
     { name: "Reject question", description: "Confirm without answering", run: () => c.requests.question(true) },
-    { name: "Interrupt session", description: "x", run: c.requests.interrupt },
-    { name: "Kill session", description: "Interrupt and cancel its tasks", run: c.requests.kill },
+    { name: "Stop session (interrupt)", description: "x · /stop", run: c.requests.interrupt },
+    { name: "Kill session (stop and cancel tasks)", description: "/kill", run: c.requests.kill },
     { name: "Stop all agents", description: "Kill switch for this server", run: c.requests.stopAll },
   ]
 }

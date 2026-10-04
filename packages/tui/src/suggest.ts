@@ -1,6 +1,6 @@
 import type { CliRenderer, KeyEvent } from "@opentui/core"
 import type { DashboardState } from "./state"
-import { dismiss, hide, move, replace, usable } from "./suggest/popup-ops"
+import { close, dismiss, hide, move, replace, usable } from "./suggest/popup-ops"
 import { createPopupState, type PopupOptions } from "./suggest/popup-state"
 import { refresh } from "./suggest/refresh"
 
@@ -29,6 +29,7 @@ export function createSuggestionPopup<T>(
   return {
     refresh: () => refresh(popup),
     hide: () => hide(popup),
+    close: () => close(popup),
     dismiss: () => dismiss(popup),
     usable: () => usable(popup),
     move: (event: KeyEvent) => move(popup, event),

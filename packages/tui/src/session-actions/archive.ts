@@ -13,8 +13,9 @@ export function archiveSession(ctx: SessionActionsContext): void {
   recipient(ctx, dialog, session)
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
-      content:
-        "Archiving hides recent history; it does not interrupt running work.\nTask-owned sessions may reject this change.",
+      content: restore
+        ? "Restoring returns the session to the recent lists.\nTask-owned sessions may reject this change."
+        : "Archiving hides recent history; it does not interrupt running work.\nTask-owned sessions may reject this change.",
       fg: color.text,
       wrapMode: "word",
     }),

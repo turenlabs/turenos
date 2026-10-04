@@ -35,7 +35,9 @@ export function create(ctx: Context) {
       })
   }
   dialog.afterSubmit = () => {
-    if (created) void attach(ctx, created)
+    if (!created) return
+    if (ctx.state.tab === "terminals") ctx.state.selected = created.id
+    void attach(ctx, created)
   }
   dialog.error.content = "Ctrl+S Open and attach · Esc cancel"
   title.focus()

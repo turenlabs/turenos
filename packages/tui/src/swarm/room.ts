@@ -1,8 +1,9 @@
 import { StyledText, fg, type InputRenderable } from "@opentui/core"
 import type { SessionsSwarmRoomEntriesOutput, SessionsSwarmRoomOutput } from "@turenlabs/client"
+import { fitHeading, panelWidth } from "../changes/heading"
 import { display } from "../messages"
 import type { Panel } from "../panel"
-import { errorText, type Connection, type Session } from "../server"
+import { errorText, httpStatus, type Connection, type Session } from "../server"
 import { label, type DashboardState } from "../state"
 import { color } from "../theme"
 
@@ -51,10 +52,11 @@ export async function load(v: SwarmView, reset = false) {
     paint(v, room)
   } catch (error) {
     if (v.state.modal !== v.panel.dialog) return
+    v.panel.dialog.error.content = KEYS
     v.panel.heading.content = "No swarm room"
     v.panel.show(
-      /not ?found|404/i.test(errorText(error))
-        ? "This session has no swarm room. A room opens when the agent coordinates several subagents.\nOpen the main session if this is a subagent."
+      httpStatus(error) === 404 || /not ?found|404/i.test(errorText(error))
+        ? "This session has no\nswarm room yet.\n\nPosting below creates one.\nThe agent opens one for\nsubagent work. Subagents\nshare the main one."
         : `Swarm room unavailable: ${errorText(error)}`,
     )
   } finally {
@@ -65,7 +67,13 @@ export async function load(v: SwarmView, reset = false) {
 function paint(v: SwarmView, room: Room) {
   const { panel } = v
   const active = room.members.filter((member) => member.state === "active" || member.state === "parked")
-  panel.heading.content = `${room.room.status === "open" ? "Open" : "Closed"} · ${label(room.room.objective || "No objective", 120)} · ${active.length}/${room.members.length} members active`
+  panel.heading.content = fitHeading(
+    panelWidth(panel),
+    `${room.room.status === "open" ? "Open" : "Closed"} · `,
+    label(room.room.objective || "No objective", 300),
+    ` · ${active.length}/${room.members.length} members active`,
+    "end",
+  )
   panel.list.options = room.lanes.length
     ? room.lanes.map((lane) => ({
         name: `[${lane.status}] ${label(lane.title, 60)}${lane.claimedByName ? ` · ${label(lane.claimedByName, 30)}` : ""}`,
@@ -95,7 +103,7 @@ export async function send(v: SwarmView) {
   try {
     await v.connection.client.sessions.swarmRoomPost({ sessionID: v.session.id, text })
     v.post.value = ""
-    await load(v)
+    await load(v, true)
   } catch (error) {
     v.panel.dialog.error.content = `! ${errorText(error)}\n${KEYS}`
   }

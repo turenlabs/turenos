@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test"
 import { EventEmitter } from "node:events"
 import { TextareaRenderable } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
-import { settleTerminalInput } from "../src/terminal-exit"
+import { closedLine, settleTerminalInput } from "../src/terminal-exit"
 
 const cleanup: (() => void)[] = []
 afterEach(() => {
@@ -51,4 +51,10 @@ test("noisy input cannot hold exit indefinitely, and renderer destruction ends s
   expect(input.listenerCount("data")).toBe(0)
   await settleTerminalInput(view.renderer, input)
   expect(input.listenerCount("data")).toBe(0)
+})
+
+test("the closing line says the TUI quit and counts discarded drafts only when there are some", () => {
+  expect(closedLine(0)).toBe("Turen TUI closed.\n")
+  expect(closedLine(1)).toBe("Turen TUI closed. 1 unsent draft discarded.\n")
+  expect(closedLine(3)).toBe("Turen TUI closed. 3 unsent drafts discarded.\n")
 })

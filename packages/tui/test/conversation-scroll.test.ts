@@ -597,3 +597,46 @@ test("prepending older server messages preserves reading anchor on the very firs
   // Verify older messages are not visible at the top of the viewport (no flash of top prepended lines)
   expect(afterFrame).not.toContain("Older line 0")
 })
+
+const arrived = (id: string): MessagesListOutput["data"][number] => ({
+  id,
+  type: "user",
+  text: "Sent just now",
+  time: { created: 2 },
+})
+
+test("sending a message while scrolled up jumps to the tail", async () => {
+  const f = await fixture()
+  f.top()
+  await waitForFrame(f.view, (frame) => frame.includes("Live line 0"))
+  f.state.sentMessages.add("msg_sent")
+  f.data.latest = [arrived("msg_sent"), ...f.data.latest]
+  await f.conversation.render()
+  await waitForFrame(f.view, (frame) => frame.includes("Sent just now"))
+})
+
+test("a user message from another client leaves a scrolled-up reader in place", async () => {
+  const f = await fixture()
+  f.top()
+  await waitForFrame(f.view, (frame) => frame.includes("Live line 0"))
+  const scrolled = f.ui.detail.scrollTop
+  f.data.latest = [arrived("msg_elsewhere"), ...f.data.latest]
+  await f.conversation.render()
+  await f.view.renderOnce()
+  expect(f.ui.detail.scrollTop).toBe(scrolled)
+  expect(f.view.captureCharFrame()).toContain("Live line 0")
+  expect(f.view.captureCharFrame()).not.toContain("Sent just now")
+})
+
+test("new output below a scrolled-up reader is announced until they return to the tail", async () => {
+  const f = await fixture()
+  f.top()
+  await waitForFrame(f.view, (frame) => frame.includes("Live line 0"))
+  expect(f.view.captureCharFrame()).not.toContain("new output below")
+  f.data.latest = [message("msg_more", "More output"), ...f.data.latest]
+  await f.conversation.render()
+  await waitForFrame(f.view, (frame) => frame.includes("↓ new output below · End"))
+  f.conversation.cancelPosition()
+  f.ui.detail.scrollTo(Number.MAX_SAFE_INTEGER)
+  await waitForFrame(f.view, (frame) => frame.includes("More output") && !frame.includes("new output below"))
+})

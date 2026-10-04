@@ -1,6 +1,9 @@
 import { label } from "./state"
+import { layout } from "./theme"
 import type { DashboardState } from "./state"
 import type { Detail, Snapshot } from "./server"
+import { scheduleInput } from "./automations/schedule"
+import type { Loop } from "./automations/types"
 
 export function scheduleText(
   schedule: Snapshot["loops"][number]["schedule"],
@@ -20,7 +23,8 @@ export function scheduleText(
     }
   }
   if (schedule.type === "cron") return `Cron ${label(schedule.expression, 512)} (${label(schedule.timezone, 512)})`
-  return `Every ${schedule.seconds}s`
+  // scheduleInput reads only the schedule; it returns "every 30m", "every 1d" or "every 90s".
+  return `Every ${scheduleInput({ schedule } as Loop).slice("every ".length)}`
 }
 
 export function headerLeft(_snapshot: Snapshot | undefined) {
@@ -43,7 +47,7 @@ export function sidebarTitle(state: DashboardState, count: number) {
   return `${name} · ${count}`
 }
 
-export function statusline(state: DashboardState, snapshot: Snapshot | undefined, _width: number) {
+export function statusline(state: DashboardState, snapshot: Snapshot | undefined, width: number) {
   const mode =
     state.tab === "sessions"
       ? state.history
@@ -54,11 +58,48 @@ export function statusline(state: DashboardState, snapshot: Snapshot | undefined
         : "Automations"
   const working = state.detail && snapshot && Object.hasOwn(snapshot.active, state.detail.sessionID) ? " · Working" : ""
   const needsInput = state.detail?.permissions.length || state.detail?.questions.length ? " · Needs input" : ""
+  const narrow = width < layout.narrowBreakpoint
+  // Narrow footers share their row with the shortcuts, so only the unusual stream state is spelled out.
   const live =
-    state.tab === "sessions" && !state.history && state.connected
+    state.tab === "sessions" && !state.history && state.connected && !(narrow && state.streamStatus === "live")
       ? ` · ${state.streamStatus === "live" ? "Live" : "Polling"}`
       : ""
-  return `${mode}${needsInput || working}${live}`
+  const tab = narrow ? `${["sessions", "terminals", "automations"].indexOf(state.tab) + 1}/3 ` : ""
+  const focus = `Focus: ${state.detailFocused ? "transcript" : state.tab}`
+  const hidden = state.sidebarHidden ?? narrow
+  if (narrow) return hidden ? `${tab}${mode}${needsInput || working}${live}` : `${tab}${focus}${needsInput || working}`
+  const base = `${tab}${mode}${needsInput || working}${live}${hidden ? "" : ` · ${focus}`}`
+  const extra = agentModel(state, snapshot)
+  // The shortcuts keep their row; the agent and model go first when the two would not fit together.
+  const room = width - 4 - footerShortcuts(width, !hidden).length - 2
+  return extra && base.length + 3 + extra.length <= room ? `${base} · ${extra}` : base
+}
+
+/** "build · sandbox/scripted": the selected session's agent and model, else the latest reply's, else the server default. */
+function agentModel(state: DashboardState, snapshot: Snapshot | undefined) {
+  if (state.tab !== "sessions" || !state.selected) return ""
+  const session = snapshot?.sessions.find((item) => item.id === state.selected)
+  if (!session) return ""
+  const reply =
+    state.detail?.sessionID === session.id ? state.detail.messages.findLast((m) => m.type === "assistant") : undefined
+  const model =
+    session.model ??
+    (reply && (reply.model.providerID !== "unknown" || reply.model.id !== "unknown") ? reply.model : undefined)
+  const agent = session.agent ?? reply?.agent
+  return `${label(agent ?? "server default", 40)} · ${model ? label(`${model.providerID}/${model.id}${model.variant ? ` (${model.variant})` : ""}`, 80) : "server default"}`
+}
+
+/** The footer's right side. Narrow widths budget for a status text of about 26 columns on the left. */
+export function footerShortcuts(width: number, sidebarVisible: boolean) {
+  const sidebar = sidebarVisible ? "Tab pane" : "b sidebar"
+  const sets = [
+    ["Ctrl+P commands", sidebar, "? help", "q quit"],
+    ["Ctrl+P", sidebar, "? help", "q quit"],
+    [sidebar, "? help", "q quit"],
+    [sidebar, "q quit"],
+  ]
+  const budget = width - 4 - (width < layout.narrowBreakpoint ? 28 : 0)
+  return (sets.find((set) => set.join(" · ").length <= budget) ?? sets[3]!).join(" · ")
 }
 
 export function promptBoxText(

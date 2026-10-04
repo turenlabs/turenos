@@ -50,7 +50,7 @@ export function connect(options: ConnectionOptions) {
     resolveCommand: (text: string, directory: string, workspaceID?: string) =>
       resolveCommand(ctx, text, directory, workspaceID),
     runs: (loopID: string) => runs(ctx, loopID),
-    launch: () => launch(ctx),
+    launch: (ids?: Parameters<typeof launch>[1]) => launch(ctx, ids),
     close: () => controller.abort(),
   }
 }

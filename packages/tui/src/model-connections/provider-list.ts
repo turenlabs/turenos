@@ -54,7 +54,7 @@ function authMethods(flow: Flow, provider: { id: string; name: string }) {
         })),
       )
       if (auth[provider.id]?.length === 0)
-        dialog.error.content = "No authentication methods advertised for this provider. Esc return to models."
+        dialog.error.content = "No authentication methods advertised for this provider. Esc go back."
     },
   )
 }

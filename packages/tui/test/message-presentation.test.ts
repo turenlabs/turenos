@@ -275,3 +275,91 @@ test("agent-switched, model-switched, and compaction messages are clearly presen
     "Conversation compacted (auto): Refactored module structure and removed dead code.",
   )
 })
+
+type Assistant = Extract<MessagesListOutput["data"][number], { type: "assistant" }>
+const turn = (content: unknown[], error?: string) =>
+  ({
+    id: "msg_turn",
+    type: "assistant",
+    agent: "build",
+    model: { providerID: "test", id: "model" },
+    time: { created: 1 },
+    content,
+    ...(error ? { error: { type: "unknown", message: error } } : {}),
+  }) as unknown as Assistant
+const tool = (name: string, state: Record<string, unknown>) => ({
+  type: "tool",
+  id: `part_${name}`,
+  name,
+  time: { created: 1 },
+  state: { content: [], structured: {}, ...state },
+})
+
+test.each([
+  "Provider turn interrupted",
+  "Provider turn interrupted before it started",
+  "Tool execution interrupted during settlement",
+])("an interrupted turn reads as stopped, not failed (%s)", (message) => {
+  const output = transcript([turn([], message)])
+  expect(output).toContain("INTERRUPTED: the turn was stopped before it finished.")
+  expect(output).not.toContain("ERROR")
+  expect(output).not.toContain(" by you")
+  expect(latestMessage([turn([], message)])).toContain("Interrupted: the turn was stopped")
+})
+
+test("interruption wording is matched exactly; every other error stays an error", () => {
+  for (const message of ["Provider turn interrupted by a crash", "provider turn interrupted", "Provider failed"])
+    expect(transcript([turn([], message)])).toContain(`ERROR: ${message}`)
+})
+
+test("an interrupted tool part is marked interrupted, a failed one keeps its error", () => {
+  const stopped = tool("bash", {
+    status: "error",
+    input: { command: "sleep 60" },
+    error: { type: "unknown", message: "Tool execution interrupted" },
+  })
+  const failed = tool("read", { status: "error", input: {}, error: { type: "unknown", message: "No such file" } })
+  const output = transcript([turn([stopped, failed])])
+  expect(output).toContain("[interrupted] bash · sleep 60")
+  expect(output).not.toContain("Tool execution interrupted")
+  expect(output).toContain("[error] read")
+  expect(output).toContain("No such file")
+})
+
+test("tool rows say what ran, from the input fields the UI reads", () => {
+  const rows = transcript([
+    turn([
+      tool("bash", { status: "completed", input: { command: "echo sandbox-marker && ls" } }),
+      tool("read", { status: "completed", input: { filePath: "src/auth.ts" } }),
+      tool("grep", { status: "completed", input: { pattern: "TODO", path: "src" } }),
+      tool("webfetch", { status: "running", input: { url: "https://example.com" } }),
+      tool("todo", { status: "completed", input: { items: [1] } }),
+      tool("write", { status: "pending", input: '{"filePath":"half' }),
+    ]),
+  ])
+  expect(rows).toContain("[completed] bash · echo sandbox-marker && ls\n")
+  expect(rows).toContain("[completed] read · src/auth.ts\n")
+  expect(rows).toContain("[completed] grep · TODO\n")
+  expect(rows).toContain("[running] webfetch · https://example.com\n")
+  expect(rows).toContain("[completed] todo\n")
+  expect(rows).toContain("[pending] write\n")
+})
+
+test("a tool summary is one sanitized line of at most 120 characters", () => {
+  const command = `echo \u001b[31mred\u001b[0m‮\nsecond\n${"y".repeat(300)}`
+  const row = transcript([turn([tool("bash", { status: "completed", input: { command } })])])
+  const line = row.split("\n").find((line) => line.includes("[completed] bash"))!
+  expect(line).not.toMatch(/[\u001b‮]/)
+  expect(line).toContain("echo [31mred[0m second yyy")
+  expect(line.endsWith("…")).toBe(true)
+  expect(line.slice(line.indexOf(" · ") + 3).length).toBe(120)
+})
+
+test("a provider failure reads as its status and the provider's own message, raw mode keeps the body", () => {
+  const body =
+    'Provider request failed with HTTP 401: {"error":{"message":"key \\"abc\\" refused","type":"server_error"}}'
+  expect(transcript([turn([], body)])).toContain('ERROR: HTTP 401: key "abc" refused')
+  expect(transcript([turn([], body)], true)).toContain(`ERROR: ${body}`)
+  expect(latestMessage([turn([], body)])).toContain('Error: HTTP 401: key "abc" refused')
+  expect(transcript([turn([], "Model is overloaded")])).toContain("ERROR: Model is overloaded")
+})

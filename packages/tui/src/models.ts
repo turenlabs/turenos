@@ -38,13 +38,13 @@ export function createModels(
     pickForSession(ctx, session)
   }
 
-  function connect() {
+  function connect(back?: () => void) {
     if (!dialogs.navigate()) return
     if (!state.connected || !state.snapshot) return say("Connect to the server before adding a provider.", true)
     const directory =
       state.snapshot.sessions.find((item) => item.id === state.selected)?.location.directory ??
       state.snapshot.location.directory
-    connections.open(directory, open)
+    connections.open(directory, back ?? open)
   }
 
   return { pick: (target: ModelTarget) => pick(ctx, target), open, connect }

@@ -779,7 +779,7 @@ def main():
                     wait("Your message")
                     key("/goal", literal=True)
                     key("Enter")
-                    wait("Read-only. Enter chooses action")
+                    wait("Enter chooses action; Esc closes.")
                     plain = capture("goal-overview")
                     check("Synthetic goal objective" in plain and "Revision: 7" in plain, "/goal displays captured goal read-only")
                     key("C-r")
@@ -791,7 +791,7 @@ def main():
                     check("GOAL-TEXTAREA-MARKER" in plain and "STARTS execution" in plain, "actual goal textarea and execution warning remain visible")
                     check(not writes_since(start), "overview refresh and textarea Enter only read; no prompt or goal mutation")
                     key("Escape")
-                    wait("Read-only. Enter chooses action")
+                    wait("Enter chooses action; Esc closes.")
                     key("Down", "Down", "Enter")
                     wait("Clear goal?")
                     key("Enter", "C-s")
@@ -804,7 +804,7 @@ def main():
                     check("clear" in typed_rows and "STOPS active work" in plain, "actual typed clear input and stop warning remain visible")
                     check(not writes_since(start), "blank Ctrl+S and typed clear plus Enter never confirm or interrupt")
                     key("Escape")
-                    wait("Read-only. Enter chooses action")
+                    wait("Enter chooses action; Esc closes.")
                     key("Escape")
                     check(not writes_since(start), "cancelling goal controls performs zero writes")
 
@@ -1074,7 +1074,7 @@ def main():
                 orbs = []
                 for index in range(4):
                     plain = capture(f"particle-orb-{index}")
-                    match = re.search(r"Working ([\u2800-\u28ff]{3})", plain)
+                    match = re.search(r"Working(?: \([^)]*\))? ([\u2800-\u28ff]{3})", plain)
                     check(match is not None, "working indicator uses three dotted cells")
                     orbs.append(match[1] if match else "")
                     time.sleep(0.13)
@@ -1083,9 +1083,9 @@ def main():
                 key("Toggle reduced motion", literal=True)
                 key("Enter")
                 wait("Reduced motion on")
-                first = re.search(r"Working ([\u2800-\u28ff]{3})", frame())[1]
+                first = re.search(r"Working(?: \([^)]*\))? ([\u2800-\u28ff]{3})", frame())[1]
                 time.sleep(0.35)
-                check(re.search(r"Working ([\u2800-\u28ff]{3})", frame())[1] == first, "reduced motion freezes particles without hiding Working")
+                check(re.search(r"Working(?: \([^)]*\))? ([\u2800-\u28ff]{3})", frame())[1] == first, "reduced motion freezes particles without hiding Working")
 
             with scenario("transcript-scroll", width, height):
                 start = len(result["requests"])

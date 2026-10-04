@@ -56,7 +56,7 @@ test("a queued message too long for the reply editor is never cancelled for edit
     "GET /api/session/ses_main/input": () => ({ data: [queued("msg_long", "x".repeat(32001))] }),
   })
   view.mockInput.pressKey("u")
-  await screen("Queued until the agent is idle")
+  await screen("Held · agent is idle")
   view.mockInput.pressKey("e", { ctrl: true })
   await screen("longer than the reply editor")
   expect(server.sent("/api/session/ses_main/input/msg_long/cancel")).toHaveLength(0)
@@ -179,7 +179,7 @@ test("Changes shows each file's colored patch and cycles uncommitted, branch, an
   // @ puts the file into the reply draft for the agent.
   view.mockInput.pressKey("@")
   await screen("Reply to main task")
-  expect(view.renderer.currentFocusedEditor?.plainText).toBe("@src/gone.ts")
+  expect(view.renderer.currentFocusedEditor?.plainText).toBe("@src/gone.ts ")
 })
 
 test("Files browses folders and shows file contents read-only", async () => {

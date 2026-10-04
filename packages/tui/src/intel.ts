@@ -15,6 +15,6 @@ export function createIntel(
   dialogs: Dialogs,
   say: (message: string, error?: boolean) => void,
 ) {
-  const ctx = { renderer, state, connection, dialogs, say }
+  const ctx = { renderer, state, connection, dialogs, say, memory: new Map<string, number>() }
   return { open: () => openIntel(ctx) }
 }

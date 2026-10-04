@@ -15,7 +15,9 @@ export function normalizeMarkdown(text: string): string {
   return parts
     .map((part, i) => {
       if (i % 2 === 1) return part
-      return part.replace(/^([ \t]*(?:\d+[.)]|[-*+]))[ \t]*\n(?!\n)(?![ \t]*(?:\d+[.)]|[-*+])\s)[ \t]*(?=\S)/gm, "$1 ")
+      // "[completed] bash" and "[x] task" rows are status text; Markdown reads them as a link and conceals the brackets, so keep them in a code span.
+      const rows = part.replace(/^([ \t]*)\[([^\]\n]{1,40})\](?=[ \t]|$)/gm, "$1`[$2]`")
+      return rows.replace(/^([ \t]*(?:\d+[.)]|[-*+]))[ \t]*\n(?!\n)(?![ \t]*(?:\d+[.)]|[-*+])\s)[ \t]*(?=\S)/gm, "$1 ")
     })
     .join("")
 }

@@ -1,5 +1,5 @@
 import { SelectRenderable, TextRenderable } from "@opentui/core"
-import { errorText } from "../server"
+import { errorText, httpStatus } from "../server"
 import { label, type ModalState } from "../state"
 import { color } from "../theme"
 import { matchesKey } from "../keys"
@@ -61,11 +61,21 @@ export function workingFolders(ctx: MenuContext) {
 
 async function applyFolder(ctx: MenuContext, target: string, closing: boolean) {
   const { state, connection } = ctx
+  if (!closing) await requireFolder(ctx, target)
   const result = await (closing ? connection.folders.close(target) : connection.folders.open(target))
   if (state.closed) return
   if (state.snapshot) state.snapshot.workingFolders = result
   if (!closing) state.workingDirectory = target
   else if (state.workingDirectory === target) state.workingDirectory = undefined
+}
+
+/** Opening a folder the server cannot read would only fail later, as an HTTP 500 on session creation. */
+async function requireFolder(ctx: MenuContext, target: string) {
+  await ctx.connection.client.files.list({ location: { directory: target } }).catch((error: unknown) => {
+    const status = httpStatus(error)
+    if (status === undefined || status === 401 || status === 403) throw error
+    throw new Error("Folder not found on the server.")
+  })
 }
 
 function folderList(ctx: MenuContext, dialog: ModalState, directories: string[]) {

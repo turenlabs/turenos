@@ -1,4 +1,8 @@
 import type { MessagesListOutput, QuestionsListOutput } from "@turenlabs/client"
+import { assistantHeader } from "./messages/header"
+import { noticeLine } from "./messages/notice"
+import { shellBlock, shellOutcome } from "./messages/shell"
+import { todoChecklist } from "./messages/todos"
 
 type Source = NonNullable<Extract<MessagesListOutput["data"][number], { type: "user" }>["source"]>
 
@@ -161,12 +165,18 @@ function previewOf(message: Message) {
   if (message.type === "shell") return shellPreview(message)
 }
 
+/** The delivered text, or one readable line for a room post or a subagent result outside raw mode. */
+function notice(source: Exclude<Source, "user">, text: string, raw = false) {
+  const line = !raw && (source === "swarm_room" || source === "subagent_settle") ? noticeLine(source, text) : undefined
+  return line ?? display(text)
+}
+
 function textPreview(message: Extract<Message, { type: "user" | "synthetic" | "system" }>) {
   const text = display(message.text, 16000).trim()
   if (text && message.type === "user" && message.source === "subagent_board")
     return preview(`Agent update\n${boardMessage(message.text)}`)
   if (text && message.type === "user" && message.source && message.source !== "user")
-    return preview(`${sourceLabel[message.source]}\n${text}`)
+    return preview(`${sourceLabel[message.source]}\n${notice(message.source, message.text)}`)
   if (text)
     return preview(`${message.type === "user" ? "You" : message.type === "system" ? "System" : "Update"}\n${text}`)
 }
@@ -174,8 +184,9 @@ function textPreview(message: Extract<Message, { type: "user" | "synthetic" | "s
 function shellPreview(message: Extract<Message, { type: "shell" }>) {
   if (message.error) return preview(`Shell command error\n${display(message.error, 1000)}`)
   if (message.status === "running") return preview(`Working: ${display(message.command, 200)}`)
+  const outcome = shellOutcome(message)
+  if (outcome) return outcome
   if (message.status === "completed") return "Shell command completed. Waiting for a reply."
-  if (message.status === "failed") return "Shell command failed. Open history for details."
   if (message.status === "cancelled") return "Shell command cancelled."
   if (message.status === "timed_out") return "Shell command timed out."
   return "Shell command status unavailable."
@@ -183,10 +194,16 @@ function shellPreview(message: Extract<Message, { type: "shell" }>) {
 
 function assistantPreview(message: Extract<Message, { type: "assistant" }>) {
   const tools = message.content.filter((part) => part.type === "tool")
-  const failures = tools.filter((part) => part.state.status === "error")
+  const failures = tools.filter(
+    (part) => part.state.status === "error" && part.state.error.message !== TOOL_INTERRUPTED,
+  )
   const alerts = [
     ...(message.error
-      ? [`Error: ${display(message.error.message, 1000).trim() || "The assistant reported an error."}`]
+      ? [
+          TURN_INTERRUPTED.test(message.error.message)
+            ? "Interrupted: the turn was stopped before it finished."
+            : `Error: ${display(providerError(message.error.message), 1000).trim() || "The assistant reported an error."}`,
+        ]
       : []),
     ...failures
       .slice(0, 3)
@@ -221,7 +238,7 @@ export function transcript(messages: MessagesListOutput["data"], raw = false) {
       if (message.type === "assistant") {
         // Keep metadata and distinct response parts in separate Markdown blocks.
         return [
-          `${display(message.agent, 256)} · ${display(message.model.providerID, 256)}/${display(message.model.id, 512)}${message.model.variant ? ` (${display(message.model.variant, 256)})` : ""}`,
+          assistantHeader(message),
           ...message.content
             .map((part) => {
               if (part.type === "reasoning") {
@@ -230,22 +247,10 @@ export function transcript(messages: MessagesListOutput["data"], raw = false) {
                 return raw ? `THINKING\n${thought}` : `> _Thinking_\n> ${thought.replace(/\n/g, "\n> ")}`
               }
               if (part.type !== "tool") return display(part.text)
-              const content =
-                part.state.status === "pending"
-                  ? ""
-                  : part.state.content
-                      .map((item) =>
-                        item.type === "text"
-                          ? raw
-                            ? display(item.text, 4000)
-                            : toolResult(item.text)
-                          : `[file] ${display(item.uri, 1000)}`,
-                      )
-                      .join("\n")
-              return `  [${display(part.state.status, 32)}] ${display(part.name, 200)}\n${content}${part.state.status === "error" ? `\n${display(part.state.error.message)}` : ""}`
+              return toolBlock(part, raw)
             })
             .filter(Boolean),
-          ...(message.error ? [`ERROR: ${display(message.error.message)}`] : []),
+          ...(message.error ? [errorLine(message.error.message, raw)] : []),
         ].join("\n\n")
       }
       if (message.type === "agent-switched") return `AGENT SWITCHED\nSwitched agent to ${display(message.agent)}`
@@ -253,16 +258,77 @@ export function transcript(messages: MessagesListOutput["data"], raw = false) {
         return `MODEL SWITCHED\nSwitched model to ${display(message.model.providerID)}/${display(message.model.id)}${message.model.variant ? ` (${display(message.model.variant)})` : ""}`
       if (message.type === "compaction")
         return `COMPACTION (${display(message.reason)})\n${display(message.summary || "Conversation history compacted.")}`
-      if (message.type === "shell")
-        return `[${display(message.status ?? "running", 32)}] $ ${display(message.command)}\n${display(message.output)}`
+      if (message.type === "shell") return shellBlock(message)
       if (message.type === "user" && message.source === "subagent_board")
         return `AGENT UPDATE\n${raw ? display(message.text) : boardMessage(message.text)}`
       if (message.type === "user" && message.source && message.source !== "user")
-        return `${sourceLabel[message.source].toUpperCase()}\n${display(message.text)}`
+        return `${sourceLabel[message.source].toUpperCase()}\n${notice(message.source, message.text, raw)}`
       if ("text" in message) return `${display(message.type, 64).toUpperCase()}\n${display(message.text)}`
       return `[${display((message as { type?: string }).type ?? "unknown", 64)}]`
     })
     .join("\n\n")
   if (text.length <= 80000) return text
   return `[earlier history shortened]\n${text.slice(-80000)}`
+}
+
+type ToolPart = Extract<Extract<Message, { type: "assistant" }>["content"][number], { type: "tool" }>
+
+function toolBlock(part: ToolPart, raw: boolean) {
+  const state = part.state
+  const stopped = state.status === "error" && state.error.message === TOOL_INTERRUPTED
+  const checklist =
+    part.name === "todowrite" && !raw && state.status !== "pending" ? todoChecklist(state.input) : undefined
+  const content =
+    state.status === "pending"
+      ? ""
+      : (checklist ??
+        state.content
+          .map((item) =>
+            item.type === "text"
+              ? raw
+                ? display(item.text, 4000)
+                : toolResult(item.text)
+              : `[file] ${display(item.uri, 1000)}`,
+          )
+          .join("\n"))
+  const status = stopped ? "interrupted" : display(state.status, 32)
+  const failure = state.status === "error" && !stopped ? `\n${display(state.error.message)}` : ""
+  return `  [${status}] ${display(part.name, 200)}${toolSummary(state)}\n${content}${failure}`
+}
+
+// The server's wording for a turn that was stopped (packages/core/src/session/runner/llm.ts).
+const TURN_INTERRUPTED =
+  /^(Provider turn interrupted|Provider turn interrupted before it started|Tool execution interrupted during settlement)$/
+const TOOL_INTERRUPTED = "Tool execution interrupted"
+
+// The server can interrupt for reasons other than the user, so the wording names no one.
+function errorLine(message: string, raw: boolean) {
+  if (TURN_INTERRUPTED.test(message)) return "INTERRUPTED: the turn was stopped before it finished."
+  return `ERROR: ${display(raw ? message : providerError(message))}`
+}
+
+/**
+ * "HTTP 503: <provider message>" from a provider failure, which the server reports as
+ * "Provider request failed with HTTP 503: <the provider's JSON body>". Other text is unchanged.
+ */
+export function providerError(message: string, status?: unknown) {
+  const inner = message.match(/"message"\s*:\s*"((?:[^"\\]|\\.){1,300})"/)?.[1]
+  if (!inner) return message
+  const code = typeof status === "number" ? `HTTP ${status}` : message.match(/\bHTTP \d{3}\b/)?.[0]
+  return `${code ? `${code}: ` : ""}${inner.replace(/\\(.)/g, "$1")}`
+}
+
+// Search inputs come before paths so a grep reads as its pattern, not its folder.
+const summaryKeys = ["command", "pattern", "query", "url", "filePath", "path", "file"]
+
+/** One line saying what a tool ran: " · <command, path or pattern>", or nothing when the input has none. */
+function toolSummary(state: ToolPart["state"]) {
+  if (state.status === "pending" || typeof state.input !== "object" || state.input === null) return ""
+  const input = state.input as Record<string, unknown>
+  const key = summaryKeys.find((key) => typeof input[key] === "string" && (input[key] as string).trim())
+  if (!key) return ""
+  const line = display((input[key] as string).slice(0, 400))
+    .replace(/\s+/g, " ")
+    .trim()
+  return ` · ${line.length > 120 ? `${line.slice(0, 119)}…` : line}`
 }

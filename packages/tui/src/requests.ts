@@ -9,7 +9,7 @@ import { clearRestoredDraft, mention, restoreBlocker, restoreDraft } from "./req
 import { permission } from "./requests/permission"
 import { question } from "./requests/question"
 import { followup } from "./requests/reply"
-import { interrupt, kill, stopAll } from "./requests/stop"
+import { escapeStop, interrupt, kill, stopAll } from "./requests/stop"
 
 export function createRequests(
   renderer: CliRenderer,
@@ -33,6 +33,8 @@ export function createRequests(
     messages: new Map<string, MessageDraft>(),
     owned: new Set<string>(),
     shownQuestions: new Set<string>(),
+    shownPermissions: new Set<string>(),
+    deliveries: new Map<string, MessageDraft["delivery"]>(),
     questionDrafts: new Map<string, QuestionDraft>(),
   }
   return {
@@ -46,6 +48,7 @@ export function createRequests(
     permission: () => permission(ctx),
     question: (reject = false) => question(ctx, reject),
     interrupt: () => interrupt(ctx),
+    escapeStop: (rewind: () => void) => escapeStop(ctx, rewind),
     kill: () => kill(ctx),
     stopAll: () => stopAll(ctx),
     hasDraft: (id: string) => ctx.messages.has(id),
@@ -60,10 +63,10 @@ export function createRequests(
   }
 }
 
+/** Opens the selected session's oldest pending permission, else its question, once per request and only when nothing else is open. */
 function offerQuestion(ctx: RequestContext) {
   const state = ctx.state
   const detail = state.detail
-  const request = detail?.questions[0]
   if (
     state.closed ||
     !state.connected ||
@@ -71,12 +74,13 @@ function offerQuestion(ctx: RequestContext) {
     state.searching ||
     state.tab !== "sessions" ||
     !detail ||
-    detail.sessionID !== state.selected ||
-    detail.permissions.length ||
-    !request ||
-    request.sessionID !== state.selected ||
-    ctx.shownQuestions.has(`${request.sessionID}:${request.id}`)
+    detail.sessionID !== state.selected
   )
+    return
+  const ask = detail.permissions[0]
+  if (ask) return ctx.shownPermissions.has(`${ask.sessionID}:${ask.id}`) ? undefined : permission(ctx)
+  const request = detail.questions[0]
+  if (!request || request.sessionID !== state.selected || ctx.shownQuestions.has(`${request.sessionID}:${request.id}`))
     return
   question(ctx)
 }

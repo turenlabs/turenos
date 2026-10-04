@@ -58,6 +58,9 @@ export type Conversation = {
   viewKey: string
   prepend: { height: number; scroll: number } | undefined
   textAnchor: TextAnchor | undefined
+  /** The last painted live content, and whether it changed while the reader was away from the tail. */
+  drawn: string
+  unread: boolean
 }
 
 export function newConversation(
@@ -87,5 +90,7 @@ export function newConversation(
     viewKey: "",
     prepend: undefined,
     textAnchor: undefined,
+    drawn: "",
+    unread: false,
   }
 }

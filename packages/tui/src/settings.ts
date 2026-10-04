@@ -18,6 +18,27 @@ export function createSettings(
   say: (message: string, error?: boolean) => void,
   hooks: SettingsHooks,
 ) {
-  const ctx: SettingsContext = { renderer, state, connection, dialogs, say, hooks, open: () => openMenu(ctx) }
-  return { open: ctx.open }
+  const ctx: SettingsContext = {
+    renderer,
+    state,
+    connection,
+    dialogs,
+    say: (message, error) => {
+      ctx.notice = error ? "" : message
+      say(message, error)
+    },
+    hooks,
+    open: () => openMenu(ctx),
+    memory: new Map(),
+    removed: new Set(),
+    notice: "",
+  }
+  return {
+    open() {
+      // A fresh visit starts at the top; actions inside Settings reopen through ctx.open and keep the cursor.
+      ctx.memory.clear()
+      ctx.notice = ""
+      ctx.open()
+    },
+  }
 }

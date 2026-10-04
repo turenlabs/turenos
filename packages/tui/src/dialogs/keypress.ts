@@ -16,8 +16,8 @@ export function keypress(ctx: DialogContext, key: KeyEvent) {
     key.preventDefault()
     return true
   }
-  // Gated on a focused prompt editor so the pickers keep their own F2.
-  if (matchesKey(key, "f2") && current.editor?.focused) {
+  // Gated on a focused prompt editor so the pickers keep their own F2. Ctrl+G is Claude Code's and Codex's binding.
+  if ((matchesKey(key, "f2") || matchesKey(key, "g", { ctrl: true })) && current.editor?.focused) {
     key.preventDefault()
     void compose(ctx)
     return true

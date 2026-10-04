@@ -32,6 +32,11 @@ export type RequestContext = {
   messages: Map<string, MessageDraft>
   owned: Set<string>
   shownQuestions: Set<string>
+  shownPermissions: Set<string>
+  /** Recorded by the first Esc; a second Esc before `until` interrupts a running session or opens undo for an idle one. */
+  stopArmed?: { sessionID: string; until: number; action: "stop" | "rewind" }
+  /** The last Steer/Queue choice per session, kept while the process lives. */
+  deliveries: Map<string, MessageDraft["delivery"]>
   questionDrafts: Map<string, QuestionDraft>
 }
 

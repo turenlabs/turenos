@@ -21,6 +21,7 @@ export function routeKey(d: DashboardContext, key: KeyEvent) {
   if (chordKey(d, key)) return
   cancelReadingPosition(d, key)
   if (capitalKey(d, key)) return
+  if (matchesKey(key, "escape") && d.c.requests.escapeStop(d.c.rewind.undo)) return key.preventDefault()
   if (tabKey(d, key)) return
   if (characterKey(d, key)) return
   paneKey(d, key)

@@ -1,4 +1,4 @@
-import { label, type DashboardState } from "./state"
+import { label, type DashboardState, type Retry } from "./state"
 
 // Each Braille cell is a 2x4 dot grid. Project three tilted particle orbits
 // into six by four dots, keeping the indicator one terminal row high.
@@ -46,27 +46,52 @@ export function activityFrame(state: DashboardState, frame: number, reducedMotio
       return undefined
   }
 
-  // History pages and older messages cannot identify the currently running tool.
-  const latest = state.history && state.historyCursor ? undefined : detail?.messages.at(-1)
-  const tool =
-    latest?.type === "assistant"
-      ? latest.content.find((part) => part.type === "tool" && part.state.status === "running")
-      : undefined
+  const retry = state.modal?.busy || !state.connected ? undefined : state.retries[state.selected]
   const content = state.modal?.busy
     ? state.modal.editor
       ? "Sending message"
       : "Applying request"
     : !state.connected
       ? "Connecting"
-      : tool?.type === "tool"
-        ? `Running ${label(tool.name, 80).trim() || "tool"}`
-        : "Working"
+      : retry
+        ? retrying(retry)
+        : working(state, detail)
 
   const phase =
     reducedMotion || !Number.isFinite(frame) ? 0 : ((Math.trunc(frame) % globe.length) + globe.length) % globe.length
   return {
     content: `${content} ${globe[phase]}`,
-    tone: state.modal?.busy || state.connected ? "accent" : "muted",
+    tone: retry ? "warning" : state.modal?.busy || state.connected ? "accent" : "muted",
     animate: !reducedMotion,
   }
+}
+
+/** "Working (12s · x to stop)", or "Running bash (4s · x to stop)" while a tool runs. */
+function working(state: DashboardState, detail: DashboardState["detail"]) {
+  // History pages and older messages cannot identify the currently running tool or turn.
+  const messages = state.history && state.historyCursor ? [] : (detail?.messages ?? [])
+  const latest = messages.at(-1)
+  const tool =
+    latest?.type === "assistant"
+      ? latest.content.find((part) => part.type === "tool" && part.state.status === "running")
+      : undefined
+  const started = messages.findLast((message) => message.type === "user")?.time.created
+  // A turn older than a day is more likely a clock or unit mismatch than a real elapsed time.
+  const elapsed =
+    started && Date.now() >= started && Date.now() - started < 86_400_000 ? `${duration(Date.now() - started)} · ` : ""
+  const action = tool?.type === "tool" ? `Running ${label(tool.name, 80).trim() || "tool"}` : "Working"
+  return `${action} (${elapsed}x to stop)`
+}
+
+function retrying(retry: Retry) {
+  const wait = retry.at - Date.now()
+  const when = wait > 500 ? `in ${duration(wait)}` : "now"
+  return `Retrying ${when} (attempt ${retry.attempt} · x to stop)${retry.message ? `: ${label(retry.message, 72)}` : ""}`
+}
+
+function duration(milliseconds: number) {
+  const seconds = Math.round(milliseconds / 1000)
+  if (seconds < 60) return `${seconds}s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`
+  return `${Math.floor(seconds / 3600)}h ${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}m`
 }

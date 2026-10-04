@@ -27,6 +27,7 @@ export function createFiles(
     const panel = openPanel(renderer, dialogs, "Files")
     if (!panel) return
     panel.dialog.recipient = session
+    panel.dialog.error.marginRight = 2
     const browser: FileBrowser = {
       ctx,
       session,

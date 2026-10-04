@@ -10,16 +10,17 @@ import type { Extension, ExtensionsContext } from "./types"
 type Panel = NonNullable<ReturnType<typeof openPanel>>
 
 /** The open Extensions panel and the list it shows. */
-type View = { ctx: ExtensionsContext; panel: Panel; back?: () => void; items: Extension[] }
+type View = { ctx: ExtensionsContext; panel: Panel; back?: () => void; items: Extension[]; select?: string }
 
 const keys = "↑↓ choose · Enter on/off · s secret · c setting · o sign in · Ctrl+R refresh · Esc back"
 
-export function openExtensions(ctx: ExtensionsContext, back?: () => void) {
+/** `select` is the extension to land on, so returning from its secrets keeps the cursor. */
+export function openExtensions(ctx: ExtensionsContext, back?: () => void, select?: string) {
   if (!ctx.dialogs.navigate()) return
   const panel = openPanel(ctx.renderer, ctx.dialogs, "Extensions")
   if (!panel) return
   panel.dialog.back = back
-  const view: View = { ctx, panel, back, items: [] }
+  const view: View = { ctx, panel, back, items: [], select }
   panel.list.on("selectionChanged", () => describe(view))
   panel.dialog.key = (key) => {
     const item = view.items[panel.list.getSelectedIndex()]
@@ -79,7 +80,8 @@ async function load(view: View) {
   const { ctx, panel } = view
   try {
     const result = extensionList(await ctx.connection.api("/extension", { directory: ctx.directory() }))
-    if (ctx.state.modal === panel.dialog) show(view, result, view.items[panel.list.getSelectedIndex()]?.id)
+    if (ctx.state.modal === panel.dialog)
+      show(view, result, view.items[panel.list.getSelectedIndex()]?.id ?? view.select)
   } catch (error) {
     if (ctx.state.modal === panel.dialog) panel.show(`Extensions unavailable: ${errorText(error)}`)
   }
@@ -108,5 +110,5 @@ function field(view: View, kind: "secret" | "setting") {
       kind === "secret" ? contribution.secrets : contribution.configuration,
     ) ?? []
   if (!item || !fields.length) return note(view, `This extension has no ${kind}s.`)
-  pickField(view.ctx, item, fields, kind, () => openExtensions(view.ctx, view.back))
+  pickField(view.ctx, item, fields, kind, () => openExtensions(view.ctx, view.back, item.id))
 }

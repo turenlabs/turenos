@@ -1,6 +1,7 @@
 import { TextRenderable, TextAttributes } from "@opentui/core"
-import { httpStatus } from "../server"
+import { errorText, httpStatus } from "../server"
 import { color } from "../theme"
+import { waiting } from "../queue/inputs"
 import { recipient, type RequestContext } from "./context"
 
 export function interrupt(ctx: RequestContext) {
@@ -16,8 +17,44 @@ export function interrupt(ctx: RequestContext) {
   confirmation.dialog.submit = async () => {
     if (confirmation.input.value !== "stop") throw new Error("Type stop to confirm interruption.")
     await ctx.connection.client.sessions.interrupt({ sessionID: id })
-    ctx.say("Session interrupted.")
+    ctx.say(stopped(ctx, id))
   }
+}
+
+/**
+ * Esc Esc on the selected session: the first press arms, a second within 2 s interrupts a running turn
+ * (what `x` sends after its typed confirmation) or, for an idle session, opens the `/undo` dialog.
+ */
+export function escapeStop(ctx: RequestContext, rewind: () => void) {
+  const id = ctx.state.selected
+  if (ctx.state.tab !== "sessions" || !id || !ctx.state.snapshot) return false
+  const action = Object.hasOwn(ctx.state.snapshot.active, id) ? "stop" : "rewind"
+  if (action === "rewind" && !ctx.state.connected) return false
+  if (ctx.stopArmed?.sessionID !== id || ctx.stopArmed.action !== action || ctx.stopArmed.until < Date.now()) {
+    if (action === "rewind" && ctx.state.detail?.sessionID === id && !ctx.state.detail.messages.length)
+      ctx.say("Nothing to undo in this session.")
+    else {
+      ctx.stopArmed = { sessionID: id, until: Date.now() + 2000, action }
+      ctx.say(action === "stop" ? "Press Esc again to stop this turn" : "Press Esc again to rewind")
+    }
+    return true
+  }
+  ctx.stopArmed = undefined
+  if (action === "rewind") {
+    rewind()
+    return true
+  }
+  void ctx.connection.client.sessions
+    .interrupt({ sessionID: id })
+    .then(() => ctx.say(stopped(ctx, id)))
+    .catch((error: unknown) => ctx.say(`Could not stop the turn: ${errorText(error)}`))
+  return true
+}
+
+function stopped(ctx: RequestContext, sessionID: string) {
+  const held = waiting(ctx.state.detail?.sessionID === sessionID ? ctx.state.detail.pending : []).length
+  if (!held) return "Session interrupted."
+  return `Stopped. ${held} queued message${held === 1 ? " is" : "s are"} held: u to send or discard`
 }
 
 export function kill(ctx: RequestContext) {
@@ -37,7 +74,9 @@ export function kill(ctx: RequestContext) {
     const summary = `${result.cancelled} cancelled, ${result.failed} failed, ${result.gone} not listed`
     const older = result.more ? " Older tasks beyond the first 50 were not checked." : ""
     if (result.failed) throw new Error(`Session interrupted; tasks: ${summary}. Ctrl+S retries the cancels.${older}`)
-    const cancelled = result.cancelled ? ` Cancelled ${result.cancelled} active task${result.cancelled === 1 ? "" : "s"}.` : ""
+    const cancelled = result.cancelled
+      ? ` Cancelled ${result.cancelled} active task${result.cancelled === 1 ? "" : "s"}.`
+      : ""
     ctx.say(`Session killed.${cancelled}${result.gone ? ` ${result.gone} not listed.` : ""}${older}`)
   }
 }

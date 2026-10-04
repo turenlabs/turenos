@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { MessagesListOutput } from "@turenlabs/client"
 import { createLiveProjection, type LiveEvent } from "../src/live-projection"
+import { transcript } from "../src/messages"
 import type { Session } from "../src/server"
 
 type Assistant = Extract<MessagesListOutput["data"][number], { type: "assistant" }>
@@ -338,5 +339,22 @@ describe("selected-session live projection", () => {
     const updated = projection.messages().at(-1)
     const part = updated?.type === "assistant" ? updated.content[0] : undefined
     expect(part?.type === "text" && part.text.length).toBe(65_536)
+  })
+})
+
+describe("live tool rows", () => {
+  test("a running tool shows its input in the transcript", () => {
+    const projection = createLiveProjection(session)
+    start(projection)
+    projection.apply(event("tool.input.started", { callID: "call", name: "bash" }))
+    projection.apply(
+      event("tool.called", {
+        callID: "call",
+        tool: "bash",
+        input: { command: "echo live-marker" },
+        provider: { executed: false },
+      }),
+    )
+    expect(transcript(projection.messages())).toContain("[running] bash · echo live-marker")
   })
 })

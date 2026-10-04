@@ -52,7 +52,9 @@ export function choose(picker: TaskPicker, index: number) {
   reveal(picker)
   picker.dialog.error.content = picker.matches.length
     ? `${picker.selected + 1}/${picker.matches.length} - Up/Down choose - Enter open - Esc close\nPgUp/PgDn page${picker.detail.tasks.cursor.next ? " - Older tasks are not loaded" : ""}`
-    : "No matching loaded tasks - Esc close"
+    : picker.tasks.length
+      ? "No matching loaded tasks - Esc close"
+      : "No tasks yet - subagent work started in this session appears here - Esc close"
 }
 
 /** Re-matches the search terms, rebuilds the rows and keeps the previously chosen task selected when it survives. */

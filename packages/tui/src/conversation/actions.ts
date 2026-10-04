@@ -1,5 +1,6 @@
 import type { MessagesListOutput } from "@turenlabs/client"
 import type { Conversation } from "./context"
+import { sentByReader } from "./follow"
 import { drawLive, mergeLive } from "./live-cache"
 import { render } from "./load"
 import { commitPrepend, currentView, rememberPosition, stagedMessageID } from "./position"
@@ -11,6 +12,8 @@ export function loadPosition(c: Conversation) {
   c.prepend = undefined
   c.pageRequest = undefined
   c.beforeQuestion = undefined
+  c.drawn = ""
+  c.unread = false
   if (state.detail && state.detail.sessionID !== state.selected) state.detail = undefined
   const saved = c.positions.get(state.selected)
   state.history = saved?.history ?? false
@@ -32,6 +35,8 @@ export function toggleHistory(c: Conversation) {
   if (state.tab !== "sessions" || !state.selected) return c.hooks.say("Select a session first.")
   rememberPosition(c)
   c.pageRequest = undefined
+  c.drawn = ""
+  c.unread = false
   state.history = !state.history
   currentView(c)
   state.detail = undefined
@@ -60,7 +65,8 @@ export function updateLive(c: Conversation, messages: MessagesListOutput["data"]
   commitPrepend(c)
   const follow =
     (!state.detail.questions.length || c.hooks.questionsInPanel) &&
-    (c.position?.scroll === Number.MAX_SAFE_INTEGER ||
+    (sentByReader(c, messages) ||
+      c.position?.scroll === Number.MAX_SAFE_INTEGER ||
       (!c.position && ui.detail.scrollTop + ui.detail.viewport.height >= ui.detail.scrollHeight - 1))
   if (follow) c.position = { sessionID: state.selected, history: false, scroll: Number.MAX_SAFE_INTEGER }
   state.detail.messages = [...messages]

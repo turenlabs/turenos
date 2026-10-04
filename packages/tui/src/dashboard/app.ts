@@ -11,7 +11,7 @@ type App = { current: { dashboard: Dashboard; endpoint: Endpoint } | undefined; 
 export function mountApp(
   renderer: CliRenderer,
   servers: Servers,
-  options: { initial?: Target; directory?: string; onQuit: () => void },
+  options: { initial?: Target; directory?: string; onQuit: (drafts: number) => void },
 ) {
   const app: App = { current: undefined, directory: options.directory }
   const picker = createServerPicker(renderer, servers, {
@@ -32,8 +32,9 @@ export function mountApp(
   }
 
   function finish() {
+    const drafts = app.current?.dashboard.drafts() ?? 0
     dispose()
-    options.onQuit()
+    options.onQuit(drafts)
   }
 
   if (options.initial) picker.start(options.initial)

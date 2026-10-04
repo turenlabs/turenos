@@ -41,6 +41,12 @@ export function slashKey(attachment: SlashAttachment, event: KeyEvent) {
   if (!attachment.editor.focused) return false
   popup.refresh()
   if (!popup.visible) return false
+  // Esc closes the list first; the next Esc reaches the editor.
+  if (matchesKey(event, "escape")) {
+    event.preventDefault()
+    popup.close()
+    return true
+  }
   const enter = matchesKey(event, "enter")
   const tab = matchesKey(event, "tab")
   if (!enter && !tab && !matchesKey(event, "up") && !matchesKey(event, "down")) return false

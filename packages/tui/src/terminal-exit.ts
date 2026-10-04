@@ -1,5 +1,10 @@
 import type { CliRenderer, PasteEvent } from "@opentui/core"
 
+/** The one line left on the restored terminal, so a quit is never mistaken for a crash or for lost drafts. */
+export function closedLine(drafts: number) {
+  return `Turen TUI closed.${drafts ? ` ${drafts} unsent draft${drafts === 1 ? "" : "s"} discarded.` : ""}\n`
+}
+
 export async function settleTerminalInput(renderer: CliRenderer, input: NodeJS.EventEmitter = process.stdin) {
   if (renderer.isDestroyed) return Promise.resolve()
   const swallow = () => true

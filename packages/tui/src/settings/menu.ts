@@ -13,6 +13,7 @@ export function openMenu(ctx: SettingsContext) {
     title: "Settings",
     text: `Server: ${label(ctx.connection.address, 200)}`,
     keys: "↑↓ choose · Enter open · Esc close",
+    memory: ctx.memory,
     choices: [
       {
         name: "Providers",
@@ -36,14 +37,24 @@ export function openMenu(ctx: SettingsContext) {
       {
         name: "Appearance",
         description: "Motion and transcript display on this computer",
-        run: () =>
-          openPicker(ctx.renderer, ctx.dialogs, {
-            title: "Appearance",
-            text: "Only this client changes.",
-            back: ctx.open,
-            choices: hooks.appearance(),
-          }),
+        run: () => appearance(ctx),
       },
     ],
+  })
+}
+
+function appearance(ctx: SettingsContext) {
+  openPicker(ctx.renderer, ctx.dialogs, {
+    title: "Appearance",
+    text: "Only this client changes.",
+    back: ctx.open,
+    memory: ctx.memory,
+    choices: ctx.hooks.appearance().map((choice) => ({
+      ...choice,
+      run: () => {
+        choice.run()
+        appearance(ctx)
+      },
+    })),
   })
 }

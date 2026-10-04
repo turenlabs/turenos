@@ -82,14 +82,17 @@ function describe(view: View) {
 
 async function poll(view: View) {
   const { panel } = view
+  // The poll hits the network, so Esc can destroy the dialog before it answers.
+  const open = () => view.ctx.state.modal === panel.dialog && !panel.dialog.error.isDestroyed
   panel.dialog.error.content = `Polling feeds…\n${keys}`
   try {
     const result = await view.ctx.connection.client["server.intel"].poll()
+    if (!open()) return
     const failed = result.feeds.filter((feed) => feed.lastOk === false).length
     panel.dialog.error.content = `${failed ? `${failed} feed(s) failed.` : "Feeds updated."}\n${keys}`
     await load(view)
   } catch (error) {
-    panel.dialog.error.content = `! ${errorText(error)}\n${keys}`
+    if (open()) panel.dialog.error.content = `! ${errorText(error)}\n${keys}`
   }
 }
 

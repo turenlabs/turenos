@@ -37,7 +37,14 @@ export function hide<T>(popup: PopupState<T>) {
   if (!popup.suggestions.isDestroyed) show(popup, 0)
 }
 
+/** Closes the list until the text changes, keeping the loaded inventory. */
+export function close<T>(popup: PopupState<T>) {
+  popup.dismissed = popup.options.editor.plainText
+  show(popup, 0)
+}
+
 export function dismiss<T>(popup: PopupState<T>) {
+  popup.dismissed = popup.options.editor.plainText
   popup.generation++
   cancelPending(popup)
   popup.status = "idle"
@@ -45,10 +52,12 @@ export function dismiss<T>(popup: PopupState<T>) {
 }
 
 export function paint<T>(popup: PopupState<T>) {
-  const start = Math.max(0, popup.selected - 2)
-  const lines = popup.choices.slice(start, start + 3).map((item, index) => {
+  const size = popup.options.window?.() ?? 3
+  const start = Math.max(0, popup.selected - size + 1)
+  const lines = popup.choices.slice(start, start + size).map((item, index) => {
     return `${start + index === popup.selected ? ">" : " "} ${popup.options.line(item)}`
   })
+  if (popup.choices.length > size) lines.push(`  ${popup.selected + 1}/${popup.choices.length}`)
   popup.suggestions.content = lines.join("\n")
   show(popup, lines.length)
 }

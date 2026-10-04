@@ -1,7 +1,7 @@
 import { createCliRenderer } from "@opentui/core"
 import type { ConnectionOptions } from "./server"
 import { color } from "./theme"
-import { settleTerminalInput } from "./terminal-exit"
+import { closedLine, settleTerminalInput } from "./terminal-exit"
 import { createServers } from "./servers"
 import { CliError } from "./tui-auth"
 import { mountApp } from "./dashboard/app"
@@ -29,23 +29,28 @@ export async function runTui(options: Omit<ConnectionOptions, "url"> & { url?: s
   if (options.server && !initial) throw new CliError({ message: `No saved server named ${options.server}.` })
   const renderer = await createCliRenderer({ exitOnCtrlC: false, useMouse: true, backgroundColor: color.bg })
   let app: ReturnType<typeof mountApp> | undefined
+  let discarded = 0
   try {
     await new Promise<void>((resolve) => {
       renderer.once("destroy", resolve)
       app = mountApp(renderer, servers, {
         initial,
         directory: options.directory,
-        onQuit: () =>
+        onQuit: (drafts) => {
+          discarded = drafts
           void settleTerminalInput(renderer).then(
             () => renderer.destroy(),
             () => renderer.destroy(),
-          ),
+          )
+        },
       })
     })
   } finally {
     app?.dispose()
     renderer.destroy()
   }
+  // Reached only after a normal quit; a failure above throws and reports itself.
+  process.stdout.write(closedLine(discarded))
 }
 
 export { mountApp } from "./dashboard/app"

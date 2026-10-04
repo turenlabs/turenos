@@ -114,6 +114,8 @@ function fixture(
     async fetch(request) {
       const url = new URL(request.url)
       if (options.authenticated === false) return new Response(null, { status: 401 })
+      if (url.pathname === "/api/fs/list")
+        return Response.json({ location: { directory: url.searchParams.get("location[directory]") }, data: [] })
       if (url.pathname === "/global/storage" && options.workingFolders !== undefined) {
         if (request.method === "PUT") {
           const body = await request.json()
@@ -986,6 +988,52 @@ test("kill interrupts the session and cancels active tasks after typed confirmat
   expect(server.posts[1]?.body).toEqual({ expectedRevision: 3 })
 })
 
+test.each([60, 120])("a running session shows x Stop in the action row at %i columns", async (width) => {
+  const running = fixture()
+  const view = await createTestRenderer({ width, height: 36, kittyKeyboard: true })
+  cleanup.push(() => view.renderer.destroy())
+  await mountDashboard(view.renderer, running.connection, running.server.url.href).ready
+  await waitForFrame(view, (frame) => frame.includes("x Stop"))
+  const idle = fixture({ active: false })
+  const quiet = await createTestRenderer({ width, height: 36, kittyKeyboard: true })
+  cleanup.push(() => quiet.renderer.destroy())
+  await mountDashboard(quiet.renderer, idle.connection, idle.server.url.href).ready
+  await waitForFrame(quiet, (frame) => !frame.includes("Connecting to the server"))
+  expect(quiet.captureCharFrame()).not.toContain("x Stop")
+})
+
+test("stopping a session is discoverable from help, the palette and the slash list", async () => {
+  const server = fixture()
+  const view = await createTestRenderer({ width: 120, height: 36, kittyKeyboard: true })
+  cleanup.push(() => view.renderer.destroy())
+  await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
+  await waitForFrame(view, (frame) => frame.includes("x Stop"))
+  view.mockInput.pressKey("?")
+  const help = await waitForFrame(view, (frame) => frame.includes("Keyboard shortcuts"))
+  expect(help).toContain("Esc Esc stops the selected session")
+  expect(help).toContain("x or /stop stops it")
+  view.mockInput.pressEscape()
+  await waitForFrame(view, (frame) => !frame.includes("Keyboard shortcuts"))
+  view.mockInput.pressKey("p", { ctrl: true })
+  await view.mockInput.typeText("stop")
+  const palette = await waitForFrame(view, (frame) => frame.includes("Stop session (interrupt)"))
+  expect(palette).toContain("Stop all agents")
+  view.mockInput.pressEnter()
+  await waitForFrame(view, (frame) => frame.includes("Type stop"))
+  expect(server.posts).toHaveLength(0)
+  view.mockInput.pressEscape()
+  await waitForFrame(view, (frame) => !frame.includes("Type stop"))
+  view.mockInput.pressKey("f")
+  await waitForFrame(view, (frame) => frame.includes("Your message"))
+  await view.mockInput.typeText("/stop")
+  const stop = await waitForFrame(view, (frame) => frame.includes("/stop - "))
+  expect(stop).toMatch(/\/stop - Stop this session/)
+  for (let i = 0; i < 4; i++) view.mockInput.pressBackspace()
+  await view.mockInput.typeText("kill")
+  const kill = await waitForFrame(view, (frame) => frame.includes("/kill - "))
+  expect(kill).toMatch(/\/kill - Stop this session/)
+})
+
 test("permission submission defaults to Reject and extra modifiers cannot confirm it", async () => {
   const server = fixture()
   server.pending.permissions = [{ id: "per_test", sessionID: "ses_running", action: "shell", resources: ["npm test"] }]
@@ -1008,7 +1056,7 @@ test("permission submission defaults to Reject and extra modifiers cannot confir
   }
   expect(server.posts).toHaveLength(0)
   view.mockInput.pressKey("s", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("Permission response sent."))
+  await waitForFrame(view, (frame) => frame.includes("Permission rejected."))
   expect(server.posts[0]?.body).toEqual({ reply: "reject" })
 })
 
@@ -1242,7 +1290,7 @@ test("filter, palette, and disconnected stale state remain keyboard operable", a
 })
 
 for (const [schedule, text] of [
-  [{ type: "interval", seconds: 3600, timezone: "UTC" }, "Every 3600s"],
+  [{ type: "interval", seconds: 3600, timezone: "UTC" }, "Every 1h"],
   [
     { type: "cron", seconds: 3600, expression: "0 2 * * *", timezone: "America/New_York" },
     "Cron 0 2 * * * (America/New_York)",
@@ -1257,7 +1305,7 @@ for (const [schedule, text] of [
     view.mockInput.pressKey("3")
     const frame = await waitForFrame(view, (frame) => frame.includes("RECENT RUNS"))
     expect(frame).toContain(text)
-    expect(frame).not.toContain(schedule.type === "cron" ? "Every 3600s" : "Cron")
+    expect(frame).not.toContain(schedule.type === "cron" ? "Every 1h" : "Cron")
     const list = descendants(view.renderer.root).find((node) => node instanceof SessionListRenderable)
     expect(list?.options[0]?.description).toBe(`${text} · /srv/project`)
     expect(frame).toContain("Review overnight changes")
@@ -1891,11 +1939,9 @@ test("pending permissions and questions send the selected session's explicit res
   await app.ready
   await view.renderOnce()
   expect(view.captureCharFrame()).toContain("Needs input")
-  expect(view.captureCharFrame()).toContain("p Review permission")
   expect(view.captureCharFrame()).not.toContain("QUESTION PENDING")
   expect(server.posts).toHaveLength(0)
-  view.mockInput.pressKey("p")
-  await view.renderOnce()
+  await waitForFrame(view, (frame) => frame.includes("Permission request"))
   expect(view.captureCharFrame()).toContain("npm test")
   view.mockInput.pressArrow("down")
   for (const enter of ["\r", "\n", "\x1b[57414u"]) {
@@ -1904,7 +1950,7 @@ test("pending permissions and questions send the selected session's explicit res
     expect(server.posts).toHaveLength(0)
   }
   view.mockInput.pressEnter({ ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("Permission response sent."))
+  await waitForFrame(view, (frame) => frame.includes("Allowed once."))
   expect(server.posts[0]).toMatchObject({
     path: "/api/session/ses_running/permission/per_test/reply",
     body: { reply: "once" },
@@ -2380,7 +2426,7 @@ test("commands filter by typing and Enter runs the matching action without a ser
   expect(view.captureCharFrame()).toContain("Terminal processes")
   expect(view.captureCharFrame()).not.toContain("Send follow-up")
   view.mockInput.pressEnter()
-  await waitForFrame(view, (frame) => frame.includes("Terminal process") && frame.includes("PID 4242"))
+  await waitForFrame(view, (frame) => /Terminal( · |\n)/.test(frame) && frame.includes("PID 4242"))
   expect(server.posts).toHaveLength(0)
 })
 
@@ -2392,13 +2438,12 @@ test("a permission with a saved rule offers Allow always, like the desktop", asy
   const view = await createTestRenderer({ width: 110, height: 38 })
   cleanup.push(() => view.renderer.destroy())
   await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
-  view.mockInput.pressKey("p")
   await waitForFrame(view, (frame) => frame.includes("Allow always"))
   expect(view.captureCharFrame()).toContain("Also allow npm * from now on")
   view.mockInput.pressArrow("down")
   view.mockInput.pressArrow("down")
   view.mockInput.pressKey("s", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("the server saved this rule"))
+  await waitForFrame(view, (frame) => frame.includes("Allowed always."))
   expect(server.posts[0]).toMatchObject({
     path: "/api/session/ses_running/permission/per_test/reply",
     body: { reply: "always" },
@@ -2662,8 +2707,9 @@ test("the primary action exposes the blocker before reply and still opens the co
   cleanup.push(() => view.renderer.destroy())
   const app = mountDashboard(view.renderer, server.connection, server.server.url.href)
   await app.ready
-  await view.renderOnce()
-  expect(view.captureCharFrame()).toContain("Needs input")
+  await waitForFrame(view, (frame) => frame.includes("Permission request"))
+  view.mockInput.pressEscape()
+  await waitForFrame(view, (frame) => !frame.includes("Permission request") && frame.includes("Needs input"))
   expect(view.captureCharFrame()).not.toContain("f Reply")
   const lines = view.captureCharFrame().split("\n")
   const y = lines.findIndex((line) => line.includes("p Review permission"))
@@ -2731,6 +2777,9 @@ test("recovered session details remove their error and restore the pending actio
   cleanup.push(() => view.renderer.destroy())
   const app = mountDashboard(view.renderer, server.connection, server.server.url.href)
   await app.ready
+  await waitForFrame(view, (frame) => frame.includes("Permission request"))
+  view.mockInput.pressEscape()
+  await waitForFrame(view, (frame) => !frame.includes("Permission request"))
   options.messageStatus = 503
   await app.refresh()
   await waitForFrame(view, (frame) => frame.includes("Details unavailable"))
@@ -3279,7 +3328,9 @@ for (const form of ["permission", "question", "interrupt"] as const) {
     cleanup.push(() => view.renderer.destroy())
     const app = mountDashboard(view.renderer, server.connection, server.server.url.href)
     await app.ready
-    await view.renderOnce()
+    await waitForFrame(view, (frame) => frame.includes("Permission request"))
+    view.mockInput.pressEscape()
+    await waitForFrame(view, (frame) => !frame.includes("Permission request"))
     const rows = view.captureCharFrame().split("\n")
     const targets = ["2 Term", "+ New session", "Find a session", "Sessions Ctrl+K", "Another session"].map((label) => {
       const y = rows.findIndex((line) => line.includes(label))
@@ -3317,11 +3368,7 @@ for (const form of ["permission", "question", "interrupt"] as const) {
     view.mockInput.pressKey("s", { ctrl: true })
     await waitForFrame(view, (frame) =>
       frame.includes(
-        form === "permission"
-          ? "Permission response sent."
-          : form === "question"
-            ? "Answers sent."
-            : "Session interrupted.",
+        form === "permission" ? "Allowed once." : form === "question" ? "Answers sent." : "Session interrupted.",
       ),
     )
     expect(server.posts).toHaveLength(1)
@@ -3709,7 +3756,7 @@ test("long paths cannot displace header actions or footer shortcuts at supported
     const frame = view.captureCharFrame()
     expect(frame).toContain("Sessions Ctrl+K")
     expect(frame).toContain("Models m")
-    expect(frame).toContain("Ctrl+P commands")
+    expect(frame).toContain(width! < 90 ? "b sidebar · ? help · q quit" : "Ctrl+P commands")
     expect(frame).toContain("? help · q quit")
   }
   view.mockInput.pressKey("n")
@@ -3726,9 +3773,9 @@ test("activity animation pauses behind the resize shield, supports reduced motio
   cleanup.push(() => view.renderer.destroy())
   const app = mountDashboard(view.renderer, server.connection, server.server.url.href)
   await app.ready
-  await waitForFrame(view, (frame) => /Working [\u2800-\u28ff]{3}/.test(frame))
+  await waitForFrame(view, (frame) => /Working \(x to stop\) [\u2800-\u28ff]{3}/.test(frame))
   const bar = descendants(view.renderer.root).find(
-    (node) => node instanceof TextRenderable && /^Working [\u2800-\u28ff]{3}$/.test(node.plainText),
+    (node) => node instanceof TextRenderable && /^Working \(x to stop\) [\u2800-\u28ff]{3}$/.test(node.plainText),
   ) as TextRenderable
   const first = bar.plainText
   await Bun.sleep(250)

@@ -33,13 +33,14 @@ export function choose(flow: Flow, dialog: ModalState, choices: Choice[], search
   const update = () => {
     const selected = matches[select.getSelectedIndex()]
     const terms = query?.value.toLowerCase().trim().split(/\s+/).filter(Boolean) ?? []
-    matches = choices.filter((choice) =>
-      terms.every((term) => `${choice.name} ${choice.description}`.toLowerCase().includes(term)),
-    )
+    matches = choices
+      .filter((choice) => terms.every((term) => `${choice.name} ${choice.description}`.toLowerCase().includes(term)))
+      .toSorted((a, b) => (terms.length ? closeness(a, terms[0]!) - closeness(b, terms[0]!) : 0))
     select.options = matches
-    select.setSelectedIndex(Math.max(0, selected ? matches.indexOf(selected) : 0))
+    // A typed filter selects its best match; the pinned custom row would otherwise win Enter.
+    select.setSelectedIndex(Math.max(0, !terms.length && selected ? matches.indexOf(selected) : 0))
     dialog.error.content = matches.length
-      ? "Up/Down choose | Enter continue | Tab focus | Esc return to models"
+      ? "Up/Down choose | Enter continue | Tab focus | Esc go back"
       : "No matches. Clear the search to see providers and custom setup."
   }
   const pick = () => {
@@ -60,4 +61,11 @@ export function choose(flow: Flow, dialog: ModalState, choices: Choice[], search
   select.on("itemSelected", pick)
   update()
   ;(query ?? select).focus()
+}
+
+/** Name starts with the term, then the name contains it, then only the description does. */
+function closeness(choice: Choice, term: string) {
+  const name = choice.name.toLowerCase()
+  if (name.startsWith(term)) return 0
+  return name.includes(term) ? 1 : 2
 }

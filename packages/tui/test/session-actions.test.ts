@@ -255,7 +255,7 @@ test("archive requires explicit typed confirmation, retries a stable timestamp, 
 test("archived zero offers restore and sends explicit null before reopening a fresh session", async () => {
   const app = await fixture({ archived: 0 })
   app.actions.archive()
-  await app.screen("Restore session")
+  expect(await app.screen("Restore session")).not.toContain("Archiving hides")
   app.input().value = "restore"
   app.view.mockInput.pressEnter()
   expect(app.calls).toEqual([])

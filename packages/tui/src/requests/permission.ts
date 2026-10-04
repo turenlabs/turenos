@@ -2,12 +2,15 @@ import { SelectRenderable, TextRenderable, TextAttributes } from "@opentui/core"
 import { display } from "../messages"
 import { label } from "../state"
 import { color } from "../theme"
+import { printableKey } from "../keys"
+import type { ModalState } from "../state"
 import { recipient, type RequestContext } from "./context"
 
 export function permission(ctx: RequestContext) {
   const request = ctx.state.detail?.permissions[0]
   if (!request || ctx.state.detail?.sessionID !== ctx.state.selected)
     return ctx.say("No pending permission for the selected session.")
+  trackShown(ctx, `${request.sessionID}:${request.id}`)
   const dialog = ctx.dialogs.open("Permission request", false, Math.min(28, 18 + request.resources.length), true)
   if (!dialog) return
   dialog.form.add(
@@ -52,9 +55,37 @@ export function permission(ctx: RequestContext) {
       requestID: request.id,
       reply: (["reject", "once", "always"] as const)[choice.getSelectedIndex()] ?? "reject",
     })
-    ctx.say(choice.getSelectedIndex() === 2 ? "Allowed; the server saved this rule." : "Permission response sent.")
+    ctx.say(
+      ["Permission rejected.", "Allowed once.", "Allowed always."][choice.getSelectedIndex()] ?? "Permission rejected.",
+    )
   }
-  dialog.error.content = "Ctrl+S Send · Esc close · PgUp/PgDn scroll"
+  wireChoice(dialog, choice)
   ctx.dialogs.resize()
   choice.focus()
+}
+
+/** Digits pick a row, Up/Down keep the chosen row on screen, and the hints name each key. */
+function wireChoice(dialog: ModalState, choice: SelectRenderable) {
+  // Up/Down move the select inside a scrolling form; keep the chosen row visible so Ctrl+S never sends blind.
+  choice.on("selectionChanged", () => showChoice(dialog, choice))
+  dialog.key = (key) => {
+    const index = ["1", "2", "3"].indexOf(printableKey(key))
+    if (index < 0 || index >= choice.options.length) return false
+    choice.setSelectedIndex(index)
+    return true
+  }
+  dialog.error.content = `${choice.options.map((option, index) => `${index + 1} ${option.name}`).join(" · ")}\nCtrl+S Send · Esc close · PgUp/PgDn scroll`
+}
+
+function showChoice(dialog: ModalState, choice: SelectRenderable) {
+  const rows = choice.height / choice.options.length
+  const top = choice.y + choice.getSelectedIndex() * rows - dialog.form.viewport.y
+  const over = top + rows - dialog.form.viewport.height
+  if (top < 0) dialog.form.scrollBy(top)
+  else if (over > 0) dialog.form.scrollBy(over)
+}
+
+function trackShown(ctx: RequestContext, key: string) {
+  ctx.shownPermissions.add(key)
+  if (ctx.shownPermissions.size > 256) ctx.shownPermissions.delete(ctx.shownPermissions.values().next().value!)
 }

@@ -37,6 +37,9 @@ function createSecondaryActions(renderer: CliRenderer, actions: BoxRenderable) {
     gap: 2,
   })
   actions.add(secondaryActions)
+  // First, so the width limit clips lower-value entries before it hides the way to stop a turn.
+  const stop = new TextRenderable(renderer, { content: "x Stop", visible: false, fg: color.warning, flexShrink: 0 })
+  secondaryActions.add(stop)
   const history = new TextRenderable(renderer, { content: "h History", fg: color.muted, flexShrink: 0 })
   secondaryActions.add(history)
   const information = new TextRenderable(renderer, { content: "i Details", fg: color.muted, flexShrink: 0 })
@@ -53,5 +56,5 @@ function createSecondaryActions(renderer: CliRenderer, actions: BoxRenderable) {
   secondaryActions.add(harness)
   const meter = new TextRenderable(renderer, { content: "", visible: false, fg: color.muted, flexShrink: 0 })
   secondaryActions.add(meter)
-  return { history, information, changes, files, tasks, queued, harness, meter }
+  return { stop, history, information, changes, files, tasks, queued, harness, meter }
 }

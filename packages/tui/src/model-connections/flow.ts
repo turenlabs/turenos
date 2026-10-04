@@ -103,7 +103,7 @@ export function wait<T>(
         error instanceof Error && error.message === partial
           ? partial
           : "Provider request could not be confirmed. Check the connection and entered settings. Refresh providers before retrying."
-      dialog.error.content = `${message}\nEnter refresh providers | Esc return to models`
+      dialog.error.content = `${message}\nEnter refresh providers | Esc go back`
       dialog.error.fg = color.error
       dialog.error.height = 5
       dialog.key = (key) => {

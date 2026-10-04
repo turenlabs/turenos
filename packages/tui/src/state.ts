@@ -99,7 +99,13 @@ export type DashboardState = {
   rawResponses: boolean
   /** The app can switch servers (s); a bare dashboard cannot. */
   serverSwitching: boolean
+  /** Provider retries the server announced per session, until the turn makes progress again. */
+  retries: { [sessionID: string]: Retry }
+  /** IDs of the messages this client sent, so the transcript follows only its own sends. */
+  sentMessages: Set<string>
 }
+
+export type Retry = { attempt: number; at: number; message: string }
 
 export function createDashboardState(): DashboardState {
   return {
@@ -126,6 +132,8 @@ export function createDashboardState(): DashboardState {
     reducedMotion: process.env.TURENOS_REDUCED_MOTION === "1",
     rawResponses: false,
     serverSwitching: false,
+    retries: {},
+    sentMessages: new Set(),
   }
 }
 

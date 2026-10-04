@@ -22,7 +22,18 @@ export function errorText(error: unknown): string {
   if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
     return display(error.message, 500)
   }
+  if (isRecord(error) && typeof error._tag === "string" && /^[A-Za-z]{3,80}$/.test(error._tag))
+    return tagText(error._tag)
   return "Request failed. Check the server connection."
+}
+
+/** "SwarmRoomNotFoundError" reads as "Swarm room not found"; the tag carries no secrets, only the kind of failure. */
+function tagText(tag: string) {
+  const words = tag
+    .replace(/Error$/, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}.`
 }
 
 /** The HTTP status behind a client failure, from a bare status or from the tagged body the generated client throws. */

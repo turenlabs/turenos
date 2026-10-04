@@ -112,10 +112,7 @@ test("permission checks toggle, and saved rules can be removed", async () => {
   view.mockInput.pressKey("s", { ctrl: true })
   await screen("Permission checks off.")
   expect(server.requests.find((item) => item.method === "PUT")?.body).toEqual({ enforced: false })
-  view.mockInput.pressKey(",")
-  await screen("Usage and limits")
-  for (let step = 0; step < 5; step++) view.mockInput.pressArrow("down")
-  view.mockInput.pressEnter()
+  // Confirming returns to the Permissions section, now listing the saved rule.
   await screen("bash · npm *")
   view.mockInput.pressArrow("down")
   view.mockInput.pressEnter()

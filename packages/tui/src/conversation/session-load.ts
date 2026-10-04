@@ -2,6 +2,7 @@ import { pendingQuestions, transcript, display } from "../messages"
 import { label, type DashboardState } from "../state"
 import { color } from "../theme"
 import type { Conversation } from "./context"
+import { sentByReader } from "./follow"
 import { drawLive, mergeLive, syncLayout } from "./live-cache"
 import { atBottom, commitPrepend, restorePosition, stagedMessageID } from "./position"
 
@@ -19,7 +20,7 @@ export async function loadSession(c: Conversation, snapshot: Snapshot, session: 
       ui.renderContent(`Loading ${display(session.title)}…`)
     }
   }
-  ui.sessionTitle.content = label(session.title || "Untitled session", 150)
+  ui.sessionTitle.content = `${label(session.title || "Untitled session", 150)}${session.time.archived !== undefined ? " · Archived" : ""}`
   ui.context.visible = !state.modal?.inline
   ui.context.fg = color.muted
   ui.context.content = `${state.history ? "History" : "Transcript"}${Object.hasOwn(snapshot.active, id) ? " · Working" : ""} · ${label(session.location.directory, 250)}`
@@ -53,7 +54,12 @@ function describeResult(c: Conversation, session: Session, result: Detail) {
   if (tasks.length) {
     const active = tasks.filter((task) => ["queued", "starting", "running"].includes(task.status)).length
     const failed = tasks.filter((task) => task.status === "failed").length
-    ui.context.content = `${state.history ? "History" : "Transcript"} · Tasks: ${active} active, ${failed} failed · ${label(session.location.directory, 150)}`
+    const counts = [
+      `${tasks.length} task${tasks.length === 1 ? "" : "s"}`,
+      ...(active ? [`${active} active`] : []),
+      ...(failed ? [`${failed} failed`] : []),
+    ]
+    ui.context.content = `${state.history ? "History" : "Transcript"} · ${counts.join(", ")} · ${label(session.location.directory, 150)}`
   }
   if (result.permissions.length || result.questions.length) {
     ui.context.content = `Needs input · ${label(session.location.directory, 250)}`
@@ -89,7 +95,7 @@ function paintResult(c: Conversation, id: string, result: Detail, questionPrevie
   const follow =
     !state.history &&
     !questionPreview &&
-    (c.position?.scroll === Number.MAX_SAFE_INTEGER || (!c.position && atBottom(c)))
+    (sentByReader(c, result.messages) || c.position?.scroll === Number.MAX_SAFE_INTEGER || (!c.position && atBottom(c)))
   if (follow) c.position = { sessionID: id, history: false, scroll: Number.MAX_SAFE_INTEGER }
   if (!state.history) {
     mergeLive(c, result.messages)

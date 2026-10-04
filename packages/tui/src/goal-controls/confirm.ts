@@ -102,6 +102,7 @@ function addInput(env: GoalEnv, dialog: ModalState, base: Goal, action: Action) 
     // Deliberately not dialog.editor: that field opts into Enter-to-send.
     dialog.frame.add(editor, dialog.frame.getChildren().indexOf(dialog.error))
     env.dialogs.track(dialog, editor)
+    editor.cursorOffset = editor.plainText.length
     editor.focus()
   } else if (action === "Clear") {
     typed = new InputRenderable(env.renderer, {

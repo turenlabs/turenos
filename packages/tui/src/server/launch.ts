@@ -20,14 +20,16 @@ type LaunchState = {
 
 // Retain the same identifiers across ambiguous network failures so retrying
 // admission cannot create another agent or deliver its initial prompt twice.
-export function launch(ctx: Context) {
+// A script that retries a launch in a new process passes the IDs it printed the first time.
+export function launch(ctx: Context, ids: { sessionID?: string; messageID?: string } = {}) {
   const state: LaunchState = {
-    sessionID: `ses_${crypto.randomUUID().replaceAll("-", "")}`,
-    messageID: `msg_${crypto.randomUUID().replaceAll("-", "")}`,
+    sessionID: ids.sessionID ?? `ses_${crypto.randomUUID().replaceAll("-", "")}`,
+    messageID: ids.messageID ?? `msg_${crypto.randomUUID().replaceAll("-", "")}`,
   }
   const send = (input: LaunchInput) => admit(ctx, state, input)
   return Object.assign(send, {
     sessionID: state.sessionID,
+    messageID: state.messageID,
     input: () => (state.draft ? { ...state.draft } : undefined),
   })
 }

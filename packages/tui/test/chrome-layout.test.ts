@@ -169,7 +169,7 @@ test("notice wraps recovery instructions without hiding actions at minimum size"
   expect(ui.notice.height).toBeGreaterThanOrEqual(2)
   expect(ui.notice.height).toBeLessThanOrEqual(3)
   expect(noticeRows.join(" ").replace(/\s+/g, " ")).toContain(notice)
-  for (const text of ["f Reply", "h History", "i Details", "t Tasks", "Ctrl+P commands"])
+  for (const text of ["f Reply", "h History", "i Details", "t Tasks", "b sidebar"])
     expect(captureCharFrame()).toContain(text)
   ui.notice.content = "Recovery instruction ".repeat(30)
   await renderOnce()
@@ -192,7 +192,7 @@ test("narrow sidebar keeps full tab labels when explicitly opened", async () => 
 
 test("scheduleText formats intervals, cron expressions, file changes, and session end triggers", () => {
   const interval = { type: "interval" as const, seconds: 60, timezone: "UTC" }
-  expect(scheduleText(interval)).toBe("Every 60s")
+  expect(scheduleText(interval)).toBe("Every 1m")
 
   const cron = { type: "cron" as const, seconds: 3600, expression: "0 2 * * *", timezone: "America/New_York" }
   expect(scheduleText(cron)).toBe("Cron 0 2 * * * (America/New_York)")

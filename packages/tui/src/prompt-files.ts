@@ -14,6 +14,18 @@ export type PromptFile = {
 const mention = /(^|[\s([{"'])@(?:"([^"\u0000-\u001f\u007f-\u009f]{1,4096})"(#\d+(?:-\d+)?)?(?!#)|([^\s()[\]{}"'`]+))/g
 const hazard = /^[^\s()[\]{}"'`]+$/
 
+/** Paths a finished file search found nothing for; such a mention stays text instead of becoming an attachment. */
+const missing = new Set<string>()
+
+/** Records what the server's file search answered for `query`, so a path it never resolved is not attached. */
+export function recordSearch(directory: string, query: string, found: boolean) {
+  if (!query || query.endsWith("/") || absolutePath(query) || escapes(query)) return
+  const key = `${directory}\0${query}`
+  if (found) missing.delete(key)
+  else missing.add(key)
+  if (missing.size > 256) missing.delete(missing.values().next().value!)
+}
+
 /**
  * Mentions become native `prompt.files` parts, so the server reads the file and
  * slices any `?start=&end=` range at materialization time. This client never
@@ -30,9 +42,11 @@ export function mentionReport(text: string, directory: string) {
     .flatMap((match) => decodeMention(match, directory) ?? [])
     .filter((item) => !seen.has(item.file.uri) && seen.add(item.file.uri))
     .slice(0, 32)
+  const attached = found.filter((item) => !item.unresolved)
   return {
-    files: found.map((item) => item.file),
-    outside: found.filter((item) => item.outside).map((item) => item.file.source.text),
+    files: attached.map((item) => item.file),
+    outside: attached.filter((item) => item.outside).map((item) => item.file.source.text),
+    unresolved: found.filter((item) => item.unresolved).map((item) => item.file.source.text),
   }
 }
 
@@ -73,7 +87,7 @@ function decodeMention(match: RegExpExecArray, directory: string) {
     name: path.split(/[\\/]/).at(-1) || path,
     source: { start: offset, end: offset + text.length, text },
   }
-  return { file, outside: escapes(path) }
+  return { file, outside: escapes(path), unresolved: missing.has(`${directory}\0${path}`) }
 }
 
 /** An absolute path, `~`, or a `..` segment reaches outside the directory the session works in. */

@@ -1,6 +1,6 @@
 import type { CliRenderer, TextareaRenderable } from "@opentui/core"
 import { display } from "../messages"
-import { mentionText } from "../prompt-files"
+import { mentionText, recordSearch } from "../prompt-files"
 import type { DashboardState, ModalState } from "../state"
 import { createSuggestionPopup } from "../suggest"
 
@@ -52,7 +52,14 @@ export function createMentionPopup(
       return { query, start: cursor - query.length - (quoted ? 2 : 1), end: cursor }
     },
     scope: (query) => JSON.stringify([location().directory, location().workspaceID, query]),
-    load: (query, signal) => env.connection.findFiles(location().directory, query, location().workspaceID, signal),
+    async load(query, signal) {
+      // A bare `@` has nothing to search for; the popup asks for a name instead.
+      if (!query) return []
+      const where = location()
+      const found = await env.connection.findFiles(where.directory, query, where.workspaceID, signal)
+      recordSearch(where.directory, query, found.length > 0)
+      return found
+    },
     // Recursive search is expensive; match the session finder's typing pause.
     debounce: 250,
     // A path this grammar cannot represent is never offered, so completing a
@@ -62,7 +69,8 @@ export function createMentionPopup(
     messages: {
       loading: "Searching files…",
       error: "File search unavailable. Keep typing a path.",
-      empty: "No matching files.",
+      empty: (query) =>
+        query ? "No matching files. The mention stays as text." : "Type a file name or path to search.",
     },
   })
 }

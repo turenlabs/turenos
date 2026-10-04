@@ -4,6 +4,7 @@ import { color } from "../theme"
 import { headerLeft, headerRight, statusline, welcomeBody } from "../chrome"
 import { label } from "../state"
 import { activityFrame } from "../activity"
+import { renderActionRow } from "./actions"
 import type { DashboardContext } from "./context"
 
 export function resize(d: DashboardContext) {
@@ -12,6 +13,7 @@ export function resize(d: DashboardContext) {
   renderStatus(d)
   // The server picker owns focus while it is open; taking it back would send its input here.
   if (!d.options.blocked?.()) d.ui.focus()
+  renderActionRow(d, d.state.detail?.sessionID === d.state.selected ? d.state.detail : undefined)
   renderActivity(d)
 }
 
@@ -35,8 +37,12 @@ export function renderActivity(d: DashboardContext) {
 export function renderStatus(d: DashboardContext) {
   d.ui.heading.content = d.renderer.width < 90 ? "TurenOS" : headerLeft(d.state.snapshot)
   const dot = fg(d.state.connected ? color.added : d.state.connectionError ? color.error : color.warning)
-  d.ui.server.content = d.options.server ? t`${dot(d.state.connected ? "●" : "○")} ${label(d.options.server, 120)}` : ""
+  // The server name is clickable and `s` works without the label, which would crowd out the address.
+  d.ui.serversButton.visible = !!d.options.servers && d.renderer.width >= 70
   d.ui.running.content = headerRight(d.state, d.state.snapshot)
+  d.ui.server.content = d.options.server
+    ? t`${dot(d.state.connected ? "●" : "○")} ${identifying(label(d.options.server, 120), serverWidth(d))}`
+    : ""
   d.ui.footer.content = statusline(d.state, d.state.snapshot, d.renderer.width)
   d.ui.status.visible = !d.state.connected
   if (d.state.connected) return
@@ -67,4 +73,22 @@ export function renderTabs(d: DashboardContext) {
     button.fg = d.state.tab === tab ? color.accent : color.muted
     button.attributes = d.state.tab === tab ? TextAttributes.BOLD : TextAttributes.NONE
   }
+}
+
+/** Columns the server name gets: the screen minus the other top bar entries and their gaps. */
+function serverWidth(d: DashboardContext) {
+  const ui = d.ui
+  const others = [ui.heading, ui.running, ui.modelButton, ui.switchButton, ui.serversButton].filter(
+    (node) => node.visible,
+  )
+  return d.renderer.width - 4 - 2 - others.reduce((sum, node) => sum + node.plainText.length + 3, 0)
+}
+
+/** Keeps the end of a long address (host:port, then the port) instead of cutting its middle. */
+export function identifying(text: string, width: number) {
+  const address = text.replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "")
+  if (text.length <= width) return text
+  if (address.length <= width) return address
+  const port = /:\d+$/.exec(address)?.[0]
+  return port && port.length <= width ? port : text
 }

@@ -9,6 +9,8 @@ export type IntelContext = {
   state: DashboardState
   connection: Connection
   dialogs: Dialogs
+  /** Selected row per picker title, kept while a toggle reopens the list. */
+  memory: Map<string, number>
   say: (message: string, error?: boolean) => void
 }
 
@@ -20,7 +22,7 @@ export function feeds(ctx: IntelContext, back: () => void) {
     ctx.renderer,
     ctx.dialogs,
     ctx.state,
-    { title: "Intel feeds", back },
+    { title: "Intel feeds", back, memory: ctx.memory, keys: "↑↓ choose · Enter on/off · Esc back" },
     intel.feeds,
     (list, picker) => {
       picker.text.content = "Enter turns a feed on or off. Feeds are polled on the server every six hours."

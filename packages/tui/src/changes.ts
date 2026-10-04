@@ -26,6 +26,7 @@ export function createChanges(
     const panel = openPanel(renderer, dialogs, "Changes")
     if (!panel) return
     panel.dialog.recipient = session
+    panel.dialog.error.marginRight = 2
     const review: Review = { state, connection, session, panel, mode: "git", files: [], request: 0 }
     panel.list.on("selectionChanged", () => showFile(review))
     panel.dialog.key = (key) => {

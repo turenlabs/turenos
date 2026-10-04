@@ -2,6 +2,7 @@ import { styledPatch } from "../diff"
 import type { Panel } from "../panel"
 import { errorText, type Connection, type Session } from "../server"
 import { label, type DashboardState } from "../state"
+import { fitHeading, fitRow, panelWidth } from "./heading"
 import { diffList, turnFiles, type FileDiff, type Mode } from "./diffs"
 
 const MODES: Record<Mode, string> = {
@@ -34,9 +35,20 @@ export async function load(r: Review) {
     r.files = result
     const added = r.files.reduce((total, file) => total + file.additions, 0)
     const removed = r.files.reduce((total, file) => total + file.deletions, 0)
-    panel.heading.content = `${MODES[r.mode]} · ${r.files.length} file${r.files.length === 1 ? "" : "s"} +${added} -${removed} · ${label(session.location.directory, 120)}`
+    panel.heading.content = fitHeading(
+      panelWidth(panel),
+      `${MODES[r.mode]} · ${r.files.length} file${r.files.length === 1 ? "" : "s"} +${added} -${removed} · `,
+      label(session.location.directory, 400),
+      "",
+      "start",
+    )
     panel.list.options = r.files.map((file) => ({
-      name: `${STATUS[file.status ?? ""] ?? "M"} ${label(file.file, 200)}  +${file.additions} -${file.deletions}`,
+      name: fitRow(
+        panelWidth(panel),
+        `${STATUS[file.status ?? ""] ?? "M"} `,
+        label(file.file, 200),
+        `  +${file.additions} -${file.deletions}`,
+      ),
       description: "",
     }))
     panel.list.setSelectedIndex(0)

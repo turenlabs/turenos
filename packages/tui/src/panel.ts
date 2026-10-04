@@ -75,7 +75,8 @@ export function mentionInReply(
 ) {
   const text = path && mentionText(path)
   if (!text) return
-  if (!drafts.mention(session, text)) {
+  // The trailing space ends the mention, so the caret does not land on a live @ token that traps Esc.
+  if (!drafts.mention(session, `${text} `)) {
     panel.dialog.error.content = "Your reply draft is full or already sent. Esc close"
     return
   }

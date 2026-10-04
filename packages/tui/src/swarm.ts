@@ -25,11 +25,12 @@ export function createSwarmRoom(
     const panel = openPanel(renderer, dialogs, "Swarm room")
     if (!panel) return
     panel.dialog.recipient = session
+    panel.dialog.error.marginRight = 2
     const post = new InputRenderable(renderer, {
-      placeholder: "Post to the room as a human member · Enter sends",
+      placeholder: "Post as a human member · Enter sends",
       maxLength: 8000,
-      width: "100%",
       flexShrink: 0,
+      marginRight: 2,
       backgroundColor: color.bg,
       focusedBackgroundColor: color.selected,
       textColor: color.text,

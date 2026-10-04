@@ -44,6 +44,7 @@ function sessionLines(session: Session) {
     : "server default"
   const lines = [
     label(session.title || "Untitled session", 200),
+    ...(session.time.archived !== undefined ? ["Archived · Ctrl+P restore brings it back to the lists"] : []),
     `Session ID: ${session.id}`,
     ...(session.parentID ? [`Parent ID: ${session.parentID}`] : []),
     `Directory: ${session.location.directory}`,

@@ -38,6 +38,8 @@ export function createSlashPopup(
       dialog.suggestionRows = count
       env.onChange()
     },
+    // More rows when the terminal is tall; the reply editor and its dock keep the rest.
+    window: () => Math.max(3, Math.min(8, env.renderer.height - 21)),
     match: matchSlash,
     scope: () => JSON.stringify([location().directory, location().workspaceID]),
     async load() {

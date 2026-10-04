@@ -14,6 +14,8 @@ type Picker = {
   dialog: ModalState
   query: InputRenderable
   select: SelectRenderable
+  /** The "Current:" line, filled again once the catalog says which agent a session without one runs. */
+  current: TextRenderable
   catalog: Catalog
   matches: Catalog
   loading: boolean
@@ -25,13 +27,8 @@ export function agent(ctx: SessionContext) {
   const target = openControl(ctx, "Choose session agent")
   if (!target) return
   const { session, dialog } = target
-  dialog.form.add(
-    new TextRenderable(ctx.renderer, {
-      content: `Current: ${label(session.agent ?? "Server default", 100)}\nApplies to subsequent provider turns, not in-flight work. No reply is sent.`,
-      fg: color.text,
-      wrapMode: "word",
-    }),
-  )
+  const current = new TextRenderable(ctx.renderer, { content: "", fg: color.text, wrapMode: "word" })
+  dialog.form.add(current)
   const query = ctx.dialogs.input(dialog, "Find an agent", "", "Filter visible primary agents")
   query.maxLength = 256
   const select = agentSelect(ctx)
@@ -40,6 +37,7 @@ export function agent(ctx: SessionContext) {
   const picker: Picker = {
     ctx,
     session,
+    current,
     dialog,
     query,
     select,
@@ -54,7 +52,16 @@ export function agent(ctx: SessionContext) {
   select.on("itemSelected", () => void ctx.dialogs.submit())
   dialog.key = (key) => pickerKey(picker, key)
   query.focus()
+  describeCurrent(picker)
   void load(picker)
+}
+
+/** A session that never chose an agent runs the server's default, `build` unless the catalog lacks it. */
+function describeCurrent(picker: Picker) {
+  const { session, catalog } = picker
+  const effective = session.agent ?? (catalog.find((item) => item.id === "build") ?? catalog[0])?.id
+  const name = session.agent ?? (effective ? `${effective} (server default)` : "Server default")
+  picker.current.content = `Current: ${label(name, 100)}\nApplies to subsequent provider turns, not in-flight work. No reply is sent.`
 }
 
 function agentSelect(ctx: SessionContext) {
@@ -128,6 +135,7 @@ async function load(picker: Picker) {
     if (ctx.state.closed || ctx.state.modal !== dialog) return
     picker.catalog = result.filter((item) => !item.hidden && item.mode !== "subagent")
     picker.loading = false
+    describeCurrent(picker)
     update(picker)
   } catch (error) {
     if (ctx.state.closed || ctx.state.modal !== dialog) return

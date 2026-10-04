@@ -30,9 +30,12 @@ export function browse(ctx: MemoriesContext, place: Place, back: () => void) {
         ? () => remove(view)
         : key.sequence === "a" && place.roomID
           ? () => edit(ctx, place, undefined, reopen)
-          : key.sequence === "E" && item
-            ? () => edit(ctx, place, item, reopen)
-            : undefined
+          : key.sequence === "a"
+            ? () =>
+                void (panel.dialog.error.content = `All rooms is a read-only view; open a room to add a memory.\n${keys}`)
+            : key.sequence === "E" && item
+              ? () => edit(ctx, place, item, reopen)
+              : undefined
     if (!action) return false
     void action()
     return true

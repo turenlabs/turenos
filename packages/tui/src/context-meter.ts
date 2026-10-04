@@ -14,8 +14,9 @@ export function contextUsage(messages: readonly Message[]) {
   return message && { model: message.model, total: total(message) }
 }
 
-export function meterText(usage: ReturnType<typeof contextUsage>, limit: number | undefined) {
+export function meterText(usage: ReturnType<typeof contextUsage>, limit: number | undefined, short = false) {
   if (!usage) return ""
+  if (short) return limit ? `Ctx ${Math.round((usage.total / limit) * 100)}%` : `Ctx ${compact(usage.total)}`
   return limit
     ? `Context ${Math.round((usage.total / limit) * 100)}% · ${compact(usage.total)}/${compact(limit)}`
     : `Context ${compact(usage.total)}`

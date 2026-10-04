@@ -257,3 +257,13 @@ test("normalizeMarkdown collapses next-line list items and preserves code blocks
   const code = "1.\nFirst\n\n```\n1.\nCode line\n```\n2.\nSecond"
   expect(normalizeMarkdown(code)).toBe("1. First\n\n```\n1.\nCode line\n```\n2. Second")
 })
+
+test("normalizeMarkdown keeps status-row brackets and leaves links and code alone", () => {
+  expect(normalizeMarkdown("  [failed · exit 1] bash\n  [x] done\n  [ ] todo")).toBe(
+    "  `[failed · exit 1]` bash\n  `[x]` done\n  `[ ]` todo",
+  )
+  expect(normalizeMarkdown("[docs](https://x.test) and [ref]: https://x.test")).toBe(
+    "[docs](https://x.test) and [ref]: https://x.test",
+  )
+  expect(normalizeMarkdown("```\n[x] code\n```")).toBe("```\n[x] code\n```")
+})

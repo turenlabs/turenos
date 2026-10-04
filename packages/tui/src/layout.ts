@@ -69,6 +69,7 @@ function exposedLayout(parts: LayoutParts, actions: { resize: () => void; focus:
     detail: parts.detail,
     actions: parts.actions,
     composer: parts.composer,
+    stop: parts.stop,
     history: parts.history,
     information: parts.information,
     changes: parts.changes,

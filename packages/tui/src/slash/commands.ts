@@ -1,4 +1,5 @@
 import { display } from "../messages"
+import { fuzzyFilter } from "../suggest/fuzzy"
 
 export type Command = { name: string; description?: string }
 export type Choice = Command & { local: boolean }
@@ -31,7 +32,7 @@ export function mergeLocal(items: readonly Choice[], local: readonly LocalComman
   for (const item of local.filter(validName)) {
     if (!merged.has(item.name)) merged.set(item.name, { name: item.name, description: item.description, local: true })
   }
-  return [...merged.values()].filter((item) => item.name.startsWith(query))
+  return fuzzyFilter([...merged.values()], query, (item) => item.name)
 }
 
 export function describe(item: Choice) {

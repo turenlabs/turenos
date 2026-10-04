@@ -1,6 +1,7 @@
 import { pendingQuestions, transcript } from "../messages"
 import type { DashboardState } from "../state"
 import type { Conversation, LivePage } from "./context"
+import { markUnread } from "./follow"
 import { restorePosition, stagedMessageID } from "./position"
 
 type Messages = NonNullable<DashboardState["detail"]>["messages"]
@@ -77,6 +78,7 @@ export function drawLive(c: Conversation) {
   ui.renderContent(`${question ? `${question}\n\n` : ""}${staged}${notice}${content}`, !question)
   syncLayout(c)
   restorePosition(c)
+  markUnread(c, content)
 }
 
 /** Forces the scroll box to lay out now so the position restore measures the new content. */

@@ -1,6 +1,8 @@
-import { openSection } from "../picker"
+import type { KeyEvent } from "@opentui/core"
+import { openSection, type Picker } from "../picker"
 import { label } from "../state"
 import { browse } from "./browse"
+import { edit } from "./edit"
 import type { MemoriesContext, Place } from "./types"
 
 export function openWings(ctx: MemoriesContext, back?: () => void) {
@@ -9,6 +11,7 @@ export function openWings(ctx: MemoriesContext, back?: () => void) {
   if (!dialogs.navigate()) return
   return openSection(ctx.renderer, dialogs, ctx.state, { title: "Memories", back }, memories.wings, (wings, picker) => {
     picker.text.content = "Wings group memories by project or person."
+    onKey(picker, (key) => addHint(picker, key.sequence, "Open a wing, then a room, to add a memory there."))
     picker.set([
       ...wings.map((wing) => ({
         name: label(wing.name, 60),
@@ -37,6 +40,15 @@ function rooms(ctx: MemoriesContext, wing: Place, back: () => void) {
     () => ctx.connection.client.memories.rooms({ wingID: wing.wingID }),
     (list, picker) => {
       picker.text.content = "Rooms are topics within the wing."
+      const reopen = () => void rooms(ctx, wing, back)
+      onKey(picker, (key) => {
+        const room = list[picker.list.getSelectedIndex() - 1]
+        if (key.sequence === "a" && room) {
+          edit(ctx, { ...wing, roomID: room.id, name: `${wing.name} · ${room.name}` }, undefined, reopen)
+          return true
+        }
+        return addHint(picker, key.sequence, "Select a room to add a memory; All rooms is a read-only view.")
+      })
       picker.set([
         { name: "All rooms", run: () => browse(ctx, wing, () => void rooms(ctx, wing, back)) },
         ...list.map((room) => ({
@@ -52,4 +64,17 @@ function rooms(ctx: MemoriesContext, wing: Place, back: () => void) {
       ])
     },
   )
+}
+
+/** Adds a key handler ahead of the picker's own Enter handling. */
+function onKey(picker: Picker, handle: (key: KeyEvent) => boolean) {
+  const enter = picker.dialog.key
+  picker.dialog.key = (key) => handle(key) || (enter?.(key) ?? false)
+}
+
+/** `a` adds a memory in a room; elsewhere it says why nothing happened. */
+function addHint(picker: Picker, sequence: string, text: string) {
+  if (sequence !== "a") return false
+  picker.dialog.error.content = text
+  return true
 }

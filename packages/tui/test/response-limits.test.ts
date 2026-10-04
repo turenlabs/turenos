@@ -88,3 +88,25 @@ test("message identity checks stay strict", async () => {
   const connection = serve({ "/api/session/ses_page/message": page({ ...user("msg_a"), id: "../escape" }) })
   await expect(messages(connection)).rejects.toThrow()
 })
+
+test("tool input summary fields are clipped or skipped, never a reason to reject the page", async () => {
+  const tool = (input: unknown, id = "prt_tool") => ({
+    id,
+    type: "tool",
+    name: "bash",
+    state: { status: "completed", input, structured: {}, content: [] },
+  })
+  const connection = serve({
+    "/api/session/ses_page/message": page(
+      assistant("msg_a", [tool({ command: "x".repeat(5000), path: 7, url: { a: 1 }, other: 1 }), tool("not an object", "prt_other")]),
+      user("msg_b"),
+    ),
+  })
+  const result = await messages(connection)
+  expect(result.data.map((item) => item.id)).toEqual(["msg_a", "msg_b"])
+  const content = (result.data[0] as unknown as { content: { state: { input: Record<string, unknown> } }[] }).content
+  expect((content[0]!.state.input.command as string).length).toBe(1024)
+  expect(content[0]!.state.input).not.toHaveProperty("path")
+  expect(content[0]!.state.input).not.toHaveProperty("url")
+  expect(content[0]!.state.input.other).toBe(1)
+})

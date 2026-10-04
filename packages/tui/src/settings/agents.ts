@@ -35,6 +35,7 @@ function defaultModel(ctx: SettingsContext, agentID: string, models: CatalogMode
     title: `Default model · ${label(agentID, 40)}`,
     text: "Connected models on this server:",
     back: () => void agents(ctx),
+    memory: ctx.memory,
     choices: models.map((model) => ({
       name: `${label(model.providerName, 30)} · ${label(model.name, 50)}`,
       description: `${model.providerID}/${model.id}`,
@@ -50,6 +51,7 @@ function defaultModel(ctx: SettingsContext, agentID: string, models: CatalogMode
             })
             ctx.say(`${agentID} now defaults to ${model.name}.`)
           },
+          () => void agents(ctx),
         ),
     })),
   })

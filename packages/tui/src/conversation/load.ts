@@ -95,7 +95,9 @@ function showWelcome(c: Conversation, snapshot: Snapshot) {
         ? welcomeBody("sessions", state)
         : state.tab === "terminals" && !snapshot.terminalsAvailable
           ? "Global terminal inventory is unavailable on this server version.\n\nUpdate the server to inspect terminal processes.\nSessions and agent launch are available."
-          : `No ${state.tab} found.`,
+          : state.tab === "terminals"
+            ? "No terminals yet · a new terminal"
+            : "No automations yet · a new automation",
   )
   ui.sessionTitle.content = "Welcome to TurenOS"
 }
@@ -106,7 +108,7 @@ function showTerminal(c: Conversation, snapshot: Snapshot, id: string) {
   const item = snapshot.terminals.find((item) => item.id === id)
   if (!item) return
   ui.context.content = `${label(item.status)} · ${label(item.cwd, 250)}`
-  ui.sessionTitle.content = "Terminal process"
+  ui.sessionTitle.content = item.title ? `Terminal · ${label(item.title, 150)}` : "Terminal"
   ui.renderContent(
     display(
       `PID ${item.pid}  ·  ${item.status}${item.exitCode !== undefined ? `  ·  exit ${item.exitCode}` : ""}\n\n${item.title}\n${item.cwd}\n\n$ ${[item.command, ...item.args].join(" ")}\n\n${item.id}\n\n${item.status === "running" ? "Enter attaches (Ctrl+] detaches) · " : ""}a new terminal · R rename · d close`,
@@ -119,6 +121,7 @@ async function showAutomation(c: Conversation, snapshot: Snapshot, id: string, v
   state.detail = undefined
   const item = snapshot.loops.find((item) => item.id === id)
   if (!item) return
+  ui.sessionTitle.content = label(item.name || "Automation", 150)
   ui.context.content = `${label(item.status)} · ${label(item.location.directory, 250)}`
   const triggerDetails = item.eventTrigger
     ? `Trigger: ${scheduleText(item.schedule, item.eventTrigger)}\nSchedule: ${scheduleText(item.schedule)}`

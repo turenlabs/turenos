@@ -54,6 +54,7 @@ function bindActionRow(d: DashboardContext) {
   ui.older.onMouseDown = onPress(d, () => d.c.conversation.page("next"))
   ui.newer.onMouseDown = onPress(d, () => d.c.conversation.page("previous"))
   ui.information.onMouseDown = unlessModal(() => d.c.menus.information(d.serverAddress))
+  ui.stop.onMouseDown = unlessModal(() => d.c.requests.interrupt())
   ui.tasks.onMouseDown = unlessModal(() => d.c.sessions.tasks())
   ui.harness.onMouseDown = unlessModal(() => d.c.harness.open())
   ui.queued.onMouseDown = unlessModal(() => d.c.queue.open())

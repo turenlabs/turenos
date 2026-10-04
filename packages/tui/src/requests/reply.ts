@@ -29,7 +29,7 @@ function openReply(ctx: RequestContext, session: Session) {
     text: "",
     id: newMessageID(),
     recipient: session,
-    delivery: "steer",
+    delivery: ctx.deliveries.get(sessionID) ?? "steer",
   }
   draft.recipient = session
   if (draft.submitted !== undefined) draft.text = draft.submitted
@@ -75,20 +75,30 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
     wrapMode: "none",
   })
   dialog.form.add(heading)
+  const shown: { content?: typeof dialog.error.content } = {}
   const delivery = () => {
-    heading.content = `${draft.delivery === "queue" ? "Queue" : "Steer"} · Reply to ${label(session.title, 100)}${session.revert ? " · undo staged" : ""}`
+    const live = running(ctx, session.id)
+    const mode = !live ? "Send" : draft.delivery === "queue" ? "Queue" : "Steer"
+    heading.content = `${mode} · Reply to ${label(session.title, 100)}${session.revert ? " · undo staged" : ""}`
     heading.fg = session.revert ? color.warning : color.muted
-    dialog.error.content = session.revert
-      ? "Enter Send + commit undo · Alt+Enter newline\nEsc keep · F4 discard · Ctrl+T mode"
-      : "Enter Send · Shift/Alt+Enter newline\nEsc keep · F4 discard · Ctrl+T mode"
+    const hint = session.revert
+      ? `Enter Send + commit undo · Alt+Enter newline\nEsc keep · F4 discard${live ? " · Ctrl+T mode" : ""}`
+      : `Enter Send · Shift/Alt+Enter newline\nEsc keep · F4 discard${live ? " · Ctrl+T mode" : ""}`
+    // A refresh may repaint the hint, but never over a message that replaced it.
+    if (!shown.content || dialog.error.content === shown.content) dialog.error.content = hint
+    shown.content = dialog.error.content
   }
+  // The mode only means something while the agent runs, so the dashboard refresh repaints it.
+  dialog.refresh = delivery
   dialog.key = (key) => {
     if (!matchesKey(key, "t", { ctrl: true })) return false
+    if (!running(ctx, session.id)) return true
     if (draft.submitted !== undefined) {
       dialog.error.content = "Retry keeps the original delivery mode. F4 discards the local draft."
       return true
     }
     draft.delivery = draft.delivery === "steer" ? "queue" : "steer"
+    ctx.deliveries.set(session.id, draft.delivery)
     delivery()
     return true
   }
@@ -138,7 +148,9 @@ async function submitReply(
   if (draft.submitted === undefined && current.revert?.messageID !== session.revert?.messageID)
     throw new Error("The undo position changed. Your draft is kept; close and reopen Reply before sending.")
   if (draft.submitted === undefined) await classify(ctx, draft, task.plainText, current)
-  if ((draft.command || draft.shell) && draft.delivery === "queue")
+  // Steer and Queue are the same for an idle session, and Ctrl+T is inert then, so a remembered Queue must not block commands.
+  const delivery = draft.submitted === undefined && !running(ctx, sessionID) ? "steer" : draft.delivery
+  if ((draft.command || draft.shell) && delivery === "queue")
     throw new Error(
       `${draft.shell ? "Shell commands" : "Slash commands"} do not support Queue. Press Ctrl+T to choose Steer before sending.`,
     )
@@ -151,7 +163,9 @@ async function submitReply(
     if (notice.message) throw new Error(notice.message)
   }
   draft.text = task.plainText
+  draft.delivery = delivery
   draft.submitted = draft.text
+  ctx.state.sentMessages.add(draft.id)
   try {
     await request()
   } catch (error) {
@@ -195,4 +209,8 @@ function ownedError(ctx: RequestContext, sessionID: string, error: unknown) {
   if (!error || typeof error !== "object" || !("kind" in error) || error.kind !== "session_task_owned") return error
   ctx.owned.add(sessionID)
   return new Error("This is a task-owned subagent. Draft kept. Press Esc, then f to open its owning session.")
+}
+
+function running(ctx: RequestContext, sessionID: string) {
+  return Object.hasOwn(ctx.state.snapshot?.active ?? {}, sessionID)
 }

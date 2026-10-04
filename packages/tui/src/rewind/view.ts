@@ -19,7 +19,7 @@ const tone: Record<DiffTone, string> = {
 export function addPanels(env: RewindEnv, dialog: ModalState, session: Session, action: RewindAction) {
   dialog.frame.add(
     new TextRenderable(env.renderer, {
-      content: `Confirm stops active work in this session.\n${action === "redo" && hasFiles(session.revert) ? "Redo restores staged files NOW." : "File mode restores affected files NOW."}\nNext reply commits any remaining undo stage.`,
+      content: `Confirm stops active work in this session.\n${action === "redo" && hasFiles(session.revert) ? "Redo restores staged files NOW." : "File mode restores affected files NOW."}\nThe next reply commits any remaining undo stage.`,
       height: 3,
       flexShrink: 0,
       fg: color.error,
@@ -70,7 +70,7 @@ export function renderChanges(flow: RewindFlow) {
 
 export function previewText(flow: RewindFlow) {
   const text = (flow.target ?? flow.previous)!.text
-  return `${flow.action === "undo" ? "Undo from" : flow.target ? "Redo up to" : "Clear stage after"} prompt:\n${display(text, 4000)}\n\nConfirmation stops active work in this captured session first. ${flow.action === "redo" && hasFiles(flow.session.revert) ? "Redo restores staged files NOW (or reapplies the next file boundary)." : "Conversation-only leaves files untouched; conversation + files restores files NOW."}\nThe next reply commits the remaining staged boundary. No reply is sent now; existing drafts are kept.\n\nSession: ${flow.session.id}\nDirectory: ${label(flow.session.location.directory, 200)}`
+  return `${flow.action === "undo" ? "Undo from" : flow.target ? "Redo up to" : "Clear stage after"} prompt:\n${display(text, 4000)}\n\nNo reply is sent now; existing drafts are kept.\n\nSession: ${flow.session.id}\nDirectory: ${label(flow.session.location.directory, 200)}`
 }
 
 /** Adds the file-mode select (undo only) and the typed confirmation input, then focuses the input. */
@@ -117,7 +117,7 @@ export function addConfirmation(flow: RewindFlow) {
   })
   controls.add(flow.confirmation)
   dialogs.track(dialog, flow.confirmation)
-  dialog.error.content = `Type ${action} + Ctrl+S confirm; Enter does not confirm\nTab chooses file mode / confirmation.${flow.summary ? " Ctrl+D staged patch." : ""} Esc cancel`
+  dialog.error.content = `Type ${action} + Ctrl+S confirm; Enter does not confirm\nTab chooses file mode / confirmation.${flow.summary ? " Ctrl+D shows the staged patch." : ""} Esc cancel`
   flow.ready = true
   flow.confirmation.focus()
 }

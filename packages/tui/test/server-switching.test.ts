@@ -4,7 +4,7 @@ import { hostname, tmpdir } from "node:os"
 import { join } from "node:path"
 import { mountApp } from "../src/index"
 import { createServers, type Servers, type Target } from "../src/servers"
-import { cleanup, terminal, turen } from "./support"
+import { cleanup, terminal, turen, until } from "./support"
 
 async function setup(
   options: {
@@ -35,12 +35,16 @@ async function setup(
   await servers.add({ address: beta.listener.url.origin, name: "beta" })
   const { view, screen } = await terminal()
   let quits = 0
+  const discarded: number[] = []
   const app = mountApp(view.renderer, servers, {
     initial: options.initial ? options.initial(servers, beta) : await servers.preferred(),
-    onQuit: () => quits++,
+    onQuit: (drafts) => {
+      quits++
+      discarded.push(drafts)
+    },
   })
   cleanup.push(app.dispose)
-  return { view, app, alpha, beta, screen, servers, home, quits: () => quits }
+  return { view, app, alpha, beta, screen, servers, home, quits: () => quits, discarded }
 }
 
 test("opens the running desktop app, then switches to a saved server after a password prompt", async () => {
@@ -175,4 +179,16 @@ test("a dashboard reached by switching servers also has keyboard focus", async (
   await view.renderOnce()
   view.mockInput.pressEnter()
   await screen("Your message")
+})
+
+test("quitting reports the unsent drafts it discards so the closing line can say so", async () => {
+  const { view, screen, quits, discarded } = await setup()
+  await screen("alpha says hello")
+  view.mockInput.pressKey("f")
+  await view.mockInput.typeText("unsent words")
+  view.mockInput.pressKey("c", { ctrl: true })
+  await screen("Draft kept")
+  view.mockInput.pressKey("c", { ctrl: true })
+  await until(() => quits() === 1)
+  expect(discarded).toEqual([1])
 })

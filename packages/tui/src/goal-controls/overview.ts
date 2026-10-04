@@ -52,7 +52,7 @@ export function overview(env: GoalEnv, session: Session) {
     ready: false,
     request: 0,
   }
-  dialog.error.content = "Read-only. Enter chooses action; Esc closes."
+  dialog.error.content = "Enter chooses action; Esc closes."
   dialog.refresh = () => {
     void refresh(flow)
   }
@@ -87,7 +87,7 @@ async function refresh(flow: OverviewFlow) {
     flow.choices.options = flow.actions.map((name) => ({ name, description: "" }))
     flow.choices.setSelectedIndex(Math.max(0, flow.actions.indexOf(selected!)))
     flow.text.content = overviewText(flow)
-    dialog.error.content = "Read-only. Enter chooses action; Esc closes.\nCtrl+R refresh. Up/Down choose."
+    dialog.error.content = "Enter chooses action; Esc closes.\nCtrl+R refresh. Up/Down choose."
     flow.ready = true
   } catch (error) {
     if (flow.env.state.modal !== dialog || flow.env.state.closed) return

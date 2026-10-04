@@ -123,7 +123,7 @@ test("lazy inventory, bounded suggestions, completion and exact server/local dis
   f.editor.setText("/")
   await f.settle()
   expect(f.calls).toEqual([["/project", "workspace"]])
-  expect(f.suggestions.height).toBeLessThanOrEqual(3)
+  expect(f.suggestions.height).toBeLessThanOrEqual(9)
   expect(f.editor.focused).toBe(true)
   expect(f.slash.key(key("down"))).toBe(true)
   expect(f.slash.key(key("up"))).toBe(true)
@@ -151,6 +151,9 @@ test("unknown prompts, whitespace, modifiers, locks and Escape remain native", a
     for (const name of ["up", "down", "tab", "enter"]) expect(f.slash.key(key(name, { [modifier]: true }))).toBe(false)
   }
   expect(f.slash.key(key("enter", { eventType: "release" }))).toBe(false)
+  // The first Escape closes the list; the next one is native.
+  expect(f.slash.key(key("escape"))).toBe(true)
+  expect(f.suggestions.visible).toBe(false)
   expect(f.slash.key(key("escape"))).toBe(false)
   for (const text of ["/unknown", "/review args", "/review\n", "/review\r", "/review\targs", "//path", "normal"]) {
     f.editor.setText(text)
