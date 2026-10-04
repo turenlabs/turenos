@@ -34,10 +34,10 @@ The desktop sidecar receives the raw key in the utility-process `start` message 
 `export` lines in a startup script piped over stdin (see [WSL backends](../operations/wsl.md) and
 [SSH remote servers](../operations/ssh-remote/README.md)), so it reaches the native server's environment without
 appearing in a command line. These bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`,
-`FORGE_SECRET_VAULT_KEY`) are removed after vault configuration and before child tools are started. The removal clears
-both `process.env` and, under Bun on Linux and macOS, the native environment through `unsetenv`
-([`packages/core/src/process-env.ts`](../../packages/core/src/process-env.ts)), because terminals started with
-`bun-pty` begin from the native environment; under Bun on Windows only `process.env` is cleared. That environment
+`FORGE_SECRET_VAULT_KEY`) are removed from `process.env` after vault configuration and before child tools are started
+([`packages/core/src/process-env.ts`](../../packages/core/src/process-env.ts)). Terminals, plugin shells, and other
+children are started from `process.env` or an explicit `env`, so they no longer receive the variables. A `Bun.spawn`
+without an `env` option would still inherit them, so spawn paths pass `env` explicitly. That environment
 bootstrap exists only for the Desktop's WSL and SSH quick-connect backends and for development. Removing a variable
 does not remove it from `/proc/<pid>/environ` or `ps eww`, so it is **not supported for persistent servers**. Without
 key material, non-test startup fails instead of using an ephemeral or plaintext key.
@@ -64,8 +64,9 @@ A macOS Keychain source is not implemented yet. It is waiting on the stage 0 Lau
 Set `FORGE_SERVER_MODE=persistent` and a stable, non-secret `FORGE_SERVER_ID` for a persistent server. The HTTP password
 comes from the systemd credential named by `FORGE_SERVER_PASSWORD_CREDENTIAL`. `serve` passes it to `Server.listen`,
 which keeps it in memory only: `ServerAuth.claimPassword` stores it in the in-process flag (removing any
-`FORGE_SERVER_PASSWORD` from `process.env`), and `ServerAuth.listenerLayer` gives it to the listener's auth check and to
-the in-process plugin SDK client. The password is never added to `process.env`.
+`FORGE_SERVER_PASSWORD` from `process.env`). The listener's auth check reads it from the per-listener
+`ConfigProvider` that `Server.listen` builds with the password added, and `ServerAuth.listenerLayer` hands it to the
+in-process plugin SDK client. The password is never added to `process.env`.
 Persistent startup refuses to start if the vault key or the HTTP password appears in the initial environment. It also
 refuses an `env` key source, a missing server ID, a non-loopback hostname, and mDNS. It also requires
 `FORGE_PERSISTENT_UNIT=1`, which the installer writes into the unit. These configuration errors exit with status 78.
