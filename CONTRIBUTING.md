@@ -39,8 +39,6 @@ bun --cwd packages/app typecheck
 bun --cwd packages/forge typecheck
 ```
 
-`bun typecheck` is incremental after its first run in a package.
-
 Run `bun typecheck` from a package folder; don't call `tsc` directly. To work on the web UI without Electron, start the
 backend from `packages/forge` with `bun run --conditions=browser ./src/index.ts serve --port 4096`, then run
 `bun dev -- --port 4444` in `packages/app` and open `http://localhost:4444`. After changing English UI strings,

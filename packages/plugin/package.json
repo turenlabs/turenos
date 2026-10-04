@@ -8,7 +8,7 @@
   "scripts": {
     "test": "bun test",
     "bench:embeddings": "python3 script/bench-embedding-models.py",
-    "typecheck": "tsgo --noEmit --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo --checkers 1",
+    "typecheck": "tsgo --noEmit --checkers 1",
     "build": "tsc"
   },
   "exports": {

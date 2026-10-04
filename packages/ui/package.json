@@ -56,7 +56,7 @@
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "typecheck": "tsgo --noEmit --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo --checkers 1",
+    "typecheck": "tsgo --noEmit --checkers 1",
     "test": "bun test src --only-failures",
     "dev": "vite",
     "generate:tailwind": "bun run script/tailwind.ts",

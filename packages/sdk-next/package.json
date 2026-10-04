@@ -9,7 +9,7 @@
   },
   "scripts": {
     "test": "bun test --timeout 60000",
-    "typecheck": "tsgo --noEmit --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo --checkers 1"
+    "typecheck": "tsgo --noEmit --checkers 1"
   },
   "dependencies": {
     "@turenlabs/client": "workspace:*",

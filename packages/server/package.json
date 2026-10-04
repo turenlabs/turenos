@@ -10,7 +10,7 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsgo --noEmit --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo --checkers 1"
+    "typecheck": "tsgo --noEmit --checkers 1"
   },
   "dependencies": {
     "@turenlabs/core": "workspace:*",

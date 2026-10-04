@@ -6,7 +6,7 @@
   "license": "MIT",
   "scripts": {
     "test": "bun test --timeout 30000",
-    "typecheck": "tsgo --noEmit --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo --checkers 1",
+    "typecheck": "tsgo --noEmit --checkers 1",
     "version:check": "bun ./src/check.ts"
   },
   "dependencies": {

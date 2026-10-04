@@ -7,7 +7,7 @@
   "private": true,
   "scripts": {
     "test": "bun test --timeout 30000 --only-failures",
-    "typecheck": "tsgo --noEmit --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo --checkers 1"
+    "typecheck": "tsgo --noEmit --checkers 1"
   },
   "exports": {
     ".": "./src/index.ts",
