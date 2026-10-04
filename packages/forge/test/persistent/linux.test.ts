@@ -17,6 +17,7 @@ import {
   placeDatabase,
   renderUnit,
   resolveKey,
+  waitForDescriptor,
   withInstallLock,
 } from "@/cli/cmd/persistent"
 import { tmpdir } from "../fixture/fixture"
@@ -44,6 +45,7 @@ const facts: PersistentLinux.Facts = {
   tpm2: false,
   user: { name: "turen", home: "/home/turen", uid: 1000, gid: 1000 },
   existingUnit: undefined,
+  dropIns: [],
   keyCredential: false,
   passwordCredential: false,
   database: false,
@@ -249,6 +251,47 @@ describe("PersistentLinux", () => {
       "/var/lib/turenos already exists and belongs to another account; choose another --data-root",
     ])
     expect(PersistentLinux.evaluate({ ...facts, dataRootOwner: 1000 }, plan).problems).toEqual([])
+  })
+
+  test("refuses a systemd drop-in, which would override the unit the installer writes", () => {
+    const dropIn = "/etc/systemd/system/turenos.service.d/release-forge.conf"
+    expect(PersistentLinux.evaluate({ ...facts, dropIns: [] }, plan).problems).toEqual([])
+    expect(
+      PersistentLinux.evaluate({ ...facts, dropIns: [dropIn, "/run/systemd/system/service.d/x.conf"] }, plan).problems,
+    ).toEqual([
+      `systemd drop-in ${dropIn} would override the installed unit; remove it (the installer owns the whole service definition)`,
+      "systemd drop-in /run/systemd/system/service.d/x.conf would override the installed unit; remove it (the installer owns the whole service definition)",
+    ])
+  })
+
+  test("finds drop-ins from systemd and from the drop-in directories, even beside a missing unit file", async () => {
+    expect(PersistentLinux.parseDropInPaths("")).toEqual([])
+    expect(PersistentLinux.parseDropInPaths("/a/service.d/g.conf /b/turenos.service.d/x.conf\n")).toEqual([
+      "/a/service.d/g.conf",
+      "/b/turenos.service.d/x.conf",
+    ])
+    await using tmp = await tmpdir()
+    const directory = path.join(tmp.path, "turenos.service.d")
+    await mkdir(directory)
+    await writeFile(path.join(directory, "release-forge.conf"), "[Service]\n")
+    await writeFile(path.join(directory, "notes.txt"), "not a drop-in\n")
+    const shown = (code: number | null, stdout: string) => async (command: string, args: string[]) => {
+      expect([command, args]).toEqual(["systemctl", ["show", "-p", "DropInPaths", "--value", "turenos.service"]])
+      return { code, stdout, stderr: "" }
+    }
+    const listed = [directory, path.join(tmp.path, "missing.d")]
+    // systemd reports nothing for a unit file it cannot find; the directory listing still does.
+    expect(await PersistentLinux.findDropIns(shown(0, "\n"), listed)).toEqual([
+      path.join(directory, "release-forge.conf"),
+    ])
+    // A generic service.d drop-in is refused only where the operator owns it, never under the vendor's /usr/lib.
+    expect(
+      await PersistentLinux.findDropIns(
+        shown(0, "/etc/systemd/system/service.d/g.conf /usr/lib/systemd/system/service.d/10-timeout-abort.conf\n"),
+        listed,
+      ),
+    ).toEqual(["/etc/systemd/system/service.d/g.conf", path.join(directory, "release-forge.conf")])
+    expect(await PersistentLinux.findDropIns(shown(1, ""), [path.join(tmp.path, "missing.d")])).toEqual([])
   })
 
   test("an existing data root is taken only when empty, marked, or already the installed server's", () => {
@@ -555,6 +598,21 @@ describe("PersistentLinux", () => {
       activate(plan, facts, key, "pw", { start: async () => (log.push("start"), descriptor("other")), publish }),
     ).rejects.toThrow("expected k1")
     expect(log).toEqual(["start"])
+  })
+
+  test("a health-check timeout names the last probe", async () => {
+    const runner: PersistentLinux.Runner = async () => ({ code: 0, stdout: "0", stderr: "" })
+    const wait = { timeout: 300, interval: 50 }
+    await using server = Bun.serve({ port: 0, fetch: () => new Response("not found\n  here", { status: 404 }) })
+    await expect(waitForDescriptor({ ...plan, port: server.port! }, "pw", runner, wait)).rejects.toThrow(
+      "(last probe: HTTP 404 not found here)",
+    )
+    const closed = Bun.serve({ port: 0, fetch: () => new Response() })
+    const port = closed.port!
+    await closed.stop(true)
+    await expect(waitForDescriptor({ ...plan, port }, "pw", runner, wait)).rejects.toThrow(
+      /did not become healthy within 0\.3 seconds \(last probe: .*(connect|refused)/i,
+    )
   })
 
   test("a second install fails fast while one holds the lock, and a crashed install's lock is taken over", async () => {

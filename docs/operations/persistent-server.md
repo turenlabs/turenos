@@ -130,7 +130,12 @@ same key ID.
 The unit (`forge persistent unit --user alice` prints it) runs
 `forge serve --key-source systemd-credentials --hostname 127.0.0.1 --port 4097` with
 `FORGE_SERVER_MODE=persistent`, `FORGE_SERVER_ID`, and `FORGE_SERVER_PASSWORD_CREDENTIAL`, loading the key through
-`LoadCredentialEncrypted=`. No wrapper script exports anything.
+`LoadCredentialEncrypted=`. No wrapper script exports anything. Preflight refuses any systemd drop-in for
+`turenos.service` (`turenos.service.d/*.conf` under `/etc/systemd/system`, `/run/systemd/system`, or
+`/usr/local/lib/systemd/system`), and any generic `service.d/*.conf` under `/etc/systemd/system` or
+`/run/systemd/system`, because a drop-in can replace `ExecStart`, the account, or the environment of the unit
+the installer writes; remove it and re-run. Generic drop-ins that the distribution ships under `/usr/lib` are
+left alone.
 
 ### Existing data (import or restore)
 
@@ -196,12 +201,12 @@ printf '%s\n%s\n' "$KEY_ID" "$KEY_BASE64" | sudo forge persistent install --user
 
 ### Operating
 
-| Task                       | Command                                                                                                                                                                                                                                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status and logs            | `systemctl status turenos`, `journalctl -u turenos`                                                                                                                                                                                                                                                           |
-| Stop or retire the service | `systemctl disable --now turenos`. Clients never stop a persistent server                                                                                                                                                                                                                                     |
+| Task                       | Command                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status and logs            | `systemctl status turenos`, `journalctl -u turenos`                                                                                                                                                                                                                                                                                                                 |
+| Stop or retire the service | `systemctl disable --now turenos`. Clients never stop a persistent server                                                                                                                                                                                                                                                                                           |
 | Re-run or upgrade          | `sudo forge persistent install --apply` with no other options reuses the installed unit's account, data root, port, server ID, and forge binary (pass `--forge-bin` to switch binaries), then restarts the service. It refuses to replace an existing key, to change the account or data root of an installed server, or to overwrite a unit for a different server |
-| Check what a key opens     | `forge persistent verify-key --db <path>` (key on stdin)                                                                                                                                                                                                                                                      |
+| Check what a key opens     | `forge persistent verify-key --db <path>` (key on stdin)                                                                                                                                                                                                                                                                                                            |
 
 ### Failure behavior
 
@@ -211,7 +216,8 @@ key or password in the environment, a unit without `FORGE_PERSISTENT_UNIT=1`, a 
 exit with status 78 and a one-line message saying what to fix.
 
 If a step fails before the restart, `install` starts a service that was running again. If a newly installed service
-doesn't become healthy, `install` prints the last journal lines, then stops and disables the service so it doesn't keep
+doesn't become healthy, `install` names the last health-check result (for example `HTTP 404` or a refused connection),
+prints the last journal lines, then stops and disables the service so it doesn't keep
 restarting. It doesn't disable a service that was already installed. Preflight refuses a
 port another process holds (quick connect prefers 4096, so the default here is 4097) and a data root that belongs to
 another account. The unit restarts the service on failure, at most five times in 300 seconds, and never after exit

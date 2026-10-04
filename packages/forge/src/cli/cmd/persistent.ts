@@ -548,7 +548,12 @@ async function startService(target: PersistentLinux.Plan, facts: PersistentLinux
   })
 }
 
-async function waitForDescriptor(target: PersistentLinux.Plan, password: string, runner: PersistentLinux.Runner) {
+export async function waitForDescriptor(
+  target: PersistentLinux.Plan,
+  password: string,
+  runner: PersistentLinux.Runner,
+  wait = { timeout: 60_000, interval: 1000 },
+) {
   const authorization = `Basic ${Buffer.from(`forge:${password}`).toString("base64")}`
   const restarts = async () =>
     Number(
@@ -557,22 +562,30 @@ async function waitForDescriptor(target: PersistentLinux.Plan, password: string,
       ).stdout.trim(),
     ) || 0
   const baseline = await restarts()
-  const deadline = Date.now() + 60_000
+  const deadline = Date.now() + wait.timeout
+  // The timeout alone cannot say whether nothing listened, something else answered, or the server was too old.
+  let lastProbe = "no probe finished"
   while (Date.now() < deadline) {
     const response = await fetch(`http://127.0.0.1:${target.port}/global/server`, {
       headers: { authorization },
       signal: AbortSignal.timeout(3000),
-    }).catch(() => undefined)
+    }).catch((error: Error) => {
+      lastProbe = error.message
+    })
     if (response?.ok) {
       const descriptor = (await response.json()) as { serverID: string; keyID: string; mode: string }
       if (descriptor.serverID !== target.serverID || descriptor.mode !== "persistent")
         throw new Error(`port ${target.port} answers as ${descriptor.serverID}, not ${target.serverID}`)
       return descriptor
     }
+    if (response) {
+      const body = (await response.text().catch(() => "")).replaceAll(password, "***").replace(/\s+/g, " ").trim()
+      lastProbe = `HTTP ${response.status}${body ? ` ${body.slice(0, 200)}` : ""}`
+    }
     if ((await restarts()) - baseline >= 2) throw new Error("the service keeps exiting during startup")
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, wait.interval))
   }
-  throw new Error("the service did not become healthy within 60 seconds")
+  throw new Error(`the service did not become healthy within ${wait.timeout / 1000} seconds (last probe: ${lastProbe})`)
 }
 
 const VerifyKeyCommand = cmd<{}, { db: string }>({

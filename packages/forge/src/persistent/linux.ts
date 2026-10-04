@@ -21,7 +21,7 @@ import {
   type FileHandle,
 } from "node:fs/promises"
 import { createServer } from "node:net"
-import { dirname, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 
 // The data root and port stay clear of the quick-connect shim, which uses the default XDG data path
 // and prefers port 4096, and of any older manual setup that used /var/lib/turenos as a home directory.
@@ -68,6 +68,7 @@ export type Facts = {
   tpm2: boolean
   user: { name: string; home: string; uid: number; gid: number } | undefined
   existingUnit: string | undefined
+  dropIns: string[]
   keyCredential: boolean
   passwordCredential: boolean
   database: boolean
@@ -101,6 +102,10 @@ export const run: Runner = (command, args, input) =>
 
 export function databasePath(dataRoot: string) {
   return join(dataRoot, "data", "forge", "forge.db")
+}
+
+export function parseDropInPaths(output: string) {
+  return output.split(/\s+/).filter(Boolean)
 }
 
 export function parseSystemdVersion(output: string) {
@@ -242,6 +247,12 @@ export function evaluate(facts: Facts, plan: Plan) {
     installed(facts.existingUnit).dataRoot !== plan.dataRoot
   )
     problems.push(`${plan.dataRoot} is not empty and was not created by this installer; choose another --data-root`)
+  // systemd merges drop-ins over the unit the installer writes, so one can swap ExecStart, User, Environment,
+  // or credentials without the installed unit showing it.
+  for (const path of facts.dropIns)
+    problems.push(
+      `systemd drop-in ${path} would override the installed unit; remove it (the installer owns the whole service definition)`,
+    )
   const existingID = installed(facts.existingUnit).serverID
   if (facts.existingUnit !== undefined && existingID !== plan.serverID)
     problems.push(`${plan.unitPath} already exists for a different server; it was left untouched`)
@@ -285,6 +296,7 @@ export async function gather(plan: Plan, runner: Runner = run): Promise<Facts> {
         ? { name: fields[0]!, uid: Number(fields[2]), gid: Number(fields[3]), home: fields[5]! }
         : undefined,
     existingUnit: await readFile(plan.unitPath, "utf8").catch(() => undefined),
+    dropIns: await findDropIns(runner),
     keyCredential: await exists(join(plan.credstoreEncrypted, credentials.key)),
     passwordCredential: await exists(join(plan.credstoreEncrypted, credentials.password)),
     database: await exists(databasePath(plan.dataRoot)),
@@ -313,6 +325,51 @@ export async function gather(plan: Plan, runner: Runner = run): Promise<Facts> {
     portInUse: await portInUse(plan.port),
     serviceActive: (await runner("systemctl", ["is-active", "--quiet", defaults.serviceName])).code === 0,
   }
+}
+
+const operatorRoots = [
+  "/etc/systemd/system",
+  "/etc/systemd/system.control",
+  "/run/systemd/system",
+  "/run/systemd/system.control",
+]
+
+const dropInDirectories = [
+  ...operatorRoots.flatMap((root) => [join(root, `${defaults.serviceName}.d`), join(root, "service.d")]),
+  ...["/usr/local/lib/systemd/system", "/usr/lib/systemd/system"].map((root) =>
+    join(root, `${defaults.serviceName}.d`),
+  ),
+]
+
+/**
+ * A drop-in for turenos.service is refused wherever it lives. A generic service.d drop-in applies to every
+ * service, so only the operator-owned ones are refused: distributions ship their own under /usr/lib.
+ */
+function refusedDropIn(path: string) {
+  const directory = dirname(path)
+  return (
+    basename(directory) === `${defaults.serviceName}.d` ||
+    (basename(directory) === "service.d" && operatorRoots.includes(dirname(directory)))
+  )
+}
+
+/**
+ * systemd reports the drop-ins it would apply only for a unit it can find, so a drop-in left beside a
+ * missing unit file is found by listing the drop-in directories as well.
+ */
+export async function findDropIns(runner: Runner, directories: readonly string[] = dropInDirectories) {
+  const shown = await runner("systemctl", ["show", "-p", "DropInPaths", "--value", defaults.serviceName])
+  const listed = await Promise.all(
+    directories.map((directory) =>
+      readdir(directory).then(
+        (entries) => entries.filter((entry) => entry.endsWith(".conf")).map((entry) => join(directory, entry)),
+        () => [],
+      ),
+    ),
+  )
+  return [
+    ...new Set([...(shown.code === 0 ? parseDropInPaths(shown.stdout) : []), ...listed.flat()].filter(refusedDropIn)),
+  ].toSorted()
 }
 
 function portInUse(port: number) {
