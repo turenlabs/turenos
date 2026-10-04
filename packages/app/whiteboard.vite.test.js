@@ -93,9 +93,11 @@ test("optimizer links the installed editor and its CommonJS dependencies into br
   expect(entry).toBeDefined()
   expect(modules.some((id) => id.includes("es6-promise-pool"))).toBe(true)
   expect(() => transpiler.transformSync(entry.code)).not.toThrow()
-  // Every import is an emitted chunk, so nothing is left external.
+  // Every import and dynamic import is an emitted chunk, so nothing is left external.
   const names = new Set(chunks.map((chunk) => chunk.fileName))
-  expect(chunks.flatMap((chunk) => chunk.imports).filter((name) => !names.has(name))).toEqual([])
+  expect(
+    chunks.flatMap((chunk) => [...chunk.imports, ...chunk.dynamicImports]).filter((name) => !names.has(name)),
+  ).toEqual([])
   expect(code).toContain("ASSETS_FALLBACK_URL")
   expect(code).not.toMatch(/\.push\(\s*new URL\([^)]*ASSETS_FALLBACK_URL/)
   expect(code).toContain('document.createElement("a")')
