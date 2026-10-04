@@ -73,13 +73,10 @@ const source = Layer.succeed(
           call: () => Effect.succeed({ content: [{ type: "text", text: "found" }] }),
         } satisfies McpTool.Definition,
       ]),
-    begin: (input) =>
-      Effect.sync(() => ToolBroker.beginTurn(input.sessionID, input.capabilities, input.directory)),
+    begin: (input) => Effect.sync(() => ToolBroker.beginTurn(input.sessionID, input.capabilities, input.directory)),
     selected: (input) =>
       Effect.sync(() =>
-        ToolBroker.selected(input.sessionID, input.capabilities, input.directory).map(
-          (capability) => capability.key,
-        ),
+        ToolBroker.selected(input.sessionID, input.capabilities, input.directory).map((capability) => capability.key),
       ),
     search: (input) =>
       Effect.sync(() => ToolBroker.search(input.sessionID, input.capabilities, input.query, input.directory)),
@@ -96,7 +93,7 @@ const permission = Layer.mock(PermissionV2.Service, {
   assert: () => Effect.void,
 })
 
-const it = testEffect(
+const discoveryLayer = (authority?: SessionTaskV2.Authority) =>
   AppNodeBuilder.build(
     LayerNode.group([
       Database.node,
@@ -113,11 +110,43 @@ const it = testEffect(
       [Location.node, Layer.succeed(Location.Service, Location.Service.of(location({ directory })))],
       [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],
       [SubagentTool.node, Layer.mock(SubagentTool.Service, { forExecution: () => Effect.succeed({}) })],
-      [SessionTaskV2.node, Layer.mock(SessionTaskV2.Service, { authority: () => Effect.succeed(undefined) })],
+      [SessionTaskV2.node, Layer.mock(SessionTaskV2.Service, { authority: () => Effect.succeed(authority) })],
       [HandoffTool.node, Layer.mock(HandoffTool.Service, { forExecution: () => Effect.succeed({}) })],
       [ShellJobTool.node, Layer.mock(ShellJobTool.Service, { forExecution: () => Effect.succeed({}) })],
       [SessionTerminal.node, Layer.mock(SessionTerminal.Service, { get: () => Effect.succeed(undefined) })],
     ],
+  )
+
+const it = testEffect(discoveryLayer())
+const childAuthority = SessionTaskV2.Authority.make({
+  parentPermissions: [{ action: "*", resource: "*", effect: "allow" }],
+  ancestorPermissionSets: [],
+  childPermissions: [{ action: "*", resource: "*", effect: "allow" }],
+  hardPermissions: [{ action: "*", resource: "*", effect: "allow" }],
+  writeRoots: [],
+  commands: [],
+})
+const childIt = testEffect(discoveryLayer(childAuthority))
+const specialistAuthority = SessionTaskV2.Authority.make({
+  ...childAuthority,
+  childPermissions: [
+    ...childAuthority.childPermissions,
+    { action: "fixture_yara", resource: "*", effect: "allow" },
+    { action: McpTool.toolName(mcpCapability.server, mcpCapability.name), resource: "*", effect: "allow" },
+  ],
+})
+const specialistIt = testEffect(discoveryLayer(specialistAuthority))
+const ceilingIt = testEffect(
+  discoveryLayer(
+    SessionTaskV2.Authority.make({
+      ...specialistAuthority,
+      ancestorPermissionSets: [
+        [
+          { action: "fixture_yara", resource: "*", effect: "deny" },
+          { action: McpTool.toolName(mcpCapability.server, mcpCapability.name), resource: "*", effect: "deny" },
+        ],
+      ],
+    }),
   ),
 )
 
@@ -141,6 +170,102 @@ const materialize = (sessionID: SessionSchema.ID, permissions?: PermissionV2.Rul
   })
 
 describe("SessionToolSnapshot tool discovery", () => {
+  childIt.effect("limits child discovery and direct calls to basic tools despite catch-all permissions", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* setup("basic-child")
+      const tools = yield* Tools.Service
+      yield* tools.register({
+        read: fixtureInline,
+        whiteboard_draw: Tool.withPermission(fixtureInline, "read"),
+        automation_create: fixtureInline,
+        browser_start: fixtureInline,
+      })
+      const result = yield* materialize(sessionID)
+      const names = result.materialization.definitions.map((definition) => definition.name)
+      expect(names).toContain("read")
+      expect(names).not.toContain("fixture_inline")
+      expect(result.snapshot.deferred.available).toEqual([])
+      expect(result.snapshot.broker.capabilities).toEqual([])
+      expect((yield* result.materialization.settle(call(sessionID, "read", {}))).result.type).not.toBe("error")
+
+      for (const name of [
+        "fixture_yara",
+        "fixture_inline",
+        "whiteboard_draw",
+        "automation_create",
+        "browser_start",
+        McpTool.toolName(mcpCapability.server, mcpCapability.name),
+      ]) {
+        expect(
+          (yield* result.materialization.settle(call(sessionID, name, {}, `call-blocked-${name}`))).result,
+        ).toEqual({
+          type: "error",
+          value: `Unknown tool: ${name}`,
+        })
+      }
+      const searched = yield* result.materialization.settle(
+        call(sessionID, ToolBroker.SEARCH_TOOL_NAME, { query: "" }, "call-child-search"),
+      )
+      expect(searched.result).toMatchObject({ type: "json", value: { available: 0, matches: [] } })
+      const loaded = yield* result.materialization.settle(
+        call(sessionID, ToolBroker.LOAD_TOOL_NAME, { tools: ["fixture_yara", mcpCapability.key] }, "call-child-load"),
+      )
+      expect(loaded.result).toMatchObject({ type: "error", value: "Tool is not available: fixture_yara" })
+      const after = yield* materialize(sessionID)
+      expect(after.snapshot.deferred.loaded).toEqual([])
+      expect(after.snapshot.broker.loaded).toEqual([])
+    }),
+  )
+
+  specialistIt.effect("keeps explicitly granted child specialist tools discoverable and executable", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* setup("specialist-child")
+      const result = yield* materialize(sessionID)
+      expect(result.materialization.definitions.map((definition) => definition.name)).toContain("fixture_yara")
+      expect(result.snapshot.broker.capabilities.map((entry) => entry.key)).toContain(mcpCapability.key)
+      expect((yield* result.materialization.settle(call(sessionID, "fixture_yara", {}))).result.type).not.toBe("error")
+      const loaded = yield* result.materialization.settle(
+        call(sessionID, ToolBroker.LOAD_TOOL_NAME, { tools: [mcpCapability.key] }, "call-specialist-load"),
+      )
+      expect(loaded.result.type).not.toBe("error")
+      const after = yield* materialize(sessionID)
+      expect(
+        (yield* after.materialization.settle(
+          call(sessionID, McpTool.toolName(mcpCapability.server, mcpCapability.name), {}, "call-specialist-mcp"),
+        )).result.type,
+      ).not.toBe("error")
+      expect(
+        (yield* result.materialization.settle(call(sessionID, "fixture_inline", {}, "call-specialist-blocked"))).result,
+      ).toEqual({ type: "error", value: "Unknown tool: fixture_inline" })
+    }),
+  )
+
+  ceilingIt.effect("does not let specialist grants override an ancestor's tool denial", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* setup("child-ceiling")
+      const result = yield* materialize(sessionID)
+      expect(result.snapshot.deferred.available).toEqual([])
+      expect(result.snapshot.broker.capabilities).toEqual([])
+      for (const name of ["fixture_yara", McpTool.toolName(mcpCapability.server, mcpCapability.name)]) {
+        expect(
+          (yield* result.materialization.settle(call(sessionID, name, {}, `call-ceiling-${name}`))).result,
+        ).toEqual({ type: "error", value: `Unknown tool: ${name}` })
+      }
+    }),
+  )
+
+  childIt.effect("does not expose child specialist definitions through native tool search", () =>
+    Effect.gen(function* () {
+      const sessionID = yield* setup("child-native")
+      const snapshots = yield* SessionToolSnapshot.Service
+      const result = yield* snapshots.materialize({ sessionID, directory, model, agent, nativeToolSearch: true })
+      const searched = yield* result.materialization.settle(call(sessionID, ToolBroker.SEARCH_TOOL_NAME, { query: "" }))
+      expect(searched.result).toMatchObject({ type: "json", value: { available: 0, matches: [], tools: [] } })
+      expect(result.snapshot.deferred.available).toEqual([])
+      expect(result.snapshot.broker.capabilities).toEqual([])
+    }),
+  )
+
   it.effect("withholds deferred built-ins from definitions while cataloging them", () =>
     Effect.gen(function* () {
       const sessionID = yield* setup("catalog")
@@ -266,20 +391,18 @@ describe("SessionToolSnapshot tool discovery", () => {
     Effect.gen(function* () {
       const sessionID = yield* setup("idle")
       const before = yield* materialize(sessionID)
-      yield* before.materialization.settle(
-        call(sessionID, ToolBroker.LOAD_TOOL_NAME, { tools: ["fixture_yara"] }),
-      )
+      yield* before.materialization.settle(call(sessionID, ToolBroker.LOAD_TOOL_NAME, { tools: ["fixture_yara"] }))
       // Untouched for far longer than the old three-turn budget, it is still advertised, so the tool list at
       // the front of the cached prefix does not change. Unloading would cost a full uncached re-read.
       for (let turn = 1; turn <= ToolBroker.MIN_UNLOAD_AFTER_IDLE_TURNS; turn++)
-        expect((yield* materialize(sessionID)).materialization.definitions.map((definition) => definition.name)).toContain(
-          "fixture_yara",
-        )
+        expect(
+          (yield* materialize(sessionID)).materialization.definitions.map((definition) => definition.name),
+        ).toContain("fixture_yara")
 
       // Only once the floor is passed does it drop.
-      expect((yield* materialize(sessionID)).materialization.definitions.map((definition) => definition.name)).not.toContain(
-        "fixture_yara",
-      )
+      expect(
+        (yield* materialize(sessionID)).materialization.definitions.map((definition) => definition.name),
+      ).not.toContain("fixture_yara")
     }),
   )
 
@@ -486,8 +609,7 @@ describe("SessionToolSnapshot tool discovery", () => {
 
       const searched = yield* result.materialization.settle(call(sessionID, McpTool.SEARCH_TOOL_NAME, {}))
       expect(searched.result.type).toBe("json")
-      if (searched.result.type === "json")
-        expect(searched.result.value).toMatchObject({ available: 1 })
+      if (searched.result.type === "json") expect(searched.result.value).toMatchObject({ available: 1 })
 
       const loaded = yield* result.materialization.settle(
         call(sessionID, McpTool.LOAD_TOOL_NAME, { tools: [mcpCapability.key] }, "call-mcp-load"),

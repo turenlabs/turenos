@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import { Tool } from "@turenlabs/core/tool/tool"
 import { AgentV2 } from "@turenlabs/core/agent"
+import { PermissionV2 } from "@turenlabs/core/permission"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { ApplicationTools } from "@turenlabs/core/tool/application-tools"
@@ -8,6 +9,7 @@ import { SessionV2 } from "@turenlabs/core/session"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
+import { SubagentTool } from "@turenlabs/core/tool/subagent"
 import { executeTool, settleTool, toolDefinitions } from "./lib/tool"
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Schema, SchemaGetter, SchemaIssue, Scope } from "effect"
 import { testEffect } from "./lib/effect"
@@ -59,6 +61,57 @@ const make = (permission?: string) => {
 }
 
 describe("ToolRegistry", () => {
+  it.effect("preserves basic edit aliases for an agent with a deny-by-default leaf policy", () =>
+    Effect.gen(function* () {
+      const service = yield* ToolRegistry.Service
+      yield* service.register({
+        edit: make("edit"),
+        write: make("edit"),
+        apply_patch: make("edit"),
+        whiteboard_draw: make("edit"),
+      })
+      const permissions: PermissionV2.Ruleset = [
+        { action: "*", resource: "*", effect: "deny" },
+        { action: "edit", resource: "*", effect: "allow" },
+      ]
+      const tools = yield* service.materialize({
+        permissionSets: [permissions],
+        toolPermissions: SubagentTool.toolPermissions(permissions),
+      })
+      expect(tools.definitions.map((definition) => definition.name)).toEqual(["edit", "write", "apply_patch"])
+      expect((yield* tools.settle(call("apply_patch"))).result).toEqual({ type: "text", value: "apply_patch" })
+      expect((yield* tools.settle(call("whiteboard_draw"))).result).toEqual({
+        type: "error",
+        value: "Unknown tool: whiteboard_draw",
+      })
+    }),
+  )
+
+  it.effect("filters tool names separately from leaf actions and blocks direct settlement", () =>
+    Effect.gen(function* () {
+      const service = yield* ToolRegistry.Service
+      yield* service.register({ read: make(), specialist: Tool.withDeferred(make("read")) })
+      const tools = yield* service.materialize({
+        toolPermissions: [
+          { action: "*", resource: "*", effect: "deny" },
+          { action: "read", resource: "*", effect: "allow" },
+        ],
+        session: { whiteboard_draw: make("read") },
+      })
+      expect(tools.definitions.map((definition) => definition.name)).toEqual(["read"])
+      expect(tools.deferred).toEqual([])
+      expect((yield* tools.settle(call("specialist"))).result).toEqual({
+        type: "error",
+        value: "Unknown tool: specialist",
+      })
+      expect((yield* tools.settle(call("whiteboard_draw"))).result).toEqual({
+        type: "error",
+        value: "Unknown tool: whiteboard_draw",
+      })
+      expect((yield* tools.settle(call("read"))).result).toEqual({ type: "text", value: "read" })
+    }),
+  )
+
   it.effect("filters disabled tools with edit aliases and ordered wildcard precedence", () =>
     Effect.gen(function* () {
       const service = yield* ToolRegistry.Service
