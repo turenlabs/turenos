@@ -412,6 +412,10 @@ describe("code_search", () => {
               expect(updatedHits.some((hit) => hit.path === "src/util/hash.ts")).toBe(false)
               expect(embedded.length).toBeGreaterThan(count)
               expect((yield* search(registry, { queries: ["fresh needle"] }))[0]?.path).toBe("src/util/hash.ts")
+              const staleCount = embedded.length
+              yield* Effect.sleep("2.1 seconds")
+              yield* search(registry, { queries: ["verify"] })
+              expect(embedded.length).toBeGreaterThan(staleCount)
             }),
         )
       },

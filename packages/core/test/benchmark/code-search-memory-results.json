@@ -232,6 +232,20 @@
     "recallCount": 22,
     "mrr10": 0.687996032,
     "top1": 14,
-    "verification": { "testsPassed": 37, "testsFailed": 0, "assertions": 76, "typecheck": "passed" }
+    "verification": { "testsPassed": 37, "testsFailed": 0, "assertions": 76, "typecheck": "passed" },
+    "afterThrottleRepair": {
+      "peakRssMiB": 717.453125,
+      "heapDeltaMiB": 105.751951,
+      "coldMs": 3502.44825,
+      "cachedP50Ms": 184.836416,
+      "recallCount": 22,
+      "mrr10": 0.687996032,
+      "top1": 14,
+      "coreTestsPassed": 37,
+      "coreAssertions": 77,
+      "workloadTestsPassed": 8,
+      "workloadAssertions": 105,
+      "typecheck": "passed"
+    }
   }
 }

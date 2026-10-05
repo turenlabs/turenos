@@ -47,6 +47,7 @@ const MAX_CANDIDATES = 128
 const MAX_SYMBOLS_PER_FILE = 64
 const MAX_CALLEES_PER_NAME = 20
 const MAX_RESULTS = 40
+const THESAURUS_REBUILD_MS = 2000
 
 const EXTENSIONS = new Set([
   ".ts",
@@ -442,7 +443,7 @@ const makeLayer = (load: PotionLoader) =>
 
       let potion: Promise<PotionRuntime> | undefined
       let potionFailures = 0
-      let thesaurus: { version: number; vocab: string[]; vecs: Float32Array; dim: number } | undefined
+      let thesaurus: { version: number; builtAt: number; vocab: string[]; vecs: Float32Array; dim: number } | undefined
       const expansions = new Map<string, Map<string, number>>()
       let expansionVersion = -1
 
@@ -686,7 +687,10 @@ const makeLayer = (load: PotionLoader) =>
         )
 
       const expand = Effect.fnUntraced(function* (q: string) {
-        if (expansionVersion !== version) {
+        // Direct matches stay current while vocabulary rebuilds are throttled during file churn.
+        const rebuildDue =
+          thesaurus && thesaurus.version !== version && Date.now() - thesaurus.builtAt >= THESAURUS_REBUILD_MS
+        if (expansionVersion !== version || rebuildDue) {
           expansions.clear()
           expansionVersion = version
         }
@@ -696,7 +700,7 @@ const makeLayer = (load: PotionLoader) =>
         if (!runtime) return new Map<string, number>()
         const dim = runtime.profile.dimension
         let th = thesaurus
-        if (!th || th.version !== version || th.dim !== dim) {
+        if (!th || rebuildDue || th.dim !== dim) {
           const vocab = [...discoveryLex.inverted.keys()].filter((t) => {
             const df = (discoveryLex.inverted.get(t)?.length ?? 0) / 2
             return t.length >= 3 && !STOP.has(t) && df >= 1 && df <= discoveryLex.n * 0.1
@@ -714,7 +718,7 @@ const makeLayer = (load: PotionLoader) =>
             const norm = Math.sqrt(n2) || 1
             for (let d = 0; d < dim; d++) vecs[off + d]! /= norm
           }
-          th = { version, vocab, vecs, dim }
+          th = { version, builtAt: Date.now(), vocab, vecs, dim }
           thesaurus = th
         }
         const out = new Map<string, number>()
