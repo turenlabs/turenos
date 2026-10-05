@@ -1,7 +1,7 @@
 import fs from "fs/promises"
 import path from "path"
 import { describe, expect } from "bun:test"
-import { Effect, Layer, Schema } from "effect"
+import { Deferred, Effect, Fiber, Layer, Schema } from "effect"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { EventV2 } from "@turenlabs/core/event"
@@ -63,6 +63,7 @@ const withSearch = <A, E, R>(
   directory: string,
   load: (options: PotionLoadOptions) => Promise<PotionRuntime>,
   body: (registry: ToolRegistry.Interface) => Effect.Effect<A, E, R>,
+  filesystem = AppNodeBuilder.build(FSUtil.node),
 ) =>
   Effect.gen(function* () {
     return yield* body(yield* ToolRegistry.Service)
@@ -88,6 +89,7 @@ const withSearch = <A, E, R>(
           [EventV2.node, events],
           [ExtensionRuntime.node, extensions],
           [CodeSearch.node, CodeSearch.nodeWith(load)],
+          [FSUtil.node, filesystem],
         ],
       ),
     ),
@@ -108,7 +110,9 @@ const search = (registry: ToolRegistry.Interface, input: typeof CodeSearchTool.I
 
 const seed = async (dir: string) => {
   const write = (rel: string, content: string) =>
-    fs.mkdir(path.join(dir, path.dirname(rel)), { recursive: true }).then(() => fs.writeFile(path.join(dir, rel), content))
+    fs
+      .mkdir(path.join(dir, path.dirname(rel)), { recursive: true })
+      .then(() => fs.writeFile(path.join(dir, rel), content))
 
   await write(
     "src/core/coordinator.ts",
@@ -155,14 +159,28 @@ struct PackerRule { marker: u8 }
   }
 }
 
-const updated = (dir: string, file: string): EventV2.Payload => ({
-  id: Schema.decodeUnknownSync(Event.ID)("evt_test"),
-  type: Watcher.Event.Updated.type,
-  data: { file: AbsolutePath.make(path.join(dir, file)), event: "change" },
-  location: { directory: AbsolutePath.make(dir) },
-})
+const updated = (dir: string, file: string) =>
+  ({
+    id: Schema.decodeUnknownSync(Event.ID)("evt_test"),
+    type: Watcher.Event.Updated.type,
+    data: { file: AbsolutePath.make(path.join(dir, file)), event: "change" },
+    location: { directory: AbsolutePath.make(dir) },
+  }) satisfies EventV2.Payload
 
 const it = testEffect(Layer.empty)
+
+const seededSearch = <A, E, R>(body: (directory: string, registry: ToolRegistry.Interface) => Effect.Effect<A, E, R>) =>
+  Effect.acquireUseRelease(
+    Effect.promise(() => tmpdir()),
+    (tmp) =>
+      withSearch(tmp.path, offline, (registry) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() => seed(tmp.path))
+          return yield* body(tmp.path, registry)
+        }),
+      ),
+    (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+  )
 
 describe("code_search", () => {
   it.live("ranks the defining file first for an identifier query", () =>
@@ -238,7 +256,10 @@ describe("code_search", () => {
         withSearch(tmp.path, offline, (registry) =>
           Effect.gen(function* () {
             yield* Effect.promise(() => seed(tmp.path))
-            const hits = yield* search(registry, { queries: ["session title generation"], path: RelativePath.make("docs") })
+            const hits = yield* search(registry, {
+              queries: ["session title generation"],
+              path: RelativePath.make("docs"),
+            })
             expect(hits.length).toBeGreaterThan(0)
             expect(hits.every((hit) => hit.path.startsWith("docs/"))).toBe(true)
           }),
@@ -309,9 +330,7 @@ describe("code_search", () => {
             yield* search(registry, { queries: ["zebra locator"] })
 
             const file = path.join(tmp.path, "src/core/coordinator.ts")
-            yield* Effect.promise(() =>
-              fs.appendFile(file, "\nexport function zebraLocator() { return 1 }\n"),
-            )
+            yield* Effect.promise(() => fs.appendFile(file, "\nexport function zebraLocator() { return 1 }\n"))
             yield* listener!(updated(tmp.path, "src/core/coordinator.ts"))
 
             const hits = yield* search(registry, { queries: ["zebra locator"] })
@@ -319,6 +338,196 @@ describe("code_search", () => {
             expect(hits[0]?.name).toBe("zebraLocator")
           }),
         ),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("splits acronym boundaries in paths and ignores query stop words", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        withSearch(tmp.path, offline, (registry) =>
+          Effect.gen(function* () {
+            yield* Effect.promise(() =>
+              fs.writeFile(path.join(tmp.path, "HTTPGateway.ts"), "export const sentinel = 1"),
+            )
+            const hits = yield* search(registry, { queries: ["how does the http gateway work"] })
+            expect(hits[0]?.path).toBe("HTTPGateway.ts")
+            expect(yield* search(registry, { queries: ["the and for"] })).toEqual([])
+          }),
+        ),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("normalizes dot and trailing separators in search scopes", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        withSearch(tmp.path, offline, (registry) =>
+          Effect.gen(function* () {
+            yield* Effect.promise(() => seed(tmp.path))
+            const input = { queries: ["SessionRunCoordinator"] } satisfies typeof CodeSearchTool.Input.Type
+            const hits = yield* search(registry, input)
+            expect(yield* search(registry, { ...input, path: RelativePath.make(".") })).toEqual(hits)
+            const scoped = yield* search(registry, { ...input, path: RelativePath.make("./src/core/") })
+            expect(scoped[0]?.path).toBe("src/core/coordinator.ts")
+            expect(scoped.every((hit) => hit.path.startsWith("src/core/"))).toBe(true)
+          }),
+        ),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("caches semantic expansion and invalidates it after file changes", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        const embedded: string[][] = []
+        const controlled = runtime(["verify", "checksum"])
+        return withSearch(
+          tmp.path,
+          () =>
+            Promise.resolve({
+              ...controlled,
+              embed: (texts) => {
+                embedded.push([...texts])
+                return controlled.embed(texts)
+              },
+            }),
+          (registry) =>
+            Effect.gen(function* () {
+              yield* Effect.promise(() => seed(tmp.path))
+              const hits = yield* search(registry, { queries: ["verify"] })
+              expect(hits[0]?.path).toBe("src/util/hash.ts")
+              const count = embedded.length
+              expect(yield* search(registry, { queries: ["verify"] })).toEqual(hits)
+              expect(embedded.length).toBe(count)
+              yield* Effect.promise(() =>
+                fs.writeFile(path.join(tmp.path, "src/util/hash.ts"), "export const freshNeedle = 1"),
+              )
+              yield* listener!(updated(tmp.path, "src/util/hash.ts"))
+              const updatedHits = yield* search(registry, { queries: ["verify"] })
+              expect(updatedHits.some((hit) => hit.path === "src/util/hash.ts")).toBe(false)
+              expect(embedded.length).toBeGreaterThan(count)
+              expect((yield* search(registry, { queries: ["fresh needle"] }))[0]?.path).toBe("src/util/hash.ts")
+            }),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("removes all postings for a deleted file without losing shared terms", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        withSearch(tmp.path, offline, (registry) =>
+          Effect.gen(function* () {
+            yield* Effect.promise(() => seed(tmp.path))
+            yield* search(registry, { queries: ["checksum"] })
+            yield* Effect.promise(() => fs.unlink(path.join(tmp.path, "src/util/hash.ts")))
+            const event = updated(tmp.path, "src/util/hash.ts")
+            yield* listener!({ ...event, data: { ...event.data, event: "unlink" } })
+            expect(yield* search(registry, { queries: ["checksum"] })).toEqual([])
+            expect((yield* search(registry, { queries: ["export function"] })).length).toBeGreaterThan(0)
+          }),
+        ),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("finds a focused declaration beyond the sampled vocabulary and chunk window", () =>
+    seededSearch((directory, registry) =>
+      Effect.gen(function* () {
+        yield* Effect.promise(() =>
+          fs.writeFile(
+            path.join(directory, "src/deep.ts"),
+            [
+              ...Array.from({ length: 80 }, (_, i) => `export function preliminary${i}() { return ${i} }`),
+              ...Array.from({ length: 5000 }, () => "// Ordinary padding text for the sampling window."),
+              "export function NebulaOrchidTransit() { return 1 }",
+            ].join("\n"),
+          ),
+        )
+        yield* Effect.promise(() =>
+          fs.writeFile(path.join(directory, "src/witness.ts"), "export const witness = NebulaOrchidTransit"),
+        )
+        const hits = yield* search(registry, { queries: ["NebulaOrchidTransit"] })
+        expect(hits[0]?.path).toBe("src/deep.ts")
+        expect(hits[0]?.name).toBe("NebulaOrchidTransit")
+        expect(hits[0]?.line).toBeGreaterThan(4000)
+      }),
+    ),
+  )
+
+  it.live("keeps concurrent candidate sets separate and admits new files after watcher updates", () =>
+    seededSearch((directory, registry) =>
+      Effect.gen(function* () {
+        const service = yield* CodeSearch.Service
+        const hits = yield* Effect.all(
+          [
+            service.search({ queries: ["SessionRunCoordinator"], path: "src/core" }),
+            service.search({ queries: ["session title generation"], path: "docs" }),
+          ],
+          { concurrency: 2 },
+        )
+        expect(hits[0][0]?.path).toBe("src/core/coordinator.ts")
+        expect(hits[1][0]?.path).toBe("docs/guide.md")
+        yield* Effect.promise(() =>
+          fs.writeFile(path.join(directory, "src/new.ts"), "export const newlyDiscoveredIdentifier = 1"),
+        )
+        yield* listener!(updated(directory, "src/new.ts"))
+        expect((yield* search(registry, { queries: ["newlyDiscoveredIdentifier"] }))[0]?.path).toBe("src/new.ts")
+      }),
+    ),
+  )
+
+  it.live("retries a file refresh after interruption", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        Effect.gen(function* () {
+          const entered = yield* Deferred.make<void>()
+          const gate = { blocked: false }
+          const target = path.join(tmp.path, "src/core/coordinator.ts")
+          const filesystem = Layer.effect(
+            FSUtil.Service,
+            Effect.gen(function* () {
+              const fs = yield* FSUtil.Service
+              return FSUtil.Service.of({
+                ...fs,
+                readFileStringSafe: (file) =>
+                  gate.blocked && file === target
+                    ? Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never))
+                    : fs.readFileStringSafe(file),
+              })
+            }),
+          ).pipe(Layer.provide(AppNodeBuilder.build(FSUtil.node)))
+          yield* withSearch(
+            tmp.path,
+            offline,
+            () =>
+              Effect.gen(function* () {
+                yield* Effect.promise(() => seed(tmp.path))
+                const service = yield* CodeSearch.Service
+                yield* service.search({ queries: ["SessionRunCoordinator"] })
+                yield* Effect.promise(() =>
+                  fs.appendFile(target, "\nexport function refreshRetryIdentifier() { return 1 }\n"),
+                )
+                yield* listener!(updated(tmp.path, "src/core/coordinator.ts"))
+                gate.blocked = true
+                const pending = yield* service.search({ queries: ["refreshRetryIdentifier"] }).pipe(Effect.forkChild)
+                yield* Deferred.await(entered)
+                yield* Fiber.interrupt(pending)
+                gate.blocked = false
+                const hits = yield* service.search({ queries: ["refreshRetryIdentifier"] })
+                expect(hits[0]?.path).toBe("src/core/coordinator.ts")
+                expect(hits[0]?.name).toBe("refreshRetryIdentifier")
+              }),
+            filesystem,
+          )
+        }),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),
   )
