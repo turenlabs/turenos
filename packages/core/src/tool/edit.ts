@@ -178,10 +178,12 @@ const layer = Layer.effectDiscard(
                   })
                 }
 
+                // A function replacement keeps newString literal: as a string, `$$`, `$&`, `` $` `` and
+                // `$'` are substitution patterns, and a Makefile's `$$` would land in the file as `$`.
                 const replaced =
                   input.replaceAll === true
-                    ? source.text.replaceAll(oldString, newString)
-                    : source.text.replace(oldString, newString)
+                    ? source.text.replaceAll(oldString, () => newString)
+                    : source.text.replace(oldString, () => newString)
                 const counts = diffLines(source.text, replaced).reduce(
                   (result, item) => ({
                     additions: result.additions + (item.added ? (item.count ?? 0) : 0),
