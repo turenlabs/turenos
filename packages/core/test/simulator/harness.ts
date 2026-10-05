@@ -100,6 +100,7 @@ import { GoalTool } from "@turenlabs/core/tool/goal"
 import { QuestionTool } from "@turenlabs/core/tool/question"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
 import { SubagentTool } from "@turenlabs/core/tool/subagent"
+import { TeamBoardTool } from "@turenlabs/core/tool/team-board"
 import { Tool } from "@turenlabs/core/tool/tool"
 import { and, eq, isNull } from "drizzle-orm"
 import { DateTime, Deferred, Duration, Effect, Layer, LayerMap, Schema, Scope, Stream } from "effect"
@@ -531,6 +532,7 @@ const it = testEffect(
       GoalTool.node,
       QuestionTool.node,
       SubagentTool.node,
+      TeamBoardTool.node,
       SessionRunnerModel.node,
       SystemContextRegistry.node,
       SkillGuidance.node,
