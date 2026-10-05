@@ -67,6 +67,7 @@
     "@turenlabs/binwalk-scan-wasm": "workspace:*",
     "@turenlabs/monodis-wasm": "workspace:*",
     "@turenlabs/ripgrep-wasm": "workspace:*",
+    "@turenlabs/text-diff-wasm": "workspace:*",
     "@turenlabs/debug-symbols-wasm": "workspace:*",
     "drizzle-kit": "catalog:"
   },

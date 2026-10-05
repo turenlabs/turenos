@@ -294,6 +294,7 @@
         "@turenlabs/http-recorder": "workspace:*",
         "@turenlabs/monodis-wasm": "workspace:*",
         "@turenlabs/ripgrep-wasm": "workspace:*",
+        "@turenlabs/text-diff-wasm": "workspace:*",
         "@turenlabs/wasm-inspect-wasm": "workspace:*",
         "@turenlabs/yara-x-wasm": "workspace:*",
         "@types/bun": "catalog:",
@@ -857,6 +858,10 @@
     "packages/stng-core-wasm": {
       "name": "@turenlabs/stng-core-wasm",
       "version": "1.9.0-turen.1",
+    },
+    "packages/text-diff-wasm": {
+      "name": "@turenlabs/text-diff-wasm",
+      "version": "0.1.0",
     },
     "packages/ui": {
       "name": "@turenlabs/ui",
@@ -2130,6 +2135,8 @@
     "@turenlabs/static-unpack-wasm": ["@turenlabs/static-unpack-wasm@workspace:packages/static-unpack-wasm"],
 
     "@turenlabs/stng-core-wasm": ["@turenlabs/stng-core-wasm@workspace:packages/stng-core-wasm"],
+
+    "@turenlabs/text-diff-wasm": ["@turenlabs/text-diff-wasm@workspace:packages/text-diff-wasm"],
 
     "@turenlabs/ui": ["@turenlabs/ui@workspace:packages/ui"],
 

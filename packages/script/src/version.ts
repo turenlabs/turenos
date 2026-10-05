@@ -61,6 +61,7 @@ export const INDEPENDENTLY_VERSIONED_PACKAGE_FILES = [
   "packages/static-analysis-wasm/package.json",
   "packages/static-unpack-wasm/package.json",
   "packages/stng-core-wasm/package.json",
+  "packages/text-diff-wasm/package.json",
   "packages/unicode-audit-wasm/package.json",
   "packages/vigil-runtime/package.json",
   "packages/wasm-inspect-wasm/package.json",

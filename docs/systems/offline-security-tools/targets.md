@@ -99,6 +99,10 @@ byte-in/JSON-out ABI:
 - `tools/json-query`: jaq-core/jaq-json queries over bounded input plus
   validation, shape stats, and leaf-path discovery. Hostile filter builtins
   (`env`, `now`, `halt`) are rejected at compile time.
+- `tools/text-diff`: `similar` Myers line diff over two bounded byte strings,
+  returning line counts and a `createTwoFilesPatch`-compatible unified patch.
+  Work is bounded by a deterministic budget, never a clock; a region too large
+  for it is anchored on unique lines and reported `approximate`.
 - `tools/pdf-inspect`: lopdf structure/object/stream/text inspection with
   exploit-document findings; encrypted files are reported, never decrypted.
 - `tools/minidump`: rust-minidump stream/thread/module/memory reads with
