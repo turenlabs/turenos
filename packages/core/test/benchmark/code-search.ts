@@ -23,7 +23,7 @@ const tuning = [
   ["secret vault credentials encryption", "packages/core/src/secret-vault.ts"],
   ["session history projection", "packages/core/src/session/history.ts"],
   ["shell command safety", "packages/core/src/shell-safety.ts"],
-  ["release automation signing publish", "docs/release-automation.md"],
+  ["release automation signing publish", "docs/operations/releases/automation.md"],
   ["parseGoUnit", "packages/core/src/yolk/indexer/index.ts"],
   ["HTTP API server routes", "packages/server/src/api.ts"],
 ] as const

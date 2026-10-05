@@ -217,5 +217,21 @@
       "HTTP API server routes",
       "Which generated and hand-written client modules define the effect-based API surface?"
     ]
+  },
+  "mainIntegration": {
+    "baseRevision": "431ca69e",
+    "note": "This run uses the newer main corpus and the moved release documentation target. It is not a direct comparison with the historical corpus above.",
+    "mode": "semantic",
+    "peakRssMiB": 772.625,
+    "heapDeltaMiB": 105.237967,
+    "coldMs": 3403.110584,
+    "p50Ms": 192.598083,
+    "p95Ms": 302.78825,
+    "cachedP50Ms": 192.327167,
+    "cachedP95Ms": 295.476625,
+    "recallCount": 22,
+    "mrr10": 0.687996032,
+    "top1": 14,
+    "verification": { "testsPassed": 37, "testsFailed": 0, "assertions": 76, "typecheck": "passed" }
   }
 }
