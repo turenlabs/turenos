@@ -43,7 +43,6 @@ const toModelOutput = (output: ModelOutput) => {
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tools = yield* Tools.Service
-    const location = yield* Location.Service
     const permission = yield* PermissionV2.Service
     const search = yield* CodeSearch.Service
 
