@@ -10,7 +10,7 @@
     "The embedding model was cached. Offline runs disable embeddings. Yolk was enabled.",
     "Each process builds discovery data, then runs all queries three times.",
     "Historical experiment metrics below are rounded. Worker defaults changed between experiments.",
-    "Experiment transforms use the captured pre-streaming source.json. They use the current runtime worker default when rerun.",
+    "Unused experiment implementations and their source snapshot were removed after production selection. Historical measurements remain below.",
     "The final candidate uses one default WASM worker. Explicit pool-size arguments remain supported.",
     "These local runs do not establish a hard memory cap for the desktop app, multiple Locations, or larger repositories."
   ],
@@ -18,7 +18,6 @@
     "directory": "packages/core",
     "semantic": "bun run bench:code-search",
     "offline": "bun run bench:code-search --offline",
-    "experiment": "bun run bench:code-search --experiment=btree --offline",
     "tests": "bun test test/code-search.test.ts test/ripgrep-wasm.test.ts test/ripgrep.test.ts",
     "typecheck": "bun typecheck"
   },

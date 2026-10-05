@@ -38,39 +38,22 @@ const cases = [
   ...heldout.map((item) => ({ ...item, suite: "heldout" })),
 ]
 const revision = process.argv.find((arg) => arg.startsWith("--baseline="))?.slice("--baseline=".length)
-const experiment = process.argv.find((arg) => arg.startsWith("--experiment="))?.slice("--experiment=".length)
 await using implementation = await (async () => {
-  if (!revision && !experiment) return { search: CodeSearch, [Symbol.asyncDispose]: async () => undefined }
+  if (!revision) return { search: CodeSearch, [Symbol.asyncDispose]: async () => undefined }
   const { spawnSync } = await import("node:child_process")
   const { mkdtemp, unlink, rmdir } = await import("node:fs/promises")
   const { tmpdir } = await import("node:os")
-  const committed = revision
-    ? spawnSync("git", ["show", `${revision}:packages/core/src/search/index.ts`], {
-        cwd: root,
-        encoding: "utf8",
-      })
-    : undefined
-  if (committed && committed.status !== 0) throw new Error(committed.stderr)
-  const captured = Bun.file(path.join(import.meta.dir, "search-experiments/source.json"))
-  const current = committed?.stdout ?? (await Bun.file(path.join(root, "packages/core/src/search/index.ts")).text())
-  if (process.argv.includes("--snapshot")) await Bun.write(captured, JSON.stringify({ source: current }, null, 2))
-  const source =
-    experiment && (await captured.exists()) ? ((await captured.json()) as { source: string }).source : current
-  const transformed = experiment
-    ? await (async () => {
-        if (!/^[a-z-]+$/.test(experiment)) throw new Error("Invalid experiment name")
-        const { transform } = (await import(path.join(import.meta.dir, "search-experiments", `${experiment}.ts`))) as {
-          transform: (source: string) => string
-        }
-        return transform(source)
-      })()
-    : source
+  const committed = spawnSync("git", ["show", `${revision}:packages/core/src/search/index.ts`], {
+    cwd: root,
+    encoding: "utf8",
+  })
+  if (committed.status !== 0) throw new Error(committed.stderr)
   const directory = await mkdtemp(path.join(tmpdir(), "code-search-baseline-"))
   const file = path.join(directory, "index.ts")
   // Resolve the committed module's imports against this checkout's dependencies.
   await Bun.write(
     file,
-    transformed.replace(
+    committed.stdout.replace(
       /(from\s+")([^"]+)(")/g,
       (_, before: string, specifier: string, after: string) =>
         before +
@@ -139,7 +122,6 @@ await Effect.runPromise(
           {
             mode: offline ? "offline" : "semantic",
             revision: revision ?? "worktree",
-            experiment,
             cases: cases.length,
             ...quality(ranks),
             tuning: quality(ranks.filter((r) => r.suite === "tuning")),
