@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, type JSX } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLocation } from "@solidjs/router"
+import { createVirtualizer } from "@tanstack/solid-virtual"
 import { ProxyPolicy } from "@turenlabs/protocol/proxy-policy"
 import { SecurityProxy } from "@turenlabs/schema/security-proxy"
 import { usePlatform } from "@/context/platform"
@@ -16,6 +17,11 @@ import {
   parseRawRequest,
   previewRule,
   proxyOwner,
+  repeaterTab,
+  duplicateRepeaterTab,
+  caseExport,
+  type Draft,
+  type RepeaterTab,
 } from "./security-proxy-model"
 
 const control =
@@ -67,15 +73,6 @@ const mime = (flow: SecurityProxy.Flow) => {
   return type.split("/")[0] ?? ""
 }
 const clock = (ms: number) => new Date(ms).toLocaleTimeString("en-GB")
-type Draft = {
-  url: string
-  method: string
-  headers: string
-  body: string
-  encoding: SecurityProxy.Body["encoding"]
-  status: string
-  complete: boolean
-}
 const emptyDraft = (): Draft => ({
   url: "",
   method: "GET",
@@ -145,18 +142,25 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
     pause: undefined as SecurityProxy.Pause | undefined,
     pauseDraft: emptyDraft(),
     pauseRevealed: false,
-    replayID: "",
-    replayDraft: emptyDraft(),
-    auth: "captured" as "captured" | "live",
-    result: undefined as SecurityProxy.Flow | undefined,
+    repeaters: [] as RepeaterTab[],
+    activeRepeaterID: "",
     rules: [] as { -readonly [K in keyof SecurityProxy.Rule]: SecurityProxy.Rule[K] }[],
     rulesRevision: 0,
     rulePreview: "",
     search: "",
     method: "",
     status: "",
+    host: "",
+    mime: "",
+    source: "",
+    content: false,
+    filter: undefined as SecurityProxy.FlowFilter | undefined,
+    nextCursor: undefined as SecurityProxy.FlowCursor | undefined,
+    total: 0,
+    historyLoaded: false,
+    historyExpanded: false,
+    historyCancelled: false,
     sort: "createdAt:desc",
-    raw: "",
     busy: "",
     error: "",
     notice: "",
@@ -164,18 +168,33 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
     clock: Date.now(),
     settle: "drop" as "drop" | "forward",
     name: "",
-    export: "",
+    exportOpen: false,
+    exportFormat: "json" as "json" | "har",
+    exportVisibility: "masked" as "masked" | "revealed",
+    exportFiltered: false,
+    exportCount: 0,
+    exportCancelled: false,
     menu: undefined as { x: number; y: number; flow: SecurityProxy.Flow } | undefined,
     compareID: "",
     compare: undefined as ReturnType<typeof compareFlows> | undefined,
     hex: false,
+    words: false,
+    compareReveal: false,
+    compareVisibility: "masked",
     decodeInput: "",
     decodeOutput: "",
     format: "URL" as "URL" | "Base64" | "Hex",
   })
+  const [download, setDownload] = createSignal<{ blob: Blob; filename: string; count: number }>()
+  const activeRepeater = createMemo(() => state.repeaters.find((tab) => tab.id === state.activeRepeaterID))
+  const updateRepeater = (change: Partial<RepeaterTab>) => {
+    const index = state.repeaters.findIndex((tab) => tab.id === state.activeRepeaterID)
+    if (index !== -1) set("repeaters", index, change)
+  }
   // One ordered IPC lane: polling never overlaps a decision or a lifecycle operation.
   let lane: Promise<unknown> = Promise.resolve()
   let epoch = 0
+  let historyEpoch = 0
   let mounted = true
   let resolveConfirmation: ((confirmed: boolean) => void) | undefined
   const finishConfirmation = (confirmed: boolean) => {
@@ -228,11 +247,15 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
   )
   createEffect(() => {
     const id = sessionID()
-    if (id && !serverSync().session.peek(id)) void serverSync().session.resolve(id).catch(() => undefined)
+    if (id && !serverSync().session.peek(id))
+      void serverSync()
+        .session.resolve(id)
+        .catch(() => undefined)
   })
   createEffect(
     on([owner, supported, () => state.caseID], ([owner, available, caseID]) => {
       const version = ++epoch
+      ++historyEpoch
       finishConfirmation(false)
       set({
         cases: [],
@@ -244,14 +267,27 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
         pause: undefined,
         pauseRevealed: false,
         pauseDraft: emptyDraft(),
-        replayID: "",
-        replayDraft: emptyDraft(),
-        result: undefined,
+        repeaters: [],
+        activeRepeaterID: "",
         compare: undefined,
         compareID: "",
-        export: "",
+        exportOpen: false,
+        exportCount: 0,
+        exportVisibility: "masked",
+        filter: undefined,
+        nextCursor: undefined,
+        total: 0,
+        historyLoaded: false,
+        historyExpanded: false,
+        search: "",
+        method: "",
+        status: "",
+        host: "",
+        mime: "",
+        source: "",
+        content: false,
+        compareReveal: false,
         menu: undefined,
-        raw: "",
         rules: [],
         note: "",
         busy: "",
@@ -259,6 +295,7 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
         decodeInput: "",
         decodeOutput: "",
       })
+      setDownload(undefined)
       if (!available || !owner.directory) {
         set("cases", [])
         return
@@ -281,8 +318,18 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
           }
           const snapshot = await invoke({ type: "snapshot", owner, caseID }, version)
           if (!apply(snapshot, version)) return
-          const flows = await invoke({ type: "flows", owner, caseID }, version)
-          if (version === epoch && mounted && flows.flows) set("flows", reconcile([...flows.flows]))
+          if (!state.historyLoaded || (!state.historyExpanded && !state.filter)) {
+            const historyVersion = historyEpoch
+            const flows = await invoke({ type: "flows", owner, caseID }, version)
+            if (version === epoch && historyVersion === historyEpoch && mounted && flows.flows) {
+              set("flows", reconcile([...flows.flows]))
+              set({
+                nextCursor: flows.nextCursor,
+                total: flows.total ?? flows.flows.length,
+                historyLoaded: true,
+              })
+            }
+          }
         } catch (error) {
           if (version === epoch && mounted)
             set("error", `Proxy refresh failed: ${reason(error)} Reconnecting reads only; requests are never resent.`)
@@ -323,12 +370,7 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
   })
 
   const visible = createMemo(() => {
-    const list = state.flows.filter(
-      (flow) =>
-        `${flow.request.url} ${flow.id}`.toLowerCase().includes(state.search.toLowerCase()) &&
-        (!state.method || flow.request.method.toUpperCase() === state.method.toUpperCase()) &&
-        (!state.status || String(flow.status ?? flow.state).includes(state.status)),
-    )
+    const list = state.flows
     const [key, dir] = state.sort.split(":")
     const order = dir === "asc" ? 1 : -1
     const value = (flow: SecurityProxy.Flow): string | number => {
@@ -347,6 +389,51 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
     })
   })
   const clickSort = (key: string) => set("sort", state.sort === `${key}:desc` ? `${key}:asc` : `${key}:desc`)
+  const [historyScroll, setHistoryScroll] = createSignal<HTMLDivElement>()
+  const historyRows = createVirtualizer<HTMLDivElement, HTMLTableRowElement>({
+    get count() {
+      return visible().length
+    },
+    getScrollElement: () => historyScroll() ?? null,
+    estimateSize: () => 21,
+    overscan: 10,
+    initialRect: { width: 800, height: 600 },
+    getItemKey: (index) => visible()[index]?.id ?? index,
+  })
+  const loadHistory = (reset: boolean, all = false, filter = state.filter) =>
+    action(all ? "Search complete case" : "Load history", async (version) => {
+      set("historyCancelled", false)
+      ++historyEpoch
+      if (reset) set({ flows: [], nextCursor: undefined, filter, historyExpanded: !!filter })
+      let cursor = reset ? undefined : state.nextCursor
+      do {
+        if (state.historyCancelled || version !== epoch || !mounted) return
+        const result = await invoke({ type: "flows", ...owned(), cursor, filter }, version)
+        if (!apply(result, version)) return
+        const merged = new Map(state.flows.map((flow) => [flow.id, flow]))
+        result.flows?.forEach((flow) => merged.set(flow.id, flow))
+        set({
+          flows: [...merged.values()],
+          nextCursor: result.nextCursor,
+          total: result.total ?? state.total,
+          historyLoaded: true,
+          historyExpanded: !reset || all || !!filter,
+        })
+        cursor = result.nextCursor
+        if (!all) break
+      } while (cursor)
+      set("notice", `${state.flows.length} flows loaded${cursor ? "; older flows remain" : "; end of case"}.`)
+    })
+  const applyFilters = () =>
+    loadHistory(true, true, {
+      query: state.search.trim(),
+      method: state.method.trim(),
+      status: state.status.trim(),
+      host: state.host.trim(),
+      mime: state.mime.trim(),
+      source: state.source === "browser" || state.source === "replay" ? state.source : undefined,
+      content: state.content,
+    })
   const currentPause = () => {
     const selected = state.pause
     return (
@@ -368,14 +455,13 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
       if (!result.flow) throw new Error("Flow was not returned.")
       if (result.flow.request.body.state !== "complete")
         throw new Error("Request body is not complete; an incomplete body is never edited or replayed.")
+      const tab = repeaterTab(result.flow)
       set({
         flow: result.flow,
         revealed: true,
         note: canEditNote(result.flow.note, true) ? result.flow.note : "",
-        replayID: result.flow.id,
-        replayDraft: draft(result.flow.request),
-        auth: "captured",
-        result: undefined,
+        repeaters: [...state.repeaters, tab],
+        activeRepeaterID: tab.id,
         tab: "Repeater",
       })
     })
@@ -474,21 +560,27 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
   }
   const sendReplay = () =>
     action("Send replay", async (version) => {
-      const mutation = edits(state.replayDraft)
-      set("result", undefined)
+      const tab = activeRepeater()
+      if (!tab) throw new Error("Select a Repeater tab.")
+      const mutation = edits(tab.draft)
       const result = await invoke(
         {
           type: "replay",
           ...owned(),
-          flowID: state.replayID,
+          flowID: tab.flowID,
           replayID: crypto.randomUUID(),
-          auth: state.auth,
+          auth: tab.auth,
           edits: mutation,
         },
         version,
       )
       if (version === epoch && mounted) {
-        set("result", result.flow)
+        const index = state.repeaters.findIndex((item) => item.id === tab.id)
+        if (index !== -1 && result.flow)
+          set("repeaters", index, {
+            results: [...state.repeaters[index].results, result.flow],
+            resultID: result.flow.id,
+          })
         set(
           "notice",
           result.flow
@@ -498,17 +590,56 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
       }
     })
   const exportFlows = () =>
-    action("Preview masked export", async (version) => {
-      const result = await invoke({ type: "flows", ...owned() }, version)
-      if (version === epoch && mounted && result.flows) set("export", JSON.stringify(result.flows, null, 2))
+    action("Build case export", async (version) => {
+      const visibility = state.exportVisibility
+      const format = state.exportFormat
+      const filter = state.exportFiltered ? state.filter : undefined
+      if (
+        visibility === "revealed" &&
+        !(await confirm("Export original requests, responses, cookies, tokens, and notes? Keep this file private."))
+      )
+        return
+      if (version !== epoch || !mounted) return
+      setDownload(undefined)
+      set({ exportCount: 0, exportCancelled: false })
+      if (!state.current) throw new Error("Case is unavailable.")
+      const exported = caseExport({
+        format,
+        visibility,
+        case: { id: state.current.id, name: state.current.name, createdAt: state.current.createdAt },
+        filter,
+      })
+      let cursor: SecurityProxy.FlowCursor | undefined
+      do {
+        if (state.exportCancelled || version !== epoch || !mounted) return
+        const result = await invoke({ type: "flows", ...owned(), cursor, filter, view: visibility }, version)
+        if (!apply(result, version) || state.exportCancelled) return
+        exported.append(result.flows ?? [])
+        set("exportCount", exported.count)
+        cursor = result.nextCursor
+      } while (cursor)
+      setDownload({
+        blob: exported.finish(),
+        filename: `${state.caseID}-${visibility}.${format === "har" ? "har" : "json"}`,
+        count: state.exportCount,
+      })
+      set("notice", `${state.exportCount} flows exported. Review capture states and masking before sharing.`)
     })
   const compare = () =>
     action("Compare stored flows", async (version) => {
       if (!state.flow || !state.compareID) return
-      const left = await invoke({ type: "flow", ...owned(), flowID: state.flow.id }, version)
-      const right = await invoke({ type: "flow", ...owned(), flowID: state.compareID }, version)
+      const reveal = state.compareReveal
+      if (reveal && !(await confirm("Reveal both responses for comparison? This can display protected values."))) return
+      const type = reveal ? "reveal" : "flow"
+      const hex = state.hex
+      const words = state.words
+      const left = await invoke({ type, ...owned(), flowID: state.flow.id }, version)
+      const right = await invoke({ type, ...owned(), flowID: state.compareID }, version)
       if (version === epoch && mounted && left.flow && right.flow)
-        set("compare", compareFlows(left.flow, right.flow, state.hex))
+        set({
+          compare: compareFlows(left.flow, right.flow, hex, words),
+          compareVisibility: reveal ? "revealed" : "masked",
+        })
     })
   const moveSelection = (event: KeyboardEvent) => {
     if (event.key.toLowerCase() === "r" && (event.ctrlKey || event.metaKey)) {
@@ -529,7 +660,10 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
         : event.key === "ArrowDown"
           ? Math.min(list.length - 1, index + 1)
           : Math.max(0, index - 1)
-    if (list[next] && list[next].id !== state.flow?.id) void loadFlow(list[next].id)
+    if (list[next] && list[next].id !== state.flow?.id) {
+      historyRows.scrollToIndex(next, { align: "auto" })
+      void loadFlow(list[next].id)
+    }
   }
 
   return (
@@ -800,11 +934,17 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                   </For>
                 </nav>
                 <Show when={state.tab === "History"}>
-                  <div class="flex items-center gap-1 border-b border-v2-border-border-muted px-2 py-1">
+                  <form
+                    class="flex flex-wrap items-center gap-1 border-b border-v2-border-border-muted px-2 py-1"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      void applyFilters()
+                    }}
+                  >
                     <input
                       class={`${control} max-w-72`}
-                      placeholder="Filter URL / ID"
-                      aria-label="Filter URL or ID"
+                      placeholder="Search case"
+                      aria-label="Case search"
                       value={state.search}
                       onInput={(event) => set("search", event.currentTarget.value)}
                     />
@@ -822,22 +962,108 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                       value={state.status}
                       onInput={(event) => set("status", event.currentTarget.value)}
                     />
-                    <span class="ml-2 text-[11px] text-v2-text-text-faint">
-                      {visible().length}/{state.flows.length}
-                    </span>
+                    <input
+                      class={`${control} w-36`}
+                      placeholder="Exact host"
+                      aria-label="Host filter"
+                      value={state.host}
+                      onInput={(event) => set("host", event.currentTarget.value)}
+                    />
+                    <input
+                      class={`${control} w-28`}
+                      placeholder="MIME type"
+                      aria-label="MIME filter"
+                      value={state.mime}
+                      onInput={(event) => set("mime", event.currentTarget.value)}
+                    />
+                    <select
+                      class={control}
+                      aria-label="Source filter"
+                      value={state.source}
+                      onChange={(event) => set("source", event.currentTarget.value)}
+                    >
+                      <option value="">All sources</option>
+                      <option value="browser">Browser</option>
+                      <option value="replay">Replay</option>
+                    </select>
+                    <label
+                      class="flex items-center gap-1 text-[11px] text-v2-text-text-muted"
+                      title="Search masked headers and text bodies across the case. Protected values and notes are not searchable."
+                    >
+                      <input
+                        type="checkbox"
+                        checked={state.content}
+                        onChange={(event) => set("content", event.currentTarget.checked)}
+                      />
+                      masked content
+                    </label>
+                    <button class={button} disabled={!!state.busy} type="submit">
+                      Apply to case
+                    </button>
+                    <button
+                      class={button}
+                      disabled={!!state.busy}
+                      type="button"
+                      onClick={() => {
+                        set({
+                          search: "",
+                          method: "",
+                          status: "",
+                          host: "",
+                          mime: "",
+                          source: "",
+                          content: false,
+                          filter: undefined,
+                        })
+                        void loadHistory(true, false, undefined)
+                      }}
+                    >
+                      Clear
+                    </button>
                     <button
                       class={`${button} ml-auto`}
                       disabled={!!state.busy}
-                      onClick={exportFlows}
-                      title="Preview the masked JSON export"
+                      type="button"
+                      onClick={() => set("exportOpen", !state.exportOpen)}
+                      title="Export complete case requests and responses as JSON or HAR"
                     >
                       Export…
                     </button>
+                  </form>
+                  <div class="flex flex-wrap items-center gap-1 border-b border-v2-border-border-muted px-2 py-0.5">
+                    <span class="mr-auto text-[11px] text-v2-text-text-faint">
+                      {visible().length} loaded · {state.total} stored
+                      {state.filter ? " · case filters applied" : ""}
+                      {state.historyExpanded ? " · refresh to include new traffic" : " · live latest page"}
+                    </span>
+                    <button class={button} disabled={!!state.busy} onClick={() => loadHistory(true, !!state.filter)}>
+                      Refresh
+                    </button>
+                    <button
+                      class={button}
+                      disabled={!!state.busy || !state.nextCursor}
+                      onClick={() => loadHistory(false)}
+                    >
+                      Load older
+                    </button>
+                    <button
+                      class={button}
+                      disabled={!!state.busy || !state.nextCursor}
+                      onClick={() => loadHistory(false, true)}
+                    >
+                      Load all
+                    </button>
+                    <Show when={state.busy === "Search complete case"}>
+                      <button class={button} onClick={() => set("historyCancelled", true)}>
+                        Stop loading
+                      </button>
+                    </Show>
                   </div>
                   <div
                     class={`overflow-auto outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--v2-border-border-focus)] focus-within:shadow-[inset_0_0_0_1px_var(--v2-border-border-focus)] ${
                       state.flow ? "max-h-[40%] shrink-0" : "min-h-0 flex-1"
                     }`}
+                    ref={setHistoryScroll}
                     tabIndex={0}
                     onKeyDown={moveSelection}
                     aria-label="Captured flows"
@@ -857,7 +1083,18 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                         </tr>
                       </thead>
                       <tbody>
-                        <For each={visible()}>
+                        <tr aria-hidden="true">
+                          <td
+                            colSpan={8}
+                            style={{ height: `${historyRows.getVirtualItems()[0]?.start ?? 0}px`, padding: "0" }}
+                          />
+                        </tr>
+                        <For
+                          each={historyRows
+                            .getVirtualItems()
+                            .map((row) => visible()[row.index])
+                            .filter((flow) => flow !== undefined)}
+                        >
                           {(flow) => (
                             <tr
                               class={`cursor-pointer border-t border-v2-border-border-muted outline-none hover:bg-v2-overlay-simple-overlay-hover ${
@@ -894,43 +1131,112 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                             </tr>
                           )}
                         </For>
+                        <tr aria-hidden="true">
+                          <td
+                            colSpan={8}
+                            style={{
+                              height: `${Math.max(0, historyRows.getTotalSize() - (historyRows.getVirtualItems().at(-1)?.end ?? 0))}px`,
+                              padding: "0",
+                            }}
+                          />
+                        </tr>
                       </tbody>
                     </table>
                     <Show when={!visible().length}>
                       <p class="px-2 py-2 text-[11px] text-v2-text-text-muted">No matching flows.</p>
                     </Show>
                   </div>
-                  <Show when={state.export}>
-                    <div class="flex max-h-48 min-h-0 shrink-0 flex-col border-t border-v2-border-border-muted">
-                      <div class="flex items-center gap-2 px-2 py-0.5">
-                        <span
-                          class="min-w-0 flex-1 truncate text-[10px] uppercase tracking-wide text-v2-text-text-faint"
-                          title="Masked export may still contain sensitive URLs, notes, and business data. Review before sharing."
-                        >
-                          Masked export — review before sharing
-                        </span>
-                        <button
-                          class={button}
+                  <Show when={state.exportOpen}>
+                    <div class="shrink-0 space-y-1 border-t border-v2-border-border-muted px-2 py-1">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <select
+                          class={control}
+                          aria-label="Export format"
+                          value={state.exportFormat}
                           disabled={!!state.busy}
-                          onClick={() =>
-                            action("Download export", async () => {
-                              if (!(await confirm("Download the reviewed masked JSON?"))) return
-                              const url = URL.createObjectURL(new Blob([state.export], { type: "application/json" }))
-                              const anchor = document.createElement("a")
-                              anchor.href = url
-                              anchor.download = "proxy-masked.json"
-                              anchor.click()
-                              setTimeout(() => URL.revokeObjectURL(url), 1000)
-                            })
-                          }
+                          onChange={(event) => {
+                            set("exportFormat", event.currentTarget.value === "har" ? "har" : "json")
+                            setDownload(undefined)
+                          }}
                         >
-                          Download…
+                          <option value="json">Case JSON</option>
+                          <option value="har">HAR 1.2</option>
+                        </select>
+                        <select
+                          class={control}
+                          aria-label="Export visibility"
+                          value={state.exportVisibility}
+                          disabled={!!state.busy}
+                          onChange={(event) => {
+                            set("exportVisibility", event.currentTarget.value === "revealed" ? "revealed" : "masked")
+                            setDownload(undefined)
+                          }}
+                        >
+                          <option value="masked">Masked</option>
+                          <option value="revealed">Originals (contains secrets)</option>
+                        </select>
+                        <label class="flex items-center gap-1 text-[11px] text-v2-text-text-muted">
+                          <input
+                            type="checkbox"
+                            checked={state.exportFiltered}
+                            disabled={!!state.busy}
+                            onChange={(event) => {
+                              set("exportFiltered", event.currentTarget.checked)
+                              setDownload(undefined)
+                            }}
+                          />
+                          applied case filters
+                        </label>
+                        <button class={button} disabled={!!state.busy} onClick={exportFlows}>
+                          Build export
                         </button>
-                        <button class={button} onClick={() => set("export", "")} aria-label="Dismiss export">
-                          ×
+                        <Show when={state.busy === "Build case export"}>
+                          <span class="text-[11px]">{state.exportCount} flows</span>
+                          <button
+                            class={button}
+                            onClick={() => {
+                              set("exportCancelled", true)
+                              set("notice", "Export cancelled; no file created.")
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </Show>
+                        <Show when={download()}>
+                          {(file) => (
+                            <button
+                              class={button}
+                              disabled={!!state.busy}
+                              onClick={() => {
+                                const url = URL.createObjectURL(file().blob)
+                                const anchor = document.createElement("a")
+                                anchor.href = url
+                                anchor.download = file().filename
+                                anchor.click()
+                                setTimeout(() => URL.revokeObjectURL(url), 1000)
+                              }}
+                            >
+                              Download {file().count} flows
+                            </button>
+                          )}
+                        </Show>
+                        <button
+                          class={`${button} ml-auto`}
+                          disabled={!!state.busy}
+                          onClick={() => {
+                            set("exportOpen", false)
+                            setDownload(undefined)
+                          }}
+                          aria-label="Dismiss export"
+                        >
+                          Close
                         </button>
                       </div>
-                      <pre class={`${pre} min-h-0 flex-1 overflow-auto px-2 py-1`}>{state.export}</pre>
+                      <p class="text-[11px] text-v2-text-text-muted">
+                        Includes all stored pages, not just loaded rows. Masked bodies are bounded previews; originals
+                        preserve captured bytes. Capture states identify missing or truncated data. Masking cannot
+                        detect every secret. Review files before sharing.
+                      </p>
                     </div>
                   </Show>
                   <Show when={state.flow}>
@@ -1059,7 +1365,7 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                           </details>
                           <details class="border-b border-v2-border-border-muted">
                             <summary class="cursor-pointer px-2 py-0.5 text-[11px] text-v2-text-text-muted">
-                              Compare stored responses (masked)
+                              Compare stored responses
                             </summary>
                             <div class="flex items-center gap-1 px-2 pb-1">
                               <select
@@ -1085,6 +1391,23 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                                 />
                                 hex
                               </label>
+                              <label class="flex shrink-0 items-center gap-1 text-[11px] text-v2-text-text-muted">
+                                <input
+                                  type="checkbox"
+                                  checked={state.words}
+                                  disabled={state.hex}
+                                  onChange={(event) => set("words", event.currentTarget.checked)}
+                                />
+                                words
+                              </label>
+                              <label class="flex shrink-0 items-center gap-1 text-[11px] text-v2-text-text-muted">
+                                <input
+                                  type="checkbox"
+                                  checked={state.compareReveal}
+                                  onChange={(event) => set("compareReveal", event.currentTarget.checked)}
+                                />
+                                reveal both
+                              </label>
                               <button class={button} disabled={!!state.busy || !state.compareID} onClick={compare}>
                                 Compare
                               </button>
@@ -1093,8 +1416,38 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                               {(comparison) => (
                                 <div class="px-2 pb-1">
                                   <p class="text-[11px] text-v2-text-text-muted">
-                                    {comparison().equal ? "Responses match" : "Responses differ"} (stored, masked view)
+                                    {comparison().equal
+                                      ? "Visible response content matches"
+                                      : "Visible response content differs or is incomplete"}
+                                    {` (${state.compareVisibility} view)`}
                                   </p>
+                                  <Show when={comparison().limited}>
+                                    <p class="text-[11px] text-v2-state-fg-warning">
+                                      Comparison is bounded to 64 KiB per body and a diff time limit. No full-response
+                                      equality is claimed.
+                                    </p>
+                                  </Show>
+                                  <pre
+                                    class={`${pre} mt-1 max-h-64 overflow-auto border border-v2-border-border-muted p-1`}
+                                    aria-label="Response differences"
+                                  >
+                                    <For each={comparison().changes}>
+                                      {(change) => (
+                                        <span
+                                          class={
+                                            change.added
+                                              ? "bg-v2-state-bg-success text-v2-state-fg-success"
+                                              : change.removed
+                                                ? "bg-v2-state-bg-danger text-v2-state-fg-danger"
+                                                : "text-v2-text-text-muted"
+                                          }
+                                        >
+                                          {change.added ? "+ " : change.removed ? "- " : "  "}
+                                          {change.value}
+                                        </span>
+                                      )}
+                                    </For>
+                                  </pre>
                                   <div class="mt-1 grid gap-1 xl:grid-cols-2">
                                     <pre
                                       class={`${pre} max-h-48 overflow-auto border border-v2-border-border-muted p-1`}
@@ -1150,8 +1503,9 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                             role="menuitem"
                             disabled={!!state.busy}
                             onClick={() => {
+                              const flowID = menu().flow.id
                               set("menu", undefined)
-                              void sendToRepeater(menu().flow.id)
+                              void sendToRepeater(flowID)
                             }}
                           >
                             Send to Repeater
@@ -1161,8 +1515,9 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                             role="menuitem"
                             disabled={!!state.busy || (state.flow?.id === menu().flow.id && state.revealed)}
                             onClick={() => {
+                              const flowID = menu().flow.id
                               set("menu", undefined)
-                              void loadFlow(menu().flow.id, true)
+                              void loadFlow(flowID, true)
                             }}
                           >
                             Reveal raw
@@ -1172,8 +1527,9 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                             class={menuItem}
                             role="menuitem"
                             onClick={() => {
+                              const url = menu().flow.request.url
                               set("menu", undefined)
-                              void navigator.clipboard.writeText(menu().flow.request.url)
+                              void navigator.clipboard.writeText(url)
                             }}
                           >
                             Copy URL
@@ -1182,8 +1538,9 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                             class={menuItem}
                             role="menuitem"
                             onClick={() => {
+                              const json = JSON.stringify(menu().flow, null, 2)
                               set("menu", undefined)
-                              void navigator.clipboard.writeText(JSON.stringify(menu().flow, null, 2))
+                              void navigator.clipboard.writeText(json)
                             }}
                           >
                             Copy masked JSON
@@ -1418,137 +1775,234 @@ export default function SecurityProxyPage(props: { sessionID?: string; embedded?
                   </Show>
                 </Show>
                 <Show when={state.tab === "Repeater"}>
-                  <div class="flex items-center gap-1 border-b border-v2-border-border-muted px-2 py-1">
-                    <span
-                      class="min-w-0 flex-1 truncate font-mono text-[11px] text-v2-text-text-muted"
-                      title={state.replayID}
-                    >
-                      {state.replayID
-                        ? `src: ${state.replayID}`
-                        : "Reveal a captured flow in History, then →Repeater it here."}
-                    </span>
-                    <label
-                      class="flex shrink-0 items-center gap-1 text-[11px] text-v2-text-text-muted"
-                      title="Captured sends the draft headers as-is. Live refreshes cookies from this case's profile and keeps the other draft headers."
-                    >
-                      auth
-                      <select
-                        class={control}
-                        value={state.auth}
-                        onChange={(event) => set("auth", event.currentTarget.value === "live" ? "live" : "captured")}
-                      >
-                        <option value="captured">captured</option>
-                        <option value="live">live</option>
-                      </select>
-                    </label>
-                    <button
-                      class={button}
-                      disabled={!!state.busy || !state.replayID || !state.replayDraft.complete}
-                      onClick={sendReplay}
-                      title="Send once (Ctrl/Cmd+Enter). Redirects are never followed and nothing is resent automatically."
-                    >
-                      Send
-                    </button>
+                  <div
+                    role="tablist"
+                    aria-label="Repeater requests"
+                    class="flex shrink-0 gap-1 overflow-x-auto border-b border-v2-border-border-muted px-2 py-1"
+                  >
+                    <For each={state.repeaters}>
+                      {(tab) => (
+                        <button
+                          role="tab"
+                          aria-selected={state.activeRepeaterID === tab.id}
+                          class={`${button} ${state.activeRepeaterID === tab.id ? "bg-v2-overlay-simple-overlay-hover" : ""}`}
+                          onClick={() => set("activeRepeaterID", tab.id)}
+                        >
+                          {tab.name}
+                        </button>
+                      )}
+                    </For>
                   </div>
                   <Show
-                    when={state.replayID}
+                    when={activeRepeater()}
                     fallback={
                       <p class="p-3 text-[11px] text-v2-text-text-muted">
-                        No draft loaded. Redirects OFF — no automatic follow, retry, reconnect send, or implicit resend.
-                        Explicit sends can change server state.
+                        Send a captured request from History to create a tab. Drafts stay in memory until you leave this
+                        case. Sent flows remain in case history.
                       </p>
                     }
                   >
-                    <div
-                      class="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 divide-y divide-v2-border-border-muted overflow-hidden xl:grid-cols-2 xl:grid-rows-1 xl:divide-x xl:divide-y-0"
-                      onKeyDown={(event) => {
-                        if (
-                          event.key === "Enter" &&
-                          (event.ctrlKey || event.metaKey) &&
-                          !state.busy &&
-                          state.replayDraft.complete
-                        )
-                          void sendReplay()
-                      }}
-                    >
-                      <div class="flex min-h-0 flex-col p-1">
-                        <details class="mb-1 shrink-0 border border-v2-border-border-muted">
-                          <summary class="cursor-pointer px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-v2-text-text-faint">
-                            Paste raw request
-                          </summary>
-                          <div class="space-y-1 p-1">
-                            <textarea
-                              class={`${control} h-24 w-full font-mono`}
-                              placeholder={"POST /path HTTP/1.1\nHost: target.example\n\n…"}
-                              aria-label="Raw HTTP request"
-                              value={state.raw}
-                              onInput={(event) => set("raw", event.currentTarget.value)}
-                              spellcheck={false}
+                    {(tab) => {
+                      const result = () => tab().results.find((flow) => flow.id === tab().resultID)
+                      return (
+                        <>
+                          <div class="flex items-center gap-1 border-b border-v2-border-border-muted px-2 py-1">
+                            <input
+                              class={`${control} min-w-0 flex-1`}
+                              aria-label="Repeater tab name"
+                              value={tab().name}
+                              onInput={(event) => updateRepeater({ name: event.currentTarget.value })}
                             />
                             <button
                               class={button}
+                              disabled={!!state.busy}
                               onClick={() => {
-                                const parsed = parseRawRequest(state.raw)
-                                if (!parsed) {
-                                  set(
-                                    "error",
-                                    "Could not parse the raw request. Expected 'METHOD /path HTTP/1.1' plus a Host header or an absolute URL.",
+                                const copy = duplicateRepeaterTab(tab())
+                                set({ repeaters: [...state.repeaters, copy], activeRepeaterID: copy.id })
+                              }}
+                            >
+                              Duplicate
+                            </button>
+                            <button
+                              class={button}
+                              disabled={!!state.busy}
+                              onClick={() => {
+                                void action("Close Repeater tab", async () => {
+                                  const tabID = tab().id
+                                  if (
+                                    !(await confirm(
+                                      "Close this tab and discard its draft? Sent requests remain in case history.",
+                                    ))
                                   )
-                                  return
-                                }
-                                set("replayDraft", {
-                                  url: parsed.url,
-                                  method: parsed.method,
-                                  headers: JSON.stringify(editableHeaders(parsed.headers), null, 2),
-                                  body: parsed.body,
-                                  encoding: "utf8",
-                                  status: state.replayDraft.status,
-                                  complete: true,
+                                    return
+                                  const remaining = state.repeaters.filter((item) => item.id !== tabID)
+                                  set({
+                                    repeaters: remaining,
+                                    activeRepeaterID:
+                                      state.activeRepeaterID === tabID
+                                        ? (remaining[0]?.id ?? "")
+                                        : state.activeRepeaterID,
+                                  })
                                 })
                               }}
                             >
-                              Load
+                              Close
+                            </button>
+                            <label
+                              class="flex shrink-0 items-center gap-1 text-[11px] text-v2-text-text-muted"
+                              title="Captured sends the draft headers as-is. Live refreshes cookies from this case's profile and keeps the other draft headers."
+                            >
+                              auth
+                              <select
+                                class={control}
+                                value={tab().auth}
+                                onChange={(event) =>
+                                  updateRepeater({ auth: event.currentTarget.value === "live" ? "live" : "captured" })
+                                }
+                              >
+                                <option value="captured">captured</option>
+                                <option value="live">live</option>
+                              </select>
+                            </label>
+                            <button
+                              class={button}
+                              disabled={!!state.busy || !tab().draft.complete}
+                              onClick={sendReplay}
+                              title="Send once (Ctrl/Cmd+Enter). Redirects are never followed and nothing is resent automatically."
+                            >
+                              Send
                             </button>
                           </div>
-                        </details>
-                        <RawEditor value={state.replayDraft} update={(key, value) => set("replayDraft", key, value)} />
-                      </div>
-                      <div class="flex min-h-0 min-w-0 flex-col">
-                        <div class={paneTitle}>
-                          Result{state.result ? ` · ${state.result.status ?? state.result.state}` : ""}
-                        </div>
-                        <div class="min-h-0 flex-1 overflow-auto px-2 py-1 font-mono text-[11px] leading-4">
-                          <Show when={state.result} fallback={<p class="text-v2-text-text-faint">No result yet.</p>}>
-                            {(result) => (
-                              <>
-                                <Show when={state.flows.find((flow) => flow.id === state.replayID)}>
-                                  {(source) => (
+                          <div
+                            class="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 divide-y divide-v2-border-border-muted overflow-hidden xl:grid-cols-2 xl:grid-rows-1 xl:divide-x xl:divide-y-0"
+                            onKeyDown={(event) => {
+                              if (
+                                event.key === "Enter" &&
+                                (event.ctrlKey || event.metaKey) &&
+                                !state.busy &&
+                                tab().draft.complete
+                              )
+                                void sendReplay()
+                            }}
+                          >
+                            <div class="flex min-h-0 flex-col p-1">
+                              <details class="mb-1 shrink-0 border border-v2-border-border-muted">
+                                <summary class="cursor-pointer px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-v2-text-text-faint">
+                                  Paste raw request
+                                </summary>
+                                <div class="space-y-1 p-1">
+                                  <textarea
+                                    class={`${control} h-24 w-full font-mono`}
+                                    placeholder={"POST /path HTTP/1.1\nHost: target.example\n\n…"}
+                                    aria-label="Raw HTTP request"
+                                    value={tab().raw}
+                                    onInput={(event) => updateRepeater({ raw: event.currentTarget.value })}
+                                    spellcheck={false}
+                                  />
+                                  <button
+                                    class={button}
+                                    onClick={() => {
+                                      const parsed = parseRawRequest(tab().raw)
+                                      if (!parsed) {
+                                        set(
+                                          "error",
+                                          "Could not parse the raw request. Expected 'METHOD /path HTTP/1.1' plus a Host header or an absolute URL.",
+                                        )
+                                        return
+                                      }
+                                      updateRepeater({
+                                        draft: {
+                                          url: parsed.url,
+                                          method: parsed.method,
+                                          headers: JSON.stringify(editableHeaders(parsed.headers), null, 2),
+                                          body: parsed.body,
+                                          encoding: "utf8",
+                                          status: tab().draft.status,
+                                          complete: true,
+                                        },
+                                      })
+                                    }}
+                                  >
+                                    Load
+                                  </button>
+                                </div>
+                              </details>
+                              <RawEditor
+                                value={tab().draft}
+                                update={(key, value) => updateRepeater({ draft: { ...tab().draft, [key]: value } })}
+                              />
+                            </div>
+                            <div class="flex min-h-0 min-w-0 flex-col">
+                              <div class={paneTitle}>
+                                Result{result() ? ` · ${result()!.status ?? result()!.state}` : ""}
+                              </div>
+                              <select
+                                class={`${control} m-1`}
+                                aria-label="Repeater send history"
+                                value={tab().resultID}
+                                onChange={(event) => updateRepeater({ resultID: event.currentTarget.value })}
+                              >
+                                <option value="" selected={!tab().resultID}>
+                                  Select a send
+                                </option>
+                                <For each={tab().results}>
+                                  {(flow, index) => (
+                                    <option value={flow.id} selected={tab().resultID === flow.id}>
+                                      Send {index() + 1} · {flow.status ?? flow.state} · {flow.durationMs ?? "?"}ms
+                                    </option>
+                                  )}
+                                </For>
+                              </select>
+                              <div class="min-h-0 flex-1 overflow-auto px-2 py-1 font-mono text-[11px] leading-4">
+                                <Show
+                                  when={result()}
+                                  fallback={
                                     <p class="text-v2-text-text-faint">
-                                      src {source().status ?? source().state}
-                                      {source().durationMs !== undefined ? ` · ${source().durationMs}ms` : ""}
-                                      {source().responseBody.size ? ` · ${fmtBytes(source().responseBody.size)}` : ""}
-                                      {" → "}
-                                      <span class={statusClass(result())}>{result().status ?? result().state}</span>
-                                      {result().durationMs !== undefined ? ` · ${result().durationMs}ms` : ""}
-                                      {result().responseBody.size ? ` · ${fmtBytes(result().responseBody.size)}` : ""}
+                                      No result selected. Each send is explicit; redirects and retries stay off.
                                     </p>
+                                  }
+                                >
+                                  {(result) => (
+                                    <>
+                                      <Show when={state.flows.find((flow) => flow.id === tab().flowID)}>
+                                        {(source) => (
+                                          <p class="text-v2-text-text-faint">
+                                            src {source().status ?? source().state}
+                                            {source().durationMs !== undefined ? ` · ${source().durationMs}ms` : ""}
+                                            {source().responseBody.size
+                                              ? ` · ${fmtBytes(source().responseBody.size)}`
+                                              : ""}
+                                            {" → "}
+                                            <span class={statusClass(result())}>
+                                              {result().status ?? result().state}
+                                            </span>
+                                            {result().durationMs !== undefined ? ` · ${result().durationMs}ms` : ""}
+                                            {result().responseBody.size
+                                              ? ` · ${fmtBytes(result().responseBody.size)}`
+                                              : ""}
+                                          </p>
+                                        )}
+                                      </Show>
+                                      <HeadersList items={result().responseHeaders} />
+                                      <BodyBlock body={result().responseBody} />
+                                      <Show when={result().note}>
+                                        <p class="mt-1 text-v2-text-text-muted">note: {result().note}</p>
+                                      </Show>
+                                      <details class="mt-1">
+                                        <summary class="cursor-pointer text-v2-text-text-muted">
+                                          Raw result JSON
+                                        </summary>
+                                        <pre class={pre}>{JSON.stringify(result(), null, 2)}</pre>
+                                      </details>
+                                    </>
                                   )}
                                 </Show>
-                                <HeadersList items={result().responseHeaders} />
-                                <BodyBlock body={result().responseBody} />
-                                <Show when={result().note}>
-                                  <p class="mt-1 text-v2-text-text-muted">note: {result().note}</p>
-                                </Show>
-                                <details class="mt-1">
-                                  <summary class="cursor-pointer text-v2-text-text-muted">Raw result JSON</summary>
-                                  <pre class={pre}>{JSON.stringify(result(), null, 2)}</pre>
-                                </details>
-                              </>
-                            )}
-                          </Show>
-                        </div>
-                      </div>
-                    </div>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      )
+                    }}
                   </Show>
                 </Show>
                 <Show when={state.tab === "Rules"}>
