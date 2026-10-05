@@ -30,6 +30,10 @@ For each provider turn the registry:
 Most tools use their own name as the permission action; `edit`, `write`, and `apply_patch` share the `edit` action, and
 `shell_job` uses the `bash` action, so a whole-tool `bash` deny also hides it.
 
+When a user rejects a V2 `edit`, `write`, or `apply_patch` permission request with corrective feedback, the tool
+returns that feedback as its model-visible error. This applies to both `external_directory` and `edit` approval;
+the rejected operation does not read the target's contents or change the file.
+
 A call is settled against the registration it was advertised with. If that registration has since been replaced or
 closed, the call returns `Stale tool call: <name>` and nothing executes; a name that was never advertised returns
 `Unknown tool: <name>`.

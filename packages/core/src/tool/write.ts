@@ -87,7 +87,15 @@ const layer = Layer.effectDiscard(
                   source,
                 })
                 return yield* files.writeTextPreservingBom({ target, content: input.content })
-              }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to write ${input.path}` }))),
+              }).pipe(
+                Effect.mapError(
+                  (error) =>
+                    new ToolFailure({
+                      message:
+                        error instanceof PermissionV2.CorrectedError ? error.feedback : `Unable to write ${input.path}`,
+                    }),
+                ),
+              ),
           }),
           "edit",
         ),
