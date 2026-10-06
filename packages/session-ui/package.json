@@ -38,6 +38,7 @@
   "dependencies": {
     "@kobalte/core": "catalog:",
     "@turenlabs/core": "workspace:*",
+    "@turenlabs/schema": "workspace:*",
     "@turenlabs/sdk": "workspace:*",
     "@turenlabs/ui": "workspace:*",
     "@pierre/diffs": "catalog:",
@@ -51,6 +52,7 @@
     "@solidjs/router": "catalog:",
     "diff": "catalog:",
     "dompurify": "catalog:",
+    "effect": "catalog:",
     "fuzzysort": "catalog:",
     "katex": "0.16.27",
     "luxon": "catalog:",

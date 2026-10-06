@@ -14,6 +14,7 @@
     "license:check": "bun script/license-audit.ts",
     "license:generate": "bun script/license-audit.ts --write",
     "typecheck": "bun turbo typecheck",
+    "test:affected": "bun packages/script/src/test-affected.ts",
     "version:check": "bun --cwd packages/script version:check",
     "build:wasm": "bun script/build-wasm.ts",
     "verify:wasm": "bun script/verify-wasm-packages.ts",

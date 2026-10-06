@@ -54,6 +54,10 @@ The target inventory, with one line per target, is in `README.md`.
 JWK and an explicit algorithm/issuer/audience/time policy. Keep token key hints
 untrusted and offline. Never sign, fetch keys, or claim authorization.
 
+`tools/sqlite-inspect` also accepts one WAL file for `sqlite_wal_inspect`.
+Keep inspection metadata-only, validate the sequential checksum/salt prefix,
+and never replay pages or infer database association from checksums.
+
 `wasm-tools` is for deterministic, bounded byte processing. A normal target
 accepts bytes plus structured options and returns bounded JSON or one bounded
 byte vector.

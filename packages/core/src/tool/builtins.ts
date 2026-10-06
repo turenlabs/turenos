@@ -63,6 +63,8 @@ import { DebugSymbolsTools } from "./debug-symbols-tools"
 import { LobbyRoomContextTool } from "./lobby-room-context"
 import { FollowStream } from "./follow-stream"
 import { WhiteboardTool } from "./whiteboard"
+import { VisualizeTool } from "./visualize"
+import { SafeHtmlTool } from "./safehtml"
 import { SecurityProxyTool } from "./security-proxy"
 
 /**
@@ -112,6 +114,8 @@ export const node = makeLocationNode({
     ProtocolInspectTools.node,
   FollowStream.node,
   WhiteboardTool.node,
+    VisualizeTool.node,
+    SafeHtmlTool.node,
   SecurityProxyTool.node,
     ForensicTools.node,
     RosettaExecTool.node,

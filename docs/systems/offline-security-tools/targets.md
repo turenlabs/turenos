@@ -14,6 +14,13 @@ embedded keys never control verification. The report separates signature
 validity from claim-policy results. It does not check revocation or replay,
 establish key ownership, or grant authorization.
 
+`tools/sqlite-inspect` includes `sqlite_wal_inspect` for one supplied WAL file.
+It verifies header and cumulative frame checksums, matches salts, and reports
+commit boundaries, uncommitted frames, and invalid or partial tails.
+It never replays pages, executes SQL, or reads database sidecars.
+Checksums do not authenticate data or establish database association or
+Checkpoint status. Frame lists are bounded; summaries cover the valid prefix.
+
 `tools/static-analysis` exposes twenty-four bounded operations through
 `analyze(operation, bytes, options_json)`. `office_inspect` reports OOXML
 parts/relationships and OLE stream metadata plus macro, ActiveX, DDE, and

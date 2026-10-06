@@ -1,8 +1,8 @@
 //! Bounded, offline, read-only forensics for SQLite 3 database files.
 //!
-//! Input is always one database file's bytes. No journal/WAL sidecar is
-//! consulted and the input is never modified: this module reports structural
-//! facts from the main database file only. Every operation returns bounded
+//! Input is one database file or, for sqlite_wal_inspect, one WAL file.
+//! No sidecar is consulted and input is never modified or replayed.
+//! Every operation returns bounded
 //! JSON (`{"schema_version":1,...}`); expected failures return
 //! `{"schema_version":1,"error":"<code>","message":"..."}`.
 //!
@@ -17,6 +17,7 @@ mod record;
 mod rows;
 mod schema;
 mod stats;
+mod wal;
 
 #[cfg(test)]
 mod tests;
@@ -89,6 +90,13 @@ impl Report {
 #[wasm_bindgen]
 pub fn sqlite_inspect(bytes: &[u8], options_json: &str) -> String {
     guard(bytes, options_json, inspect::inspect)
+}
+
+/// Inspect one WAL file's header, validated frame prefix, and commit markers.
+/// Never replay pages or infer association with a database file.
+#[wasm_bindgen]
+pub fn sqlite_wal_inspect(bytes: &[u8], options_json: &str) -> String {
+    guard(bytes, options_json, wal::inspect)
 }
 
 /// `sqlite_schema`: walk the sqlite_master b-tree rooted at page 1 and emit
@@ -186,6 +194,8 @@ fn error_message(code: &str) -> &'static str {
         "invalid_options" => "options JSON is malformed or fails validation",
         "output_too_large" => "serialized report exceeds the 4 MiB limit",
         "not_sqlite" => "input is too small or lacks the SQLite 3 header",
+        "not_sqlite_wal" => "input lacks a complete SQLite WAL header or valid magic",
+        "unsupported_wal_version" => "WAL format version is not 3007000",
         "invalid_page_size" => "header page size is not a usable power of two",
         "page_out_of_range" => "a referenced page lies outside the file",
         "table_not_found" => "no table with that name in sqlite_master",
@@ -208,7 +218,12 @@ pub(crate) fn u24_be(bytes: &[u8], offset: usize) -> u32 {
 }
 
 pub(crate) fn u32_be(bytes: &[u8], offset: usize) -> u32 {
-    u32::from_be_bytes([bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]])
+    u32::from_be_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+    ])
 }
 
 pub(crate) fn u48_be(bytes: &[u8], offset: usize) -> u64 {
