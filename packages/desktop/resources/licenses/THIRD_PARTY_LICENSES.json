@@ -1012,6 +1012,13 @@
       ]
     },
     {
+      "name": "@ff-labs/fff-bin-darwin-arm64",
+      "version": "0.9.4",
+      "license": "MIT",
+      "source": "git+https://github.com/dmtrKovalenko/fff.git",
+      "licenseFiles": []
+    },
+    {
       "name": "@ff-labs/fff-bin-linux-x64-gnu",
       "version": "0.9.4",
       "license": "MIT",
@@ -1238,6 +1245,15 @@
       ]
     },
     {
+      "name": "@lydell/node-pty-darwin-arm64",
+      "version": "1.2.0-beta.12",
+      "license": "MIT",
+      "source": "git://github.com/lydell/node-pty.git",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "@lydell/node-pty-linux-x64",
       "version": "1.2.0-beta.12",
       "license": "MIT",
@@ -1280,6 +1296,15 @@
       "source": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
       "licenseFiles": [
         "LICENSE"
+      ]
+    },
+    {
+      "name": "@msgpackr-extract/msgpackr-extract-darwin-arm64",
+      "version": "3.0.4",
+      "license": "MIT",
+      "source": "http://github.com/kriszyp/msgpackr-extract",
+      "licenseFiles": [
+        "LICENSE (from msgpackr-extract@3.0.4)"
       ]
     },
     {
@@ -1730,6 +1755,15 @@
     },
     {
       "name": "@parcel/watcher",
+      "version": "2.6.0",
+      "license": "MIT",
+      "source": "https://github.com/parcel-bundler/watcher.git",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "@parcel/watcher-darwin-arm64",
       "version": "2.6.0",
       "license": "MIT",
       "source": "https://github.com/parcel-bundler/watcher.git",
@@ -5848,7 +5882,7 @@
     },
     {
       "name": "katex",
-      "version": "0.16.27",
+      "version": "0.16.47",
       "license": "MIT",
       "source": "https://github.com/KaTeX/KaTeX.git",
       "licenseFiles": [
@@ -5857,7 +5891,7 @@
     },
     {
       "name": "katex",
-      "version": "0.16.47",
+      "version": "0.18.2",
       "license": "MIT",
       "source": "https://github.com/KaTeX/KaTeX.git",
       "licenseFiles": [
