@@ -8,6 +8,7 @@ import { PermissionV2 } from "../permission"
 import { ToolRegistry } from "./registry"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
+import { VisualizationGuidance } from "./visualization-guidance"
 
 export const name = "visualize"
 
@@ -18,8 +19,10 @@ export const layer = Layer.effectDiscard(
     yield* tools
       .register({
         [name]: Tool.make({
-          description:
+          description: [
+            VisualizationGuidance.TOOL,
             "Show an interactive visualization inline in the app. Supply version:1, title, kind (bar, line, or treemap), and 1-500 items with label and nonnegative value. Optional group enables filtering; detail adds item notes; unit labels values. Line charts use input order as the horizontal axis. Treemap area represents value. Data must fit 128 KiB. Use measured data from other tools; never invent measurements. No HTML, JavaScript, URLs, files, or network access. The user can filter, inspect items, and view a table without another model call.",
+          ].join(" "),
           input: Visualization.Spec,
           output: Visualization.Spec,
           toModelOutput: ({ output }) => [

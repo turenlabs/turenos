@@ -8,6 +8,7 @@ import { PermissionV2 } from "../permission"
 import { ToolRegistry } from "./registry"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
+import { VisualizationGuidance } from "./visualization-guidance"
 
 export const name = "safehtml"
 
@@ -19,6 +20,7 @@ export const layer = Layer.effectDiscard(
       .register({
         [name]: Tool.make({
           description: [
+            VisualizationGuidance.TOOL,
             "Display rich safe HTML directly inside the chat. No separate window, download, or setup is needed.",
             "Supply version:1, title, optional description, and html: self-contained HTML with inline CSS and SVG.",
             "Use this for custom dashboards, diagrams, charts, tables, and visual explanations. Use visualize for data-only charts with scripted filtering.",
