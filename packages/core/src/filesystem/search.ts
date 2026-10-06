@@ -2,7 +2,7 @@ export * as FileSystemSearch from "./search"
 
 import { makeLocationNode } from "../effect/app-node"
 import path from "path"
-import { Context, Effect, Layer, Scope } from "effect"
+import { Context, Effect, Fiber, Layer, Scope } from "effect"
 import { Fff } from "#fff"
 import fuzzysort from "fuzzysort"
 import { FileSystem } from "../filesystem"
@@ -134,7 +134,11 @@ export const fffLayer = Layer.effect(
     // most are never searched, so the finder is created on the first search instead.
     const created: { picker?: Fff.Picker } = {}
     yield* Effect.addFinalizer(() => Effect.sync(() => created.picker?.destroy()).pipe(Effect.ignore))
-    const picker = yield* Effect.cached(
+    const scope = yield* Scope.Scope
+    // The build runs in its own fiber in the Location scope, started by the first search. Stopping a
+    // turn interrupts the search that triggered it; a build run inside that search would hand
+    // `Effect.cached` an interruption as the result of every later search in the Location.
+    const started = yield* Effect.cached(
       Effect.gen(function* () {
         const result = yield* Effect.try({
           try: () =>
@@ -157,8 +161,9 @@ export const fffLayer = Layer.effect(
         // 150k-file repo), and an empty grep or glob reads as "no matches" to an agent.
         yield* Effect.promise(() => result.value.waitForScan(SCAN_WAIT_MS))
         return result.value
-      }),
+      }).pipe(Effect.forkIn(scope), Effect.uninterruptible),
     )
+    const picker = started.pipe(Effect.flatMap((fiber) => Fiber.join(fiber)))
     const withPicker = <A>(empty: A, run: (picker: Fff.Picker) => A) =>
       picker.pipe(Effect.flatMap((value) => (value ? Effect.sync(() => run(value)) : Effect.succeed(empty))))
     return Service.of({

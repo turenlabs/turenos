@@ -110,11 +110,13 @@ const layer = Layer.effectDiscard(
               const unableToEdit = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
                 effect.pipe(
                   Effect.mapError((error) =>
-                    error instanceof FileMutation.StaleContentError
-                      ? new ToolFailure({
-                          message: "File changed after permission approval. Read it again before editing.",
-                        })
-                      : new ToolFailure({ message: `Unable to edit ${input.path}` }),
+                    error instanceof PermissionV2.CorrectedError
+                      ? new ToolFailure({ message: error.feedback })
+                      : error instanceof FileMutation.StaleContentError
+                        ? new ToolFailure({
+                            message: "File changed after permission approval. Read it again before editing.",
+                          })
+                        : new ToolFailure({ message: `Unable to edit ${input.path}` }),
                   ),
                 )
 
@@ -178,10 +180,12 @@ const layer = Layer.effectDiscard(
                   })
                 }
 
+                // A function replacement keeps newString literal: as a string, `$$`, `$&`, `` $` `` and
+                // `$'` are substitution patterns, and a Makefile's `$$` would land in the file as `$`.
                 const replaced =
                   input.replaceAll === true
-                    ? source.text.replaceAll(oldString, newString)
-                    : source.text.replace(oldString, newString)
+                    ? source.text.replaceAll(oldString, () => newString)
+                    : source.text.replace(oldString, () => newString)
                 const counts = diffLines(source.text, replaced).reduce(
                   (result, item) => ({
                     additions: result.additions + (item.added ? (item.count ?? 0) : 0),

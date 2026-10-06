@@ -173,6 +173,7 @@ const layer = Layer.effect(
       const control = input.control ?? SessionExecutionControl.noop
       const taskOwned = input.taskOwned ?? input.parentID !== undefined
       const authority = yield* tasks.authority(input.sessionID)
+      const toolPermissions = authority ? SubagentTool.toolPermissions(authority.childPermissions) : undefined
       const permissionSets = authority
         ? [
             authority.parentPermissions,
@@ -255,7 +256,7 @@ const layer = Layer.effect(
           })
           continue
         }
-        if (isDenied(name, permissionSets)) {
+        if (isDenied(name, [...permissionSets, ...(toolPermissions ? [toolPermissions] : [])])) {
           mcpExclusions.push({
             id: name,
             server: definition.server,
@@ -311,6 +312,7 @@ const layer = Layer.effect(
       // is cached per tool name, so the second pass is cheap.
       const deferredCandidates = (yield* registry.materialize({
         permissionSets,
+        toolPermissions,
         session: sessionToolsBase,
       })).deferred
       const deferralEnabled = input.deferral?.enabled !== false && deferredCandidates.length > 0
@@ -416,6 +418,7 @@ const layer = Layer.effect(
               ? []
               : (yield* registry.materialize({
                   permissionSets,
+                  toolPermissions,
                   session: sessionToolsBase,
                   deferred: { selected: builtinKeys, forceInline },
                 })).definitions.filter((definition) => builtinKeys.has(definition.name))
@@ -530,6 +533,7 @@ const layer = Layer.effect(
       }
       const materialized = yield* registry.materialize({
         permissionSets,
+        toolPermissions,
         session: sessionTools,
         deferred: deferralEnabled ? { selected: builtinSelected, forceInline } : undefined,
         subagentPromptContext: { harnessSnapshot: harnessState?.snapshot ?? null },
@@ -589,7 +593,12 @@ const layer = Layer.effect(
         ...mcpExclusions,
         ...inventory.exclusions,
         ...Object.entries(sessionTools).flatMap(([name, tool]) => {
-          if (visibleNames.has(name) || !isDenied(Tool.permission(tool, name), permissionSets)) return []
+          if (
+            visibleNames.has(name) ||
+            (!isDenied(Tool.permission(tool, name), permissionSets) &&
+              !isDenied(name, toolPermissions ? [toolPermissions] : []))
+          )
+            return []
           return [
             {
               id: name,

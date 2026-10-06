@@ -2,6 +2,7 @@ export * as SubagentTool from "./subagent"
 
 import { ToolFailure } from "@turenlabs/llm"
 import { LobbySession } from "@turenlabs/schema/lobby-session"
+import { TeamBoard } from "@turenlabs/schema/team-board"
 import { Context, DateTime, Effect, Layer, Option, Schema } from "effect"
 import path from "path"
 import { AgentV2 } from "../agent"
@@ -35,6 +36,57 @@ export const listName = "list_agents"
 export const peekName = "peek_agent"
 export const agentDocName = "agent_doc"
 export const notifyParentName = "notify_parent"
+
+export function toolPermissions(permissions: PermissionV2.Ruleset): PermissionV2.Ruleset {
+  return [
+    { action: "*", resource: "*", effect: "deny" },
+    ...[
+      "read",
+      "glob",
+      "grep",
+      "list",
+      "lsp",
+      "code_search",
+      "edit",
+      "write",
+      "apply_patch",
+      "bash",
+      "shell_job",
+      "webfetch",
+      "websearch",
+      "skill",
+      "question",
+      "todowrite",
+      "session_context",
+      "session_checkpoint",
+      "session_recall",
+      "memory_search",
+      "memory_read",
+      "reflection_read",
+      "reflection_state",
+      "reflection_complete",
+      "tool_search",
+      "tool_load",
+      spawnName,
+      spawnBatchName,
+      sendName,
+      waitName,
+      interruptName,
+      listName,
+      peekName,
+      agentDocName,
+      notifyParentName,
+      TeamBoard.postToolName,
+      TeamBoard.readToolName,
+      SwarmRoomTool.postName,
+      SwarmRoomTool.readName,
+      SwarmRoomTool.claimName,
+      SwarmRoomTool.waitName,
+    ].map((action) => ({ action, resource: "*", effect: "allow" as const })),
+    // Catch-all agent permissions do not opt a child into specialist tools.
+    ...permissions.filter((rule) => rule.action !== "*"),
+  ]
+}
 
 const MAX_DESCRIPTION_LENGTH = 120
 const MAX_PROMPT_LENGTH = 256_000

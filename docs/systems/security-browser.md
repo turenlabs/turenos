@@ -20,9 +20,18 @@ start an AI scan or require a model.
    the response should pause. Read a bounded response body before editing it.
 5. Copy a revealed captured request to Repeater. Choose captured headers or live
    browser cookies, edit the request, and send once. Redirects are not followed
-   automatically. Each explicit send has a new identity.
-6. Compare saved responses as text or hex, add case notes, preview literal rules,
-   and export masked history summaries.
+   automatically. Each explicit send has a new identity. Name, duplicate, or
+   switch tabs to keep separate drafts and send histories.
+6. Use **Load older** or **Load all** to browse the complete stored history.
+   Use **Apply to case** to search all pages by URL, ID, method, status, exact
+   hostname, MIME type, or source. Enable **masked content** to search bounded
+   header and text-body previews. Protected values and notes are not searchable.
+7. Compare saved responses with highlighted text-line, word, or hex differences.
+   Comparisons use masked values by default. **Reveal both** requires explicit
+   confirmation. Comparisons cannot establish equality of hidden or missing data.
+8. Export the complete case or applied filter results as case JSON or HAR 1.2.
+   Masked exports include bounded payload previews. Original exports require
+   confirmation and include captured secrets. Review every export before sharing.
 
 ## Agent tools
 
@@ -39,7 +48,7 @@ its first call.
 | `browser_status`    | Reads the browser status and any paused requests.                                                        |
 | `browser_intercept` | Turns request/response interception on or off; turning it off settles held traffic.                      |
 | `browser_decide`    | Decides one paused request: read, reveal, extend, forward with edits, or drop. Decisions are single-use. |
-| `browser_history`   | Lists the latest captured flows, masked.                                                                 |
+| `browser_history`   | Lists a masked history page with case-wide filters; pass `nextCursor` as `cursor` to read older pages.   |
 | `browser_flow`      | Inspects one flow, masked unless reveal is requested explicitly.                                         |
 | `browser_replay`    | Sends a captured request once, with optional edits to method, URL, headers, body, or cookies.            |
 | `browser_stop`      | Closes the browser and clears its live profile; saved case history stays.                                |
@@ -56,7 +65,9 @@ its first call.
 - Browser data uses a fresh non-persistent partition per open generation. Closing
   the browser clears that profile, but not the case's encrypted history.
 - Core reuses Storage guarded batches and SecretVault. Payloads are chunked before
-  sealing; history lists decrypt small manifests rather than all captured bodies.
+  sealing. New history summaries include only a normalized response MIME type,
+  not full headers or bodies. Existing summaries are read from saved payloads
+  when needed. Content search and exports read bounded pages.
 - Desktop-to-sidecar operations use the private utility-process message port.
   There is no new HTTP ingest endpoint, external proxy, MITM CA, or extra Chromium.
 - A held request expires by being dropped, never by silently forwarding. Lost
@@ -82,6 +93,19 @@ cannot be edited as complete messages. Replay rejects duplicate request-header
 names that Electron's request transport cannot represent faithfully. Raw displays
 are protocol-visible representations, not wire-exact HTTP/2 messages.
 
+History initially shows the latest page. Loading older rows or applying filters
+stops automatic history replacement; use **Refresh** to include new traffic.
+Sorting applies to loaded rows. Case storage remains limited to 10,000 flows
+and 100 MiB. Repeater drafts stay in memory until the case changes or the page
+closes. Sent requests remain in encrypted case history.
+
+Diffs inspect up to 64 KiB per response body and have a processing limit.
+Masked text-body previews stop at 65,536 characters; binary previews are unavailable.
+JSON exports preserve original/edit relationships and capture states. HAR uses
+extension fields for capture states and binary request-body encoding. HTTP
+versions and detailed timing phases are not recorded and are not inferred.
+Exports read successive stored pages, not a transaction-wide snapshot.
+
 ## Verification
 
 Run from the relevant package directory, or use these explicit package selectors:
@@ -90,6 +114,7 @@ Run from the relevant package directory, or use these explicit package selectors
 bun test --cwd packages/protocol test/proxy-policy.test.ts
 bun test --cwd packages/core test/security-proxy.test.ts
 bun test --cwd packages/app src/pages/security-proxy-model.test.ts
+bun test --cwd packages/app ./test-browser/security-proxy.test.ts
 bun test --cwd packages/desktop src/main/security-proxy-bridge.test.ts src/main/window-security.test.ts src/main/window-registry.test.ts src/main/shutdown.test.ts
 bun test --cwd packages/forge test/server/httpapi-listen.test.ts --test-name-pattern 'owns private proxy storage'
 bun --cwd packages/desktop scripts/security-proxy-integration.ts
