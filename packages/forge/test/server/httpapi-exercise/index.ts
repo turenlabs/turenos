@@ -971,7 +971,8 @@ const scenarios: Scenario[] = [
       path: route("/api/pty/{ptyID}/connect", { ptyID: "pty_httpapi_missing" }),
       headers: ctx.headers(),
     }))
-    .status(404, undefined, "none"),
+    // A missing ticket is rejected before PTY existence is checked.
+    .status(403, undefined, "none"),
   http.protected.get("/api/memory/wing", "v2.memory.wings").json(200, array),
   http.protected
     .post("/api/memory/wing", "v2.memory.wing")
