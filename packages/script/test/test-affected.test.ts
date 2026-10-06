@@ -102,7 +102,12 @@ test("falls back for shared configuration changes and missing bases", () => {
 
 test("runs package scripts from their package directories and reports failures", async () => {
   const root = fixture()
-  writeManifest(root, "packages/a", "a", "bun -e 'if (!process.cwd().endsWith(\"packages/a\")) process.exit(5)'")
+  writeManifest(
+    root,
+    "packages/a",
+    "a",
+    'bun -e \'if (require("node:path").basename(process.cwd()) !== "a") process.exit(5)\'',
+  )
   writeManifest(root, "packages/b", "b", "bun -e 'process.exit(7)'")
 
   expect(await runTests(root, ["packages/a", "packages/b"])).toEqual(["packages/b"])
