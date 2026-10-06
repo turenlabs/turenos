@@ -1,0 +1,18 @@
+{
+  "name": "@turenlabs/jwt-audit-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "repository": "https://github.com/turenlabs/turenos",
+  "exports": "./dist/turen_jwt_audit_wasm.js",
+  "files": [
+    "dist/",
+    "LICENSE.txt",
+    "LICENSE.dependencies.txt",
+    "NOTICE.txt",
+    "README.md",
+    "SOURCE.json",
+    "SHA256SUMS"
+  ]
+}

@@ -227,6 +227,7 @@
         "@turenlabs/installer-inspect-wasm": "workspace:*",
         "@turenlabs/java-inspect-wasm": "workspace:*",
         "@turenlabs/json-query-wasm": "workspace:*",
+        "@turenlabs/jwt-audit-wasm": "workspace:*",
         "@turenlabs/libpcap-wasm": "workspace:*",
         "@turenlabs/llm": "workspace:*",
         "@turenlabs/macos-artifacts-wasm": "workspace:*",
@@ -326,6 +327,7 @@
         "@turenlabs/email-security-wasm": "workspace:*",
         "@turenlabs/ghidra-decompiler-wasm": "workspace:*",
         "@turenlabs/goblin-wasm": "workspace:*",
+        "@turenlabs/jwt-audit-wasm": "workspace:*",
         "@turenlabs/libpcap-wasm": "workspace:*",
         "@turenlabs/protocol": "workspace:*",
         "@turenlabs/protocol-inspect-wasm": "workspace:*",
@@ -630,6 +632,10 @@
     },
     "packages/json-query-wasm": {
       "name": "@turenlabs/json-query-wasm",
+      "version": "0.1.0",
+    },
+    "packages/jwt-audit-wasm": {
+      "name": "@turenlabs/jwt-audit-wasm",
       "version": "0.1.0",
     },
     "packages/libpcap-wasm": {
@@ -2087,6 +2093,8 @@
     "@turenlabs/java-inspect-wasm": ["@turenlabs/java-inspect-wasm@workspace:packages/java-inspect-wasm"],
 
     "@turenlabs/json-query-wasm": ["@turenlabs/json-query-wasm@workspace:packages/json-query-wasm"],
+
+    "@turenlabs/jwt-audit-wasm": ["@turenlabs/jwt-audit-wasm@workspace:packages/jwt-audit-wasm"],
 
     "@turenlabs/libpcap-wasm": ["@turenlabs/libpcap-wasm@workspace:packages/libpcap-wasm"],
 

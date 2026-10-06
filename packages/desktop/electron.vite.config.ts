@@ -36,6 +36,7 @@ const wasmToolLeaves = new Set([
   "installer-inspect",
   "java-inspect",
   "json-query",
+  "jwt-audit",
   "macos-artifacts",
   "minidump",
   "pdf-inspect",

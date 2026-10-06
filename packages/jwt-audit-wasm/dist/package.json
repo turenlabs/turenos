@@ -1,0 +1,22 @@
+{
+  "name": "turen-jwt-audit-wasm",
+  "type": "module",
+  "description": "Bounded offline JWT inspection and public-key signature verification for defenders",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenlabs/turenos"
+  },
+  "files": [
+    "turen_jwt_audit_wasm_bg.wasm",
+    "turen_jwt_audit_wasm.js",
+    "turen_jwt_audit_wasm.d.ts",
+    "LICENSE.txt"
+  ],
+  "main": "turen_jwt_audit_wasm.js",
+  "types": "turen_jwt_audit_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

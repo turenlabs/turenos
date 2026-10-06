@@ -124,6 +124,7 @@
     "@turenlabs/installer-inspect-wasm": "workspace:*",
     "@turenlabs/java-inspect-wasm": "workspace:*",
     "@turenlabs/json-query-wasm": "workspace:*",
+    "@turenlabs/jwt-audit-wasm": "workspace:*",
     "@turenlabs/macos-artifacts-wasm": "workspace:*",
     "@turenlabs/rtf-inspect-wasm": "workspace:*",
     "@turenlabs/minidump-wasm": "workspace:*",

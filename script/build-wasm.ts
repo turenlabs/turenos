@@ -164,6 +164,7 @@ const recipes: Record<string, Recipe> = {
     test: "cargo test --manifest-path tools/java-inspect/Cargo.toml",
   }),
   "json-query": wasmPack("json-query", { rust: R197 }),
+  "jwt-audit": wasmPack("jwt-audit", { rust: R197, verifyPkg: null, verifyDist: true }),
   "text-diff": wasmPack("text-diff", { rust: R197 }),
   libpcap: {
     emscripten: "6.0.8",

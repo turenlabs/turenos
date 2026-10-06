@@ -7,6 +7,13 @@ complete list of `tools/` targets is in [`tools/README.md`](../../../tools/READM
 
 ## Shipped
 
+`tools/jwt-audit` gives AppSec and ProdSec defenders offline token inspection
+and RS256/ES256 verification. It requires one supplied public JWK and an
+explicit issuer, audience, algorithm, and time policy. Token key URLs and
+embedded keys never control verification. The report separates signature
+validity from claim-policy results. It does not check revocation or replay,
+establish key ownership, or grant authorization.
+
 `tools/sqlite-inspect` includes `sqlite_wal_inspect` for one supplied WAL file.
 It verifies header and cumulative frame checksums, matches salts, and reports
 commit boundaries, uncommitted frames, and invalid or partial tails.
