@@ -46,6 +46,7 @@ export const INDEPENDENTLY_VERSIONED_PACKAGE_FILES = [
   "packages/installer-inspect-wasm/package.json",
   "packages/java-inspect-wasm/package.json",
   "packages/json-query-wasm/package.json",
+  "packages/jwt-audit-wasm/package.json",
   "packages/libpcap-wasm/package.json",
   "packages/macos-artifacts-wasm/package.json",
   "packages/minidump-wasm/package.json",

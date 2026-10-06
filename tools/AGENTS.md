@@ -91,6 +91,7 @@ These targets have their own rules; follow the target's file when working in it:
 - `goblin/AGENTS.md`
 - `stng-core/AGENTS.md`
 - `libpcap/AGENTS.md`
+- `jwt-audit/AGENTS.md`
 - `static-unpack/AGENTS.md`
 - `static-analysis/AGENTS.md`
 - `protocol-inspect/AGENTS.md`

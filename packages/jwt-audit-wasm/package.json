@@ -8,9 +8,9 @@
   "exports": "./dist/turen_jwt_audit_wasm.js",
   "files": [
     "dist/",
-    "LICENSE",
+    "LICENSE.txt",
     "LICENSE.dependencies.txt",
-    "NOTICE",
+    "NOTICE.txt",
     "README.md",
     "SOURCE.json",
     "SHA256SUMS"

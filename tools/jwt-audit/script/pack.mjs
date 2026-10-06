@@ -11,7 +11,10 @@ await rm(target, { recursive: true, force: true })
 await mkdir(path.join(target, "dist"), { recursive: true })
 await cp(source, path.join(target, "dist"), { recursive: true })
 await rm(path.join(target, "dist/.gitignore"), { force: true })
-for (const file of ["LICENSE", "NOTICE", "README.md"]) await cp(path.join(tool, file), path.join(target, file))
+await cp(path.join(tool, "LICENSE.txt"), path.join(target, "dist/LICENSE.txt"))
+await rm(path.join(target, "dist/LICENSE"), { force: true })
+for (const file of ["LICENSE.txt", "NOTICE.txt", "README.md"])
+  await cp(path.join(tool, file), path.join(target, file))
 const metadata = JSON.parse(
   execFileSync(
     "cargo",
@@ -80,7 +83,7 @@ await writeFile(
       license: "MIT",
       repository: "https://github.com/turenlabs/turenos",
       exports: "./dist/turen_jwt_audit_wasm.js",
-      files: ["dist/", "LICENSE", "LICENSE.dependencies.txt", "NOTICE", "README.md", "SOURCE.json", "SHA256SUMS"],
+      files: ["dist/", "LICENSE.txt", "LICENSE.dependencies.txt", "NOTICE.txt", "README.md", "SOURCE.json", "SHA256SUMS"],
     },
     null,
     2,
