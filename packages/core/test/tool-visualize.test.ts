@@ -6,6 +6,7 @@ import { PermissionV2 } from "@turenlabs/core/permission"
 import { SessionV2 } from "@turenlabs/core/session"
 import { VisualizeTool } from "@turenlabs/core/tool/visualize"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
+import { VisualizationGuidance } from "@turenlabs/core/tool/visualization-guidance"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
 import { Effect, Layer, Schema } from "effect"
 import { testEffect } from "./lib/effect"
@@ -66,7 +67,9 @@ const it = testEffect(visualizationLayer(() => Effect.void))
 it.effect("registers and preserves structured chart data with a compact model result", () =>
   Effect.gen(function* () {
     const registry = yield* ToolRegistry.Service
-    expect((yield* toolDefinitions(registry)).map((tool) => tool.name)).toEqual(["visualize"])
+    const definitions = yield* toolDefinitions(registry)
+    expect(definitions.map((tool) => tool.name)).toEqual(["visualize"])
+    expect(definitions[0]?.description).toContain(VisualizationGuidance.TOOL)
     const result = yield* settleTool(registry, {
       sessionID: SessionV2.ID.make("ses_visualize_test"),
       ...toolIdentity,

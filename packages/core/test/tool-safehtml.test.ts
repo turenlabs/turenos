@@ -6,6 +6,7 @@ import { PermissionV2 } from "@turenlabs/core/permission"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SafeHtmlTool } from "@turenlabs/core/tool/safehtml"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
+import { VisualizationGuidance } from "@turenlabs/core/tool/visualization-guidance"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
 import { Effect, Layer, Schema } from "effect"
 import { testEffect } from "./lib/effect"
@@ -55,6 +56,7 @@ it.effect("advertises safehtml even when no deferred tools are loaded", () =>
     const registry = yield* ToolRegistry.Service
     const tools = yield* registry.materialize({ deferred: { selected: new Set() } })
     expect(tools.definitions.map((tool) => tool.name)).toEqual(["safehtml"])
+    expect(tools.definitions[0]?.description).toContain(VisualizationGuidance.TOOL)
     expect(tools.deferred.some((tool) => tool.name === "safehtml")).toBe(false)
   }),
 )
