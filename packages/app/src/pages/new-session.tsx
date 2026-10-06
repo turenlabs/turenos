@@ -28,7 +28,7 @@ import { useComposerCommands } from "@/pages/session/use-composer-commands"
 import { NEW_SESSION_CONTENT_WIDTH } from "@/pages/session/new-session-layout"
 import { PromptWorkspaceSelector } from "@/components/prompt-workspace-selector"
 import { useTitlebarRightMount } from "@/components/titlebar"
-import { useCommandPalette } from "@/context/command"
+import { useCommand, useCommandPalette } from "@/context/command"
 import { useSurfaceCommands } from "@/pages/session/use-surface-commands"
 import { useSettingsCommand } from "@/components/settings-dialog"
 import { pathKey } from "@/utils/path-key"
@@ -54,6 +54,13 @@ export default function NewSessionPage() {
   const settings = useSettings()
   const platform = usePlatform()
   const dialog = useDialog()
+  const command = useCommand()
+  const tipCommands = {
+    keybind: command.keybind,
+    available: (id: string) =>
+      command.options.some((option) => option.id === id && !option.disabled && !!option.onSelect),
+    run: command.trigger,
+  }
   useSettingsCommand()
   const tipsStorage = tipStorage(platform)
   const route = useSessionKey()
@@ -116,7 +123,16 @@ export default function NewSessionPage() {
           <DialogTitle>{language.t("tips.dialog.title")}</DialogTitle>
         </DialogHeader>
         <DialogBody class="min-h-0 overflow-y-auto p-4">
-          <TipCatalog translate={language.t} />
+          <TipCatalog
+            translate={language.t}
+            commands={{
+              ...tipCommands,
+              run: (id) => {
+                dialog.close()
+                command.trigger(id)
+              },
+            }}
+          />
         </DialogBody>
       </Dialog>
     ))
@@ -236,6 +252,7 @@ export default function NewSessionPage() {
                 <DailyTips
                   storage={tipsStorage}
                   translate={language.t}
+                  commands={tipCommands}
                   openTips={openTips}
                   onSaveFailed={() => showToast({ variant: "error", title: language.t("tips.saveFailed") })}
                 />

@@ -45,20 +45,74 @@ function memory() {
 }
 
 const english = new Map(Object.entries(en))
-const translate = (key: TranslationKey) => english.get(key) ?? key
+const translate = (key: TranslationKey, params?: Record<string, string>) =>
+  (english.get(key) ?? key).replace(/{{(\w+)}}/g, (_, name: string) => params?.[name] ?? "")
+const bound = new Map([
+  ["command.palette", "⌘K"],
+  ["model.choose", "⌘'"],
+])
+const shortcut = (command: string) => bound.get(command) ?? ""
+const commands = { keybind: shortcut, available: () => false, run: () => {} }
 const next = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
 test("browses all static tips without changing automatic preferences", () => {
   const storage = memory()
   const host = document.createElement("div")
   document.body.append(host)
-  const dispose = render(() => createComponent(TipCatalog, { translate }), host)
+  const dispose = render(() => createComponent(TipCatalog, { translate, commands }), host)
   try {
-    expect(host.textContent).toContain("Add context before you chat")
+    expect(host.textContent).toContain("More than files behind @")
     expect(host.textContent).toContain("Explore the extension catalog")
     expect(host.textContent).toContain("Explore providers")
-    expect(host.querySelectorAll("li").length).toBe(6)
+    expect(host.querySelectorAll("li").length).toBe(16)
     expect(storage.writes).toEqual([])
+  } finally {
+    dispose()
+    host.remove()
+  }
+})
+
+test("shows each tip's live shortcut and omits unbound ones", () => {
+  const host = document.createElement("div")
+  document.body.append(host)
+  const dispose = render(() => createComponent(TipCatalog, { translate, commands }), host)
+  try {
+    const shortcuts = Array.from(host.querySelectorAll('[data-slot="tip-shortcut"]')).map((node) => node.textContent)
+    expect(shortcuts).toEqual(["Shortcut: ⌘K", "Shortcut: ⌘'"])
+    const model = Array.from(host.querySelectorAll("li")).find((item) =>
+      item.textContent?.includes("Choose the right model"),
+    )
+    expect(model?.textContent).toContain("Shortcut: ⌘'")
+    expect(host.querySelector('[data-slot="tip-try"]')).toBeNull()
+  } finally {
+    dispose()
+    host.remove()
+  }
+})
+
+test("tries only commands available on this surface", () => {
+  const host = document.createElement("div")
+  document.body.append(host)
+  const ran: string[] = []
+  const dispose = render(
+    () =>
+      createComponent(TipCatalog, {
+        translate,
+        commands: {
+          keybind: shortcut,
+          available: (command: string) => command === "prompt.mode.shell",
+          run: (command: string) => ran.push(command),
+        },
+      }),
+    host,
+  )
+  try {
+    const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-slot="tip-try"]'))
+    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Try it: Run a shell command"])
+    // An unbound but available command still offers the action without a shortcut line.
+    expect(buttons[0]?.closest("li")?.querySelector('[data-slot="tip-shortcut"]')).toBeNull()
+    buttons[0]?.click()
+    expect(ran).toEqual(["prompt.mode.shell"])
   } finally {
     dispose()
     host.remove()
@@ -74,6 +128,7 @@ test("shows a default daily tip on the new-session draft and hides it for today"
       createComponent(DailyTips, {
         storage,
         translate,
+        commands,
         date: new Date(2026, 8, 29, 10),
         openTips: () => {},
         onSaveFailed: () => {},
@@ -108,6 +163,7 @@ test("disabled reminders stay off while browsing remains available", async () =>
       createComponent(DailyTips, {
         storage,
         translate,
+        commands,
         date: new Date(2026, 8, 29),
         openTips: () => {
           browsed += 1
@@ -146,6 +202,7 @@ test("another window's disable is seen on focus without writing", async () => {
         createComponent(DailyTips, {
           storage,
           translate,
+          commands,
           date: new Date(2026, 8, 29),
           openTips: () => {},
           onSaveFailed: () => {},
@@ -186,6 +243,7 @@ test("unreadable preferences suppress automatic tips without blocking browsing",
           removeItem: () => {},
         },
         translate,
+        commands,
         date: new Date(2026, 8, 29),
         openTips: () => {
           browsed = true
@@ -217,6 +275,7 @@ test("an explicit enable repairs malformed preferences without an automatic rewr
       createComponent(DailyTips, {
         storage,
         translate,
+        commands,
         date: new Date(2026, 8, 29),
         openTips: () => {},
         onSaveFailed: () => {},
@@ -259,6 +318,7 @@ test("a late focus refresh cannot undo a local opt-out", async () => {
               : storage.getItem(key),
         },
         translate,
+        commands,
         date: new Date(2026, 8, 29),
         openTips: () => {},
         onSaveFailed: () => {},
@@ -301,6 +361,7 @@ test("an older focus read cannot undo a newer window preference", async () => {
               : storage.getItem(key),
         },
         translate,
+        commands,
         date: new Date(2026, 8, 29),
         openTips: () => {},
         onSaveFailed: () => {},
@@ -341,6 +402,7 @@ test("a failed save warns and keeps the choice for this draft only", async () =>
           },
         },
         translate,
+        commands,
         date: new Date(2026, 8, 29),
         openTips: () => {},
         onSaveFailed: () => {
