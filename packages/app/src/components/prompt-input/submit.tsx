@@ -591,7 +591,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       })
   }
 
-  const performSubmit = async (event: Event, steer?: boolean) => {
+  const performSubmit = async (event: Event, requested: "steer" | "queue") => {
     event.preventDefault()
     if (params.id && interrupting[pendingKey(params.id)]) return
     beginSessionInteractionTrace({ sessionID: params.id, eventType: event.type })
@@ -1180,11 +1180,14 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       return
     }
 
-    // A follow-up sent while the agent is working is admitted durably as a queued
-    // input and promoted by the runner at the next provider-turn boundary (after the
-    // current tool calls settle). An explicit steer cuts ahead at the same boundary.
+    // A follow-up sent while the agent is working is admitted durably and promoted by
+    // the runner at the next provider-turn boundary (after the current tool calls
+    // settle): every pending steer at once, otherwise one queued input per boundary.
+    // Anything that cannot wait behind a running turn always steers.
     const delivery =
-      !steer && !isNewSession && mode === "normal" && input.shouldQueue?.() ? ("queue" as const) : ("steer" as const)
+      requested === "queue" && !isNewSession && mode === "normal" && input.shouldQueue?.()
+        ? ("queue" as const)
+        : ("steer" as const)
 
     const callbackStarted = performance.now()
     input.onSubmit?.()
@@ -1361,8 +1364,11 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       })
   }
 
-  const handleSubmit = (event: Event, steer?: boolean) => {
+  // Omitted delivery means the user's preferred follow-up; the composer's alternate
+  // action (Mod+Enter, the secondary button) passes the other one explicitly.
+  const handleSubmit = (event: Event, requested?: "steer" | "queue") => {
     event.preventDefault()
+    const delivery = requested ?? settings.general.followup()
     const target = prompt.capture()
     // The composer remains populated while its durable journal is being saved.
     // Coalesce that same intent, while allowing a newly typed follow-up through.
@@ -1378,13 +1384,13 @@ export function createPromptSubmit(input: PromptSubmitInput) {
             (input.model ?? local.model).current(),
             (input.model ?? local.model).variant.current(),
             input.mode(),
-            !!steer,
+            delivery,
           ]),
         )
       : ScopedKey.from(sdk().scope, search.draftId ?? `directory:${sdk().directory}`)
     const existing = submissions.get(key)
     if (existing && (!params.id || existing.prompt === target.current())) return existing.request
-    const request = performSubmit(event, steer)
+    const request = performSubmit(event, delivery)
     submissions.set(key, { prompt: target.current(), request })
     void request
       .finally(() => {

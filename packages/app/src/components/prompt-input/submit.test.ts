@@ -71,6 +71,7 @@ let search: { draftId?: string } = {}
 let selected = "/repo/worktree-a"
 let variant: string | undefined
 let newLayoutDesigns = false
+let followupPreference: "queue" | "steer" = "queue"
 let automationsEnabled = false
 const navigations: string[] = []
 const loops: Array<{ id: string; name: string; status: string; directory: string }> = []
@@ -442,6 +443,7 @@ beforeAll(async () => {
     useSettings: () => ({
       general: {
         newLayoutDesigns: () => newLayoutDesigns,
+        followup: () => followupPreference,
         automationsEnabled: () => automationsEnabled,
         setAutomationsEnabled: (value: boolean) => {
           automationsEnabled = value
@@ -552,6 +554,7 @@ beforeEach(() => {
   params = {}
   search = {}
   newLayoutDesigns = false
+  followupPreference = "queue"
   automationsEnabled = false
   navigations.length = 0
   loops.length = 0
@@ -1739,7 +1742,7 @@ describe("prompt submit worktree selection", () => {
     await Promise.resolve()
     expect(interrupted).toHaveLength(1)
     expect(todoWrites).toEqual([])
-    await submit.handleSubmit({ preventDefault: () => undefined } as Event, true)
+    await submit.handleSubmit({ preventDefault: () => undefined } as Event, "steer")
     expect(v2Prompts).toEqual([])
     gate.resolve()
     await first
@@ -1838,11 +1841,31 @@ describe("prompt submit worktree selection", () => {
 
   test("steers immediately when requested while the agent is working", async () => {
     params = { id: "session-1" }
-    await busySubmit().handleSubmit({ preventDefault: () => undefined } as unknown as Event, true)
+    await busySubmit().handleSubmit({ preventDefault: () => undefined } as unknown as Event, "steer")
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(v2PromptPayloads).toHaveLength(1)
     expect(v2PromptPayloads[0]).toMatchObject({ sessionID: "session-1", delivery: "steer" })
+  })
+
+  test("a plain submit follows the preferred follow-up delivery", async () => {
+    params = { id: "session-1" }
+    followupPreference = "steer"
+    await busySubmit().handleSubmit({ preventDefault: () => undefined } as unknown as Event)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(v2PromptPayloads).toHaveLength(1)
+    expect(v2PromptPayloads[0]).toMatchObject({ sessionID: "session-1", delivery: "steer" })
+  })
+
+  test("the alternate action queues when steering is preferred", async () => {
+    params = { id: "session-1" }
+    followupPreference = "steer"
+    await busySubmit().handleSubmit({ preventDefault: () => undefined } as unknown as Event, "queue")
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(v2PromptPayloads).toHaveLength(1)
+    expect(v2PromptPayloads[0]).toMatchObject({ sessionID: "session-1", delivery: "queue" })
   })
 })
 
