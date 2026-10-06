@@ -47241,7 +47241,7 @@ FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TOR
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 --------------------------------------------------------------------------------
-katex@0.16.27
+katex@0.16.47
 License: MIT
 Source: https://github.com/KaTeX/KaTeX.git
 
@@ -47269,7 +47269,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
-katex@0.16.47
+katex@0.18.2
 License: MIT
 Source: https://github.com/KaTeX/KaTeX.git
 

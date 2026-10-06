@@ -54,7 +54,7 @@
     "dompurify": "catalog:",
     "effect": "catalog:",
     "fuzzysort": "catalog:",
-    "katex": "0.16.27",
+    "katex": "0.18.2",
     "luxon": "catalog:",
     "marked": "catalog:",
     "marked-katex-extension": "5.1.6",

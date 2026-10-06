@@ -5859,7 +5859,7 @@
     },
     {
       "name": "katex",
-      "version": "0.16.27",
+      "version": "0.16.47",
       "license": "MIT",
       "source": "https://github.com/KaTeX/KaTeX.git",
       "licenseFiles": [
@@ -5868,7 +5868,7 @@
     },
     {
       "name": "katex",
-      "version": "0.16.47",
+      "version": "0.18.2",
       "license": "MIT",
       "source": "https://github.com/KaTeX/KaTeX.git",
       "licenseFiles": [

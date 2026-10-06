@@ -682,8 +682,8 @@ Each row identifies a resolved package and version, its declared license, and it
 | `just-diff-apply` | `5.5.0` | MIT | [source](https://github.com/angus-c/just) |
 | `jwa` | `2.0.1` | MIT | [source](git://github.com/brianloveswords/node-jwa.git) |
 | `jws` | `4.0.1` | MIT | [source](git://github.com/brianloveswords/node-jws.git) |
-| `katex` | `0.16.27` | MIT | [source](https://github.com/KaTeX/KaTeX.git) |
 | `katex` | `0.16.47` | MIT | [source](https://github.com/KaTeX/KaTeX.git) |
+| `katex` | `0.18.2` | MIT | [source](https://github.com/KaTeX/KaTeX.git) |
 | `khroma` | `2.1.0` | MIT | [source](github:fabiospampinato/khroma) |
 | `kind-of` | `6.0.3` | MIT | [source](jonschlinkert/kind-of) |
 | `kubernetes-types` | `1.30.0` | Apache-2.0 | [source](https://github.com/silverlyra/kubernetes-types) |
