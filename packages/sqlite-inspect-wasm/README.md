@@ -5,10 +5,9 @@ files for Turen agent tools — header decode, schema walk, per-table b-tree
 statistics, row decoding, freelist analysis, and heuristic record carving,
 without a SQLite library or a C dependency.
 
-Input is always **one database file's bytes**. There is no filesystem access,
-no journal or `-wal`/`-shm` sidecar, and the buffer is never modified. The
-module reports structural facts: it never replays WAL contents, never
-recovers the schema into a queryable engine, and never executes SQL.
+Input is **one database file**, or **one WAL file** for `sqlite_wal_inspect`.
+The module has no filesystem access and never reads sidecars automatically.
+It never modifies input, replays WAL contents, or executes SQL.
 
 ## Operations
 
@@ -19,6 +18,7 @@ throws on malformed input — corruption is reported in the output.
 
 | Function | Report |
 | --- | --- |
+| `sqlite_wal_inspect` | WAL header, checksum byte order, header checksum validity, complete frame count, salt/checksum-validated frame prefix, commit markers, last commit boundary, uncommitted frames, first invalid frame, and partial trailing bytes. Frame metadata is capped by `maxItems`; summary validation continues through the full prefix. No page payloads are returned or replayed. |
 | `sqlite_inspect` | 100-byte header decode: magic check, page size, file-format write/read versions (journal mode: `rollback` vs `wal`), payload fractions, file change counter, in-header db size (+`inHeaderSizeValid` when the change counter matches version-valid-for), freelist summary (declared vs chain-counted), schema cookie/format, autovacuum largest-root page, incremental-vacuum flag, text encoding, user version, application id, sqlite version number, and a `flags` array of validity findings (`bad_magic`, `bad_page_size`, `bad_payload_fractions`, `db_size_mismatch`, `trailing_partial_page`, `short_first_page`, `reserved_space_too_large`, `reserved_tail_nonzero`, `unknown_text_encoding`, `unusual_schema_format`) |
 | `sqlite_schema` | Walks the sqlite_master b-tree rooted at page 1 (its b-tree header sits at offset 100): every schema record → `{type, name, tblName, rootpage, sql, partialDecode}` with `sql` bounded to 8 KiB |
 | `sqlite_table_stats` | Per-table b-tree walk: page counts `{total, interior, leaf, overflow}`, row count, depth, `{min,max}` rowid, cells with overflow, fragmented free bytes, corrupt cells/pages, cycles, broken child pointers. Option `{"table":"name"}` selects one table |
@@ -34,7 +34,7 @@ throws on malformed input — corruption is reported in the output.
 ```
 
 - `maxItems` (≤ 4096): caps reported lists in `sqlite_schema` /
-  `sqlite_table_stats` / `sqlite_freelist`.
+  `sqlite_table_stats` / `sqlite_freelist` / `sqlite_wal_inspect`.
 - `table` (required by `sqlite_rows`, optional for `sqlite_table_stats`).
 - `maxRows` (≤ 256, default 64): `sqlite_rows` hard cap.
 - `blobPreviewBytes` / `includeBlobsPreview` (≤ 256, default 32): hex preview
@@ -67,6 +67,11 @@ parser code:
 
 ## Forensic caveats
 
+- `sqlite_wal_inspect` stops at the first invalid frame. Later bytes can
+  belong to an older WAL generation. Checksums are not authentication.
+  A WAL alone cannot establish database association or checkpoint status.
+  Commit markers are not an exact transaction count because SQLite can
+  repeat commit frames for sector padding.
 - **WAL contents are never replayed.** In WAL mode (`journalMode:"wal"`) the
   main file may be behind the `-wal` sidecar; reported rows/pages reflect
   the last checkpointed state only.
@@ -122,6 +127,18 @@ with the macOS `/usr/bin/sqlite3` CLI: simple, WITHOUT ROWID, overflow-chain,
 deleted/carvable, WAL-mode, UTF-16le, multi-level b-tree, empty, and a
 deliberately corrupted file) plus 1,200+ malformed/truncated/bit-flipped
 fuzz calls asserting clean error JSON — never a panic.
+
+`bun tools/sqlite-inspect/test/gen-wal.ts` regenerates the two native WAL
+fixtures with Bun's SQLite library. SQLite 3.51.0 produced the committed
+fixtures with 512-byte and 65,536-byte pages. Each contains one CREATE and
+two INSERT commits. `verify-wal.mjs` tests these files through the real WASM
+module, both checksum byte orders, invalid salts/checksums, partial frames,
+uncommitted tails, input/output-list limits, and 600+ malformed inputs.
+
+The WAL parser follows the public-domain [WAL file format](https://www.sqlite.org/fileformat2.html#wal_file_format)
+and [checksum algorithm](https://www.sqlite.org/fileformat2.html#checksum_algorithm).
+It adds no dependencies. The existing pinned build workflow and worker
+limits also apply to this operation.
 
 ## Provenance
 

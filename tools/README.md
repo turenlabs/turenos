@@ -97,7 +97,8 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   log/table, Simple Cache, and Safari binarycookies forensic parsing.
 - [`tools/sqlite-inspect`](sqlite-inspect): read-only SQLite 3 database
   forensics — header, schema, b-tree stats, rows, freelist, and heuristic
-  deleted-record carving.
+  deleted-record carving, plus WAL checksum and commit-boundary inspection
+  without replay.
 - [`tools/capa-match`](capa-match): static-subset capa capability
   matcher — about 1,050 embedded Mandiant rules, string/byte/import/section/format
   features; non-file-scope rules report unsupported, never fabricate.

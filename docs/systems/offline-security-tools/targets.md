@@ -7,6 +7,13 @@ complete list of `tools/` targets is in [`tools/README.md`](../../../tools/READM
 
 ## Shipped
 
+`tools/sqlite-inspect` includes `sqlite_wal_inspect` for one supplied WAL file.
+It verifies header and cumulative frame checksums, matches salts, and reports
+commit boundaries, uncommitted frames, and invalid or partial tails.
+It never replays pages, executes SQL, or reads database sidecars.
+Checksums do not authenticate data or establish database association or
+checkpoint status. Frame lists are bounded; summaries cover the valid prefix.
+
 `tools/static-analysis` exposes twenty-four bounded operations through
 `analyze(operation, bytes, options_json)`. `office_inspect` reports OOXML
 parts/relationships and OLE stream metadata plus macro, ActiveX, DDE, and
