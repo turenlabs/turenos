@@ -7,6 +7,13 @@ complete list of `tools/` targets is in [`tools/README.md`](../../../tools/READM
 
 ## Shipped
 
+`tools/jwt-audit` gives AppSec and ProdSec defenders offline token inspection
+and RS256/ES256 verification. It requires one supplied public JWK and an
+explicit issuer, audience, algorithm, and time policy. Token key URLs and
+embedded keys never control verification. The report separates signature
+validity from claim-policy results. It does not check revocation or replay,
+establish key ownership, or grant authorization.
+
 `tools/static-analysis` exposes twenty-four bounded operations through
 `analyze(operation, bytes, options_json)`. `office_inspect` reports OOXML
 parts/relationships and OLE stream metadata plus macro, ActiveX, DDE, and

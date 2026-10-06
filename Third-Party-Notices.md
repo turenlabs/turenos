@@ -343,6 +343,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@turenlabs/email-security-wasm` | `0.1.0-turen.1` | Apache-2.0 OR MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
 | `@turenlabs/ghidra-decompiler-wasm` | `0.1.0` | Apache-2.0 | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
 | `@turenlabs/goblin-wasm` | `0.10.6-turen.1` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/jwt-audit-wasm` | `0.1.0` | MIT | [source](https://github.com/turenlabs/turenos) |
 | `@turenlabs/libpcap-wasm` | `1.10.6-turen.1` | BSD-3-Clause | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
 | `@turenlabs/monodis-wasm` | `0.1.0` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
 | `@turenlabs/protocol-inspect-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
@@ -1007,6 +1008,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `zustand` | `4.5.7` | MIT | [source](git+https://github.com/pmndrs/zustand.git) |
 | `zwitch` | `2.0.4` | MIT | [source](wooorm/zwitch) |
 
-Inventory total: **985 resolved packages**.
+Inventory total: **986 resolved packages**.
 
 This file is regenerated during the desktop prebuild. Do not edit generated inventory content by hand.

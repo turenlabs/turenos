@@ -38,6 +38,7 @@ import { CodecTools } from "./codec-tools"
 import { SourcemapTools } from "./sourcemap-tools"
 import { ScriptDeobfuscateTools } from "./script-deobfuscate-tools"
 import { JsonQueryTools } from "./json-query-tools"
+import { JwtAuditTools } from "./jwt-audit-tools"
 import { FuzzyHashTools } from "./fuzzy-hash-tools"
 import { CryptoMarkersTools } from "./crypto-markers-tools"
 import { PdfInspectTools } from "./pdf-inspect-tools"
@@ -121,6 +122,7 @@ export const node = makeLocationNode({
     SourcemapTools.node,
     ScriptDeobfuscateTools.node,
     JsonQueryTools.node,
+    JwtAuditTools.node,
     FuzzyHashTools.node,
     CryptoMarkersTools.node,
     PdfInspectTools.node,

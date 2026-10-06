@@ -50,6 +50,10 @@ The target inventory, with one line per target, is in `README.md`.
 
 ## Runtime Boundary
 
+`tools/jwt-audit` verifies compact JWT signatures against one supplied public
+JWK and an explicit algorithm/issuer/audience/time policy. Keep token key hints
+untrusted and offline. Never sign, fetch keys, or claim authorization.
+
 `wasm-tools` is for deterministic, bounded byte processing. A normal target
 accepts bytes plus structured options and returns bounded JSON or one bounded
 byte vector.
