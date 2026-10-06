@@ -34,3 +34,10 @@ These example values are illustrative. Agents must collect real measurements bef
 - This version has one value per item. It does not support arbitrary dashboards, executable widgets, or multiple series.
 
 The renderer supports search, group filters, item inspection, and a table view. It mounts through the existing deferred tool-body path.
+
+## Source
+
+- [`packages/core/src/tool/visualize.ts`](../../packages/core/src/tool/visualize.ts)
+- [`packages/schema/src/visualization.ts`](../../packages/schema/src/visualization.ts)
+- [`packages/session-ui/src/components/visualization-viewer.tsx`](../../packages/session-ui/src/components/visualization-viewer.tsx)
+- [`packages/session-ui/src/components/visualization-layout.ts`](../../packages/session-ui/src/components/visualization-layout.ts)

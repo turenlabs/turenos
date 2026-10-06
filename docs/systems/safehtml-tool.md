@@ -25,4 +25,11 @@ Keep the total encoded payload below 512 KiB. The renderer also limits each docu
 
 Use measured data when describing a workspace. Include units, labels, and source notes. Design for narrow screens. Do not add controls that need JavaScript.
 
-The existing `visualize` tool remains available for charts with local scripted filtering and item inspection.
+The existing [visualize tool](./visualization-tool.md) remains available for charts with local scripted filtering and item inspection.
+
+## Source
+
+- [`packages/core/src/tool/safehtml.ts`](../../packages/core/src/tool/safehtml.ts)
+- [`packages/schema/src/safehtml.ts`](../../packages/schema/src/safehtml.ts)
+- [`packages/session-ui/src/components/safehtml-sanitize.ts`](../../packages/session-ui/src/components/safehtml-sanitize.ts)
+- [`packages/session-ui/src/components/safehtml-viewer.tsx`](../../packages/session-ui/src/components/safehtml-viewer.tsx)
