@@ -1,43 +1,89 @@
-# Safe HTML in Chat
+# Inline HTML visualizations
 
-The `safehtml` tool displays agent-authored HTML directly inside a chat message. It does not open another window.
+The `visualize` tool displays HTML inside a chat message. The `animate` tool adds bounded numeric and color tracks to sanitized HTML.
+Neither tool accepts agent JavaScript. Both tools are advertised by default, but explicit permission rules still apply.
 
-The tool is enabled and advertised by default. Agents do not need to search for it or load it. Explicit permission rules still apply.
+## Delivery and style
 
-## Delivery and Style
+After an example, screenshot, correction, or data change, agents must render the updated view in the current reply.
+An older card is not a substitute. Put explanations before the visualization and keep text after it brief.
+If a view is missing, try a fresh render or report the failure.
 
-After an example, screenshot, correction, or data change, agents should render the updated view in the current reply. An older card is not a substitute. Put explanations before the visualization and keep text after it brief. If a view is missing, try a fresh render or report the failure.
+Use one compact title, system typography, aligned labels, tight spacing, and flat neutral surfaces.
+Avoid gradients, oversized headings, badge rows, and repeated rounded cards.
+Use muted colors to explain data. Preserve units, legends, source notes, and uncertainty.
 
-Use the app's restrained visual style. Keep one compact title, system typography, aligned labels, tight spacing, and flat neutral surfaces. Avoid gradient backgrounds, oversized headings, badge rows, and repeated rounded cards. Use muted colors to explain data, not to decorate the page. Keep units, legends, source notes, and uncertainty visible.
+## Static HTML
 
-## Supported Content
+Supply `version: 1`, `title`, optional `description`, and `html` to `visualize`.
+HTML takes precedence when the payload contains HTML and chart fields.
+Use self-contained HTML, inline CSS, and SVG for diagrams, tables, charts, and visual explanations.
 
-Supply `version: 1`, `title`, optional `description`, and `html`. Use HTML, inline CSS, and SVG to build diagrams, dashboards, charts, tables, and visual explanations.
+The renderer sanitizes the HTML and places it in an inline frame with an empty sandbox permission list.
+A Content Security Policy blocks scripts and external resources. Styles cannot change the app.
+Native `details` and `summary` elements support expandable sections.
+Checkbox and radio controls can use CSS for local interaction.
+Agent scripts, event handlers, links, embeds, forms, and resource URLs are removed or blocked.
 
-The renderer sanitizes the HTML and places it in an inline frame with an empty sandbox permission list. A Content Security Policy blocks scripts and external resources. Styles stay inside the frame and cannot change the app.
+Persisted `safehtml` results retain their renderer. New tool calls use `visualize`; `safehtml` is not advertised or executable.
 
-Native interactions work without scripts. Use `details` and `summary` for expandable sections. Use checkbox or radio controls with CSS selectors for toggles. JavaScript, event handlers, links, embeds, forms, and resource URLs are removed or blocked.
+## Bounded animation
 
-Keep the total encoded payload below 512 KiB. The renderer also limits each document to 5,000 elements. These limits bound input size, not rendering time.
+Supply `version: 1`, `title`, optional `description`, `html`, and `tracks` to `animate`.
+Each track names one literal element ID and one supported property.
+Targets are not CSS selectors. Tracks contain keyframes, `duration`, and optional `at`, all with schema validation.
+Missing `at` means zero milliseconds.
 
-## Example
+The trusted renderer uses Anime.js 4.5.0 under the MIT license.
+It consumes numeric and hexadecimal color tracks, not arbitrary JavaScript.
+The inline sandbox allows only the trusted runtime script. It does not gain the app bridge or same-origin access.
+The animation starts paused and uses linear timing.
+Use faithful durations for scientific motion. Label illustrative motion and preserve measured values.
 
-```json
-{
-  "version": 1,
-  "title": "Source Summary",
-  "description": "Example values, not workspace measurements.",
-  "html": "<style>table{border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{padding:6px 12px;text-align:left;border-bottom:1px solid #8886}th{font-weight:600}</style><table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody><tr><td>Lines of source</td><td>240</td></tr></tbody></table><details><summary>Source notes</summary><p>This number is illustrative.</p></details>"
-}
-```
+No track can request autoplay, loops, callbacks, selectors, URLs, or arbitrary properties.
+HTML sanitization still removes agent scripts and event handlers.
+The trusted runtime does not make supplied HTML executable.
 
-Use measured data when describing a workspace. Include units, labels, and source notes. Design for narrow screens. Do not add controls that need JavaScript.
+## Limits
 
-The existing [visualize tool](./visualization-tool.md) remains available for charts with local scripted filtering and item inspection.
+| Field                          | Limit                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------ |
+| Encoded HTML or animation JSON | 512 KiB of UTF-8 bytes                                                               |
+| Title                          | 1–160 characters                                                                     |
+| Description                    | At most 1,000 characters                                                             |
+| Sanitized document             | At most 5,000 elements                                                               |
+| Animation tracks               | 1–128                                                                                |
+| Target ID                      | At most 120 characters; starts with an ASCII letter, then word characters or hyphens |
+| Keyframes per track            | 2–32                                                                                 |
+| Duration                       | 100–60,000 milliseconds                                                              |
+| Start time `at`                | 0–60,000 milliseconds; track must finish by 60,000                                   |
+| Numeric keyframes              | Finite; absolute value at most 1,000,000                                             |
+| Opacity                        | 0–1                                                                                  |
+| Scale                          | 0–100                                                                                |
+| Radius, width, height          | 0–10,000                                                                             |
+| Color keyframes                | `#RGB` or `#RRGGBB` only                                                             |
+
+Numeric properties are `x`, `y`, `translateX`, `translateY`, `rotate`, `scale`, `opacity`, `cx`, `cy`, `r`,
+`width`, `height`, `strokeDashoffset`, and `textContent`. Color properties are `fill` and `stroke`.
+Size and element limits bound input size, not rendering time.
+
+For data charts and local filtering, see [Visualizations](./visualization-tool.md).
+
+## Verification
+
+Schema tests cover target IDs, keyframes, numeric ranges, colors, timing, and encoded byte limits.
+Core tool tests cover default advertisement, structured metadata, compact model output, and permission denial.
+Renderer tests and live sandbox probes cover the separate UI boundary.
 
 ## Source
 
-- [`packages/core/src/tool/safehtml.ts`](../../packages/core/src/tool/safehtml.ts)
+- [`packages/core/src/tool/visualize.ts`](../../packages/core/src/tool/visualize.ts)
+- [`packages/core/src/tool/animate.ts`](../../packages/core/src/tool/animate.ts)
+- [`packages/core/src/tool/visualization-guidance.ts`](../../packages/core/src/tool/visualization-guidance.ts)
 - [`packages/schema/src/safehtml.ts`](../../packages/schema/src/safehtml.ts)
+- [`packages/schema/src/animation.ts`](../../packages/schema/src/animation.ts)
 - [`packages/session-ui/src/components/safehtml-sanitize.ts`](../../packages/session-ui/src/components/safehtml-sanitize.ts)
 - [`packages/session-ui/src/components/safehtml-viewer.tsx`](../../packages/session-ui/src/components/safehtml-viewer.tsx)
+- [`packages/session-ui/src/components/animation-data.ts`](../../packages/session-ui/src/components/animation-data.ts)
+- [`packages/session-ui/src/components/animation-document.ts`](../../packages/session-ui/src/components/animation-document.ts)
+- [`packages/session-ui/src/components/animation-runtime.ts`](../../packages/session-ui/src/components/animation-runtime.ts)

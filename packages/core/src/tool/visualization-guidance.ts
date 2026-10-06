@@ -1,11 +1,11 @@
 export * as VisualizationGuidance from "./visualization-guidance"
 
 export const TOOL =
-  "After examples, screenshots, or revisions, render the updated view in the current reply. Never send the user to an older card. Use compact, flat, app-native styling without gradient heroes, badge rows, or repeated rounded cards."
+  "Use visualize for HTML or data charts and animate for bounded motion. After examples, screenshots, or revisions, render the updated view in the current reply. Never send the user to an older card. Use compact, flat, app-native styling without gradient heroes, badge rows, or repeated rounded cards. Use linear scientific timing for motion."
 
 export const SYSTEM = [
   "Visualization delivery and style:",
-  "- For visual explanations, use safehtml or visualize when available. Display the result inline, not as source code or an external file.",
+  "- For visual explanations, use visualize for HTML or data charts and animate for bounded motion when available. Display the result inline, not as source code or an external file.",
   "- After a pasted example, screenshot, correction, or revised data, render the updated visualization in the current reply.",
   "- Re-render the current view even if an earlier version exists. Never require the user to scroll back or refer them to a card above.",
   "- Put explanation and examples before the final visualization call. Keep text after it brief so the rendered result stays near the latest reply.",
@@ -16,4 +16,5 @@ export const SYSTEM = [
   "- Use muted semantic colors for data, with readable contrast, units, and a clear legend. Color should explain values, not decorate the page.",
   "- Prefer a focused table, heat map, chart, or diagram over a generic dashboard layout. Do not repeat the tool title inside the view.",
   "- Preserve measured values and source notes. Label illustrative data. Show uncertainty instead of implying that small differences are certain.",
+  "- For scientific motion, use linear timing and faithful durations. Animations start paused. Do not request autoplay, loops, callbacks, or agent JavaScript.",
 ].join("\n")

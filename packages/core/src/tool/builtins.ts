@@ -64,7 +64,7 @@ import { LobbyRoomContextTool } from "./lobby-room-context"
 import { FollowStream } from "./follow-stream"
 import { WhiteboardTool } from "./whiteboard"
 import { VisualizeTool } from "./visualize"
-import { SafeHtmlTool } from "./safehtml"
+import { AnimateTool } from "./animate"
 import { SecurityProxyTool } from "./security-proxy"
 
 /**
@@ -112,11 +112,11 @@ export const node = makeLocationNode({
     BinaryAnalysisTools.node,
     StaticAnalysisTools.node,
     ProtocolInspectTools.node,
-  FollowStream.node,
-  WhiteboardTool.node,
+    FollowStream.node,
+    WhiteboardTool.node,
     VisualizeTool.node,
-    SafeHtmlTool.node,
-  SecurityProxyTool.node,
+    AnimateTool.node,
+    SecurityProxyTool.node,
     ForensicTools.node,
     RosettaExecTool.node,
     WasmInspectTools.node,

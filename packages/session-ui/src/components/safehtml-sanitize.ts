@@ -4,7 +4,7 @@ import { SafeHtml } from "@turenlabs/schema/safehtml"
 export const SAFE_HTML_CSP =
   "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
 
-export function safeHtmlDocument(
+export function sanitizeHtml(
   html: string,
   purifier: Pick<typeof DOMPurify, "isSupported" | "sanitize"> = DOMPurify,
 ): string | undefined {
@@ -47,5 +47,14 @@ export function safeHtmlDocument(
   if (content.querySelectorAll("*").length > 5000) return
   const container = content.ownerDocument.createElement("div")
   container.append(content)
-  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${SAFE_HTML_CSP}"><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{color-scheme:light dark}body{margin:16px;font:14px/1.5 system-ui,sans-serif;overflow-wrap:anywhere}*{box-sizing:border-box}svg{max-width:100%}table{max-width:100%}pre{white-space:pre-wrap}</style></head><body>${container.innerHTML}</body></html>`
+  return container.innerHTML
+}
+
+export function safeHtmlDocument(
+  html: string,
+  purifier: Pick<typeof DOMPurify, "isSupported" | "sanitize"> = DOMPurify,
+): string | undefined {
+  const content = sanitizeHtml(html, purifier)
+  if (content === undefined) return
+  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${SAFE_HTML_CSP}"><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{color-scheme:light dark}body{margin:16px;font:14px/1.5 system-ui,sans-serif;overflow-wrap:anywhere}*{box-sizing:border-box}svg{max-width:100%}table{max-width:100%}pre{white-space:pre-wrap}</style></head><body>${content}</body></html>`
 }

@@ -21,6 +21,12 @@ const spec = {
 }
 
 describe("visualization validation", () => {
+  test("unified tool schema accepts HTML and prefers HTML when both shapes are present", () => {
+    const html = { version: 1 as const, title: "Diagram", html: '<svg><circle r="4"/></svg>' }
+    expect(Schema.decodeUnknownSync(VisualizeTool.Spec)(html)).toEqual(html)
+    expect(Schema.decodeUnknownSync(VisualizeTool.Spec)({ ...spec, ...html })).toEqual(html)
+    expect(Schema.is(VisualizeTool.Spec)(spec)).toBe(true)
+  })
   test("accepts each chart kind and zero values", () => {
     ;["bar", "line", "treemap"].forEach((kind) => {
       expect(Schema.is(Visualization.Spec)({ ...spec, kind, items: [{ label: "Empty", value: 0 }] })).toBe(true)

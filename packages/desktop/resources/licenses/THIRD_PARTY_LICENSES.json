@@ -3387,6 +3387,15 @@
       ]
     },
     {
+      "name": "animejs",
+      "version": "4.5.0",
+      "license": "MIT",
+      "source": "git+https://github.com/juliangarnier/anime.git",
+      "licenseFiles": [
+        "LICENSE.md"
+      ]
+    },
+    {
       "name": "ansi-regex",
       "version": "6.2.2",
       "license": "MIT",

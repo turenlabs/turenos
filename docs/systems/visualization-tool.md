@@ -1,6 +1,14 @@
-# In-App Visualizations
+# Inline visualizations
 
-The `visualize` tool displays an interactive chart inside a session. It accepts data, not executable content.
+The `visualize` tool displays HTML or an interactive data chart inside a session.
+The `animate` tool displays sanitized HTML with bounded numeric and color tracks.
+Both tools are advertised by default. Explicit permission rules still apply.
+
+Supply `html` for a custom visual explanation. HTML takes precedence over chart fields when both are present.
+For HTML sanitization and animation limits, see [Inline HTML visualizations](./safehtml-tool.md).
+
+After examples or revisions, agents must render the updated view in the current reply.
+Use restrained, flat styling. Do not direct the user to an older card.
 
 Use `bar` to compare values, `line` to show an ordered sequence, or `treemap` to compare relative sizes. Line charts use item order, not dates or numeric coordinates, for the horizontal axis. Treemap area represents each item's value.
 
@@ -28,16 +36,18 @@ These example values are illustrative. Agents must collect real measurements bef
 - Values must be finite numbers between zero and one trillion.
 - Labels, descriptions, groups, and item notes have fixed length limits.
 - Both the tool and the renderer validate the chart schema.
-- The renderer uses native SVG and text. It does not execute supplied HTML, JavaScript, or CSS.
+- The data-chart renderer uses D3 under the ISC license to construct SVG charts from validated data.
+- Chart fields contain text and numbers, not executable JavaScript or CSS. HTML uses the separate sanitized frame path.
 - Charts cannot load URLs, access files, or call tools. Filtering and item inspection stay local.
 - Each tool result stores its chart data in the session transcript. A later call creates a new chart.
-- This version has one value per item. It does not support arbitrary dashboards, executable widgets, or multiple series.
+- Chart data has one value per item. Use the HTML form for custom layouts, not executable widgets.
 
 The renderer supports search, group filters, item inspection, and a table view. It mounts through the existing deferred tool-body path.
 
 ## Source
 
 - [`packages/core/src/tool/visualize.ts`](../../packages/core/src/tool/visualize.ts)
+- [`packages/core/src/tool/animate.ts`](../../packages/core/src/tool/animate.ts)
 - [`packages/schema/src/visualization.ts`](../../packages/schema/src/visualization.ts)
 - [`packages/session-ui/src/components/visualization-viewer.tsx`](../../packages/session-ui/src/components/visualization-viewer.tsx)
 - [`packages/session-ui/src/components/visualization-layout.ts`](../../packages/session-ui/src/components/visualization-layout.ts)

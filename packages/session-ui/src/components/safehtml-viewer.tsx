@@ -2,6 +2,7 @@ import { createMemo, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { safeHtmlSpec } from "./safehtml-data"
 import { safeHtmlDocument } from "./safehtml-sanitize"
+import { VisualizationLicenses } from "./visualization-licenses"
 
 export default function SafeHtmlViewer(props: { metadata: unknown }) {
   const spec = createMemo(() => safeHtmlSpec(props.metadata))
@@ -43,6 +44,7 @@ export default function SafeHtmlViewer(props: { metadata: unknown }) {
             <summary>HTML source</summary>
             <pre>{value().html}</pre>
           </details>
+          <VisualizationLicenses />
         </section>
       )}
     </Show>
