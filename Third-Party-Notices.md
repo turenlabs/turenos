@@ -406,6 +406,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `ai-gateway-provider` | `3.1.2` | MIT | [source](git+ssh://git@github.com/cloudflare/ai.git) |
 | `ajv` | `8.20.0` | MIT | [source](ajv-validator/ajv) |
 | `ajv-formats` | `3.0.1` | MIT | [source](git+https://github.com/ajv-validator/ajv-formats.git) |
+| `animejs` | `4.5.0` | MIT | [source](git+https://github.com/juliangarnier/anime.git) |
 | `ansi-regex` | `6.2.2` | MIT | [source](chalk/ansi-regex) |
 | `ansi-styles` | `6.2.3` | MIT | [source](chalk/ansi-styles) |
 | `argparse` | `1.0.10` | MIT | [source](nodeca/argparse) |
@@ -1008,6 +1009,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `zustand` | `4.5.7` | MIT | [source](git+https://github.com/pmndrs/zustand.git) |
 | `zwitch` | `2.0.4` | MIT | [source](wooorm/zwitch) |
 
-Inventory total: **986 resolved packages**.
+Inventory total: **987 resolved packages**.
 
 This file is regenerated during the desktop prebuild. Do not edit generated inventory content by hand.

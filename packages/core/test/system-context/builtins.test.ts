@@ -142,6 +142,9 @@ describe("SystemContextBuiltIns", () => {
       expect(refreshed.text).toContain("render the updated visualization in the current reply")
       expect(refreshed.text).toContain("Never require the user to scroll back")
       expect(refreshed.text).toContain("Avoid gradient backgrounds, oversized hero headings")
+      expect(refreshed.text).toContain("use visualize for HTML or data charts and animate for bounded motion")
+      expect(refreshed.text).toContain("use linear timing and faithful durations")
+      expect(refreshed.text).not.toContain("safehtml")
       expect(yield* SystemContext.reconcile(context, refreshed.snapshot)).toEqual({ _tag: "Unchanged" })
     }),
   )

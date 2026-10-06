@@ -5,6 +5,7 @@ export function partDefaultOpen(part: Part, shell = false, edit = false, patch?:
   if (part.state.status === "error") return true
   if (part.tool === "visualize") return true
   if (part.tool === "safehtml") return true
+  if (part.tool === "animate") return true
   if (part.tool === "bash") return shell
   if (part.tool === "apply_patch") return patch ?? edit
   if (part.tool === "edit" || part.tool === "write") return edit

@@ -1860,6 +1860,11 @@ ToolRegistry.register({
   render: InlineVisualizationTool,
 })
 
+ToolRegistry.register({
+  name: "animate",
+  render: InlineVisualizationTool,
+})
+
 for (const name of ["hexview", "disassemble"]) {
   ToolRegistry.register({
     name,

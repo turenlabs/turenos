@@ -1,9 +1,16 @@
 import { describe, expect, test } from "bun:test"
-import { visualizationSpec } from "./visualization-data"
+import { visualizationIsHtml, visualizationSpec } from "./visualization-data"
 
 const spec = { version: 1 as const, title: "Example", kind: "bar" as const, items: [{ label: "One", value: 2 }] }
 
 describe("visualizationSpec", () => {
+  test("detects rich HTML and historical safehtml transcripts", () => {
+    expect(visualizationIsHtml("safehtml", undefined)).toBe(true)
+    expect(visualizationIsHtml("visualize", { structured: { html: "<p>ok</p>" } })).toBe(true)
+    expect(visualizationIsHtml("visualize", { structured: spec })).toBe(false)
+    expect(visualizationIsHtml("visualize", null)).toBe(false)
+    expect(visualizationIsHtml("visualize", { html: "<p>ok</p>" })).toBe(false)
+  })
   test("reads only validated structured metadata", () => {
     expect(visualizationSpec({ structured: spec })).toEqual(spec)
     for (const value of [null, undefined, [], spec, { output: spec }, { structured: JSON.stringify(spec) }]) {
