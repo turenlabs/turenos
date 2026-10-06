@@ -134,7 +134,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@fastify/merge-json-schemas` | `0.2.1` | MIT | [source](git+https://github.com/fastify/merge-json-schemas.git) |
 | `@fastify/proxy-addr` | `5.1.0` | MIT | [source](git+https://github.com/fastify/proxy-addr.git) |
 | `@fastify/rate-limit` | `10.3.0` | MIT | [source](git+https://github.com/fastify/fastify-rate-limit.git) |
-| `@ff-labs/fff-bin-darwin-arm64` | `0.9.4` | MIT | [source](git+https://github.com/dmtrKovalenko/fff.git) |
 | `@ff-labs/fff-bin-linux-x64-gnu` | `0.9.4` | MIT | [source](git+https://github.com/dmtrKovalenko/fff.git) |
 | `@ff-labs/fff-bin-linux-x64-musl` | `0.9.4` | MIT | [source](git+https://github.com/dmtrKovalenko/fff.git) |
 | `@ff-labs/fff-bun` | `0.9.4` | MIT | [source](git+https://github.com/dmtrKovalenko/fff.git) |
@@ -161,13 +160,11 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@leichtgewicht/ip-codec` | `2.0.5` | MIT | [source](git+https://github.com/martinheidegger/ip-codec.git) |
 | `@lukeed/ms` | `2.0.2` | MIT | [source](lukeed/ms) |
 | `@lydell/node-pty` | `1.2.0-beta.12` | MIT | [source](git://github.com/lydell/node-pty.git) |
-| `@lydell/node-pty-darwin-arm64` | `1.2.0-beta.12` | MIT | [source](git://github.com/lydell/node-pty.git) |
 | `@lydell/node-pty-linux-x64` | `1.2.0-beta.12` | MIT | [source](git://github.com/lydell/node-pty.git) |
 | `@mermaid-js/parser` | `0.6.3` | MIT | [source](https://github.com/mermaid-js/mermaid.git) |
 | `@mermaid-js/parser` | `1.2.1` | MIT | [source](https://github.com/mermaid-js/mermaid.git) |
 | `@mixmark-io/domino` | `2.2.0` | BSD-2-Clause | [source](https://github.com/mixmark-io/domino.git) |
 | `@modelcontextprotocol/sdk` | `1.29.0` | MIT | [source](git+https://github.com/modelcontextprotocol/typescript-sdk.git) |
-| `@msgpackr-extract/msgpackr-extract-darwin-arm64` | `3.0.4` | MIT | [source](http://github.com/kriszyp/msgpackr-extract) |
 | `@msgpackr-extract/msgpackr-extract-linux-x64` | `3.0.4` | MIT | [source](http://github.com/kriszyp/msgpackr-extract) |
 | `@nodable/entities` | `2.1.1` | MIT | [source](git+https://github.com/nodable/val-parsers.git) |
 | `@npmcli/agent` | `4.0.2` | ISC | [source](git+https://github.com/npm/agent.git) |
@@ -219,7 +216,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@opentelemetry/sdk-trace-node` | `2.11.0` | Apache-2.0 | [source](open-telemetry/opentelemetry-js) |
 | `@opentelemetry/semantic-conventions` | `1.41.1` | Apache-2.0 | [source](open-telemetry/opentelemetry-js) |
 | `@parcel/watcher` | `2.6.0` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
-| `@parcel/watcher-darwin-arm64` | `2.6.0` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
 | `@parcel/watcher-linux-x64-glibc` | `2.6.0` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
 | `@parcel/watcher-linux-x64-musl` | `2.6.0` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
 | `@pierre/diffs` | `1.2.10` | apache-2.0 | Not declared |
@@ -1011,6 +1007,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `zustand` | `4.5.7` | MIT | [source](git+https://github.com/pmndrs/zustand.git) |
 | `zwitch` | `2.0.4` | MIT | [source](wooorm/zwitch) |
 
-Inventory total: **989 resolved packages**.
+Inventory total: **985 resolved packages**.
 
 This file is regenerated during the desktop prebuild. Do not edit generated inventory content by hand.
