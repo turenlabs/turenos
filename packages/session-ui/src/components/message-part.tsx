@@ -10,8 +10,6 @@ import {
   Switch,
   onCleanup,
   Index,
-  lazy,
-  Suspense,
   type JSX,
   type ComponentProps,
 } from "solid-js"
@@ -86,8 +84,7 @@ import { binarySnapshot } from "./binary-snapshot"
 import { BinaryViewer } from "./binary-viewer"
 import { writeClipboard } from "./clipboard"
 
-const VisualizationViewer = lazy(() => import("./visualization-viewer"))
-const SafeHtmlViewer = lazy(() => import("./safehtml-viewer"))
+import { InlineVisualizationTool } from "./inline-visualization-tool"
 
 export { groupParts, sameGroups, type PartGroup, type PartRef } from "./message-part-group"
 
@@ -1855,32 +1852,12 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
 
 ToolRegistry.register({
   name: "visualize",
-  render(props) {
-    return (
-      <BasicTool {...props} defer icon="code" hideDetails trigger={{ title: "Visualization" }}>
-        <Show when={props.status === "completed"}>
-          <Suspense fallback={<p role="status">Loading visualization...</p>}>
-            <VisualizationViewer metadata={props.metadata} />
-          </Suspense>
-        </Show>
-      </BasicTool>
-    )
-  },
+  render: InlineVisualizationTool,
 })
 
 ToolRegistry.register({
   name: "safehtml",
-  render(props) {
-    return (
-      <BasicTool {...props} defer icon="code" hideDetails trigger={{ title: "Safe HTML" }}>
-        <Show when={props.status === "completed"}>
-          <Suspense fallback={<p role="status">Loading HTML...</p>}>
-            <SafeHtmlViewer metadata={props.metadata} />
-          </Suspense>
-        </Show>
-      </BasicTool>
-    )
-  },
+  render: InlineVisualizationTool,
 })
 
 for (const name of ["hexview", "disassemble"]) {
