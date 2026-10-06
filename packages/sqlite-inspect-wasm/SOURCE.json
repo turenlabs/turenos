@@ -10,7 +10,9 @@
     "fileFormat": {
       "specification": "https://sqlite.org/fileformat.html",
       "license": "public domain",
-      "note": "Hand-rolled parser written against the documented SQLite 3 file format; no SQLite source or C dependency is used."
+      "note": "Hand-rolled database and WAL parsers written against the documented SQLite 3 file format; no SQLite source or C dependency is used.",
+      "walSpecification": "https://www.sqlite.org/fileformat2.html#wal_file_format",
+      "walFixtureGenerator": "Bun SQLite 3.51.0; test/gen-wal.ts"
     }
   },
   "derivation": "Original implementation of the documented SQLite 3 database file format in a bounded wasm-bindgen wrapper; runtime crates are used unmodified via exact-pinned crates.io releases committed in Cargo.lock.",
