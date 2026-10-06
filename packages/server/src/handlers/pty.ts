@@ -136,7 +136,8 @@ export const PtyHandler = HttpApiBuilder.group(Api, "server.pty", (handlers) =>
       .handleRaw(
         "pty.connect",
         Effect.fn("PtyHandler.connect")(function* (ctx) {
-          // Location middleware has already validated the origin and consumed the ticket.
+          // LocationMiddleware in src/location.ts authorizes this endpoint before Location setup.
+          // It validates the origin and consumes the single-use ticket; do not consume it again here.
           const pty = yield* Pty.Service
           const exists = yield* pty.get(ctx.params.ptyID).pipe(
             Effect.as(true),
