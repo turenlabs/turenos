@@ -29,8 +29,8 @@
   },
   "lockfileSha256": "78de0d11d04eac9e8bb34f3263ac4d14b897475eb8dbd6b82b39208fd5d81071",
   "compiler": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
-  "workflowRun": null,
-  "workflowSourceCommit": null,
+  "workflowRun": "37521016585",
+  "workflowSourceCommit": "dc911a8026d99388e8b0378b7eff1c006a86f8d9",
   "sourceSha256": {
     "Cargo.toml": "7c6c4b4b152763e35d4cc8125a957aa7e9954e64e3435cacca64f5362a19a519",
     "Cargo.lock": "78de0d11d04eac9e8bb34f3263ac4d14b897475eb8dbd6b82b39208fd5d81071",

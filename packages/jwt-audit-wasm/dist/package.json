@@ -11,8 +11,7 @@
   "files": [
     "turen_jwt_audit_wasm_bg.wasm",
     "turen_jwt_audit_wasm.js",
-    "turen_jwt_audit_wasm.d.ts",
-    "LICENSE.txt"
+    "turen_jwt_audit_wasm.d.ts"
   ],
   "main": "turen_jwt_audit_wasm.js",
   "types": "turen_jwt_audit_wasm.d.ts",
