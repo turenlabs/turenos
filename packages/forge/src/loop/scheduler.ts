@@ -7,8 +7,8 @@ import { EventV2 } from "@turenlabs/core/event"
 import { Location } from "@turenlabs/core/location"
 import { LocationServiceMap } from "@turenlabs/core/location-service-map"
 import { AbsolutePath } from "@turenlabs/core/schema"
-import { FileSystemWatcher } from "@turenlabs/schema/filesystem-watcher"
 import { SessionEvent } from "@turenlabs/schema/session-event"
+import { FileSystemWatcher } from "@turenlabs/schema/filesystem-watcher"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { WorkspaceV2 } from "@turenlabs/core/workspace"
@@ -294,12 +294,10 @@ const layer = Layer.effect(
       trigger: "file-change" | "session-end",
       payload: Readonly<Record<string, unknown>>,
     ) =>
-      loops
-        .fireEvent({ id: loopID, owner, trigger, payload, leaseMs: LEASE_MS })
-        .pipe(
-          Effect.flatMap((run) => (run.status === "claimed" ? runClaimed(run) : Effect.void)),
-          Effect.catch(() => Effect.void),
-        )
+      loops.fireEvent({ id: loopID, owner, trigger, payload, leaseMs: LEASE_MS }).pipe(
+        Effect.flatMap((run) => (run.status === "claimed" ? runClaimed(run) : Effect.void)),
+        Effect.catch(() => Effect.void),
+      )
 
     const fireAndExecuteDirect = (
       loopID: string,
@@ -366,7 +364,9 @@ const layer = Layer.effect(
             ...(directory === undefined ? {} : { directory }),
           })
         }
-      }).pipe(Effect.catchCause((cause) => Effect.logError("Loop session event failed", { cause: Cause.pretty(cause) })))
+      }).pipe(
+        Effect.catchCause((cause) => Effect.logError("Loop session event failed", { cause: Cause.pretty(cause) })),
+      )
 
     const fileStream = events.subscribe(FileSystemWatcher.Event.Updated).pipe(
       Stream.runForEach((event) => queueFileEvent(event.data.file)),
@@ -375,27 +375,13 @@ const layer = Layer.effect(
       Effect.forkScoped,
     )
 
-    const sessionSuccess = events.subscribe(SessionEvent.Step.Ended).pipe(
+    const sessionSettled = events.subscribe(SessionEvent.ExecutionSettled).pipe(
       Stream.runForEach((event) =>
         Effect.gen(function* () {
-          const sessionID = event.data.sessionID as string
+          const sessionID = event.data.sessionID
           const directory = yield* sessionDirectory(sessions, sessionID)
           const agent = yield* sessionAgent(sessions, sessionID)
-          yield* handleSessionEnd(sessionID, "success", agent, directory)
-        }),
-      ),
-      Effect.catchCause((cause) => Effect.logError("Loop session watcher failed", { cause: Cause.pretty(cause) })),
-      Effect.forever,
-      Effect.forkScoped,
-    )
-
-    const sessionFailure = events.subscribe(SessionEvent.Step.Failed).pipe(
-      Stream.runForEach((event) =>
-        Effect.gen(function* () {
-          const sessionID = event.data.sessionID as string
-          const directory = yield* sessionDirectory(sessions, sessionID)
-          const agent = yield* sessionAgent(sessions, sessionID)
-          yield* handleSessionEnd(sessionID, "failure", agent, directory)
+          yield* handleSessionEnd(sessionID, event.data.outcome, agent, directory)
         }),
       ),
       Effect.catchCause((cause) => Effect.logError("Loop session watcher failed", { cause: Cause.pretty(cause) })),
@@ -405,8 +391,7 @@ const layer = Layer.effect(
 
     yield* pollDue(loops, scan).pipe(Effect.forkScoped)
     yield* fileStream
-    yield* sessionSuccess
-    yield* sessionFailure
+    yield* sessionSettled
     return Service.of({})
   }),
 )

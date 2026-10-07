@@ -28,7 +28,7 @@ Run history exposes `claimed`, `running`, `succeeded`, `failed`, `cancelled`, `s
 
 ## Event and API boundaries
 
-File-change triggers match bounded relative globs under the Automation's directory and debounce rapid matches. The scheduler reads the active file-change Automations through `Loop.listFileChange` on each file event. Core caches that list for up to five seconds and clears it after every Automation create, edit, pause, resume of an event Automation, and delete, and after each claim, so another process sharing the database is picked up within the five seconds. Session-end triggers subscribe to `SessionEvent.Step.Ended` and `SessionEvent.Step.Failed`, so they fire at the end of every Session step, and filter outcome, Session ID, and agent; Automation-created Sessions do not trigger them. Both call `Loop.fireEvent` locally, which applies the same overlap rule as scheduled runs. There is no HTTP endpoint for firing an event.
+File-change triggers match bounded relative globs under the Automation's directory and debounce rapid matches. The scheduler reads the active file-change Automations through `Loop.listFileChange` on each file event. Core caches that list for up to five seconds and clears it after every Automation create, edit, pause, resume of an event Automation, and delete, and after each claim, so another process sharing the database is picked up within the five seconds. Session-end triggers subscribe to the live `SessionEvent.ExecutionSettled` event (`session.execution.settled`). Core emits it once at the coordinator's terminal ownership boundary, after successful coalesced drains, rather than on `Step.Ended` or `Step.Failed`. A new completed assistant identifies actual work; no-op wakes do not repeat a previous completion. Retry and continuation remain inside the execution, terminal errors produce `failure`, and interruption produces no completion event. This is a process-local notification, not a durable Session lifetime boundary or a crash-replayed trigger. The scheduler filters outcome, Session ID, and agent; Automation-created Sessions do not trigger it. Both call `Loop.fireEvent` locally, which applies the same overlap rule as scheduled runs. There is no HTTP endpoint for firing an event.
 
 Automation metadata is listed from the selected server's process-global SQLite index. Listing does not open project directories; the run's Location is resolved when execution begins. The [Protocol Loop group](../../../packages/protocol/src/groups/loop.ts) defines the `/api/loop` create, list, get, edit, pause, resume, delete, run, history, and cancellation endpoints and their current payload schemas.
 
@@ -39,5 +39,8 @@ The scheduler claims at most 32 runs per scan and scans again immediately while 
 ## Source
 
 - [`packages/core/src/loop.ts`](../../../packages/core/src/loop.ts)
+- [`packages/core/src/session/run-coordinator.ts`](../../../packages/core/src/session/run-coordinator.ts)
+- [`packages/core/src/session/execution/local.ts`](../../../packages/core/src/session/execution/local.ts)
+- [`packages/schema/src/session-event.ts`](../../../packages/schema/src/session-event.ts)
 - [`packages/forge/src/loop/scheduler.ts`](../../../packages/forge/src/loop/scheduler.ts)
 - [`packages/protocol/src/groups/loop.ts`](../../../packages/protocol/src/groups/loop.ts)
