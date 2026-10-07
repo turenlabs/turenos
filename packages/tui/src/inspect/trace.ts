@@ -21,14 +21,16 @@ export type TraceView = {
   request: number
 }
 
-export async function load(t: TraceView, page?: string) {
+/** The first load has no cursor and reads backwards from the end, so the panel opens on the newest events. */
+export async function load(t: TraceView, page?: { cursor: string; direction: "before" | "after" }) {
   const { panel } = t
   const version = ++t.request
   try {
     const result = await t.connection.client.sessions.replayHistory({
       sessionID: t.session.id,
       limit: 200,
-      cursor: page,
+      cursor: page?.cursor,
+      direction: page?.direction ?? "before",
     })
     if (version !== t.request || t.state.modal !== panel.dialog) return
     t.events = array(result.data, 1000).map((value) => {
@@ -40,7 +42,7 @@ export async function load(t: TraceView, page?: string) {
         data: event.data,
       }
     })
-    t.cursor = result.cursor
+    t.cursor = neighbours(t.events, result.cursor, page)
     panel.heading.content = `${t.events.length} events${t.events[0] ? ` · #${t.events[0].seq}–#${t.events.at(-1)!.seq}` : ""}`
     panel.fit("rows", () => paintRows(t))
     panel.dialog.error.content = KEYS
@@ -48,6 +50,20 @@ export async function load(t: TraceView, page?: string) {
   } catch (error) {
     if (version === t.request && t.state.modal === panel.dialog) panel.show(`Trace unavailable: ${errorText(error)}`)
   }
+}
+
+/**
+ * The server returns only the cursor that continues in the direction just read, so the other one is
+ * the page's own edge event: the page was reached from there, which proves events lie beyond it.
+ */
+function neighbours(
+  events: TraceEvent[],
+  cursor: { previous?: string; next?: string },
+  page: { direction: "before" | "after" } | undefined,
+) {
+  if (!page) return { previous: cursor.previous }
+  if (page.direction === "before") return { previous: cursor.previous, next: events.at(-1)?.id }
+  return { previous: events[0]?.id, next: cursor.next }
 }
 
 /** Event names fitted to the list column with an ellipsis, so a long name never ends mid-word unmarked. */
@@ -70,8 +86,8 @@ export function describe(t: TraceView) {
 /** `[` and `]` page through the log; any other key is left to the panel. */
 export function pageKey(t: TraceView, sequence: string) {
   if (sequence !== "[" && sequence !== "]") return false
-  const page = sequence === "[" ? t.cursor.previous : t.cursor.next
-  if (page) void load(t, page)
+  const cursor = sequence === "[" ? t.cursor.previous : t.cursor.next
+  if (cursor) void load(t, { cursor, direction: sequence === "[" ? "before" : "after" })
   else t.panel.dialog.error.content = `No ${sequence === "[" ? "older" : "newer"} events.\n${KEYS}`
   return true
 }
