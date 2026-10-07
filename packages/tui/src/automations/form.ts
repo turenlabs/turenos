@@ -27,14 +27,7 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
   const schedule = loop?.eventTrigger
     ? undefined
     : dialogs.input(dialog, "Schedule: like every 1h, or cron (0 9 * * 1-5)", loop ? scheduleInput(loop) : "every 1h")
-  if (loop?.eventTrigger)
-    dialog.form.add(
-      new TextRenderable(ctx.renderer, {
-        content: `Trigger: ${scheduleText(loop.schedule, loop.eventTrigger)}\nThe trigger is edited in the desktop.`,
-        fg: color.muted,
-        wrapMode: "word",
-      }),
-    )
+  if (loop?.eventTrigger) dialog.form.add(triggerNote(ctx, loop))
   const folder = loop
     ? undefined
     : dialogs.input(
@@ -42,12 +35,10 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
         "Folder on the server",
         session?.location.directory ?? state.snapshot?.location.directory ?? "",
       )
-  for (const field of [name, prompt, schedule, folder]) {
-    if (!field) continue
-    markFocus(field)
-    // Values line up under their captions, which leave two columns for the focus arrow.
-    field.marginLeft = 2
-  }
+  // Values line up under their captions, which leave two columns for the focus arrow.
+  const fields = [name, prompt, schedule, folder].filter((field) => field !== undefined)
+  fields.forEach((field) => (field.marginLeft = 2))
+  fields.forEach(markFocus)
   let created = false
   dialog.submit = async () => {
     // An unchanged schedule is not sent again: that would restart its countdown.
@@ -102,4 +93,13 @@ export function remove(ctx: AutomationsContext, loop: Loop, back?: () => void) {
   }
   dialog.error.content = "Ctrl+S Delete · Esc cancel"
   dialog.form.focus()
+}
+
+/** An event-triggered automation's trigger, which only the desktop edits. */
+function triggerNote(ctx: AutomationsContext, loop: Loop) {
+  return new TextRenderable(ctx.renderer, {
+    content: `Trigger: ${scheduleText(loop.schedule, loop.eventTrigger)}\nThe trigger is edited in the desktop.`,
+    fg: color.muted,
+    wrapMode: "word",
+  })
 }

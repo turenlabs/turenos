@@ -127,7 +127,7 @@ test("an empty swarm room explains itself across the dialog, not in a narrow col
 
 test("Tools hangs wrapped descriptions under the row and lists each group alphabetically", async () => {
   const description = "Apply one patch containing add, update, delete, and move file operations. Use this instead of bash"
-  const { view, screen, palette } = await sized(80, 24, {
+  const { screen, palette } = await sized(80, 24, {
     "GET /api/session": () => ({ data: [{ ...session(), model: { providerID: "openai", id: "gpt" } }], cursor: {} }),
     "GET /experimental/tool": () => ({
       agent: "build",
@@ -219,9 +219,8 @@ test("the new-terminal form names Tab, and a blank title becomes a readable defa
   expect(frame).toContain("blank names it after the folder")
   view.mockInput.pressKey("s", { ctrl: true })
   await Bun.sleep(200)
-  expect((server.sent("/api/pty").find((item) => item.method === "POST")?.body as { title?: string }).title).toBe(
-    "Shell in main",
-  )
+  const created = server.sent("/api/pty").find((item) => item.method === "POST")
+  expect((created!.body as { title?: string }).title).toBe("Shell in main")
 })
 
 test("the automation form lines values up under captions and its example matches the default", async () => {
