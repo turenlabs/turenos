@@ -11,6 +11,7 @@
     "dev:desktop": "bun --cwd packages/desktop dev",
     "dev:renderer": "bun --cwd packages/app dev",
     "lint": "oxlint",
+    "lint:types": "oxlint --type-aware",
     "license:check": "bun script/license-audit.ts",
     "license:generate": "bun script/license-audit.ts --write",
     "typecheck": "bun turbo typecheck --concurrency=1",

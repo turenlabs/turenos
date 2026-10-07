@@ -31,7 +31,8 @@ bun --cwd packages/desktop build
 Common checks:
 
 ```bash
-bun run lint
+bun run lint                           # without type information; fast
+bun run lint:types                     # adds the type-aware rules CI runs; needs about 9 GB
 bun run license:check                  # third-party license inventory; `bun run license:generate` rewrites it
 bun --cwd packages/desktop typecheck
 bun --cwd packages/app typecheck
