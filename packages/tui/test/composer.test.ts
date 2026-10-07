@@ -153,9 +153,9 @@ test("x stops a running turn at once without a typed confirmation, and says when
 
 test("a permission digit answers at once, but not in the first half second of a prompt that opened itself", async () => {
   const { server, view, screen } = await open(permission())
-  await screen("1 Reject · 2 Allow once")
+  await screen("2 Allow once")
   view.mockInput.pressKey("2")
-  await screen("▶ Allow once")
+  await screen("▶ 2 Allow once")
   expect(server.sent("/api/session/ses_main/permission/per_one/reply")).toHaveLength(0)
   await Bun.sleep(600)
   view.mockInput.pressKey("2")
@@ -165,11 +165,11 @@ test("a permission digit answers at once, but not in the first half second of a 
 
 test("a permission opened with p answers on its digit straight away", async () => {
   const { server, view, screen } = await open(permission())
-  await screen("1 Reject · 2 Allow once")
+  await screen("2 Allow once")
   view.mockInput.pressEscape()
   await screen("p Review permission")
   view.mockInput.pressKey("p")
-  await screen("1 Reject · 2 Allow once")
+  await screen("2 Allow once")
   view.mockInput.pressKey("1")
   await screen("Permission rejected.")
   expect(server.sent("/api/session/ses_main/permission/per_one/reply")[0]?.body).toMatchObject({ reply: "reject" })
@@ -185,7 +185,7 @@ test("a new permission waits behind text being typed and takes the editor's plac
   await screen("Permission waiting · Esc then Enter to answer")
   expect(editor()?.plainText).toBe("half")
   view.mockInput.pressKey("u", { ctrl: true })
-  await screen("1 Reject · 2 Allow once")
+  await screen("2 Allow once")
 })
 
 test("while typing, the row under the editor keeps its status but no shortcut keys", async () => {

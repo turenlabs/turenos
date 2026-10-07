@@ -2,6 +2,7 @@ import type { SelectRenderable, TextRenderable } from "@opentui/core"
 import type { CliRenderer } from "@opentui/core"
 import type { Dialogs } from "../dialogs"
 import { display } from "../messages"
+import { stamp } from "../menus/stamp"
 import { errorText, refused, type Connection, type Session } from "../server"
 import { label, sessionTitle, type DashboardState, type ModalState } from "../state"
 import type { Input } from "./inputs"
@@ -37,7 +38,8 @@ export type Dock = {
   acting: boolean
 }
 
-export const keys = "Enter send now · Ctrl+E edit · Ctrl+D twice discard · Ctrl+R refresh · Esc close"
+// Two lines that break between entries, so no key is split from its verb.
+export const keys = "Enter send now · Ctrl+E edit · Ctrl+D twice discard\nCtrl+R refresh · Esc close"
 
 export async function refresh(dock: Dock, note = "") {
   const { ctx, session, dialog, text, list } = dock
@@ -49,7 +51,7 @@ export async function refresh(dock: Dock, note = "") {
     dock.inputs = result.toSorted((a, b) => a.admittedSeq - b.admittedSeq)
     list.options = dock.inputs.map((input) => ({
       name: label(input.prompt.text, 90),
-      description: `${delivery(input, Object.hasOwn(ctx.state.snapshot?.active ?? {}, session.id))} · ${new Date(input.timeCreated).toLocaleTimeString()}`,
+      description: `${delivery(input, Object.hasOwn(ctx.state.snapshot?.active ?? {}, session.id))} · ${stamp(input.timeCreated)}`,
     }))
     list.visible = dock.inputs.length > 0
     // Keep the same message selected when others leave the queue, so Enter and Ctrl+D never retarget silently.
@@ -58,7 +60,7 @@ export async function refresh(dock: Dock, note = "") {
     const left = previous !== undefined && index < 0
     if (left || dock.armed !== dock.inputs[list.getSelectedIndex()]?.id) dock.armed = ""
     text.content = dock.inputs.length
-      ? `For: ${sessionTitle(session.title || session.id, 100)}\n\n${display(dock.inputs[list.getSelectedIndex()]?.prompt.text ?? "", 4000)}`
+      ? preview(session, dock.inputs[list.getSelectedIndex()])
       : "Nothing is waiting. Messages the agent has already read appear in the transcript."
     const notice =
       note || (left && dock.inputs.length ? "The selected message left the queue; check the one now selected." : "")
@@ -159,4 +161,11 @@ export async function discard(dock: Dock) {
   dock.armed = id
   dock.armedAt = Date.now()
   dock.dialog.error.content = `Ctrl+D again discards this message within 3 seconds.\n${keys}`
+}
+
+/** The session, then the selected message in full, but only when its list row has not already shown all of it. */
+export function preview(session: Session, input: Input | undefined) {
+  const heading = `For: ${sessionTitle(session.title || session.id, 100)}`
+  const full = display(input?.prompt.text ?? "", 4000)
+  return !full || full === label(full, 90) ? heading : `${heading}\n\n${full}`
 }

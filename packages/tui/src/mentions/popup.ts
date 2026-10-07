@@ -25,6 +25,9 @@ export type MentionEnvironment = {
 // caret is still inside `@"…`, so a path with spaces or brackets keeps searching.
 export const active = /(?:^|[\s([{"'])@(?:"([^"\u0000-\u001f\u007f-\u009f]*)|([^\s()[\]{}"'`]*))$/
 
+/** A single character is not searched; the list asks for more instead. */
+const minQuery = 2
+
 export function createMentionPopup(
   env: MentionEnvironment,
   dialog: ModalState,
@@ -54,8 +57,8 @@ export function createMentionPopup(
     },
     scope: (query) => JSON.stringify([location().directory, location().workspaceID, query]),
     async load(query, signal) {
-      // A bare `@` has nothing to search for; the popup asks for a name instead.
-      if (!query) return []
+      // Too short a query is not a search: the popup says how much to type instead of reporting a failure.
+      if (query.length < minQuery) return []
       const where = location()
       const found = await env.connection.findFiles(where.directory, query, where.workspaceID, signal)
       recordSearch(where.directory, query, found.length > 0)
@@ -71,7 +74,11 @@ export function createMentionPopup(
       loading: "Searching files…",
       error: "File search unavailable. Keep typing a path.",
       empty: (query) =>
-        query ? "No matching files. The mention stays as text." : "Type a file name or path to search.",
+        !query
+          ? "Type a file name or path to search."
+          : query.length < minQuery
+            ? `Type ${minQuery} or more characters to search files`
+            : "No matching files. The mention stays as text.",
     },
   })
 }

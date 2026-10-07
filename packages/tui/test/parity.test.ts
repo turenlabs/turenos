@@ -498,7 +498,7 @@ test("enabled extension skills appear as slash commands and run as commands", as
   })
   view.mockInput.pressKey("f")
   await screen("Reply to main task")
-  await view.mockInput.typeText("/re")
+  await view.mockInput.typeText("/rev")
   const frame = await screen("/review - Skill · Review code")
   expect(frame).not.toContain("/hidden")
   view.mockInput.pressTab()

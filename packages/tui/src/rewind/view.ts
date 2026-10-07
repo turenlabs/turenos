@@ -16,36 +16,14 @@ const tone: Record<DiffTone, string> = {
   context: color.text,
 }
 
-/** Adds the warning, session label, read-only preview and staged-change panes to a fresh dialog. */
-export function addPanels(env: RewindEnv, dialog: ModalState, session: Session, action: RewindAction) {
-  const running = Object.hasOwn(env.state.snapshot?.active ?? {}, session.id)
-  const warning = [
-    ...(running ? ["Confirm stops active work in this session."] : []),
-    ...(action === "undo"
-      ? ["File mode restores affected files NOW."]
-      : hasFiles(session.revert)
-        ? ["Redo restores staged files NOW."]
-        : []),
-    "The next reply commits any remaining undo stage.",
-  ]
-  dialog.frame.add(
-    new TextRenderable(env.renderer, {
-      content: warning.join("\n"),
-      height: warning.length,
-      flexShrink: 0,
-      fg: color.error,
-      wrapMode: "word",
-    }),
-    0,
-  )
+/** Adds the session label, read-only preview and staged-change panes to a fresh dialog. */
+export function addPanels(env: RewindEnv, dialog: ModalState, session: Session) {
   dialog.form.add(
     new TextRenderable(env.renderer, {
-      content: `For: ${sessionTitle(session.title || session.id, 100)}`,
+      content: `For: ${sessionTitle(session.title || session.id, 100)}\nSession: ${label(session.id, 80)}\nDirectory: ${label(session.location.directory, 200)}`,
       fg: color.muted,
-      height: 1,
       flexShrink: 0,
-      wrapMode: "none",
-      truncate: true,
+      wrapMode: "word",
     }),
   )
   const preview = new TextRenderable(env.renderer, {
@@ -81,14 +59,24 @@ export function renderChanges(flow: RewindFlow) {
 
 export function previewText(flow: RewindFlow) {
   const text = (flow.target ?? flow.previous)!.text
-  return `${flow.action === "undo" ? "Undo from" : flow.target ? "Redo up to" : "Clear stage after"} prompt:\n${display(text, 4000)}\n\nNo reply is sent now; existing drafts are kept.\n\nSession: ${flow.session.id}\nDirectory: ${label(flow.session.location.directory, 200)}`
+  return `${flow.picked ? "Rewind from" : flow.action === "undo" ? "Undo from" : flow.target ? "Redo up to" : "Clear stage after"} prompt:\n${display(text, 4000)}\n\nNo reply is sent now; existing drafts are kept.\nThe next reply commits any remaining undo stage.`
+}
+
+/** The warnings that belong to the typed confirmation, shown right above it. */
+function consequences(flow: RewindFlow) {
+  const running = Object.hasOwn(flow.state.snapshot?.active ?? {}, flow.session.id)
+  return [
+    ...(running ? ["Confirm stops active work in this session."] : []),
+    ...(flow.action === "redo" && hasFiles(flow.session.revert) ? ["Redo restores the staged files now."] : []),
+  ]
 }
 
 /** Adds the file-mode select (undo only) and the typed confirmation input, then focuses the input. */
 export function addConfirmation(flow: RewindFlow) {
   const { renderer, dialog, dialogs, action } = flow
+  const notes = consequences(flow)
   const controls = new BoxRenderable(renderer, {
-    height: action === "undo" ? 5 : 2,
+    height: (action === "undo" ? 5 : 2) + notes.length,
     flexShrink: 0,
     flexDirection: "column",
   })
@@ -100,27 +88,20 @@ export function addConfirmation(flow: RewindFlow) {
     return { field, text, name }
   }
   if (action === "undo") {
-    flow.files = new SelectRenderable(renderer, {
-      height: 2,
-      options: [
-        { name: "Conversation only", description: "Default: files false; no file changes" },
-        { name: "Conversation + files", description: "Restore affected files NOW" },
-      ],
-      showDescription: false,
-      showSelectionIndicator: true,
-      backgroundColor: color.panel,
-      textColor: color.text,
-      selectedBackgroundColor: color.selected,
-      selectedTextColor: color.accent,
-    })
-    const label = caption(flow.files, "File mode (↑/↓ choose)")
+    flow.files = fileMode(flow)
+    captions.push(caption(flow.files, "File mode (↑/↓ choose)"))
     controls.add(flow.files)
-    captions.push(label)
     dialogs.track(dialog, flow.files)
   }
+  notes.forEach((note) =>
+    controls.add(new TextRenderable(renderer, { content: note, fg: color.warning, height: 1, truncate: true })),
+  )
   flow.confirmation = new InputRenderable(renderer, {
     maxLength: 32,
     width: "100%",
+    // The word shows in the empty box, so the field is visible without its colours.
+    placeholder: action,
+    placeholderColor: color.muted,
     backgroundColor: color.bg,
     focusedBackgroundColor: color.selected,
     textColor: color.text,
@@ -128,10 +109,10 @@ export function addConfirmation(flow: RewindFlow) {
   captions.push(caption(flow.confirmation, `Confirmation (type ${action})`))
   controls.add(flow.confirmation)
   dialogs.track(dialog, flow.confirmation)
-  // Focus has no other plain-text cue between the mode list and the typed word.
+  // Focus has no other plain-text cue between the mode list and the typed word; the list's own marker is ▶ too.
   const paintFocus = () =>
     captions.forEach((item) => {
-      if (!item.text.isDestroyed) item.text.content = `${item.field.focused ? "» " : "  "}${item.name}`
+      if (!item.text.isDestroyed) item.text.content = `${item.field.focused ? "▶ " : "  "}${item.name}`
     })
   captions.forEach((item) => {
     item.field.on("focused", paintFocus)
@@ -142,4 +123,21 @@ export function addConfirmation(flow: RewindFlow) {
   flow.ready = true
   flow.confirmation.focus()
   paintFocus()
+}
+
+/** Each mode says what it does to the files, next to the choice rather than in a warning above the dialog. */
+function fileMode(flow: RewindFlow) {
+  return new SelectRenderable(flow.renderer, {
+    height: 2,
+    options: [
+      { name: "Conversation only · files stay as they are", description: "" },
+      { name: "Conversation + files · restores affected files now", description: "" },
+    ],
+    showDescription: false,
+    showSelectionIndicator: true,
+    backgroundColor: color.panel,
+    textColor: color.text,
+    selectedBackgroundColor: color.selected,
+    selectedTextColor: color.accent,
+  })
 }

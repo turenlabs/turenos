@@ -522,7 +522,7 @@ test("Ctrl+K and Alt arrows keep native editing in blocked dialogs and inline se
       view.mockInput.pressKey("p", { ctrl: true })
       await view.mockInput.typeText("kill")
       view.mockInput.pressEnter()
-      await waitForFrame(view, (frame) => frame.includes("Type kill"))
+      await waitForFrame(view, (frame) => frame.includes("Confirmation (type kill)"))
     }
     if (context === "search") {
       view.mockInput.pressKey("2")
@@ -1020,7 +1020,7 @@ test("kill interrupts the session and cancels active tasks after typed confirmat
   await view.renderOnce()
   expect(view.captureCharFrame()).toContain("Kill session")
   view.mockInput.pressEnter()
-  await waitForFrame(view, (frame) => frame.includes("Type kill"))
+  await waitForFrame(view, (frame) => frame.includes("Confirmation (type kill)"))
   expect(server.posts).toHaveLength(0)
   await view.mockInput.typeText("kill")
   view.mockInput.pressKey("s", { ctrl: true })
@@ -1094,7 +1094,7 @@ test("permission submission defaults to Reject and extra modifiers cannot confir
   await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
   view.mockInput.pressKey("p")
   const choice = view.renderer.currentFocusedRenderable as SelectRenderable
-  expect(choice.options[choice.getSelectedIndex()]?.name).toBe("Reject")
+  expect(choice.options[choice.getSelectedIndex()]?.name).toBe("1 Reject")
   for (const enter of ["\r", "\n", "\x1b[57414u"]) {
     await view.mockInput.pressKeys([enter])
     await view.renderOnce()

@@ -56,7 +56,7 @@ export function keepCustom(flow: QuestionFlow) {
 
 export function editCustom(flow: QuestionFlow, restore = false) {
   if (flow.input) return flow.input.focus()
-  const input = flow.ctx.dialogs.input(flow.dialog, "Your answer", flow.draft.custom[flow.page], "Type your answer")
+  const input = flow.ctx.dialogs.input(flow.dialog, "Your answer", flow.draft.custom[flow.page])
   flow.input = input
   if (restore) input.cursorOffset = Math.min(flow.draft.cursor, input.plainText.length)
   flow.dialog.error.content = "Enter Save custom answer\nCtrl+B Back to choices\nCtrl+K Sessions · Esc close"

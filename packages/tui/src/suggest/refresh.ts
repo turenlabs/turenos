@@ -61,6 +61,9 @@ function startLoad<T>(popup: PopupState<T>) {
         popup.inventory = items
         popup.status = "ready"
         refresh(popup)
+        const run = popup.afterLoad
+        popup.afterLoad = undefined
+        run?.()
       })
       .catch(() => {
         if (request !== popup.generation) return

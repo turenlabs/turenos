@@ -20,15 +20,15 @@ const queued = (id: string) => ({
 test("a pending permission opens by itself, shows its digits and keeps Allow always on screen at 60x24", async () => {
   const { server, view, screen } = await dashboard(permission(["npm *"]))
   view.resize(60, 24)
-  await screen("1 Reject · 2 Allow once · 3 Allow always")
+  await screen("3 Allow always")
   // A digit within half a second of a prompt that opened itself only moves the selection.
   view.mockInput.pressKey("3")
-  await screen("▶ Allow always")
+  await screen("▶ 3 Allow always")
   expect(server.sent("/api/session/ses_main/permission/per_one/reply")).toHaveLength(0)
   view.mockInput.pressArrow("up")
-  await screen("▶ Allow once")
+  await screen("▶ 2 Allow once")
   view.mockInput.pressArrow("down")
-  await screen("▶ Allow always")
+  await screen("▶ 3 Allow always")
   expect(server.sent("/api/session/ses_main/permission/per_one/reply")).toHaveLength(0)
   view.mockInput.pressKey("s", { ctrl: true })
   await screen("Allowed always.")
@@ -37,9 +37,9 @@ test("a pending permission opens by itself, shows its digits and keeps Allow alw
 
 test("a permission digit only selects right after the prompt opens itself, then answers once half a second has passed", async () => {
   const { server, view, screen } = await dashboard(permission(["npm *"]))
-  await screen("1 Reject · 2 Allow once · 3 Allow always")
+  await screen("3 Allow always")
   view.mockInput.pressKey("3")
-  await screen("▶ Allow always")
+  await screen("▶ 3 Allow always")
   expect(server.sent("/api/session/ses_main/permission/per_one/reply")).toHaveLength(0)
   await Bun.sleep(600)
   view.mockInput.pressKey("3")

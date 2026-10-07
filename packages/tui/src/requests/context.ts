@@ -63,9 +63,11 @@ export function recipient(ctx: RequestContext, dialog: ModalState, sessionID: st
   dialog.recipient = session
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
-      content: [sessionTitle(session?.title ?? sessionID), label(session?.location.directory ?? ""), label(sessionID)].join(
-        "\n",
-      ),
+      content: [
+        `For: ${sessionTitle(session?.title ?? sessionID)}`,
+        `Session: ${label(sessionID, 80)}`,
+        ...(session?.location.directory ? [`Directory: ${label(session.location.directory, 200)}`] : []),
+      ].join("\n"),
       fg: color.muted,
       wrapMode: "word",
     }),

@@ -23,8 +23,14 @@ export function submitSlash(attachment: SlashAttachment) {
   if (!popup.usable()) return false
   popup.refresh()
   if (!popup.visible) return false
-  // Without the inventory a local command cannot be told from a prompt, so keep the draft (the popup says so).
-  if (popup.status === "loading" || popup.status === "error") return true
+  // Without the inventory a local command cannot be told from a prompt, so the draft is kept and the Enter runs
+  // when the list arrives, as long as the text has not changed since.
+  if (popup.status === "loading") {
+    const text = attachment.editor.plainText
+    popup.afterLoad(() => attachment.editor.plainText === text && submitSlash(attachment))
+    return true
+  }
+  if (popup.status === "error") return true
   if (popup.status !== "ready" || !popup.choices.length) return false
   const exact = popup.choices.find((item) => item.name === popup.query)
   if (exact && !exact.local) return false
@@ -56,7 +62,7 @@ export function slashKey(attachment: SlashAttachment, event: KeyEvent) {
   if (popup.status === "loading") {
     if (!enter && !tab) return false
     event.preventDefault()
-    return true
+    return enter ? submitSlash(attachment) : true
   }
   if (popup.status !== "ready" || !popup.choices.length) return false
   if (enter) return submitSlash(attachment)

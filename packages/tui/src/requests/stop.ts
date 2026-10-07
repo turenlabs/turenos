@@ -64,7 +64,7 @@ export function kill(ctx: RequestContext) {
   const confirmation = openConfirmation(ctx, id, {
     title: "Kill session",
     height: 20,
-    body: "Interrupt this session and cancel its active subagent tasks?\nCancelled tasks cannot resume.\n\nType kill, then Ctrl+S to confirm.",
+    body: "Interrupt this session and cancel its active subagent tasks?\nCancelled tasks cannot resume.",
     hint: "Ctrl+S kill · Esc close",
     word: "kill",
   })

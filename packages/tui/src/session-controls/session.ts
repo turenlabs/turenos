@@ -32,7 +32,7 @@ export function openControl(ctx: SessionContext, title: string) {
   dialog.recipient = session
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
-      content: `For: ${sessionTitle(session.title || session.id, 100)}\n${session.id}\n${label(session.location.directory, 200)}`,
+      content: `For: ${sessionTitle(session.title || session.id, 100)}\nSession: ${label(session.id, 80)}\nDirectory: ${label(session.location.directory, 200)}`,
       fg: color.muted,
       wrapMode: "word",
     }),

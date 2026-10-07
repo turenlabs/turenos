@@ -40,6 +40,8 @@ export type PopupState<T> = {
   dismissed: string | undefined
   timer: ReturnType<typeof setTimeout> | undefined
   pending: AbortController | undefined
+  /** Runs once when the inventory arrives, so a key pressed while it loads is not lost. */
+  afterLoad: (() => void) | undefined
 }
 
 export function createPopupState<T>(
@@ -75,5 +77,6 @@ export function createPopupState<T>(
     dismissed: undefined,
     timer: undefined,
     pending: undefined,
+    afterLoad: undefined,
   }
 }

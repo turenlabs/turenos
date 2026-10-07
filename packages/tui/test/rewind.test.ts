@@ -370,7 +370,7 @@ test("redo advances to next real user by sequence and only clears the matching r
 test("redo clears final stage with disclosed immediate file effects and no prompt restoration", async () => {
   const app = await fixture(fileRevert)
   await app.ready("redo")
-  await app.waitFor((frame) => frame.includes("restores staged files NOW"))
+  await app.waitFor((frame) => frame.includes("Redo restores the staged files now."))
   await app.confirm("redo")
   await app.waitFor(() => !app.state.modal)
   expect(app.posts().map((request) => request.path)).toEqual([
@@ -531,7 +531,8 @@ test("choosing the second-newest prompt opens the undo confirmation and stages t
   const frame = await app.waitFor(
     (frame) => frame.includes("Earlier real prompt") && frame.includes("Confirmation (type undo)"),
   )
-  expect(frame).toContain("Undo conversation?")
+  expect(frame).toContain("Rewind conversation?")
+  expect(frame).not.toContain("Undo conversation?")
   expect(app.posts()).toEqual([])
   await app.confirm()
   await app.waitFor(() => !app.state.modal)

@@ -28,11 +28,12 @@ export function validInventory(items: readonly Command[]) {
 }
 
 export function mergeLocal(items: readonly Choice[], local: readonly LocalCommand[], query: string) {
-  const merged = new Map(items.map((item) => [item.name, item]))
-  for (const item of local.filter(validName)) {
-    if (!merged.has(item.name)) merged.set(item.name, { name: item.name, description: item.description, local: true })
-  }
-  return fuzzyFilter([...merged.values()], query, (item) => item.name)
+  const names = new Set(items.map((item) => item.name))
+  // The client's own commands lead, so /help and /new are not buried under the server's; a server name wins a clash.
+  const own = local
+    .filter((item) => validName(item) && !names.has(item.name))
+    .map((item): Choice => ({ name: item.name, description: item.description, local: true }))
+  return fuzzyFilter([...own, ...items], query, (item) => item.name)
 }
 
 /** `/name - description`, with the description cut at a word and an ellipsis, or dropped when little of it fits. */

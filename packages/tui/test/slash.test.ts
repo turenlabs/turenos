@@ -128,7 +128,8 @@ test("lazy inventory, bounded suggestions, completion and exact server/local dis
   expect(f.slash.key(key("down"))).toBe(true)
   expect(f.slash.key(key("up"))).toBe(true)
   expect(f.slash.key(key("enter"))).toBe(true)
-  expect(f.editor.plainText).toBe("/review ")
+  // The client's own commands lead the list, so the first row is /help rather than the server's /review.
+  expect(f.editor.plainText).toBe("/help ")
   expect(f.suggestions.visible).toBe(true)
   f.editor.setText("/review")
   expect(f.slash.key(key("enter"))).toBe(false)
@@ -244,6 +245,7 @@ test("late old-location inventory is discarded and busy discovery can retry", as
   await f.settle()
   pending.shift()!([{ name: "current" }])
   await f.settle()
+  f.editor.setText("/cu")
   expect(f.slash.key(key("tab"))).toBe(true)
   expect(f.editor.plainText).toBe("/current ")
 })

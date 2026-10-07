@@ -160,7 +160,7 @@ test("kill reports task cancels that failed and ignores tasks that already finis
     "POST /api/session/ses_main/task/tsk_c/cancel": () => ({ data: task("tsk_c", 4) }),
   })
   await palette("kill")
-  await screen("Type kill")
+  await screen("Confirmation (type kill)")
   await confirm("kill")
   await screen("1 cancelled, 1 failed, 1 not listed")
 })

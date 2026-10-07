@@ -9,7 +9,7 @@ test("a permission request is reviewed and allowed once, then the tool runs", as
   await tui.keys("p")
   const dialog = await tui.waitFor("Permission request")
   expect(dialog).toContain("echo sandbox-marker && ls")
-  expect(dialog).toMatch(/▶ Reject/)
+  expect(dialog).toMatch(/▶ 1 Reject/)
   await tui.keys("Down", "C-s")
   await tui.waitFor("Done: the bash tool returned")
   await tui.idle()

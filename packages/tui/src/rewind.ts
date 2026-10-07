@@ -47,11 +47,11 @@ function open(env: RewindEnv, action: RewindAction, pick?: { sessionID: string; 
   const selected = selection(env)
   if (!selected || env.state.closed || !env.dialogs.navigate()) return
   if (pick && pick.sessionID !== selected.id) return env.say("The selected session changed. Nothing changed.", true)
-  const dialog = env.dialogs.open(action === "undo" ? "Undo conversation?" : "Redo conversation?", false, 32)
+  const dialog = env.dialogs.open(title(action, !!pick), false, 32)
   if (!dialog) return
   const session = structuredClone(selected)
   dialog.recipient = session
-  const panels = addPanels(env, dialog, session, action)
+  const panels = addPanels(env, dialog, session)
   const flow: RewindFlow = {
     ...env,
     ...panels,
@@ -86,4 +86,9 @@ function open(env: RewindEnv, action: RewindAction, pick?: { sessionID: string; 
   }
   dialog.form.focus()
   void load(flow)
+}
+
+/** A prompt picked with `/rewind` rewinds to it; `/undo` steps back one turn. */
+function title(action: RewindAction, picked: boolean) {
+  return picked ? "Rewind conversation?" : action === "undo" ? "Undo conversation?" : "Redo conversation?"
 }

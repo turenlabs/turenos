@@ -43,6 +43,8 @@ export function createSuggestionPopup<T>(
     usable: () => usable(popup),
     move: (event: KeyEvent) => move(popup, event),
     replace: (text: string, cursor: number) => replace(popup, text, cursor),
+    /** Runs `run` when the inventory finishes loading; any change that cancels the load drops it. */
+    afterLoad: (run: () => void) => (popup.afterLoad = run),
     get visible() {
       return popup.suggestions.visible
     },

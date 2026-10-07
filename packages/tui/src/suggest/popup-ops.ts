@@ -9,6 +9,7 @@ export function cancelPending<T>(popup: PopupState<T>) {
   popup.timer = undefined
   popup.pending?.abort()
   popup.pending = undefined
+  popup.afterLoad = undefined
 }
 
 export function show<T>(popup: PopupState<T>, count: number) {
@@ -59,7 +60,7 @@ export function paint<T>(popup: PopupState<T>) {
   const lines = popup.choices.slice(start, start + size).map((item, index) => {
     return `${start + index === popup.selected ? "▶" : " "} ${clip(popup.options.line(item, width), width)}`
   })
-  if (popup.choices.length > size) lines.push(`  ${popup.selected + 1}/${popup.choices.length}`)
+  if (popup.choices.length > size) lines.push(`  ${popup.selected + 1} of ${popup.choices.length}`)
   popup.suggestions.content = lines.join("\n")
   show(popup, lines.length)
 }

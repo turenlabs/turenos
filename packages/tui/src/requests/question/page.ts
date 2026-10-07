@@ -5,48 +5,42 @@ import { compactRows } from "../../dialogs/size"
 import { matchesKey, printableKey } from "../../keys"
 import { advance, answers, editCustom, text, type QuestionFlow, type Questions } from "./flow"
 
+/** Longest description that still fits under its option on the narrowest terminal. */
+const underLimit = 44
+
 /** One question's page: a select of its options (plus "Type your own answer") and a description line. */
 export function renderQuestionPage(flow: QuestionFlow, question: Questions[number]) {
   const { ctx, dialog, draft } = flow
   const page = flow.page
   text(flow, display(question.question))
   text(flow, question.multiple ? "Choose one or more answers" : "Choose one answer", true)
-  const options = () => [
-    ...question.options.map((option, index) => ({
-      name: `${draft.selections[page]!.has(index) ? "[x]" : "[ ]"} ${display(option.label)}`,
-      description: "",
-    })),
-    ...(question.custom !== false
-      ? [{ name: `${draft.customOn[page] ? "[x]" : "[ ]"} Type your own answer`, description: "" }]
-      : []),
-  ]
+  const { under, options } = optionRows(flow, question)
   const choice = new SelectRenderable(ctx.renderer, {
     // Every option shows; the form scrolls if the dialog is short. A shorter list hid the last row behind a stray thumb.
-    height: Math.max(1, options().length),
+    height: Math.max(1, options().length * (under ? 2 : 1)),
     flexShrink: 0,
     options: options(),
     selectedIndex: draft.cursors[page],
-    showDescription: false,
+    showDescription: under,
     backgroundColor: color.bg,
     textColor: color.text,
+    descriptionColor: color.muted,
     selectedTextColor: color.accent,
     selectedBackgroundColor: color.selected,
   })
   flow.picker = choice
   dialog.form.add(choice)
   ctx.dialogs.track(dialog, choice)
-  const description = text(flow, "")
-  description.fg = color.muted
+  const described = question.options.some((option) => option.description.trim())
+  const description = under || !described ? undefined : text(flow, "")
+  if (description) description.fg = color.muted
   const describe = () => {
     const index = choice.getSelectedIndex()
     draft.cursors[page] = index
+    if (!description) return
     const option = question.options[index]
-    // The row above already names the option, so only its explanation shows, dimmed under the list.
-    description.content = option
-      ? display(option.description)
-      : draft.custom[page]
-        ? display(draft.custom[page]!)
-        : "Select to type your own answer"
+    // A long list cannot show a line under each option, so the line below names the option it explains.
+    description.content = option?.description.trim() ? `  ${display(option.label)}: ${display(option.description)}` : ""
   }
   choice.on("selectionChanged", describe)
   describe()
@@ -62,6 +56,34 @@ export function renderQuestionPage(flow: QuestionFlow, question: Questions[numbe
     draft.editing = false
     editCustom(flow, true)
   } else choice.focus()
+}
+
+type Row = { name: string; description: string }
+
+/** The option rows, and whether each carries its description under it (a short list) or the page shows one line below. */
+function optionRows(flow: QuestionFlow, question: Questions[number]) {
+  const { draft, page } = flow
+  // A row under an option is one line, so a long description keeps the wrapped line below the list instead.
+  const under =
+    question.options.length + (question.custom !== false ? 1 : 0) <= 5 &&
+    question.options.some((option) => option.description.trim()) &&
+    question.options.every((option) => display(option.description).length <= underLimit)
+  const mark = (on: boolean) => (question.multiple ? (on ? "[x]" : "[ ]") : on ? "(•)" : "( )")
+  const options = (): Row[] => [
+    ...question.options.map((option, index) => ({
+      name: `${mark(draft.selections[page]!.has(index))} ${display(option.label)}`,
+      description: under ? display(option.description).replace(/\s+/g, " ") : "",
+    })),
+    ...(question.custom !== false
+      ? [
+          {
+            name: `${mark(draft.customOn[page]!)} Type your own answer`,
+            description: under && draft.custom[page] ? display(draft.custom[page]!).replace(/\s+/g, " ") : "",
+          },
+        ]
+      : []),
+  ]
+  return { under, options }
 }
 
 /** Space and digits are handled here; native Select owns arrow movement, not toggling. Digits never confirm. */
@@ -90,7 +112,7 @@ function selectOption(
   flow: QuestionFlow,
   question: Questions[number],
   choice: SelectRenderable,
-  options: () => { name: string; description: string }[],
+  options: () => Row[],
   toggle: boolean,
 ) {
   if (flow.dialog.busy) return
