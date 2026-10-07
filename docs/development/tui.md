@@ -7,7 +7,7 @@ How to test and verify `packages/tui`, the OpenTUI terminal client described in 
 ```sh
 cd packages/tui
 bun run test        # bun test --timeout 30000
-bun typecheck       # tsgo --noEmit
+bun typecheck       # tsgo --noEmit --checkers 1
 bun run build       # writes dist/cli.js, ignored by git
 ```
 

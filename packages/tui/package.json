@@ -19,7 +19,7 @@
     "test": "bun test --timeout 30000",
     "test:e2e": "bun test --timeout 120000 ./e2e/*.e2e.ts",
     "sandbox": "bun script/sandbox.ts",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit --checkers 1"
   },
   "dependencies": {
     "@opentui/core": "0.5.10",
