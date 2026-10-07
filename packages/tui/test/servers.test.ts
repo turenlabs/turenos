@@ -471,6 +471,19 @@ if (forward !== -1) {
     expect(calls.flatMap((call) => call.args).join(" ")).not.toContain(key)
   })
 
+  test("a vault key id or key that could close the shell quote never reaches the ensure script", async () => {
+    const ssh = await fakeSsh("FORGE_ATTACH missing\nFORGE_REMOTE_STOPPED\n")
+    const key = Buffer.alloc(32, 7).toString("base64")
+    for (const env of [
+      { FORGE_SECRET_VAULT_KEY_ID: "key-1'; echo pwned; '", FORGE_SECRET_VAULT_KEY: key },
+      { FORGE_SECRET_VAULT_KEY_ID: "key-1", FORGE_SECRET_VAULT_KEY: `${key.slice(0, 40)}'\n$(id)` },
+    ]) {
+      const { servers, target } = await lab(ssh.script, env)
+      await expect(servers.resolve(target)).rejects.toThrow("set FORGE_SECRET_VAULT_KEY_ID")
+    }
+    expect((await ssh.calls()).some((call) => call.stdin.includes("ensure"))).toBe(false)
+  })
+
   test("ssh children get a login environment, never the client's secrets", async () => {
     expect(sshEnvironment({ PATH: "/bin", LC_ALL: "C", SSH_AUTH_SOCK: "/a", FORGE_SERVER_PASSWORD: "p" })).toEqual({
       PATH: "/bin",

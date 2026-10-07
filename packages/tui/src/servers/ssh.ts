@@ -241,17 +241,22 @@ async function runSsh(ctx: Context, args: string[], input: string, timeout: numb
   return { stdout, stderr, code }
 }
 
+// Both land single-quoted in a shell script, so only alphabets that cannot close the quote are allowed.
+const VAULT_KEY_ID = /^[A-Za-z0-9._-]{1,128}$/
+const VAULT_KEY = /^[A-Za-z0-9+/]{43}=$/
+
 function vaultKey(ctx: Context) {
   const keyID = ctx.env.FORGE_SECRET_VAULT_KEY_ID
   const key = ctx.env.FORGE_SECRET_VAULT_KEY
-  if (!keyID || !key || !/^[A-Za-z0-9._-]{1,128}$/.test(keyID)) return undefined
-  if (Buffer.from(key, "base64").byteLength !== 32 || Buffer.from(key, "base64").toString("base64") !== key)
-    return undefined
+  if (!keyID || !key || !VAULT_KEY_ID.test(keyID) || !VAULT_KEY.test(key)) return undefined
+  if (Buffer.from(key, "base64").byteLength !== 32) return undefined
   return { keyID, key }
 }
 
 /** Sent on stdin: an argument would put the vault key in argv on both machines. */
 function ensureScript(key: { keyID: string; key: string }) {
+  // Checked again where the values are written into the script, whatever produced them.
+  if (!VAULT_KEY_ID.test(key.keyID) || !VAULT_KEY.test(key.key)) throw new Error("The vault key cannot be sent.")
   return [
     `FORGE_SECRET_VAULT_KEY_ID='${key.keyID}'`,
     `FORGE_SECRET_VAULT_KEY='${key.key}'`,
