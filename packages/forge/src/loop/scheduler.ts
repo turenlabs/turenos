@@ -294,12 +294,10 @@ const layer = Layer.effect(
       trigger: "file-change" | "session-end",
       payload: Readonly<Record<string, unknown>>,
     ) =>
-      loops
-        .fireEvent({ id: loopID, owner, trigger, payload, leaseMs: LEASE_MS })
-        .pipe(
-          Effect.flatMap((run) => (run.status === "claimed" ? runClaimed(run) : Effect.void)),
-          Effect.catch(() => Effect.void),
-        )
+      loops.fireEvent({ id: loopID, owner, trigger, payload, leaseMs: LEASE_MS }).pipe(
+        Effect.flatMap((run) => (run.status === "claimed" ? runClaimed(run) : Effect.void)),
+        Effect.catch(() => Effect.void),
+      )
 
     const fireAndExecuteDirect = (
       loopID: string,
@@ -342,31 +340,32 @@ const layer = Layer.effect(
         }
       }).pipe(Effect.catchCause((cause) => Effect.logError("Loop file event failed", { cause: Cause.pretty(cause) })))
 
-    const handleSessionEnd = (
-      sessionID: string,
-      outcome: "success" | "failure",
-      agent: string | undefined,
-      directory: string | undefined,
-    ) =>
+    const handleSessionEnd = (sessionID: string, outcome: "success" | "failure") =>
       Effect.gen(function* () {
         if (sessionID.startsWith("ses_loop_")) return
+        // Resolve once: missing source metadata must never widen the event's scope.
+        const session = yield* sessions.get(SessionV2.ID.make(sessionID))
+        const directory = session.location.directory
+        const agent = session.agent
         const actives = yield* loops.list()
         for (const info of actives) {
           if (info.status !== "active") continue
           if (info.eventTrigger?.type !== "session-end") continue
-          if (directory !== undefined && directory !== info.location.directory) continue
+          if (directory !== info.location.directory) continue
           const config = info.eventTrigger
           if (config.outcomes !== undefined && !config.outcomes.includes(outcome)) continue
           if (config.sessionID !== undefined && config.sessionID !== sessionID) continue
-          if (config.agent !== undefined && agent !== undefined && config.agent !== agent) continue
+          if (config.agent !== undefined && config.agent !== agent) continue
           yield* fireAndRun(info.id, "session-end", {
             sessionID,
             outcome,
             ...(agent === undefined ? {} : { agent }),
-            ...(directory === undefined ? {} : { directory }),
+            directory,
           })
         }
-      }).pipe(Effect.catchCause((cause) => Effect.logError("Loop session event failed", { cause: Cause.pretty(cause) })))
+      }).pipe(
+        Effect.catchCause((cause) => Effect.logError("Loop session event failed", { cause: Cause.pretty(cause) })),
+      )
 
     const fileStream = events.subscribe(FileSystemWatcher.Event.Updated).pipe(
       Stream.runForEach((event) => queueFileEvent(event.data.file)),
@@ -376,28 +375,14 @@ const layer = Layer.effect(
     )
 
     const sessionSuccess = events.subscribe(SessionEvent.Step.Ended).pipe(
-      Stream.runForEach((event) =>
-        Effect.gen(function* () {
-          const sessionID = event.data.sessionID as string
-          const directory = yield* sessionDirectory(sessions, sessionID)
-          const agent = yield* sessionAgent(sessions, sessionID)
-          yield* handleSessionEnd(sessionID, "success", agent, directory)
-        }),
-      ),
+      Stream.runForEach((event) => handleSessionEnd(event.data.sessionID, "success")),
       Effect.catchCause((cause) => Effect.logError("Loop session watcher failed", { cause: Cause.pretty(cause) })),
       Effect.forever,
       Effect.forkScoped,
     )
 
     const sessionFailure = events.subscribe(SessionEvent.Step.Failed).pipe(
-      Stream.runForEach((event) =>
-        Effect.gen(function* () {
-          const sessionID = event.data.sessionID as string
-          const directory = yield* sessionDirectory(sessions, sessionID)
-          const agent = yield* sessionAgent(sessions, sessionID)
-          yield* handleSessionEnd(sessionID, "failure", agent, directory)
-        }),
-      ),
+      Stream.runForEach((event) => handleSessionEnd(event.data.sessionID, "failure")),
       Effect.catchCause((cause) => Effect.logError("Loop session watcher failed", { cause: Cause.pretty(cause) })),
       Effect.forever,
       Effect.forkScoped,
@@ -499,20 +484,6 @@ export function toLoopRelativePath(loopDirectory: string, file: string) {
   const relative = path.relative(loopDirectory, file)
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return undefined
   return relative.split(path.sep).join("/")
-}
-
-function sessionDirectory(sessions: SessionV2.Interface, sessionID: string) {
-  return sessions.get(SessionV2.ID.make(sessionID)).pipe(
-    Effect.map((session) => (session.location?.directory as string | undefined) ?? undefined),
-    Effect.catch(() => Effect.succeed(undefined as string | undefined)),
-  )
-}
-
-function sessionAgent(sessions: SessionV2.Interface, sessionID: string) {
-  return sessions.get(SessionV2.ID.make(sessionID)).pipe(
-    Effect.map((session) => (session.agent as string | undefined) ?? undefined),
-    Effect.catch(() => Effect.succeed(undefined as string | undefined)),
-  )
 }
 
 function formatCause(cause: Cause.Cause<unknown>) {
