@@ -176,6 +176,8 @@ export function dropNotice(d: DashboardContext) {
 /** A message said while a turn ran, or about another selection, no longer describes what is on screen. */
 function dropStaleNotice(d: DashboardContext) {
   const scope = d.run.noticeScope
+  // An armed quit's message ("Session interrupted. Ctrl+C again quits.") is about the turn that just ended.
+  if (Date.now() < d.run.quitArmedUntil) return
   if (scope && (scope.selected !== d.state.selected || (scope.running && !selectedRunning(d)))) say(d, "")
 }
 

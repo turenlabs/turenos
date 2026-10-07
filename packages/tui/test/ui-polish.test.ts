@@ -160,3 +160,20 @@ test("the attachment line ignores the partial @ token while the suggestion list 
   app.view.mockInput.pressTab()
   await app.screen("Attaches answer.ts")
 })
+
+test("the Ctrl+C that stops a turn still says a second press quits once the turn has ended", async () => {
+  const state = { active: true }
+  const app = await mounted({
+    "GET /api/session/active": () => ({ data: state.active ? { ses_main: { type: "running" } } : {} }),
+    "POST /api/session/ses_main/interrupt": () => {
+      state.active = false
+      return new Response(null, { status: 204 })
+    },
+  })
+  app.view.mockInput.pressEnter()
+  await app.screen("Ctrl+C stop")
+  app.view.mockInput.pressKey("c", { ctrl: true })
+  // The footer's typing hint flips back to quit only after a refresh has seen the turn end.
+  const frame = await app.screen("Ctrl+C quit")
+  expect(frame).toContain("Session interrupted. Ctrl+C again quits.")
+})
