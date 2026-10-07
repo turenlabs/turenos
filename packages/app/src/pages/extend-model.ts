@@ -3,6 +3,22 @@ import { settingsOwnedExtension } from "@/utils/extension-surface"
 
 export type ExtensionKind = "all" | "tool" | "mcp" | "data" | "skill"
 
+export const extensionTabs = {
+  skills: { label: "Skills / Subagents", kind: "skill" },
+  mcp: { label: "MCP", kind: "mcp" },
+  data: { label: "Data", kind: "data" },
+  tools: { label: "Tools", kind: "tool" },
+} as const
+
+export type ExtendTab = keyof typeof extensionTabs
+
+export function selectedExtensionTab(value: unknown, kind: unknown): ExtendTab {
+  if (value === "mcp" || kind === "mcp") return "mcp"
+  if (value === "data" || kind === "data") return "data"
+  if (value === "tools" || kind === "tool") return "tools"
+  return "skills"
+}
+
 export const extensionCategories = [
   { value: "all", label: "All focus areas" },
   { value: "vulnerability-intelligence", label: "Vulnerability Intelligence" },
@@ -69,6 +85,8 @@ const categoryByExtensionID: Readonly<Record<string, ClassifiedExtensionCategory
   "turenlabs/dependency-risk-review": "supply-chain",
   "turenlabs/dependency-upgrade-impact": "supply-chain",
   "turenlabs/slsa-provenance-review": "supply-chain",
+  "turenlabs/github-actions-security-review": "supply-chain",
+  "turenlabs/zizmor": "supply-chain",
   "turenlabs/binary-static-snapshot": "security-knowledge",
   "turenlabs/pcap-triage": "security-operations",
   "turenlabs/threat-intel-enrichment": "threat-intelligence",

@@ -1,0 +1,38 @@
+[
+  {
+    "query": "How does the per-session execution coordinator serialize work for one session while allowing other sessions to run at the same time?",
+    "targets": ["packages/core/src/session/run-coordinator.ts"]
+  },
+  {
+    "query": "What happens to filesystem subscriptions when a Location starts or stops watching its directory tree?",
+    "targets": ["packages/core/src/filesystem/watcher.ts"]
+  },
+  {
+    "query": "Where does model-facing session history get assembled after compaction, including the preserved message tail?",
+    "targets": ["packages/core/src/session/history.ts"]
+  },
+  {
+    "query": "How are identifiers such as camelCase and snake_case split into searchable memory tokens?",
+    "targets": ["packages/core/src/memory/tokenize.ts"]
+  },
+  {
+    "query": "Which rules decide whether a path under the user home directory is protected from browsing or file access?",
+    "targets": ["packages/core/src/filesystem/protected.ts"]
+  },
+  {
+    "query": "How are vector embeddings loaded from the pinned Potion model and its tokenizer data?",
+    "targets": ["packages/plugin/src/potion.ts"]
+  },
+  {
+    "query": "What services and middleware are composed when the server creates its HTTP routes?",
+    "targets": ["packages/server/src/routes.ts"]
+  },
+  {
+    "query": "Which generated and hand-written client modules define the effect-based API surface?",
+    "targets": ["packages/client/src/effect.ts", "packages/client/src/contract.ts"]
+  },
+  {
+    "query": "Trace the callers that claim session execution and schedule a drain after new input arrives.",
+    "targets": ["packages/core/src/session/execution/local.ts", "packages/core/src/session/run-coordinator.ts"]
+  }
+]

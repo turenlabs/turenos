@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { beforeEach, describe, expect } from "bun:test"
 import fs from "node:fs"
 import path from "node:path"
 import { tmpdir } from "node:os"
@@ -29,9 +29,11 @@ import { Project } from "@turenlabs/core/project"
 import { ProjectTable } from "@turenlabs/core/project/sql"
 import { QuestionV2 } from "@turenlabs/core/question"
 import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
+import { Flag } from "@turenlabs/core/flag/flag"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionHarness } from "@turenlabs/core/session/harness"
 import { SessionCompaction } from "@turenlabs/core/session/compaction"
+import { SessionContextManagement } from "@turenlabs/core/session/context-management"
 import { SessionContextRequest } from "@turenlabs/core/session/context-request"
 import { Snapshot } from "@turenlabs/core/snapshot"
 import { ContextSnapshotDecodeError } from "@turenlabs/core/session/error"
@@ -187,7 +189,9 @@ const compactModel = Model.make({
 const recoveryModel = Model.make({
   id: "recovery",
   provider: "fake",
-  route: OpenAIChat.route.with({ limits: { context: 20_000, output: 1_000 } }),
+  // The window is sized so these fixtures stay under the 40% compaction target and the scripted provider
+  // overflow, not a pre-flight compaction, is what triggers recovery.
+  route: OpenAIChat.route.with({ limits: { context: 50_000, output: 1_000 } }),
 })
 const compactionSummary = (objective: string) => `## Objective
 - ${objective}
@@ -410,10 +414,51 @@ const mcpSource = Layer.succeed(
     touch: (input) => Effect.sync(() => ToolBroker.touch(input.sessionID, input.key, input.directory)),
   }),
 )
+// The runner and the test body are built from separate graphs, so the real in-memory request store is shared
+// between them here. Only `status`, which the runner never calls, is stubbed. Reset per test so a claimed note
+// or pending checkpoint cannot leak from one test into the next.
+let contextRequests = SessionContextManagement.makeRequests()
+// Records tree captures and comparisons when a test sets `treeLog`; otherwise it is exactly `Snapshot.noopLayer`.
+let treeLog: { captures: string[]; compared: { from: string; to: string }[] } | undefined
+const snapshotService = Layer.succeed(
+  Snapshot.Service,
+  Snapshot.Service.of({
+    capture: () =>
+      Effect.sync(() => {
+        if (!treeLog) return undefined
+        const id = `tree-${treeLog.captures.length + 1}`
+        treeLog.captures.push(id)
+        return Snapshot.ID.make(id)
+      }),
+    files: (input) =>
+      Effect.sync(() => {
+        treeLog?.compared.push({ from: input.from, to: input.to })
+        return []
+      }),
+    diff: () => Effect.succeed([]),
+    preview: () => Effect.succeed([]),
+    restore: () => Effect.void,
+    checkout: () => Effect.void,
+  }),
+)
+beforeEach(() => {
+  contextRequests = SessionContextManagement.makeRequests()
+  treeLog = undefined
+})
+const contextManagement = Layer.succeed(
+  SessionContextManagement.Service,
+  SessionContextManagement.Service.of({
+    status: () => Effect.die("the runner does not read context status"),
+    request: (sessionID, handoff) => contextRequests.request(sessionID, handoff),
+    take: (sessionID) => contextRequests.take(sessionID),
+    claimNudge: (input) => contextRequests.claimNudge(input),
+  }),
+)
 const runnerLayer = AppNodeBuilder.build(
   LayerNode.group([SessionRunnerLLM.node, SessionTodo.node, SessionHarness.node, ReflectionTool.node]),
   [
-    [Snapshot.node, Snapshot.noopLayer],
+    [SessionContextManagement.node, contextManagement],
+    [Snapshot.node, snapshotService],
     [LayerNodePlatform.llmClient, client],
     [SessionRunnerModel.node, models],
     [SystemContextRegistry.node, systemContext],
@@ -477,10 +522,12 @@ const it = testEffect(
       Config.node,
       Snapshot.node,
       SessionRunnerLLM.node,
+      SessionContextManagement.node,
       SessionExecution.node,
       SessionV2.node,
     ]),
     [
+      [SessionContextManagement.node, contextManagement],
       [LayerNodePlatform.llmClient, client],
       [PermissionV2.node, permission],
       [SessionRunnerModel.node, models],
@@ -488,7 +535,7 @@ const it = testEffect(
       [Location.node, Location.boundNode({ directory: testDirectory })],
       [SkillGuidance.node, skillGuidance],
       [ReferenceGuidance.node, referenceGuidance],
-      [Snapshot.node, Snapshot.noopLayer],
+      [Snapshot.node, snapshotService],
       [SessionExecution.node, execution],
       [LocationServiceMap.node, executionLocations],
       [Config.node, config],
@@ -1015,6 +1062,44 @@ describe("SessionRunnerLLM", () => {
         .pipe(Effect.orDie)
       expect(JSON.stringify(row!.data).length).toBeLessThan(64 * 1024)
       expect(yield* database.db.select().from(SessionContextBlobTable).all().pipe(Effect.orDie)).toHaveLength(1)
+    }),
+  )
+
+  it.effect("declares native tool search only for a supported Responses model with the flag on", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      response = fragmentFixture("text", "text-native-search", ["done"]).completeEvents
+      const turn = (candidate: Model, flag: boolean) =>
+        Effect.gen(function* () {
+          const previous = Flag.FORGE_NATIVE_TOOL_SEARCH
+          Flag.FORGE_NATIVE_TOOL_SEARCH = flag
+          currentModel = candidate
+          requests.length = 0
+          yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "hello" }), resume: false })
+          yield* session.resume(sessionID)
+          const request = requests[0]!
+          return {
+            toolSearch: (request.providerOptions?.openai as { toolSearch?: string } | undefined)?.toolSearch,
+            tools: request.tools.map((tool) => tool.name),
+          }
+        }).pipe(Effect.ensuring(Effect.sync(() => void (Flag.FORGE_NATIVE_TOOL_SEARCH = false))))
+      const responsesModel = (id: string) => Model.make({ id, provider: "openai", route: OpenAIResponses.route })
+
+      const on = yield* turn(responsesModel("gpt-6-sol"), true)
+      expect(on.toolSearch).toBe("client")
+      expect(on.tools).toContain("tool_search")
+      expect(on.tools).not.toContain("tool_load")
+
+      for (const [candidate, flag] of [
+        [responsesModel("gpt-6-sol"), false],
+        [responsesModel("gpt-4.1"), true],
+        [Model.make({ id: "gpt-6-sol", provider: "openai", route: OpenAIChat.route }), true],
+      ] as const) {
+        const off = yield* turn(candidate, flag)
+        expect(off.toolSearch).toBeUndefined()
+        expect(off.tools).toContain("tool_load")
+      }
     }),
   )
 
@@ -2493,6 +2578,31 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
+  it.effect("runs an agent-requested checkpoint before the next turn without asking a model to summarize", () =>
+    Effect.gen(function* () {
+      const session = yield* setupOverflowRecovery
+      const management = yield* SessionContextManagement.Service
+      const handoff = compactionSummary("Agent-written checkpoint")
+      yield* management.request(sessionID, handoff)
+      // The only provider call left is the answer itself: a summarizer would consume it and fail the turn.
+      responses = [fragmentFixture("text", "text-final", ["Continuing from the checkpoint"]).completeEvents]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(1)
+      expect(requests.some((request) => userTexts(request).some((text) => text.includes("anchored summary")))).toBe(
+        false,
+      )
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "compaction", summary: handoff },
+        { type: "user", text: "Continue" },
+        { type: "assistant", finish: "stop" },
+      ])
+      // Taken exactly once: a second turn is not compacted again.
+      expect(yield* management.take(sessionID)).toBeUndefined()
+    }),
+  )
+
   it.effect("recovers once from a raw context overflow failure", () =>
     Effect.gen(function* () {
       const session = yield* setupOverflowRecovery
@@ -2893,6 +3003,79 @@ describe("SessionRunnerLLM", () => {
           ],
         },
         { type: "assistant", finish: "stop", content: [{ type: "text", id: "text-final", text: "Done" }] },
+      ])
+    }),
+  )
+
+  const toolStep = [
+    LLMEvent.stepStart({ index: 0 }),
+    LLMEvent.toolCall({ id: "call-echo", name: "echo", input: { text: "hello" } }),
+    LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+    LLMEvent.finish({ reason: "tool-calls" }),
+  ]
+  const finalStep = [
+    LLMEvent.stepStart({ index: 0 }),
+    LLMEvent.textStart({ id: "text-final" }),
+    LLMEvent.textDelta({ id: "text-final", text: "Done" }),
+    LLMEvent.textEnd({ id: "text-final" }),
+    LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+    LLMEvent.finish({ reason: "stop" }),
+  ]
+
+  it.effect("starts each step of a drain from the tree the previous step ended on, capturing it once", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Echo this" }), resume: false })
+
+      requests.length = 0
+      executions.length = 0
+      streamGate = undefined
+      streamStarted = undefined
+      treeLog = { captures: [], compared: [] }
+      responses = [toolStep, toolStep, finalStep]
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(3)
+      // One baseline for the drain and one end of step for each of the three steps. Capturing a baseline for every
+      // step as well would be six, each a walk of the whole worktree.
+      expect(treeLog.captures).toEqual(["tree-1", "tree-2", "tree-3", "tree-4"])
+      // Each step is compared from the tree the one before it ended on.
+      expect(treeLog.compared).toEqual([
+        { from: "tree-1", to: "tree-2" },
+        { from: "tree-2", to: "tree-3" },
+        { from: "tree-3", to: "tree-4" },
+      ])
+    }),
+  )
+
+  it.effect("takes a fresh baseline for every drain, so a user turn never inherits the last one", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "First" }), resume: false })
+
+      requests.length = 0
+      executions.length = 0
+      streamGate = undefined
+      streamStarted = undefined
+      treeLog = { captures: [], compared: [] }
+      responses = [finalStep]
+      yield* session.resume(sessionID)
+
+      // The person edits files and sends another prompt.
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Second" }), resume: false })
+      responses = [finalStep]
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      // Two captures per drain: a fresh baseline, then the end of the step. The second drain's baseline is a new
+      // capture (tree-3), not the first drain's end (tree-2).
+      expect(treeLog.captures).toEqual(["tree-1", "tree-2", "tree-3", "tree-4"])
+      expect(treeLog.compared).toEqual([
+        { from: "tree-1", to: "tree-2" },
+        { from: "tree-3", to: "tree-4" },
       ])
     }),
   )

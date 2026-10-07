@@ -173,6 +173,41 @@ describe("SessionRunnerModel", () => {
     }),
   )
 
+  it.effect("sends a chat-body prompt cache key only to opencode, Venice and opted-in providers", () =>
+    Effect.gen(function* () {
+      const resolve = (providerID: string, body: Record<string, unknown> = {}) =>
+        SessionRunnerModel.fromCatalogModel(
+          ModelV2.Info.make({
+            ...model({ type: "aisdk", package: "@ai-sdk/openai-compatible", url: "https://example.test/v1" }),
+            providerID: ProviderV2.ID.make(providerID),
+            request: { headers: {}, body: { apiKey: "secret", ...body } },
+          }),
+        )
+      const bodyFor = (resolved: Parameters<typeof LLM.request>[0]["model"]) =>
+        LLMClient.prepare<Record<string, unknown>>(
+          LLM.request({ model: resolved, prompt: "Hello", providerOptions: { openai: { promptCacheKey: "session-key" } } }),
+        ).pipe(Effect.map((prepared) => prepared.body))
+
+      for (const providerID of ["opencode", "opencode-go", "opencode-zen", "venice"]) {
+        const resolved = yield* resolve(providerID)
+        expect(resolved.compatibility?.promptCacheKey).toBe(true)
+        expect((yield* bodyFor(resolved)).prompt_cache_key).toBe("session-key")
+      }
+
+      // The v1 `setCacheKey` option turns it on for any provider.
+      const optedIn = yield* resolve("custom-gateway", { setCacheKey: true })
+      expect((yield* bodyFor(optedIn)).prompt_cache_key).toBe("session-key")
+
+      // Everything else stays off: strict OpenAI-compatible servers reject unknown fields.
+      for (const providerID of ["groq", "togetherai", "deepinfra", "cerebras", "mistral", "moonshotai", "custom-gateway"]) {
+        const resolved = yield* resolve(providerID)
+        expect(resolved.compatibility?.promptCacheKey).toBeUndefined()
+        expect(yield* bodyFor(resolved)).not.toHaveProperty("prompt_cache_key")
+      }
+      expect(yield* bodyFor(yield* resolve("groq", { setCacheKey: false }))).not.toHaveProperty("prompt_cache_key")
+    }),
+  )
+
   it.effect("applies Moonshot tool-schema compatibility to both Kimi transports", () =>
     Effect.gen(function* () {
       const openai = yield* SessionRunnerModel.fromCatalogModel(

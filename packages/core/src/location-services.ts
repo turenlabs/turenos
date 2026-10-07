@@ -160,7 +160,23 @@ export function buildLocationServiceMap(
         )
       },
       { idleTimeToLive: "60 minutes" },
+    ).pipe(
+      // Keys compare structurally, so `{ directory, workspaceID: undefined }` and `{ directory }`
+      // are different keys. Callers build both shapes, and each used to get its own full set of
+      // Location services for the same directory.
+      Effect.map((map) => ({
+        ...map,
+        get: (ref: Location.Ref) => map.get(canonicalRef(ref)),
+        contextEffect: (ref: Location.Ref) => map.contextEffect(canonicalRef(ref)),
+        invalidate: (ref: Location.Ref) => map.invalidate(canonicalRef(ref)),
+      })),
     ),
+  )
+}
+
+function canonicalRef(ref: Location.Ref) {
+  return Location.Ref.make(
+    ref.workspaceID === undefined ? { directory: ref.directory } : { directory: ref.directory, workspaceID: ref.workspaceID },
   )
 }
 

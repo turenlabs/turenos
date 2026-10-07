@@ -13,8 +13,11 @@ export async function referencedWasmAssets(directory: string) {
     await Promise.all(
       javascript.map(async (file) => {
         const source = await readFile(path.join(directory, file), "utf8")
+        // Consumers match forward-slash prefixes and asar paths, so keep
+        // separators posix-style even when readdir returns win32 paths.
+        const dir = path.posix.dirname(file.split(path.sep).join("/"))
         return Array.from(source.matchAll(/["'](\.\/[^"']+\.wasm)["']/g), (match) =>
-          path.join(path.dirname(file), ...match[1].split("/")),
+          path.posix.join(dir, ...match[1].split("/")),
         )
       }),
     )

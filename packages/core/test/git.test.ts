@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { Effect, Exit } from "effect"
@@ -204,6 +204,129 @@ describe("Git trees", () => {
       expect(yield* read(path.join(root.path, "outside.txt"))).toBe("changed outside\n")
     }),
   )
+
+  // The oracle is plain `git diff` for one file, which is what this code ran for every file before it was batched.
+  it.live("batches tree diffs and still matches git file by file, across more files than one batch", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      // The shadow git directory lives beside the project, not inside it, so a scope of "." never captures it.
+      const project = path.join(root.path, "project")
+      const bulk = Array.from({ length: 205 }, (_, index) => `bulk/file-${String(index).padStart(3, "0")}.txt`)
+      yield* Effect.promise(async () => {
+        await fs.mkdir(project)
+        await initRepo(project)
+        await fs.mkdir(path.join(project, "bulk"))
+        await Promise.all([
+          ...bulk.map((file) => fs.writeFile(path.join(project, file), "one\ntwo\nthree\n")),
+          fs.writeFile(path.join(project, "gone.txt"), "bye\nbye\n"),
+          fs.writeFile(path.join(project, "blob.bin"), Buffer.from([0, 1, 2, 3, 0, 255])),
+          fs.writeFile(path.join(project, "no-newline.txt"), "no newline"),
+        ])
+      })
+      const git = yield* Git.Service
+      const source = yield* git.repo.discover(AbsolutePath.make(project))
+      if (!source) throw new Error("Repository not found")
+      const repository = yield* git.repo.create({
+        worktree: source.worktree,
+        gitDirectory: AbsolutePath.make(path.join(root.path, "shadow")),
+        seed: source,
+      })
+      yield* git.index.refresh({ repository, scope: RelativePath.make(".") })
+      const before = yield* git.tree.write(repository)
+
+      yield* Effect.promise(async () => {
+        await Promise.all([
+          ...bulk.map((file) => fs.writeFile(path.join(project, file), "one\nTWO\nthree\nfour\n")),
+          fs.rm(path.join(project, "gone.txt")),
+          fs.writeFile(path.join(project, "blob.bin"), Buffer.from([0, 9, 9, 3, 0, 255, 7])),
+          fs.writeFile(path.join(project, "no-newline.txt"), "no newline either"),
+          // A literal name that is also a glob: it must select only itself.
+          fs.writeFile(path.join(project, "*.txt"), "star\n"),
+          fs.writeFile(path.join(project, "tab\tname.txt"), "tab\n"),
+        ])
+      })
+      yield* git.index.refresh({ repository, scope: RelativePath.make(".") })
+      const after = yield* git.tree.write(repository)
+
+      const diffs = yield* git.tree.diff({ repository, from: before, to: after, context: 3 })
+      const byPath = new Map(diffs.map((item) => [String(item.path), item]))
+      const changed = yield* git.tree.files({ repository, from: before, to: after })
+      expect(diffs.map((item) => item.path)).toEqual([...changed])
+      expect(diffs).toHaveLength(bulk.length + 5)
+
+      expect(byPath.get("gone.txt")).toMatchObject({ status: "deleted", additions: 0, deletions: 2 })
+      expect(byPath.get("*.txt")).toMatchObject({ status: "added", additions: 1, deletions: 0 })
+      expect(byPath.get("tab\tname.txt")).toMatchObject({ status: "added", additions: 1, deletions: 0 })
+      expect(byPath.get("blob.bin")).toMatchObject({ status: "modified", additions: 0, deletions: 0, patch: "" })
+      expect(byPath.get(bulk[204]!)).toMatchObject({ status: "modified", additions: 2, deletions: 1 })
+
+      // Every file's patch is byte-for-byte what git prints for that file alone, in both batches.
+      for (const item of diffs.filter((entry) => entry.path !== "blob.bin")) {
+        const reference = yield* Effect.promise(() =>
+          runGit(
+            project,
+            "--git-dir",
+            repository.gitDirectory,
+            "--literal-pathspecs",
+            "diff",
+            "--unified=3",
+            "--no-renames",
+            before,
+            after,
+            "--",
+            item.path,
+          ),
+        )
+        expect(item.patch).toBe(reference.stdout)
+      }
+    }),
+  )
+})
+
+describe("Git diff output parsing", () => {
+  test("reads status and counts from raw plus numstat records", () => {
+    const summary = Git.parseDiffSummary(
+      [
+        ":100644 100644 aaa bbb M",
+        "a.txt",
+        ":000000 100644 0000000 ccc A",
+        "new.txt",
+        ":100644 000000 ddd 0000000 D",
+        "old.txt",
+        ":100644 100644 eee fff M",
+        "image.png",
+        "3\t1\ta.txt",
+        "5\t0\tnew.txt",
+        "0\t4\told.txt",
+        "-\t-\timage.png",
+        "",
+      ].join("\0"),
+    )
+
+    expect(summary.get("a.txt")).toEqual({ status: "modified", additions: 3, deletions: 1, binary: false })
+    expect(summary.get("new.txt")).toEqual({ status: "added", additions: 5, deletions: 0, binary: false })
+    expect(summary.get("old.txt")).toEqual({ status: "deleted", additions: 0, deletions: 4, binary: false })
+    expect(summary.get("image.png")).toEqual({ status: "modified", additions: 0, deletions: 0, binary: true })
+  })
+
+  test("a filename that looks like a record is read as a path", () => {
+    const tricky = ":100644 100644 aaa bbb M"
+    const summary = Git.parseDiffSummary([":100644 100644 aaa bbb M", tricky, `2\t2\t${tricky}`, ""].join("\0"))
+
+    expect(summary.get(tricky)).toEqual({ status: "modified", additions: 2, deletions: 2, binary: false })
+    expect(summary.size).toBe(1)
+  })
+
+  test("splits one git diff into one patch per file without breaking bodies", () => {
+    const first = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-x\n+diff --git is only text here\n"
+    const second = "diff --git a/b b/b\nnew file mode 100644\n"
+
+    expect(Git.splitPatches(first + second)).toEqual([first, second])
+    expect(Git.splitPatches("")).toEqual([])
+  })
 })
 
 describe("Git index", () => {

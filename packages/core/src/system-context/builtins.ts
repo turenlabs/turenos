@@ -8,8 +8,10 @@ import { InstructionContext } from "../instruction-context"
 import { SystemContextRegistry } from "./registry"
 import { FSUtil } from "../fs-util"
 import { Global } from "../global"
+import { SessionContextManagement } from "../session/context-management"
 import { SessionTodoGuidance } from "../session/todo-guidance"
 import { Reflection } from "../reflection"
+import { VisualizationGuidance } from "../tool/visualization-guidance"
 
 const builtIns = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -50,6 +52,13 @@ const builtIns = Layer.effectDiscard(
     ].join("\n")
     const context = SystemContext.combine([
       SystemContext.make({
+        key: SystemContext.Key.make("core/visualization-guidance"),
+        codec: Schema.toCodecJson(Schema.String),
+        load: Effect.succeed(VisualizationGuidance.SYSTEM),
+        baseline: (guidance) => guidance,
+        update: (_previous, guidance) => guidance,
+      }),
+      SystemContext.make({
         key: SystemContext.Key.make("core/response-guidance"),
         codec: Schema.toCodecJson(Schema.String),
         load: Effect.succeed(responseGuidance),
@@ -75,6 +84,13 @@ const builtIns = Layer.effectDiscard(
         key: SystemContext.Key.make("core/memory-guidance"),
         codec: Schema.toCodecJson(Schema.String),
         load: Effect.succeed(memoryGuidance),
+        baseline: (guidance) => guidance,
+        update: (_previous, guidance) => guidance,
+      }),
+      SystemContext.make({
+        key: SystemContext.Key.make("core/context-guidance"),
+        codec: Schema.toCodecJson(Schema.String),
+        load: Effect.succeed(SessionContextManagement.GUIDANCE),
         baseline: (guidance) => guidance,
         update: (_previous, guidance) => guidance,
       }),

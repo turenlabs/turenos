@@ -40,6 +40,7 @@ import {
   orderedStepOutputs,
   runProgressLabel,
   runTotal,
+  runSteps,
   STEP_STATE_LABEL,
   STEP_STATE_TONE,
   stepChipFor,
@@ -53,6 +54,7 @@ import { RunChatDialog } from "./loops/run-chat"
 import { automationSortOptions, sortAutomations, type AutomationSort } from "./loops/sort"
 import {
   agentDraft,
+  invalidStepBinding,
   renameStep,
   skillDraft,
   stepSummary,
@@ -96,13 +98,6 @@ const SESSION_OUTCOME_OPTIONS: Array<{ value: SessionOutcomeFilter; label: strin
   { value: "success", label: "Success only" },
   { value: "failure", label: "Failure only" },
 ]
-
-const invalidStepBinding = (steps: readonly StepDraft[]) =>
-  steps.find((step, index) => {
-    const available = new Set(steps.slice(0, index).map((item) => item.id))
-    const template = step.type === "agent" ? step.prompt : step.instructions
-    return [...template.matchAll(/{{\s*steps\.([A-Za-z][A-Za-z0-9_-]*)\./g)].some((match) => !available.has(match[1]))
-  })
 
 /**
  * Model selections are carried as `providerID/id` and the effort tier separately, rather
@@ -944,7 +939,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                                 {runStatusLabel(run().status).toLowerCase()} ·{" "}
                                 {new Date(run().scheduledAt).toLocaleDateString()}
                                 <Show when={isActiveRun(run())}>
-                                  {` · step ${currentStepIndex(run()) + 1} of ${item.workflow?.steps.length ?? Math.max(Object.keys(run().outputs).length, 1)}`}
+                                  {` · step ${currentStepIndex(run()) + 1} of ${runTotal(run(), runSteps(run(), item))}`}
                                 </Show>
                               </span>
                             )}
@@ -1766,7 +1761,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                   }
                 >
                   {(run) => {
-                    const steps = () => selected()?.workflow?.steps ?? []
+                    const steps = () => runSteps(run, selected())
                     const entries = () => orderedStepOutputs(run, steps())
                     const total = () => runTotal(run, steps())
                     const progress = () => runProgressLabel(run, steps())

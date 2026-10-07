@@ -7,6 +7,20 @@ complete list of `tools/` targets is in [`tools/README.md`](../../../tools/READM
 
 ## Shipped
 
+`tools/jwt-audit` gives AppSec and ProdSec defenders offline token inspection
+and RS256/ES256 verification. It requires one supplied public JWK and an
+explicit issuer, audience, algorithm, and time policy. Token key URLs and
+embedded keys never control verification. The report separates signature
+validity from claim-policy results. It does not check revocation or replay,
+establish key ownership, or grant authorization.
+
+`tools/sqlite-inspect` includes `sqlite_wal_inspect` for one supplied WAL file.
+It verifies header and cumulative frame checksums, matches salts, and reports
+commit boundaries, uncommitted frames, and invalid or partial tails.
+It never replays pages, executes SQL, or reads database sidecars.
+Checksums do not authenticate data or establish database association or
+checkpoint status. Frame lists are bounded; summaries cover the valid prefix.
+
 `tools/static-analysis` exposes twenty-four bounded operations through
 `analyze(operation, bytes, options_json)`. `office_inspect` reports OOXML
 parts/relationships and OLE stream metadata plus macro, ActiveX, DDE, and
@@ -99,6 +113,10 @@ byte-in/JSON-out ABI:
 - `tools/json-query`: jaq-core/jaq-json queries over bounded input plus
   validation, shape stats, and leaf-path discovery. Hostile filter builtins
   (`env`, `now`, `halt`) are rejected at compile time.
+- `tools/text-diff`: `similar` Myers line diff over two bounded byte strings,
+  returning line counts and a `createTwoFilesPatch`-compatible unified patch.
+  Work is bounded by a deterministic budget, never a clock; a region too large
+  for it is anchored on unique lines and reported `approximate`.
 - `tools/pdf-inspect`: lopdf structure/object/stream/text inspection with
   exploit-document findings; encrypted files are reported, never decrypted.
 - `tools/minidump`: rust-minidump stream/thread/module/memory reads with

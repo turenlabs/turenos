@@ -175,6 +175,34 @@ export function sqlite_table_stats(bytes, options_json) {
     }
 }
 
+/**
+ * Inspect one WAL file's header, validated frame prefix, and commit markers.
+ * Never replay pages or infer association with a database file.
+ * @param {Uint8Array} bytes
+ * @param {string} options_json
+ * @returns {string}
+ */
+export function sqlite_wal_inspect(bytes, options_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(options_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.sqlite_wal_inspect(retptr, ptr0, len0, ptr1, len1);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        deferred3_0 = r0;
+        deferred3_1 = r1;
+        return getStringFromWasm0(r0, r1);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export3(deferred3_0, deferred3_1, 1);
+    }
+}
+
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,

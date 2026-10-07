@@ -1,6 +1,6 @@
 import * as InstanceState from "@/effect/instance-state"
 import { FileSystem } from "@turenlabs/core/filesystem"
-import { LocationServiceMap, locationServiceMapLayer } from "@turenlabs/core/location-services"
+import { LocationServiceMap } from "@turenlabs/core/location-services"
 import { Ripgrep } from "@turenlabs/core/ripgrep"
 import { FSUtil } from "@turenlabs/core/fs-util"
 import { Location } from "@turenlabs/core/location"
@@ -136,4 +136,4 @@ export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handl
       .handle("content", content)
       .handle("status", status)
   }),
-).pipe(Layer.provide(locationServiceMapLayer))
+)

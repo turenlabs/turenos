@@ -36,11 +36,13 @@ const wasmToolLeaves = new Set([
   "installer-inspect",
   "java-inspect",
   "json-query",
+  "jwt-audit",
   "macos-artifacts",
   "minidump",
   "pdf-inspect",
   "ripgrep-wasm",
   "rtf-inspect",
+  "script-deobfuscate",
   "sourcemap",
   "sqlite-inspect",
   "squashfs",
@@ -72,20 +74,9 @@ export default defineConfig(({ command }) => ({
       "import.meta.env.FORGE_CHANNEL": JSON.stringify(channel),
     },
     build: {
-      minify: command === "build" && "esbuild",
-      rollupOptions: {
-        input: { index: "src/main/index.ts", sidecar: "src/main/sidecar.ts" },
-        // Keep this identical to electron-vite's Node 20.11+ shim. Its regex insertion can
-        // corrupt bundled TypeScript, while a Rollup banner places the shim safely.
-        output: {
-          banner: `
-// -- CommonJS Shims --
-import __cjs_mod__ from 'node:module';
-const __filename = import.meta.filename;
-const __dirname = import.meta.dirname;
-const require = __cjs_mod__.createRequire(import.meta.url);
-`,
-        },
+      minify: command === "build",
+      rolldownOptions: {
+        input: { index: "src/main/index.ts" },
       },
       externalizeDeps: { exclude: ["@turenlabs/schema", "@turenlabs/protocol"] },
     },
@@ -114,15 +105,12 @@ const require = __cjs_mod__.createRequire(import.meta.url);
         },
       },
       {
-        name: "forge:virtual-server-module",
-        enforce: "pre",
-        resolveId(id) {
-          if (id === "virtual:forge-server") return this.resolve(`${FORGE_SERVER_DIST}/node.js`)
-        },
-      },
-      {
         name: "forge:copy-server-assets",
         async writeBundle() {
+          await fs.cp(FORGE_SERVER_DIST, "./out/main/server", {
+            recursive: true,
+            filter: (source) => !source.endsWith(".map"),
+          })
           for (const l of await fs.readdir(FORGE_SERVER_DIST)) {
             if (l.endsWith(".wasm")) {
               await fs.copyFile(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/${l}`)
@@ -227,8 +215,8 @@ const require = __cjs_mod__.createRequire(import.meta.url);
       "import.meta.env.FORGE_CHANNEL": JSON.stringify(channel),
     },
     build: {
-      minify: command === "build" && "esbuild",
-      rollupOptions: {
+      minify: command === "build",
+      rolldownOptions: {
         input: { index: "src/preload/index.ts", "security-browser": "src/preload/security-browser.ts" },
         output: {
           format: "cjs",
@@ -242,10 +230,12 @@ const require = __cjs_mod__.createRequire(import.meta.url);
     publicDir: "../../../app/public",
     root: "src/renderer",
     build: {
-      minify: command === "build" && "esbuild",
+      minify: command === "build",
+      // Vite 8's default; Vite 7 minified CSS with esbuild instead.
+      cssMinify: "lightningcss",
       // Hidden maps exist only when the Sentry plugin uploads and deletes them.
       sourcemap: sentry ? "hidden" : false,
-      rollupOptions: {
+      rolldownOptions: {
         input: {
           main: "src/renderer/index.html",
           securityBrowser: "src/renderer/security-browser.html",

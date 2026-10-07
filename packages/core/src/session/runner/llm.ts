@@ -30,13 +30,16 @@ import { SystemContext } from "../../system-context/index"
 import { SystemContextRegistry } from "../../system-context/registry"
 import { SkillGuidance } from "../../skill/guidance"
 import { ReferenceGuidance } from "../../reference/guidance"
+import { Flag } from "../../flag/flag"
 import { ToolBroker } from "../../tool/broker"
+import { NativeToolSearch } from "../../tool/native-tool-search"
 import { SessionToolSnapshot } from "../../tool/session-snapshot"
 import { ToolVisibleError } from "../../tool/visible-error"
 import { GoalTool } from "../../tool/goal"
 import { SwarmRoomTool } from "../../tool/swarm-room"
 import { ToolOutputStore } from "../../tool-output-store"
 import { SessionContextEpoch } from "../context-epoch"
+import { SessionContextManagement } from "../context-management"
 import { SessionContextRequest } from "../context-request"
 import { SessionCompaction } from "../compaction"
 import { SessionEvent } from "../event"
@@ -64,10 +67,12 @@ import { SessionRunnerRetry } from "./retry"
 import { SessionRunnerTitle } from "./title"
 import { GoalContext } from "./goal-context"
 import { SessionRunnerAttachment } from "./attachment"
+import { CacheAffinity } from "./cache-affinity"
 import { ClaudeCodeMcp } from "./claude-code-mcp-namespace"
 import { toLLMMessages } from "./to-llm-message"
 import { MAX_STEPS_PROMPT } from "./max-steps"
 import { Snapshot } from "../../snapshot"
+import { OpenAICodex } from "../../plugin/provider/openai-codex"
 import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
@@ -333,6 +338,7 @@ const layer = Layer.effect(
     const models = yield* SessionRunnerModel.Service
     const store = yield* SessionStore.Service
     const goalAccounting = yield* SessionGoalAccounting.Service
+    const contextManagement = yield* SessionContextManagement.Service
     const goals = yield* SessionGoal.Service
     const harness = yield* Effect.serviceOption(SessionHarness.Service)
     const todos = yield* SessionTodo.Service
@@ -344,6 +350,13 @@ const layer = Layer.effect(
     const config = yield* Config.Service
     const permission = yield* PermissionV2.Service
     const snapshots = yield* Snapshot.Service
+    // The tree captured when a step ended, handed to the next step of the same drain as its baseline. Capturing
+    // walks the whole worktree (about 290ms in a large repository, twice per step), and the end of one step and the
+    // start of the next are the same moment: only the runner's own bookkeeping lies between them, and every tool
+    // has already settled. Consumed once, dropped when the drain ends, and ignored once older than a few seconds,
+    // so a baseline is never carried across a user turn, where the person may have edited files.
+    const carriedSnapshots = new Map<SessionSchema.ID, { readonly snapshot: string; readonly at: number }>()
+    const CARRIED_SNAPSHOT_MAX_AGE_MS = 5_000
     const database = yield* Database.Service
     // Resolved once, like every other collaborator in this layer, and passed as a plain value into
     // `SessionRunnerAttachment.materialize` -- that function's callers are typed with `R = never`,
@@ -843,6 +856,11 @@ const layer = Layer.effect(
           ? latestHumanInput
           : undefined
       yield* startupPhase("history_ready", { entries: history.length })
+      const nativeToolSearch = NativeToolSearch.enabled({
+        flag: Flag.FORGE_NATIVE_TOOL_SEARCH,
+        routeID: model.route.id,
+        modelID: model.id,
+      })
       const toolSnapshot = toolsDisabled
         ? undefined
         : yield* toolSnapshots.materialize({
@@ -855,6 +873,7 @@ const layer = Layer.effect(
             taskOwned: session.parentID !== undefined,
             control,
             harnessState,
+            nativeToolSearch,
           })
       yield* startupPhase("tools_ready", { tools: toolSnapshot?.materialization.definitions.length ?? 0 })
       const objectiveChanged =
@@ -981,7 +1000,33 @@ const layer = Layer.effect(
             ]
           : []),
       ]
+      // A one-time note when this window first crosses a budget threshold. Claimed per Session, window and
+      // level so it is added once and stays in the frame, instead of repeating as a new message every turn.
+      const windowTokens = model.route.defaults.limits?.context
+      const occupancy = windowTokens === undefined ? undefined : SessionCompaction.reportedOccupancy(history, model)
+      const budgetLevel =
+        occupancy === undefined || windowTokens === undefined || windowTokens <= 0
+          ? undefined
+          : SessionContextManagement.nudgeLevel(occupancy / windowTokens)
+      const budgetNote =
+        budgetLevel === undefined || occupancy === undefined || windowTokens === undefined
+          ? undefined
+          : (yield* contextManagement.claimNudge({
+                sessionID: session.id,
+                window: history.filter((entry) => entry.message.type === "compaction").length,
+                level: budgetLevel,
+              }))
+            ? Message.make({
+                role: "user",
+                content: SessionContextManagement.nudge({
+                  level: budgetLevel,
+                  usedPercent: Math.round((occupancy / windowTokens) * 100),
+                }),
+                metadata: { forge: { internalContext: "context-budget" } },
+              })
+            : undefined
       const notes = [
+        ...(budgetNote ? [budgetNote] : []),
         ...(currentTask
           ? [
               Message.make({
@@ -1039,8 +1084,32 @@ const layer = Layer.effect(
       const insertion = boundary === -1 ? messages.length : boundary
       const request = LLM.request({
         model,
-        providerOptions: { openai: { promptCacheKey } },
-        metadata: claudeMcpToken ? ClaudeCodeMcp.requestMetadata(claudeMcpToken) : undefined,
+        // One session-derived key for every provider that takes one in the body. OpenRouter reads its own
+        // namespace and forwards the key to upstreams that cache on it. A model that opted in to a chat-body
+        // key (see `sendsPromptCacheKey`) also gets it under its provider ID, which is where the AI SDK
+        // bridge looks for a bridged package such as Venice.
+        providerOptions: {
+          // `toolSearch: "client"` makes the Responses protocol declare `tool_search` natively and answer it with
+          // `tool_search_output`, so loading a tool no longer changes the request's tools.
+          openai: { promptCacheKey, ...(nativeToolSearch ? { toolSearch: "client" } : {}) },
+          openrouter: { promptCacheKey },
+          ...(model.compatibility?.promptCacheKey === true ? { [String(modelRef.providerID)]: { promptCacheKey } } : {}),
+        },
+        // Providers that pin a conversation to one server or replica with a header.
+        http: {
+          headers: CacheAffinity.headers({
+            providerID: String(modelRef.providerID),
+            baseURL: model.route.endpoint.baseURL,
+            key: promptCacheKey,
+            parentSessionID: session.parentID === undefined ? undefined : String(session.parentID),
+          }),
+        },
+        metadata: {
+          ...(claudeMcpToken ? ClaudeCodeMcp.requestMetadata(claudeMcpToken) : {}),
+          // Compactions so far; routes that tell the provider which context window a request belongs to read it.
+          [OpenAICodex.CONTEXT_WINDOW_METADATA_KEY]: history.filter((entry) => entry.message.type === "compaction")
+            .length,
+        },
         system: base,
         messages: [
           ...(prepared.frame?.messages ?? []),
@@ -1053,6 +1122,22 @@ const layer = Layer.effect(
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: toolsDisabled ? "none" : undefined,
       })
+      // A checkpoint the agent asked for with `session_checkpoint`. It runs here, at a provider-turn boundary,
+      // because the call that requested it is already in history and the checkpoint must not split it from
+      // its result. The agent wrote the summary, so there is no summarization call to wait for. Taken before
+      // the pruning branch below so a requested checkpoint is not preceded by a prune that busts the cache.
+      const requestedHandoff = compactBeforeTurn ? yield* contextManagement.take(session.id) : undefined
+      if (
+        requestedHandoff !== undefined &&
+        (yield* compaction.compactWithHandoff({
+          sessionID: session.id,
+          entries: history,
+          model,
+          request,
+          handoff: requestedHandoff,
+        })).ok
+      )
+        return yield* Effect.die(continueAfterCompaction(currentStep, todoPrompt))
       if (
         compactBeforeTurn &&
         prepared.frame?.turn !== turn &&
@@ -1153,8 +1238,11 @@ const layer = Layer.effect(
             : getGoal(session.id),
       })
       // Advances when a mid-turn steer closes one assistant message and opens the next.
-      let startSnapshot = yield* snapshots.capture()
-      yield* startupPhase("snapshot_captured", { captured: startSnapshot !== undefined })
+      const carried = carriedSnapshots.get(sessionID)
+      carriedSnapshots.delete(sessionID)
+      const reusable = carried !== undefined && Date.now() - carried.at <= CARRIED_SNAPSHOT_MAX_AGE_MS
+      let startSnapshot = reusable ? (carried.snapshot as Snapshot.ID) : yield* snapshots.capture()
+      yield* startupPhase("snapshot_captured", { captured: startSnapshot !== undefined, reused: reusable })
       // From here on the publisher owns failure reporting for this turn. Provisionally: the
       // publisher only opens the durable step on the first content frame, so if the turn ends
       // with the step never opened, the settlement block below hands the responsibility back.
@@ -1786,6 +1874,7 @@ const layer = Layer.effect(
           }
           if (stepSettlement && !publisher.hasProviderError() && !turnInterrupted) {
             const endSnapshot = yield* snapshots.capture()
+            if (endSnapshot !== undefined) carriedSnapshots.set(sessionID, { snapshot: endSnapshot, at: Date.now() })
             const files =
               startSnapshot && endSnapshot
                 ? yield* snapshots
@@ -2114,6 +2203,8 @@ const layer = Layer.effect(
               cause: exit._tag === "Failure" ? Cause.pretty(exit.cause) : undefined,
               progress: turnProgress.get(input.sessionID),
             }).pipe(
+              // A baseline never outlives its drain: the next one starts from a fresh capture.
+              Effect.andThen(Effect.sync(() => carriedSnapshots.delete(input.sessionID))),
               Effect.andThen(
                 exit._tag === "Success"
                   ? Effect.void
@@ -2182,6 +2273,7 @@ export const node = makeLocationNode({
     Database.node,
     SessionGoal.node,
     SessionGoalAccounting.node,
+    SessionContextManagement.node,
     SessionTodo.node,
     Reflection.node,
     // Needed by SessionRunnerAttachment.materialize: FileSystem.Service reads `file:` attachments

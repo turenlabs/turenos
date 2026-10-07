@@ -30,6 +30,10 @@ For each provider turn the registry:
 Most tools use their own name as the permission action; `edit`, `write`, and `apply_patch` share the `edit` action, and
 `shell_job` uses the `bash` action, so a whole-tool `bash` deny also hides it.
 
+When a user rejects a V2 `edit`, `write`, or `apply_patch` permission request with corrective feedback, the tool
+returns that feedback as its model-visible error. This applies to both `external_directory` and `edit` approval;
+the rejected operation does not read the target's contents or change the file.
+
 A call is settled against the registration it was advertised with. If that registration has since been replaced or
 closed, the call returns `Stale tool call: <name>` and nothing executes; a name that was never advertised returns
 `Unknown tool: <name>`.
@@ -41,6 +45,18 @@ keeps rarely used capabilities out of context. The model finds deferred tools wi
 `tool_load`; the selected definition appears on the next provider turn. `mcp_search` and `mcp_load` are hidden aliases
 over the MCP subset. A direct call to a deferred tool that wasn't selected still executes, and any allow rule other than
 the catch-all `*` whose action pattern matches the tool keeps it inline.
+
+### Native tool search
+
+Selecting a tool with `tool_load` changes the request's `tools`, which sit at the front of the cached prefix, so every
+load re-reads the whole window uncached. With `FORGE_NATIVE_TOOL_SEARCH=true`, a turn on the OpenAI Responses route with a
+GPT-5.4 or later model uses the provider's client-executed tool search instead (`packages/core/src/tool/native-tool-search.ts`).
+The request declares `tool_search` once and its advertised tools never change. `tool_search` loads the best matches
+(default 8, at most 20) and returns their definitions, which the protocol sends back as a `tool_search_output` item that
+the provider injects at the end of the context window. `tool_load` is not advertised, loaded tools stay callable but
+are never advertised, and a `tool_search` result is never pruned because it holds those definitions. The flag is off by
+default until `packages/core/script/smoke-tool-search.ts` confirms the backend accepts it. Every other route and model
+keeps the `tool_search` and `tool_load` pair.
 
 ## Interceptors
 
@@ -82,6 +98,8 @@ session tools supplied by `SessionToolSnapshot`. The legacy runtime builds its l
 | `code_search`                                                                                  | Ranked code search over the Location index                                                                       | V2            | no                          | `packages/core/src/tool/code-search.ts`                                                                                         |
 | `todowrite`, `question`, `skill`                                                               | Todo list, user questions, skill loading                                                                         | V2 and legacy | no                          | `packages/core/src/tool/todowrite.ts`, `question.ts`, `skill.ts`; `packages/forge/src/tool/todo.ts`, `question.ts`, `skill.ts`  |
 | `get_goal`, `create_goal`, `update_goal`                                                       | Session goal state                                                                                               | V2            | no                          | `packages/core/src/tool/goal.ts`                                                                                                |
+| `session_context`, `session_checkpoint`                                                        | Read context fill, cache state and cost; replace earlier history with an agent-written checkpoint                | V2            | no                          | `packages/core/src/tool/context.ts`                                                                                             |
+| `session_recall`                                                                               | Search this session's own earlier history, even after compaction, and read events around a match                 | V2            | no                          | `packages/core/src/tool/recall.ts`                                                                                              |
 | `reflection_state`, `reflection_read`, `reflection_complete`                                   | Durable predictions and hypotheses                                                                               | V2            | no                          | `packages/core/src/tool/reflection.ts`                                                                                          |
 | `memory_search`, `memory_read`, `memory_write`, `memory_forget`                                | Project [memory](./memory.md)                                                                                    | V2            | `memory_forget` only        | `packages/core/src/tool/memory.ts`                                                                                              |
 | `automation_list`, `automation_create`, `automation_update`                                    | [Automations](./automations/README.md)                                                                           | V2            | yes                         | `packages/core/src/tool/automation.ts`                                                                                          |
@@ -115,6 +133,18 @@ never advertises `edit` and `apply_patch` to the same model; see [Shell tool rou
 `packages/core/src/tool/team-board.ts` defines `board_post` and `board_read`, but no runtime registers them; agents
 coordinate through the swarm room tools.
 
+## Filesystem search permissions
+
+V2 `grep` and `glob` resolve their search root through `LocationMutation`, like `read`. Relative paths must stay inside
+the active Location; a relative `..` escape or an in-Location symlink that resolves outside it fails before permission
+or search execution. An explicit external absolute path requires `external_directory` authorization for the canonical
+directory (`<directory>/*`), followed by the tool's own `grep` or `glob` permission. For an external file searched with
+`grep`, the directory resource is its canonical parent. Glob line counting happens only after both permissions pass.
+
+The search uses the resolved canonical target, rather than resolving the original alias again after approval. This is
+a path authorization boundary, not an OS sandbox: canonicalization does not pin filesystem objects against concurrent
+replacement. Recursive searches do not enable symlink following.
+
 ## Limits
 
 - The registry performs no execution authorization; each tool checks permission itself. A tool that never asks, such as
@@ -123,6 +153,9 @@ coordinate through the swarm room tools.
 ## Source
 
 - [`packages/core/src/tool/tool.ts`](../../packages/core/src/tool/tool.ts)
+- [`packages/core/src/tool/grep.ts`](../../packages/core/src/tool/grep.ts)
+- [`packages/core/src/tool/glob.ts`](../../packages/core/src/tool/glob.ts)
+- [`packages/core/src/location-mutation.ts`](../../packages/core/src/location-mutation.ts)
 - [`packages/core/src/tool/registry.ts`](../../packages/core/src/tool/registry.ts)
 - [`packages/core/src/tool/tools.ts`](../../packages/core/src/tool/tools.ts)
 - [`packages/core/src/tool/application-tools.ts`](../../packages/core/src/tool/application-tools.ts)

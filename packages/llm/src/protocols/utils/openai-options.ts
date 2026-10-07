@@ -91,6 +91,12 @@ export const promptCacheKey = (request: LLMRequest) => {
   return typeof value === "string" ? value : undefined
 }
 
+/**
+ * `"client"` when the caller answers tool search itself: the request declares `tool_search`, and each
+ * `tool_search_call` is answered with a `tool_search_output` that carries the definitions. Absent otherwise.
+ */
+export const toolSearch = (request: LLMRequest) => (options(request)?.toolSearch === "client" ? "client" : undefined)
+
 export const textVerbosity = (request: LLMRequest) => {
   const value = options(request)?.textVerbosity
   return isTextVerbosity(value) ? value : undefined

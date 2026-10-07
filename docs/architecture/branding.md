@@ -15,7 +15,7 @@ CLI utility, not a second user-facing product or an alternative product name for
 
 Use `forge` when referring to the actual executable or commands such as `forge serve`. Its role is
 headless server operation, remote hosts over SSH, managed WSL backends, and backend administration.
-Desktop starts its local server directly in an Electron utility process; users do not need to install
+Desktop starts its local server directly in a bundled Bun child process; users do not need to install
 the CLI separately to use the local TurenOS application.
 
 The executable also exposes broader commands, including agent runs, provider management,

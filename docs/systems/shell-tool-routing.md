@@ -79,9 +79,11 @@ The classifier intentionally allows cases where the specialized workspace tools 
 - informational commands such as `rg --version` and `grep --version`;
 - destructive or executable `find` forms, which do not have the same semantics as `glob`.
 
-External searches stay in Bash because the `grep` tool is scoped to the active Location or managed tool-output files. A
-redirect to a build log also stays in Bash because `edit` and `apply_patch` are workspace mutation tools, not general
-process-output sinks.
+The router leaves external searches in Bash; it does not force them through a specialized tool. V2 `grep` and `glob`
+also accept explicit external absolute paths, but require `external_directory` authorization before searching.
+Relative paths cannot escape the active Location, and in-Location symlinks resolving outside it are rejected.
+Managed tool-output files outside the Location use the same external authorization boundary. A redirect to a build log
+also stays in Bash because `edit` and `apply_patch` are workspace mutation tools, not general process-output sinks.
 
 ## Parsing
 
@@ -176,6 +178,9 @@ tests separately prove that a routed command stops before permission and process
 
 - [`packages/core/src/shell-tool-routing.ts`](../../packages/core/src/shell-tool-routing.ts)
 - [`packages/core/src/tool/bash.ts`](../../packages/core/src/tool/bash.ts)
+- [`packages/core/src/tool/grep.ts`](../../packages/core/src/tool/grep.ts)
+- [`packages/core/src/tool/glob.ts`](../../packages/core/src/tool/glob.ts)
+- [`packages/core/src/location-mutation.ts`](../../packages/core/src/location-mutation.ts)
 - [`packages/forge/src/tool/shell.ts`](../../packages/forge/src/tool/shell.ts)
 - Tests: [`packages/core/test/shell-tool-routing.test.ts`](../../packages/core/test/shell-tool-routing.test.ts)
 - Contract: [`specs/v2/tools.md`](../../specs/v2/tools.md)

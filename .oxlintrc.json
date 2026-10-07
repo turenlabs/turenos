@@ -1,8 +1,5 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicolo-ribaudo/oxc-project.github.io/refs/heads/json-schema/src/public/.oxlintrc.schema.json",
-  "options": {
-    "typeAware": true
-  },
   "categories": {
     "suspicious": "warn"
   },
@@ -40,12 +37,6 @@
     "typescript/no-floating-promises": "warn",
     // Warn when spreading non-plain objects (Headers, class instances, etc.)
     "typescript/no-misused-spread": "warn"
-  },
-  "options": {
-    "typeAware": true
-  },
-  "options": {
-    "typeAware": true
   },
   "overrides": [
     {

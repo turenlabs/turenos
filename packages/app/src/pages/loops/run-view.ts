@@ -1,4 +1,4 @@
-import type { LoopRun } from "./api"
+import type { LoopInfo, LoopRun } from "./api"
 import { parseEventPaths, type TriggerDraft } from "./trigger"
 
 export type StepState = "done" | "active" | "failed" | "pending"
@@ -94,7 +94,9 @@ export const stepDisplay = (
 
 /** Latest-run state for a canvas step node, inferred from outputs + currentStep. */
 export const stepChipFor = (run: LoopRun, stepID: string, index: number) => {
-  const state = stepState(run, stepID, index)
+  const executedIndex = run.execution ? runSteps(run).findIndex((step) => step.id === stepID) : index
+  if (executedIndex < 0) return
+  const state = stepState(run, stepID, executedIndex)
   return { label: STEP_STATE_LABEL[state], tone: STEP_STATE_TONE[state] }
 }
 
@@ -108,3 +110,7 @@ export const triggerSummary = (draft: TriggerDraft) => {
   if (draft.kind === "session-end") return "On session end"
   return `Every ${draft.interval || "Not set"}`
 }
+
+/** Historical runs own their workflow; never substitute later edits for a legacy prompt run. */
+export const runSteps = (run: LoopRun, automation?: Pick<LoopInfo, "workflow">) =>
+  (run.execution ? run.execution.workflow?.steps : automation?.workflow?.steps) ?? []

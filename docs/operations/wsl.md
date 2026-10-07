@@ -1,7 +1,7 @@
 # WSL backends
 
 On Windows, TurenOS Desktop can run its backend inside a Windows Subsystem for Linux (WSL) distribution instead of the
-local utility process. Desktop installs `forge` into the distro, starts `forge serve` there, and talks to it over HTTP
+local Bun child process. Desktop installs `forge` into the distro, starts `forge serve` there, and talks to it over HTTP
 on `127.0.0.1`. The server binds all interfaces inside the distro, so how far it is reachable depends on the WSL
 networking mode; every request still needs the per-start password.
 

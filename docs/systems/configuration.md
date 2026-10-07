@@ -26,7 +26,9 @@ How a key combines across documents depends on the key:
   the fields it sets.
 - `retention` is read only from the global config files, and is re-read on every retention sweep.
 - `permissions` from every document are concatenated, lowest priority first, and appended to every agent's rules.
-  Evaluation takes the last matching rule, so a nearer document's rule wins.
+  Evaluation takes the last matching rule, so a nearer document's rule wins. Documents outside the global config
+  directory (repository `forge.json`, `.forge/` files, and agent Markdown found there) keep only their `ask` and `deny`
+  rules; their `allow` rules are dropped, so a cloned repository can tighten the user's rules but not loosen them.
 - `providers`, `commands`, `skills`, and `agents` are applied document by document, so a later document adds entries
   and overrides entries with the same name. An `agents` entry overrides only the fields it sets.
 - `watcher.ignore` patterns from every document are combined.
@@ -105,12 +107,13 @@ and `cors` entries are added to the `--cors` list. The CLI defaults are port `0`
 | `attachments.image.max_width`            | 2,000   | Pixels.                                                                                                                  |
 | `attachments.image.max_height`           | 2,000   | Pixels.                                                                                                                  |
 | `attachments.image.max_base64_bytes`     | 5 MiB   | Encoded size limit.                                                                                                      |
-| `compaction.auto`                        | `true`  | Compact automatically when the context budget runs out. A user-requested compaction ignores it.                          |
+| `compaction.auto`                        | `true`  | Compact automatically at 40% of the context window. A user-requested compaction ignores it.                              |
 | `compaction.prune`                       | `true`  | Clear stale tool results from replay. `false` also turns off the clearing options below.                                 |
 | `compaction.pruneInputs`                 | `true`  | Also clear stale, re-derivable tool inputs (`write`, `edit`, `apply_patch` bodies).                                      |
 | `compaction.pruneMedia`                  | `true`  | Also clear stale media attachments past the protect window.                                                              |
 | `compaction.dedupOutputs`                | `true`  | Clear older tool results that are byte-identical to a newer one.                                                         |
 | `compaction.ledger`                      | `true`  | Carry an append-only ledger of durable facts with each checkpoint. Costs one extra short summarizer call per compaction. |
+| `compaction.background`                  | `true`  | Write the checkpoint in the background as the window nears its target, so compaction commits instantly instead of stopping the turn. |
 | `compaction.keep.tokens`                 | 16,000  | Recent tokens kept out of the summary. Clamped to 200,000.                                                               |
 | `compaction.keep.turns`                  | 2       | Recent turns kept out of the summary; `0` disables turn alignment. Clamped to 50.                                        |
 | `compaction.buffer`                      | 20,000  | Tokens reserved below the context limit. Clamped to 500,000.                                                             |
@@ -123,7 +126,8 @@ and `cors` entries are added to the `--cors` list. The CLI defaults are port `0`
 
 Each `agents.<name>` entry overrides a built-in agent or defines a new one. Fields: `model`, `variant`, `system`,
 `description`, `mode` (`primary`, `subagent`, or `all`), `hidden`, `color`, `steps` (a positive integer), `disabled`,
-and `permissions`. An agent's `permissions` are appended after the top-level rules. Agents can also be written as
+and `permissions`. An agent's `permissions` are appended after the top-level rules, and `allow` rules are dropped from
+documents outside the global config directory, as for top-level `permissions`. Agents can also be written as
 Markdown files under `agent/` or `agents/` in any config directory, and primary agents as Markdown files under `mode/`
 or `modes/`.
 

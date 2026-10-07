@@ -945,10 +945,12 @@ describe("event stream under agent workload", () => {
         )
 
         const vocab0 = potionCalls.vocab
+        const started = Date.now()
         const [firstHits, firstMs] = yield* timed(search.search({ queries: ["reconcile watcher"] }))
         expect(firstHits.length).toBeGreaterThan(0)
         // First call builds the index and embeds the vocabulary once.
         expect(firstMs).toBeLessThan(30_000)
+        expect(potionCalls.vocab - vocab0).toBe(1)
 
         for (let round = 1; round <= 8; round++) {
           const touched = Array.from({ length: 8 }, (_, k) => (round * 8 + k) % files)
@@ -971,15 +973,21 @@ describe("event stream under agent workload", () => {
           expect(hits.length).toBeGreaterThan(0)
           expect(ms).toBeLessThan(10_000)
         }
-        // The churned searches all landed inside the debounce window — only the
-        // initial build paid a vocabulary embed.
-        expect(potionCalls.vocab - vocab0).toBe(1)
+        // Slow runners can cross the two-second debounce window during churn.
+        expect(potionCalls.vocab - vocab0).toBeLessThanOrEqual(1 + Math.floor((Date.now() - started) / 2000))
 
         // Past the window the stale table refreshes — bounded, not permanent.
+        yield* Effect.promise(() => Bun.write(`${dir}/src/mod0.ts`, body(0, 9)))
+        yield* events.publish(
+          Watcher.Event.Updated,
+          { file: `${dir}/src/mod0.ts`, event: "change" },
+          { location: Location.Ref.make({ directory: AbsolutePath.make(dir) }) },
+        )
+        const beforeRefresh = potionCalls.vocab
         yield* Effect.sleep("2.5 seconds")
         const [afterHits] = yield* timed(search.search({ queries: ["reconcile watcher"] }))
         expect(afterHits.length).toBeGreaterThan(0)
-        expect(potionCalls.vocab - vocab0).toBe(2)
+        expect(potionCalls.vocab).toBe(beforeRefresh + 1)
       }),
       { config: { formatter: false, lsp: false } },
     ),

@@ -1,6 +1,6 @@
 export * as Observability from "./observability"
 
-import { NodeFileSystem } from "@effect/platform-node"
+import { BunFileSystem } from "@effect/platform-bun"
 import { LayerNode } from "./effect/layer-node"
 import { Effect, Layer, Logger, References } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
@@ -11,7 +11,7 @@ import { Otlp } from "./observability/otlp"
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const logs = Logger.layer([...Logging.loggers(), ...Otlp.loggers()], { mergeWithExisting: false }).pipe(
-      Layer.provide(NodeFileSystem.layer),
+      Layer.provide(BunFileSystem.layer),
       Layer.provide(OtlpSerialization.layerJson),
       Layer.provide(FetchHttpClient.layer),
       Layer.orDie,

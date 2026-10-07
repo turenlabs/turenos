@@ -168,3 +168,5 @@ const table = sqliteTable("session", {
 ## Type Checking
 
 - Always run `bun typecheck` from package directories (e.g., `packages/forge`), never `tsc` directly.
+- Packages whose `typecheck` script runs `tsgo --noEmit` pass `--checkers 1`; keep it. Extra checkers each rebuild the Effect and `@turenlabs/core` types and cost memory without saving time. `packages/app` and `packages/desktop` use `tsgo -b --force` and `packages/sdk/js` adds `--composite false`, because the pinned tsgo skips re-checking files after a global declaration changes in an incremental run; keep typechecks non-incremental.
+- `bun run lint` runs without type information. `bun run lint:types` adds the type-aware rules and CI runs it, but every rule is a warning, so it reports rather than gates. It loads the whole type graph: run it from one agent at a time and not alongside a typecheck.

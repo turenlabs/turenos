@@ -7831,6 +7831,18 @@ export type LoopRun = {
   outputs: {
     [key: string]: AutomationStepOutput
   }
+  execution?: {
+    title: string
+    prompt: string
+    location: {
+      directory: string
+      workspaceID?: string
+    }
+    agent?: string
+    model?: ModelRef
+    skill?: string
+    workflow?: AutomationWorkflow
+  }
   error?: string
   time: {
     created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"

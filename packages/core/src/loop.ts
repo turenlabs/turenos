@@ -1,6 +1,7 @@
 export * as Loop from "./loop"
 
-import { and, asc, count, desc, eq, gt, inArray, isNull, lte, min, or } from "drizzle-orm"
+import { and, asc, count, desc, eq, gt, inArray, isNull, lte, min, notExists, or } from "drizzle-orm"
+import { alias } from "drizzle-orm/sqlite-core"
 import type { EffectDrizzleSqlite } from "@turenlabs/effect-drizzle-sqlite"
 import { Clock, Context, Deferred, Effect, Layer, Schema } from "effect"
 import { Database } from "./database/database"
@@ -427,15 +428,6 @@ const layer = Layer.effect(
       const invalidWorkflow = input.workflow ? validateWorkflow(input.workflow) : undefined
       if (invalidWorkflow) return yield* invalidWorkflow
       const now = Date.now()
-      const nextForSchedule =
-        schedule.kind === "none"
-          ? undefined
-          : schedule.kind === "event"
-            ? null
-            : schedule.scheduleType === "interval"
-              ? now + schedule.seconds * 1_000
-              : computeCronNext(schedule.expression, schedule.timezone, now)
-      if (nextForSchedule instanceof InvalidInputError) return yield* nextForSchedule
       const result = yield* db
         .transaction(
           (tx) =>
@@ -443,6 +435,16 @@ const layer = Layer.effect(
               const current = yield* tx.select().from(LoopTable).where(eq(LoopTable.id, input.id)).get()
               if (!current) return { type: "not-found" } as const
               if (current.expires_at <= now) return { type: "state" } as const
+              const nextForSchedule =
+                schedule.kind === "none"
+                  ? undefined
+                  : schedule.kind === "event"
+                    ? null
+                    : schedule.scheduleType === "interval"
+                      ? Math.max(current.starts_at, now + schedule.seconds * 1_000)
+                      : computeCronNext(schedule.expression, schedule.timezone, Math.max(now, current.starts_at - 1))
+              if (nextForSchedule instanceof InvalidInputError)
+                return { type: "invalid", message: nextForSchedule.message } as const
               const nextSkill = input.resetSkill ? undefined : (input.skill ?? current.skill ?? undefined)
               if (!(input.prompt ?? current.prompt).trim() && !nextSkill && !(input.workflow ?? current.workflow))
                 return { type: "task" } as const
@@ -502,6 +504,7 @@ const layer = Layer.effect(
         .pipe(Effect.orDie, Effect.ensuring(stateChanged))
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
       if (result.type === "state") return yield* new InvalidStateError({ id: input.id, message: "Loop has expired" })
+      if (result.type === "invalid") return yield* new InvalidInputError({ message: result.message })
       if (result.type === "task")
         return yield* new InvalidInputError({ message: "A custom prompt or skill is required" })
       if (result.type === "expiry") return yield* new InvalidInputError({ message: "Expiry must be in the future" })
@@ -568,8 +571,8 @@ const layer = Layer.effect(
                 return { type: "event", row: current } as const
               const next =
                 current.schedule_type === "cron" && current.cron_expression
-                  ? computeCronNext(current.cron_expression, current.timezone, now)
-                  : now + current.interval_seconds * 1_000
+                  ? computeCronNext(current.cron_expression, current.timezone, Math.max(now, current.starts_at - 1))
+                  : Math.max(current.starts_at, now + current.interval_seconds * 1_000)
               if (next instanceof InvalidInputError) return { type: "invalid", message: next.message } as const
               const row = yield* tx
                 .update(LoopTable)
@@ -688,6 +691,7 @@ const layer = Layer.effect(
               if (!loop) return { type: "not-found" } as const
               if (loop.expires_at <= now) return { type: "expired" } as const
               if (loop.status !== "active") return { type: "inactive" } as const
+              if (loop.starts_at > now) return { type: "not-started" } as const
               if ((loop.trigger_type ?? "scheduled") !== input.trigger) return { type: "mismatch" } as const
               if (input.trigger === "session-end" && !matchesSessionEndFilter(loop.trigger_config, input.payload))
                 return { type: "filtered" } as const
@@ -724,6 +728,8 @@ const layer = Layer.effect(
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
       if (result.type === "expired" || result.type === "inactive")
         return yield* new InvalidStateError({ id: input.id, message: "Loop is not active" })
+      if (result.type === "not-started")
+        return yield* new InvalidStateError({ id: input.id, message: "Loop has not started" })
       if (result.type === "mismatch")
         return yield* new InvalidInputError({ message: `Loop does not listen for ${input.trigger} events` })
       if (result.type === "filtered")
@@ -763,25 +769,26 @@ const layer = Layer.effect(
                 .where(and(eq(LoopTable.status, "active"), lte(LoopTable.expires_at, now)))
                 .run()
               const recoverable = yield* tx
-                .select({ id: LoopRunTable.id })
+                .select({ id: LoopRunTable.id, loopID: LoopRunTable.loop_id })
                 .from(LoopRunTable)
                 .where(and(eq(LoopRunTable.status, "claimed"), lte(LoopRunTable.lease_expires_at, now)))
                 .orderBy(asc(LoopRunTable.time_created), asc(LoopRunTable.id))
-                .limit(limit)
                 .all()
-              const recovered = recoverable.length
-                ? yield* tx
-                    .update(LoopRunTable)
-                    .set({ lease_owner: input.owner, lease_expires_at: now + leaseMs, time_updated: now })
-                    .where(
-                      inArray(
-                        LoopRunTable.id,
-                        recoverable.map((row) => row.id),
-                      ),
-                    )
-                    .returning()
-                    .all()
-                : []
+              const recovered: (typeof LoopRunTable.$inferSelect)[] = []
+              for (const candidate of recoverable) {
+                if (recovered.length >= limit) break
+                // Renew serially inside the admission transaction: an earlier
+                // recovery or a fresh claim can already own this Loop. Keep
+                // blocked work and its checkpoint intact for a later scan.
+                if (yield* activeRun(tx, candidate.loopID, now)) continue
+                const row = yield* tx
+                  .update(LoopRunTable)
+                  .set({ lease_owner: input.owner, lease_expires_at: now + leaseMs, time_updated: now })
+                  .where(eq(LoopRunTable.id, candidate.id))
+                  .returning()
+                  .get()
+                if (row) recovered.push(row)
+              }
               const pendingManual = yield* tx
                 .select({ id: LoopRunTable.id })
                 .from(LoopRunTable)
@@ -1074,10 +1081,33 @@ const layer = Layer.effect(
         .where(eq(LoopTable.status, "active"))
         .get()
         .pipe(Effect.orDie)
+      const active = alias(LoopRunTable, "active_run")
       const lease = yield* db
         .select({ at: min(LoopRunTable.lease_expires_at) })
         .from(LoopRunTable)
-        .where(inArray(LoopRunTable.status, ["running", "claimed"]))
+        .where(
+          and(
+            inArray(LoopRunTable.status, ["running", "claimed"]),
+            // A blocked expired claim cannot be recovered until its sibling
+            // releases ownership. That sibling's lease still supplies a wake.
+            or(
+              eq(LoopRunTable.status, "running"),
+              gt(LoopRunTable.lease_expires_at, now),
+              notExists(
+                db
+                  .select({ id: active.id })
+                  .from(active)
+                  .where(
+                    and(
+                      eq(active.loop_id, LoopRunTable.loop_id),
+                      inArray(active.status, ["claimed", "running"]),
+                      or(isNull(active.lease_expires_at), gt(active.lease_expires_at, now)),
+                    ),
+                  ),
+              ),
+            ),
+          ),
+        )
         .get()
         .pipe(Effect.orDie)
       const manual = yield* db

@@ -20,32 +20,20 @@ import {
   directOAuthConnect,
   extensionSortOptions,
   extensionStatusFilters,
+  extensionTabs,
   extensionWriteTools,
   filterExtensionItems,
+  selectedExtensionTab,
   sortExtensionItems,
+  type ExtendTab,
   type ExtensionCategory,
-  type ExtensionKind,
   type ExtensionSort,
   type ExtensionStatusFilter,
 } from "./extend-model"
 import { ExtensionLogo } from "./extend-logo"
 
-const tabs = {
-  skills: "Skills / Subagents",
-  mcp: "MCP",
-  data: "Data",
-} as const
-
-type ExtendTab = keyof typeof tabs
-
 const traceCatalog = (phase: string, fields: Record<string, unknown>) =>
   console.info("[developer-catalog]", { phase, ...fields })
-
-const selectedTab = (value: unknown, kind: unknown): ExtendTab => {
-  if (value === "mcp" || kind === "mcp") return "mcp"
-  if (value === "data" || kind === "data") return "data"
-  return "skills"
-}
 
 const statusLabel = (status: ExtensionItem["status"]) =>
   status
@@ -234,17 +222,11 @@ export default function ExtendPage() {
     return "Could not load extensions"
   })
   const installed = createMemo(() => params.view === "installed" || location.pathname.endsWith("/installed"))
-  const tab = createMemo(() => selectedTab(location.query.tab, location.query.kind))
-  const tabKind = createMemo((): ExtensionKind | ReadonlyArray<ExtensionKind> => {
-    const value = tab()
-    if (value === "skills") return "skill"
-    if (value === "mcp") return "mcp"
-    return "data"
-  })
+  const tab = createMemo(() => selectedExtensionTab(location.query.tab, location.query.kind))
   const items = createMemo(() => {
     const filtered = filterExtensionItems(loaded()?.items ?? [], {
       installed: installed(),
-      kind: tabKind(),
+      kind: extensionTabs[tab()].kind,
       search: search(),
       category: category(),
       status: status(),
@@ -354,7 +336,7 @@ export default function ExtendPage() {
     <main class="flex h-full min-h-0 flex-col overflow-hidden bg-v2-background-bg-base text-v2-text-text-base">
       <PageHeader
         title="Extend"
-        description="Add MCP servers, cybersecurity data, skills, and subagents."
+        description="Add MCP servers, cybersecurity data, local tools, skills, and subagents."
         actions={
           <div class="flex rounded-[8px] bg-v2-background-bg-layer-01 p-0.5 [box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-muted)]">
             <button
@@ -380,8 +362,8 @@ export default function ExtendPage() {
       <section class="flex shrink-0 flex-col gap-3 border-b border-v2-border-border-muted px-6 py-3">
         <div class="flex flex-wrap items-center gap-3">
           <div class="flex gap-1" role="group" aria-label="Extension type">
-            <For each={Object.entries(tabs) as [ExtendTab, string][]}>
-              {([value, label]) => (
+            <For each={Object.keys(extensionTabs) as ExtendTab[]}>
+              {(value) => (
                 <button
                   type="button"
                   aria-pressed={tab() === value}
@@ -389,7 +371,7 @@ export default function ExtendPage() {
                   classList={{ "bg-v2-background-bg-layer-02 text-v2-text-text-base": tab() === value }}
                   onClick={() => navigateTab(value)}
                 >
-                  {label}
+                  {extensionTabs[value].label}
                 </button>
               )}
             </For>

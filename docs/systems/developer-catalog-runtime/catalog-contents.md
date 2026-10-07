@@ -1,6 +1,6 @@
 # Catalog contents
 
-The built-in catalog inventory as of 2026-09-25 is defined by the manifests in `services/catalog/manifests/`.
+The built-in catalog inventory as of 2026-10-04 is defined by the manifests in `services/catalog/manifests/`.
 
 ## Data sources
 
@@ -50,7 +50,7 @@ behavior and obtain a source-specific rights review before new storage or redist
 
 ## Skills and subagents
 
-The catalog contains twelve downloadable skills plus the built-in Customize TurenOS skill, whose `embedded` source ships
+The catalog contains seventeen downloadable skills plus the built-in Customize TurenOS skill, whose `embedded` source ships
 with TurenOS and is not downloaded or scanned by Vigil:
 
 - Secure Code Review
@@ -62,6 +62,11 @@ with TurenOS and is not downloaded or scanned by Vigil:
 - Detection Engineering Review
 - Incident Evidence Triage
 - MCP Security Review
+- Agentic Prompt-Injection Review
+- OAuth/OIDC Security Review
+- Tenant Isolation Review
+- SLSA Build Provenance Review
+- GitHub Actions Security Review
 - Technical Security Blog
 - Threat Model Review
 - IaC Config Review
@@ -113,7 +118,33 @@ tools` counts the manifest's `tools.write` allowlist; the rest are read-only.
 
 ## Tools
 
-The catalog contains 10 official tool extensions, all disabled until enabled and none with write tools: Bandit, Batou,
-Checkov, Gitleaks, Grype, Native Audits, Opengrep, OSV-Scanner, Trivy, and Yolk Change Intelligence
+The catalog contains 11 official tool extensions, all disabled until enabled and none with write tools: Bandit, Batou,
+Checkov, Gitleaks, Grype, Native Audits, Opengrep, OSV-Scanner, Trivy, zizmor, and Yolk Change Intelligence
 (`turenlabs/<name>` IDs; Native Audits is `turenlabs/native-audit`). Yolk uses the built-in `builtin:yolk` adapter; the
 others use `security:` adapters.
+
+### GitHub Actions security review
+
+Enable the **GitHub Actions Security Review** skill from Extend for a read-only review of an authorized workspace's
+workflows and reachable local actions/scripts. It traces untrusted inputs and cross-workflow artifact/cache handoffs
+to privileged execution, publishing, and deployment, distinguishing confirmed code-level paths from scanner candidates
+and missing policy evidence. It proposes fixes and regression tests without applying or running them.
+
+For scanner corroboration, separately install a trusted [zizmor](https://docs.zizmor.sh/installation/) executable
+(1.25.0 or newer, for `--no-ignores`) on the runtime host's PATH and enable the **zizmor** tool extension. TurenOS does
+not download or install this scanner. The
+`zizmor_scan` tool defaults to `.github/workflows`; use a narrower workflow path or a local action's YAML when needed.
+The skill discovers the tool through `tool_search` and, when needed, `tool_load`. If it is unavailable, the skill
+continues manual inspection and reports the scanner coverage gap rather than substituting a shell command.
+
+The adapter runs offline without repository configuration, suppression comments, or automatic fixes. Offline coverage
+cannot establish remote action integrity, live repository settings, runner isolation, or cloud authorization. Source-derived
+results still enter the agent conversation and may be sent to the configured model provider. The skill is a prompt-only
+procedure, not a permission or sandbox boundary.
+
+## Source
+
+- [Catalog manifests](../../../services/catalog/manifests/)
+- [GitHub Actions Security Review](../../../services/catalog/manifests/skills/github-actions-security-review.json)
+- [zizmor tool manifest](../../../services/catalog/manifests/tools/zizmor.json)
+- [zizmor adapter](../../../packages/forge/src/security/integrations/zizmor.ts)

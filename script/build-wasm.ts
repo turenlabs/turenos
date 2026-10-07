@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs"
 import { readdir } from "node:fs/promises"
 import path from "node:path"
+import os from "node:os"
 
 // Build, verify, and pack a WASM tool target into packages/<target>-wasm.
 // Mirrors .github/workflows/build-<target>.yml; those remain authoritative.
@@ -13,6 +14,12 @@ import path from "node:path"
 // pack + checksum steps against an existing tools/<target>/pkg or dist.
 
 const root = path.resolve(import.meta.dirname, "..")
+const buildEnv = {
+  ...process.env,
+  PATH: [path.join(process.env.CARGO_HOME ?? path.join(os.homedir(), ".cargo"), "bin"), process.env.PATH]
+    .filter(Boolean)
+    .join(path.delimiter),
+}
 const pkgDir = (target: string) => path.join(root, "packages", `${target}-wasm`)
 
 type Step = { run: string; cwd?: string; env?: Record<string, string>; test?: boolean; pack?: boolean }
@@ -47,8 +54,19 @@ const wasmPack = (
   wasmPack: WASM_PACK,
   steps: [
     ...(opts.pre ?? []),
-    ...(opts.test === null ? [] : [{ run: opts.test ?? `cargo test --locked --manifest-path tools/${t}/Cargo.toml`, env: { RUSTUP_TOOLCHAIN: opts.rust }, test: true }]),
-    { run: `wasm-pack build tools/${t} --target web --release --out-dir pkg`, env: { RUSTUP_TOOLCHAIN: opts.rust, ...opts.buildEnv } },
+    ...(opts.test === null
+      ? []
+      : [
+          {
+            run: opts.test ?? `cargo test --locked --manifest-path tools/${t}/Cargo.toml`,
+            env: { RUSTUP_TOOLCHAIN: opts.rust },
+            test: true,
+          },
+        ]),
+    {
+      run: `wasm-pack build tools/${t} --target web --release --out-dir pkg`,
+      env: { RUSTUP_TOOLCHAIN: opts.rust, ...opts.buildEnv },
+    },
     ...(opts.verifyPkg === null ? [] : [{ run: verify(t, ...(opts.verifyPkg ? [opts.verifyPkg] : [pkg(t)])) }]),
     { run: pack(t, pkg(t), ...(opts.packArgs ?? [])), pack: true },
     ...(opts.verifyDist ? [{ run: verify(t, `packages/${t}-wasm/dist`) }] : []),
@@ -65,15 +83,26 @@ const recipes: Record<string, Recipe> = {
     rust: R197,
     steps: [
       { run: "cargo test --manifest-path tools/binwalk-scan/Cargo.toml", env: { RUSTUP_TOOLCHAIN: R197 }, test: true },
-      { run: "cargo build --manifest-path tools/binwalk-scan/Cargo.toml --target wasm32-unknown-unknown --release", env: { RUSTUP_TOOLCHAIN: R197 } },
-      { run: pack("binwalk-scan", "tools/binwalk-scan/target/wasm32-unknown-unknown/release/turen_binwalk_scan_wasm.wasm"), pack: true },
+      {
+        run: "cargo build --manifest-path tools/binwalk-scan/Cargo.toml --target wasm32-unknown-unknown --release",
+        env: { RUSTUP_TOOLCHAIN: R197 },
+      },
+      {
+        run: pack(
+          "binwalk-scan",
+          "tools/binwalk-scan/target/wasm32-unknown-unknown/release/turen_binwalk_scan_wasm.wasm",
+        ),
+        pack: true,
+      },
       { run: verify("binwalk-scan", "packages/binwalk-scan-wasm/dist") },
     ],
   },
   "browser-artifacts": wasmPack("browser-artifacts", { rust: R197, verifyPkg: null, verifyDist: true }),
   "capa-match": {
     ...wasmPack("capa-match", { rust: R197, verifyPkg: null, verifyDist: true }),
-    upstreams: [{ name: "goblin", repo: "https://github.com/m4b/goblin.git", commit: "cec6e6eba5bdcec78ec79edc80b3a1f44856039a" }],
+    upstreams: [
+      { name: "goblin", repo: "https://github.com/m4b/goblin.git", commit: "cec6e6eba5bdcec78ec79edc80b3a1f44856039a" },
+    ],
     steps: [
       { run: "tools/capa-match/script/import-upstream.sh" },
       ...wasmPack("capa-match", { rust: R197, verifyPkg: null, verifyDist: true }).steps,
@@ -81,11 +110,19 @@ const recipes: Record<string, Recipe> = {
   },
   "code-signing": wasmPack("code-signing", { rust: R197, verifyPkg: null, verifyDist: true }),
   codec: wasmPack("codec", { rust: R197, verifyDist: true }),
-  "crypto-markers": wasmPack("crypto-markers", { rust: R197, test: "cargo test --manifest-path tools/crypto-markers/Cargo.toml", verifyDist: true }),
+  "crypto-markers": wasmPack("crypto-markers", {
+    rust: R197,
+    test: "cargo test --manifest-path tools/crypto-markers/Cargo.toml",
+    verifyDist: true,
+  }),
   "debug-symbols": wasmPack("debug-symbols", {
     rust: R194,
     test: null,
-    pre: [{ run: "cc -g -O0 -fno-omit-frame-pointer tools/debug-symbols/test/fixture.c -o tools/debug-symbols/test/fixture" }],
+    pre: [
+      {
+        run: "cc -g -O0 -fno-omit-frame-pointer tools/debug-symbols/test/fixture.c -o tools/debug-symbols/test/fixture",
+      },
+    ],
     verifyPkg: `${pkg("debug-symbols")} tools/debug-symbols/test/fixture`,
   }),
   "email-authenticate": wasmPack("email-authenticate", {
@@ -98,7 +135,10 @@ const recipes: Record<string, Recipe> = {
   "ghidra-decompiler": {
     emscripten: "6.0.8",
     steps: [
-      { run: 'make -f Makefile.wasm -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)"', cwd: "tools/ghidra-decompiler" },
+      {
+        run: 'make -f Makefile.wasm -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)"',
+        cwd: "tools/ghidra-decompiler",
+      },
       { run: "npm test", cwd: "tools/ghidra-decompiler", test: true },
       { run: "node script/pack-forge.mjs", cwd: "tools/ghidra-decompiler", pack: true },
     ],
@@ -106,37 +146,78 @@ const recipes: Record<string, Recipe> = {
   "git-inspect": wasmPack("git-inspect", { rust: R197, verifyPkg: null, verifyDist: true }),
   goblin: {
     ...wasmPack("goblin", { rust: R194, test: null, packArgs: ["upstream/goblin"] }),
-    upstreams: [{ name: "goblin", repo: "https://github.com/m4b/goblin.git", commit: "cec6e6eba5bdcec78ec79edc80b3a1f44856039a" }],
+    upstreams: [
+      { name: "goblin", repo: "https://github.com/m4b/goblin.git", commit: "cec6e6eba5bdcec78ec79edc80b3a1f44856039a" },
+    ],
   },
-  "image-inspect": wasmPack("image-inspect", { rust: R197, test: "cargo test --manifest-path tools/image-inspect/Cargo.toml" }),
-  "installer-inspect": wasmPack("installer-inspect", { rust: R197, test: "env DUMP_FIXTURES=1 cargo test --locked --manifest-path tools/installer-inspect/Cargo.toml", verifyDist: true }),
-  "java-inspect": wasmPack("java-inspect", { rust: R197, test: "cargo test --manifest-path tools/java-inspect/Cargo.toml" }),
+  "image-inspect": wasmPack("image-inspect", {
+    rust: R197,
+    test: "cargo test --manifest-path tools/image-inspect/Cargo.toml",
+  }),
+  "installer-inspect": wasmPack("installer-inspect", {
+    rust: R197,
+    test: "env DUMP_FIXTURES=1 cargo test --locked --manifest-path tools/installer-inspect/Cargo.toml",
+    verifyDist: true,
+  }),
+  "java-inspect": wasmPack("java-inspect", {
+    rust: R197,
+    test: "cargo test --manifest-path tools/java-inspect/Cargo.toml",
+  }),
   "json-query": wasmPack("json-query", { rust: R197 }),
+  "jwt-audit": wasmPack("jwt-audit", { rust: R197, verifyPkg: null, verifyDist: true }),
+  "text-diff": wasmPack("text-diff", { rust: R197 }),
   libpcap: {
     emscripten: "6.0.8",
-    upstreams: [{ name: "libpcap", repo: "https://github.com/the-tcpdump-group/libpcap.git", commit: "a999701dca5c873779281938baee6bc185a8d4dc" }],
+    upstreams: [
+      {
+        name: "libpcap",
+        repo: "https://github.com/the-tcpdump-group/libpcap.git",
+        commit: "a999701dca5c873779281938baee6bc185a8d4dc",
+      },
+    ],
     steps: [
       { run: "bash tools/libpcap/script/build.sh" },
       { run: verify("libpcap", "tools/libpcap/dist") },
       { run: pack("libpcap", "tools/libpcap/dist", "upstream/libpcap"), pack: true },
     ],
   },
-  "macos-artifacts": wasmPack("macos-artifacts", { rust: R197, test: "cargo test --manifest-path tools/macos-artifacts/Cargo.toml", verifyPkg: null, verifyDist: true }),
+  "macos-artifacts": wasmPack("macos-artifacts", {
+    rust: R197,
+    test: "cargo test --manifest-path tools/macos-artifacts/Cargo.toml",
+    verifyPkg: null,
+    verifyDist: true,
+  }),
   minidump: wasmPack("minidump", { rust: R197 }),
   monodis: {
     emscripten: "6.0.8",
     steps: [
       { run: "./script/import-upstream.sh", cwd: "tools/monodis" },
-      { run: 'make -f Makefile.wasm -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)"', cwd: "tools/monodis" },
+      {
+        run: 'make -f Makefile.wasm -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)"',
+        cwd: "tools/monodis",
+      },
       { run: "npm test", cwd: "tools/monodis", test: true },
       { run: "node script/pack-forge.mjs", cwd: "tools/monodis", pack: true },
     ],
   },
   "pdf-inspect": wasmPack("pdf-inspect", { rust: R197, test: null }),
-  "protocol-inspect": wasmPack("protocol-inspect", { rust: R194, test: null, packArgs: ["tools/protocol-inspect/LICENSE"] }),
-  "rebuild-timeline": wasmPack("rebuild-timeline", { rust: R194, test: null, packArgs: ["tools/rebuild-timeline/LICENSE"] }),
+  "protocol-inspect": wasmPack("protocol-inspect", {
+    rust: R194,
+    test: null,
+    packArgs: ["tools/protocol-inspect/LICENSE"],
+  }),
+  "rebuild-timeline": wasmPack("rebuild-timeline", {
+    rust: R194,
+    test: null,
+    packArgs: ["tools/rebuild-timeline/LICENSE"],
+  }),
   "rtf-inspect": wasmPack("rtf-inspect", { rust: R197, verifyPkg: null, verifyDist: true }),
   sourcemap: wasmPack("sourcemap", { rust: R197, verifyDist: true }),
+  "script-deobfuscate": wasmPack("script-deobfuscate", {
+    rust: R197,
+    buildEnv: { RUSTFLAGS: "-C link-arg=--max-memory=268435456" },
+    verifyDist: true,
+  }),
   "sqlite-inspect": wasmPack("sqlite-inspect", { rust: R197, verifyPkg: null, verifyDist: true }),
   squashfs: wasmPack("squashfs", {
     rust: R197,
@@ -154,8 +235,17 @@ const recipes: Record<string, Recipe> = {
     wasmPack: WASM_PACK,
     emscripten: "6.0.8",
     upstreams: [
-      { name: "upx", repo: "https://github.com/upx/upx.git", commit: "034b6d0d81c53998c07ad6f34bfead6f5c5445ce", submodules: true },
-      { name: "retdec", repo: "https://github.com/avast/retdec.git", commit: "53e55b4b26e9b843787f0e06d867441e32b1604e" },
+      {
+        name: "upx",
+        repo: "https://github.com/upx/upx.git",
+        commit: "034b6d0d81c53998c07ad6f34bfead6f5c5445ce",
+        submodules: true,
+      },
+      {
+        name: "retdec",
+        repo: "https://github.com/avast/retdec.git",
+        commit: "53e55b4b26e9b843787f0e06d867441e32b1604e",
+      },
     ],
     steps: [
       {
@@ -170,24 +260,47 @@ const recipes: Record<string, Recipe> = {
         run: "wasm-pack build tools/static-unpack/mpress --target web --release --out-dir pkg && node tools/static-unpack/test/verify-mpress.mjs tools/static-unpack/mpress/pkg",
         env: { RUSTUP_TOOLCHAIN: R194 },
       },
-      { run: "bash tools/static-unpack/script/build-upx.sh && node tools/static-unpack/test/verify-upx.mjs tools/static-unpack/dist tools/static-unpack/test/fixture.upx tools/static-unpack/test/fixture" },
-      { run: "node tools/static-unpack/script/pack.mjs tools/static-unpack/dist tools/static-unpack/mpress/pkg packages/static-unpack-wasm upstream/upx upstream/retdec", pack: true },
-      { run: "node tools/static-unpack/test/verify-package.mjs packages/static-unpack-wasm/dist tools/static-unpack/test/fixture.upx tools/static-unpack/test/fixture" },
+      {
+        run: "bash tools/static-unpack/script/build-upx.sh && node tools/static-unpack/test/verify-upx.mjs tools/static-unpack/dist tools/static-unpack/test/fixture.upx tools/static-unpack/test/fixture",
+      },
+      {
+        run: "node tools/static-unpack/script/pack.mjs tools/static-unpack/dist tools/static-unpack/mpress/pkg packages/static-unpack-wasm upstream/upx upstream/retdec",
+        pack: true,
+      },
+      {
+        run: "node tools/static-unpack/test/verify-package.mjs packages/static-unpack-wasm/dist tools/static-unpack/test/fixture.upx tools/static-unpack/test/fixture",
+      },
     ],
   },
   "stng-core": {
     ...wasmPack("stng-core", { rust: R194, test: null, packArgs: ["upstream/stng"] }),
-    upstreams: [{ name: "stng", repo: "https://github.com/atomdrift-project/stng.git", commit: "5d3c939edb55c7dcf3d5be70cad0648953b80640" }],
+    upstreams: [
+      {
+        name: "stng",
+        repo: "https://github.com/atomdrift-project/stng.git",
+        commit: "5d3c939edb55c7dcf3d5be70cad0648953b80640",
+      },
+    ],
   },
   "unicode-audit": wasmPack("unicode-audit", { rust: R197 }),
   "wasm-inspect": wasmPack("wasm-inspect", { rust: R194, test: null }),
   "wasm-toolkit": wasmPack("wasm-toolkit", { rust: R197 }),
   "wifi-offline": wasmPack("wifi-offline", { rust: R194, test: null, packArgs: ["tools/wifi-offline/LICENSE"] }),
-  "windows-artifacts": wasmPack("windows-artifacts", { rust: R194, test: null, packArgs: ["tools/windows-artifacts/LICENSE"] }),
+  "windows-artifacts": wasmPack("windows-artifacts", {
+    rust: R194,
+    test: null,
+    packArgs: ["tools/windows-artifacts/LICENSE"],
+  }),
   "yara-x": {
     rust: R194,
     wasmPack: WASM_PACK,
-    upstreams: [{ name: "yara-x", repo: "https://github.com/VirusTotal/yara-x.git", commit: "fe40349ea12c5ccb89aae9f304b979c4fb410f66" }],
+    upstreams: [
+      {
+        name: "yara-x",
+        repo: "https://github.com/VirusTotal/yara-x.git",
+        commit: "fe40349ea12c5ccb89aae9f304b979c4fb410f66",
+      },
+    ],
     steps: [
       { run: `git -C upstream/yara-x apply "${root}/tools/yara-x/patches/bounded-results.patch"` },
       { run: "npm --prefix upstream/yara-x/js-wasm run build:web", env: { RUSTUP_TOOLCHAIN: R194 } },
@@ -196,6 +309,12 @@ const recipes: Record<string, Recipe> = {
     ],
   },
 }
+
+// The standalone CLI ships with this artifact, so verify it after packing.
+recipes["script-deobfuscate"]!.steps.push({
+  run: "node tools/script-deobfuscate/test/cli.mjs packages/script-deobfuscate-wasm",
+  test: true,
+})
 
 const args = process.argv.slice(2)
 const noTest = args.includes("--no-test")
@@ -236,18 +355,18 @@ function run(cmd: string, cwd?: string, env?: Record<string, string>) {
   console.log(`$ ${cmd}`)
   const result = Bun.spawnSync(["sh", "-c", cmd], {
     cwd: cwd ? path.join(root, cwd) : root,
-    env: { ...process.env, ...env },
+    env: { ...buildEnv, ...env },
     stdio: ["inherit", "inherit", "inherit"],
   })
   if (result.exitCode !== 0) throw new Error(`command failed (${result.exitCode}): ${cmd}`)
 }
 
 function commandExists(cmd: string) {
-  return Bun.spawnSync(["sh", "-c", `command -v ${cmd}`]).exitCode === 0
+  return Bun.spawnSync(["sh", "-c", `command -v ${cmd}`], { env: buildEnv }).exitCode === 0
 }
 
 function ensureWasmPack(rust: string, version: string) {
-  const out = Bun.spawnSync(["wasm-pack", "--version"]).stdout.toString()
+  const out = Bun.spawnSync(["wasm-pack", "--version"], { env: buildEnv }).stdout.toString()
   if (out.includes(version)) return
   run(`cargo +${rust} install --locked wasm-pack --version ${version}`)
 }
@@ -255,7 +374,9 @@ function ensureWasmPack(rust: string, version: string) {
 function ensureUpstream({ name, repo, commit, submodules }: NonNullable<Recipe["upstreams"]>[number]) {
   const dir = path.join(root, "upstream", name)
   if (existsSync(path.join(dir, ".git"))) return
-  run(`git init -q ${dir} && git -C ${dir} remote add origin ${repo} && git -C ${dir} fetch -q --depth 1 origin ${commit} && git -C ${dir} checkout -q ${commit}`)
+  run(
+    `git init -q ${dir} && git -C ${dir} remote add origin ${repo} && git -C ${dir} fetch -q --depth 1 origin ${commit} && git -C ${dir} checkout -q ${commit}`,
+  )
   if (submodules) run(`git -C ${dir} submodule update --init --recursive --depth 1`)
 }
 

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/zizmor",
+  "name": "zizmor",
+  "description": "Scan local GitHub Actions workflows and action definitions for security risks without network access",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://docs.zizmor.sh/",
+  "contributions": [
+    {
+      "type": "tool",
+      "id": "zizmor",
+      "name": "zizmor",
+      "description": "Run an offline GitHub Actions security scan over bounded local YAML inputs",
+      "adapter": "security:zizmor",
+      "secrets": [],
+      "defaultEnabled": false,
+      "group": "iac",
+      "commands": ["zizmor"],
+      "configuration": [],
+      "tools": { "allow": ["zizmor_scan"], "write": [] },
+      "instructions": "Use zizmor_scan only on authorized local GitHub Actions workflow or action YAML. Enable this extension and install a trusted zizmor executable (1.25.0 or newer) on the runtime host separately; the adapter never installs it. The default path is .github/workflows. The scan is offline, ignores repository configuration and suppression comments, and never applies fixes or runs workflow steps. Treat findings as candidates requiring source inspection, not proof of exploitability. Record missing inputs, errors, offline-only coverage and truncation; no findings does not prove a workflow or deployment is secure. Never bypass a rejected path or scanner safety setting by running a shell command. Source-derived results still enter the agent conversation and may be sent to the configured model provider."
+    }
+  ]
+}
