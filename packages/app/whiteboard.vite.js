@@ -28,56 +28,8 @@ export { fileSave } from ${JSON.stringify(download)};`
   files.set("excalidraw/README.md", path.join(root, "README.md"))
   files.set("excalidraw/FONT-NOTICES.txt", fileURLToPath(new URL("./excalidraw-fonts-NOTICES.txt", import.meta.url)))
   const state = { base: "/" }
-
-  return {
-    name: "forge:whiteboard-fonts",
-    enforce: "pre",
-    config() {
-      // Keep CommonJS interop for the editor's dependencies while applying the
-      // same patches before esbuild creates the development bundle.
-      return {
-        resolve: { dedupe: ["react", "react-dom"] },
-        optimizeDeps: {
-          include: [
-            "@excalidraw/excalidraw",
-            "react",
-            "react-dom",
-            "react-dom/client",
-            "react/jsx-runtime",
-            "react/jsx-dev-runtime",
-          ],
-          esbuildOptions: {
-            plugins: [
-              {
-                name: "forge:whiteboard-fonts",
-                setup(build) {
-                  build.onResolve({ filter: /^browser-fs-access$/ }, (args) => {
-                    if (args.importer.replaceAll("\\", "/").startsWith(dist))
-                      return { path: adapterID, namespace: "whiteboard-file-access" }
-                  })
-                  build.onLoad({ filter: /.*/, namespace: "whiteboard-file-access" }, () => ({
-                    contents: adapter,
-                    loader: "js",
-                    resolveDir: root,
-                  }))
-                  build.onLoad({ filter: /[\\/]dist[\\/].*\.js$/ }, (args) => {
-                    if (!args.path.replaceAll("\\", "/").startsWith(dist)) return
-                    return {
-                      contents: stripFontFallback(readFileSync(args.path, "utf8"), args.path),
-                      loader: "js",
-                      resolveDir: path.dirname(args.path),
-                    }
-                  })
-                },
-              },
-            ],
-          },
-        },
-      }
-    },
-    configResolved(config) {
-      state.base = new URL(config.base, "http://vite.local/").pathname
-    },
+  // The same patches run in the app build and in the dev dependency optimizer.
+  const patches = {
     resolveId(source, importer) {
       if (source === "browser-fs-access" && importer?.replaceAll("\\", "/").startsWith(dist)) return adapterID
     },
@@ -89,6 +41,35 @@ export { fileSave } from ${JSON.stringify(download)};`
       if (!filename.startsWith(dist) || !filename.endsWith(".js") || !code.includes("ASSETS_FALLBACK_URL")) return
       return { code: stripFontFallback(code, id), map: null }
     },
+  }
+
+  return {
+    name: "forge:whiteboard-fonts",
+    enforce: "pre",
+    config() {
+      // Keep CommonJS interop for the editor's dependencies while applying the
+      // same patches before Rolldown creates the development bundle.
+      return {
+        resolve: { dedupe: ["react", "react-dom"] },
+        optimizeDeps: {
+          include: [
+            "@excalidraw/excalidraw",
+            "react",
+            "react-dom",
+            "react-dom/client",
+            "react/jsx-runtime",
+            "react/jsx-dev-runtime",
+          ],
+          rolldownOptions: {
+            plugins: [{ name: "forge:whiteboard-fonts", ...patches }],
+          },
+        },
+      }
+    },
+    configResolved(config) {
+      state.base = new URL(config.base, "http://vite.local/").pathname
+    },
+    ...patches,
     generateBundle() {
       for (const [fileName, source] of files) {
         this.emitFile({ type: "asset", fileName, source: readFileSync(source) })
