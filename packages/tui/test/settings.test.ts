@@ -173,7 +173,7 @@ test("extensions turn on and take secrets without showing them", async () => {
   await view.mockInput.typeText("sekrit")
   expect(view.captureCharFrame()).not.toContain("sekrit")
   view.mockInput.pressKey("s", { ctrl: true })
-  await screen("GitHub · connected")
+  await screen("GitHub · enabled, connected")
   expect(server.requests.filter((request) => request.method === "PATCH")[1]?.body).toMatchObject({
     enabled: true,
     secrets: { token: "sekrit" },
@@ -217,9 +217,9 @@ test("Intel lists advisories, switches to known-exploited CVEs, and toggles feed
   view.mockInput.pressKey("m")
   await screen("CVE-2026-1 Auth bypass")
   view.mockInput.pressKey("f")
-  await screen("● CISA KEV · kev")
+  await screen("● CISA KEV · on")
   view.mockInput.pressEnter()
-  await screen("○ CISA KEV · kev")
+  await screen("○ CISA KEV · off")
   expect(server.requests.find((item) => item.method === "PATCH")?.body).toEqual({ enabled: false })
 })
 

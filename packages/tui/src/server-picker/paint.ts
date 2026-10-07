@@ -1,8 +1,10 @@
 import { TextAttributes, TextRenderable } from "@opentui/core"
+import { fitHints } from "../changes/heading"
 import { display } from "../messages"
 import { serverLabel, type Entry, type Target } from "../servers"
 import { label } from "../state"
 import { color } from "../theme"
+import { fitDetail } from "./detail"
 import type { Picker, Tone, View } from "./types"
 
 export function say(picker: Picker, text: string, tone: Tone = "muted") {
@@ -19,8 +21,9 @@ export function paint(picker: Picker) {
   view.heading.content = current
     ? `Connected to ${label(serverLabel(current.target), 80)}${current.connected ? "" : " (disconnected)"} · choose a server`
     : "Choose a TurenOS server"
+  const root = picker.back ? "Settings › Servers" : "Servers"
   view.frame.title =
-    picker.mode === "add" ? " Servers › Add server " : picker.mode === "password" ? " Servers › Password " : " Servers "
+    picker.mode === "add" ? ` ${root} › Add server ` : picker.mode === "password" ? ` ${root} › Password ` : ` ${root} `
   view.list.visible = picker.mode === "list" || picker.mode === "connecting"
   view.fields.visible = picker.mode === "add" || picker.mode === "password"
   view.rows.forEach((row) => row.destroyRecursively())
@@ -61,8 +64,11 @@ function entryRows(picker: Picker, current: Target | undefined, offsets: number[
         : []
     const active = isCurrent(current, entry)
     const chosen = index === picker.selected
+    const name = label(entry.target.name, 64)
+    // The row's prefix, name column, gap and current marker come off the frame's inner width, with a column for the scrollbar.
+    const detail = fitDetail(name, entry.detail, Math.min(100, renderer.width - 2) - 7 - 4 - Math.max(width, name.length) - 2 - (active ? 11 : 0) - 1)
     const row = new TextRenderable(renderer, {
-      content: `${chosen ? "▶" : " "} ${active ? "●" : "○"} ${label(entry.target.name, 64).padEnd(width)}  ${label(entry.detail, 200)}${active ? "  · current" : ""}`,
+      content: `${chosen ? "▶" : " "} ${active ? "●" : "○"} ${name.padEnd(width)}${detail ? `  ${detail}` : ""}${active ? "  · current" : ""}`,
       fg: active ? color.accent : color.text,
       bg: chosen ? color.selected : undefined,
       height: 1,
@@ -100,5 +106,10 @@ function keyHint(picker: Picker, hasCurrent: boolean) {
   if (picker.mode === "connecting") return "Esc cancel"
   if (picker.mode === "add") return "Tab next field · Enter / Ctrl+S save · Esc back"
   if (picker.mode === "password") return "Enter connect · Ctrl+U clear · Esc back"
-  return `↑↓ choose · Enter connect · a add · d remove · r rescan${hasCurrent ? " · Esc back" : ""} · q quit`
+  // Hints wrap only between entries, so a key never lands on one line and its word on the next.
+  return fitHints(
+    Math.min(100, picker.renderer.width - 2) - 6,
+    ["↑↓ choose", "a add", "d remove", "r rescan"],
+    ["Enter connect", ...(hasCurrent ? ["Esc back"] : []), "q quit"],
+  )
 }

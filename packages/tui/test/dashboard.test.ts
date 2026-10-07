@@ -1462,10 +1462,10 @@ test("right-clicking navigation controls does not activate them", async () => {
   expect(view.captureCharFrame()).not.toContain("Agent ·")
 
   view.mockInput.pressKey("l", { ctrl: true })
-  const models = await waitForFrame(view, (frame) => frame.includes("Connect provider / add custom model"))
+  const models = await waitForFrame(view, (frame) => frame.includes("+ Connect a provider"))
   const modelLines = models.split("\n")
-  const setupRow = modelLines.findIndex((line) => line.includes("Connect provider / add custom model"))
-  await view.mockMouse.click(modelLines[setupRow]!.indexOf("Connect provider") + 1, setupRow, 2)
+  const setupRow = modelLines.findIndex((line) => line.includes("+ Connect a provider"))
+  await view.mockMouse.click(modelLines[setupRow]!.indexOf("Connect a provider") + 1, setupRow, 2)
   await view.renderOnce()
   expect(view.captureCharFrame()).toContain("Choose model")
 })

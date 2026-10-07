@@ -83,7 +83,7 @@ test("the memory form has no message-editor chrome and Kind is a choice", async 
   app.view.mockInput.pressEnter()
   await app.screen("All rooms")
   app.view.mockInput.pressKey("a")
-  await app.screen("read-only view")
+  await app.screen("Select a room, then press a")
   app.view.mockInput.pressArrow("down")
   app.view.mockInput.pressKey("a")
   const frame = await app.screen("New memory")

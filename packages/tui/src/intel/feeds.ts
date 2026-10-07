@@ -15,6 +15,20 @@ export type IntelContext = {
 }
 
 /** The feed list: Enter turns a feed on or off. `back` reopens the Intel panel. */
+const KINDS: Record<string, string> = {
+  kev: "known exploited list",
+  nvd: "NVD vulnerabilities",
+  epss: "EPSS scores",
+  github: "GitHub advisories",
+  rss: "news feed",
+}
+
+/** The feed's kind in words, then its address cut to the dialog's width with an ellipsis. */
+function describe(ctx: IntelContext, feed: { kind: string; url: string }) {
+  const kind = Object.hasOwn(KINDS, feed.kind) ? KINDS[feed.kind]! : label(feed.kind, 32)
+  return `${kind} · ${label(feed.url, Math.max(16, Math.min(70, ctx.renderer.width - 4) - 8 - kind.length - 3))}`
+}
+
 export function feeds(ctx: IntelContext, back: () => void, note = "") {
   const intel = ctx.connection.client["server.intel"]
   ctx.dialogs.close(false)
@@ -28,8 +42,8 @@ export function feeds(ctx: IntelContext, back: () => void, note = "") {
       picker.text.content = `${note ? `${label(note, 300)}\n` : ""}Enter turns a feed on or off. Feeds are polled on the server every six hours.`
       picker.set(
         list.map((feed) => ({
-          name: `${feed.enabled ? "●" : "○"} ${label(feed.name, 60)} · ${label(feed.kind, 32)}`,
-          description: label(feed.url, 120),
+          name: `${feed.enabled ? "●" : "○"} ${label(feed.name, 60)} · ${feed.enabled ? "on" : "off"}`,
+          description: describe(ctx, feed),
           run: async () => {
             const result = await intel.feedUpdate({ feedID: feed.id, enabled: !feed.enabled }).then(
               () => `${label(feed.name, 60)} turned ${feed.enabled ? "off" : "on"}.`,

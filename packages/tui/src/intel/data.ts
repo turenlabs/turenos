@@ -1,11 +1,13 @@
 import { display } from "../messages"
 import { array, numeric, object, optional, string } from "../response-validation"
 import type { Connection } from "../server"
+import { stamp } from "../menus/stamp"
 import { label } from "../state"
 import { color } from "../theme"
 
 export type Mode = "advisories" | "kev" | "news"
-export type Item = { title: string; meta: string; body: string; tone: string }
+/** `row` is the one-line list entry: the title, with the summary's first line after a bare id. */
+export type Item = { title: string; row: string; meta: string; body: string; tone: string }
 type Intel = Connection["client"]["server.intel"]
 
 export const TITLES: Record<Mode, string> = { advisories: "Advisories", kev: "Known exploited (KEV)", news: "News" }
@@ -34,16 +36,18 @@ async function advisories(intel: Intel, page: number) {
       optional(item.summary, string)
       optional(item.url, string)
       const severity = string(item.severity, 16)
+      const tag = Object.hasOwn(TAG, severity) ? TAG[severity]! : severity.toUpperCase()
+      const name = string(item.title, 2000)
+      const summary = plain((item.summary as string | undefined) ?? "")
       return {
-        title: label(
-          `${Object.hasOwn(TAG, severity) ? TAG[severity]! : severity.toUpperCase()} ${string(item.title, 2000)}`,
-          2000,
-        ),
+        title: label(`${tag} ${name}`, 2000),
+        // A title that is only an id says nothing, so the summary's first line follows it.
+        row: label(`${tag} ${name}${/^(CVE|GHSA)-[\w-]+$/i.test(name.trim()) ? ` ${summary}` : ""}`, 2000),
         meta: label(
           `${string(item.id, 256)} · ${string(item.source, 256)} · ${date(item.publishedAt)}${typeof item.cvss === "number" ? ` · CVSS ${item.cvss}` : ""}`,
           600,
         ),
-        body: `${display((item.summary as string | undefined) ?? "", 8000)}${item.url ? `\n\n${link(item.url as string)}` : ""}`,
+        body: `${display(summary, 8000)}${item.url ? `\n\n${link(item.url as string)}` : ""}`,
         tone: Object.hasOwn(SEVERITY, severity) ? SEVERITY[severity]! : color.muted,
       }
     }),
@@ -57,8 +61,10 @@ async function kev(intel: Intel, page: number) {
     items: array(result.items, 1000).map((value) => {
       const item = object(value)
       optional(item.url, string)
+      const title = label(`${string(item.cveID, 64)} ${string(item.name, 2000)}`, 2000)
       return {
-        title: label(`${string(item.cveID, 64)} ${string(item.name, 2000)}`, 2000),
+        title,
+        row: title,
         meta: label(
           `${string(item.vendor, 256)} ${string(item.product, 256)} · added ${date(item.dateAdded)}${typeof item.dueDate === "number" ? ` · remediate by ${date(item.dueDate)}` : ""}`,
           600,
@@ -77,18 +83,30 @@ async function news(intel: Intel, page: number) {
     items: array(result.items, 1000).map((value) => {
       const item = object(value)
       optional(item.summary, string)
+      const title = label(string(item.title, 2000), 2000)
       return {
-        title: label(string(item.title, 2000), 2000),
+        title,
+        row: title,
         meta: label(`${string(item.source, 256)} · ${date(item.publishedAt)}`, 300),
-        body: `${display((item.summary as string | undefined) ?? "", 8000)}\n\n${link(string(item.url, 2000))}`,
+        body: `${display(plain((item.summary as string | undefined) ?? ""), 8000)}\n\n${link(string(item.url, 2000))}`,
         tone: color.muted,
       }
     }),
   }
 }
 
+/** `YYYY-MM-DD`, like every other date in the client. */
 function date(value: unknown) {
-  return new Date(numeric(value)).toLocaleDateString()
+  return stamp(numeric(value)).slice(0, 10)
+}
+
+/** Advisory text arrives as Markdown, which this pane does not render: the markup characters are dropped. */
+function plain(text: string) {
+  return text
+    .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, "$1 ($2)")
+    .replace(/(\*\*|__)(.+?)\1/gs, "$2")
+    .replace(/`+/g, "")
+    .replace(/^#{1,6}\s+/gm, "")
 }
 
 /** A web link shown as the URL parser reads it (punycode host), or withheld when it could read as something else. */

@@ -7,6 +7,7 @@ import { label } from "../state"
 import { details } from "./details"
 import { patch, pickField } from "./fields"
 import { extensionList } from "./parse"
+import { extensionRow } from "./row"
 import type { Extension, ExtensionsContext } from "./types"
 
 type Panel = NonNullable<ReturnType<typeof openPanel>>
@@ -99,10 +100,12 @@ function show(view: View, list: Extension[], select?: string) {
         "start",
       )),
   )
-  panel.list.options = view.items.map((item) => ({
-    name: `${item.enabled ? "●" : "○"} ${label(item.name, 120)} · ${label(item.status, 40)}`,
-    description: "",
-  }))
+  // Rows are cut to the list column, so they are painted again whenever the panel's width changes.
+  panel.fit("rows", () => {
+    const index = panel.list.getSelectedIndex()
+    panel.list.options = view.items.map((item) => ({ name: extensionRow(panel.width(), item), description: "" }))
+    panel.list.setSelectedIndex(index)
+  })
   panel.list.setSelectedIndex(
     Math.max(
       0,

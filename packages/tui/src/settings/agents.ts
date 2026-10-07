@@ -15,11 +15,12 @@ export function agents(ctx: SettingsContext) {
         defaults(ctx, where),
       ]),
     ([list, catalog, saved], picker) => {
-      picker.text.content = "Enter sets the model an agent uses when a session does not choose one."
+      picker.text.content =
+        "Enter sets an agent's model when a session picks none.\nRows marked default use the server default model."
       picker.set(
         list.data
           .filter((agent) => !agent.hidden)
-          .toSorted((a, b) => a.id.localeCompare(b.id))
+          .toSorted((a, b) => rank(a.mode) - rank(b.mode) || a.id.localeCompare(b.id))
           .map((agent) => ({
             name: `${label(agent.id, 40)} · ${label(agent.mode, 20)}`,
             description: modelName(agent.model ?? saved.get(agent.id)),
@@ -27,7 +28,13 @@ export function agents(ctx: SettingsContext) {
           })),
       )
     },
+    "set model",
   )
+}
+
+/** Primary agents come first, then the rest; subagents last. */
+function rank(mode: string) {
+  return mode === "primary" ? 0 : mode === "subagent" ? 2 : 1
 }
 
 /** The agent list of the v2 route omits a model saved in the config; the original route carries it. */
@@ -45,7 +52,7 @@ async function defaults(ctx: SettingsContext, where: string) {
 }
 
 function modelName(model: { providerID: string; id: string } | undefined) {
-  return model ? `${label(model.providerID, 60)}/${label(model.id, 100)}` : "Server default model"
+  return model ? `${label(model.providerID, 60)}/${label(model.id, 100)}` : "default"
 }
 
 type CatalogModel = { providerID: string; id: string; name: string; providerName: string }

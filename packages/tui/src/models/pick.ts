@@ -99,7 +99,7 @@ function addHeader(ctx: ModelsContext, dialog: ModalState, target: ModelTarget, 
   )
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
-      content: "+ Connect provider / add custom model  F2",
+      content: "+ Connect a provider  F2",
       fg: color.accent,
       onMouseDown: (event) => {
         if (event.button !== 0) return

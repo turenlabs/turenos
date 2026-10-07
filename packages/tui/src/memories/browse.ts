@@ -30,14 +30,16 @@ type View = {
 function hints(view: View, note = "") {
   const { panel } = view
   view.note = note
+  // `a` adds only inside a room; the All rooms list offers edit and delete but no add.
+  const add = view.place.roomID ? ["a add"] : []
   panel.fit(
     "hints",
     () =>
       (panel.dialog.error.content = view.note
-        ? `${view.note}\n${fitHints(panel.width() - 2, [], ["a add", "E edit", "Ctrl+D delete", "Esc back"])}`
+        ? `${view.note}\n${fitHints(panel.width() - 2, [], [...add, "E edit", "Ctrl+D delete", "Esc back"])}`
         : fitHints(
             panel.width() - 2,
-            ["↑↓ choose", "a add", "E edit", "Ctrl+R refresh"],
+            ["↑↓ choose", ...add, "E edit", "Ctrl+R refresh"],
             ["Ctrl+D delete", "Esc back"],
           )),
   )
@@ -63,7 +65,7 @@ export function browse(ctx: MemoriesContext, place: Place, back: () => void, not
         : key.sequence === "a" && place.roomID
           ? () => edit(ctx, place, undefined, reopen)
           : key.sequence === "a"
-            ? () => hints(view, "All rooms is a read-only view; open a room to add a memory.")
+            ? () => hints(view, "A memory is added inside a room: press Esc, open a room, then press a.")
             : key.sequence === "E" && item
               ? () => edit(ctx, place, item, reopen)
               : undefined
@@ -85,6 +87,8 @@ async function load(view: View) {
       .filter((item) => !item.supersededBy)
       .toSorted((a, b) => Number(b.timeUpdated) - Number(a.timeUpdated))
     panel.heading.content = `${view.items.length} memor${view.items.length === 1 ? "y" : "ies"}`
+    // Sized like the other Settings dialogs: as tall as the list needs, not the whole terminal.
+    panel.dialog.frame.height = Math.max(18, view.items.length + 10)
     panel.list.options = view.items.map((item) => ({
       name: `[${item.kind}] ${label(item.title, 60)}`,
       description: "",
@@ -105,9 +109,10 @@ function describe(view: View) {
   const anchor = [item.anchor.path, item.anchor.symbol].filter(Boolean).join(" · ")
   panel.show(
     new StyledText([
-      fg(color.text)(`${display(item.title, 500)}\n`),
+      // The list row already shows a title that fits, so the pane repeats it only when the row cut it.
+      ...(label(item.title, 60) === display(item.title, 500) ? [] : [fg(color.text)(`${display(item.title, 500)}\n`)]),
       fg(color.muted)(
-        `${item.kind} · by ${label(item.provenance.assertedBy, 40)} (${label(item.provenance.source, 40)})${anchor ? ` · ${label(anchor, 200)}` : ""}\n\n`,
+        `Recorded by ${label(item.provenance.assertedBy, 40)} (${label(item.provenance.source, 40)})${anchor ? ` · ${label(anchor, 200)}` : ""}\n\n`,
       ),
       fg(color.text)(display(item.body, 48000)),
     ]),

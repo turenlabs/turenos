@@ -12,6 +12,7 @@ export function providers(ctx: SettingsContext) {
     () => ctx.connection.providers.list(where),
     (catalog, picker) => {
       picker.text.content = "Credentials and configuration are shared by every client of this server."
+      const names = catalog.providers.map((provider) => provider.name)
       picker.set([
         {
           name: "Connect a provider…",
@@ -28,7 +29,7 @@ export function providers(ctx: SettingsContext) {
           .toSorted((a, b) => Number(b.connected) - Number(a.connected) || a.name.localeCompare(b.name))
           .map((provider) => ({
             name: `${provider.connected ? "●" : "○"} ${label(provider.name, 60)}`,
-            description: `${provider.id} · ${provider.connected ? "connected" : "not connected"}`,
+            description: `${names.filter((name) => name === provider.name).length > 1 ? `${label(provider.id, 60)} · ` : ""}${provider.connected ? "connected" : "not connected"}`,
             run: () => providerActions(ctx, provider, where),
           })),
       ])

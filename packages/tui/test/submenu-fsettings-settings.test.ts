@@ -108,13 +108,14 @@ test("an agent's saved default shows in the list that follows", async () => {
     },
     4,
   )
-  await screen("Server default model")
+  const defaultRow = /^\s*│\s+default\s+│/m
+  expect(await screen("build · primary")).toMatch(defaultRow)
   view.mockInput.pressEnter()
   await screen("OpenAI · GPT")
   view.mockInput.pressEnter()
   await screen("Use GPT for build?")
   view.mockInput.pressKey("s", { ctrl: true })
-  expect(await screen("openai/gpt")).not.toContain("Server default model")
+  expect(await screen("openai/gpt")).not.toMatch(defaultRow)
 })
 
 test("turning permission checks on applies at once, and off still asks", async () => {
