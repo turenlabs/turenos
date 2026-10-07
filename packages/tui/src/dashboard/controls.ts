@@ -234,27 +234,25 @@ function createSettingsControls(d: DashboardContext) {
     servers: d.options.servers ? (back) => openServers(d, back) : undefined,
     appearance: () => [
       {
-        name: state.reducedMotion ? "Turn animation on" : "Reduce motion",
-        description: state.reducedMotion ? "Animation is off (reduced motion)" : "Animation is on",
+        name: `Motion: ${state.reducedMotion ? "off (reduced)" : "on"}`,
+        description: `Enter turns animation ${state.reducedMotion ? "on" : "off"}`,
         run: () => toggleMotion(d),
       },
       {
-        name: state.attention ? "Turn attention alerts off" : "Turn attention alerts on",
+        name: `Attention alerts: ${state.attention ? "on" : "off"}`,
         description: state.attention
-          ? "Bell and title alert when a turn ends or input is needed"
-          : "No bell or title alert when a turn ends",
+          ? "Bell and title alert when a turn ends or input is needed · Enter turns them off"
+          : "No bell or title alert · Enter turns them on",
         run: () => toggleAttention(d),
       },
       {
-        name: state.rawResponses ? "Show formatted responses" : "Show raw responses",
-        description: state.rawResponses ? "Responses show raw text" : "Responses show formatted text",
+        name: `Responses: ${state.rawResponses ? "raw" : "formatted"}`,
+        description: `Enter shows ${state.rawResponses ? "formatted text" : "raw text"}`,
         run: () => toggleRaw(d),
       },
       {
-        name: state.expandToolOutput ? "Collapse tool output" : "Expand tool output",
-        description: state.expandToolOutput
-          ? "Tool output shows in full (Ctrl+O)"
-          : "Tool output shows its first lines only (Ctrl+O)",
+        name: `Tool output: ${state.expandToolOutput ? "in full" : "first lines only"} (Ctrl+O)`,
+        description: `Enter shows ${state.expandToolOutput ? "the first lines only" : "it in full"}`,
         run: () => d.c.conversation.toggleToolOutput(),
       },
     ],

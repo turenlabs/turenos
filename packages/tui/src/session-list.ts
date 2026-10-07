@@ -1,6 +1,7 @@
 import { ScrollBoxRenderable, TextRenderable, TextAttributes, type CliRenderer, type KeyEvent } from "@opentui/core"
 import { matchesKey } from "./keys"
 import type { Session } from "./server"
+import { fitPath } from "./chrome"
 import { label, sessionTitle, type Row } from "./state"
 import { color } from "./theme"
 
@@ -62,9 +63,15 @@ export function sessionRows(
     })
 }
 
+/** Cuts a row to `width` columns with an ellipsis at its end; OpenTUI's own truncation elides the middle. */
+function fit(text: string, width: number) {
+  return width > 0 && text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text
+}
+
 export class SessionListRenderable extends ScrollBoxRenderable {
   private items: { name: string; description?: string; group?: string; groupLabel?: string; running?: boolean }[] = []
   private lines: TextRenderable[] = []
+  private headings: { node: TextRenderable; text: string }[] = []
   private selected = 0
   private reveal = false
 
@@ -78,6 +85,8 @@ export class SessionListRenderable extends ScrollBoxRenderable {
       scrollY: true,
       contentOptions: { flexDirection: "column" },
     })
+    // Rows are fitted to the viewport (which excludes the scrollbar column), so they are fitted again when it changes.
+    this.viewport.on("resize", () => this.paint())
   }
 
   get options() {
@@ -88,24 +97,24 @@ export class SessionListRenderable extends ScrollBoxRenderable {
     this.items = items
     for (const child of this.getChildren()) child.destroyRecursively()
     this.lines = []
+    this.headings = []
     let previous: string | undefined
     for (const [index, item] of items.entries()) {
       if (item.group !== undefined && item.group !== previous) {
-        this.add(
-          new TextRenderable(this.renderer, {
-            content: item.groupLabel ?? item.group,
-            fg: color.muted,
-            attributes: TextAttributes.BOLD,
-            height: 1,
-            flexShrink: 0,
-            wrapMode: "none",
-            truncate: true,
-            onMouseDown: (event) => {
-              event.preventDefault()
-              event.stopPropagation()
-            },
-          }),
-        )
+        const heading = new TextRenderable(this.renderer, {
+          content: item.groupLabel ?? item.group,
+          fg: color.muted,
+          attributes: TextAttributes.BOLD,
+          height: 1,
+          flexShrink: 0,
+          wrapMode: "none",
+          onMouseDown: (event) => {
+            event.preventDefault()
+            event.stopPropagation()
+          },
+        })
+        this.headings.push({ node: heading, text: item.groupLabel ?? item.group })
+        this.add(heading)
       }
       previous = item.group
       const line = new TextRenderable(this.renderer, {
@@ -115,7 +124,6 @@ export class SessionListRenderable extends ScrollBoxRenderable {
         flexShrink: 0,
         width: "100%",
         wrapMode: "none",
-        truncate: true,
         onMouseDown: (event) => {
           if (event.button !== 0) return
           // Do not let renderer autofocus override focus restored by a rejected navigation.
@@ -135,17 +143,25 @@ export class SessionListRenderable extends ScrollBoxRenderable {
     return this.selected
   }
 
-  setSelectedIndex(index: number, notify = true) {
-    const previous = this.selected
-    this.selected = Math.max(0, Math.min(index, this.items.length - 1))
+  /** Rewrites every row for the current selection and width: prefix and marker count toward the width. */
+  private paint() {
+    const width = this.viewport.width
     for (const [i, line] of this.lines.entries()) {
       const active = this.items[i]!.running === true
-      line.content = `${i === this.selected ? "> " : "  "}${this.items[i]!.name}`
+      line.content = fit(`${i === this.selected ? "> " : "  "}${this.items[i]!.name}`, width)
       line.bg = i === this.selected ? color.selected : color.panel
       // A running session is a clear active line, not just a marker glyph.
       line.fg = i === this.selected ? color.text : active ? color.accent : color.text
       line.attributes = i === this.selected ? TextAttributes.BOLD : TextAttributes.NONE
     }
+    for (const heading of this.headings)
+      heading.node.content = width > 0 && heading.text.startsWith("/") ? fitPath(heading.text, width) : fit(heading.text, width)
+  }
+
+  setSelectedIndex(index: number, notify = true) {
+    const previous = this.selected
+    this.selected = Math.max(0, Math.min(index, this.items.length - 1))
+    this.paint()
     const line = this.lines[this.selected]
     // Passive refreshes must not move the viewport back to an unchanged selection.
     if (line && (notify || previous !== this.selected)) {

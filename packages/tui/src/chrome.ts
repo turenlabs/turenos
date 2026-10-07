@@ -74,7 +74,9 @@ export function sidebarTitle(state: DashboardState, count: number, drawer = fals
  * The footer's left side. It never repeats the line above the transcript (view, Working, Needs input);
  * it names the stream, the pane that has the keys, and the agent and model.
  */
-export function statusline(state: DashboardState, snapshot: Snapshot | undefined, width: number) {
+export function statusline(state: DashboardState, snapshot: Snapshot | undefined, width: number, armed = "") {
+  // While a quit is armed the footer says what the next press does; everything else can wait three seconds.
+  if (armed) return armed
   const narrow = width < layout.narrowBreakpoint
   const hidden = state.sidebarHidden ?? narrow
   const names = { sessions: "Sessions", terminals: "Terminals", automations: "Automations" }
@@ -101,6 +103,13 @@ export function statusline(state: DashboardState, snapshot: Snapshot | undefined
   return extra && base.length + 3 + extra.length <= room ? [base, extra].filter(Boolean).join(" · ") : base
 }
 
+/** The agent a session ran: its own setting, else the latest reply's when that reply is loaded. */
+export function sessionAgent(state: DashboardState, session: Snapshot["sessions"][number]) {
+  const reply =
+    state.detail?.sessionID === session.id ? state.detail.messages.findLast((m) => m.type === "assistant") : undefined
+  return session.agent ?? reply?.agent
+}
+
 /** "build · sandbox/scripted": the selected session's agent and model, else the latest reply's, else the server default. */
 function agentModel(state: DashboardState, snapshot: Snapshot | undefined) {
   if (state.tab !== "sessions" || !state.selected) return ""
@@ -111,7 +120,7 @@ function agentModel(state: DashboardState, snapshot: Snapshot | undefined) {
   const model =
     session.model ??
     (reply && (reply.model.providerID !== "unknown" || reply.model.id !== "unknown") ? reply.model : undefined)
-  const agent = session.agent ?? reply?.agent
+  const agent = sessionAgent(state, session)
   return `${label(agent ?? "server default", 40)} · ${model ? label(`${model.providerID}/${model.id}${model.variant ? ` (${model.variant})` : ""}`, 80) : "server default"}`
 }
 

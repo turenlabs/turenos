@@ -41,9 +41,16 @@ function bindButtons(d: DashboardContext) {
     if (event.button !== 0) return
     event.preventDefault()
     d.run.quitArmedUntil = 0
-    if (event.y === ui.sidebarActions.y) d.c.launch.open()
+    if (event.y === ui.sidebarActions.y) addAction(d)
     if (event.y === ui.sidebarActions.y + 1) filter(d)
   }
+}
+
+/** The first sidebar entry: new session, terminal or automation, as the open tab calls for. */
+function addAction(d: DashboardContext) {
+  if (d.state.tab === "terminals") return d.c.terminals.create()
+  if (d.state.tab === "automations") return d.c.automations.create()
+  d.c.launch.open()
 }
 
 function bindActionRow(d: DashboardContext) {

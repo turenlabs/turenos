@@ -60,7 +60,7 @@ export function createSidebar(renderer: CliRenderer, tabButtons: TabButtons) {
   }
 }
 
-/** One muted line each for working folders without sessions and for a list with no rows. */
+/** One muted line each for working folders without sessions, and for the list: why it is empty, or what its `*` and `?` mean. */
 function createEmptyNotes(renderer: CliRenderer, sidebar: BoxRenderable) {
   const note = () =>
     new TextRenderable(renderer, {

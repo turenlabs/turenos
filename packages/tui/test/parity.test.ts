@@ -452,7 +452,7 @@ test("automations can be run now and created with a plain-language schedule", as
   await screen("Started a run.")
   expect(server.sent("/api/loop/loop_1/run").some((item) => item.method === "POST")).toBe(true)
   view.mockInput.pressKey("a")
-  await screen("New automation")
+  await screen("╭─ New automation")
   await view.mockInput.typeText("Weekly docs")
   view.mockInput.pressTab()
   await confirm("Update the changelog")
@@ -538,7 +538,7 @@ async function worktreeLaunch(
   }
   await app.screen("New git worktree")
   view.mockInput.pressArrow("down")
-  await app.screen("new worktree")
+  await app.screen("▶ New git worktree")
   view.mockInput.pressKey("s", { ctrl: true })
   const created = () => app.server.requests.find((item) => item.method === "POST" && item.path === "/api/session")
   return { ...app, order, created }

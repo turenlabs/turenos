@@ -88,14 +88,18 @@ test("Settings › Appearance states each current setting and fits a narrow dial
   app.view.mockInput.pressEnter()
   const frame = await app.screen("Settings › Appearance")
   for (const text of [
-    "Animation is on",
+    "Motion: on",
+    "Enter turns animation off",
+    "Attention alerts: on",
     "Bell and title alert when a turn ends or input is needed",
-    "Responses show formatted text",
-    "Tool output shows its first lines only (Ctrl+O)",
+    "Responses: formatted",
+    "Enter shows raw text",
+    "Tool output: first lines only (Ctrl+O)",
+    "Enter shows it in full",
   ])
     expect(frame).toContain(text)
   app.view.mockInput.pressEnter()
-  await app.screen("Animation is off (reduced motion)")
+  await app.screen("Motion: off (reduced)")
 })
 
 const wing = { id: "wng_1", kind: "project", key: "turen", name: "turen", timeCreated: 1, timeUpdated: 1 }

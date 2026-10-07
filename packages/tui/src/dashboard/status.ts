@@ -41,7 +41,8 @@ export function renderStatus(d: DashboardContext) {
   d.ui.running.visible = d.ui.running.plainText.length > 0
   renderServer(d)
   renderAttention(d)
-  d.ui.footer.content = statusline(d.state, d.state.snapshot, d.renderer.width)
+  dropStaleNotice(d)
+  d.ui.footer.content = statusline(d.state, d.state.snapshot, d.renderer.width, quitPrompt(d))
   d.ui.status.visible = !d.state.connected
   if (d.state.connected) return
   if (d.state.snapshot && d.state.tab === "sessions" && !d.state.selected && !d.state.query && !d.state.modal?.inline)
@@ -104,7 +105,8 @@ export function clearTitle(d: DashboardContext) {
 /**
  * Fits the top bar: the heading and the running state always stay. The address shortens first
  * (host:port, then the port); only then do buttons go, lowest value first, and the address does not
- * grow back, so a narrower terminal never shows more than a wider one.
+ * grow back, so a narrower terminal never shows more than a wider one. An address that fits in no form
+ * is left out rather than cut: the dot still says whether the server answers.
  */
 function renderServer(d: DashboardContext) {
   const ui = d.ui
@@ -125,26 +127,30 @@ function renderServer(d: DashboardContext) {
     [ui.heading, ui.running, ...nodes]
       .filter((node) => node.visible)
       .reduce((sum, node) => sum + node.plainText.length + 3, 0)
-  const room = d.renderer.width - 4 - 2
+  // Two columns are the dot and its space.
+  const room = d.renderer.width - 4 - 2 - 2
   const shown = buttons.filter((node) => node.visible)
-  // The Servers button goes before the host does, and the host before the port.
+  // The Servers button goes before the host does, the Sessions button next, and the host before the port.
+  const sets = [
+    shown,
+    shown.filter((node) => node !== ui.serversButton),
+    shown.filter((node) => node === ui.modelButton),
+  ]
   const attempts = [
-    ...[shown, shown.filter((node) => node !== ui.serversButton)].flatMap((nodes) =>
-      [...new Set([text, address])].map((tier) => ({ tier, nodes })),
-    ),
-    ...(port && port !== address ? [{ tier: port, nodes: shown }] : []),
+    ...sets.flatMap((nodes) => [...new Set([text, address])].map((tier) => ({ tier, nodes }))),
+    ...(port && port !== address ? sets.map((nodes) => ({ tier: port, nodes })) : []),
   ]
   const whole = attempts.find((attempt) => attempt.tier.length <= room - others(attempt.nodes))
-  const tier = whole?.tier ?? port ?? address
   for (const node of shown) {
-    // Out of room even for the port: drop buttons, never the heading or the running state.
-    if (whole ? !whole.nodes.includes(node) : tier.length > room - others(buttons)) node.visible = false
+    // Out of room even for the port: drop every button, never the heading or the running state.
+    if (!whole?.nodes.includes(node)) node.visible = false
   }
-  ui.server.content = t`${dot(d.state.connected ? "●" : "○")} ${tier}`
+  ui.server.content = t`${dot(d.state.connected ? "●" : "○")} ${whole?.tier ?? ""}`
 }
 
 export function say(d: DashboardContext, message: string, error = false) {
   if (d.state.closed) return
+  d.run.noticeScope = message && !error ? { selected: d.state.selected, running: selectedRunning(d) } : undefined
   d.ui.notice.content = `${message && error ? "! " : ""}${display(message, 1000)}`
   d.run.noticeMessage = message
   d.ui.notice.visible = !!message
@@ -153,16 +159,38 @@ export function say(d: DashboardContext, message: string, error = false) {
   if (message && !error)
     d.run.noticeTimer = setTimeout(() => {
       d.run.noticeMessage = ""
+      d.run.noticeScope = undefined
       d.ui.notice.visible = false
     }, 5000)
 }
 
+function selectedRunning(d: DashboardContext) {
+  return !!d.state.selected && Object.hasOwn(d.state.snapshot?.active ?? {}, d.state.selected)
+}
+
+/** The next key ends a plain message: it was news about the moment before it (a draft discarded, a prompt to press Esc again). */
+export function dropNotice(d: DashboardContext) {
+  if (d.run.noticeScope) say(d, "")
+}
+
+/** A message said while a turn ran, or about another selection, no longer describes what is on screen. */
+function dropStaleNotice(d: DashboardContext) {
+  const scope = d.run.noticeScope
+  if (scope && (scope.selected !== d.state.selected || (scope.running && !selectedRunning(d)))) say(d, "")
+}
+
+/** What the next quit key does while a quit is armed, so the footer says it as well as the status line. */
+export function quitPrompt(d: DashboardContext) {
+  if (!(Date.now() < d.run.quitArmedUntil)) return ""
+  return `${d.state.modal ? "Ctrl+C" : "q"} again quits${d.run.quitDiscards ? " and discards" : ""}`
+}
+
 export function renderTabs(d: DashboardContext) {
   // The full names need a 46-column sidebar: the narrow drawer spans the screen, the side-by-side
-  // sidebar is 30% of it from 154 columns. Everywhere else the short set is used for all three.
+  // sidebar is 30% of it from 154 columns. Everywhere else each name is cut to its first four letters.
   const full = d.renderer.width < layout.narrowBreakpoint || d.renderer.width >= 154
   for (const [index, { tab, button, name }] of d.ui.tabButtons.entries()) {
-    const text = full ? name : ["1 Chat", "2 Term", "3 Auto"][index]
+    const text = full ? name : ["1 Sess", "2 Term", "3 Auto"][index]
     // Brackets mark the open view, so `>` stays the list's selection marker.
     button.content = d.state.tab === tab ? `[${text}]` : ` ${text} `
     button.fg = d.state.tab === tab ? color.accent : color.muted

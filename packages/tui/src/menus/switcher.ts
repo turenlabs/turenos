@@ -1,5 +1,5 @@
 import { RenderableEvents, type KeyEvent } from "@opentui/core"
-import { errorText } from "../server"
+import { errorText, type Session } from "../server"
 import { matchesKey } from "../keys"
 import type { DashboardState } from "../state"
 import { color } from "../theme"
@@ -38,7 +38,8 @@ export function openSwitcher(ctx: MenuContext, initialScope: Scope = "recent", s
     searchTimer: undefined,
     controller: undefined,
     matches: sessions,
-    selected: 0,
+    // The session before this one is highlighted, so Enter goes back to it; the current session leads the list.
+    selected: previousIndex(state, sessions),
     rows: [],
     headings: [],
     offsets: [],
@@ -82,6 +83,13 @@ function fitOnResize(s: Switcher) {
   }
 }
 
+function previousIndex(state: DashboardState, sessions: Session[]) {
+  return Math.max(
+    0,
+    sessions.findIndex((session) => session.id === state.previousSession),
+  )
+}
+
 function loadedSessions(state: DashboardState, sidebar: boolean) {
   return [...(state.snapshot?.sessions ?? [])]
     .filter(
@@ -92,6 +100,7 @@ function loadedSessions(state: DashboardState, sidebar: boolean) {
     )
     .sort(
       (a, b) =>
+        Number(b.id === state.selected) - Number(a.id === state.selected) ||
         Number(b.id === state.previousSession) - Number(a.id === state.previousSession) ||
         Number(!!a.parentID) - Number(!!b.parentID),
     )
@@ -119,7 +128,7 @@ function hint(s: Switcher) {
     return fitHints(
       innerWidth(s),
       [
-        `${s.selected + 1}/${s.matches.length}`,
+        `${s.selected + 1}/${s.matches.length}${hiddenChildren(s) ? " main sessions" : ""}`,
         "↑/↓ choose",
         "Enter open",
         ...(s.scope === "recent" ? ["Type to find children"] : ["F3 Older", "Shift+F3 Newer"]),
@@ -135,6 +144,11 @@ function hint(s: Switcher) {
       ? `${empty(s)}\nF2 Search server · Ctrl+O Open older session by ID`
       : `${empty(s)}\nType to find children · F2 All · Ctrl+O ID`
   return `${empty(s)}\nF2 ${nextScope[s.scope]} · Ctrl+O ID · Esc close`
+}
+
+/** The sidebar counts child sessions; the recent list leaves them out until a search asks for them. */
+function hiddenChildren(s: Switcher) {
+  return s.scope === "recent" && !s.query.value.trim() && s.sessions.some((session) => session.parentID)
 }
 
 const nextScope = { recent: "All", all: "Archived", archived: "Recent" }

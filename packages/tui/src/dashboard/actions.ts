@@ -5,7 +5,7 @@ import { contextUsage, meterText } from "../context-meter"
 import { todoProgress } from "../session-actions"
 import { waiting } from "../queue"
 import { fitActionRow } from "../layout/fit"
-import { renderActivity, resize } from "./status"
+import { quitPrompt, renderActivity, resize } from "./status"
 import type { Detail } from "../server"
 import type { DashboardContext } from "./context"
 
@@ -14,7 +14,7 @@ export function renderActions(d: DashboardContext) {
   const state = d.state
   const ui = d.ui
   renderActivity(d)
-  ui.sidebarActions.content = ` + ${d.c.launch.hasDraft ? "Resume draft" : "New session"}    n\n / ${state.query && state.query !== state.inspection ? `Find: ${label(state.query, 18)}` : `Find ${state.tab === "sessions" ? "a session" : "items"}`}`
+  ui.sidebarActions.content = sidebarActions(d)
   const pending = state.detail?.sessionID === state.selected ? state.detail : undefined
   const reply = promptBoxText(state, pending, {
     hasDraft: d.c.requests.hasDraft(state.selected),
@@ -38,7 +38,7 @@ export function renderActions(d: DashboardContext) {
   ui.historyCount.content = pending
     ? `${pending.messages.length} messages${pending.cursor.next ? "" : " · start"}`
     : "Loading…"
-  ui.footer.content = statusline(state, state.snapshot, d.renderer.width)
+  ui.footer.content = statusline(state, state.snapshot, d.renderer.width, quitPrompt(d))
   queueMicrotask(() => {
     if (ui.sizeNotice.visible || d.options.blocked?.()) return
     const before = state.modal
@@ -48,6 +48,17 @@ export function renderActions(d: DashboardContext) {
     renderActions(d)
     resize(d)
   })
+}
+
+/** The two sidebar entries; the first is what `n` (sessions) or `a` (terminals, automations) does. */
+function sidebarActions(d: DashboardContext) {
+  const state = d.state
+  const noun = { sessions: "a session", terminals: "a terminal", automations: "an automation" }[state.tab]
+  const add =
+    state.tab === "sessions"
+      ? `${d.c.launch.hasDraft ? "Resume draft" : "New session"}    n`
+      : `New ${state.tab === "terminals" ? "terminal" : "automation"}    a`
+  return ` + ${add}\n / ${state.query && state.query !== state.inspection ? `Find: ${label(state.query, 18)}` : `Find ${noun}`}`
 }
 
 /** Repaints the entries under the transcript, fitted whole to the width. Also runs on resize. */

@@ -60,12 +60,18 @@ export type Runtime = {
   refreshing: Promise<void> | undefined
   noticeTimer: ReturnType<typeof setTimeout> | undefined
   noticeMessage: string
+  /** Set for a message that is news about a moment (not an error): it ends with that selection and turn. */
+  noticeScope: { selected: string; running: boolean } | undefined
   activityTimer: ReturnType<typeof setInterval> | undefined
   activityStep: number
   /** True while `renderList` resets the list selection, so its own events are ignored. */
   renderingList: boolean
   /** Until this time a second quit key confirms the quit. */
   quitArmedUntil: number
+  /** Whether the armed quit also discards unsent drafts, so the footer can say so. */
+  quitDiscards: boolean
+  /** Repaints the footer when the armed quit expires. */
+  quitTimer: ReturnType<typeof setTimeout> | undefined
   disposed: boolean
   /** The selection and search of each tab, restored when switching back. */
   views: Map<Tab, { selected: string; query: string }>

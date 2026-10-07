@@ -94,10 +94,9 @@ test("the top bar keeps the running state and shows less as the terminal narrows
   const [wide, mid, narrow] = [await header(120), await header(80), await header(60)]
   for (const row of [wide, mid, narrow]) expect(row).toContain("● 1 running")
   expect(wide).toContain("127.0.0.1:43623")
-  // The host stays ahead of the Servers button while it fits, and only the port remains at 60 columns.
-  expect(mid).toContain(":43623")
-  expect(narrow).not.toContain("127.0.0.1")
-  expect(narrow).toContain(":43623")
+  // The host:port stays ahead of the Servers and Sessions buttons; only the port is left when even that does not fit.
+  expect(mid).toContain("127.0.0.1:43623")
+  expect(narrow).toContain("127.0.0.1:43623")
   const items = (row: string) =>
     ["Models m", "Sessions Ctrl+K", "Servers s"].filter((item) => row.includes(item)).length
   expect(items(mid)).toBeGreaterThanOrEqual(items(narrow))
@@ -116,7 +115,7 @@ test("the open view is bracketed so the list keeps `>` for its selection, and fu
   const mid = await dashboard(120, 36)
   mid.ui.resize()
   renderTabs(mid.d)
-  expect(mid.ui.tabButtons.map(({ button }) => button.plainText)).toEqual(["[1 Chat]", " 2 Term ", " 3 Auto "])
+  expect(mid.ui.tabButtons.map(({ button }) => button.plainText)).toEqual(["[1 Sess]", " 2 Term ", " 3 Auto "])
   const narrow = await dashboard(60)
   narrow.ui.resize()
   toggleSidebar(narrow.d)

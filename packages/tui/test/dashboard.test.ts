@@ -602,7 +602,7 @@ for (const picker of ["k", "p"] as const) {
     }
     if (picker === "k") {
       await view.renderOnce()
-      expect(view.captureCharFrame()).toContain("▶ Review the server")
+      expect(view.captureCharFrame()).toContain("▶ * Review the server")
       expect(view.renderer.currentFocusedEditor?.plainText).toBe("")
     }
     view.mockInput.pressKey("LINEFEED")
@@ -962,17 +962,17 @@ test("b, Ctrl+B, and palette sidebar/quit actions work without stealing editor i
   await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
   view.mockInput.pressKey("b")
   await view.renderOnce()
-  expect(view.captureCharFrame()).not.toContain("1 Chat")
+  expect(view.captureCharFrame()).not.toContain("1 Sess")
   view.mockInput.pressKey("b", { ctrl: true })
   await view.renderOnce()
-  expect(view.captureCharFrame()).toContain("1 Chat")
+  expect(view.captureCharFrame()).toContain("1 Sess")
   view.mockInput.pressKey("p", { ctrl: true })
   await view.mockInput.typeText("sidebar")
   await view.renderOnce()
   expect(view.captureCharFrame()).toContain("Toggle sidebar  · b / Ctrl+B")
   view.mockInput.pressEnter()
   await view.renderOnce()
-  expect(view.captureCharFrame()).not.toContain("1 Chat")
+  expect(view.captureCharFrame()).not.toContain("1 Sess")
   // Hiding the sidebar hands focus to the transcript, whose reply editor opens by itself.
   await waitForFrame(view, (frame) => frame.includes("Esc shortcuts"))
   await view.mockInput.typeText("ab")
@@ -2671,7 +2671,7 @@ test("mouse navigation matches the view and composer labels", async () => {
   }
   await click("2 Term")
   await waitForFrame(view, (frame) => frame.includes("PID 4242"))
-  await click("1 Chat")
+  await click("1 Sess")
   await waitForFrame(view, (frame) => frame.includes("Review the server"))
   const composer = view
     .captureCharFrame()
@@ -2687,7 +2687,7 @@ test("mouse navigation matches the view and composer labels", async () => {
   await view.mockInput.typeText("Keep while switching tabs")
   await click("2 Term")
   await waitForFrame(view, (frame) => frame.includes("PID 4242"))
-  await click("1 Chat")
+  await click("1 Sess")
   // Back on the chat the reply editor reopens by itself with its draft; Esc leaves it for the label.
   await waitForFrame(view, (frame) => frame.includes("Keep while switching tabs"))
   await leaveComposer(view)
@@ -2859,7 +2859,9 @@ test("clicking Settings reveals launch controls and preserves custom choices in 
   view.mockInput.pressEscape()
   await waitForFrame(view, (frame) => frame.includes("Draft kept"))
   view.mockInput.pressKey("n")
-  await waitForFrame(view, (frame) => frame.includes("Tab settings · build · test/local"))
+  // The settings stay open, so they show the choices and the summary above them is gone.
+  await waitForFrame(view, (frame) => frame.includes("test/local") && frame.includes("▶ build"))
+  expect(view.captureCharFrame()).not.toContain("Tab settings")
   expect(view.captureCharFrame()).not.toContain("Model · optional")
   expect(view.captureCharFrame()).toContain("A short task")
   expect(server.posts).toHaveLength(0)
@@ -3103,7 +3105,7 @@ test("Ctrl+K finds sessions across projects and Escape leaves the current sessio
   expect(view.captureCharFrame()).toContain("Inspect API latency")
   await leaveComposer(view)
   view.mockInput.pressKey("k", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("▶ Review the server"))
+  await waitForFrame(view, (frame) => frame.includes("▶ * Review the server"))
   view.mockInput.pressEnter()
   await waitForFrame(view, (frame) => !frame.includes("Switch session") && frame.includes("Review the server"))
   expect(server.posts).toHaveLength(0)
@@ -3536,7 +3538,7 @@ for (const submitted of [false, true]) {
     view.mockInput.pressEscape()
     await waitForFrame(view, (frame) => frame.includes("Draft kept"))
     view.mockInput.pressKey("n")
-    await waitForFrame(view, (frame) => frame.includes("Tab settings · build"))
+    await waitForFrame(view, (frame) => frame.includes("▶ build"))
     if (submitted) {
       view.mockInput.pressKey("s", { ctrl: true })
       await waitForFrame(view, (frame) => frame.includes("Ctrl+O inspect"))
@@ -3555,8 +3557,11 @@ for (const submitted of [false, true]) {
     view.mockInput.pressTab()
     view.mockInput.pressTab()
     await waitForFrame(view, (frame) => frame.includes("Server default") && !frame.includes("Loading agents"))
-    expect(view.captureCharFrame()).toContain(submitted ? "Directory: /srv/project" : "Directory: /srv/other")
-    if (!submitted) expect(view.captureCharFrame()).not.toContain("Tab settings · build")
+    const lines = view.captureCharFrame().split("\n")
+    expect(lines[lines.findIndex((line) => line.includes("Directory on the server")) + 1]).toContain(
+      submitted ? "/srv/project" : "/srv/other",
+    )
+    if (!submitted) expect(view.captureCharFrame()).not.toContain("▶ build")
     view.mockInput.pressKey("s", { ctrl: true })
     await waitForFrame(view, (frame) => frame.includes("Task sent."))
     expect(server.posts.filter((post) => post.path === "/api/session")).toHaveLength(1)

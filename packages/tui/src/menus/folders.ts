@@ -21,7 +21,7 @@ export function workingFolders(ctx: FoldersContext) {
   dialog.form.add(note)
   const list = folderList(ctx, dialog, directories)
   const describe = () => {
-    note.content = `${INTRO}\n${directories.length ? `Open folders (${directories.length}): choose one to fill the field` : "No folders are open."}`
+    note.content = `${INTRO}\n${directories.length ? `Open folders (${directories.length}): choose one to fill the field` : "No folders are open yet, so the sidebar shows every session folder."}`
   }
   describe()
   const directory = dialogs.input(

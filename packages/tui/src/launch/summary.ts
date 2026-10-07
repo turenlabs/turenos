@@ -13,7 +13,9 @@ export function summarize(form: LaunchForm) {
   ]
     .filter(Boolean)
     .map((value) => label(value!))
-  context.height = current.variant ? 3 : 2
   if (workspace.getSelectedIndex() === 1 && !current.worktree?.directory) custom.push("new worktree")
+  // Once the settings are open they show all of this, and their rows need the space.
+  context.visible = !form.store.settings
+  context.height = current.variant ? 3 : 2
   context.content = `Directory: ${label(directory.value, 4096)}\nTab settings${custom.length ? ` · ${custom.join(" · ")}` : ""}${current.variant ? `\nModel variant ${label(current.variant)}` : ""}`
 }

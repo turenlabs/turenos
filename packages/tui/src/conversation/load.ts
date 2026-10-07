@@ -100,7 +100,8 @@ function showWelcome(c: Conversation, snapshot: Snapshot) {
             ? `No terminals yet. Press Enter or a to open one.${folderNote(snapshot)}`
             : "No automations yet. Press a to add one.",
   )
-  ui.sessionTitle.content = "Welcome to TurenOS"
+  ui.sessionTitle.content =
+    state.tab === "sessions" ? "Welcome to TurenOS" : state.tab === "terminals" ? "Terminals" : "Automations"
 }
 
 function showTerminal(c: Conversation, snapshot: Snapshot, id: string) {

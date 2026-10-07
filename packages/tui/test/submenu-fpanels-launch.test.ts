@@ -30,6 +30,7 @@ test("the settings stay open when New session reopens after Esc", async () => {
   const { view, screen } = await sized(120, 36)
   view.mockInput.pressKey("n")
   await screen("What would you like to do?")
+  await view.mockInput.typeText("keep this")
   view.mockInput.pressTab()
   await screen("Directory on the server")
   view.mockInput.pressKey("ESCAPE")

@@ -148,10 +148,10 @@ test("the Appearance toggle turns the alerts off, clearing the title, and dispos
   await screen("Usage and limits")
   for (let step = 0; step < 7; step++) view.mockInput.pressArrow("down")
   view.mockInput.pressEnter()
-  await screen("Turn attention alerts off")
+  await screen("Attention alerts: on")
   view.mockInput.pressArrow("down")
   view.mockInput.pressEnter()
-  await screen("Turn attention alerts on")
+  await screen("Attention alerts: off")
   expect(writes.at(-1)).toBe(CLEAR)
   const count = writes.length
   app.dispose()

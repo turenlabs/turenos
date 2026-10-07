@@ -22,8 +22,8 @@ export function openLaunch(deps: LaunchDeps, store: LaunchStore, reopen: () => v
   bindActions(form)
   dialog.reference = submitted ? current.start.sessionID : undefined
   const hint = submitted
-    ? `Session: ${current.start.sessionID}\nCtrl+O inspect · Enter retry · Esc keep · F4 discard`
-    : "Enter Send · Shift/Alt+Enter newline\nEsc keep · F4 discard"
+    ? `Session: ${current.start.sessionID}\nCtrl+O inspect · Enter retry · Esc keep submission · F4 discard`
+    : "Enter Send · Shift/Alt+Enter newline\nEsc keep draft · F4 discard"
   dialog.error.height = submitted ? 4 : 2
   dialog.error.content = hint
   clearErrorOnEdit(form, hint, dialog.error.height)
@@ -69,6 +69,10 @@ function startDraft(deps: LaunchDeps, store: LaunchStore): LaunchDraft {
   return store.draft
 }
 
+function hasContent(draft: LaunchDraft) {
+  return !!(draft.prompt.trim() || draft.agent || draft.model || draft.isolate)
+}
+
 function bindActions(form: LaunchForm) {
   const { dialog } = form
   const { say } = form.deps
@@ -76,6 +80,8 @@ function bindActions(form: LaunchForm) {
   dialog.save = () => {
     saveDraft(form)
     const submitted = adoptSubmission(form.current)
+    // Nothing typed and nothing chosen is no draft: it is neither kept nor offered for resuming.
+    if (!submitted && !hasContent(form.current)) return void (form.store.draft = undefined)
     say(submitted ? "Original submission kept · n to resume" : "Draft kept · n to resume")
   }
   dialog.discard = () => {

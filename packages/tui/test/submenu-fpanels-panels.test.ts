@@ -169,7 +169,7 @@ test("Working folders names its mode in the title and says when no folder is ope
   await view.mockInput.typeText("folders")
   view.mockInput.pressEnter()
   const open = await screen("Working folders › Open")
-  expect(open).toContain("No folders are open")
+  expect(open).toContain("No folders are open yet, so the sidebar shows every session")
   view.mockInput.pressKey("r", { ctrl: true })
   expect(await screen("Working folders › Close")).not.toContain("Working folders › Open")
   // Let the folder read finish before the renderer is torn down.

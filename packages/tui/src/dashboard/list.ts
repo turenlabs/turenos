@@ -83,7 +83,7 @@ function defaultSelection(d: DashboardContext, snapshot: Snapshot) {
 function renderSidebar(d: DashboardContext, snapshot: Snapshot) {
   renderSidebarTitle(d)
   renderEmptyList(d)
-  d.ui.folders.content = ` Working folders${snapshot.workingFolders ? ` · ${snapshot.workingFolders.length}` : ""}${snapshot.folderError ? " !" : ""}`
+  d.ui.folders.content = ` Working folders · ${foldersState(snapshot)}`
   const emptyFolders = (snapshot.workingFolders ?? []).filter(
     (directory) => !snapshot.sessions.some((session) => folderContains(directory, session.location.directory)),
   )
@@ -97,14 +97,28 @@ function renderSidebar(d: DashboardContext, snapshot: Snapshot) {
   d.ui.running.content = headerRight(d.state, snapshot)
 }
 
+/** What the row says about the open folders: a server with no stored list shows every session folder. */
+function foldersState(snapshot: Snapshot) {
+  if (snapshot.folderError) return "cannot sync"
+  return snapshot.workingFolders ? `${snapshot.workingFolders.length} open` : "all shown"
+}
+
+/** The note line above the list: why it is empty, else what the `*` and `?` markers on its rows mean. */
 function renderEmptyList(d: DashboardContext) {
-  const empty = d.state.rows.length === 0
-  d.ui.emptyList.visible = empty
-  d.ui.emptyList.content = d.state.query
-    ? "Nothing matches the filter."
-    : d.state.tab === "sessions"
-      ? "No sessions yet. n starts one."
-      : d.state.tab === "terminals"
-        ? "No terminals yet. Enter or a opens one."
-        : "No automations yet. a adds one."
+  const rows = d.state.rows as SidebarRow[]
+  const legend = [
+    rows.some((row) => row.running) ? "* running" : "",
+    rows.some((row) => row.needsInput) ? "? needs input" : "",
+  ].filter(Boolean)
+  d.ui.emptyList.visible = rows.length === 0 || legend.length > 0
+  // The notes are cut by the sidebar's 28 columns, so they stay under that.
+  d.ui.emptyList.content = rows.length
+    ? legend.join(" · ")
+    : d.state.query
+      ? "Nothing matches the filter."
+      : d.state.tab === "sessions"
+        ? "No sessions. n starts one."
+        : d.state.tab === "terminals"
+          ? "No terminals. a opens one."
+          : "No automations. a adds one."
 }

@@ -58,8 +58,8 @@ function sessionLines(session: Session, result: Detail | undefined) {
     `Directory: ${session.location.directory}`,
     `Agent: ${session.agent ?? reply?.agent ?? "server default"} · Model: ${modelStr}`,
     `Created: ${stamp(session.time.created)}`,
-    ...(session.time.updated ? [`Updated: ${stamp(session.time.updated)}`] : []),
-    ...(session.tokens ? [tokenLine(session)] : []),
+    ...(session.time.updated ? [`Last activity: ${stamp(session.time.updated)}`] : []),
+    ...(session.tokens ? tokenLine(session) : []),
     ...(result
       ? [
           `${result.permissions.length} permissions · ${result.questions.length} questions · ${result.pending.length} queued inputs`,
@@ -68,13 +68,16 @@ function sessionLines(session: Session, result: Detail | undefined) {
   ]
 }
 
+/** The session's token totals; all zero means the server keeps none for it, which "0" would misstate. */
 function tokenLine(session: Session) {
   const t = session.tokens!
-  const tokenParts = [`in: ${t.input.toLocaleString()}`, `out: ${t.output.toLocaleString()}`]
-  if (t.reasoning) tokenParts.push(`reasoning: ${t.reasoning.toLocaleString()}`)
+  const counts = [t.input, t.output, t.reasoning, t.cache?.read, t.cache?.write]
+  if (!counts.some(Boolean)) return []
+  const tokenParts = [`${t.input.toLocaleString()} in`, `${t.output.toLocaleString()} out`]
+  if (t.reasoning) tokenParts.push(`${t.reasoning.toLocaleString()} reasoning`)
   if (t.cache?.read || t.cache?.write)
-    tokenParts.push(`cache: ${t.cache.read.toLocaleString()}r/${t.cache.write.toLocaleString()}w`)
-  return `Tokens: ${tokenParts.join(" · ")}${session.cost ? ` · Cost: $${session.cost.toFixed(4)}` : ""}`
+    tokenParts.push(`${t.cache.read.toLocaleString()} cache read / ${t.cache.write.toLocaleString()} written`)
+  return [`Tokens: ${tokenParts.join(" · ")}${session.cost ? ` · Cost: $${session.cost.toFixed(4)}` : ""}`]
 }
 
 function taskLines(tasks: Iterable<Detail["tasks"]["data"][number]>) {
@@ -95,7 +98,7 @@ function snapshotLines(snapshot: Snapshot, connected: boolean, sessionDirectory:
   return [
     "PROJECT",
     ...directory,
-    `Updated: ${stamp(snapshot.updated)}${connected ? "" : " (stale)"}`,
+    `Refreshed: ${stamp(snapshot.updated)}${connected ? "" : " (stale)"}`,
     `${Object.keys(snapshot.active).length}${snapshot.activeOmitted ? ` (+${snapshot.activeOmitted} not shown)` : ""} running agents${snapshot.needsInput ? ` · ${snapshot.needsInput.length} need input` : ""}`,
     terminals,
     ...(snapshot.inventoryErrors.automations

@@ -92,6 +92,11 @@ function wireSummary(form: LaunchForm) {
   })
   form.agent.on("selectionChanged", summary)
   form.workspace.on("selectionChanged", summary)
+  const reveal = form.dialog.settings
+  form.dialog.settings = () => {
+    reveal?.()
+    summary()
+  }
   summary()
 }
 

@@ -3,6 +3,7 @@ import { matchesKey, printableKey } from "../keys"
 import { primaryAction, renderActions } from "./actions"
 import { openCommands, slashCommands } from "./commands"
 import { openServers, quit } from "./lifecycle"
+import { dropNotice, renderStatus } from "./status"
 import { changeTab, endSearch, filter, hop } from "./navigation"
 import { toggleSidebar } from "./toggles"
 import type { DashboardContext } from "./context"
@@ -15,6 +16,14 @@ export function routeKey(d: DashboardContext, key: KeyEvent) {
   if (d.state.closed) return key.preventDefault()
   if (d.options.blocked?.()) return
   if (key.hyper || key.eventType === "release") return key.preventDefault()
+  // A plain message is news about the moment before this key; the quit prompt is repainted if this key disarms it.
+  const armed = Date.now() < d.run.quitArmedUntil
+  dropNotice(d)
+  route(d, key)
+  if (armed && !d.state.closed && !(Date.now() < d.run.quitArmedUntil)) renderStatus(d)
+}
+
+function route(d: DashboardContext, key: KeyEvent) {
   if (globalKey(d, key)) return
   if (d.c.dialogs.keypress(key)) return
   if (d.state.searching) return searchKey(d, key)

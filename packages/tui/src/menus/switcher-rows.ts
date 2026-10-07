@@ -1,9 +1,11 @@
 import { TextRenderable } from "@opentui/core"
 import { label, sessionTitle } from "../state"
 import { color } from "../theme"
+import { sessionAgent } from "../chrome"
 import { fitHeading } from "../changes/heading"
 import { sessionRows } from "../session-list"
 import { folderContains } from "../working-folders"
+import type { Session } from "../server"
 import type { Switcher } from "./switcher-state"
 
 export function inFolders(s: Switcher, directory: string) {
@@ -24,8 +26,25 @@ export function describe(s: Switcher) {
   const session = s.matches[s.selected]
   // The title is already the selected row; the rest of the session's identity sits under the list at every size.
   s.details.content = session
-    ? `${fitHeading(innerWidth(s), "", label(session.location.directory, 256), "", "start")}\n${label(session.agent ?? "Default agent")} · ${session.id}`
+    ? `${fitHeading(innerWidth(s), "", label(session.location.directory, 256), "", "start")}\n${detailLine(s, session)}`
     : ""
+}
+
+/** The state in words (the row only has a marker), the agent the session ran when it is known, and its ID. */
+function detailLine(s: Switcher, session: Session) {
+  const { state } = s.ctx
+  const agent = sessionAgent(state, session)
+  return [
+    needsInput(s, session) ? "needs input" : Object.hasOwn(state.snapshot?.active ?? {}, session.id) ? "running" : "",
+    agent ? `agent ${label(agent)}` : "",
+    session.id,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+}
+
+function needsInput(s: Switcher, session: Session) {
+  return !!s.ctx.state.snapshot?.needsInput?.includes(session.id)
 }
 
 export function reveal(s: Switcher) {
@@ -43,8 +62,10 @@ export function paint(s: Switcher, index: number) {
   if (!session || !row) return
   row.bg = index === s.selected ? color.accent : color.panel
   row.fg = index === s.selected ? color.bg : color.text
-  const markers = `${session.id === state.selected ? " · current" : ""}${Object.hasOwn(state.snapshot?.active ?? {}, session.id) ? " *" : ""}${actions.hasDraft(session.id) ? " [draft]" : ""}${session.time.archived !== undefined && s.scope !== "archived" ? " [archived]" : ""}`
-  row.content = `${index === s.selected ? "▶ " : "  "}${sessionTitle(session.title || "Untitled session", 150)}${session.parentID ? " [child]" : ""}${markers}`
+  const markers = `${session.id === state.selected ? " · current" : ""}${actions.hasDraft(session.id) ? " [draft]" : ""}${session.time.archived !== undefined && s.scope !== "archived" ? " [archived]" : ""}`
+  // The sidebar's convention: `?` (needs input) or `*` (running) leads the title.
+  const mark = needsInput(s, session) ? "? " : Object.hasOwn(state.snapshot?.active ?? {}, session.id) ? "* " : ""
+  row.content = `${index === s.selected ? "▶ " : "  "}${mark}${sessionTitle(session.title || "Untitled session", 150)}${session.parentID ? " [child]" : ""}${markers}`
 }
 
 /** Sessions the current scope and query select, grouped by project folder. */
@@ -59,8 +80,13 @@ export function rank(s: Switcher) {
             `${session.title} ${session.agent ?? ""} ${session.location.directory} ${session.id}`.toLowerCase()
           return terms.every((term) => text.includes(term))
         })
+  // The folder of the session on screen leads, so the list opens at the session the reader is in.
+  const here = s.sessions.find((session) => session.id === s.ctx.state.selected)?.location
+  const lead = (session: Session) =>
+    here && session.location.directory === here.directory && session.location.workspaceID === here.workspaceID ? 0 : 1
   return [...found].sort(
     (a, b) =>
+      lead(a) - lead(b) ||
       a.location.directory.localeCompare(b.location.directory, undefined, { numeric: true }) ||
       (a.location.workspaceID ?? "").localeCompare(b.location.workspaceID ?? ""),
   )
