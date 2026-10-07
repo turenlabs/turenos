@@ -1375,3 +1375,20 @@ test("raw API credentials need HTTPS or loopback, and a discarded body is never 
     await server.stop(true)
   }
 })
+
+test("a 401 or 403 is reported as one even when the server pads its body past the limit", async () => {
+  const controller = new AbortController()
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => new Response(new Uint8Array(9 * 1024 * 1024), { status: request.method === "GET" ? 401 : 403 }),
+  })
+  try {
+    const api = createApi({ url: new URL(server.url.origin), headers: new Headers(), signal: controller.signal })
+    for (const method of ["GET", "POST"] as const)
+      await expect(api("/api/session", { method })).rejects.toThrow("Authentication required")
+  } finally {
+    controller.abort()
+    await server.stop(true)
+  }
+})

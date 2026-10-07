@@ -52,10 +52,9 @@ export function createApi(input: { url: URL; headers: Headers; signal: AbortSign
     }).catch(() => {
       throw new Error(signal.aborted ? "The server did not answer in time." : "Connection failed. Check the server.")
     })
-    if (options.discard) return discarded(response)
+    // An authentication failure is decided before its body is read: an untrusted server could pad it.
+    if (options.discard || response.status === 401 || response.status === 403) return discarded(response)
     const text = response.body ? await new Blob(await readBounded(response.body)).text() : ""
-    if (response.status === 401 || response.status === 403)
-      throw new Error("Authentication required. Check the server credentials.")
     if (!response.ok) throw new Error(failure(response.status, text))
     if (response.status === 204 || !text) return undefined
     return parseResponse(text)
