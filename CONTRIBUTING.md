@@ -45,6 +45,10 @@ backend from `packages/forge` with `bun run --conditions=browser ./src/index.ts 
 `bun run translate:app all` (or one locale, such as `de`) translates the changed strings into the other locales with a
 model; add `--check` or `--dry-run` to see the drift without writing.
 
+Provider logos in `packages/ui` come from models.dev and are committed. To refresh them, run
+`bun run generate:provider-icons` in `packages/ui`; it downloads the logos and regenerates the spritesheet. Review the
+result before committing it.
+
 If Electron exits silently when you run `bun dev` from a terminal inside another Electron app (VS Code, Cursor, the
 TurenOS Desktop), the shell inherited `ELECTRON_RUN_AS_NODE=1`, which makes every `electron` binary run as plain
 Node. Start it with `env -u ELECTRON_RUN_AS_NODE bun dev`.
