@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process"
+import { randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
@@ -198,9 +199,10 @@ function serverEnv(password: string) {
   return {
     FORGE_SERVER_USERNAME: "forge",
     FORGE_SERVER_PASSWORD: password,
-    // A throwaway key: the server refuses persistent secret storage without one.
+    // A throwaway key, drawn afresh for every sandbox start and never stored: the server refuses
+    // persistent secret storage without one.
     FORGE_SECRET_VAULT_KEY_ID: "sandbox",
-    FORGE_SECRET_VAULT_KEY: Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64"),
+    FORGE_SECRET_VAULT_KEY: randomBytes(32).toString("base64"),
     FORGE_DISABLE_MODELS_FETCH: "1",
     FORGE_DISABLE_AUTOUPDATE: "1",
     FORGE_DISABLE_CLAUDE_CODE: "1",
