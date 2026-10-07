@@ -5,7 +5,8 @@ import { addConfirmation, previewText } from "./view"
 
 type Message = MessagesListOutput["data"][number]
 
-const real = (message: Message) => message.type === "user" && (!message.source || message.source === "user")
+export const real = (message: Message): message is Extract<Message, { type: "user" }> =>
+  message.type === "user" && (!message.source || message.source === "user")
 
 /** Read-only inspection: finds the prompt to undo/redo, then reveals the typed confirmation. */
 export async function load(flow: RewindFlow) {
@@ -16,8 +17,10 @@ export async function load(flow: RewindFlow) {
   try {
     await fresh(flow, true)
     if (flow.action === "redo" && !flow.session.revert) throw new Error("Nothing staged to redo.")
-    await scanMessages(flow)
-    if (flow.session.revert && !flow.previous)
+    // A picked prompt is the target already; the picker saw it in the same bounded window.
+    if (flow.picked) flow.target = flow.picked
+    else await scanMessages(flow)
+    if (flow.session.revert && !flow.previous && !flow.picked)
       throw new Error("Staged boundary is outside the bounded 300-message window. Nothing changed.")
     if (flow.action === "undo" && !flow.target)
       throw new Error("No earlier user prompt in the bounded 300-message window. Nothing changed.")

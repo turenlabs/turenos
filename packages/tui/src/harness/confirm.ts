@@ -25,13 +25,14 @@ export function confirm(ctx: HarnessContext, session: Session, action: Action, b
     }),
     0,
   )
+  const body = confirmBody(action)
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
-      content: `For: ${label(session.title || session.id, 100)}\n\n${"proposal" in action ? proposalText(action.proposal) : action.kind === "rollback" ? `Restore snapshot v${action.version - 1} over v${action.version}.` : `Reload snapshot v${action.version} from its declared sources.`}`,
+      content: `For: ${label(session.title || session.id, 100)}\n\n${body.text}`,
       fg: color.text,
     }),
   )
-  dialog.error.content = `Ctrl+S ${verb(action)} · Esc back\nNothing changed yet.`
+  dialog.error.content = `Ctrl+S ${verb(action)} · Esc back\nNothing changed yet.${body.cut ? " Part of this proposal is cut and not shown." : ""}`
   dialog.back = back
   dialog.key = (key) => matchesKey(key, "enter")
   // After an uncertain result, retries only read state: a repeated write could apply twice.
@@ -59,6 +60,16 @@ export function confirm(ctx: HarnessContext, session: Session, action: Action, b
     }
     ctx.say(completed(action))
   }
+}
+
+/** The text under "For:", and whether it left part of a proposal out. */
+function confirmBody(action: Action) {
+  if ("proposal" in action) return proposalText(action.proposal)
+  const text =
+    action.kind === "rollback"
+      ? `Restore snapshot v${action.version - 1} over v${action.version}.`
+      : `Reload snapshot v${action.version} from its declared sources.`
+  return { text, cut: false }
 }
 
 function verb(action: Action) {

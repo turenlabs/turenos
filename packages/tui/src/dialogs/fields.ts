@@ -79,9 +79,17 @@ export function requireWord(dialog: ModalState, field: InputRenderable, word: st
   }
 }
 
-export function prompt(ctx: DialogContext, dialog: ModalState, label: string, value = "", cursor = value.length) {
+/** `bare` leaves out the caption and the Send button, for the reply editor that stays docked while typing. */
+export function prompt(
+  ctx: DialogContext,
+  dialog: ModalState,
+  label: string,
+  value = "",
+  cursor = value.length,
+  bare = false,
+) {
   const caption = new TextRenderable(ctx.renderer, { content: label, fg: color.text, attributes: TextAttributes.BOLD })
-  dialog.form.add(caption)
+  if (!bare) dialog.form.add(caption)
   const field = new TextareaRenderable(ctx.renderer, {
     height: 6,
     minHeight: 3,
@@ -96,13 +104,15 @@ export function prompt(ctx: DialogContext, dialog: ModalState, label: string, va
   })
   field.onContentChange = () => {
     if (field.plainText.length <= 32000) return
-    field.setText(field.plainText.slice(0, 32000))
+    const kept = field.plainText.slice(0, 32000)
+    // A cut inside a surrogate pair would leave a lone high surrogate, which JSON bodies reject.
+    field.setText(/[\ud800-\udbff]$/.test(kept) ? kept.slice(0, -1) : kept)
     dialog.error.content = "Task is limited to 32,000 characters."
   }
   dialog.form.add(field)
   field.cursorOffset = Math.max(0, Math.min(cursor, value.length))
   dialog.editor = field
-  addSendButton(ctx, dialog)
+  if (!bare) addSendButton(ctx, dialog)
   caption.onMouseDown = (event) => {
     if (event.button !== 0) return
     event.preventDefault()

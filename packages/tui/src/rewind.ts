@@ -3,8 +3,9 @@ import type { Dialogs } from "./dialogs"
 import { matchesKey } from "./keys"
 import type { Connection } from "./server"
 import type { DashboardState } from "./state"
-import type { RewindAction, RewindEnv, RewindFlow, RewindHooks } from "./rewind/flow"
+import type { Prompt, RewindAction, RewindEnv, RewindFlow, RewindHooks } from "./rewind/flow"
 import { load } from "./rewind/inspect"
+import { pickPrompt } from "./rewind/pick"
 import { boundary } from "./rewind/session"
 import { submit } from "./rewind/submit"
 import { addPanels, renderChanges } from "./rewind/view"
@@ -18,19 +19,34 @@ export function createRewindControls(
   hooks: RewindHooks,
 ) {
   const env: RewindEnv = { renderer, state, connection, dialogs, say, hooks }
-  return { undo: () => open(env, "undo"), redo: () => open(env, "redo") }
+  return {
+    undo: () => open(env, "undo"),
+    redo: () => open(env, "redo"),
+    pick: () => {
+      const selected = selection(env)
+      if (!selected || env.state.closed || !env.dialogs.navigate()) return
+      void pickPrompt(env, selected, (picked) => open(env, "undo", { sessionID: selected.id, picked }))
+    },
+  }
 }
 
-function open(env: RewindEnv, action: RewindAction) {
+function selection(env: RewindEnv) {
   const selected =
     env.state.tab === "sessions"
       ? env.state.snapshot?.sessions.find((session) => session.id === env.state.selected)
       : undefined
-  if (!selected) return env.say("Select a session first.", true)
-  if (!env.state.connected) return env.say("Reconnect before changing this session.", true)
+  if (!selected) return void env.say("Select a session first.", true)
+  if (!env.state.connected) return void env.say("Reconnect before changing this session.", true)
   if (env.hooks.blocked(selected.id))
-    return env.say("Task-owned subagent: use its owning session. Nothing changed.", true)
-  if (env.state.closed || !env.dialogs.navigate()) return
+    return void env.say("Task-owned subagent: use its owning session. Nothing changed.", true)
+  return selected
+}
+
+/** `pick` is a prompt chosen in the `/rewind` picker; the confirmation that follows is the one `/undo` opens. */
+function open(env: RewindEnv, action: RewindAction, pick?: { sessionID: string; picked: Prompt }) {
+  const selected = selection(env)
+  if (!selected || env.state.closed || !env.dialogs.navigate()) return
+  if (pick && pick.sessionID !== selected.id) return env.say("The selected session changed. Nothing changed.", true)
   const dialog = env.dialogs.open(action === "undo" ? "Undo conversation?" : "Redo conversation?", false, 32)
   if (!dialog) return
   const session = structuredClone(selected)
@@ -40,6 +56,7 @@ function open(env: RewindEnv, action: RewindAction) {
     ...env,
     ...panels,
     action,
+    picked: pick?.picked,
     dialog,
     session,
     initialBoundary: boundary(session.revert),

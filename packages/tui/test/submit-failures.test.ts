@@ -1,10 +1,14 @@
 import { expect, test } from "bun:test"
 import { promptPayload } from "../src/prompt-files"
 import { connect } from "../src/server"
-import { cleanup, dashboard, session, turen } from "./support"
+import { cleanup, dashboard, session, turen, type Route } from "./support"
 
 const invalid = (message: string) => () =>
   Response.json({ _tag: "InvalidRequestError", message }, { status: 400 })
+const agents = (_: Request, url: URL) => ({
+  location: { directory: url.searchParams.get("location[directory]") },
+  data: [{ id: "build", mode: "primary", hidden: false, request: { headers: {}, body: {} }, permissions: [] }],
+})
 // Admission acknowledgements must echo the caller's message ID.
 const accepted = async (request: Request) => ({ data: { id: (await request.json()).id, sessionID: "ses_main" } })
 
@@ -176,4 +180,59 @@ test("an escaping or malformed mention is flagged before send, and a malformed r
   view.mockInput.pressEnter()
   await screen("Reply sent.")
   expect(server.sent("/api/session/ses_main/prompt")).toHaveLength(1)
+})
+
+test("the new-session editor does not advertise shell commands and refuses to send one to the model", async () => {
+  const { server, view, screen } = await dashboard({
+    "GET /api/agent": agents,
+    "POST /api/session": () => new Response(null, { status: 500 }),
+  })
+  view.mockInput.pressKey("n")
+  const frame = await screen("What would you like to do?")
+  expect(frame).toContain("@ files")
+  expect(frame).not.toContain("! shell")
+  await view.mockInput.typeText("!rm -rf build")
+  view.mockInput.pressEnter()
+  await screen("Shell commands run in an existing session")
+  expect(server.requests.filter((item) => item.method === "POST")).toHaveLength(0)
+})
+
+test("a cut at 32,000 characters never leaves half of a surrogate pair", async () => {
+  const { view, screen } = await dashboard({})
+  view.mockInput.pressKey("f")
+  await screen("Type a message")
+  view.renderer.currentFocusedEditor!.setText(`a${"😀".repeat(16000)}`)
+  await screen("limited to 32,000")
+  const text = view.renderer.currentFocusedEditor!.plainText
+  expect(text.length).toBe(31999)
+  expect(text.isWellFormed()).toBe(true)
+})
+
+test("a refused prompt after a created session keeps its ID and Ctrl+O visible", async () => {
+  const created: string[] = []
+  const base: Record<string, Route> = {
+    "GET /api/agent": agents,
+    "POST /api/session": async (request) => {
+      const body = await request.json()
+      created.push(body.id)
+      // batou:ignore trust_boundary -- test fixture server echoing a synthetic session; no Express session exists here
+      return { data: session(String(body.id).slice(4)) }
+    },
+  }
+  const routes = new Proxy(base, {
+    get(target, key) {
+      if (typeof key !== "string") return undefined
+      if (key === `GET /api/session/${created[0]}`) return () => ({ data: session(String(created[0]).slice(4)) })
+      if (/^POST \/api\/session\/ses_[0-9a-f]+\/prompt$/.test(key)) return invalid("Prompt refused")
+      return target[key]
+    },
+  })
+  const { view, screen } = await dashboard(routes)
+  view.mockInput.pressKey("n")
+  await screen("What would you like to do?")
+  await view.mockInput.typeText("Review")
+  view.mockInput.pressEnter()
+  const frame = await screen("Prompt refused")
+  expect(frame).toContain(`Session: ${created[0]}`)
+  expect(frame).toContain("Ctrl+O inspect")
 })

@@ -12,6 +12,10 @@ import { maxDrafts, maxMessageLength, newMessageID, replyBlocked, type RequestCo
 
 export function followup(ctx: RequestContext) {
   if (ctx.state.tab !== "sessions" || !ctx.state.selected) return ctx.say("Select a session first.")
+  // Asking to reply means typing again: the editor stays open after sending, until Esc.
+  ctx.state.navigating = false
+  ctx.state.detailFocused = true
+  if (ctx.state.modal?.composer) return ctx.state.modal.editor?.focus()
   const sessionID = ctx.state.selected
   const session = ctx.state.snapshot?.sessions.find((session) => session.id === sessionID)
   if (!session) return ctx.say("This session is no longer available. Refresh the list.")
@@ -21,10 +25,35 @@ export function followup(ctx: RequestContext) {
   openReply(ctx, session)
 }
 
-function openReply(ctx: RequestContext, session: Session) {
+/**
+ * Opens the reply editor unasked while the selected session is in view with the transcript focused, so
+ * typing goes into it. Esc leaves it (`navigating`) until Enter, f, or opening a session.
+ */
+export function offerComposer(ctx: RequestContext) {
+  const state = ctx.state
+  const id = state.selected
+  if (state.closed || !state.connected || state.modal || state.searching || state.tab !== "sessions") return
+  if (!id || !state.detailFocused || state.navigating || state.history || replyBlocked(ctx, id)) return
+  if (!ctx.messages.has(id) && ctx.messages.size >= maxDrafts) return
+  const session = state.snapshot?.sessions.find((item) => item.id === id)
+  // Opened unasked, so a notice such as "Reply sent." stays on screen.
+  if (session) openReply(ctx, session, true)
+}
+
+/** Esc in the reply editor: single-letter shortcuts work again, and on a running turn the next Esc stops it. */
+function leaveComposer(ctx: RequestContext, sessionID: string) {
+  ctx.state.navigating = true
+  if (!Object.hasOwn(ctx.state.snapshot?.active ?? {}, sessionID)) return
+  ctx.stopArmed = { sessionID, until: Date.now() + 2000, action: "stop" }
+  ctx.say("Press Esc again to stop this turn")
+}
+
+function openReply(ctx: RequestContext, session: Session, keepNotice = false) {
   const sessionID = session.id
-  const dialog = ctx.dialogs.open("Reply", false, 24, true)
+  const dialog = ctx.dialogs.open("Reply", false, 24, true, false, keepNotice)
   if (!dialog) return
+  dialog.composer = true
+  dialog.back = () => leaveComposer(ctx, sessionID)
   dialog.recipient = session
   const draft: MessageDraft = ctx.messages.get(sessionID) ?? {
     text: "",
@@ -42,7 +71,7 @@ function openReply(ctx: RequestContext, session: Session) {
     draft.text = draft.submitted ?? task.plainText
     draft.cursor = task.cursorOffset
     // An empty editor leaves no draft, so there is nothing to resume.
-    if (draft.text || draft.submitted !== undefined) return ctx.say("Message draft kept · f to resume")
+    if (draft.text || draft.submitted !== undefined) return ctx.say("Message draft kept · Enter or f to resume")
     ctx.messages.delete(sessionID)
   }
   dialog.discard = () => {
@@ -81,14 +110,17 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
   const delivery = () => {
     const live = running(ctx, session.id)
     const mode = !live ? "Send" : draft.delivery === "queue" ? "Queue" : "Steer"
-    heading.content = `${mode} · Reply to ${label(session.title, 100)}${session.revert ? " · undo staged" : ""}`
-    heading.fg = session.revert ? color.warning : color.muted
+    const waiting = waitingRequest(ctx, session.id)
+    heading.content = waiting
+      ? `${mode} · ${waiting} · Esc then Enter to answer`
+      : `${mode} · Reply to ${label(session.title, 100)}${session.revert ? " · undo staged" : ""}`
+    heading.fg = waiting || session.revert ? color.warning : color.muted
     const listed = (dialog.suggestionRows ?? 0) + (dialog.mentionRows ?? 0) > 0
     const hint = listed
       ? `Up/Down choose · Tab complete\nEnter pick · Esc close list · F4 discard`
       : session.revert
-        ? `Enter Send + commit undo · Alt+Enter newline\nEsc keep · F4 discard${live ? " · Ctrl+T mode" : ""}`
-        : `Enter Send · Shift/Alt+Enter newline\nEsc keep · F4 discard${live ? " · Ctrl+T mode" : ""}`
+        ? `Enter Send + commit undo · Alt+Enter newline\nEsc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
+        : `Enter Send · Shift/Alt+Enter newline\nEsc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
     // A refresh may repaint the hint, but never over a message that replaced it.
     if (!shown.content || dialog.error.content === shown.content) dialog.error.content = hint
     shown.content = dialog.error.content
@@ -110,9 +142,17 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
   return delivery
 }
 
+/** A permission or question the open reply would otherwise hide: the editor stays, so it says what waits. */
+function waitingRequest(ctx: RequestContext, sessionID: string) {
+  const detail = ctx.state.detail?.sessionID === sessionID ? ctx.state.detail : undefined
+  if (detail?.permissions.length) return "Permission waiting"
+  if (detail?.questions.length) return "Question waiting"
+  return ""
+}
+
 /** The reply editor, one row for a short message and growing with the text. */
 function createReplyEditor(ctx: RequestContext, dialog: ModalState, draft: MessageDraft) {
-  const task = ctx.dialogs.prompt(dialog, "Your message", draft.text, draft.cursor)
+  const task = ctx.dialogs.prompt(dialog, "Your message", draft.text, draft.cursor, true)
   dialog.editor = task
   dialog.editorLocked = () => draft.submitted !== undefined
   task.marginBottom = 0

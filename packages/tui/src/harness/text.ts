@@ -40,27 +40,27 @@ export function describe(session: Session, harness: State) {
   )
 }
 
+/** The confirmation body, and whether it left out part of the proposal (extra changes or the 16,000-character cut). */
 export function proposalText(proposal: Proposal) {
-  return display(
-    [
-      label(proposal.summary, 1000),
-      `Against v${proposal.baseVersion} · ${proposal.status} · validation ${proposal.validation.status}`,
-      ...proposal.validation.errors.map((error) => `  ! ${label(error, 300)}`),
-      ...proposal.validation.warnings.map((warning) => `  ~ ${label(warning, 300)}`),
-      ...(proposal.changes.length ? ["", `CHANGES (${proposal.changes.length})`] : []),
-      ...proposal.changes
-        .slice(0, 20)
-        .map(
-          (change) =>
-            `  ${change.operation} ${label(change.path, 200)}${change.summary ? ` — ${label(change.summary, 200)}` : ""}`,
-        ),
-      ...(proposal.tools?.length ? ["", `TOOLS (${proposal.tools.length})`] : []),
-      ...(proposal.tools ?? []).map(toolLine),
-      ...(proposal.guidance?.length ? ["", `GUIDANCE (${proposal.guidance.length})`] : []),
-      ...(proposal.guidance ?? []).map(guidanceLine),
-    ].join("\n"),
-    16000,
-  )
+  const text = [
+    label(proposal.summary, 1000),
+    `Against v${proposal.baseVersion} · ${proposal.status} · validation ${proposal.validation.status}`,
+    ...proposal.validation.errors.map((error) => `  ! ${label(error, 300)}`),
+    ...proposal.validation.warnings.map((warning) => `  ~ ${label(warning, 300)}`),
+    ...(proposal.changes.length ? ["", `CHANGES (${proposal.changes.length})`] : []),
+    ...proposal.changes
+      .slice(0, 20)
+      .map(
+        (change) =>
+          `  ${change.operation} ${label(change.path, 200)}${change.summary ? ` — ${label(change.summary, 200)}` : ""}`,
+      ),
+    ...(proposal.changes.length > 20 ? [`  … ${proposal.changes.length - 20} more changes not shown`] : []),
+    ...(proposal.tools?.length ? ["", `TOOLS (${proposal.tools.length})`] : []),
+    ...(proposal.tools ?? []).map(toolLine),
+    ...(proposal.guidance?.length ? ["", `GUIDANCE (${proposal.guidance.length})`] : []),
+    ...(proposal.guidance ?? []).map(guidanceLine),
+  ].join("\n")
+  return { text: display(text, 16000), cut: proposal.changes.length > 20 || text.length > 16000 }
 }
 
 function toolLine(tool: NonNullable<Proposal["tools"]>[number]) {

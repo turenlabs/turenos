@@ -39,7 +39,8 @@ export function connect(options: ConnectionOptions) {
     searchSessions: (input: SessionSearch, signal?: AbortSignal) => searchSessions(ctx, input, signal),
     updateSession: (session: Session, change: SessionChange) => updateSession(ctx, session, change),
     deleteSession: (session: Session) => deleteSession(ctx, session),
-    worktree: (directory: string, name: string, retry: boolean) => worktree(ctx, directory, name, retry),
+    worktree: (directory: string, name: string, retry: boolean, signal?: AbortSignal) =>
+      worktree(ctx, directory, name, retry, signal),
     detail: (sessionID: string, cursor?: string) => detail(ctx, sessionID, cursor),
     agents: (directory: string) => agents(ctx, directory),
     commands: (directory: string, workspaceID?: string) => commands(ctx, directory, workspaceID),

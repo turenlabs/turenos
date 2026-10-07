@@ -33,7 +33,7 @@ export function openQueue(ctx: QueueContext) {
   })
   dialog.frame.add(list, dialog.frame.getChildren().indexOf(dialog.error))
   dialogs.track(dialog, list)
-  const dock: Dock = { ctx, session, dialog, text, list, inputs: [], armed: "", request: 0, acting: false }
+  const dock: Dock = { ctx, session, dialog, text, list, inputs: [], armed: "", armedAt: 0, request: 0, acting: false }
   list.on("selectionChanged", () => {
     dock.armed = ""
     const input = dock.inputs[list.getSelectedIndex()]

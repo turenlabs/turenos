@@ -115,9 +115,12 @@ export function turen(options: { name?: string; password?: string; routes?: Reco
   }
 }
 
-/** A test renderer plus `screen(text)`, which renders until the text appears or fails with the frame. */
-export async function terminal(width = 120, height = 36) {
-  const view = await createTestRenderer({ width, height })
+/**
+ * A test renderer plus `screen(text)`, which renders until the text appears or fails with the frame.
+ * `ctrlC` leaves Ctrl+C to the dashboard, as the client's own renderer does, instead of destroying it.
+ */
+export async function terminal(width = 120, height = 36, ctrlC = false) {
+  const view = await createTestRenderer({ width, height, ...(ctrlC ? { exitOnCtrlC: false } : {}) })
   cleanup.push(() => view.renderer.destroy())
   async function screen(text: string, timeout = 5000) {
     const deadline = Date.now() + timeout

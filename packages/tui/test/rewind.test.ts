@@ -7,6 +7,7 @@ import { createLayout } from "../src/layout"
 import { createRewindControls } from "../src/rewind"
 import { connect, type Session } from "../src/server"
 import { createDashboardState } from "../src/state"
+import { assistant } from "./support"
 
 const cleanup: (() => void | Promise<void>)[] = []
 afterEach(async () => {
@@ -497,4 +498,74 @@ test("ownership discovered during loading prevents controls and writes", async (
   await app.waitFor((frame) => frame.includes("Task-owned"))
   expect(app.state.modal!.fields).toEqual([])
   expect(app.posts()).toEqual([])
+})
+
+async function picker(app: Awaited<ReturnType<typeof fixture>>) {
+  app.remote.pages = [
+    [assistant("reply", "Assistant reply") as unknown as MessagesListOutput["data"][number], ...app.remote.pages[0]!],
+  ]
+  app.controls.pick()
+  return app.waitFor((frame) => frame.includes("Rewind to an earlier message") && frame.includes("First prompt"))
+}
+
+test("the rewind picker lists user prompts newest first and leaves out other messages", async () => {
+  const app = await fixture()
+  const frame = await picker(app)
+  const at = (text: string) => frame.indexOf(text)
+  expect(at("Latest real prompt")).toBeGreaterThan(-1)
+  expect(at("Latest real prompt")).toBeLessThan(at("Earlier real prompt"))
+  expect(at("Earlier real prompt")).toBeLessThan(at("First prompt"))
+  expect(frame).not.toContain("Assistant reply")
+  expect(frame).not.toContain("Job notification")
+  expect(frame).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)
+  expect(app.posts()).toEqual([])
+})
+
+test("choosing the second-newest prompt opens the undo confirmation and stages that message only after it", async () => {
+  const app = await fixture()
+  await picker(app)
+  app.view.mockInput.pressArrow("down")
+  app.view.mockInput.pressEnter()
+  await app.waitFor(() => app.state.modal?.fields.some((field) => field instanceof InputRenderable) === true)
+  const frame = await app.waitFor(
+    (frame) => frame.includes("Earlier real prompt") && frame.includes("Confirmation (type undo)"),
+  )
+  expect(frame).toContain("Undo conversation?")
+  expect(app.posts()).toEqual([])
+  await app.confirm()
+  await app.waitFor(() => !app.state.modal)
+  expect(app.posts().map((request) => [request.path, request.body])).toEqual([
+    ["/api/session/ses_rewind/interrupt", ""],
+    ["/api/session/ses_rewind/revert/stage", '{"messageID":"msg_z","files":false}'],
+  ])
+  expect(app.calls[1]).toEqual(["restore", "ses_rewind", "msg_z", "Earlier real prompt"])
+})
+
+test("Escape in the rewind picker stages nothing", async () => {
+  const app = await fixture()
+  await picker(app)
+  app.view.mockInput.pressEscape()
+  await app.waitFor(() => !app.state.modal)
+  expect(app.posts()).toEqual([])
+})
+
+test("the rewind picker refuses task-owned sessions, the staged boundary and later prompts", async () => {
+  const owned = await fixture()
+  owned.remote.blocked = true
+  owned.controls.pick()
+  expect(owned.state.modal).toBeUndefined()
+  expect(owned.requests).toEqual([])
+  expect(owned.notices.at(-1)).toContain("Task-owned")
+
+  const staged = await fixture({ messageID: "msg_z", files: [], diff: "", snapshot: "tree_original" })
+  await picker(staged)
+  staged.view.mockInput.pressEnter()
+  await staged.waitFor(() => staged.notices.some((notice) => notice.includes("after the staged boundary")))
+  expect(staged.state.modal).toBeUndefined()
+  const picked = await fixture({ messageID: "msg_z", files: [], diff: "", snapshot: "tree_original" })
+  await picker(picked)
+  picked.view.mockInput.pressArrow("down")
+  picked.view.mockInput.pressEnter()
+  await picked.waitFor(() => picked.notices.some((notice) => notice.includes("already the staged boundary")))
+  expect(staged.posts().concat(picked.posts())).toEqual([])
 })

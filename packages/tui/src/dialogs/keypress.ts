@@ -12,6 +12,11 @@ export function keypress(ctx: DialogContext, key: KeyEvent) {
   const current = ctx.state.modal
   if (!current) return false
   // Native bindings do not distinguish Hyper; do not let it fall through as an unmodified key.
+  // A busy dialog may claim Escape to cancel its own wait; every other key is held back.
+  if (current.busy && !key.hyper && key.eventType !== "release" && matchesKey(key, "escape") && current.key?.(key)) {
+    key.preventDefault()
+    return true
+  }
   if (current.busy || key.hyper || key.eventType === "release") {
     key.preventDefault()
     return true
@@ -42,14 +47,35 @@ export function keypress(ctx: DialogContext, key: KeyEvent) {
   return routeSubmitKeys(ctx, current, key)
 }
 
+/** The prompt each editor is showing from an Up/Down walk; any edit makes the text differ and ends it. */
+const walks = new WeakMap<TextareaRenderable, { index: number; shown: string }>()
+
 function recallPrevious(ctx: DialogContext, current: ModalState, key: KeyEvent) {
-  if (!current.editor?.focused || current.editor.plainText || !matchesKey(key, "up")) return false
-  const previous = ctx.hooks.recall?.()
-  if (!previous) return false
+  const editor = current.editor
+  const up = matchesKey(key, "up")
+  if (!editor?.focused || (!up && !matchesKey(key, "down"))) return false
+  const active = walks.get(editor)
+  const walk = active?.shown === editor.plainText ? active : undefined
+  if (!walk) walks.delete(editor)
+  if (!walk && (!up || editor.plainText)) return false
+  // Only on the edge line, so multi-line and wrapped editing keep their arrow keys.
+  if (editor.visualCursor.visualRow !== (up ? 0 : editor.lineInfo.lineSources.length - 1)) return false
+  const prompts = ctx.hooks.recall?.() ?? []
+  const index = (walk?.index ?? -1) + (up ? 1 : -1)
+  if (!prompts.length && up) return false
   key.preventDefault()
-  if (previous.length > 32000)
+  if (index >= prompts.length) return true
+  if (index < 0) {
+    walks.delete(editor)
+    editor.setText("")
+    return true
+  }
+  if (prompts[index]!.length > 32000) {
     ctx.hooks.say("Previous prompt is too long for this editor. Copy the needed text from History.")
-  else current.editor.setText(display(previous, 32000))
+    return true
+  }
+  editor.setText(display(prompts[index]!, 32000))
+  walks.set(editor, { index, shown: editor.plainText })
   return true
 }
 

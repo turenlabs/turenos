@@ -40,6 +40,7 @@ async function fixture(initial: SessionsGoalGetOutput = goal(), width = 100) {
     goal: initial,
     owned: false,
     ambiguous: false,
+    refuse: false,
     apply: true,
     gate: undefined as Promise<void> | undefined,
     race: false,
@@ -71,6 +72,7 @@ async function fixture(initial: SessionsGoalGetOutput = goal(), width = 100) {
         (!remote.goal || input.goalID !== remote.goal.id || input.expectedRevision !== remote.goal.revision)
       )
         return Response.json({ name: "SessionGoalConflictError", message: "revision conflict" }, { status: 409 })
+      if (remote.refuse) return Response.json({ _tag: "InvalidRequestError", message: "Goal refused" }, { status: 400 })
       if (remote.apply) {
         if (request.method === "PUT") {
           if (remote.goal && remote.goal.status !== "complete" && remote.goal.id !== input.id)
@@ -237,6 +239,21 @@ test("a submit that sent nothing leaves the objective editable", async () => {
   app.submit()
   await app.waitFor(() => !app.state.modal)
   expect(JSON.parse(app.writes()[0]!.body)).toMatchObject({ objective: "Second draft" })
+})
+
+test("a definitely refused Set unfreezes the objective for an edit", async () => {
+  const app = await fixture(null)
+  await app.open()
+  await app.choose("Set")
+  await app.view.mockInput.typeText("First draft")
+  app.remote.refuse = true
+  app.submit()
+  await app.waitFor((frame) => frame.includes("Rejected by the server"))
+  app.remote.refuse = false
+  ;(app.state.modal!.fields[0] as TextareaRenderable).setText("Second draft")
+  app.submit()
+  await app.waitFor(() => !app.state.modal)
+  expect(JSON.parse(app.writes().at(-1)!.body)).toMatchObject({ objective: "Second draft" })
 })
 
 test("creation retry retains IDs and frozen agent/model", async () => {

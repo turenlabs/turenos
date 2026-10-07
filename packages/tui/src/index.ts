@@ -10,7 +10,9 @@ import { mountApp } from "./dashboard/app"
  * Without a URL the client opens the local TurenOS (desktop app, then this host's own servers),
  * and `s` switches servers at any time. `directory` applies only to the first server.
  */
-export async function runTui(options: Omit<ConnectionOptions, "url"> & { url?: string; server?: string }) {
+export async function runTui(
+  options: Omit<ConnectionOptions, "url"> & { url?: string; server?: string; session?: string },
+) {
   if (!process.stdin.isTTY || !process.stdout.isTTY)
     throw new Error("The TurenOS TUI requires an interactive terminal.")
   const servers = createServers({ username: options.username })
@@ -36,6 +38,7 @@ export async function runTui(options: Omit<ConnectionOptions, "url"> & { url?: s
       app = mountApp(renderer, servers, {
         initial,
         directory: options.directory,
+        session: options.session,
         onQuit: (drafts) => {
           discarded = drafts
           void settleTerminalInput(renderer).then(

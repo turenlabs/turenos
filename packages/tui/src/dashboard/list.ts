@@ -16,7 +16,7 @@ export function renderList(d: DashboardContext) {
   if (!snapshot) return
   const filtered = matching(d.state, listRows(d.state, snapshot))
   d.state.rows = filtered
-  const index = d.state.rows.findIndex((row) => row.id === (d.state.selected || defaultSelection(d.state, snapshot)))
+  const index = d.state.rows.findIndex((row) => row.id === (d.state.selected || defaultSelection(d, snapshot)))
   const selected = d.state.rows[Math.max(0, index)]?.id ?? ""
   if (d.state.selected !== selected) {
     d.c.conversation.rememberPosition()
@@ -56,6 +56,7 @@ function sessionListRows(state: DashboardState, snapshot: Snapshot): SidebarRow[
         state.modal?.recipient?.id === session.id,
     ),
     snapshot.active,
+    snapshot.needsInput,
   ).map((row) => {
     const session = snapshot.sessions.find((session) => session.id === row.id)!
     return snapshot.workingFolders !== undefined &&
@@ -73,10 +74,10 @@ function matching(state: DashboardState, rows: SidebarRow[]) {
   )
 }
 
-function defaultSelection(state: DashboardState, snapshot: Snapshot) {
-  return state.tab === "sessions"
-    ? (snapshot.sessions.find((session) => !session.parentID) ?? snapshot.sessions[0])?.id
-    : ""
+function defaultSelection(d: DashboardContext, snapshot: Snapshot) {
+  if (d.state.tab !== "sessions") return ""
+  const requested = snapshot.sessions.find((session) => session.id === d.options.session)
+  return (requested ?? snapshot.sessions.find((session) => !session.parentID) ?? snapshot.sessions[0])?.id
 }
 
 function renderSidebar(d: DashboardContext, snapshot: Snapshot) {

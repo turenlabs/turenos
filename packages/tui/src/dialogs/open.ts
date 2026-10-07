@@ -4,10 +4,19 @@ import type { DialogContext } from "./context"
 
 type Placement = { inline: boolean; docked: boolean; sidebar: boolean }
 
-export function open(ctx: DialogContext, title: string, inline = false, height = 24, docked = false, sidebar = false) {
+/** `keepNotice` leaves the line above the footer alone, for a dialog the dashboard opens without being asked. */
+export function open(
+  ctx: DialogContext,
+  title: string,
+  inline = false,
+  height = 24,
+  docked = false,
+  sidebar = false,
+  keepNotice = false,
+) {
   if (ctx.state.modal) return undefined
   if (inline) ctx.hooks.rememberPosition()
-  ctx.hooks.say("")
+  if (!keepNotice) ctx.hooks.say("")
   const placement = { inline, docked, sidebar }
   const overlay = createOverlay(ctx, docked)
   attachOverlay(ctx, overlay, placement)

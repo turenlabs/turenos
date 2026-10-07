@@ -36,6 +36,7 @@ export type RewindFlow = RewindEnv & {
   changes: TextRenderable
   expanded: boolean
   target?: Prompt
+  picked?: Prompt
   previous?: Prompt
   ready: boolean
   loading: boolean

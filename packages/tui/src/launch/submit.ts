@@ -11,6 +11,8 @@ export async function submitLaunch(form: LaunchForm) {
   const { current, dialog } = form
   if (!state.connected) throw new Error("Reconnect before sending. Your draft is kept.")
   if (!current.start.input()) {
+    if (form.task.plainText.trim().startsWith("!"))
+      throw new Error("Shell commands run in an existing session: start the session, then send !command.")
     const notice = outsideNotice(form.task.plainText, form.directory.value.trim(), form.outsideAck)
     form.outsideAck = notice.key
     if (notice.message) throw new Error(notice.message)
@@ -25,8 +27,14 @@ export async function submitLaunch(form: LaunchForm) {
       ...(current.variant !== undefined ? { variant: current.variant } : {}),
       prompt: current.prompt,
     })
-    .finally(() => {
-      dialog.reference = current.start.input() ? current.start.sessionID : undefined
+    .finally(async () => {
+      // A refused prompt unfreezes the draft, but the session it was created for still exists and must stay reachable.
+      const exists = () =>
+        form.deps.connection.client.sessions.get({ sessionID: current.start.sessionID }).then(
+          () => true,
+          () => false,
+        )
+      dialog.reference = current.start.input() || (await exists()) ? current.start.sessionID : undefined
     })
   form.store.defaults = {
     directory: current.directory,
@@ -56,8 +64,23 @@ async function prepareWorktree(form: LaunchForm) {
   const worktree = (current.worktree ??= { name: `tui-${crypto.randomUUID().slice(0, 8)}`, attempted: false })
   const retry = worktree.attempted
   worktree.attempted = true
-  dialog.error.content = "Preparing a new git worktree on the server…"
-  const result = await form.deps.connection.worktree(directory.value.trim(), worktree.name, retry)
+  dialog.error.content = "Preparing a new git worktree on the server…\nEsc stops waiting and keeps the draft."
+  const stop = new AbortController()
+  form.preparing = stop
+  const cancelled = new Promise<never>((_, reject) =>
+    stop.signal.addEventListener("abort", () =>
+      reject(
+        new Error("Stopped waiting for the worktree. Your draft is kept; Ctrl+S reuses the worktree if it finished."),
+      ),
+    ),
+  )
+  // The server keeps preparing after Esc; the same name lets the next send find that worktree.
+  const result = await Promise.race([
+    form.deps.connection.worktree(directory.value.trim(), worktree.name, retry, stop.signal),
+    cancelled,
+  ]).finally(() => {
+    form.preparing = undefined
+  })
   if (result.status === "failed") {
     current.worktree = undefined
     throw new Error(

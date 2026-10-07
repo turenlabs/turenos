@@ -29,8 +29,8 @@ import { createMenus } from "../menus"
 import { renderActions } from "./actions"
 import { slashCommands } from "./commands"
 import { refresh } from "./refresh"
-import { resize } from "./status"
-import { toggleMotion, toggleRaw } from "./toggles"
+import { attend, resize } from "./status"
+import { toggleAttention, toggleMotion, toggleRaw } from "./toggles"
 import { openServers } from "./lifecycle"
 import type { DashboardContext } from "./context"
 
@@ -87,13 +87,14 @@ function createTranscriptControls(d: DashboardContext) {
       await refresh(d)
     },
     say: d.say,
-    recall: () => {
-      if (d.state.detail?.sessionID !== d.state.selected) return
-      const previous = d.state.detail.messages
-        .toReversed()
-        .find((message) => message.type === "user" && (!message.source || message.source === "user"))
-      return previous?.type === "user" ? previous.text : undefined
-    },
+    recall: () =>
+      d.state.detail?.sessionID !== d.state.selected
+        ? []
+        : d.state.detail.messages
+            .toReversed()
+            .flatMap((message) =>
+              message.type === "user" && (!message.source || message.source === "user") ? [message.text] : [],
+            ),
   })
   return { limits, copy, conversation, live, dialogs }
 }
@@ -122,7 +123,17 @@ function createInputControls(d: DashboardContext) {
     d.c.dialogs.resize,
   )
   const mentions = createMentions(d.renderer, d.state, d.connection, d.c.dialogs.resize)
-  const requests = createRequests(d.renderer, d.state, d.connection, d.c.dialogs, d.say, d.openSession, slash, mentions)
+  const requests = createRequests(
+    d.renderer,
+    d.state,
+    d.connection,
+    d.c.dialogs,
+    d.say,
+    d.openSession,
+    slash,
+    mentions,
+    () => attend(d),
+  )
   return { slash, mentions, requests }
 }
 
@@ -224,9 +235,19 @@ function createSettingsControls(d: DashboardContext) {
     appearance: () => [
       { name: state.reducedMotion ? "Turn animation on" : "Reduce motion", run: () => toggleMotion(d) },
       {
+        name: state.attention ? "Turn attention alerts off" : "Turn attention alerts on",
+        description: "Bell and terminal title when a turn ends or a session needs input",
+        run: () => toggleAttention(d),
+      },
+      {
         name: state.rawResponses ? "Show formatted responses" : "Show raw responses",
         description: "Tool results and agent updates in the transcript",
         run: () => toggleRaw(d),
+      },
+      {
+        name: state.expandToolOutput ? "Collapse tool output" : "Expand tool output",
+        description: "Long tool results show only their first lines (Ctrl+O)",
+        run: () => d.c.conversation.toggleToolOutput(),
       },
     ],
   })

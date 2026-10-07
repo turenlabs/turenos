@@ -10,8 +10,9 @@ import { inputDirectory } from "./transport"
  * checks it out in the background, then announces worktree.ready or worktree.failed on
  * /global/event, so that stream is open before the request that starts the checkout. `name` stays
  * the same across retries: after an uncertain attempt, the worktree it made is found and reused.
+ * `signal` stops the requests and the event wait at once; the server keeps preparing what it started.
  */
-export async function worktree(ctx: Context, directory: string, name: string, retry: boolean) {
+export async function worktree(ctx: Context, directory: string, name: string, retry: boolean, signal?: AbortSignal) {
   inputDirectory(directory)
   const stop = new AbortController()
   const expired = AbortSignal.timeout(5 * 60 * 1000)
@@ -19,16 +20,16 @@ export async function worktree(ctx: Context, directory: string, name: string, re
     ctx.url,
     "/global/event",
     ctx.headers,
-    AbortSignal.any([ctx.controller.signal, stop.signal, expired]),
+    AbortSignal.any([ctx.controller.signal, stop.signal, expired, ...(signal ? [signal] : [])]),
   )[Symbol.asyncIterator]()
   try {
     // The first event, server.connected, means the server already forwards this worktree's events.
     await events.next()
-    const found = retry ? await existingWorktree(ctx, directory, name) : undefined
+    const found = retry ? await existingWorktree(ctx, directory, name, signal) : undefined
     // A worktree is checked out once it holds more than its `.git` link file.
     if (
       found &&
-      array(await ctx.api("/file", { directory: found, query: { path: "" } }), 20000).some(
+      array(await ctx.api("/file", { directory: found, query: { path: "" }, signal }), 20000).some(
         (item) => isRecord(item) && item.name !== ".git",
       )
     )
@@ -36,8 +37,15 @@ export async function worktree(ctx: Context, directory: string, name: string, re
     const target =
       found ??
       string(
-        object(await ctx.api("/experimental/worktree", { method: "POST", directory, body: { name }, timeout: 60000 }))
-          .directory,
+        object(
+          await ctx.api("/experimental/worktree", {
+            method: "POST",
+            directory,
+            body: { name },
+            timeout: 60000,
+            signal,
+          }),
+        ).directory,
         4096,
       )
     checkDirectory(target)
@@ -55,8 +63,8 @@ export async function worktree(ctx: Context, directory: string, name: string, re
   }
 }
 
-async function existingWorktree(ctx: Context, directory: string, name: string) {
-  return array(await ctx.api("/experimental/worktree", { directory }), 10000).find(
+async function existingWorktree(ctx: Context, directory: string, name: string, signal?: AbortSignal) {
+  return array(await ctx.api("/experimental/worktree", { directory, signal }), 10000).find(
     (item): item is string =>
       typeof item === "string" &&
       item

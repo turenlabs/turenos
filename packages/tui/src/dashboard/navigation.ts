@@ -50,6 +50,7 @@ export function openSession(d: DashboardContext, id: string, inspect = false, se
   ++state.detailVersion
   d.c.conversation.loadPosition()
   state.detailFocused = true
+  state.navigating = false
   if (!d.c.conversation.hasLive(id) || inspect || state.tab !== "sessions") {
     d.ui.renderContent(inspect ? "Loading the attempted session…" : "Loading session…")
   }
@@ -63,10 +64,13 @@ export function openSession(d: DashboardContext, id: string, inspect = false, se
 }
 
 function fetchThenOpen(d: DashboardContext, id: string) {
+  const { tab, selected } = d.state
   void d.connection.client.sessions
     .get({ sessionID: id })
     .then((fetched) => {
-      if (!d.state.closed) openSession(d, id, false, fetched)
+      // The user may have moved on while the fetch ran; opening now would yank the view back.
+      if (d.state.closed || d.state.tab !== tab || d.state.selected !== selected) return
+      openSession(d, id, false, fetched)
     })
     .catch((error: unknown) => {
       if (!d.state.closed) d.say(`Cannot open session ${id}: ${errorText(error)}`, true)
@@ -105,6 +109,8 @@ export function hop(d: DashboardContext, direction: number) {
   const next =
     index < 0 ? (direction > 0 ? 0 : sessions.length - 1) : (index + direction + sessions.length) % sessions.length
   openSession(d, sessions[next]!.id)
+  // Hopping browses: the reply editor stays closed, so the next Alt+Left/Right hops again instead of moving a word.
+  d.state.navigating = true
 }
 
 /** `/`: the session switcher on the Sessions tab, an inline sidebar search elsewhere. */

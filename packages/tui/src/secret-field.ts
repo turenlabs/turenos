@@ -20,7 +20,8 @@ export function secretField(renderer: CliRenderer, input: { limit: number; place
     event.preventDefault()
     if (event.bytes.byteLength > input.limit * 4) return input.reject()
     try {
-      append(secret, new TextDecoder("utf-8", { fatal: true }).decode(event.bytes))
+      // A key copied with its line ending is the key, not a control character.
+      append(secret, new TextDecoder("utf-8", { fatal: true }).decode(event.bytes).replace(/[\r\n]+$/, ""))
     } catch {
       input.reject()
     }

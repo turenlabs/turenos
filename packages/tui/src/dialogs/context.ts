@@ -8,7 +8,8 @@ export type DialogHooks = {
   changed: (reload: boolean) => void
   submitted: () => Promise<void>
   say: (message: string, error?: boolean) => void
-  recall?: () => string | undefined
+  /** The session's own prompts, newest first. */
+  recall?: () => string[]
 }
 
 export type DialogContext = {

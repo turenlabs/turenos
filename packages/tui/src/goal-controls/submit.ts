@@ -1,5 +1,5 @@
 import type { SessionsGoalSetInput } from "@turenlabs/client"
-import { errorText } from "../server"
+import { errorText, refused } from "../server"
 import type { GoalSubmission } from "./confirm"
 import { current, fresh, sameGoal, type Goal } from "./context"
 
@@ -108,6 +108,12 @@ async function write(flow: GoalSubmission, intent: SessionsGoalSetInput) {
     if (action !== "Clear" && !desired(flow, intent, acknowledged))
       throw new Error("Returned goal does not match the confirmed intent")
   } catch (error) {
+    // A definite 4xx admitted nothing, so the goal and objective unfreeze for an edit and a fresh send.
+    if (refused(error)) {
+      flow.attempted = false
+      flow.intent = undefined
+      throw new Error(`Rejected by the server: ${errorText(error)}. Nothing changed; edit and retry.`)
+    }
     throw new Error(
       `Outcome unconfirmed: ${errorText(error)}. ${action === "Set" ? "Retry preserves the original goal/message IDs and objective." : "Retry checks GET only; no write repeated."}`,
     )

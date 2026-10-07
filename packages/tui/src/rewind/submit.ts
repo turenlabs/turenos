@@ -1,4 +1,4 @@
-import { errorText } from "../server"
+import { errorText, refused } from "../server"
 import { fresh, owned, type RewindFlow } from "./flow"
 import { boundary, hasFiles } from "./session"
 
@@ -69,6 +69,12 @@ async function writeOnce(flow: RewindFlow, intent: Intent) {
     }
     flow.hasAcknowledgement = true
   } catch (error) {
+    // A definite 4xx admitted nothing, so the file mode and target unfreeze.
+    if (refused(error)) {
+      flow.attempted = false
+      flow.intent = undefined
+      throw new Error(`Rejected by the server: ${errorText(error)}. Nothing changed; retry to try again.`)
+    }
     throw new Error(
       `Outcome unknown: ${errorText(error)} Retry checks GET only; no write will be repeated. Close and inspect this session if unconfirmed.`,
     )

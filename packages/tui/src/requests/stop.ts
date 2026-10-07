@@ -5,26 +5,29 @@ import { requireWord } from "../dialogs/fields"
 import { waiting } from "../queue/inputs"
 import { recipient, type RequestContext } from "./context"
 
+/** `x` and `/stop`: stops the selected session's running turn at once, as Esc Esc does. */
 export function interrupt(ctx: RequestContext) {
   if (ctx.state.tab !== "sessions" || !ctx.state.selected) return ctx.say("Select a session to interrupt.")
+  if (!stopRunning(ctx)) ctx.say("Nothing is running in this session.")
+}
+
+/**
+ * Interrupts the selected session's turn when one is running; false when there is nothing to stop.
+ * `next` is appended to the outcome, which replaces whatever the caller said meanwhile.
+ */
+export function stopRunning(ctx: RequestContext, next = "") {
   const id = ctx.state.selected
-  const confirmation = openConfirmation(ctx, id, {
-    title: "Stop session",
-    height: 19,
-    body: "Stop the current work in this session?\n\nType stop, then Ctrl+S to confirm.",
-    hint: "Ctrl+S stop · Esc close",
-    word: "stop",
-  })
-  if (!confirmation) return
-  confirmation.dialog.submit = async () => {
-    await ctx.connection.client.sessions.interrupt({ sessionID: id })
-    ctx.say(stopped(ctx, id))
-  }
+  if (ctx.state.tab !== "sessions" || !id || !Object.hasOwn(ctx.state.snapshot?.active ?? {}, id)) return false
+  void ctx.connection.client.sessions
+    .interrupt({ sessionID: id })
+    .then(() => ctx.say(`${stopped(ctx, id)}${next ? ` ${next}` : ""}`))
+    .catch((error: unknown) => ctx.say(`Could not stop the turn: ${errorText(error)}`))
+  return true
 }
 
 /**
  * Esc Esc on the selected session: the first press arms, a second within 2 s interrupts a running turn
- * (what `x` sends after its typed confirmation) or, for an idle session, opens the `/undo` dialog.
+ * (as `x` does) or, for an idle session, opens the `/undo` dialog.
  */
 export function escapeStop(ctx: RequestContext, rewind: () => void) {
   const id = ctx.state.selected
@@ -45,10 +48,7 @@ export function escapeStop(ctx: RequestContext, rewind: () => void) {
     rewind()
     return true
   }
-  void ctx.connection.client.sessions
-    .interrupt({ sessionID: id })
-    .then(() => ctx.say(stopped(ctx, id)))
-    .catch((error: unknown) => ctx.say(`Could not stop the turn: ${errorText(error)}`))
+  stopRunning(ctx)
   return true
 }
 

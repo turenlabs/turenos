@@ -21,6 +21,8 @@ export function buildForm(
   hugContent(dialog)
   const ui = { settingsOpen: false }
   const task = dialogs.prompt(dialog, "What would you like to do?", current.prompt, current.cursor)
+  // The launch has no shell handling, so it must not advertise `! shell`.
+  task.placeholder = "Describe the task… / commands · @ files"
   dialog.editorLocked = () => !!current.start.input()
   followText(task, 3, 8)
   const { directory, agent, model, workspace } = addSettings(deps, dialog, current)
@@ -84,7 +86,8 @@ function wireSummary(form: LaunchForm) {
   const summary = () => summarize(form)
   form.directory.on("input", summary)
   form.model.on("input", () => {
-    if (form.model.value.trim() !== form.current.model) form.current.variant = undefined
+    // A frozen retry resends its original fields, so an edit here must not strip the variant it carries.
+    if (!form.current.start.input() && form.model.value.trim() !== form.current.model) form.current.variant = undefined
     summary()
   })
   form.agent.on("selectionChanged", summary)

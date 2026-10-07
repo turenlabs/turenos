@@ -277,6 +277,158 @@ test("the swarm room shows lanes and entries, and posts as a human member", asyn
   expect(server.requests.find((item) => item.method === "POST")?.body).toEqual({ text: "Looks good" })
 })
 
+test("editing a queued message keeps its text when Escape is pressed during the cancel", async () => {
+  let release = () => {}
+  const { view, screen } = await dashboard({
+    "GET /api/session/ses_main/input": () => ({
+      data: [
+        {
+          id: "msg_q1",
+          sessionID: "ses_main",
+          prompt: { text: "queued follow-up" },
+          delivery: "queue",
+          timeCreated: 1,
+          admittedSeq: 1,
+        },
+      ],
+    }),
+    "POST /api/session/ses_main/input/msg_q1/cancel": () =>
+      new Promise((resolve) => {
+        release = () => resolve({ data: true })
+      }),
+  })
+  view.mockInput.pressKey("u")
+  await screen("queued follow-up")
+  view.mockInput.pressKey("e", { ctrl: true })
+  await Bun.sleep(50)
+  // Escape while the server removes the message must not drop it: the dialog stays until it is a draft.
+  view.mockInput.pressEscape()
+  await Bun.sleep(50)
+  release()
+  expect(await screen("Reply")).toContain("queued follow-up")
+})
+
+test("a cancel whose answer was lost keeps the message text and does not claim it was delivered", async () => {
+  let inputs = [queued("msg_first", "Rename the flag")]
+  const { server, view, screen } = await dashboard({
+    "GET /api/session/ses_main/input": () => ({ data: inputs }),
+    "POST /api/session/ses_main/input/msg_first/cancel": () => {
+      inputs = []
+      return new Response("lost", { status: 503 })
+    },
+  })
+  view.mockInput.pressKey("u")
+  await screen("Rename the flag")
+  view.mockInput.pressKey("e", { ctrl: true })
+  const frame = await screen("removed or already delivered")
+  expect(frame).toContain("Rename the flag")
+  expect(frame).not.toContain("already received that message")
+  expect(frame).not.toContain("Reply to main task")
+  expect(server.sent("/api/session/ses_main/input/msg_first/cancel")).toHaveLength(1)
+})
+
+test("a lost cancel on a message that is still queued leaves it listed for another try", async () => {
+  let fail = true
+  let inputs = [queued("msg_first", "Rename the flag")]
+  const { server, view, screen } = await dashboard({
+    "GET /api/session/ses_main/input": () => ({ data: inputs }),
+    "POST /api/session/ses_main/input/msg_first/cancel": () => {
+      if (fail) return new Response("down", { status: 503 })
+      inputs = []
+      return { data: true }
+    },
+  })
+  view.mockInput.pressKey("u")
+  await screen("Rename the flag")
+  view.mockInput.pressKey("e", { ctrl: true })
+  await screen("still queued")
+  fail = false
+  view.mockInput.pressKey("e", { ctrl: true })
+  await screen("Reply to main task")
+  expect(server.sent("/api/session/ses_main/input/msg_first/cancel")).toHaveLength(2)
+})
+
+test("a refresh keeps the same queued message selected and disarms a discard that moved", async () => {
+  let inputs = [
+    queued("msg_a", "First message"),
+    { ...queued("msg_b", "Second message"), admittedSeq: 2 },
+    { ...queued("msg_c", "Third message"), admittedSeq: 3 },
+  ]
+  const { server, view, screen } = await dashboard({
+    "GET /api/session/ses_main/input": () => ({ data: inputs }),
+    "POST /api/session/ses_main/input/msg_b/steer": () => ({ data: true }),
+    "POST /api/session/ses_main/input/msg_b/cancel": () => ({ data: true }),
+    "POST /api/session/ses_main/input/msg_c/cancel": () => ({ data: true }),
+  })
+  view.mockInput.pressKey("u")
+  await screen("First message")
+  view.mockInput.pressArrow("down")
+  await screen("For: main task\n\nSecond message".split("\n")[0]!)
+  inputs = inputs.slice(1)
+  view.mockInput.pressKey("r", { ctrl: true })
+  await screen("Second message")
+  view.mockInput.pressKey("d", { ctrl: true })
+  await screen("Ctrl+D again discards")
+  inputs = inputs.slice(1)
+  view.mockInput.pressKey("r", { ctrl: true })
+  await screen("selected message left the queue")
+  view.mockInput.pressKey("d", { ctrl: true })
+  await screen("Ctrl+D again discards")
+  expect(server.sent("/api/session/ses_main/input/msg_b/cancel")).toHaveLength(0)
+  expect(server.sent("/api/session/ses_main/input/msg_c/cancel")).toHaveLength(0)
+})
+
+test("editing an automation keeps the time zone its cron expression was created in", () => {
+  const schedule = { type: "cron" as const, seconds: 0, expression: "0 9 * * MON-FRI", timezone: "Asia/Tokyo" }
+  expect(parseSchedule("0 9 * * MON-FRI", schedule)).toEqual({
+    cronExpression: "0 9 * * mon-fri",
+    timezone: "Asia/Tokyo",
+  })
+  expect(parseSchedule("0 10 * * mon-fri", schedule)?.timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone)
+  expect(parseSchedule("every 2h", schedule)).toEqual({ intervalSeconds: 7200 })
+})
+
+test("a run's session fetched for opening is not opened once the user moved on", async () => {
+  const loop = {
+    id: "loop_1",
+    name: "Nightly check",
+    prompt: "Run the tests",
+    location: { directory: "/srv/main" },
+    status: "active",
+    schedule: { type: "interval", seconds: 3600, timezone: "UTC" },
+  }
+  const { view, screen, palette } = await dashboard({
+    "GET /api/loop": () => [loop],
+    "GET /api/loop/loop_1/run": () => [
+      {
+        id: "run_1",
+        loopID: "loop_1",
+        status: "succeeded",
+        trigger: "manual",
+        sessionID: "ses_run",
+        time: { created: 1, updated: 1 },
+      },
+    ],
+    "GET /api/session/ses_run": () => Bun.sleep(600).then(() => ({ data: session("run") })),
+  })
+  view.mockInput.pressKey("3")
+  await screen("Enter manage (run now, pause, edit, runs)")
+  await palette("Manage automation")
+  await screen("Runs")
+  view.mockInput.pressArrow("down")
+  view.mockInput.pressArrow("down")
+  view.mockInput.pressEnter()
+  await screen("1 recent run")
+  view.mockInput.pressEnter()
+  // Back to the sessions tab while the run's session is still being fetched.
+  view.mockInput.pressKey("1")
+  await screen("main says hello")
+  await Bun.sleep(800)
+  await view.renderOnce()
+  expect(view.captureCharFrame()).not.toContain("run task")
+  expect(view.captureCharFrame()).toContain("main says hello")
+})
+
 test("automations can be run now and created with a plain-language schedule", async () => {
   const loop = {
     id: "loop_1",
@@ -434,6 +586,41 @@ test("a worktree the server fails to prepare is reported, and the next try makes
   await until(() => names.length === 2)
   expect(names[1]).not.toBe(names[0])
   expect(created()).toBeUndefined()
+})
+
+test("Escape stops waiting for a worktree that never becomes ready and sends nothing else", async () => {
+  let streamClosed = false
+  const { view, screen, created, server } = await worktreeLaunch(() => ({
+    "GET /global/event": () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({ payload: { type: "server.connected", properties: {} } })}\n\n`,
+              ),
+            )
+          },
+          cancel() {
+            streamClosed = true
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    "POST /experimental/worktree": async (request) => {
+      const name = await worktreeName(request)
+      return { name, directory: `/srv/wt/${name}` }
+    },
+  }))
+  await screen("Esc stops waiting")
+  const started = Date.now()
+  view.mockInput.pressEscape()
+  await screen("Stopped waiting for the worktree")
+  expect(Date.now() - started).toBeLessThan(1000)
+  await until(() => streamClosed)
+  expect(created()).toBeUndefined()
+  expect(server.requests.filter((item) => item.method === "POST")).toHaveLength(1)
+  expect(view.captureCharFrame()).toContain("Esc keep draft")
 })
 
 test("after an uncertain worktree request, a retry reuses the worktree it made", async () => {

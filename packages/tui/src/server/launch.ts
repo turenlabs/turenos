@@ -34,8 +34,8 @@ export function launch(ctx: Context, ids: { sessionID?: string; messageID?: stri
   })
 }
 
-async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
-  const input = { ...given }
+/** The checks every launch runs before anything is sent; returns the model reference the server takes. */
+export function checkLaunch(input: LaunchInput) {
   inputDirectory(input.directory)
   if (input.agent !== undefined) {
     try {
@@ -46,6 +46,12 @@ async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
   }
   if (!input.prompt.trim()) throw new Error("Enter a task for the agent.")
   if (input.prompt.length > 32000) throw new Error("Keep the prompt below 32,000 characters.")
+  return launchModel(input)
+}
+
+async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
+  const input = { ...given }
+  const model = checkLaunch(input)
   if (state.draft && JSON.stringify(state.draft) !== JSON.stringify(input)) {
     throw new Error(
       `Retry with the original fields. Inspect session ${state.sessionID} before starting another launch.`,
@@ -55,7 +61,6 @@ async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
     throw new Error(
       `Session ${state.sessionID} already exists with other directory, agent or model fields. Restore them or inspect it.`,
     )
-  const model = launchModel(input)
   // An unlocked draft routes afresh: its prompt or the command inventory may have changed.
   if (!state.draft) state.routing = undefined
   // Inventory failures are safe to retry because nothing has been sent, so the fields stay editable.

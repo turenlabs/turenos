@@ -103,8 +103,11 @@ function bindList(d: DashboardContext) {
   })
   ui.list.on("itemSelected", () => {
     if (state.modal) return
+    // Enter on a session goes into it, so typing goes to its reply editor at once.
     state.detailFocused = true
+    state.navigating = false
     ui.focus()
+    renderActions(d)
   })
   ui.list.on("focused", () => {
     const dialog = state.modal

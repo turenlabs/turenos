@@ -23,7 +23,8 @@ export function submitSlash(attachment: SlashAttachment) {
   if (!popup.usable()) return false
   popup.refresh()
   if (!popup.visible) return false
-  if (popup.status === "loading") return true
+  // Without the inventory a local command cannot be told from a prompt, so keep the draft (the popup says so).
+  if (popup.status === "loading" || popup.status === "error") return true
   if (popup.status !== "ready" || !popup.choices.length) return false
   const exact = popup.choices.find((item) => item.name === popup.query)
   if (exact && !exact.local) return false

@@ -64,7 +64,19 @@ test("mentions become absolute file URIs with ranges, and unmentioned prompts ke
 test("a quoted mention carries paths the bare grammar would truncate, and completion round-trips", () => {
   // Each of these ends a bare mention early, so completing it unquoted would
   // attach a shorter path - and `src/lib` is a different real file from `src/lib[2].ts`.
-  const quoted = ["src/app/(auth)/page.tsx", "src/lib[2].ts", "my notes.md", "a'b.ts", "weird.", "src/v#2", "{b}.ts"]
+  // `src/v#` and `notes#a-b` read as malformed ranges when bare, so they must be quoted too.
+  const quoted = [
+    "src/app/(auth)/page.tsx",
+    "src/lib[2].ts",
+    "my notes.md",
+    "a'b.ts",
+    "weird.",
+    "src/v#2",
+    "{b}.ts",
+    "src/v#",
+    "notes#a-b",
+    "x#5-",
+  ]
   // These are safe bare even though they contain awkward characters.
   const bare = ["src/auth.ts", "src/v#2.ts", "a-b_c.2.tsx"]
   for (const path of quoted) expect(mentionText(path)).toBe(`@"${path}"`)
@@ -243,6 +255,10 @@ test("@ searches the server, completes files and directories, and leaves ordinar
   expect(f.editor.plainText).toBe("look at @src/lib/")
   expect(f.dialog.mentionRows).toBe(0)
   expect(f.dialog.box.isDestroyed).toBe(false)
+  // The dismissal holds for this mention: Enter goes to the dialog instead of reopening the search.
+  expect(f.mentions.key(key("enter"))).toBe(false)
+  expect(f.suggestions.visible).toBe(false)
+  expect(f.dialog.mentionRows).toBe(0)
 
   // Typing a path searches, but a `#` range addresses an already-chosen file and
   // must neither search again nor offer to replace the path.

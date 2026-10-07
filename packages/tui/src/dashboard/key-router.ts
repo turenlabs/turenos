@@ -1,6 +1,6 @@
 import type { KeyEvent } from "@opentui/core"
 import { matchesKey, printableKey } from "../keys"
-import { primaryAction } from "./actions"
+import { primaryAction, renderActions } from "./actions"
 import { openCommands, slashCommands } from "./commands"
 import { openServers, quit } from "./lifecycle"
 import { changeTab, endSearch, filter, hop } from "./navigation"
@@ -35,7 +35,7 @@ function globalKey(d: DashboardContext, key: KeyEvent) {
   if (matchesKey(key, "c", { ctrl: true })) {
     key.preventDefault()
     const dialog = d.state.modal && !d.state.modal.busy && !d.state.modal.save ? d.state.modal : undefined
-    quit(d)
+    quit(d, true)
     // Without a saved draft, quit only closed the dialog, which the user should be told.
     if (dialog && !d.state.modal && !d.state.closed) d.say("Closed.")
     return true
@@ -50,9 +50,25 @@ function globalKey(d: DashboardContext, key: KeyEvent) {
   if (matchesKey(key, "k", { ctrl: true }) && d.state.modal?.questionKey) return run(key, () => d.c.menus.switcher())
   if (matchesKey(key, "n", { ctrl: true }) && (!d.state.modal || d.state.modal.editor))
     return run(key, () => d.c.launch.open())
+  // The pickers that also use Ctrl+O (open by ID, inspect a launch) are other dialogs, which keep it.
+  if (matchesKey(key, "o", { ctrl: true }) && (!d.state.modal || d.state.modal.composer))
+    return run(key, () => d.c.conversation.toggleToolOutput())
+  if (d.state.modal?.composer && composerChord(d, key)) return true
   if (d.c.slash.key(key)) return consume(key)
   if (d.c.mentions.key(key)) return consume(key)
   return false
+}
+
+/**
+ * Chords that also work from the reply editor, which sets its draft aside first. Ctrl+K, Ctrl+B and
+ * Alt+Left/Right stay with the editor: delete to the line end, move back a character, move by word.
+ */
+function composerChord(d: DashboardContext, key: KeyEvent) {
+  const chord = matchesKey(key, "p", { ctrl: true }) || matchesKey(key, "x", { ctrl: true })
+  if (!chord) return false
+  d.c.dialogs.close()
+  if (d.state.modal) return consume(key)
+  return chordKey(d, key)
 }
 
 /** Keys while the sidebar search box is open: every one is consumed or left for the input to type. */
@@ -180,7 +196,9 @@ function paneKey(d: DashboardContext, key: KeyEvent) {
   if (matchesKey(key, "tab") || matchesKey(key, "tab", { shift: true })) {
     key.preventDefault()
     state.detailFocused = !state.detailFocused
-    return d.ui.focus()
+    d.ui.focus()
+    // Focusing the transcript may open the reply editor; render now rather than at the next refresh.
+    return renderActions(d)
   }
   if (matchesKey(key, "pageup") || matchesKey(key, "pagedown")) {
     key.preventDefault()

@@ -44,11 +44,13 @@ function authMethods(flow: Flow, provider: { id: string; name: string }) {
       const dialog = show(flow, `Connect ${label(provider.name, 80)}`)
       if (!dialog) return
       dialog.back = stepBack(flow, load)
+      // Provider ids are server data: an inherited name such as `valueOf` must not read as methods.
+      const methods = Object.hasOwn(auth, provider.id) ? auth[provider.id] : undefined
       // Use the original advertised index, even when methods share a type.
       choose(
         flow,
         dialog,
-        (auth[provider.id] ?? [{ type: "api" as const, label: "API key" }]).map((method, index) => ({
+        (methods ?? [{ type: "api" as const, label: "API key" }]).map((method, index) => ({
           name: label(method.label, 512),
           description: method.type === "api" ? "API key" : "OAuth · browser or headless instructions",
           run: () =>
@@ -62,7 +64,7 @@ function authMethods(flow: Flow, provider: { id: string; name: string }) {
             ),
         })),
       )
-      if (auth[provider.id]?.length === 0)
+      if (methods?.length === 0)
         dialog.error.content = "No authentication methods advertised for this provider. Esc back."
     },
   )

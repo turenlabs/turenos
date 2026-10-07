@@ -53,8 +53,10 @@ async function fixture(
       if (request.method === "POST" && url.pathname === "/api/session/ses_variant/model") {
         const body: { model: Session["model"] } = await request.json()
         requests.push({ ...entry, body })
-        if (remote.apply) remote.session = { ...remote.session, model: body.model }
+        if (remote.apply && remote.postStatus !== 400) remote.session = { ...remote.session, model: body.model }
         if (remote.verificationFails) remote.lookupStatus = 503
+        if (remote.postStatus === 400)
+          return Response.json({ _tag: "InvalidRequestError", message: "Variant refused" }, { status: 400 })
         return new Response(null, { status: remote.postStatus })
       }
       requests.push(entry)
@@ -231,6 +233,21 @@ test("captured identity and model survive selection changes; acknowledgement is 
   expect(app.writes()[0]?.body).toEqual({ model: { providerID: "test", id: "org/model", variant: "low" } })
   expect(app.updates[0]?.model?.variant).toBe("low")
   expect(app.state.inspected?.model?.variant).toBe("low")
+  expect(app.notices.at(-1)).toContain("Variant confirmed")
+})
+
+test("a definitely refused variant switch can be retried instead of freezing the choice", async () => {
+  const app = await fixture()
+  app.variants.open()
+  await app.ready()
+  app.view.mockInput.pressArrow("up")
+  app.remote.postStatus = 400
+  app.view.mockInput.pressEnter()
+  await app.waitFor((frame) => frame.includes("Rejected by the server"))
+  app.remote.postStatus = 204
+  app.view.mockInput.pressEnter()
+  await app.waitFor(() => !app.state.modal)
+  expect(app.writes()).toHaveLength(2)
   expect(app.notices.at(-1)).toContain("Variant confirmed")
 })
 

@@ -1,7 +1,7 @@
 import { SelectRenderable, TextRenderable } from "@opentui/core"
 import type { InputRenderable, KeyEvent } from "@opentui/core"
 import { matchesKey } from "../keys"
-import { errorText, type Connection, type Session } from "../server"
+import { errorText, refused, type Connection, type Session } from "../server"
 import { label, type ModalState } from "../state"
 import { color } from "../theme"
 import { currentSession, openControl, remember, type SessionContext } from "./session"
@@ -155,7 +155,11 @@ async function submit(picker: Picker) {
   if (!picker.acknowledged && current.agent !== choice) {
     // An ambiguous retry keeps the original agent; an acknowledged switch only retries its GET.
     picker.requested = choice
-    await ctx.connection.client.sessions.switchAgent({ sessionID: session.id, agent: choice })
+    await ctx.connection.client.sessions.switchAgent({ sessionID: session.id, agent: choice }).catch((error) => {
+      // A definite 4xx admitted nothing, so the choice unfreezes.
+      if (refused(error)) picker.requested = undefined
+      throw error
+    })
     picker.acknowledged = true
   }
   const updated = picker.acknowledged ? await currentSession(ctx, session) : current

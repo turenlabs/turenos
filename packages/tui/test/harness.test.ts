@@ -226,6 +226,39 @@ test("rollback sends the reviewed version and a change elsewhere sends nothing",
   expect(stale.writes()).toEqual([])
 })
 
+test("a proposal revised under the same ID, or a moved snapshot, sends nothing for every action", async () => {
+  for (const choice of ["Approve and apply", "Reject:"]) {
+    const revised = await fixture()
+    await revised.choose(choice)
+    revised.remote.harness.proposals[0] = {
+      ...proposal(),
+      summary: "Something else",
+      timestamps: { created: 2, updated: 9 },
+    }
+    revised.view.mockInput.pressKey("s", { ctrl: true })
+    await revised.waitFor((frame) => frame.includes("The harness changed"))
+    expect(revised.writes()).toEqual([])
+  }
+  const moved = await fixture({ status: "approved" })
+  await moved.choose("Apply:")
+  moved.remote.harness.snapshot = snapshot(3)
+  moved.view.mockInput.pressKey("s", { ctrl: true })
+  await moved.waitFor((frame) => frame.includes("The harness changed"))
+  expect(moved.writes()).toEqual([])
+})
+
+test("the confirmation marks changes it does not show", async () => {
+  const app = await fixture()
+  app.remote.harness.proposals[0] = {
+    ...proposal(),
+    changes: Array.from({ length: 23 }, (_, index) => ({ path: `harness/file${index}.ts`, operation: "add" as const })),
+  }
+  await app.choose("Approve and apply")
+  const frame = app.view.captureCharFrame()
+  expect(frame).toContain("… 3 more changes not shown")
+  expect(frame).toContain("Part of this proposal is cut")
+})
+
 test("after an uncertain result, retries only recheck and report the observed outcome", async () => {
   const app = await fixture()
   await app.choose("Reject:")

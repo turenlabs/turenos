@@ -96,7 +96,7 @@ function snapshotLines(snapshot: Snapshot, connected: boolean, sessionDirectory:
     "PROJECT",
     ...directory,
     `Updated: ${stamp(snapshot.updated)}${connected ? "" : " (stale)"}`,
-    `${Object.keys(snapshot.active).length} running agents`,
+    `${Object.keys(snapshot.active).length}${snapshot.activeOmitted ? ` (+${snapshot.activeOmitted} not shown)` : ""} running agents${snapshot.needsInput ? ` · ${snapshot.needsInput.length} need input` : ""}`,
     terminals,
     ...(snapshot.inventoryErrors.automations
       ? [`Automations unavailable: ${snapshot.inventoryErrors.automations}`]

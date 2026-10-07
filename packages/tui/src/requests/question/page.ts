@@ -2,7 +2,7 @@ import { SelectRenderable } from "@opentui/core"
 import { display } from "../../messages"
 import { color } from "../../theme"
 import { compactRows } from "../../dialogs/size"
-import { matchesKey } from "../../keys"
+import { matchesKey, printableKey } from "../../keys"
 import { advance, answers, editCustom, text, type QuestionFlow, type Questions } from "./flow"
 
 /** One question's page: a select of its options (plus "Type your own answer") and a description line. */
@@ -57,16 +57,33 @@ export function renderQuestionPage(flow: QuestionFlow, question: Questions[numbe
     else select(false)
   })
   dialog.error.content = footer(flow, question)
-  // Handle Space here; native Select owns arrow movement, not toggling.
-  choice.onKeyDown = (key) => {
-    if (!matchesKey(key, "space") || flow.input) return
-    key.preventDefault()
-    select(true)
-  }
+  bindKeys(flow, question, choice, select)
   if (draft.editing) {
     draft.editing = false
     editCustom(flow, true)
   } else choice.focus()
+}
+
+/** Space and digits are handled here; native Select owns arrow movement, not toggling. Digits never confirm. */
+function bindKeys(
+  flow: QuestionFlow,
+  question: Questions[number],
+  choice: SelectRenderable,
+  select: (toggle: boolean) => void,
+) {
+  choice.onKeyDown = (key) => {
+    if (flow.input) return
+    const digit = Number(printableKey(key))
+    if (digit >= 1 && digit <= choice.options.length) {
+      key.preventDefault()
+      choice.setSelectedIndex(digit - 1)
+      if (question.multiple) select(true)
+      return
+    }
+    if (!matchesKey(key, "space")) return
+    key.preventDefault()
+    select(true)
+  }
 }
 
 function selectOption(
@@ -107,8 +124,8 @@ function selectOption(
 function footer(flow: QuestionFlow, question: Questions[number]) {
   const last = answers(flow).every((answer, index) => index === flow.page || answer.length > 0)
   const keys = question.multiple
-    ? "↑↓ Move · Space Toggle · Enter Next"
-    : `↑↓ Move · Enter Choose, then ${last ? "review answers" : "next question"}`
+    ? "↑↓ Move · Space or 1-9 Toggle · Enter Next"
+    : `↑↓ or 1-9 Move · Enter Choose, then ${last ? "review answers" : "next question"}`
   if (flow.ctx.renderer.height < compactRows) return `${keys}\n←/→ Question · Ctrl+R Reject request · Esc close`
   return `${keys}\n←/→ Question · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject request · Esc close`
 }

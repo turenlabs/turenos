@@ -210,6 +210,9 @@ test("inventory failures are explicit and unsafe names never become completions"
   await f.settle()
   expect(f.suggestions.chunks.map((chunk) => chunk.text).join("")).toContain("Commands unavailable")
   expect(f.slash.key(key("enter"))).toBe(false)
+  // Mouse Send and Ctrl+S reach the dialog's submit chain; without the inventory it keeps the draft.
+  expect(f.dialog.beforeSubmit?.()).toBe(true)
+  expect(f.editor.plainText).toBe("/")
   fail = false
   f.editor.setText("")
   await f.settle()

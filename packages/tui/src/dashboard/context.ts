@@ -38,6 +38,10 @@ export type DashboardOptions = {
   servers?: (back?: () => void) => void
   /** True while another surface, such as the server picker, owns the keyboard. */
   blocked?: () => boolean
+  /** A session ID to select first instead of the newest root session. */
+  session?: string
+  /** Where the bell and title go; the default is the process's terminal, only when it is one. */
+  terminal?: { write(text: string): void }
 }
 
 /** The renderer listeners one dashboard registers; `dispose` releases every one of them. */

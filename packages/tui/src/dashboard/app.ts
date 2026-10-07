@@ -4,16 +4,20 @@ import { serverLabel, type Endpoint, type Servers, type Target } from "../server
 import { createServerPicker } from "../server-picker"
 import { mountDashboard, type Dashboard } from "./mount"
 
-/** The connected dashboard, and the directory the next connection starts in (only the first server gets it). */
-type App = { current: { dashboard: Dashboard; endpoint: Endpoint } | undefined; directory: string | undefined }
+/** The connected dashboard, and the directory and session the next connection starts in (only the first server gets them). */
+type App = {
+  current: { dashboard: Dashboard; endpoint: Endpoint } | undefined
+  directory: string | undefined
+  session: string | undefined
+}
 
 /** The server picker plus one dashboard for the connected server, swapped as the user switches. */
 export function mountApp(
   renderer: CliRenderer,
   servers: Servers,
-  options: { initial?: Target; directory?: string; onQuit: (drafts: number) => void },
+  options: { initial?: Target; directory?: string; session?: string; onQuit: (drafts: number) => void },
 ) {
-  const app: App = { current: undefined, directory: options.directory }
+  const app: App = { current: undefined, directory: options.directory, session: options.session }
   const picker = createServerPicker(renderer, servers, {
     current: () => app.current && { target: app.current.endpoint.target, connected: app.current.dashboard.connected() },
     drafts: () => app.current?.dashboard.drafts() ?? 0,
@@ -64,12 +68,7 @@ async function connectDashboard(
     endpoint.close?.()
     throw new Error("Connection cancelled.")
   }
-  const connection = connect({
-    url: endpoint.url,
-    username: endpoint.username,
-    password: endpoint.password,
-    directory: host.app.directory,
-  })
+  const connection = open(endpoint, host.app.directory)
   // Mount before disposing the current dashboard, so a failed switch leaves it untouched.
   let dashboard: Dashboard
   try {
@@ -77,6 +76,7 @@ async function connectDashboard(
       server: serverLabel(endpoint.target),
       servers: (back) => host.picker.open(undefined, "muted", back),
       blocked: host.picker.visible,
+      session: host.app.session,
     })
   } catch (error) {
     connection.close()
@@ -84,9 +84,20 @@ async function connectDashboard(
     throw error
   }
   host.app.directory = undefined
+  host.app.session = undefined
   const previous = host.app.current
   host.app.current = { endpoint, dashboard }
   previous?.dashboard.dispose()
   previous?.endpoint.close?.()
   void host.servers.importDesktop(endpoint)
+}
+
+/** The connection for a verified endpoint; a refused configuration releases the endpoint's tunnel. */
+function open(endpoint: Endpoint, directory: string | undefined) {
+  try {
+    return connect({ url: endpoint.url, username: endpoint.username, password: endpoint.password, directory })
+  } catch (error) {
+    endpoint.close?.()
+    throw error
+  }
 }

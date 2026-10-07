@@ -76,7 +76,10 @@ test("the swarm room says it does not exist yet, and a post refreshes it", async
   })
   await app.screen("main task")
   app.view.mockInput.pressEnter()
-  await app.view.renderOnce()
+  // Enter opens the session with its reply editor; Esc leaves it so w is the room shortcut.
+  await app.screen("Esc shortcuts")
+  app.view.mockInput.pressEscape()
+  await app.screen("Focus: transcript")
   await app.view.mockInput.typeText("w")
   const frame = await app.screen("No swarm room")
   expect(frame).toContain("swarm room yet")

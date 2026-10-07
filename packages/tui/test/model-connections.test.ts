@@ -268,6 +268,10 @@ test("secret input rejects oversized and control-bearing pastes atomically and E
     await app.screen(text.length > 32000 ? "Paste a shorter message" : "Input rejected")
   }
   app.view.mockInput.pressKey("u", { ctrl: true })
+  // A key copied with its line ending pastes as the key.
+  await app.view.mockInput.pasteBracketedText("trailing-newline\r\n")
+  expect(app.input().plainText).toBe("*".repeat("trailing-newline".length))
+  app.view.mockInput.pressKey("u", { ctrl: true })
   await app.view.mockInput.pasteBracketedText("a".repeat(8192))
   expect(app.input().plainText).toBe("*".repeat(8192))
   app.view.mockInput.pressKey("x")

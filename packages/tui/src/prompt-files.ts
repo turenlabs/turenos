@@ -13,6 +13,8 @@ export type PromptFile = {
  */
 const mention = /(^|[\s([{"'])@(?:"([^"\u0000-\u001f\u007f-\u009f]{1,4096})"(#\d+(?:-\d+)?)?(?!#)|([^\s()[\]{}"'`]+))/g
 const hazard = /^[^\s()[\]{}"'`]+$/
+// A bare `file#5-` or `file#a-b` is a malformed range, not a file whose name ends that way.
+const malformedRange = /#(?:\d*|\w*-[\w-]*)$/
 
 /** Paths a finished file search found nothing for; such a mention stays text instead of becoming an attachment. */
 const missing = new Set<string>()
@@ -64,7 +66,7 @@ export function promptPayload(text: string, directory: string) {
  */
 export function mentionText(path: string) {
   if (path.includes('"') || /[\u0000-\u001f\u007f-\u009f]/.test(path)) return undefined
-  const bare = hazard.test(path) && !/[.,!?;:]$/.test(path) && !/#\d+(?:-\d+)?$/.test(path)
+  const bare = hazard.test(path) && !/[.,!?;:]$/.test(path) && !malformedRange.test(path)
   return bare ? `@${path}` : `@"${path}"`
 }
 
@@ -76,8 +78,7 @@ function decodeMention(match: RegExpExecArray, directory: string) {
   const query = lineQuery(quoted ? match[3] : split?.[2])
   if (!path || path.length > 4096 || query === undefined) return undefined
   if (/[\u0000-\u001f\u007f-\u009f]/.test(path)) return undefined
-  // A bare `file#5-` or `file#a-b` is a malformed range, not a file whose name ends that way.
-  if (!quoted && !split && /#(?:\d*|\w*-[\w-]*)$/.test(path)) return undefined
+  if (!quoted && !split && malformedRange.test(path)) return undefined
   const uri = fileURI(absolute(directory, path), query)
   if (!uri) return undefined
   const text = quoted ? match[0].slice(match[1]!.length) : `@${token}`

@@ -62,6 +62,7 @@ function historySlash(d: DashboardContext): Command[] {
   return [
     { name: "compact", description: "Confirm context summarization", run: c.controls.compact },
     { name: "undo", description: "Stage a reversible conversation rewind", run: c.rewind.undo },
+    { name: "rewind", description: "Pick an earlier message to rewind to", run: c.rewind.pick },
     { name: "redo", description: "Restore the next staged turn", run: c.rewind.redo },
     { name: "history", description: "Toggle expanded history", run: c.conversation.toggleHistory },
     { name: "tasks", description: "Tasks and subagents", run: c.sessions.tasks },
@@ -136,6 +137,7 @@ function modelCommands(d: DashboardContext): Command[] {
     { name: "Choose agent for this session", description: "/agent", run: c.controls.agent },
     { name: "Compact session context", description: "/compact", run: c.controls.compact },
     { name: "Undo conversation turn", description: "/undo", run: c.rewind.undo },
+    { name: "Rewind to an earlier message", description: "/rewind", run: c.rewind.pick },
     { name: "Redo conversation turn", description: "/redo", run: c.rewind.redo },
     { name: "Connect provider / add custom model", description: "API key or OAuth", run: c.models.connect },
     { name: "Sessions", description: "1", run: () => changeTab(d, "sessions") },
@@ -201,6 +203,11 @@ function viewCommands(d: DashboardContext): Command[] {
       name: d.state.rawResponses ? "Show formatted responses" : "Show raw responses",
       description: "Tool results and agent updates",
       run: () => toggleRaw(d),
+    },
+    {
+      name: d.state.expandToolOutput ? "Collapse tool output" : "Expand tool output",
+      description: "Ctrl+O · long tool results",
+      run: c.conversation.toggleToolOutput,
     },
     { name: "Older history page", description: "[ in History", run: () => c.conversation.page("next") },
     { name: "Newer history page", description: "] in History", run: () => c.conversation.page("previous") },

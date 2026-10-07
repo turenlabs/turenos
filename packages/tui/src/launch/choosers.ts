@@ -63,11 +63,16 @@ export function chooseVariant(form: LaunchForm) {
 
 /** Ctrl+L browses models; Ctrl+O inspects a locked original submission. */
 export function launchKey(form: LaunchForm, key: Parameters<NonNullable<LaunchForm["dialog"]["key"]>>[0]) {
+  // Only Escape reaches this while the dialog is busy: it stops waiting for a worktree.
+  if (form.preparing && matchesKey(key, "escape")) {
+    form.preparing.abort()
+    return true
+  }
   if (matchesKey(key, "l", { ctrl: true })) {
     form.dialog.chooseModel?.()
     return true
   }
-  if (!matchesKey(key, "o", { ctrl: true }) || !form.current.start.input()) return false
+  if (!matchesKey(key, "o", { ctrl: true }) || !form.dialog.reference) return false
   form.dialog.save?.()
   form.deps.dialogs.close(false)
   form.deps.openSession(form.current.start.sessionID, true)

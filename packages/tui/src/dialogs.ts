@@ -14,14 +14,14 @@ export function createDialogs(renderer: CliRenderer, state: DashboardState, ui: 
   const ctx: DialogContext = { renderer, state, ui, hooks }
   guardMouseFocus(ctx)
   return {
-    open: (title: string, inline = false, height = 24, docked = false, sidebar = false) =>
-      open(ctx, title, inline, height, docked, sidebar),
+    open: (title: string, inline = false, height = 24, docked = false, sidebar = false, keepNotice = false) =>
+      open(ctx, title, inline, height, docked, sidebar, keepNotice),
     close: (save = true) => close(ctx, save),
     navigate: () => navigate(ctx),
     input: (dialog: ModalState, label: string, value = "", placeholder = "") =>
       input(ctx, dialog, label, value, placeholder),
-    prompt: (dialog: ModalState, label: string, value = "", cursor = value.length) =>
-      prompt(ctx, dialog, label, value, cursor),
+    prompt: (dialog: ModalState, label: string, value = "", cursor = value.length, bare = false) =>
+      prompt(ctx, dialog, label, value, cursor, bare),
     track: (dialog: ModalState, field: Field) => track(ctx, dialog, field),
     reveal,
     submit: () => submit(ctx),

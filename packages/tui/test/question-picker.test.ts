@@ -271,13 +271,13 @@ test("question navigation preserves rejection mode and uncommitted custom text",
   await f.enter()
   await f.view.mockInput.typeText("unsent, custom")
   expect(f.dialogs.navigate()).toBe(true)
-  f.requests.offerQuestion()
+  f.requests.offerInput()
   await f.settle()
   expect(f.input().value).toBe("unsent, custom")
   f.view.mockInput.pressKey("r", { ctrl: true })
   await f.settle()
   expect(f.dialogs.navigate()).toBe(true)
-  f.requests.offerQuestion()
+  f.requests.offerInput()
   expect(await f.settle()).toContain("Reject question request?")
   expect(f.posts).toEqual([])
 })
@@ -301,7 +301,7 @@ test("changed question content does not reuse an old review or choices", async (
       },
     ],
   }
-  f.requests.offerQuestion()
+  f.requests.offerInput()
   expect(await f.settle()).toContain("Question 1 of 1")
   expect(f.picker().options[0]!.name).toContain("[ ]")
   expect(f.posts).toEqual([])
@@ -369,4 +369,45 @@ test("one Enter on the only question chooses it and opens the review; nothing is
   expect(review).toContain("Review answers")
   expect(review).toContain("Small change")
   expect(f.posts).toEqual([])
+})
+
+test("digits highlight a single choice and toggle a multi choice without ever submitting", async () => {
+  const single2 = await fixture([single])
+  expect(single2.state.modal!.error.plainText).toContain("1-9")
+  single2.view.mockInput.pressKey("2")
+  await single2.settle()
+  expect(single2.picker().getSelectedIndex()).toBe(1)
+  expect(single2.picker().options[1]!.name).toContain("[ ]")
+  single2.view.mockInput.pressKey("9")
+  await single2.settle()
+  expect(single2.picker().getSelectedIndex()).toBe(1)
+  expect(single2.posts).toEqual([])
+
+  const multi = await fixture([{ ...single, multiple: true }])
+  multi.view.mockInput.pressKey("2")
+  await multi.settle()
+  expect(multi.picker().options[1]!.name).toContain("[x]")
+  expect(multi.picker().options[0]!.name).toContain("[ ]")
+  multi.view.mockInput.pressKey("2")
+  await multi.settle()
+  expect(multi.picker().options[1]!.name).toContain("[ ]")
+  expect(multi.posts).toEqual([])
+})
+
+test("sweeping drops the drafts of requests that are no longer pending, custom text included", async () => {
+  const { sweepDrafts } = await import("../src/requests/question/draft")
+  const f = await fixture([{ ...single, custom: true }])
+  await f.arrow("down")
+  await f.arrow("down")
+  await f.enter()
+  await f.view.mockInput.typeText("private text")
+  f.view.mockInput.pressEscape()
+  await f.settle()
+  const drafts = new Map([
+    ["ses_question:que_gone", { custom: ["private text"] }],
+    ["ses_question:que_picker", { custom: [""] }],
+    ["ses_other:que_other", { custom: [""] }],
+  ]) as unknown as Parameters<typeof sweepDrafts>[1]
+  sweepDrafts(f.state, drafts)
+  expect([...drafts.keys()]).toEqual(["ses_question:que_picker", "ses_other:que_other"])
 })

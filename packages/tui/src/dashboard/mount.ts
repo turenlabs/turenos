@@ -25,7 +25,15 @@ export function mountDashboard(
   resize(d)
   renderList(d)
   d.c.live.start()
-  const ready = refresh(d)
+  const ready = refresh(d).then(() => {
+    const id = options.session
+    if (!id || d.state.snapshot?.sessions.some((session) => session.id === id)) return
+    // Older than the snapshot's window: fetch it like a pasted link would.
+    void d.connection.client.sessions.get({ sessionID: id }).then(
+      (session) => !d.state.closed && d.openSession(id, false, session),
+      () => !d.state.closed && d.say(`No session ${id} on this server. Showing the newest session.`, true),
+    )
+  })
   return {
     ready,
     refresh: () => refresh(d),
@@ -33,8 +41,8 @@ export function mountDashboard(
     connected: () => d.state.connected,
     drafts: () =>
       (d.c.launch.hasDraft ? 1 : 0) +
-      d.c.requests.savedSessions().length +
-      (d.state.modal?.editor?.plainText.trim() ? 1 : 0),
+      d.c.requests.unsentDrafts() +
+      (!d.state.modal?.composer && d.state.modal?.editor?.plainText.trim() ? 1 : 0),
     focus() {
       const dialog = d.state.modal
       if (dialog) return (dialog.fields[dialog.index] ?? dialog.form).focus()

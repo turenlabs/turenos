@@ -4,12 +4,13 @@ import type { DashboardState, MessageDraft } from "./state"
 import type { Dialogs } from "./dialogs"
 import type { SlashCommands } from "./slash"
 import type { Mentions } from "./mentions"
-import { replyBlocked, type QuestionDraft, type RequestContext } from "./requests/context"
+import { owner, replyBlocked, type QuestionDraft, type RequestContext } from "./requests/context"
 import { clearRestoredDraft, mention, restoreBlocker, restoreDraft } from "./requests/drafts"
 import { permission } from "./requests/permission"
 import { question } from "./requests/question"
-import { followup } from "./requests/reply"
-import { escapeStop, interrupt, kill, stopAll } from "./requests/stop"
+import { sweepDrafts } from "./requests/question/draft"
+import { followup, offerComposer } from "./requests/reply"
+import { escapeStop, interrupt, kill, stopAll, stopRunning } from "./requests/stop"
 
 export function createRequests(
   renderer: CliRenderer,
@@ -20,6 +21,7 @@ export function createRequests(
   openSession: (id: string, inspect?: boolean, session?: Session) => void,
   slash: SlashCommands,
   mentions: Mentions,
+  attend: () => void = () => {},
 ) {
   const ctx: RequestContext = {
     renderer,
@@ -43,11 +45,12 @@ export function createRequests(
     clearRestoredDraft: (sessionID: string, messageID: string, text: string) =>
       clearRestoredDraft(ctx, sessionID, messageID, text),
     replyBlocked: (sessionID: string) => replyBlocked(ctx, sessionID),
-    offerQuestion: () => offerQuestion(ctx),
+    offerInput: () => offerInput(ctx, attend),
     followup: () => followup(ctx),
     permission: () => permission(ctx),
     question: (reject = false) => question(ctx, reject),
     interrupt: () => interrupt(ctx),
+    stopRunning: (next = "") => stopRunning(ctx, next),
     escapeStop: (rewind: () => void) => escapeStop(ctx, rewind),
     kill: () => kill(ctx),
     stopAll: () => stopAll(ctx),
@@ -56,6 +59,7 @@ export function createRequests(
     /** Drops a saved draft whose session no longer exists. */
     forget: (id: string) => ctx.messages.delete(id),
     savedSessions: () => [...ctx.messages.values()].map((draft) => draft.recipient),
+    unsentDrafts: () => unsentDrafts(ctx),
     updateRecipient: (session: Session) => {
       const draft = ctx.messages.get(session.id)
       if (draft) draft.recipient = session
@@ -63,24 +67,62 @@ export function createRequests(
   }
 }
 
-/** Opens the selected session's oldest pending permission, else its question, once per request and only when nothing else is open. */
-function offerQuestion(ctx: RequestContext) {
+/**
+ * Opens what the selected session needs: its oldest pending permission, else its question, once per
+ * request; otherwise the reply editor. A request takes the editor's place only while it is empty.
+ */
+function offerInput(ctx: RequestContext, attend: () => void) {
+  // The task list can show ownership after the editor opened; a task-owned child takes no direct reply,
+  // so the editor is set aside with its draft kept, and `f` then offers the owning session. A send the
+  // server refused as task-owned keeps the editor, which shows that refusal.
+  const open = ctx.state.modal?.composer && !ctx.state.modal.busy ? ctx.state.modal.recipient : undefined
+  if (open && owner(ctx, open.id)) return ctx.dialogs.close()
+  const request = unshownRequest(ctx)
+  if (request && (!ctx.state.modal || yieldComposer(ctx))) {
+    // Opening the prompt records it as shown, so the bell rings once per request.
+    if (request === "permission") permission(ctx, true)
+    else question(ctx)
+    return attend()
+  }
+  offerComposer(ctx)
+}
+
+function unshownRequest(ctx: RequestContext) {
   const state = ctx.state
   const detail = state.detail
+  // A request resolved elsewhere takes its draft with it, open dialog or not.
+  sweepDrafts(state, ctx.questionDrafts)
   if (
     state.closed ||
     !state.connected ||
-    state.modal ||
     state.searching ||
     state.tab !== "sessions" ||
     !detail ||
     detail.sessionID !== state.selected
   )
-    return
+    return undefined
   const ask = detail.permissions[0]
-  if (ask) return ctx.shownPermissions.has(`${ask.sessionID}:${ask.id}`) ? undefined : permission(ctx)
+  if (ask) return ctx.shownPermissions.has(`${ask.sessionID}:${ask.id}`) ? undefined : "permission"
   const request = detail.questions[0]
   if (!request || request.sessionID !== state.selected || ctx.shownQuestions.has(`${request.sessionID}:${request.id}`))
-    return
-  question(ctx)
+    return undefined
+  return "question"
+}
+
+/** Closes the reply editor for a request when nothing is typed in it; text being written keeps it open. */
+function yieldComposer(ctx: RequestContext) {
+  const modal = ctx.state.modal
+  if (!modal?.composer || modal.busy || modal.editor?.plainText.trim() || modal.editorLocked?.()) return false
+  ctx.dialogs.close()
+  return !ctx.state.modal
+}
+
+/** Replies that would be lost on quit: saved text, a send awaiting retry, or text in the open editor. */
+function unsentDrafts(ctx: RequestContext) {
+  const open = ctx.state.modal?.composer ? ctx.state.modal : undefined
+  return [...ctx.messages.values()].filter(
+    (draft) =>
+      draft.submitted !== undefined ||
+      !!(open?.recipient?.id === draft.recipient.id ? open.editor?.plainText : draft.text)?.trim(),
+  ).length
 }

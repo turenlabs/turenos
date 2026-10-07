@@ -2,7 +2,7 @@ import type { SelectRenderable, TextRenderable } from "@opentui/core"
 import type { CliRenderer } from "@opentui/core"
 import type { Dialogs } from "../dialogs"
 import { display } from "../messages"
-import { errorText, type Connection, type Session } from "../server"
+import { errorText, refused, type Connection, type Session } from "../server"
 import { label, type DashboardState, type ModalState } from "../state"
 import type { Input } from "./inputs"
 import { waiting } from "./inputs"
@@ -32,6 +32,7 @@ export type Dock = {
   list: SelectRenderable
   inputs: Input[]
   armed: string
+  armedAt: number
   request: number
   acting: boolean
 }
@@ -44,16 +45,24 @@ export async function refresh(dock: Dock, note = "") {
   try {
     const result = waiting(await ctx.connection.client.sessions.pendingInputs({ sessionID: session.id }))
     if (version !== dock.request || ctx.state.modal !== dialog) return
+    const previous = dock.inputs[list.getSelectedIndex()]?.id
     dock.inputs = result.toSorted((a, b) => a.admittedSeq - b.admittedSeq)
     list.options = dock.inputs.map((input) => ({
       name: label(input.prompt.text, 90),
       description: `${delivery(input, Object.hasOwn(ctx.state.snapshot?.active ?? {}, session.id))} · ${new Date(input.timeCreated).toLocaleTimeString()}`,
     }))
     list.visible = dock.inputs.length > 0
+    // Keep the same message selected when others leave the queue, so Enter and Ctrl+D never retarget silently.
+    const index = dock.inputs.findIndex((input) => input.id === previous)
+    if (index >= 0) list.setSelectedIndex(index)
+    const left = previous !== undefined && index < 0
+    if (left || dock.armed !== dock.inputs[list.getSelectedIndex()]?.id) dock.armed = ""
     text.content = dock.inputs.length
       ? `For: ${label(session.title || session.id, 100)}\n\n${display(dock.inputs[list.getSelectedIndex()]?.prompt.text ?? "", 4000)}`
       : "Nothing is waiting. Messages the agent has already read appear in the transcript."
-    dialog.error.content = `${note ? `${note}\n` : ""}${dock.inputs.length ? keys : "Ctrl+R refresh · Esc close"}`
+    const notice =
+      note || (left && dock.inputs.length ? "The selected message left the queue; check the one now selected." : "")
+    dialog.error.content = `${notice ? `${notice}\n` : ""}${dock.inputs.length ? keys : "Ctrl+R refresh · Esc close"}`
   } catch (error) {
     if (version !== dock.request || ctx.state.modal !== dialog) return
     list.visible = false
@@ -79,12 +88,15 @@ export async function act(dock: Dock, kind: "steer" | "edit" | "cancel") {
     return
   }
   dock.acting = true
+  // Escape must not close the dialog while the server removes the message, or its text is lost.
+  dialog.busy = true
   try {
     const messageID = input.id
     const done =
       kind === "steer"
         ? await ctx.connection.client.sessions.inputSteer({ sessionID: session.id, messageID })
         : await ctx.connection.client.sessions.inputCancel({ sessionID: session.id, messageID })
+    dialog.busy = false
     if (ctx.state.modal !== dialog) return
     if (!done) return await refresh(dock, "The agent already received that message.")
     if (kind === "edit" && !ctx.drafts.restore(session, messageID, input.prompt.text)) return keep(dock, input)
@@ -95,27 +107,56 @@ export async function act(dock: Dock, kind: "steer" | "edit" | "cancel") {
     }
     await refresh(dock, kind === "steer" ? "Sent now; the agent reads it at its next step." : "Discarded.")
   } catch (error) {
-    if (ctx.state.modal === dialog) dialog.error.content = `! ${errorText(error)}\n${keys}`
+    if (ctx.state.modal !== dialog) return
+    if (refused(error)) dialog.error.content = `! ${errorText(error)}\n${keys}`
+    else await unsure(dock, input, error)
   } finally {
+    dialog.busy = false
     dock.acting = false
   }
 }
 
-/** A draft appeared while the message was being cancelled: keep its text on screen to copy. */
-function keep(dock: Dock, input: Input) {
+/** The server's answer was lost, so the message may or may not have left the queue: show its text, then re-read. */
+async function unsure(dock: Dock, input: Input, error: unknown) {
+  const { ctx, session, dialog } = dock
+  dock.text.content = display(input.prompt.text, 32000)
+  dialog.error.content = `! ${errorText(error)}\nThe message may already be removed. Checking the queue…`
+  dialog.busy = false
+  const current = await ctx.connection.client.sessions
+    .pendingInputs({ sessionID: session.id })
+    .then(waiting, () => undefined)
+  if (ctx.state.modal !== dialog) return
+  if (current?.some((item) => item.id === input.id))
+    return refresh(dock, `! ${errorText(error)}\nThe message is still queued.`)
+  keep(
+    dock,
+    input,
+    current
+      ? "No answer was received, and the message is no longer in the queue: it was removed or already delivered."
+      : "No answer was received, and the queue could not be read: the message may already be removed.",
+  )
+}
+
+/** The message left the queue without reaching a reply draft: keep its text on screen to copy. */
+function keep(
+  dock: Dock,
+  input: Input,
+  reason = "Removed from the queue, but it could not reopen in the reply editor.",
+) {
   dock.dialog.refresh = undefined
   dock.inputs = []
   dock.list.visible = false
-  dock.text.content = `Removed from the queue, but it could not reopen in the reply editor. Select it and press Ctrl+Y to copy it before closing.\n\n${display(input.prompt.text, 32000)}`
+  dock.text.content = `${reason} Select it and press Ctrl+Y to copy it before closing.\n\n${display(input.prompt.text, 32000)}`
   dock.dialog.error.content = "Ctrl+Y copies the selection · Esc close"
 }
 
 export async function discard(dock: Dock) {
   const id = dock.inputs[dock.list.getSelectedIndex()]?.id ?? ""
-  if (dock.armed === id) {
+  if (dock.armed === id && Date.now() - dock.armedAt < 3000) {
     dock.armed = ""
     return act(dock, "cancel")
   }
   dock.armed = id
-  dock.dialog.error.content = `Ctrl+D again discards this message.\n${keys}`
+  dock.armedAt = Date.now()
+  dock.dialog.error.content = `Ctrl+D again discards this message within 3 seconds.\n${keys}`
 }

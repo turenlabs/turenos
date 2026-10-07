@@ -1,3 +1,4 @@
+import type { DashboardState } from "../../state"
 import type { QuestionDraft, RequestContext } from "../context"
 import type { Questions } from "./flow"
 
@@ -32,4 +33,13 @@ export function loadDraft(ctx: RequestContext, key: string, questions: Questions
   ctx.questionDrafts.set(key, draft)
   if (ctx.questionDrafts.size > 16) ctx.questionDrafts.delete(ctx.questionDrafts.keys().next().value!)
   return draft
+}
+
+/** Drops the drafts of the shown session's questions that are no longer pending, whether or not their dialog is open. */
+export function sweepDrafts(state: DashboardState, drafts: Map<string, QuestionDraft>) {
+  const detail = state.detail
+  if (!detail) return
+  const live = new Set(detail.questions.map((item) => `${item.sessionID}:${item.id}`))
+  for (const key of drafts.keys())
+    if (key.startsWith(`${detail.sessionID}:`) && !live.has(key) && state.modal?.questionKey !== key) drafts.delete(key)
 }
