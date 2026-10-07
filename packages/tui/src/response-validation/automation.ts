@@ -29,6 +29,10 @@ export function automations(route: string[], init: RequestInit | undefined, valu
 function automationRun(route: string[], item: Record<string, unknown>) {
   if (identifier(item.loopID) !== identifier(route[1])) invalid("automation identity")
   choice(item.status, ["claimed", "running", "succeeded", "failed", "cancelled", "skipped", "stale"])
+  // Enter opens the run's session, so its identity is checked like every other session reference.
+  optional(item.sessionID, (value) => identifier(value, "ses_"))
+  optional(item.trigger, (value) => string(value, 64))
+  optional(item.time, (value) => numeric(object(value).created))
 }
 
 function automation(item: Record<string, unknown>) {

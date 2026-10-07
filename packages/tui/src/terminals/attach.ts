@@ -9,17 +9,7 @@ export async function attach(ctx: Context, pty: AttachTarget) {
   if (!ctx.state.connected) return ctx.say("Reconnect before attaching to a terminal.", true)
   if (!ctx.dialogs.navigate()) return
   ctx.renderer.suspend()
-  process.stdin.setRawMode?.(true)
-  process.stdin.resume()
-  process.stdout.write(`\x1b[2J\x1b[H\x1b[2m${label(pty.title, 80)} on the server · Ctrl+] detaches\x1b[0m\r\n`)
-  const result = await attachTerminal({
-    url: new URL(ctx.connection.address),
-    api: ctx.connection.api,
-    resize: (size) => ctx.connection.client.ptys.update({ ptyID: pty.id, location: where(pty), size }),
-    target: pty,
-    stdin: process.stdin,
-    stdout: process.stdout,
-  }).finally(() => {
+  const result = await session(ctx, pty).finally(() => {
     process.stdin.pause()
     if (!ctx.renderer.isDestroyed) ctx.renderer.resume()
   })
@@ -28,6 +18,21 @@ export async function attach(ctx: Context, pty: AttachTarget) {
   else
     ctx.say(result.reason === "exited" ? "The terminal exited." : "Detached. The terminal keeps running on the server.")
   void ctx.refresh()
+}
+
+/** Async so that a failure before the attachment starts still runs the caller's restore step. */
+async function session(ctx: Context, pty: AttachTarget) {
+  process.stdin.setRawMode?.(true)
+  process.stdin.resume()
+  process.stdout.write(`\x1b[2J\x1b[H\x1b[2m${label(pty.title, 80)} on the server · Ctrl+] detaches\x1b[0m\r\n`)
+  return attachTerminal({
+    url: new URL(ctx.connection.address),
+    api: ctx.connection.api,
+    resize: (size) => ctx.connection.client.ptys.update({ ptyID: pty.id, location: where(pty), size }),
+    target: pty,
+    stdin: process.stdin,
+    stdout: process.stdout,
+  })
 }
 
 export function open(ctx: Context) {

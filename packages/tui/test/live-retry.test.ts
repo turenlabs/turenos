@@ -49,3 +49,12 @@ test("malformed retry fields fall back to safe values instead of rejecting the e
   expect(state.retries.ses_a).toMatchObject({ attempt: 1, message: "" })
   expect(trackRetry(state, event("session.next.retried", { attempt: 1 }))).toBe(false)
 })
+
+test("retries are kept for at most 256 sessions, dropping the oldest", () => {
+  const state = createDashboardState()
+  for (let index = 0; index < 300; index++)
+    trackRetry(state, event("session.next.retried", { sessionID: `ses_${index}`, attempt: 1, delay: 0 }))
+  expect(Object.keys(state.retries)).toHaveLength(256)
+  expect(state.retries.ses_0).toBeUndefined()
+  expect(state.retries.ses_299).toBeDefined()
+})

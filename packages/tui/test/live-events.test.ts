@@ -130,6 +130,7 @@ for (const [label, payload] of [
   ["invalid sequence", encode({ ...connected, durable: { aggregateID: "ses_test", seq: -1, version: 1 } })],
   ["invalid version", encode({ ...connected, durable: { aggregateID: "ses_test", seq: 0, version: 0.5 } })],
   ["non-string aggregate", encode({ ...connected, durable: { aggregateID: null, seq: 0, version: 1 } })],
+  ["oversized aggregate", encode({ ...connected, durable: { aggregateID: "s".repeat(257), seq: 0, version: 1 } })],
 ] as const) {
   test(`live events skip ${label} and keep reading`, async () => {
     const f = fixture()

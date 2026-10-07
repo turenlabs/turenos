@@ -1,6 +1,6 @@
 import { parseJSON } from "../api"
 import { isRecord, object, string } from "../response-validation"
-import { DETACH, PENDING_LIMIT, type AttachResult, type Session } from "./types"
+import { DETACH, DETACH_SEQUENCES, PENDING_LIMIT, RESTORE, type AttachResult, type Session } from "./types"
 
 export function start(session: Session) {
   session.options.stdin.on("data", session.listeners.keystrokes)
@@ -13,13 +13,16 @@ export function finish(session: Session, result: AttachResult) {
   session.finished = true
   session.options.stdin.off("data", session.listeners.keystrokes)
   session.options.stdout.off("resize", session.listeners.resized)
+  // Whatever the PTY's programs left switched on must not outlive the attachment.
+  session.options.stdout.write(RESTORE)
   session.socket?.close(1000)
   session.resolve(result)
 }
 
 export function keystrokes(session: Session, chunk: Buffer | string) {
   const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk
-  const stop = bytes.indexOf(DETACH)
+  const found = [DETACH, ...DETACH_SEQUENCES].map((key) => bytes.indexOf(key)).filter((index) => index >= 0)
+  const stop = found.length ? Math.min(...found) : -1
   const text = session.decoder.decode(stop < 0 ? bytes : bytes.subarray(0, stop), { stream: stop < 0 })
   if (text) send(session, text)
   if (stop >= 0) finish(session, { reason: "detached" })
@@ -27,9 +30,13 @@ export function keystrokes(session: Session, chunk: Buffer | string) {
 
 function send(session: Session, text: string) {
   if (session.socket?.readyState === WebSocket.OPEN) return session.socket.send(text)
-  // Reconnecting: keep what was typed, up to the limit, and drop the rest rather than grow without bound.
+  // Reconnecting: keep what was typed, up to the limit. Past it, everything that follows is dropped too, so
+  // what does arrive is a prefix of what was typed and never fragments out of order.
   const bytes = Buffer.byteLength(text)
-  if (session.pending.bytes + bytes > PENDING_LIMIT) return
+  if (session.pending.overflow || session.pending.bytes + bytes > PENDING_LIMIT) {
+    session.pending.overflow = true
+    return
+  }
   session.pending.text.push(text)
   session.pending.bytes += bytes
 }
@@ -57,15 +64,28 @@ function closed(session: Session, current: WebSocket, code: number) {
   if (session.finished || session.socket !== current) return
   // 1000: the PTY exited or was removed; 4404: it ended while this client connected.
   if (code === 1000 || code === 4404) return finish(session, { reason: "exited" })
-  if (++session.attempts > 5) return finish(session, { reason: "failed", detail: `Connection closed (${code}).` })
+  // A connection that lived a while earns fresh attempts; one the server drops at once does not.
+  if (session.openedAt !== undefined && Date.now() - session.openedAt > 5000) session.attempts = 0
+  retry(session, `Connection closed (${code}).`)
+}
+
+function retry(session: Session, detail: string) {
+  if (++session.attempts > 5) return finish(session, { reason: "failed", detail })
   setTimeout(() => void connect(session), Math.min(250 * 2 ** session.attempts, 4000))
 }
 
+/** A server that is restarting answers again shortly; a definite refusal does not. */
+function transient(detail: string) {
+  return /^(The server did not answer in time|Connection failed|Server returned HTTP 5\d\d\b)/.test(detail)
+}
+
 async function connect(session: Session) {
+  if (session.finished) return
   const ticket = await mint(session).catch((error: unknown) => {
     const detail = error instanceof Error ? error.message : String(error)
     // A 404 means the PTY was removed while this client was disconnected: there is nothing to reconnect to.
     if (/^Server returned HTTP 404\b/.test(detail)) finish(session, { reason: "exited" })
+    else if (transient(detail)) retry(session, detail)
     else finish(session, { reason: "failed", detail })
     return undefined
   })
@@ -75,17 +95,31 @@ async function connect(session: Session) {
   for (const [key, value] of Object.entries(session.location)) address.searchParams.set(key, value)
   if (session.cursor !== undefined) address.searchParams.set("cursor", String(session.cursor))
   address.searchParams.set("ticket", ticket)
-  const current = session.open(address.href)
+  const current = opened(session, address.href)
+  if (!current) return
   session.socket = current
   current.binaryType = "arraybuffer"
   current.onopen = () => {
-    session.attempts = 0
+    session.openedAt = Date.now()
     resized(session)
     session.pending.text.splice(0).forEach((text) => current.send(text))
     session.pending.bytes = 0
+    session.pending.overflow = false
   }
-  current.onmessage = (event) => receive(session, event.data as string | ArrayBuffer)
+  current.onmessage = (event) => {
+    if (!session.finished) receive(session, event.data as string | ArrayBuffer)
+  }
   current.onclose = (event) => closed(session, current, event.code)
+}
+
+/** A socket the constructor refused (a bad address, no network) is a connection failure, never an unhandled rejection. */
+function opened(session: Session, href: string) {
+  try {
+    return session.open(href)
+  } catch {
+    retry(session, "Connection failed.")
+    return undefined
+  }
 }
 
 async function mint(session: Session) {

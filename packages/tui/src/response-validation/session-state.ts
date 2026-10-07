@@ -90,6 +90,10 @@ export function message(value: unknown, sessionID: string) {
     invalid("message source")
   if (item.type === "agent-switched") name(item.agent)
   if (item.type === "model-switched") modelRef(item.model)
+  if (item.type === "compaction") {
+    string(item.reason, 64)
+    optional(item.summary, () => clip(item, "summary"))
+  }
   if (item.type === "shell") {
     clip(item, "command")
     clip(item, "output")

@@ -3,6 +3,9 @@ import { providerError } from "../messages"
 import { isRecord } from "../response-validation"
 import type { DashboardState } from "../state"
 
+// Retries are keyed by server-chosen session IDs, so the map is bounded; the oldest entries go first.
+const MAX_RETRIES = 256
+
 // Events that show the turn moving again (or over), so a pending retry no longer describes it.
 const progress =
   /^session\.next\.(prompted|step\.(started|ended|failed)|text\.started|reasoning\.started|tool\.(input\.started|called))$/
@@ -19,7 +22,11 @@ export function trackRetry(state: DashboardState, event: LiveEvent) {
     const delay = event.data.delay
     const error = isRecord(event.data.error) ? event.data.error : {}
     state.retries = {
-      ...state.retries,
+      ...Object.fromEntries(
+        Object.entries(state.retries)
+          .filter(([id]) => id !== sessionID)
+          .slice(-(MAX_RETRIES - 1)),
+      ),
       [sessionID]: {
         attempt: typeof attempt === "number" && Number.isSafeInteger(attempt) && attempt > 0 ? attempt : 1,
         at:

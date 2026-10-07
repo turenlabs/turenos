@@ -1,6 +1,8 @@
 import { checkDirectory, parseResponse, validateResponse } from "../response-validation"
+import { readBounded } from "../response-validation/body"
 import { UNSAFE_TEXT } from "../response-validation/primitives"
 import type { ConnectionOptions } from "./context"
+import { bypassLoopbackProxy } from "./proxy"
 
 /** Checks the server URL and credential policy and returns the origin and the Basic-auth username. */
 export function validateConnection(options: ConnectionOptions) {
@@ -14,16 +16,7 @@ export function validateConnection(options: ConnectionOptions) {
   if (options.password && url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
     throw new Error("Server credentials require HTTPS, or HTTP on 127.0.0.1 or [::1] for an SSH tunnel.")
   }
-  if (["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
-    // Bun's fetch reads NO_PROXY at request time; an empty proxy option still
-    // uses shell proxies. Keep local credentials direct and retain other rules.
-    const bypass = [process.env.NO_PROXY ?? "", process.env.no_proxy ?? "", "127.0.0.1,localhost,::1"]
-      .flatMap((value) => value.split(","))
-      .map((value) => value.trim())
-      .filter(Boolean)
-    process.env.NO_PROXY = [...new Set(bypass)].join(",")
-    process.env.no_proxy = process.env.NO_PROXY
-  }
+  bypassLoopbackProxy(url)
   if (options.directory !== undefined) inputDirectory(options.directory)
   const username = options.username ?? "forge"
   if (!username || username.length > 512 || username.includes(":") || UNSAFE_TEXT.test(username))
@@ -78,7 +71,7 @@ export function createTransport(controller: AbortController) {
         )
       }
       if (response.status === 204 || response.status === 205 || !response.body) return response
-      const body = await readLimited(response.body)
+      const body = new Blob(await readBounded(response.body))
       if (response.ok) {
         // This root API has its own strict State/value parser in working-folders.
         if (address.pathname === "/global/storage")
@@ -90,26 +83,6 @@ export function createTransport(controller: AbortController) {
     },
     { preconnect: fetch.preconnect },
   )
-}
-
-async function readLimited(stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader()
-  const chunks: Uint8Array<ArrayBuffer>[] = []
-  let size = 0
-  try {
-    while (true) {
-      const chunk = await reader.read()
-      if (chunk.done) break
-      size += chunk.value.byteLength
-      if (size > 8 * 1024 * 1024) throw new Error("Server response exceeds the 8 MiB TUI limit.")
-      if (chunks.length >= 8192) throw new Error("Server response exceeds the 8,192 chunk TUI limit.")
-      chunks.push(new Uint8Array(chunk.value))
-    }
-  } finally {
-    await reader.cancel().catch(() => {})
-    reader.releaseLock()
-  }
-  return new Blob(chunks)
 }
 
 export function inputDirectory(value: unknown) {

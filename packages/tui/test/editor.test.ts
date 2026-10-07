@@ -16,7 +16,12 @@ import { readFileSync, statSync, writeFileSync } from "node:fs"
 const file = process.argv[2]
 writeFileSync(
   process.env.CAPTURE,
-  JSON.stringify({ file, mode: statSync(file).mode & 0o777, received: readFileSync(file, "utf8") }),
+  JSON.stringify({
+    file,
+    mode: statSync(file).mode & 0o777,
+    received: readFileSync(file, "utf8"),
+    env: Object.keys(process.env),
+  }),
 )
 if (process.env.MODE === "write") writeFileSync(file, process.env.TEXT)
 if (process.env.MODE === "fail") process.exit(3)
@@ -35,7 +40,8 @@ function editor(mode: "write" | "fail" | "noop", text = "") {
       MODE: mode,
       TEXT: text,
     } as NodeJS.ProcessEnv,
-    handed: () => JSON.parse(readFileSync(capture, "utf8")) as { file: string; mode: number; received: string },
+    handed: () =>
+      JSON.parse(readFileSync(capture, "utf8")) as { file: string; mode: number; received: string; env: string[] },
   }
 }
 
@@ -85,4 +91,18 @@ test("editor content is bounded and sanitized without losing real formatting", a
   // Newlines and tabs are draft formatting; terminal controls are not.
   expect(composed).toBe("line one\n\ttabbed[31m")
   expect(composed).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/)
+})
+
+test("the editor never sees the server password or the vault key", async () => {
+  const fake = editor("noop")
+  await composeInEditor("draft", {
+    ...fake.env,
+    FORGE_SERVER_PASSWORD: "secret",
+    FORGE_SECRET_VAULT_KEY: "key",
+    FORGE_SECRET_VAULT_KEY_ID: "id",
+  })
+  const seen = fake.handed().env
+  expect(seen).toContain("CAPTURE")
+  for (const name of ["FORGE_SERVER_PASSWORD", "FORGE_SECRET_VAULT_KEY", "FORGE_SECRET_VAULT_KEY_ID"])
+    expect(seen).not.toContain(name)
 })

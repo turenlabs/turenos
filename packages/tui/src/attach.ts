@@ -2,7 +2,7 @@ import { start, keystrokes, resized } from "./attach/session"
 import type { AttachOptions, AttachResult, Session } from "./attach/types"
 import { identifier } from "./response-validation"
 
-export { DETACH } from "./attach/types"
+export { DETACH, RESTORE } from "./attach/types"
 export type { AttachTarget } from "./attach/types"
 
 /**
@@ -12,8 +12,9 @@ export type { AttachTarget } from "./attach/types"
  */
 export function attachTerminal(input: AttachOptions): Promise<AttachResult> {
   const target = input.target
-  identifier(target.id, "pty_")
+  // Inside the executor, so a bad id rejects and the caller's cleanup (raw mode, renderer) still runs.
   return new Promise((resolve) => {
+    identifier(target.id, "pty_")
     const session: Session = {
       options: input,
       open: input.socket ?? ((url: string) => new WebSocket(url)),
@@ -26,7 +27,8 @@ export function attachTerminal(input: AttachOptions): Promise<AttachResult> {
       socket: undefined,
       finished: false,
       attempts: 0,
-      pending: { text: [], bytes: 0 },
+      openedAt: undefined,
+      pending: { text: [], bytes: 0, overflow: false },
       resolve,
       listeners: { keystrokes: (chunk) => keystrokes(session, chunk), resized: () => resized(session) },
     }

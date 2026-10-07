@@ -48,7 +48,7 @@ export function rename(ctx: Context) {
   if (!terminal) return
   const dialog = ctx.dialogs.open("Rename terminal", false, 14)
   if (!dialog) return
-  const title = ctx.dialogs.input(dialog, "Title", terminal.title)
+  const title = ctx.dialogs.input(dialog, "Title", label(terminal.title, 200))
   dialog.submit = async () => {
     if (!title.value.trim()) throw new Error("Enter a title.")
     await ctx.connection.client.ptys.update({

@@ -37,13 +37,19 @@ export function sessionRoute(route: string[], init: RequestInit | undefined, val
   if (route[2] === "prompt" || route[2] === "command") return admissionRoute(route[2], sessionID, init, response)
 }
 
+/** Key under which an oversized active map carries how many entries were dropped; no session ID can collide with it. */
+export const ACTIVE_OMITTED = "omitted"
+
 function activeSessions(response: Record<string, unknown>) {
   const entries = Object.entries(object(response.data))
-  if (entries.length > 128) invalid("more than 128 active sessions")
-  for (const [id, item] of entries) {
+  const kept = entries.slice(0, 128)
+  for (const [id, item] of kept) {
     identifier(id, "ses_")
     choice(object(item).type, ["running"])
   }
+  // More running sessions than the client fans out to are cut, not refused: refusing fails every snapshot.
+  if (entries.length > kept.length)
+    return { ...response, data: { ...Object.fromEntries(kept), [ACTIVE_OMITTED]: entries.length - kept.length } }
 }
 
 function sessionPage(init: RequestInit | undefined, response: Record<string, unknown>) {

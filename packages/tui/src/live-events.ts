@@ -23,7 +23,7 @@ function envelope(text: string): LiveEvent | undefined {
 
 function durable(value: unknown) {
   if (!isRecord(value)) invalid("live event durable metadata")
-  if (typeof value.aggregateID !== "string") invalid("live event aggregate")
+  if (typeof value.aggregateID !== "string" || value.aggregateID.length > 256) invalid("live event aggregate")
   if (typeof value.seq !== "number" || !Number.isSafeInteger(value.seq) || value.seq < 0) invalid("live event sequence")
   if (typeof value.version !== "number" || !Number.isSafeInteger(value.version) || value.version < 0)
     invalid("live event version")

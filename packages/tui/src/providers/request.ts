@@ -1,4 +1,6 @@
 import { checkDirectory, invalid, parseResponse } from "../response-validation"
+import { readBounded } from "../response-validation/body"
+import { bypassLoopbackProxy } from "../server/proxy"
 
 export type RequestInput = {
   method?: "PUT" | "PATCH" | "POST"
@@ -19,7 +21,7 @@ export function providerConnection(options: { url: URL; headers: Headers; signal
   headers.set("Accept", "application/json")
   const loopback = url.hostname === "127.0.0.1" || url.hostname === "[::1]"
   const secure = url.protocol === "https:" || loopback
-  if (loopback) bypassProxy()
+  bypassLoopbackProxy(url)
   async function request(path: string, input: RequestInput = {}): Promise<unknown> {
     if (!secure && (input.secret || headers.has("authorization") || headers.has("cookie")))
       throw new Error("Provider credentials require HTTPS, or HTTP on 127.0.0.1 or [::1] for an SSH tunnel.")
@@ -61,31 +63,9 @@ export function providerConnection(options: { url: URL; headers: Headers; signal
       return
     }
     if (!response.body) invalid("empty provider response")
-    return parseResponse(await new Blob(await readChunks(response.body, failed)).text())
+    return parseResponse(await new Blob(await readBounded(response.body, { label: "Provider", failed })).text())
   }
   return { request, secure }
-}
-
-async function readChunks(body: ReadableStream<Uint8Array>, failed: () => Error) {
-  const reader = body.getReader()
-  const chunks: Uint8Array<ArrayBuffer>[] = []
-  let size = 0
-  try {
-    while (true) {
-      const chunk = await reader.read().catch(() => {
-        throw failed()
-      })
-      if (chunk.done) break
-      size += chunk.value.byteLength
-      if (size > 8 * 1024 * 1024) throw new Error("Provider response exceeds the 8 MiB TUI limit.")
-      if (chunks.length >= 8192) throw new Error("Provider response exceeds the 8,192 chunk TUI limit.")
-      chunks.push(new Uint8Array(chunk.value))
-    }
-  } finally {
-    await reader.cancel().catch(() => {})
-    reader.releaseLock()
-  }
-  return chunks
 }
 
 function providerOrigin(value: URL) {
@@ -100,14 +80,4 @@ function providerOrigin(value: URL) {
   )
     throw new Error("Use an HTTP(S) server origin without a path, credentials, query, or fragment.")
   return url
-}
-
-function bypassProxy() {
-  // Bun consults NO_PROXY at request time; proxy: "" does not bypass shell proxies.
-  const bypass = [process.env.NO_PROXY ?? "", process.env.no_proxy ?? "", "127.0.0.1,::1"]
-    .flatMap((value) => value.split(","))
-    .map((value) => value.trim())
-    .filter(Boolean)
-  process.env.NO_PROXY = [...new Set(bypass)].join(",")
-  process.env.no_proxy = process.env.NO_PROXY
 }

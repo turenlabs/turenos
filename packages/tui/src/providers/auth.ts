@@ -59,7 +59,8 @@ export async function addCustom(
     },
   }
   const key = input.key === undefined ? undefined : credential(input.key)
-  // Preflight is advisory: V1 config can omit native providers, and other clients can race it.
+  // Preflight reads can be stale: V1 config can omit native providers, and other clients can race it.
+  // A read that fails still blocks the write rather than risk overwriting a provider that exists.
   if (
     (await catalog(request, directory, signal)).providers.some((provider) => provider.id === providerID) ||
     (await globalProviderIDs(request, signal)).has(providerID)

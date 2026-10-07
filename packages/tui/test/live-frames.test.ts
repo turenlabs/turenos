@@ -26,6 +26,17 @@ describe("live event frames", () => {
     expect(feed(`data: ${"x".repeat(1024 * 1024)}\ndata: more\n\ndata: next\n\n`)).toEqual(["next"])
   })
 
+  test("a frame that overflows on its blank line does not swallow the next frame", () => {
+    // The data line and its newline reach the limit exactly; the blank line is the byte over it.
+    const limit = 1024 * 1024
+    expect(feed(`data: ${"x".repeat(limit - "data: \n".length)}\n\ndata: next\n\n`)).toEqual(["next"])
+  })
+
+  test("a frame that overflows on the LF of its last CRLF does not swallow the next frame", () => {
+    const limit = 1024 * 1024
+    expect(feed(`data: ${"x".repeat(limit - "data: \r".length)}\r\n\r\ndata: next\r\n\r\n`)).toEqual(["next"])
+  })
+
   test("drops a frame with invalid UTF-8 and resumes at the next frame", () => {
     const frames = newFrames()
     const bad = [...new TextEncoder().encode("data: "), 0xff, ...new TextEncoder().encode("\ndata: x\n\n")]

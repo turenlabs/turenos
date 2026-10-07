@@ -5,6 +5,8 @@ import { join } from "node:path"
 import { display } from "./messages"
 
 export const EDITOR_LIMIT = 32000
+// The editor is the operator's own program; it has no use for this client's server password or vault key.
+const WITHHELD = new Set(["FORGE_SERVER_PASSWORD", "FORGE_SECRET_VAULT_KEY", "FORGE_SECRET_VAULT_KEY_ID"])
 export const MISSING_EDITOR = "Set $EDITOR (or $VISUAL) to compose in an editor, for example EDITOR=vim."
 
 /**
@@ -49,7 +51,10 @@ export async function composeInEditor(text: string, env: NodeJS.ProcessEnv = pro
 
 function run(argv: string[], file: string, env: NodeJS.ProcessEnv) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(argv[0]!, [...argv.slice(1), file], { stdio: "inherit", env })
+    const child = spawn(argv[0]!, [...argv.slice(1), file], {
+      stdio: "inherit",
+      env: Object.fromEntries(Object.entries(env).filter(([key]) => !WITHHELD.has(key))),
+    })
     child.on("error", () => reject(new Error(`Cannot start ${argv[0]}. Check $EDITOR and your PATH.`)))
     child.on("exit", (code, signal) => {
       if (code === 0) return resolve()

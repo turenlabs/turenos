@@ -1,15 +1,16 @@
 import { expect, test } from "bun:test"
 import { EventEmitter } from "node:events"
 import { createApi } from "../src/api"
-import { attachTerminal, DETACH } from "../src/attach"
+import { attachTerminal, DETACH, RESTORE } from "../src/attach"
 import { cleanup, until } from "./support"
 
 /** A PTY endpoint that behaves like the server's: ticketed WebSocket, replay, cursor frame, echo. */
-function pty(options: { drop?: boolean; gone?: boolean } = {}) {
+function pty(options: { drop?: boolean; gone?: boolean; flaky?: boolean } = {}) {
   const tickets = new Set<string>()
   const connects: URL[] = []
   const received: string[] = []
   let drops = options.drop ? 1 : 0
+  let flaked = false
   const server = Bun.serve<{ url: URL }>({
     hostname: "127.0.0.1",
     port: 0,
@@ -18,6 +19,11 @@ function pty(options: { drop?: boolean; gone?: boolean } = {}) {
       if (url.pathname === "/api/pty/pty_1/connect-token" && request.method === "POST") {
         // The PTY ended while the client was disconnected.
         if (options.gone && connects.length > 0) return new Response(null, { status: 404 })
+        // The server is restarting: the first reconnect's ticket request fails, the next succeeds.
+        if (options.flaky && connects.length > 0 && !flaked) {
+          flaked = true
+          return new Response(null, { status: 503 })
+        }
         if (request.headers.get("x-forge-ticket") !== "1") return new Response(null, { status: 403 })
         const ticket = crypto.randomUUID()
         tickets.add(ticket)
@@ -156,4 +162,96 @@ test("a PTY that ended while disconnected reports exited, not failed", async () 
   const server = pty({ drop: true, gone: true })
   const terminal = io()
   expect(await attach(server, terminal)).toEqual({ reason: "exited" })
+})
+
+test("an invalid terminal id rejects instead of throwing before the attachment starts", async () => {
+  const server = pty()
+  const terminal = io()
+  const controller = new AbortController()
+  cleanup.push(() => controller.abort())
+  await expect(
+    attachTerminal({
+      url: server.url,
+      api: createApi({ url: server.url, headers: new Headers(), signal: controller.signal }),
+      resize: async () => undefined,
+      target: { id: "shell", title: "shell", directory: "/srv" },
+      stdin: terminal.stdin,
+      stdout: terminal.stdout,
+    }),
+  ).rejects.toThrow("Invalid server response (identifier).")
+  expect(terminal.stdin.listenerCount("data")).toBe(0)
+  expect(server.connects).toHaveLength(0)
+})
+
+test("a failed ticket request during a reconnect is retried and buffered input still arrives", async () => {
+  const server = pty({ drop: true, flaky: true })
+  const terminal = io()
+  const attached = attach(server, terminal)
+  await until(() => server.connects.length === 1)
+  await Bun.sleep(100)
+  terminal.stdin.emit("data", "pwd\r")
+  await until(() => server.connects.length === 2)
+  await until(() => server.received.join("") === "pwd\r")
+  terminal.stdin.emit("data", Buffer.from([DETACH]))
+  expect((await attached).reason).toBe("detached")
+})
+
+test.each(["\x1b[93;5u", "\x1b[27;5;93~"])("Ctrl+] detaches in its %j encoding too", async (sequence) => {
+  const server = pty()
+  const terminal = io()
+  const attached = attach(server, terminal)
+  await until(() => terminal.stdout.text.includes("$ hello"))
+  terminal.stdin.emit("data", `ls${sequence}ignored`)
+  expect((await attached).reason).toBe("detached")
+  await until(() => server.received.join("") === "ls")
+})
+
+test("the attachment ends with a terminal reset, so a PTY program's modes do not outlive it", async () => {
+  const server = pty()
+  const terminal = io()
+  const attached = attach(server, terminal)
+  await until(() => terminal.stdout.text.includes("$ hello"))
+  terminal.stdin.emit("data", Buffer.from([DETACH]))
+  await attached
+  expect(terminal.stdout.text.endsWith(RESTORE)).toBe(true)
+})
+
+test("input past the reconnect limit is dropped as a whole, not resumed after a gap", async () => {
+  const server = pty({ drop: true })
+  const terminal = io()
+  const attached = attach(server, terminal)
+  await until(() => server.connects.length === 1)
+  await Bun.sleep(100)
+  for (let index = 0; index < 3; index++) terminal.stdin.emit("data", "x".repeat(16 * 1024))
+  terminal.stdin.emit("data", "y".repeat(32 * 1024))
+  terminal.stdin.emit("data", "tail")
+  await until(() => server.connects.length === 2)
+  await until(() => server.received.length > 0)
+  await Bun.sleep(100)
+  expect(server.received.join("")).toBe("x".repeat(48 * 1024))
+  terminal.stdin.emit("data", Buffer.from([DETACH]))
+  await attached
+})
+
+test("a socket the constructor refuses is retried instead of leaving the attachment pending", async () => {
+  const server = pty()
+  const terminal = io()
+  const refusals = { left: 1 }
+  const controller = new AbortController()
+  cleanup.push(() => controller.abort())
+  const attached = attachTerminal({
+    url: server.url,
+    api: createApi({ url: server.url, headers: new Headers(), signal: controller.signal }),
+    resize: async () => undefined,
+    target: { id: "pty_1", title: "shell", directory: "/srv" },
+    stdin: terminal.stdin,
+    stdout: terminal.stdout,
+    socket: (url) => {
+      if (refusals.left-- > 0) throw new Error("refused")
+      return new WebSocket(url)
+    },
+  })
+  await until(() => terminal.stdout.text.includes("$ hello"))
+  terminal.stdin.emit("data", Buffer.from([DETACH]))
+  expect((await attached).reason).toBe("detached")
 })

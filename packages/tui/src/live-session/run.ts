@@ -8,6 +8,7 @@ import { trackRetry } from "./retry"
 export async function run(s: LiveSession) {
   const { state, abort } = s
   while (!abort.signal.aborted && !state.closed) {
+    const started = Date.now()
     try {
       for await (const event of s.connection.events(abort.signal)) {
         if (state.closed || abort.signal.aborted) break
@@ -23,6 +24,8 @@ export async function run(s: LiveSession) {
     state.streamStatus = "polling"
     s.hooks.status()
     if (wasLive) snapshot(s)
+    // A stream that lived a while earns a fresh backoff; one that drops right after connecting does not.
+    if (Date.now() - started > 10_000) s.retry = 250
     await wait(abort.signal, s.retry)
     s.retry = Math.min(s.retry * 2, 5000)
   }
@@ -63,7 +66,6 @@ function connected(s: LiveSession) {
   s.selected = ""
   s.projection = undefined
   s.state.streamStatus = "live"
-  s.retry = 250
   s.hooks.status()
   if (s.snapshotTimer) clearTimeout(s.snapshotTimer)
   s.snapshotTimer = undefined

@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
+import { createApi } from "../src/api"
 import { connect, errorText } from "../src/server"
 import { display, latestMessage, transcript } from "../src/messages"
 import { ClientError, type MessagesListOutput } from "@turenlabs/client"
@@ -590,17 +591,20 @@ test("no-content approvals and interruptions remain valid", async () => {
   expect(server.calls).toHaveLength(3)
 })
 
-test("oversized and prototype-shaped active maps are rejected before session fan-out", async () => {
+test("an oversized active map is cut to 128 and counted, and a prototype-shaped one is rejected", async () => {
   const server = fixture({
     "/api/session/active": {
       data: Object.fromEntries(Array.from({ length: 129 }, (_, i) => [`ses_${i}`, { type: "running" }])),
     },
+    ...Object.fromEntries(
+      Array.from({ length: 129 }, (_, i) => [`/api/session/ses_${i}`, { data: session(`ses_${i}`) }]),
+    ),
   })
-  await expect(server.connection.snapshot()).rejects.toMatchObject({
-    reason: "Transport",
-    cause: { message: "Invalid server response (more than 128 active sessions)." },
-  })
-  expect(server.calls.filter((path) => /^\/api\/session\/ses_/.test(path))).toEqual([])
+  const snapshot = await server.connection.snapshot()
+  expect(Object.keys(snapshot.active)).toHaveLength(128)
+  expect(snapshot.active).not.toHaveProperty("ses_128")
+  expect(snapshot.activeOmitted).toBe(1)
+  expect(server.calls).not.toContain("/api/session/ses_128")
   server.routes.set("/api/session/active", JSON.parse('{"data":{"__proto__":{"type":"running"}}}'))
   await expect(server.connection.snapshot()).rejects.toMatchObject({
     reason: "Transport",
@@ -870,15 +874,40 @@ test("automation eventTrigger is validated for file-change and session-end struc
 })
 
 test("automation history is bounded and belongs to the selected automation", async () => {
-  const runs = Array.from({ length: 12 }, (_, i) => ({ id: `run_${i}`, loopID: "loop_test", status: "succeeded" }))
+  const run = { loopID: "loop_test", status: "succeeded", trigger: "manual", time: { created: 1, updated: 1 } }
+  const runs = Array.from({ length: 12 }, (_, i) => ({ ...run, id: `run_${i}` }))
   const server = fixture({ "/api/loop/loop_test/run": runs })
   expect(await server.connection.runs("loop_test")).toHaveLength(10)
-  server.routes.set("/api/loop/loop_test/run", [{ id: "run_wrong", loopID: "loop_other", status: "succeeded" }])
+  server.routes.set("/api/loop/loop_test/run", [{ ...run, id: "run_wrong", loopID: "loop_other" }])
   await expect(server.connection.runs("loop_test")).rejects.toMatchObject({
     reason: "Transport",
     cause: { message: "Invalid server response (automation identity)." },
   })
+  // Enter opens a run's session, so a run naming a malformed session is refused before it can.
+  server.routes.set("/api/loop/loop_test/run", [{ ...run, id: "run_1", sessionID: "not-a-session" }])
+  await expect(server.connection.runs("loop_test")).rejects.toMatchObject({
+    cause: { message: "Invalid server response (identifier)." },
+  })
 })
+
+test("each snapshot request has its own deadline, so a slow link still completes", async () => {
+  const server = fixture()
+  const slow = (body: unknown) => () => Bun.sleep(2200).then(() => Response.json(body))
+  // Five sequential rounds of 2.2 s: the recent page, two batches of missing active sessions, the
+  // root list and the terminal inventory. Each is well under the deadline; together they pass 10 s.
+  const active = Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`ses_active${i}`, { type: "running" }]))
+  server.routes.set("/api/session/active", { data: active })
+  server.routes.set("/api/session", slow({ data: [], cursor: {} }))
+  for (let index = 0; index < 9; index++)
+    server.routes.set(
+      `/api/session/ses_active${index}`,
+      slow({ data: { ...session(), id: `ses_active${index}`, parentID: "ses_root" } }),
+    )
+  server.routes.set("/api/pty", slow({ location: { directory: "/srv/project" }, data: [] }))
+  const snapshot = await server.connection.snapshot()
+  expect(snapshot.sessions).toHaveLength(9)
+  expect(snapshot.terminalsAvailable).toBe(true)
+}, 25000)
 
 test("transcript metadata cannot emit terminal or bidirectional controls", () => {
   const messages = [
@@ -1311,4 +1340,38 @@ test("session listing validation accepts sessions with empty model variant", () 
       cursor: {},
     }),
   ).not.toThrow()
+})
+
+test("raw API credentials need HTTPS or loopback, and a discarded body is never read", async () => {
+  const controller = new AbortController()
+  const remote = createApi({
+    url: new URL("http://example.invalid/"),
+    headers: new Headers(),
+    signal: controller.signal,
+  })
+  await expect(remote("/extension/x", { method: "PATCH", body: {}, secret: true })).rejects.toThrow("require HTTPS")
+  let pulled = 0
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(stream) {
+            pulled += 65536
+            stream.enqueue(new Uint8Array(65536).fill(32))
+          },
+        }),
+        { headers: { "content-type": "application/json" } },
+      ),
+  })
+  try {
+    const api = createApi({ url: new URL(server.url.origin), headers: new Headers(), signal: controller.signal })
+    expect(await api("/global/config", { method: "PATCH", body: { agent: {} }, discard: true })).toBeUndefined()
+    expect(pulled).toBeLessThan(8 * 1024 * 1024)
+    await expect(api("/global/config", { method: "PATCH", body: { agent: {} } })).rejects.toThrow("8 MiB")
+  } finally {
+    controller.abort()
+    await server.stop(true)
+  }
 })

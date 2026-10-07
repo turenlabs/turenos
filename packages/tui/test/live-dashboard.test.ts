@@ -28,6 +28,7 @@ async function fixture(deferredReady = false, initialText = "Initial snapshot") 
     revert: undefined as Session["revert"],
     tail: undefined as string | undefined,
     delay: 0,
+    terminals: [] as Record<string, unknown>[],
   }
   const streams = new Set<ReadableStreamDefaultController<Uint8Array>>()
   let connections = 0
@@ -64,7 +65,7 @@ async function fixture(deferredReady = false, initialText = "Initial snapshot") 
         return Response.json({ directory: "/fixture", project: { id: "project", directory: "/fixture" } })
       if (path === "/api/session") return Response.json({ data: [{ ...session, revert: data.revert }], cursor: {} })
       if (path === "/api/session/active") return Response.json({ data: { ses_live: { type: "running" } } })
-      if (path === "/api/pty") return Response.json({ location: { directory: "/fixture" }, data: [] })
+      if (path === "/api/pty") return Response.json({ location: { directory: "/fixture" }, data: data.terminals })
       if (path === "/api/loop") return Response.json([])
       if (path === "/api/session/ses_live") return Response.json({ data: { ...session, revert: data.revert } })
       if (path.endsWith("/message")) {
@@ -257,6 +258,9 @@ test("streaming grows the transcript without pulling a reader away from older te
   await f.wait(() => f.reads() >= 2)
   await f.screen("Line 79")
   f.view.mockInput.pressEnter()
+  await f.screen("Typing")
+  f.view.mockInput.pressEscape()
+  await f.screen("Focus: transcript")
   f.view.mockInput.pressKey("\x1b[5~")
   await f.view.renderOnce()
   const before = f.view.captureCharFrame().match(/Line \d+/)?.[0]
@@ -382,5 +386,33 @@ test("the Working marker clears at the final step end without waiting for the po
     cost: 0,
     tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
   })
-  await f.wait(() => !/Working \(x to stop\) [\u2800-\u28ff]{3}|· Working/.test(f.view.captureCharFrame()))
+  await f.wait(() => !/Working \(Esc Esc to stop\) [\u2800-\u28ff]{3}|· Working/.test(f.view.captureCharFrame()))
 }, 10000)
+
+test("a reconnect does not paint over the terminals pane", async () => {
+  const f = await fixture()
+  await f.screen("Initial snapshot")
+  f.data.terminals = [
+    { id: "pty_1", title: "shell", command: "bash", args: [], cwd: "/fixture", status: "running", pid: 42 },
+  ]
+  f.view.mockInput.pressKey("2")
+  await f.screen("shell")
+  f.view.mockInput.pressArrow("down")
+  await f.screen("PID 42")
+  f.emit("server.connected")
+  await Bun.sleep(150)
+  await f.view.renderOnce()
+  expect(f.view.captureCharFrame()).not.toContain("Refreshing conversation history")
+  expect(f.view.captureCharFrame()).toContain("PID 42")
+})
+
+test("a stream that drops right after connecting keeps backing off", async () => {
+  const f = await fixture()
+  await f.wait(() => f.streams.size > 0)
+  const base = f.connections()
+  const closer = setInterval(() => f.closeStreams(), 20)
+  await Bun.sleep(1800)
+  clearInterval(closer)
+  // Waits of 250, 500 and 1000 ms allow about three reconnects; a reset to 250 ms each time would allow seven.
+  expect(f.connections() - base).toBeLessThanOrEqual(4)
+})

@@ -33,11 +33,15 @@ export function pushByte(f: Frames, byte: number): string | undefined {
   const lineEnd = byte === 10 || byte === 13
   if (f.carriageReturn && byte === 10) {
     f.carriageReturn = false
-    if (!f.skipping && f.frameBytes && ++f.frameBytes > MAX_FRAME) skip(f)
+    // The CR already ended this line, so an overflow here skips only what remains of the frame.
+    if (!f.skipping && f.frameBytes && ++f.frameBytes > MAX_FRAME) skipRest(f)
     return
   }
   f.carriageReturn = byte === 13
-  if (!f.skipping && ++f.frameBytes > MAX_FRAME) skip(f)
+  if (!f.skipping && ++f.frameBytes > MAX_FRAME) {
+    overflow(f, lineEnd)
+    return
+  }
   if (f.skipping) {
     skipByte(f, lineEnd)
     return
@@ -75,19 +79,31 @@ function skipByte(f: Frames, lineEnd: boolean) {
   f.length = 0
 }
 
-function skip(f: Frames) {
+/** The byte that put the frame over the limit: drop the frame, and skip the rest when more is coming. */
+function overflow(f: Frames, lineEnd: boolean) {
+  if (lineEnd && f.length === 0) {
+    // The blank line that ends this frame is the byte over the limit: the next frame starts clean.
+    f.data = []
+    f.frameBytes = 0
+    return
+  }
+  skipRest(f)
+  // Mid-line, nonzero so the line that overflowed is not mistaken for the blank line that ends the frame.
+  if (!lineEnd) f.length = 1
+}
+
+/** Drops the frame so far and skips what remains of it; the current line has already ended. */
+function skipRest(f: Frames) {
   f.skipping = true
   f.data = []
-  // Nonzero so the line that overflowed is not mistaken for the blank line that ends the frame.
-  f.length = 1
+  f.length = 0
 }
 
 function decode(f: Frames): string | undefined {
   try {
     return f.decoder.decode(f.line.subarray(0, f.length))
   } catch {
-    skip(f)
-    f.length = 0
+    skipRest(f)
     return undefined
   }
 }
