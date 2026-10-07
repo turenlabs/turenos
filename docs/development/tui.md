@@ -126,6 +126,7 @@ python3 script/visual-audit.py /run/user/1000/tva --built --sizes 60x24 120x36
 - The output directory must be outside the repository and short: the runner places its tmux socket there and refuses a path of 104 bytes or more. It uses its own socket (`tmux -S`), never the default tmux server.
 - The default run covers 160x48, 120x36, 90x28, 80x24 and 60x24 plus a 59x23 resize-shield case. `--exit-only` and `--lifecycle-only` run the exit-restoration and close/reopen/resize subsets.
 - The fixture server answers `GET /global/health` as a server the client verifies, and every request lands in `evidence.json`. A request outside the allowed set fails the `safety` check.
+- Its keystrokes follow the docked reply editor, as a person's do: a shortcut scenario presses `Escape` first, an editor action opens the editor with `f`, and the exit scenarios cover an unsent draft and a running turn (`Ctrl+C` stops the turn first, `q` warns). The fixture answers `404` for a session it does not serve.
 - Exit status 1 means a check failed; `summary.md` and `evidence.json` at the output root describe the latest run. The runner hashes `src/**/*.ts` at the start and end and fails if source changed during capture.
 - The PNGs are reconstructions of tmux cells, not screenshots of a GUI terminal, and a pass is not a visual review. Open a few and look.
 - Remove the output directory and the package's `dist` build output afterwards.
