@@ -27,6 +27,7 @@ const attributedWorkspacePackages = new Set([
   "@turenlabs/debug-symbols-wasm",
   "@turenlabs/protocol-inspect-wasm",
   "@turenlabs/monodis-wasm",
+  "@turenlabs/jwt-audit-wasm",
 ])
 const sourceBundledCopyleftPackages = new Set(["@turenlabs/static-unpack-wasm"])
 

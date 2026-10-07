@@ -141,11 +141,15 @@ function makeProxyTools(location: Location.Interface, runtime: SecurityProxyRunt
 
   const history = Tool.make({
     deferred: true,
-    input: Empty,
+    input: Schema.Struct({
+      cursor: Schema.optional(SecurityProxy.FlowCursor),
+      filter: Schema.optional(SecurityProxy.FlowFilter),
+    }),
     output: SecurityProxy.Result,
-    description: "List the latest bounded masked HTTP flows captured by this session's Security Browser.",
-    execute: (_input, context) =>
-      execute({ type: "flows", owner: caseOwner(context.sessionID), caseID: caseID(context.sessionID) }),
+    description:
+      "List a bounded page of masked Security Browser history. Pass nextCursor as cursor to read older pages, including empty filtered pages. Filters apply across the case; content search uses masked text previews only.",
+    execute: (input, context) =>
+      execute({ type: "flows", owner: caseOwner(context.sessionID), caseID: caseID(context.sessionID), ...input }),
   })
 
   const flow = Tool.make({

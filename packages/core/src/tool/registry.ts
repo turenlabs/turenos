@@ -41,6 +41,8 @@ export type MaterializeInput = {
   readonly permissions?: PermissionV2.Ruleset
   /** Separate authority ceilings. A whole-tool deny in any set hides the tool. */
   readonly permissionSets?: ReadonlyArray<PermissionV2.Ruleset>
+  /** Tool-name availability, independent of shared leaf permission actions such as edit. */
+  readonly toolPermissions?: PermissionV2.Ruleset
   /** Canonical tools visible only to this provider turn. */
   readonly session?: Readonly<Record<string, AnyTool>>
   /**
@@ -344,7 +346,10 @@ const registryLayer = Layer.effect(
           session.add(name)
         }
         for (const [name, registration] of registrations)
-          if (permissionSets.some((rules) => whollyDisabled(permission(registration.tool, name), rules)))
+          if (
+            whollyDisabled(name, options.toolPermissions ?? []) ||
+            permissionSets.some((rules) => whollyDisabled(permission(registration.tool, name), rules))
+          )
             registrations.delete(name)
         const deferred: Materialization["deferred"][number][] = []
         const definitions: ToolDefinition[] = []

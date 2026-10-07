@@ -207,6 +207,10 @@ for (const channel of channels) {
     expect(config.extraResources).toContainEqual(staticAnalysisWorkerResource)
     expect(config.extraResources).toContainEqual(staticAnalysisAssetsResource)
     expect(config.extraResources).toContainEqual(forensicToolsResource)
+    expect(config.extraResources).toContainEqual({
+      from: "out/main/chunks/jwt-audit/",
+      to: "jwt-audit/",
+    })
   })
 }
 

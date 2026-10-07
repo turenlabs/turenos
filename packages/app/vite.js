@@ -3,6 +3,7 @@ import solidPlugin from "vite-plugin-solid"
 import tailwindcss from "@tailwindcss/vite"
 import { fileURLToPath } from "url"
 import { whiteboardPlugin } from "./whiteboard.vite.js"
+import { animationRuntimePlugin } from "@turenlabs/session-ui/vite"
 
 const theme = fileURLToPath(new URL("./public/forge-theme-preload.js", import.meta.url))
 
@@ -54,6 +55,7 @@ export default [
     },
   },
   whiteboardPlugin(),
+  animationRuntimePlugin(),
   tailwindcss(),
   solidPlugin(),
 ]
