@@ -53,6 +53,7 @@ import { RunChatDialog } from "./loops/run-chat"
 import { automationSortOptions, sortAutomations, type AutomationSort } from "./loops/sort"
 import {
   agentDraft,
+  invalidStepBinding,
   renameStep,
   skillDraft,
   stepSummary,
@@ -96,13 +97,6 @@ const SESSION_OUTCOME_OPTIONS: Array<{ value: SessionOutcomeFilter; label: strin
   { value: "success", label: "Success only" },
   { value: "failure", label: "Failure only" },
 ]
-
-const invalidStepBinding = (steps: readonly StepDraft[]) =>
-  steps.find((step, index) => {
-    const available = new Set(steps.slice(0, index).map((item) => item.id))
-    const template = step.type === "agent" ? step.prompt : step.instructions
-    return [...template.matchAll(/{{\s*steps\.([A-Za-z][A-Za-z0-9_-]*)\./g)].some((match) => !available.has(match[1]))
-  })
 
 /**
  * Model selections are carried as `providerID/id` and the effort tier separately, rather
