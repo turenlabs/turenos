@@ -40,6 +40,8 @@ export function recipient(ctx: SessionActionsContext, dialog: ModalState, sessio
 export function announceOpen(ctx: SessionActionsContext, dialog: ModalState, closed: Session, message: string) {
   dialog.afterSubmit = () => {
     const open = ctx.state.snapshot?.sessions.find((item) => item.id === ctx.state.selected)
-    ctx.say(open && open.id !== closed.id ? `${message} Now showing ${sessionTitle(open.title || open.id, 60)}.` : message)
+    ctx.say(
+      open && open.id !== closed.id ? `${message} Now showing ${sessionTitle(open.title || open.id, 60)}.` : message,
+    )
   }
 }

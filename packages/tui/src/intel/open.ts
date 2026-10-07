@@ -93,7 +93,10 @@ async function load(view: View, page = view.page) {
     // Rows are cut to the list column, so they are painted again whenever the panel's width changes.
     panel.fit("rows", () => {
       const index = panel.list.getSelectedIndex()
-      panel.list.options = view.items.map((item) => ({ name: label(item.row, listChars(panel.width())), description: "" }))
+      panel.list.options = view.items.map((item) => ({
+        name: label(item.row, listChars(panel.width())),
+        description: "",
+      }))
       panel.list.setSelectedIndex(index)
     })
     panel.list.setSelectedIndex(0)

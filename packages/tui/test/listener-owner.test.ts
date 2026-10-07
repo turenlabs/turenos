@@ -130,7 +130,9 @@ describe("the port-4096 listener's owner", () => {
 
   test("the picker row says when nothing is listening, and when another user is", async () => {
     expect((await setup({ tcp: tcp() })).entry.detail).toBe("127.0.0.1:4096 · not listening")
-    expect((await setup({ tcp: tcp(row(LOOPBACK, other)) })).entry.detail).toBe("127.0.0.1:4096 · owned by another user")
+    expect((await setup({ tcp: tcp(row(LOOPBACK, other)) })).entry.detail).toBe(
+      "127.0.0.1:4096 · owned by another user",
+    )
     expect((await setup({ tcp: tcp(row(LOOPBACK, uid)) })).entry.detail).toBe("127.0.0.1:4096 · FORGE_SERVER_PASSWORD")
   })
 

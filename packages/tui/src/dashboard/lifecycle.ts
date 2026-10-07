@@ -28,8 +28,7 @@ export function quit(d: DashboardContext, stop = false) {
       drafts,
     )
   // q types into an open reply editor, so only Ctrl+C is named there.
-  if (drafts && state.modal?.composer)
-    return arm(d, "Draft kept. Ctrl+C again quits and discards unsent drafts.", true)
+  if (drafts && state.modal?.composer) return arm(d, "Draft kept. Ctrl+C again quits and discards unsent drafts.", true)
   if (drafts)
     return arm(d, "Unsent drafts are kept only until you quit. Press q or Ctrl+C again to quit and discard them.", true)
   close(d)

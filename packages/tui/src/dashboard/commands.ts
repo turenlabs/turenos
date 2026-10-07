@@ -131,9 +131,7 @@ function sessionEntries(d: DashboardContext): Entry[] {
     { name: "Archive / restore session", description: "Hide or restore history", run: c.sessions.archive },
     { name: "Delete session", description: "Permanently, with its subagents", run: c.sessions.remove },
     { name: "Tasks and subagents", description: "Delegated work", key: "t", run: c.sessions.tasks },
-    ...(hasParent(d)
-      ? [{ name: "Go to parent session", description: "Open the parent", run: c.sessions.parent }]
-      : []),
+    ...(hasParent(d) ? [{ name: "Go to parent session", description: "Open the parent", run: c.sessions.parent }] : []),
     ...(d.options.servers
       ? [{ name: "Switch server", description: "Choose a server", key: "s", run: () => openServers(d) }]
       : []),
@@ -180,11 +178,21 @@ function panelEntries(d: DashboardContext): Entry[] {
   return [
     { name: "Review changes", description: "Uncommitted, branch, last turn", key: "d", run: c.changes.open },
     { name: "Browse files", description: "Read files, @ mention", key: "e", run: c.files.open },
-    { name: "Open session terminal", description: "Shared with the agent", key: "T", run: () => void c.terminals.shared() },
+    {
+      name: "Open session terminal",
+      description: "Shared with the agent",
+      key: "T",
+      run: () => void c.terminals.shared(),
+    },
     { name: "Swarm room", description: "Subagent lanes and messages", key: "w", run: c.room.open },
     { name: "Session tools", description: "Built-in, MCP, excluded", key: "/tools", run: () => void c.inspect.tools() },
     { name: "Session trace", description: "The event log", key: "/trace", run: c.inspect.trace },
-    { name: "Session and connection details", description: "Session and server", key: "i", run: () => c.menus.information(d.serverAddress) },
+    {
+      name: "Session and connection details",
+      description: "Session and server",
+      key: "i",
+      run: () => c.menus.information(d.serverAddress),
+    },
   ]
 }
 
@@ -221,7 +229,12 @@ function viewEntries(d: DashboardContext): Entry[] {
     { name: "Keyboard help", description: "All shortcuts", key: "?", run: c.menus.help },
     { name: "Copy selected text", description: "Selection to clipboard", key: "Ctrl+Y", run: c.copy.copySelection },
     { name: "Toggle terminal mouse selection", description: "Native selection", key: "F6", run: c.copy.toggleMouse },
-    { name: "Session history / live transcript", description: "Switch the view", key: "h", run: c.conversation.toggleHistory },
+    {
+      name: "Session history / live transcript",
+      description: "Switch the view",
+      key: "h",
+      run: c.conversation.toggleHistory,
+    },
     {
       name: d.state.rawResponses ? "Show formatted responses" : "Show raw responses",
       description: "Tool results and updates",

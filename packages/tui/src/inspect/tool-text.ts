@@ -27,9 +27,7 @@ function wrap(row: string, width: number) {
 /** Built-in tools come first, then the other sources by name; each group is alphabetical. */
 function ordered(tools: Record<string, unknown>[]) {
   const rank = (tool: Record<string, unknown>) => (tool.source === "builtin" ? "" : String(tool.source))
-  return tools.toSorted(
-    (a, b) => rank(a).localeCompare(rank(b)) || String(a.id).localeCompare(String(b.id)),
-  )
+  return tools.toSorted((a, b) => rank(a).localeCompare(rank(b)) || String(a.id).localeCompare(String(b.id)))
 }
 
 /** `width` is the columns a row may use; without it, rows are left to the renderer's own wrapping. */

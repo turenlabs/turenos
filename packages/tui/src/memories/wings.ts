@@ -17,7 +17,12 @@ export function openWings(ctx: MemoriesContext, back?: () => void, note = "") {
     picker.set([
       ...wings.map((wing) => ({
         name: label(wing.name, 60),
-        description: [label(wing.kind, 32), wing.kind === "person" && same(wing.name, wing.key) ? "" : label(wing.key, 80)].filter(Boolean).join(" · "),
+        description: [
+          label(wing.kind, 32),
+          wing.kind === "person" && same(wing.name, wing.key) ? "" : label(wing.key, 80),
+        ]
+          .filter(Boolean)
+          .join(" · "),
         run: () => rooms(ctx, { wingID: wing.id, name: wing.name }, () => void openWings(ctx, back)),
       })),
       {
@@ -99,7 +104,12 @@ function rooms(ctx: MemoriesContext, wing: Place, back: () => void, note = "") {
 
 /** A personal wing's key and a room's slug are made from the name, so showing them again adds nothing. */
 function same(name: string, key: string) {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") === key.toLowerCase()
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") === key.toLowerCase()
+  )
 }
 
 /** Adds a key handler ahead of the picker's own Enter handling. */

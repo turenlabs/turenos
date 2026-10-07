@@ -19,7 +19,8 @@ async function sized(width: number, height: number, routes: Record<string, Route
   return { server, view, screen, palette }
 }
 
-const lines = (frame: string) => frame.split("\n").map((row) => row.replace(/^\s*│ ?/, "").replace(/\s*(?:[█▀▄])?\s*│\s*$/, ""))
+const lines = (frame: string) =>
+  frame.split("\n").map((row) => row.replace(/^\s*│ ?/, "").replace(/\s*(?:[█▀▄])?\s*│\s*$/, ""))
 
 const task = {
   id: "tsk_117ea59ec001K9z4YaV2PEoNOY",
@@ -126,7 +127,8 @@ test("an empty swarm room explains itself across the dialog, not in a narrow col
 })
 
 test("Tools hangs wrapped descriptions under the row and lists each group alphabetically", async () => {
-  const description = "Apply one patch containing add, update, delete, and move file operations. Use this instead of bash"
+  const description =
+    "Apply one patch containing add, update, delete, and move file operations. Use this instead of bash"
   const { screen, palette } = await sized(80, 24, {
     "GET /api/session": () => ({ data: [{ ...session(), model: { providerID: "openai", id: "gpt" } }], cursor: {} }),
     "GET /experimental/tool": () => ({
@@ -321,7 +323,9 @@ test("a long wrapped line in the swarm room stays clear of the scroll bar at 100
 test("a long wrapped line in Trace stays clear of the scroll bar at 100x36", async () => {
   const { screen, palette } = await sized(100, 36, {
     "GET /api/session/ses_main/replay": () => ({
-      data: [{ id: "evt_1", type: "session.created", durable: { aggregateID: "ses_main", seq: 0, version: 1 }, data: long }],
+      data: [
+        { id: "evt_1", type: "session.created", durable: { aggregateID: "ses_main", seq: 0, version: 1 }, data: long },
+      ],
       cursor: {},
     }),
   })

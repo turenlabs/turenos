@@ -11,9 +11,7 @@ export function orderModels<T extends Orderable>(models: T[], defaults: Record<s
     providers.includes(id),
   )
   const ranked = [first, ...providers.filter((id) => id !== first)]
-  return ranked.flatMap((providerID) =>
-    models.filter((model) => model.providerID === providerID).toSorted(compare),
-  )
+  return ranked.flatMap((providerID) => models.filter((model) => model.providerID === providerID).toSorted(compare))
 }
 
 function compare(a: Orderable, b: Orderable) {

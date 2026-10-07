@@ -819,6 +819,12 @@ test("catalog keeps valid release dates and defaults and drops malformed ones wi
     }),
   )
   const result = await providers.list("/srv")
-  expect(result.models.map((item) => item.release)).toEqual(["2026-02-03", "2026-02-03", undefined, undefined, undefined])
+  expect(result.models.map((item) => item.release)).toEqual([
+    "2026-02-03",
+    "2026-02-03",
+    undefined,
+    undefined,
+    undefined,
+  ])
   expect(result.defaults).toEqual({ openai: "good" })
 })

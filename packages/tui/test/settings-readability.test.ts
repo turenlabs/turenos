@@ -51,7 +51,8 @@ test("extension rows keep the state word and end-cut the name with an ellipsis, 
     const rows = lines(frame).filter((line) => /^\s*(▶ )?[●○] /.test(line.trimStart()))
     expect(rows.length).toBe(3)
     // At 80 columns the column is narrow enough that on and off are the words that fit.
-    for (const row of rows) expect(row).toMatch(width === 120 ? / · (enabled|disabled)(\s|$)/ : / · (enabled|disabled|on|off)(\s|$)/)
+    for (const row of rows)
+      expect(row).toMatch(width === 120 ? / · (enabled|disabled)(\s|$)/ : / · (enabled|disabled|on|off)(\s|$)/)
     expect(rows.find((row) => row.includes("Datadog"))).toContain("…")
     // The heading and the rows say the same word for the same state.
     expect(frame).toContain("1 of 3 enabled")
@@ -62,7 +63,9 @@ test("extension rows keep the state word and end-cut the name with an ellipsis, 
 })
 
 test("the extension detail does not repeat the name, the state or the description", async () => {
-  const { screen, palette } = await dashboard({ "GET /extension": () => [extension("a", "Customize TurenOS", true, "available")] })
+  const { screen, palette } = await dashboard({
+    "GET /extension": () => [extension("a", "Customize TurenOS", true, "available")],
+  })
   await palette("Extensions")
   const frame = await screen("PROVIDES")
   // The list row, the pane heading and the description line; no `skill · name` line, no second description.
@@ -147,12 +150,23 @@ async function settingsAt(routes: Parameters<typeof dashboard>[0], steps: number
 }
 
 test("agents list primary agents first and say the server default once", async () => {
-  const agent = (id: string, mode: string) => ({ id, mode, hidden: false, request: { headers: {}, body: {} }, permissions: [] })
+  const agent = (id: string, mode: string) => ({
+    id,
+    mode,
+    hidden: false,
+    request: { headers: {}, body: {} },
+    permissions: [],
+  })
   const { screen } = await settingsAt(
     {
       "GET /api/agent": (_, url) => ({
         location: { directory: url.searchParams.get("location[directory]") },
-        data: [agent("adversarial-review", "subagent"), agent("build", "primary"), agent("explore", "subagent"), agent("plan", "primary")],
+        data: [
+          agent("adversarial-review", "subagent"),
+          agent("build", "primary"),
+          agent("explore", "subagent"),
+          agent("plan", "primary"),
+        ],
       }),
       "GET /provider": () => ({ all: [], connected: [] }),
     },
@@ -242,10 +256,22 @@ test("Servers opened from Settings is titled by its path, and its hints wrap bet
   await mkdir(directory, { recursive: true })
   await writeFile(
     join(directory, "attach.json"),
-    JSON.stringify({ version: 1, url: alpha.listener.url.origin, username: "forge", password: "secret", pid: process.pid }),
+    JSON.stringify({
+      version: 1,
+      url: alpha.listener.url.origin,
+      username: "forge",
+      password: "secret",
+      pid: process.pid,
+    }),
     { mode: 0o600 },
   )
-  const servers = createServers({ home, platform: "darwin", env: {}, forge: "/opt/turenos-installs/current/bin/forge", config: join(home, "servers.json") })
+  const servers = createServers({
+    home,
+    platform: "darwin",
+    env: {},
+    forge: "/opt/turenos-installs/current/bin/forge",
+    config: join(home, "servers.json"),
+  })
   await servers.add({ address: alpha.listener.url.origin.replace("127.0.0.1", "localhost"), name: "alpha" })
   const { view, screen } = await terminal(80, 24)
   const app = mountApp(view.renderer, servers, { initial: await servers.preferred(), onQuit: () => {} })
@@ -267,7 +293,13 @@ test("Servers opened from Settings is titled by its path, and its hints wrap bet
 })
 
 test("Intel rows end in an ellipsis, bare ids show their summary, markup is plain and dates are ISO", async () => {
-  const feed = { id: "kev", name: "CISA KEV", kind: "kev", url: `https://www.cisa.gov/feeds/${"known_exploited_".repeat(5)}.json`, enabled: true }
+  const feed = {
+    id: "kev",
+    name: "CISA KEV",
+    kind: "kev",
+    url: `https://www.cisa.gov/feeds/${"known_exploited_".repeat(5)}.json`,
+    enabled: true,
+  }
   const advisory = (id: string, title: string, summary: string) => ({
     id,
     title,
@@ -281,7 +313,11 @@ test("Intel rows end in an ellipsis, bare ids show their summary, markup is plai
   const { view, screen } = await dashboard({
     "GET /api/intel/advisories": () => ({
       items: [
-        advisory("GHSA-1", "vm2 contains a sandbox escape vulnerability in NodeVM", "Hardens `NodeVM` **even when the sandbox requests** builtin:['*']."),
+        advisory(
+          "GHSA-1",
+          "vm2 contains a sandbox escape vulnerability in NodeVM",
+          "Hardens `NodeVM` **even when the sandbox requests** builtin:['*'].",
+        ),
         advisory("CVE-2026-33396", "CVE-2026-33396", "Parser overflow in the gateway."),
       ],
       total: 2,

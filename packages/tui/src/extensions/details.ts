@@ -13,9 +13,7 @@ export function details(item: Extension) {
   )
   return new StyledText([
     fg(color.text)(`${display(item.name, 200)}\n`),
-    fg(color.muted)(
-      `${capitalized(stateWord(item))}${item.mutable ? "" : " · managed (read-only here)"}\n\n`,
-    ),
+    fg(color.muted)(`${capitalized(stateWord(item))}${item.mutable ? "" : " · managed (read-only here)"}\n\n`),
     fg(color.text)(`${display(item.description, 4000)}\n\n`),
     ...(item.detail ? [fg(color.warning)(`${display(item.detail, 2000)}\n\n`)] : []),
     ...(missing.length

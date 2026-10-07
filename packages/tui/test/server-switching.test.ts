@@ -199,7 +199,13 @@ test("quitting reports the unsent drafts it discards so the closing line can say
 test("a server opened by the URL of a discovered one is that server's row, listed once and marked current", async () => {
   const { view, screen } = await setup({
     initial: (servers, _, alpha) => {
-      const target = { kind: "url", id: "cli", name: "cli-alpha", url: alpha.listener.url.origin, saved: false } as const
+      const target = {
+        kind: "url",
+        id: "cli",
+        name: "cli-alpha",
+        url: alpha.listener.url.origin,
+        saved: false,
+      } as const
       servers.remember(target, "secret")
       return target
     },

@@ -651,7 +651,10 @@ test("new output below a scrolled-up reader is announced until they return to th
 test("a reader above the latest output sees a calm cue until they return to the tail", async () => {
   const f = await fixture()
   f.top()
-  await waitForFrame(f.view, (frame) => frame.includes("Live line 0") && frame.includes("↑ scrolled up · End for latest"))
+  await waitForFrame(
+    f.view,
+    (frame) => frame.includes("Live line 0") && frame.includes("↑ scrolled up · End for latest"),
+  )
   expect(f.view.captureCharFrame()).not.toContain("new output below")
   f.conversation.cancelPosition()
   f.ui.detail.scrollTo(Number.MAX_SAFE_INTEGER)

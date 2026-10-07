@@ -66,7 +66,11 @@ function entryRows(picker: Picker, current: Target | undefined, offsets: number[
     const chosen = index === picker.selected
     const name = label(entry.target.name, 64)
     // The row's prefix, name column, gap and current marker come off the frame's inner width, with a column for the scrollbar.
-    const detail = fitDetail(name, entry.detail, Math.min(100, renderer.width - 2) - 7 - 4 - Math.max(width, name.length) - 2 - (active ? 11 : 0) - 1)
+    const detail = fitDetail(
+      name,
+      entry.detail,
+      Math.min(100, renderer.width - 2) - 7 - 4 - Math.max(width, name.length) - 2 - (active ? 11 : 0) - 1,
+    )
     const row = new TextRenderable(renderer, {
       content: `${chosen ? "▶" : " "} ${active ? "●" : "○"} ${name.padEnd(width)}${detail ? `  ${detail}` : ""}${active ? "  · current" : ""}`,
       fg: active ? color.accent : color.text,
@@ -92,8 +96,7 @@ function entryRows(picker: Picker, current: Target | undefined, offsets: number[
 /** A discovered local server is the current one when it is the endpoint a URL connection opened. */
 export function isCurrent(current: Target | undefined, entry: Entry) {
   return (
-    current?.id === entry.target.id ||
-    (current?.kind === "url" && entry.url !== undefined && entry.url === current.url)
+    current?.id === entry.target.id || (current?.kind === "url" && entry.url !== undefined && entry.url === current.url)
   )
 }
 

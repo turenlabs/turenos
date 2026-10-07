@@ -85,7 +85,9 @@ async function options(width: number, height: number) {
   await screen("main task")
   view.mockInput.pressKey("p", { ctrl: true })
   const frame = await screen("Find a command")
-  const select = descendants(view.renderer.root).filter((node) => node instanceof SelectRenderable).at(-1)!
+  const select = descendants(view.renderer.root)
+    .filter((node) => node instanceof SelectRenderable)
+    .at(-1)!
   return { frame, names: (select as SelectRenderable).options.map((option) => option.name) }
 }
 

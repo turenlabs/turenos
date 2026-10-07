@@ -79,7 +79,9 @@ function paintRows(t: TraceView) {
   const width = Math.max(24, Math.floor(panelWidth(t.panel) * 0.34)) - 4
   // One source: its seq is unique on the page. Several sources repeat seqs, so rows are numbered by position.
   const bySeq = new Set(t.events.map((event) => event.aggregate)).size < 2
-  const names = t.events.map((event, index) => eventRow(width, `#${bySeq ? event.seq : index + 1} `, label(event.type, 256)))
+  const names = t.events.map((event, index) =>
+    eventRow(width, `#${bySeq ? event.seq : index + 1} `, label(event.type, 256)),
+  )
   if (names.join("\n") === t.panel.list.options.map((option) => option.name).join("\n")) return
   t.panel.list.options = names.map((name) => ({ name, description: "" }))
 }

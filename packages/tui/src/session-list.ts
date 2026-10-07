@@ -155,7 +155,8 @@ export class SessionListRenderable extends ScrollBoxRenderable {
       line.attributes = i === this.selected ? TextAttributes.BOLD : TextAttributes.NONE
     }
     for (const heading of this.headings)
-      heading.node.content = width > 0 && heading.text.startsWith("/") ? fitPath(heading.text, width) : fit(heading.text, width)
+      heading.node.content =
+        width > 0 && heading.text.startsWith("/") ? fitPath(heading.text, width) : fit(heading.text, width)
   }
 
   setSelectedIndex(index: number, notify = true) {

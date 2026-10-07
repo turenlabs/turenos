@@ -114,12 +114,7 @@ function update(view: View) {
   const { catalog, query, select, target, dialog } = view
   if (!catalog) return
   const selected = view.matches[select.getSelectedIndex()]?.ref ?? target.current
-  const rows = modelRows(
-    view.ctx,
-    target,
-    catalog,
-    query.value.toLowerCase().trim().split(/\s+/).filter(Boolean),
-  )
+  const rows = modelRows(view.ctx, target, catalog, query.value.toLowerCase().trim().split(/\s+/).filter(Boolean))
   view.matches = rows.slice(0, ROW_LIMIT)
   // The marker column is shared: OpenTUI draws the name after a 2-column indicator, so the second line is indented to the name.
   select.options = view.matches.map((model) => ({
@@ -139,7 +134,8 @@ function update(view: View) {
 function hint(view: View, models: number, rows: number) {
   if (!models) return "No connected models. F2 connects a provider.\nCtrl+R refresh catalog · Esc back"
   const esc = view.query.value ? "Esc clear search · Esc again back" : "Esc back"
-  if (!view.matches.length) return `No matching models. Change the search or F2 to connect.\nCtrl+R refresh catalog · ${esc}`
+  if (!view.matches.length)
+    return `No matching models. Change the search or F2 to connect.\nCtrl+R refresh catalog · ${esc}`
   return `${view.query.value ? "" : "Up/Down choose · "}Enter select · ${esc}\nF2 connect · Ctrl+R refresh${rows > ROW_LIMIT ? ` · Newest ${ROW_LIMIT} of ${rows}; narrow search` : ""}`
 }
 

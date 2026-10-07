@@ -20,7 +20,8 @@ export function compact(ctx: SessionContext) {
     await currentSession(ctx, session)
     if (ctx.state.modal !== dialog) throw new Error("Confirmation is no longer open.")
     await ctx.connection.client.sessions.compact({ sessionID: session.id })
-    if (!ctx.state.closed) ctx.say(`Compacted ${sessionTitle(session.title || session.id, 80)}. Server summary complete.`)
+    if (!ctx.state.closed)
+      ctx.say(`Compacted ${sessionTitle(session.title || session.id, 80)}. Server summary complete.`)
   }
   dialog.form.focus()
 }

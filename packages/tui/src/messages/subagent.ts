@@ -24,7 +24,8 @@ export function startedAgents(part: ToolPart, view: Collapse) {
 }
 
 function agentLine(item: object) {
-  if ("error" in item && typeof item.error === "string") return `Could not start a subagent: ${codeSpan(field(item.error, 300))}`
+  if ("error" in item && typeof item.error === "string")
+    return `Could not start a subagent: ${codeSpan(field(item.error, 300))}`
   const task = "task" in item && typeof item.task === "object" && item.task !== null ? item.task : undefined
   if (!task) return undefined
   const agent = "agent" in task ? field(task.agent, 60) : ""
