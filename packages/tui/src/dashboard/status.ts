@@ -106,10 +106,10 @@ export function clearTitle(d: DashboardContext) {
 }
 
 /**
- * Fits the top bar: the heading and the running state always stay. The address shortens first
- * (host:port, then the port); only then do buttons go, lowest value first, and the port outlasts every
- * button, so a narrower terminal never shows more than a wider one. An address whose port does not fit
- * even alone is left out rather than cut: the dot still says whether the server answers.
+ * Fits the top bar: the heading and the running state always stay. Buttons go first, lowest value
+ * first (Servers, then Sessions), keeping host:port; then the address shortens to its port before the last
+ * button goes, and the port outlasts every button. An address whose port does not fit even alone is left
+ * out rather than cut: the dot still says whether the server answers.
  */
 function renderServer(d: DashboardContext) {
   const ui = d.ui

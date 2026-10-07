@@ -58,14 +58,8 @@ export function openPicker(
     return true
   }
   const fit = () => fitText(renderer, form, text)
-  // Names and descriptions are cut with an ellipsis to the list's laid-out width, and again whenever it changes.
-  const paint = () => {
-    const chars = list.width > 4 ? rowChars(list.width) : 150
-    list.options = choices.map((choice) => ({
-      name: label(choice.name, chars),
-      description: label(choice.description ?? "", chars),
-    }))
-  }
+  // Rows are cut to the list's laid-out width, and again whenever it changes.
+  const paint = () => paintChoices(list, choices)
   list.onSizeChange = paint
   function set(next: Choice[]) {
     fit()
@@ -79,6 +73,15 @@ export function openPicker(
   list.on("selectionChanged", () => input.memory?.set(input.title, list.getSelectedIndex()))
   list.focus()
   return { dialog, list, text, set, fit }
+}
+
+/** Names and descriptions cut with an ellipsis to the list's laid-out width. */
+function paintChoices(list: SelectRenderable, choices: Choice[]) {
+  const chars = list.width > 4 ? rowChars(list.width) : 150
+  list.options = choices.map((choice) => ({
+    name: label(choice.name, chars),
+    description: label(choice.description ?? "", chars),
+  }))
 }
 
 /** OpenTUI's select skips its base `onResize`, so its `onSizeChange` never fires; this one reports its layout. */

@@ -11,18 +11,12 @@ import type { MenuContext } from "./context"
 /** Rows read `Name  · Description (key)`; the description gives up its end, with `…`, so the key stays whole. */
 export function commands(
   ctx: MenuContext,
-  actions: { name: string; description: string; key?: string; run: () => void }[],
+  actions: Action[],
 ) {
   const dialog = ctx.dialogs.open("Commands")
   if (!dialog) return
   const query = ctx.dialogs.input(dialog, "Find a command")
-  const choices = actions.map((action) => ({
-    ...action,
-    title: action.name.toLowerCase(),
-    name: `${action.name}  · ${action.description}${action.key ? ` (${action.key})` : ""}`,
-    row: `${action.name}  · ${action.description}`,
-    suffix: action.key ? ` (${action.key})` : "",
-  }))
+  const choices = actions.map(choice)
   let matches = choices
   // The caption, the field, its spacer and the hint's gap are the other rows; the list keeps the rest, so the form never scrolls.
   const rows = () => Math.min(Math.max(1, matches.length), listRows(ctx.renderer, 5))
@@ -36,13 +30,7 @@ export function commands(
     selectedBackgroundColor: color.selected,
   })
   // The dialog's laid-out width decides the cut, so rows are painted again when it changes.
-  const paint = () => {
-    const chars = select.width > 4 ? rowChars(select.width) : 150
-    select.options = matches.map((match) => ({
-      name: label(match.row, chars - match.suffix.length) + match.suffix,
-      description: "",
-    }))
-  }
+  const paint = () => paintRows(select, matches)
   select.onSizeChange = paint
   paint()
   dialog.form.add(select)
@@ -69,9 +57,7 @@ export function commands(
     action.run()
   }
   dialog.key = (key) => {
-    if (matchesKey(key, "up") || matchesKey(key, "down")) {
-      if (key.name === "up") select.moveUp()
-      if (key.name === "down") select.moveDown()
+    if (move(select, key)) {
       ctx.dialogs.reveal(dialog, select)
       return true
     }
@@ -82,6 +68,34 @@ export function commands(
   }
   select.on("itemSelected", open)
   query.focus()
+}
+
+type Action = { name: string; description: string; key?: string; run: () => void }
+
+/** One palette row: the key stays whole after the text that may be cut. */
+function choice(action: Action) {
+  const suffix = action.key ? ` (${action.key})` : ""
+  return {
+    ...action,
+    title: action.name.toLowerCase(),
+    name: `${action.name}  · ${action.description}${suffix}`,
+    row: `${action.name}  · ${action.description}`,
+    suffix,
+  }
+}
+
+function paintRows(select: SelectRenderable, matches: ReturnType<typeof choice>[]) {
+  const chars = select.width > 4 ? rowChars(select.width) : 150
+  select.options = matches.map((match) => ({
+    name: label(match.row, chars - match.suffix.length) + match.suffix,
+    description: "",
+  }))
+}
+
+function move(select: SelectRenderable, key: KeyEvent) {
+  if (matchesKey(key, "up")) select.moveUp()
+  if (matchesKey(key, "down")) select.moveDown()
+  return matchesKey(key, "up") || matchesKey(key, "down")
 }
 
 /** Paging moves the choice; letting it scroll the form would carry the search field out of view. */
