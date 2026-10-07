@@ -59,11 +59,11 @@ function workerURL() {
 
 // A dead worker is infrastructure failure, not an unreadable file — losing a
 // whole shard's results silently is worse than erroring the request.
-const workerFailed = <T extends { status: number; err?: string }>(results: T[]) =>
-  results.find((r) => r.status === -1)
+const workerFailed = <T extends { status: number; err?: string }>(results: T[]) => results.find((r) => r.status === -1)
 
 export function startPool(
-  size = Math.max(2, Math.min(10, os.cpus().length || 8)),
+  // Each worker owns a WASM instance and JS runtime. More eager workers inflate idle RSS.
+  size = 1,
   ready: Promise<Api> | Api = instantiate(nodeFs),
   url: URL = workerURL(),
 ): Pool {
@@ -231,8 +231,7 @@ export function startPool(
         )
         const failed = workerFailed(results)
         if (failed) throw new Error(`ripgrep wasm worker failed: ${failed.err ?? "unknown"}`)
-        const partial =
-          stage1.partial || results.some((r) => (r.rflags & 1) !== 0 || r.status === 3)
+        const partial = stage1.partial || results.some((r) => (r.rflags & 1) !== 0 || r.status === 3)
         const matches = results.flatMap((r) => api.parseMatches(r.bytes))
         const capped = limit > 0 ? matches.slice(0, limit) : matches
         return { matches: capped, partial, cancelled: cancel[0] !== 0 }
@@ -330,20 +329,22 @@ export function startPool(
             ),
           )
         }
-        const sample = (await Promise.all(
-          workers.map((w, j) =>
-            dirShards[j].length === 0
-              ? Promise.resolve({ paths: [] })
-              : post<{ paths: string[] }>(w, {
-                  kind: "collect",
-                  root: fixture,
-                  dirs: dirShards[j].slice(0, 2),
-                  globs,
-                  flags,
-                  cancel: cancel.buffer,
-                }),
-          ),
-        ))
+        const sample = (
+          await Promise.all(
+            workers.map((w, j) =>
+              dirShards[j].length === 0
+                ? Promise.resolve({ paths: [] })
+                : post<{ paths: string[] }>(w, {
+                    kind: "collect",
+                    root: fixture,
+                    dirs: dirShards[j].slice(0, 2),
+                    globs,
+                    flags,
+                    cancel: cancel.buffer,
+                  }),
+            ),
+          )
+        )
           .flatMap((r) => r.paths)
           .slice(0, workers.length * 60)
         const fileShards = shard(sample)

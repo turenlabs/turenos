@@ -11,6 +11,7 @@ import { AbsolutePath } from "@turenlabs/core/schema"
 import { SystemContext } from "@turenlabs/core/system-context"
 import { SystemContextBuiltIns } from "@turenlabs/core/system-context/builtins"
 import { SystemContextRegistry } from "@turenlabs/core/system-context/registry"
+import { VisualizationGuidance } from "@turenlabs/core/tool/visualization-guidance"
 import { location } from "../fixture/location"
 import { testEffect } from "../lib/effect"
 
@@ -64,6 +65,8 @@ describe("SystemContextBuiltIns", () => {
 
       expect(initialized.baseline).toBe(
         [
+          VisualizationGuidance.SYSTEM,
+          "",
           "Use ASD-STE100 Simplified Technical English as the writing guide for all agent-authored English prose, including progress updates, explanations, final answers, and prose written to files.",
           "Use short sentences with one main idea. Use active voice and direct instructions. Keep procedural sentences to 20 words or fewer and descriptive sentences to 25 words or fewer.",
           "Use simple words with one clear meaning. Use the same technical name for the same thing. Avoid idioms, figurative language, jargon, and unnecessary words.",
@@ -125,6 +128,27 @@ describe("SystemContextBuiltIns", () => {
     }),
   )
 
+  it.effect("adds visualization delivery and style guidance to an existing session once", () =>
+    Effect.gen(function* () {
+      const registry = yield* SystemContextRegistry.Service
+      const context = yield* registry.load()
+      const initialized = yield* SystemContext.initialize(context)
+      const previous = Object.fromEntries(
+        Object.entries(initialized.snapshot).filter(([key]) => key !== "core/visualization-guidance"),
+      )
+      const refreshed = yield* SystemContext.reconcile(context, previous)
+      expect(refreshed).toMatchObject({ _tag: "Updated", text: VisualizationGuidance.SYSTEM })
+      if (refreshed._tag !== "Updated") return
+      expect(refreshed.text).toContain("render the updated visualization in the current reply")
+      expect(refreshed.text).toContain("Never require the user to scroll back")
+      expect(refreshed.text).toContain("Avoid gradient backgrounds, oversized hero headings")
+      expect(refreshed.text).toContain("use visualize for HTML or data charts and animate for bounded motion")
+      expect(refreshed.text).toContain("use linear timing and faithful durations")
+      expect(refreshed.text).not.toContain("safehtml")
+      expect(yield* SystemContext.reconcile(context, refreshed.snapshot)).toEqual({ _tag: "Unchanged" })
+    }),
+  )
+
   it.effect("reconciles the date without repeating unchanged environment context", () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(timestamp)
@@ -159,6 +183,8 @@ describe("SystemContextBuiltIns", () => {
 
       expect((yield* SystemContext.initialize(yield* context.load())).baseline).toBe(
         [
+          VisualizationGuidance.SYSTEM,
+          "",
           "Use ASD-STE100 Simplified Technical English as the writing guide for all agent-authored English prose, including progress updates, explanations, final answers, and prose written to files.",
           "Use short sentences with one main idea. Use active voice and direct instructions. Keep procedural sentences to 20 words or fewer and descriptive sentences to 25 words or fewer.",
           "Use simple words with one clear meaning. Use the same technical name for the same thing. Avoid idioms, figurative language, jargon, and unnecessary words.",

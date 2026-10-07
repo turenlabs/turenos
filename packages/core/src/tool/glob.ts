@@ -6,6 +6,7 @@ import path from "path"
 import { makeLocationNode } from "../effect/app-node"
 import { FileSystem } from "../filesystem"
 import { Location } from "../location"
+import { LocationMutation } from "../location-mutation"
 import { Ripgrep } from "../ripgrep"
 import { NonNegativeInt, RelativePath } from "../schema"
 import { PermissionV2 } from "../permission"
@@ -18,7 +19,8 @@ export const name = "glob"
 export const Input = Schema.Struct({
   pattern: FileSystem.GlobInput.fields.pattern.annotate({ description: "Glob pattern to match files against" }),
   path: RelativePath.pipe(Schema.optional).annotate({
-    description: "Relative directory to search. Defaults to the active Location.",
+    description:
+      "Directory to search. Defaults to the active Location. External absolute paths require external_directory approval.",
   }),
   limit: FileSystem.GlobInput.fields.limit.annotate({
     description: "Maximum results to return",
@@ -56,13 +58,14 @@ const layer = Layer.effectDiscard(
     const tools = yield* Tools.Service
     const ripgrep = yield* Ripgrep.Service
     const location = yield* Location.Service
+    const mutation = yield* LocationMutation.Service
     const permission = yield* PermissionV2.Service
 
     yield* tools
       .register({
         [name]: Tool.make({
           description:
-            "Find files by glob pattern within the active Location. Returns concise relative file resources, each with its line count when the result set is small enough to measure. Use a relative path to narrow the search and limit to bound the result count. Do not follow this with a shell command to count lines or list the same files again.",
+            "Find files by glob pattern within the active Location, or at an external absolute path with external_directory approval. Returns concise relative file resources, each with its line count when the result set is small enough to measure. Use a relative path to narrow the search and limit to bound the result count. Do not follow this with a shell command to count lines or list the same files again.",
           input: Input,
           output: Output,
           // Location-relative on purpose: re-absolutizing prefixed every entry with the
@@ -71,6 +74,23 @@ const layer = Layer.effectDiscard(
           toModelOutput: ({ output }) => [{ type: "text", text: toModelOutput(output) }],
           execute: (input, context) =>
             Effect.gen(function* () {
+              const source = {
+                type: "tool" as const,
+                messageID: context.assistantMessageID,
+                callID: context.toolCallID,
+              }
+              // The same boundary as read: a relative path stays inside the Location, a symlink
+              // out of it is refused, and an external absolute path needs external_directory
+              // approval first. Without it, a glob lists any directory the read tool would ask about.
+              const resolved = yield* mutation.resolve({ path: input.path ?? ".", kind: "directory" })
+              const external = resolved.externalDirectory
+              if (external)
+                yield* permission.assert({
+                  ...LocationMutation.externalDirectoryPermission(external),
+                  sessionID: context.sessionID,
+                  agent: context.agent,
+                  source,
+                })
               yield* permission.assert({
                 action: name,
                 resources: [input.pattern],
@@ -82,9 +102,9 @@ const layer = Layer.effectDiscard(
                 },
                 sessionID: context.sessionID,
                 agent: context.agent,
-                source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
+                source,
               })
-              const cwd = path.resolve(location.directory, input.path ?? ".")
+              const cwd = resolved.canonical
               const files = yield* ripgrep.glob({
                 cwd,
                 pattern: input.pattern,
@@ -106,7 +126,19 @@ const layer = Layer.effectDiscard(
                 }),
               )
             }).pipe(
-              Effect.mapError(() => new ToolFailure({ message: `Unable to find files matching ${input.pattern}` })),
+              Effect.mapError(
+                (error) =>
+                  new ToolFailure({
+                    message:
+                      error instanceof PermissionV2.BlockedError
+                        ? `Permission denied: glob ${input.path ?? "."}`
+                        : error instanceof PermissionV2.CorrectedError
+                          ? error.feedback
+                          : error instanceof LocationMutation.PathError
+                            ? `Invalid search path ${input.path ?? "."}: ${error.reason}`
+                            : `Unable to find files matching ${input.pattern}`,
+                  }),
+              ),
             ),
         }),
       })
@@ -117,5 +149,5 @@ const layer = Layer.effectDiscard(
 export const node = makeLocationNode({
   name: "tool/glob",
   layer,
-  deps: [ToolRegistry.node, Ripgrep.node, Location.node, PermissionV2.node],
+  deps: [ToolRegistry.node, Ripgrep.node, Location.node, LocationMutation.node, PermissionV2.node],
 })

@@ -1,7 +1,7 @@
 {
   "name": "@turenlabs/desktop",
   "private": true,
-  "version": "1.0.40",
+  "version": "1.0.42",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/turenlabs/forge",
@@ -34,6 +34,7 @@
     "@turenlabs/ghidra-decompiler-wasm": "workspace:*",
     "@turenlabs/goblin-wasm": "workspace:*",
     "@turenlabs/libpcap-wasm": "workspace:*",
+    "@turenlabs/jwt-audit-wasm": "workspace:*",
     "@turenlabs/protocol-inspect-wasm": "workspace:*",
     "@turenlabs/rebuild-timeline-wasm": "workspace:*",
     "@turenlabs/static-analysis-wasm": "workspace:*",

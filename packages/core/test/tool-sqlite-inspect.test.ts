@@ -34,8 +34,7 @@ const it = testEffect(Layer.empty)
 // simple.db and deleted.db are committed under test/fixtures/ — the same
 // databases wasm-tools tools/sqlite-inspect/test/verify.mjs asserts against
 // (generated once by test/gen-fixtures.sh with the macOS sqlite3 CLI).
-const fixture = (name: string) =>
-  fs.readFile(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)))
+const fixture = (name: string) => fs.readFile(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)))
 
 const report = (value: unknown) => JSON.parse(String(value)) as Record<string, any>
 
@@ -45,13 +44,20 @@ describe("SqliteInspectRuntime and SqliteInspectTools", () => {
       Effect.promise(() => tmpdir()),
       (tmp) =>
         Effect.gen(function* () {
-          const [simple, deleted] = yield* Effect.promise(() =>
-            Promise.all([fixture("simple.db"), fixture("deleted.db")]),
+          const [simple, deleted, wal] = yield* Effect.promise(() =>
+            Promise.all([
+              fixture("simple.db"),
+              fixture("deleted.db"),
+              fs.readFile(
+                fileURLToPath(new URL("../../../tools/sqlite-inspect/test/fixtures/native-512.wal", import.meta.url)),
+              ),
+            ]),
           )
           yield* Effect.promise(() =>
             Promise.all([
               Bun.write(`${tmp.path}/simple.db`, simple),
               Bun.write(`${tmp.path}/deleted.db`, deleted),
+              Bun.write(`${tmp.path}/evidence.wal`, wal),
               Bun.write(`${tmp.path}/garbage.db`, new TextEncoder().encode("not a sqlite database")),
             ]),
           )
@@ -60,6 +66,7 @@ describe("SqliteInspectRuntime and SqliteInspectTools", () => {
           const names = (yield* toolDefinitions(registry)).map((tool) => tool.name)
           for (const name of [
             "sqlite_inspect",
+            "sqlite_wal_inspect",
             "sqlite_schema",
             "sqlite_table_stats",
             "sqlite_rows",
@@ -74,6 +81,23 @@ describe("SqliteInspectRuntime and SqliteInspectTools", () => {
               ...toolIdentity,
               call: { type: "tool-call", id, name, input },
             })
+
+          const walInspected = yield* call("call-sqlite-wal", "sqlite_wal_inspect", {
+            path: "evidence.wal",
+            maxItems: 1,
+          })
+          expect(walInspected.type).toBe("text")
+          if (walInspected.type !== "text") return
+          const walReport = report(walInspected.value)
+          expect(walReport.kind).toBe("sqlite-wal")
+          expect(walReport.header.checksumValid).toBe(true)
+          expect(walReport.validFrames).toBe(4)
+          expect(walReport.lastCommit.frame).toBe(4)
+          expect(walReport.frames).toHaveLength(1)
+          expect(walReport.truncated).toBe(true)
+          expect(walReport.replayed).toBe(false)
+          const badWal = yield* call("call-sqlite-wal-bad", "sqlite_wal_inspect", { path: "garbage.db" })
+          expect(badWal.type).toBe("error")
 
           const inspected = yield* call("call-sqlite-inspect", "sqlite_inspect", { path: "simple.db" })
           expect(inspected.type).toBe("text")
@@ -176,7 +200,10 @@ describe("SqliteInspectRuntime and SqliteInspectTools", () => {
               [
                 [
                   Location.node,
-                  Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(tmp.path) }))),
+                  Layer.succeed(
+                    Location.Service,
+                    Location.Service.of(location({ directory: AbsolutePath.make(tmp.path) })),
+                  ),
                 ],
                 [PermissionV2.node, permission],
                 [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],

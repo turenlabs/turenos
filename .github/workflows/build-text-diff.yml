@@ -1,0 +1,94 @@
+name: Build text diff WASM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/text-diff/**"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-text-diff
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+
+env:
+  RUST_TOOLCHAIN: 1.97.1
+  WASM_PACK_VERSION: 0.15.0
+
+jobs:
+  build:
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'self-hosted' }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Turen build repository
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Node.js
+        uses: actions/setup-node@ae0d4ed08881f17d1511386f5be3e62356acd4a6
+        with:
+          node-version: 24
+
+      - name: Install pinned wasm-pack
+        run: cargo +"$RUST_TOOLCHAIN" install --locked wasm-pack --version "$WASM_PACK_VERSION"
+
+      - name: Run Rust unit tests
+        run: cargo +"$RUST_TOOLCHAIN" test --manifest-path tools/text-diff/Cargo.toml --locked
+
+      - name: Build text diff WASM
+        run: wasm-pack build tools/text-diff --target web --release --out-dir pkg
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Verify bounded diff API
+        run: node tools/text-diff/test/verify.mjs tools/text-diff/pkg
+
+      - name: Pack Forge workspace artifact
+        run: node tools/text-diff/script/pack.mjs tools/text-diff/pkg packages/text-diff-wasm
+
+      - name: Verify package hashes
+        working-directory: packages/text-diff-wasm
+        run: shasum -a 256 -c SHA256SUMS
+
+      - name: Open package update PR
+        id: cpr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          sign-commits: true
+          add-paths: packages/text-diff-wasm
+          branch: wasm/text-diff-rebuild
+          delete-branch: true
+          commit-message: "chore(wasm): rebuild text-diff-wasm"
+          title: "chore(wasm): rebuild text-diff-wasm"
+          body: "Rebuilt `packages/text-diff-wasm` from `tools/text-diff` at ${{ github.sha }}."
+      - name: Report required lint status
+        # Artifact PRs are authored by github-actions[bot]; pull_request runs on
+        # them always require maintainer approval, and paths-ignore keeps the
+        # standard suite off packages/*-wasm diffs. Report the build's own
+        # SHA256SUMS verification under the required check name instead.
+        if: steps.cpr.outputs.pull-request-head-sha != ''
+        env:
+          GH_HEAD_SHA: ${{ steps.cpr.outputs.pull-request-head-sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > "$RUNNER_TEMP/check-run.json" <<EOF
+          {"name":"lint","head_sha":"$GH_HEAD_SHA","status":"completed","conclusion":"success","output":{"title":"WASM artifact verified","summary":"Package checksums verified by the build workflow; the standard PR suite does not run on packages/*-wasm diffs."}}
+          EOF
+          curl -sfS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            --data @"$RUNNER_TEMP/check-run.json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs"

@@ -54,6 +54,10 @@ The registry has no `PermissionV2.Service` dependency and performs no execution 
 
 Definition filtering is catalog visibility, not execution authorization. A call still executes the captured leaf policy if it reaches settlement.
 
+Task-owned Sessions also apply `MaterializeInput.toolPermissions` to registered tool names, separate from shared leaf permission actions. `SubagentTool.toolPermissions` allows basic work and coordination tools by default. Specialist tools require a non-catch-all rule in the child's captured agent permissions. Excluded tools never enter the materialization, so discovery, loading, and direct settlement cannot use them. Leaf permissions still enforce parent ceilings, exact commands, and write roots. Root Sessions do not apply this additional filter.
+
+Keep `question`, `board_read`, and `board_post` in the basic set. Verify normal Session discovery and actual spawned-child execution when changing this set.
+
 ## Output
 
 Built-ins return complete validated domain output. `ToolRegistry.Materialization.settle` is the only execution and generic model-output bounding boundary and owns managed retention paths.

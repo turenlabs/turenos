@@ -1,10 +1,14 @@
 import { Location } from "@turenlabs/core/location"
 import { LocationServiceMap } from "@turenlabs/core/location-services"
+import { PtyID } from "@turenlabs/core/pty/schema"
+import { PtyTicket } from "@turenlabs/core/pty/ticket"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { WorkspaceV2 } from "@turenlabs/core/workspace"
-import { Effect, Layer } from "effect"
-import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import { PTY_CONNECT_TICKET_QUERY } from "@turenlabs/protocol/groups/pty"
+import { Effect, Layer, Option, Schema } from "effect"
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiMiddleware } from "effect/unstable/httpapi"
+import { CorsConfig, isAllowedRequestOrigin } from "./cors"
 
 export type LocationServices = Layer.Success<ReturnType<(typeof LocationServiceMap.Service)["get"]>>
 
@@ -59,7 +63,9 @@ export const layer = Layer.effect(
   LocationMiddleware,
   Effect.gen(function* () {
     const locations = yield* LocationServiceMap.Service
-    return LocationMiddleware.of((effect) =>
+    const tickets = yield* PtyTicket.Service
+    const cors = yield* CorsConfig
+    return LocationMiddleware.of((effect, { group, endpoint }) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
         const location = ref(request)
@@ -68,6 +74,24 @@ export const layer = Layer.effect(
             status: 400,
             contentType: "text/plain; charset=utf-8",
           })
+        }
+        if (group.identifier === "server.pty" && endpoint.name === "pty.connect") {
+          // Authorize before building Location services or revealing PTY existence.
+          // Basic auth alone cannot protect browser WebSocket upgrades; every
+          // connection needs a scoped single-use ticket, consumed only here.
+          if (!isAllowedRequestOrigin(request.headers.origin, request.headers.host, cors))
+            return HttpServerResponse.empty({ status: 403 })
+          const ticket = new URL(request.url, "http://localhost").searchParams.get(PTY_CONNECT_TICKET_QUERY)
+          const route = yield* HttpRouter.RouteContext
+          const ptyID = Schema.decodeUnknownOption(PtyID)(route.params.ptyID)
+          if (!ticket || Option.isNone(ptyID)) return HttpServerResponse.empty({ status: 403 })
+          const valid = yield* tickets.consume({
+            ticket,
+            ptyID: ptyID.value,
+            directory: location.directory,
+            workspaceID: location.workspaceID,
+          })
+          if (!valid) return HttpServerResponse.empty({ status: 403 })
         }
         return yield* effect.pipe(Effect.provide(locations.get(location)))
       }),

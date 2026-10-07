@@ -1,6 +1,6 @@
 {
   "name": "@turenlabs/ui",
-  "version": "1.0.40",
+  "version": "1.0.42",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -91,7 +91,7 @@
     "diff": "catalog:",
     "dompurify": "catalog:",
     "fuzzysort": "catalog:",
-    "katex": "0.16.27",
+    "katex": "0.18.2",
     "luxon": "catalog:",
     "marked": "catalog:",
     "marked-katex-extension": "5.1.6",

@@ -337,9 +337,10 @@ export function createRoutes(
       ),
       HttpServer.layerServices,
     ]),
-    Layer.provide(Layer.succeed(CorsConfig)(corsOptions)),
     Layer.provide(sessionLocationLayer),
     Layer.provide(locationLayer),
+    // Location preflight must capture the same origin policy as the handlers.
+    Layer.provide(Layer.succeed(CorsConfig)(corsOptions)),
     Layer.provide(PtyEnvironment.layer),
     Layer.provide(
       traceStartupLayer(

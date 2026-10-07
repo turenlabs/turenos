@@ -2810,6 +2810,17 @@
       ]
     },
     {
+      "name": "@turenlabs/jwt-audit-wasm",
+      "version": "0.1.0",
+      "license": "MIT",
+      "source": "https://github.com/turenlabs/turenos",
+      "licenseFiles": [
+        "LICENSE",
+        "LICENSE.dependencies.txt",
+        "NOTICE"
+      ]
+    },
+    {
       "name": "@turenlabs/libpcap-wasm",
       "version": "1.10.6-turen.1",
       "license": "BSD-3-Clause",
@@ -3373,6 +3384,15 @@
       "source": "git+https://github.com/ajv-validator/ajv-formats.git",
       "licenseFiles": [
         "LICENSE"
+      ]
+    },
+    {
+      "name": "animejs",
+      "version": "4.5.0",
+      "license": "MIT",
+      "source": "git+https://github.com/juliangarnier/anime.git",
+      "licenseFiles": [
+        "LICENSE.md"
       ]
     },
     {
@@ -5848,7 +5868,7 @@
     },
     {
       "name": "katex",
-      "version": "0.16.27",
+      "version": "0.16.47",
       "license": "MIT",
       "source": "https://github.com/KaTeX/KaTeX.git",
       "licenseFiles": [
@@ -5857,7 +5877,7 @@
     },
     {
       "name": "katex",
-      "version": "0.16.47",
+      "version": "0.18.2",
       "license": "MIT",
       "source": "https://github.com/KaTeX/KaTeX.git",
       "licenseFiles": [

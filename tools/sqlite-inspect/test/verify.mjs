@@ -7,11 +7,13 @@ import { createHash, randomBytes } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
+import { verifyWal } from "./verify-wal.mjs"
 
 const directory = path.resolve(process.argv[2] ?? "")
 const fixtures = path.resolve(path.dirname(new URL(import.meta.url).pathname), "fixtures")
 const api = await import(pathToFileURL(path.join(directory, "turen_sqlite_inspect_wasm.js")).href)
 await api.default({ module_or_path: await readFile(path.join(directory, "turen_sqlite_inspect_wasm_bg.wasm")) })
+await verifyWal(api)
 
 const load = (name) => readFile(path.join(fixtures, name))
 const SIMPLE = await load("simple.db")

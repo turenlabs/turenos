@@ -3,7 +3,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
 import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
-import { Deferred, Effect, Layer, Option } from "effect"
+import { Deferred, Effect, Exit, Layer, Option } from "effect"
 import { Config } from "../../src/config/config"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { McpAuth } from "../../src/mcp/auth"
@@ -13,12 +13,16 @@ import { McpOAuthCallback } from "../../src/mcp/oauth-callback"
 import { awaitWithTimeout, testEffect } from "../lib/effect"
 
 const browsers = new Map<string, { opened: Deferred.Deferred<string>; fail: boolean }>()
+const launches: string[] = []
+// Overrides the served authorization_endpoint for one test.
+const metadata: { authorizationEndpoint?: string } = {}
 
 const browserLayer = Layer.succeed(
   McpBrowser.Service,
   McpBrowser.Service.of({
     open: (url) =>
       Effect.gen(function* () {
+        launches.push(url)
         const browser = browsers.get(new URL(url).origin)
         if (!browser) return yield* Effect.fail(new Error(`Unexpected browser URL: ${url}`))
         Deferred.doneUnsafe(browser.opened, Effect.succeed(url))
@@ -76,7 +80,7 @@ const serveOAuthMcp = Effect.acquireRelease(
         if (url.pathname === "/.well-known/oauth-authorization-server") {
           return Response.json({
             issuer: url.origin,
-            authorization_endpoint: `${url.origin}/authorize`,
+            authorization_endpoint: metadata.authorizationEndpoint ?? `${url.origin}/authorize`,
             token_endpoint: `${url.origin}/token`,
             registration_endpoint: `${url.origin}/register`,
             scopes_supported: ["mcp"],
@@ -215,3 +219,59 @@ mcpTest.instance("browser launch receives the discovered authorization URL", () 
     expect(new URL(url).searchParams.get("client_id")).toBe("test-client")
   }),
 )
+
+// Exercise real discovery without ever invoking the operating system's URL handler.
+;[
+  "file:///Applications/Calculator.app",
+  "javascript:alert(1)",
+  "data:text/html,untrusted",
+  "vscode://file/untrusted",
+  "ftp://example.invalid/authorize",
+  "not a URL",
+  "https://[invalid",
+].forEach((endpoint) => {
+  mcpTest.instance(`rejects authorization endpoint ${endpoint} and permits a clean retry`, () =>
+    Effect.gen(function* () {
+      yield* withCallbackStop
+      const server = yield* serveOAuthMcp
+      const mcp = yield* addServer("test-oauth-rejected", server.url)
+      metadata.authorizationEndpoint = endpoint
+      yield* Effect.addFinalizer(() => Effect.sync(() => delete metadata.authorizationEndpoint))
+      launches.length = 0
+      const handed: string[] = []
+      const result = yield* awaitWithTimeout(
+        mcp
+          .authenticate("test-oauth-rejected", (url) => {
+            handed.push(url)
+          })
+          .pipe(Effect.exit),
+        "Timed out failing OAuth authentication",
+        "5 seconds",
+      )
+
+      // The SDK rejects malformed URLs and script/data schemes before producing a redirect URL.
+      expect(Exit.isSuccess(result) ? result.value : "sdk-rejected").toEqual(
+        ["not a URL", "https://[invalid", "javascript:alert(1)", "data:text/html,untrusted"].includes(endpoint)
+          ? "sdk-rejected"
+          : { status: "failed", error: "Authorization URL must be http(s)" },
+      )
+      expect(launches).toEqual([])
+      expect(handed).toEqual([])
+      const auth = yield* McpAuth.Service
+      const entry = yield* auth.get("test-oauth-rejected")
+      expect(entry?.oauthState).toBeUndefined()
+      expect(entry?.codeVerifier).toBeUndefined()
+      expect(entry?.tokens).toBeUndefined()
+
+      delete metadata.authorizationEndpoint
+      yield* trackBrowserOpen(server.url)
+      const status = yield* awaitWithTimeout(
+        mcp.authenticate("test-oauth-rejected"),
+        "Timed out retrying OAuth authentication",
+        "5 seconds",
+      )
+      expect(status).toEqual({ status: "connected" })
+      expect(launches).toHaveLength(1)
+    }),
+  )
+})

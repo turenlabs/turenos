@@ -7,6 +7,7 @@ import { makeLocationNode } from "../effect/app-node"
 import { FileSystem } from "../filesystem"
 import { FSUtil } from "../fs-util"
 import { Location } from "../location"
+import { LocationMutation } from "../location-mutation"
 import { PermissionV2 } from "../permission"
 import { Ripgrep } from "../ripgrep"
 import { RelativePath } from "../schema"
@@ -22,7 +23,7 @@ export const Input = Schema.Struct({
   }),
   path: RelativePath.pipe(Schema.optional).annotate({
     description:
-      "Literal relative file or directory to search; no glob or shell expansion. Defaults to the active Location.",
+      "Literal file or directory to search; no glob or shell expansion. Defaults to the active Location. External absolute paths require external_directory approval.",
   }),
   include: FileSystem.GrepInput.fields.include.annotate({
     description: 'File glob to include in the search (for example, "*.js" or "*.{ts,tsx}")',
@@ -57,13 +58,14 @@ const layer = Layer.effectDiscard(
     const fs = yield* FSUtil.Service
     const ripgrep = yield* Ripgrep.Service
     const location = yield* Location.Service
+    const mutation = yield* LocationMutation.Service
     const permission = yield* PermissionV2.Service
 
     yield* tools
       .register({
         [name]: Tool.make({
           description:
-            "Search file contents by regular expression within the active Location or an absolute managed tool-output file. Use this instead of bash, grep, or rg for workspace searches when you know the literal text or pattern to match; for natural-language questions about where functionality lives, prefer code_search. Use a path to narrow the search, include to filter files by glob, and limit to bound the match count. Returns concise file resources, line numbers, and bounded line previews.",
+            "Search file contents by regular expression within the active Location, or at an external absolute path with external_directory approval. Use this instead of bash, grep, or rg for workspace searches when you know the literal text or pattern to match; for natural-language questions about where functionality lives, prefer code_search. Use a path to narrow the search, include to filter files by glob, and limit to bound the match count. Returns concise file resources, line numbers, and bounded line previews.",
           input: Input,
           output: Output,
           // Location-relative on purpose: `execute` already relativized every path, and
@@ -73,6 +75,23 @@ const layer = Layer.effectDiscard(
           toModelOutput: ({ output }) => [{ type: "text", text: toModelOutput(output) }],
           execute: (input, context) =>
             Effect.gen(function* () {
+              const source = {
+                type: "tool" as const,
+                messageID: context.assistantMessageID,
+                callID: context.toolCallID,
+              }
+              // The same boundary as read: a relative path stays inside the Location, a symlink
+              // out of it is refused, and an external absolute path needs external_directory
+              // approval first. Without it, a grep for `.` reads any file the read tool would ask about.
+              const resolved = yield* mutation.resolve({ path: input.path ?? ".", kind: "directory" })
+              const external = resolved.externalDirectory
+              if (external)
+                yield* permission.assert({
+                  ...LocationMutation.externalDirectoryPermission(external),
+                  sessionID: context.sessionID,
+                  agent: context.agent,
+                  source,
+                })
               yield* permission.assert({
                 action: name,
                 resources: [input.pattern],
@@ -85,9 +104,9 @@ const layer = Layer.effectDiscard(
                 },
                 sessionID: context.sessionID,
                 agent: context.agent,
-                source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
+                source,
               })
-              const target = path.resolve(location.directory, input.path ?? ".")
+              const target = resolved.canonical
               const info = yield* fs.stat(target)
               if (info.type !== "Directory" && info.type !== "File")
                 return yield* Effect.fail(
@@ -128,7 +147,9 @@ const layer = Layer.effectDiscard(
                         ? `Permission denied: grep ${input.path ?? "."}`
                         : error instanceof PermissionV2.CorrectedError
                           ? error.feedback
-                          : `Unable to grep for ${input.pattern} in ${input.path ?? "."}: ${error.message}`,
+                          : error instanceof LocationMutation.PathError
+                            ? `Invalid search path ${input.path ?? "."}: ${error.reason}`
+                            : `Unable to grep for ${input.pattern} in ${input.path ?? "."}: ${error.message}`,
                   }),
               ),
             ),
@@ -141,5 +162,5 @@ const layer = Layer.effectDiscard(
 export const node = makeLocationNode({
   name: "tool/grep",
   layer,
-  deps: [ToolRegistry.node, FSUtil.node, Ripgrep.node, Location.node, PermissionV2.node],
+  deps: [ToolRegistry.node, FSUtil.node, Ripgrep.node, Location.node, LocationMutation.node, PermissionV2.node],
 })

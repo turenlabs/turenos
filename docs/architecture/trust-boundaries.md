@@ -30,11 +30,16 @@ concrete middleware and handlers. The HTTP server applies authorization before p
 credential checks accept a Basic Auth header or the same base64 credentials in an `auth_token` query
 parameter, in both servers, and the query parameter wins when both are present. The query form puts the password in
 request URLs, where proxies and logs may record it.
-Ticketed PTY WebSocket connects skip the normal browser credential check only because the PTY handler
-consumes and validates the ticket. Both servers skip it: the legacy server's `ptyConnectAuthorizationLayer` and the
-Session V2 server's `authorizationLayer`.
+Ticketed PTY WebSocket connects skip the normal browser credential check only because a separate
+connection check validates and consumes the ticket. For canonical `/api/pty/:ptyID/connect` requests,
+Location middleware validates the origin, PTY ID, and single-use ticket scoped to the PTY, directory,
+and optional workspace before initializing Location services or looking up the PTY. Requests rejected by
+this preflight receive an empty 403; a valid ticket for a missing PTY reaches the handler and returns 404.
+Wrong origin, malformed PTY ID, or mismatched scope does not consume a valid ticket. The legacy
+`/pty/:ptyID/connect` route retains its handler-level ticket check; token issuance is a separate endpoint.
 See [`packages/protocol/src/middleware/authorization.ts`](../../packages/protocol/src/middleware/authorization.ts),
 [`packages/server/src/middleware/authorization.ts`](../../packages/server/src/middleware/authorization.ts),
+[`packages/server/src/location.ts`](../../packages/server/src/location.ts),
 [`packages/forge/src/server/routes/instance/httpapi/middleware/authorization.ts`](../../packages/forge/src/server/routes/instance/httpapi/middleware/authorization.ts),
 and [`packages/forge/src/server/shared/pty-ticket.ts`](../../packages/forge/src/server/shared/pty-ticket.ts).
 
@@ -86,6 +91,13 @@ package versions and environment policy; manifests do not gain arbitrary process
 [`packages/forge/src/mcp/index.ts`](../../packages/forge/src/mcp/index.ts),
 [`packages/forge/src/mcp/integration.ts`](../../packages/forge/src/mcp/integration.ts), and
 [`packages/forge/src/mcp/package-runtime.ts`](../../packages/forge/src/mcp/package-runtime.ts).
+
+`MCP.authenticate` accepts only HTTP(S) authorization URLs before passing them to its authorization callback or
+browser launcher. A non-HTTP(S) URL reaching this check fails with `Authorization URL must be http(s)` and discards the
+pending transport, callback wait, OAuth state, and PKCE verifier. Invalid authorization metadata can fail earlier during SDK discovery;
+that failure also closes the transport and clears the attempt's OAuth state and verifier. This scheme check is not a
+host allowlist or a guarantee about later browser redirects. See
+[`packages/forge/src/mcp/index.ts`](../../packages/forge/src/mcp/index.ts).
 
 ## Event and sync boundary
 
