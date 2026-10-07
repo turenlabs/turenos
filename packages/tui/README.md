@@ -5,7 +5,7 @@
 From the repository root:
 
 ```sh
-turen-pkg npm install --frozen-lockfile
+bun install --frozen-lockfile
 bun run tui                          # TurenOS on this computer, or the server picker
 bun run tui -- https://turen.example
 ```
