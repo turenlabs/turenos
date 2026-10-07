@@ -53,6 +53,31 @@ test("a duplicate or unaddressable command name is skipped, not fatal", async ()
   expect(await connection.resolveCommand("/ship now", "/srv/project")).toEqual({ command: "ship", arguments: "now" })
 })
 
+test("a 300-part assistant message keeps its first and last parts around one omission marker", async () => {
+  const parts = Array.from({ length: 300 }, (_, index) => ({ id: `prt_${index}`, type: "text", text: `part ${index}` }))
+  const connection = serve({ "/api/session/ses_page/message": page(user("msg_a"), assistant("msg_b", parts)) })
+  const content = ((await messages(connection)).data[1] as unknown as { content: { id: string; text: string }[] })
+    .content
+  expect(content).toHaveLength(129)
+  expect(content.slice(0, 32).map((part) => part.text)).toEqual(parts.slice(0, 32).map((part) => part.text))
+  expect(content[32]!.text).toBe("[172 parts omitted]")
+  expect(content.slice(33).map((part) => part.text)).toEqual(parts.slice(-96).map((part) => part.text))
+  expect(content.at(-1)!.text).toBe("part 299")
+})
+
+test("the omission marker takes an identifier no real part uses", async () => {
+  const parts = Array.from({ length: 200 }, (_, index) => ({
+    id: index === 150 ? "omitted_parts" : `prt_${index}`,
+    type: "text",
+    text: `part ${index}`,
+  }))
+  const connection = serve({ "/api/session/ses_page/message": page(assistant("msg_b", parts)) })
+  const content = ((await messages(connection)).data[0] as unknown as { content: { id: string; text: string }[] })
+    .content
+  expect(new Set(content.map((part) => part.id)).size).toBe(content.length)
+  expect(content.find((part) => part.text.includes("parts omitted"))!.id).not.toBe("omitted_parts")
+})
+
 test("a 200-part assistant message keeps its first parts and marks the omission", async () => {
   const parts = Array.from({ length: 200 }, (_, index) => ({ id: `prt_${index}`, type: "text", text: `part ${index}` }))
   const connection = serve({ "/api/session/ses_page/message": page(user("msg_a"), assistant("msg_b", parts)) })
@@ -61,7 +86,8 @@ test("a 200-part assistant message keeps its first parts and marks the omission"
   const content = (result.data[1] as unknown as { content: { text: string }[] }).content
   expect(content.length).toBeLessThanOrEqual(129)
   expect(content[0]!.text).toBe("part 0")
-  expect(content.at(-1)!.text).toContain("72 parts omitted")
+  expect(content[32]!.text).toContain("72 parts omitted")
+  expect(content.at(-1)!.text).toBe("part 199")
 })
 
 test("a 2 MiB tool output is truncated with a marker and the rest of the page renders", async () => {

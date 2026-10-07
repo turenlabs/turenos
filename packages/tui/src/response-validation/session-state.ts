@@ -123,18 +123,25 @@ function assistantMessage(item: Record<string, unknown>) {
   optional(item.snapshot, (value) =>
     optional(object(value).files, (files) => array(files, 5000).forEach((file) => string(file, 4096))),
   )
-  item.content = omit(array(item.content, Infinity), 128, (count) => ({
-    id: "omitted_parts",
-    type: "text",
-    text: `[${count} parts omitted]`,
-  }))
+  // A long turn ends with its answer, so the tail is kept alongside the first parts.
+  const parts = array(item.content, Infinity)
+  const marker = (count: number) => ({ id: omittedID(parts), type: "text", text: `[${count} parts omitted]` })
+  item.content = omit(parts, 128, marker, 32)
   unique(item.content as unknown[], contentPart)
 }
 
-/** Keeps the first `maximum` entries and appends a visible marker for the rest. */
-function omit(items: unknown[], maximum: number, marker: (count: number) => unknown) {
+/** Keeps `maximum` entries (the first `head`, defaulting to all, then the rest from the end) with a visible marker for the gap. */
+function omit(items: unknown[], maximum: number, marker: (count: number) => unknown, head = maximum) {
   if (items.length <= maximum) return items
-  return [...items.slice(0, maximum), marker(items.length - maximum)]
+  return [...items.slice(0, head), marker(items.length - maximum), ...items.slice(items.length - (maximum - head))]
+}
+
+/** An identifier no real part uses, so the marker never trips the duplicate check. */
+function omittedID(parts: unknown[]) {
+  const used = new Set(parts.map((part) => (part as { id?: unknown } | null)?.id))
+  return ["omitted_parts", ...Array.from({ length: used.size }, (_, index) => `omitted_parts_${index}`)].find(
+    (id) => !used.has(id),
+  )!
 }
 
 function contentPart(value: unknown) {
