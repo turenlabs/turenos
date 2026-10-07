@@ -10,6 +10,38 @@ export const agentCommands = [
   "stop",
 ] as const
 
+/** A lowercase word in the command position: not a URL, which has a scheme, a dot, a port or digits. */
+export function isCommandWord(word: string | undefined): word is string {
+  return word !== undefined && /^[a-z][a-z-]*$/.test(word)
+}
+
+/** The usage error for a word that is not a command, naming the nearest command when it is a likely typo. */
+export function unknownCommand(word: string | undefined) {
+  const named = isCommandWord(word) ? word : undefined
+  if (named === undefined) return "Unknown command. Run turen-tui --help for the list."
+  const nearest = agentCommands.map((command) => ({ command, distance: distance(named, command) })).sort(byDistance)[0]
+  const hint = nearest && nearest.distance <= 2 ? ` Did you mean "${nearest.command}"?` : ""
+  return `Unknown command "${named}".${hint} Run turen-tui --help for the list.`
+}
+
+function byDistance(a: { distance: number }, b: { distance: number }) {
+  return a.distance - b.distance
+}
+
+/** Levenshtein edit distance. */
+function distance(a: string, b: string) {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array<number>(b.length).fill(0)])
+  for (let j = 1; j <= b.length; j++) rows[0]![j] = j
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++)
+      rows[i]![j] = Math.min(
+        rows[i - 1]![j]! + 1,
+        rows[i]![j - 1]! + 1,
+        rows[i - 1]![j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1),
+      )
+  return rows[a.length]![b.length]!
+}
+
 export type AgentCommand = (typeof agentCommands)[number]
 
 export function isAgentCommand(word: string | undefined): word is AgentCommand {
@@ -33,4 +65,4 @@ Examples:
   turen-tui send --new "fix the failing test" --dir /srv/app --wait
   turen-tui pending
   turen-tui approve ses_abc per_123 && turen-tui wait ses_abc
-Exit codes: 0 done, 1 failed, 2 usage, 3 needs input, 4 timeout. Each command takes --help.`
+Exit codes: 0 done, 1 failed, 2 usage, 3 needs input, 4 timeout, 5 turn failed. Each command takes --help.`

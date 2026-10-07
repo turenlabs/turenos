@@ -1,6 +1,7 @@
 import type { QuestionsListOutput } from "@turenlabs/client"
 import { clean, emit, type Run } from "./context"
 import { AgentError, usage } from "./errors"
+import { maxMessageLength } from "../requests/context"
 import { takes } from "./options"
 import { idArgument } from "./state"
 
@@ -25,7 +26,7 @@ export async function answer(run: Run) {
   }
   const answers =
     run.values.answers !== undefined
-      ? fromJSON(run.values.answers, request.questions)
+      ? fromJSON(run, run.values.answers, request.questions)
       : fromChoices(run, request.questions)
   await client.questions.reply({ sessionID, requestID, answers })
   return emit(run, { ok: true, session: sessionID, question: requestID, answers }, `answered ${requestID}`)
@@ -34,10 +35,10 @@ export async function answer(run: Run) {
 function fromChoices(run: Run, questions: readonly Question[]) {
   if (questions.length !== 1)
     throw usage(`This request has ${questions.length} questions. Use --answers with one array of labels per question.`)
-  return [checked(questions[0]!, run.values.choice ?? [], 1)]
+  return [checked(run, questions[0]!, run.values.choice ?? [], 1)]
 }
 
-function fromJSON(text: string, questions: readonly Question[]) {
+function fromJSON(run: Run, text: string, questions: readonly Question[]) {
   const value = parseJSON(text)
   if (
     !Array.isArray(value) ||
@@ -45,7 +46,7 @@ function fromJSON(text: string, questions: readonly Question[]) {
     !value.every((item) => Array.isArray(item) && item.every((label) => typeof label === "string"))
   )
     throw usage(`--answers must be a JSON array of ${questions.length} arrays of labels, one per question.`)
-  return questions.map((question, index) => checked(question, value[index] as string[], index + 1))
+  return questions.map((question, index) => checked(run, question, value[index] as string[], index + 1))
 }
 
 function parseJSON(text: string): unknown {
@@ -57,15 +58,26 @@ function parseJSON(text: string): unknown {
 }
 
 /** Checks each label against the question's options, mapping the printed label back to the exact one. */
-function checked(question: Question, labels: readonly string[], number: number) {
+function checked(run: Run, question: Question, labels: readonly string[], number: number) {
   if (!labels.length) throw usage(`Choose at least one answer for question ${number}.`)
   if (labels.length > 1 && !question.multiple) throw usage(`Question ${number} takes one answer.`)
+  const choices = question.options.map((item) => clean(item.label, 200)).join(" | ")
   return labels.map((label) => {
-    const option = question.options.find((item) => item.label === label || clean(item.label, 200) === label)
+    // An exact label wins over one that only matches once its controls are removed.
+    const option =
+      question.options.find((item) => item.label === label) ??
+      question.options.find((item) => clean(item.label, 200) === label)
     if (option) return option.label
-    if (question.custom !== false) return label
-    throw usage(
-      `${JSON.stringify(clean(label, 80))} is not an option for question ${number}. Valid choices: ${question.options.map((item) => clean(item.label, 200)).join(" | ")}.`,
+    if (!label.trim() || label.length > maxMessageLength)
+      throw usage(`Question ${number} needs an answer of 1 to 32,000 characters.`)
+    if (question.custom === false)
+      throw usage(
+        `${JSON.stringify(clean(label, 80))} is not an option for question ${number}. Valid choices: ${choices}.`,
+      )
+    // Said out loud: a typo in a label would otherwise become a custom answer without anyone noticing.
+    run.io.stderr(
+      `turen-tui: ${JSON.stringify(clean(label, 80))} is not one of question ${number}'s options (${choices}); sent as a custom answer.\n`,
     )
+    return label
   })
 }

@@ -93,7 +93,7 @@ test("answer accepts custom text where allowed, several choices where multiple, 
 
   const text = await agent(["pending", "ses_main"], { url: server.url })
   expect(text.stdout).toContain("question que_1 · session ses_main · 2 questions")
-  expect(text.stdout).toContain(`turen-tui answer ses_main que_1 --answers '[["Alpha"],["x"]]'`)
+  expect(text.stdout).toContain(`turen-tui answer ses_main que_1 --answers='[["Alpha"],["x"]]'`)
 
   const rejected = await agent(["answer", "ses_main", "que_1", "--reject"], { url: server.url })
   expect(rejected.stdout).toBe("rejected que_1\n")
@@ -191,4 +191,30 @@ test("the bin runs an agent command without a terminal and leaves the dashboard 
   const help = await run(["--help"])
   expect(help.stdout).toContain("Agent and script commands")
   expect(help.stdout).toContain("turen-tui send --new")
+})
+
+test("answer prefers an exact label, refuses a blank one, and says when it sends custom text", async () => {
+  const { server, posts } = resolving()
+  server.state.questions.push(
+    question("que_1", {
+      questions: [
+        {
+          header: "Pick",
+          question: "Which?",
+          options: [
+            { label: "a  b", description: "two spaces" },
+            { label: "a b", description: "one space" },
+          ],
+          custom: true,
+        },
+      ],
+    }),
+  )
+  expect((await agent(["answer", "ses_main", "que_1", "--choice", "a b"], { url: server.url })).code).toBe(0)
+  expect(posts.at(-1)).toEqual({ path: "que_1/reply", body: { answers: [["a b"]] } })
+  expect((await agent(["answer", "ses_main", "que_1", "--choice", "   "], { url: server.url })).code).toBe(2)
+  const custom = await agent(["answer", "ses_main", "que_1", "--choice=-1"], { url: server.url })
+  expect(custom.code).toBe(0)
+  expect(custom.stderr).toContain("sent as a custom answer")
+  expect(posts.at(-1)).toEqual({ path: "que_1/reply", body: { answers: [["-1"]] } })
 })

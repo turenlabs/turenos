@@ -78,7 +78,9 @@ export function parseCommand(command: AgentCommand, args: string[]) {
     return { values: parsed.values as Values, positionals: parsed.positionals }
   } catch {
     // parseArgs errors may echo argument values, including misplaced credentials.
-    throw usage(`Invalid arguments. Run turen-tui ${command} --help for usage.`)
+    throw usage(
+      `Invalid arguments. Run turen-tui ${command} --help for usage. A value that starts with "-" goes after "--", or as --option=value.`,
+    )
   }
 }
 

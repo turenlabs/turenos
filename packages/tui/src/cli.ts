@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util"
-import { appendFileSync, mkdirSync } from "node:fs"
+import { appendFileSync, mkdirSync, statSync } from "node:fs"
 import { dirname } from "node:path"
 import { version } from "../package.json"
 import { CliError, resolveTuiAuth } from "./tui-auth"
-import { checkDirectory } from "./response-validation"
+import { checkDirectory, identifier } from "./response-validation"
 import { checkUsername, origin } from "./agent/address"
-import { agentOverview, isAgentCommand } from "./agent/words"
+import { agentOverview, isAgentCommand, isCommandWord } from "./agent/words"
 
 const help = `Usage: turen-tui [url] [options]
 
@@ -17,6 +17,7 @@ persistent server. Press s in the dashboard to switch servers.
 Options:
   --server <name>    Open a saved server (see the s server picker)
   --dir <path>       Absolute project directory on the server (POSIX or Windows)
+  --session <id>     Open this session (ses_…) first, as printed by turen-tui sessions
   --username <name>  Basic auth username
   --discover-auth   Trust the local listener and discover turenos.service auth
                     (Linux, same user, http://127.0.0.1:4096 only; off by default)
@@ -43,6 +44,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
       options: {
         server: { type: "string" },
         dir: { type: "string" },
+        session: { type: "string" },
         username: { type: "string" },
         "discover-auth": { type: "boolean", default: false },
         help: { type: "boolean", short: "h" },
@@ -73,10 +75,18 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
         throw new CliError({ message: "--dir must be an absolute directory on the server." })
       }
     }
+    if (parsed.values.session !== undefined) {
+      try {
+        identifier(parsed.values.session, "ses_")
+      } catch {
+        throw new CliError({ message: "--session must be a session ID such as ses_…." })
+      }
+    }
     return {
       kind: "run" as const,
       url,
       directory: parsed.values.dir,
+      session: parsed.values.session,
       username: parsed.values.username,
       discoverAuth: parsed.values["discover-auth"],
       server,
@@ -99,23 +109,26 @@ function reportCrash(kind: string, error: unknown) {
   if (!base) return
   try {
     const path = `${base}/turen-tui/error.log`
-    mkdirSync(dirname(path), { recursive: true })
-    appendFileSync(path, line)
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+    // Failures name sessions and servers: keep the log private, and stop appending past 1 MiB.
+    if ((statSync(path, { throwIfNoEntry: false })?.size ?? 0) > 1024 * 1024) return
+    appendFileSync(path, line, { mode: 0o600 })
   } catch {
     // Crash reporting must never take the TUI down.
   }
 }
 
-process.on("unhandledRejection", (reason) => reportCrash("unhandledRejection", reason))
-process.on("uncaughtException", (error) => reportCrash("uncaughtException", error))
-
 export async function main(args = process.argv.slice(2)) {
-  if (isAgentCommand(args[0])) {
-    // Agent commands never need a terminal and never load the renderer.
+  if (isAgentCommand(args[0]) || isCommandWord(args[0])) {
+    // Agent commands never need a terminal and never load the renderer. A mistyped command word reaches
+    // them too, so it fails as a usage error instead of being read as a server URL.
     const { runAgent, processIo } = await import("./agent")
     process.exitCode = await runAgent(args, processIo())
     return
   }
+  // Only the dashboard survives a crash this way; an agent command must fail loudly, not hang.
+  process.on("unhandledRejection", (reason) => reportCrash("unhandledRejection", reason))
+  process.on("uncaughtException", (error) => reportCrash("uncaughtException", error))
   const options = parseCli(args)
   if (options.kind === "help") return console.log(help)
   if (options.kind === "version") return console.log(version)
@@ -138,8 +151,14 @@ export async function main(args = process.argv.slice(2)) {
   const { runTui } = await import("./index")
   await runTui(
     options.url && "password" in auth
-      ? { url: options.url.href, directory: options.directory, username: auth.username, password: auth.password }
-      : { directory: options.directory, username: options.username, server: options.server },
+      ? {
+          url: options.url.href,
+          directory: options.directory,
+          session: options.session,
+          username: auth.username,
+          password: auth.password,
+        }
+      : { directory: options.directory, session: options.session, username: options.username, server: options.server },
   )
 }
 

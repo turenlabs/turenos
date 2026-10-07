@@ -1,3 +1,4 @@
+import { isUtf8 } from "node:buffer"
 import { usage } from "./errors"
 
 /** Everything a command touches outside the server, so tests can run it in-process. */
@@ -11,6 +12,11 @@ export type Io = {
 const stdinLimit = 256 * 1024
 
 export function processIo(): Io {
+  // A reader that closes early (`turen-tui show ses --all | head`) ends the command quietly.
+  process.stdout.once("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EPIPE") process.exit(0)
+    throw error
+  })
   return {
     env: process.env,
     stdout: (text) => process.stdout.write(text),
@@ -34,5 +40,8 @@ async function readStdin() {
   } finally {
     await reader.cancel().catch(() => {})
   }
-  return Buffer.concat(chunks).toString("utf8")
+  const bytes = Buffer.concat(chunks)
+  if (!isUtf8(bytes)) throw usage("Standard input is not valid UTF-8.")
+  // A byte-order mark from a Windows pipe is not part of the message, and would hide a leading / or !.
+  return bytes.toString("utf8").replace(/^\uFEFF/, "")
 }

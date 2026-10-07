@@ -55,8 +55,18 @@ export async function finish(run: Run, sent: Sent) {
         ? `started session ${sent.sessionID} with message ${sent.messageID}`
         : `sent message ${sent.messageID} to session ${sent.sessionID} (${sent.delivery})`,
     )
-  const after: Anchor = { messageID: sent.messageID, baseline: sent.baseline }
-  const outcome = await settle(run.connection, sent.sessionID, { timeout: sent.timeout, after })
+  const after: Anchor = { messageID: sent.messageID, baseline: sent.baseline, queued: sent.delivery === "queue" }
+  const outcome = await settle(run.connection, sent.sessionID, { timeout: sent.timeout, after }).catch(
+    (error: unknown) => {
+      // The message is on the server; only the wait failed, so the caller must not send it again.
+      throw new AgentError(
+        `Message ${sent.messageID} was sent to session ${sent.sessionID}, but waiting for the reply failed: ${errorText(error).replace(/\.$/, "")}. Resume with: turen-tui wait ${sent.sessionID}${run.flags}`,
+        1,
+        undefined,
+        { session: sent.sessionID, messageID: sent.messageID, state: "sent" },
+      )
+    },
+  )
   return report(run, sent.sessionID, outcome, sent.timeout, { messageID: sent.messageID })
 }
 

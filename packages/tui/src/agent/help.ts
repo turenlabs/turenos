@@ -7,7 +7,7 @@ const target = `Server options (all commands):
   --discover-auth     Discover local auth for http://127.0.0.1:4096 (Linux, same user)
   --json              Print one JSON document; errors become {"error": {"message"}}
 The password comes only from FORGE_SERVER_PASSWORD. Exit codes: 0 done, 1 failed, 2 usage,
-3 needs input, 4 timeout.`
+3 needs input, 4 timeout, 5 the turn failed or was interrupted.`
 
 const commands: Record<AgentCommand, string> = {
   sessions: `Usage: turen-tui sessions [--dir <path>] [--limit N] [--all]
@@ -30,14 +30,18 @@ Print the transcript and any pending requests with the commands that resolve the
 Reply to a session, or start one with --new. The text is the argument, or stdin for "-" or no
 argument. A leading / runs a server command and a leading ! runs a shell command on the server;
 neither supports --queue. Delivery is steer unless --queue.
-  --wait        Wait for the reply (exit 3 if the session needs input, 4 on timeout)
+  --wait        Wait for the reply (exit 3 if the session needs input, 4 on timeout, 5 if the turn failed)
   --timeout S   Seconds to wait, default 600, 0 for no limit
   --id          Message ID. After "Outcome unknown", retry with the same ID: the server drops duplicates
-  --allow-outside   Attach @file mentions that leave the session directory`,
+  --allow-outside   Attach @file mentions that leave the session directory
+Text that starts with "-" goes after "--" (turen-tui send ses_x -- "- a list item") or on stdin.
+With --wait, input a subagent of the session is waiting for also ends the wait (exit 3).`,
   wait: `Usage: turen-tui wait <session> [--timeout S]
 
 Block until the session is idle (prints its last reply) or needs input (prints the requests, exit 3).
-Exit 4 on timeout (default 600 s, 0 for no limit).`,
+Input a subagent of the session is waiting for counts too. Exit 4 on timeout (default 600 s, 0 for no
+limit), 5 when the turn failed or was interrupted. A server that stops answering is polled again, more
+slowly, until the timeout.`,
   pending: `Usage: turen-tui pending [<session>]
 
 List pending permissions and questions for one session, or for every running session.`,
@@ -50,6 +54,7 @@ Reject a permission request.`,
   answer: `Usage: turen-tui answer <session> <question-id> (--choice <label>... | --answers <json> | --reject)
 
   --choice <label>   For a request with one question; repeat it to select several options
+                     (write --choice=<label> for a label that starts with "-")
   --answers <json>   A JSON array with one array of labels per question, e.g. '[["Red"],["Yes"]]'
   --reject           Dismiss the question
 A label outside the options is accepted only when the question allows custom answers.`,

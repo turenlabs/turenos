@@ -4,6 +4,8 @@ export class AgentError extends Error {
     message: string,
     readonly exit: 1 | 2 | 3 | 4 = 1,
     readonly retry?: { id: string; sessionID?: string },
+    /** More fields for the JSON error, such as the message a failed wait had already delivered. */
+    readonly detail?: Record<string, unknown>,
   ) {
     super(message)
     this.name = "AgentError"

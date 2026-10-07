@@ -34,7 +34,7 @@ function questionText(request: Question, flags: string) {
     return [
       `${prefix} · ${clean(item.header, 80)}: ${clean(item.question, 800)}`,
       optionsLine(item),
-      `  answer:  ${command} --choice ${quote(first)}`,
+      `  answer:  ${command} --choice=${quote(first)}`,
     ].join("\n")
   }
   const suggestion = JSON.stringify(
@@ -46,7 +46,7 @@ function questionText(request: Question, flags: string) {
       `  ${index + 1}. ${clean(item.header, 80)}: ${clean(item.question, 800)}`,
       `  ${optionsLine(item)}`,
     ]),
-    `  answer:  ${command} --answers ${quote(suggestion)}`,
+    `  answer:  ${command} --answers=${quote(suggestion)}`,
   ].join("\n")
 }
 

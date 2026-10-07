@@ -7,6 +7,9 @@ export type State = "running" | "needs-input" | "idle"
 export type Pending = { permissions: PermissionsListOutput; questions: QuestionsListOutput }
 export type Message = MessagesListOutput["data"][number]
 
+/** A task that is still working, so its child session may be waiting for input or worth cancelling. */
+export const activeTaskStatuses: readonly string[] = ["queued", "starting", "running"]
+
 export function needsInput(pending: Pending) {
   return pending.permissions.length + pending.questions.length > 0
 }

@@ -2,7 +2,7 @@ import { httpStatus } from "../server"
 import { emit, type Run } from "./context"
 import { AgentError } from "./errors"
 import { takes } from "./options"
-import { idArgument } from "./state"
+import { activeTaskStatuses, idArgument } from "./state"
 
 export async function stop(run: Run) {
   const sessionID = idArgument(takes("stop", run.positionals, ["session"])[0], "ses_", "The session")
@@ -21,7 +21,7 @@ async function cancelActiveTasks(run: Run, sessionID: string) {
   const client = run.connection.client
   const listed = await client.sessions.taskList({ sessionID, limit: 50 })
   const active = [...new Map([...listed.data, ...listed.active].map((task) => [task.id, task])).values()].filter(
-    (task) => ["queued", "starting", "running"].includes(task.status),
+    (task) => activeTaskStatuses.includes(task.status),
   )
   const outcomes = await Promise.all(
     active.map((task) =>

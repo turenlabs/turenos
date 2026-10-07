@@ -24,7 +24,8 @@ test("send --new --wait starts a session and prints the reply", async () => {
 test("a permission request stops the wait with exit 3 and the exact follow-up commands", async () => {
   const sent = await tui.cli(["send", state.session!, "please run the marker", "--wait"])
   expect(sent.status).toBe(3)
-  const approve = sent.stdout.match(/approve: (turen-tui approve \S+ \S+)/)
+  // Anchored at two spaces: transcript text is set in by four, so a message cannot supply this line.
+  const approve = sent.stdout.match(/^  approve: (turen-tui approve \S+ \S+)/m)
   expect(approve).not.toBeNull()
   await tui.waitFor("Needs input")
   const id = approve![1]!.split(" ").at(-1)!

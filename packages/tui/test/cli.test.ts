@@ -60,6 +60,7 @@ describe("CLI parsing", () => {
       kind: "run",
       url: undefined,
       directory: undefined,
+      session: undefined,
       username: undefined,
       discoverAuth: false,
       server: undefined,
@@ -84,6 +85,7 @@ describe("CLI parsing", () => {
       kind: "run",
       url: new URL("https://example.com/"),
       directory: "/srv/project",
+      session: undefined,
       username: "argument-user",
       discoverAuth: true,
       server: undefined,
@@ -255,6 +257,37 @@ describe("CLI entrypoint", () => {
     })
   }
 
+  test("a mistyped command is a usage error with the nearest command, never a server URL", async () => {
+    const result = await run([cli, "sesions"])
+    expect(result).toEqual({
+      stdout: "",
+      stderr: 'turen-tui: Unknown command "sesions". Did you mean "sessions"? Run turen-tui --help for the list.\n',
+      exitCode: 2,
+    })
+    const json = await run([cli, "sesions", "--json"])
+    expect(json.exitCode).toBe(2)
+    expect(JSON.parse(json.stdout)).toEqual({
+      error: { message: 'Unknown command "sesions". Did you mean "sessions"? Run turen-tui --help for the list.' },
+    })
+  })
+
+  test("a far-off unknown word gets no suggestion", async () => {
+    const result = await run([cli, "frobnicate"])
+    expect(result).toEqual({
+      stdout: "",
+      stderr: 'turen-tui: Unknown command "frobnicate". Run turen-tui --help for the list.\n',
+      exitCode: 2,
+    })
+  })
+
+  for (const address of ["https://example.com", "example.com", "localhost:4096", "10.0.0.1"]) {
+    test(`${address} is still read as a server address`, async () => {
+      const result = await probe([address])
+      expect(result.stderr).not.toContain("Unknown command")
+      expect(result.exitCode).toBe(address.startsWith("https") ? 0 : 1)
+    })
+  }
+
   test("the bin rejects piped input/output with a sanitized diagnostic", async () => {
     const result = await run([cli, "--discover-auth"], { FORGE_SERVER_PASSWORD: "test-only-password" })
     expect(result).toEqual({
@@ -357,5 +390,23 @@ describe("CLI entrypoint", () => {
       username: "environment-user",
       password: "",
     })
+  })
+})
+
+describe("CLI --session", () => {
+  test("accepts a session ID and passes it through", () => {
+    expect(parseCli(["--session", "ses_abc123"], {})).toMatchObject({ kind: "run", session: "ses_abc123" })
+    expect(parseCli([], {})).toMatchObject({ session: undefined })
+  })
+
+  for (const value of ["", "abc", "ses_ secret", "msg_abc", "ses_‮abc"]) {
+    test(`rejects ${JSON.stringify(value)} without echoing it`, () => {
+      expect(() => parseCli(["--session", value], {})).toThrow("--session must be a session ID such as ses_….")
+    })
+  }
+
+  test("the help text names the option", async () => {
+    const result = await run([cli, "--help"])
+    expect(result.stdout).toContain("--session <id>")
   })
 })

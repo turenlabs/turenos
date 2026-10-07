@@ -2,9 +2,18 @@ import type { Run } from "./context"
 import { usage } from "./errors"
 import { checkOutside, finish, messageText, retryCommand, writeFailure } from "./delivery"
 import { takes } from "./options"
-import { refused } from "../server"
+import { checkLaunch, refused } from "../server"
 import { idArgument } from "./state"
 import { validDirectory } from "./sessions"
+
+/** The launch's own field checks as usage errors: an invalid field is the caller's mistake, and nothing was sent. */
+function checkFields(input: Parameters<typeof checkLaunch>[0]) {
+  try {
+    checkLaunch(input)
+  } catch (error) {
+    throw usage(error instanceof Error ? error.message : "Invalid launch fields.")
+  }
+}
 
 /** `send --new`: starts a session and sends its first message under frozen IDs, so a retry cannot duplicate it. */
 export async function startSession(run: Run, timeout: number) {
@@ -18,16 +27,12 @@ export async function startSession(run: Run, timeout: number) {
   }
   const directory = values.dir ?? (await run.connection.client.location.get({})).directory
   validDirectory(directory)
-  // A slash command's arguments are not file mentions.
-  if (!text.startsWith("/")) checkOutside(run, text, directory)
+  const input = { directory, agent: values.agent, model: values.model, variant: values.variant, prompt: text }
+  checkFields(input)
+  // A slash command's arguments are not file mentions; text that only starts with "/" is a prompt.
+  if (!(await run.connection.resolveCommand(text, directory))) checkOutside(run, text, directory)
   const launcher = run.connection.launch(ids)
-  const session = await launcher({
-    directory,
-    agent: values.agent,
-    model: values.model,
-    variant: values.variant,
-    prompt: text,
-  }).catch((error: unknown) => {
+  const session = await launcher(input).catch((error: unknown) => {
     // Once the launch froze its fields, bytes may have gone out; before that nothing was sent.
     if (!refused(error) && !launcher.input()) throw error
     throw writeFailure(

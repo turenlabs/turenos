@@ -39,6 +39,17 @@ export function emit(run: Run, json: unknown, text: string, exit = 0) {
   return exit
 }
 
+/**
+ * Transcript text set in by four spaces: the lines this client prints start in column 0, or at two
+ * spaces under a request, so a caller can tell its own lines from anything a message contains.
+ */
+export function indented(text: string) {
+  return text
+    .split("\n")
+    .map((line) => (line ? `    ${line}` : line))
+    .join("\n")
+}
+
 export function isoTime(milliseconds: number) {
   const date = new Date(milliseconds)
   return Number.isNaN(date.getTime()) ? "unknown" : date.toISOString()
