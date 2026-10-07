@@ -48,6 +48,8 @@ export function browse(ctx: MemoriesContext, place: Place, back: () => void, not
   const title = `${ctx.root} › ${label(place.name, 60)}${place.room ? ` › ${label(place.room, 60)}` : ""}`
   const panel = openPanel(ctx.renderer, ctx.dialogs, title)
   if (!panel) return
+  // The scroll bar takes the column after the text; a stale layout can wrap the body one column too wide under it.
+  panel.body.marginRight = 1
   panel.dialog.back = back
   const view: View = { ctx, panel, place, items: [], deleting: false, loads: 0, note }
   const reopen = (done?: string) => browse(ctx, place, back, done)

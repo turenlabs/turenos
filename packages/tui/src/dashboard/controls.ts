@@ -233,20 +233,28 @@ function createSettingsControls(d: DashboardContext) {
     memories: (back) => void d.c.memories.open(back),
     servers: d.options.servers ? (back) => openServers(d, back) : undefined,
     appearance: () => [
-      { name: state.reducedMotion ? "Turn animation on" : "Reduce motion", run: () => toggleMotion(d) },
+      {
+        name: state.reducedMotion ? "Turn animation on" : "Reduce motion",
+        description: state.reducedMotion ? "Animation is off (reduced motion)" : "Animation is on",
+        run: () => toggleMotion(d),
+      },
       {
         name: state.attention ? "Turn attention alerts off" : "Turn attention alerts on",
-        description: "Bell and terminal title when a turn ends or a session needs input",
+        description: state.attention
+          ? "Bell and title alert when a turn ends or input is needed"
+          : "No bell or title alert when a turn ends",
         run: () => toggleAttention(d),
       },
       {
         name: state.rawResponses ? "Show formatted responses" : "Show raw responses",
-        description: "Tool results and agent updates in the transcript",
+        description: state.rawResponses ? "Responses show raw text" : "Responses show formatted text",
         run: () => toggleRaw(d),
       },
       {
         name: state.expandToolOutput ? "Collapse tool output" : "Expand tool output",
-        description: "Long tool results show only their first lines (Ctrl+O)",
+        description: state.expandToolOutput
+          ? "Tool output shows in full (Ctrl+O)"
+          : "Tool output shows its first lines only (Ctrl+O)",
         run: () => d.c.conversation.toggleToolOutput(),
       },
     ],

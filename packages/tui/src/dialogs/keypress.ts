@@ -39,7 +39,8 @@ export function keypress(ctx: DialogContext, key: KeyEvent) {
     current.discard()
     close(ctx, false)
     ctx.hooks.changed(true)
-    ctx.hooks.say("Local draft discarded. Server work continues.")
+    const live = !!current.recipient && Object.hasOwn(ctx.state.snapshot?.active ?? {}, current.recipient.id)
+    ctx.hooks.say(live ? "Local draft discarded. Server work continues." : "Local draft discarded.")
     return true
   }
   if (matchesKey(key, "pageup") || matchesKey(key, "pagedown")) return scrollPage(ctx, current, key)

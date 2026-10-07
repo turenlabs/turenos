@@ -23,7 +23,7 @@ export type MentionEnvironment = {
 
 // The quoted alternative is deliberately unterminated: it matches while the
 // caret is still inside `@"…`, so a path with spaces or brackets keeps searching.
-const active = /(?:^|[\s([{"'])@(?:"([^"\u0000-\u001f\u007f-\u009f]*)|([^\s()[\]{}"'`]*))$/
+export const active = /(?:^|[\s([{"'])@(?:"([^"\u0000-\u001f\u007f-\u009f]*)|([^\s()[\]{}"'`]*))$/
 
 export function createMentionPopup(
   env: MentionEnvironment,

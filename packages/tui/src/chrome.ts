@@ -116,12 +116,12 @@ function agentModel(state: DashboardState, snapshot: Snapshot | undefined) {
 }
 
 /** The footer's right side. Narrow widths budget for a status text of about 26 columns on the left. */
-export function footerShortcuts(width: number, sidebarVisible: boolean, typing = false) {
+export function footerShortcuts(width: number, sidebarVisible: boolean, typing = false, running = false) {
   const sidebar = sidebarVisible ? "Tab pane" : "b sidebar"
   // While typing, letters go into the reply, so only the keys that work from the editor are named.
   const sets = typing
     ? [
-        ["Esc shortcuts", "Ctrl+P commands", "Ctrl+C quit"],
+        ["Esc shortcuts", "Ctrl+P commands", running ? "Ctrl+C stop" : "Ctrl+C quit"],
         ["Esc shortcuts", "Ctrl+P commands"],
         ["Esc shortcuts", "Ctrl+P"],
         ["Esc shortcuts"],

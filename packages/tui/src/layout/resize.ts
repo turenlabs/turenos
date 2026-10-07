@@ -17,7 +17,9 @@ export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts
   resizeDockedModal(renderer, state)
   // The reply editor stays open while typing, so the footer stays with it.
   parts.footerRow.visible = !state.modal || !!state.modal.composer
-  parts.shortcuts.content = footerShortcuts(renderer.width, parts.sidebar.visible, !!state.modal?.composer)
+  // Ctrl+C stops the selected session's running turn before it quits, so the hint follows that.
+  const running = !!state.selected && Object.hasOwn(state.snapshot?.active ?? {}, state.selected)
+  parts.shortcuts.content = footerShortcuts(renderer.width, parts.sidebar.visible, !!state.modal?.composer, running)
 }
 
 function resizeSizeNotice(renderer: CliRenderer, state: DashboardState, parts: LayoutParts) {

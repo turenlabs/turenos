@@ -1,4 +1,5 @@
 import { mentionReport } from "../prompt-files"
+import { active } from "./popup"
 
 /**
  * A mention whose path leaves the session directory (absolute, `..` or `~`) needs a second, deliberate
@@ -27,4 +28,12 @@ export function attachmentSummary(text: string, directory: string) {
     ? `Attaches ${names} · OUTSIDE ${directory}: ${report.outside.join(" ")}`
     : `Attaches ${names}`
   return unresolved ? `${attaches} · ${unresolved}` : attaches
+}
+
+/** The text without the `@token` ending at the cursor, which is only a search while the suggestion list is open. */
+export function withoutOpenMention(text: string, cursor: number) {
+  const prefix = active.exec(text.slice(0, cursor))
+  if (!prefix) return text
+  const start = cursor - prefix[0].length + prefix[0].indexOf("@")
+  return text.slice(0, start) + text.slice(cursor)
 }

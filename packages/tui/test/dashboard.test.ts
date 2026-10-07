@@ -1394,7 +1394,7 @@ test("a narrow terminal starts a reply, empty Up recalls the user prompt, and Ct
   view.mockInput.pressArrow("up")
   expect(view.renderer.currentFocusedEditor?.plainText).toBe("Earlier task that belongs in history.")
   view.mockInput.pressKey("c", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("Draft kept. Ctrl+C again quits and discards saved drafts."))
+  await waitForFrame(view, (frame) => frame.includes("Draft kept. Ctrl+C again quits and discards unsent drafts."))
   expect(view.renderer.isDestroyed).toBe(false)
   expect(view.renderer.currentFocusedEditor?.plainText).toBe("Earlier task that belongs in history.")
   await leaveComposer(view)

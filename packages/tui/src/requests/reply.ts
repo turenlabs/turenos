@@ -109,11 +109,13 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
   const shown: { content?: typeof dialog.error.content } = {}
   const delivery = () => {
     const live = running(ctx, session.id)
+    // The server may retitle the session while the editor is open.
+    const title = ctx.state.snapshot?.sessions.find((item) => item.id === session.id)?.title ?? session.title
     const mode = !live ? "Send" : draft.delivery === "queue" ? "Queue" : "Steer"
     const waiting = waitingRequest(ctx, session.id)
     heading.content = waiting
       ? `${mode} · ${waiting} · Esc then Enter to answer`
-      : `${mode} · Reply to ${label(session.title, 100)}${session.revert ? " · undo staged" : ""}`
+      : `${mode} · Reply to ${label(title, 100)}${session.revert ? " · undo staged" : ""}`
     heading.fg = waiting || session.revert ? color.warning : color.muted
     const listed = (dialog.suggestionRows ?? 0) + (dialog.mentionRows ?? 0) > 0
     const hint = listed

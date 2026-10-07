@@ -16,7 +16,7 @@ export function quit(d: DashboardContext, stop = false) {
     const draft = !!state.modal.save
     d.c.dialogs.close()
     if (!draft) return
-    return arm(d, "Draft kept. Ctrl+C again quits and discards saved drafts.")
+    return arm(d, "Draft kept. Ctrl+C again quits and discards unsent drafts.")
   }
   const drafts = d.c.launch.hasDraft || d.c.requests.unsentDrafts() > 0
   const again = `Ctrl+C again quits${drafts ? " and discards unsent drafts" : ""}.`
@@ -27,8 +27,9 @@ export function quit(d: DashboardContext, stop = false) {
       `The agent is still working. Press q again to quit; it keeps running on the server${drafts ? ", and unsent drafts are discarded" : ""}.`,
     )
   // q types into an open reply editor, so only Ctrl+C is named there.
-  if (drafts && state.modal?.composer) return arm(d, "Draft kept. Ctrl+C again quits and discards saved drafts.")
-  if (drafts) return arm(d, "Unsent drafts are saved locally. Press q or Ctrl+C again to quit and discard them.")
+  if (drafts && state.modal?.composer) return arm(d, "Draft kept. Ctrl+C again quits and discards unsent drafts.")
+  if (drafts)
+    return arm(d, "Unsent drafts are kept only until you quit. Press q or Ctrl+C again to quit and discard them.")
   close(d)
 }
 
