@@ -1,0 +1,250 @@
+{
+  "date": "2026-10-05",
+  "environment": "macOS arm64, Bun 1.4.2, TurenOS repository",
+  "budgetMiB": 1024,
+  "cases": { "all": 24, "tuning": 15, "heldout": 9 },
+  "method": [
+    "Runs use the actual CodeSearch.Service and run sequentially in separate processes.",
+    "The memory limit applies to whole-process maxRSS, not heap alone.",
+    "Heap deltas measure the cold build after full garbage collection, not the maximum query heap.",
+    "The embedding model was cached. Offline runs disable embeddings. Yolk was enabled.",
+    "Each process builds discovery data, then runs all queries three times.",
+    "Historical experiment metrics below are rounded. Worker defaults changed between experiments.",
+    "Unused experiment implementations and their source snapshot were removed after production selection. Historical measurements remain below.",
+    "The final candidate uses one default WASM worker. Explicit pool-size arguments remain supported.",
+    "These local runs do not establish a hard memory cap for the desktop app, multiple Locations, or larger repositories."
+  ],
+  "commands": {
+    "directory": "packages/core",
+    "semantic": "bun run bench:code-search",
+    "offline": "bun run bench:code-search --offline",
+    "tests": "bun test test/code-search.test.ts test/ripgrep-wasm.test.ts test/ripgrep.test.ts",
+    "typecheck": "bun typecheck"
+  },
+  "priorFullIndexSemantic": {
+    "results": "code-search-results.json",
+    "peakRssMiB": 4284.828,
+    "heapDeltaMiB": 1650.194,
+    "coldMs": 26277.014,
+    "cachedP50Ms": 7.522,
+    "recallCount": 22,
+    "mrr10": 0.779513889,
+    "top1": 17
+  },
+  "historicalExperiments": [
+    { "name": "profile", "mode": "offline", "workerDefault": "up to 10", "peakRssMiB": 3579, "heapDeltaMiB": 1576 },
+    {
+      "name": "lean",
+      "mode": "offline",
+      "workerDefault": "up to 10",
+      "peakRssMiB": 2857,
+      "heapDeltaMiB": 1038,
+      "coldMs": 15900,
+      "recallCount": 22,
+      "mrr10": 0.7653
+    },
+    {
+      "name": "brief",
+      "mode": "offline",
+      "workerDefault": "up to 10",
+      "peakRssMiB": 2491,
+      "heapDeltaMiB": 837,
+      "coldMs": 9120,
+      "recallCount": 22,
+      "mrr10": 0.8021
+    },
+    {
+      "name": "graph-brief",
+      "mode": "offline",
+      "workerDefault": "up to 10",
+      "peakRssMiB": 2265,
+      "heapDeltaMiB": 739,
+      "coldMs": 8890,
+      "recallCount": 22,
+      "mrr10": 0.8021
+    },
+    {
+      "name": "structural",
+      "mode": "offline",
+      "workerDefault": "up to 10",
+      "peakRssMiB": 1480,
+      "heapDeltaMiB": 591,
+      "coldMs": 8250,
+      "recallCount": 22,
+      "mrr10": 0.8021
+    },
+    {
+      "name": "frugal",
+      "mode": "offline",
+      "workerDefault": "up to 10",
+      "peakRssMiB": 1833,
+      "heapDeltaMiB": 515,
+      "coldMs": 7080,
+      "recallCount": 22,
+      "mrr10": 0.8021
+    },
+    {
+      "name": "btree",
+      "mode": "offline",
+      "workerDefault": "up to 10",
+      "peakRssMiB": 1466,
+      "heapDeltaMiB": 410,
+      "coldMs": 320580,
+      "p50Ms": 22.69,
+      "recallCount": 22,
+      "mrr10": 0.7767857
+    },
+    {
+      "name": "streaming",
+      "mode": "offline",
+      "workerDefault": "up to 10",
+      "peakRssMiB": 1169.5,
+      "heapDeltaMiB": 74,
+      "coldMs": 6200,
+      "p50Ms": 2126,
+      "recallCount": 22,
+      "mrr10": 0.73859
+    },
+    {
+      "name": "streaming-small",
+      "mode": "offline",
+      "workerDefault": "up to 10",
+      "peakRssMiB": 778.5,
+      "heapDeltaMiB": 64.7,
+      "p50Ms": 171,
+      "recallCount": 22
+    },
+    {
+      "name": "streaming-small",
+      "mode": "semantic",
+      "workerDefault": "up to 10",
+      "peakRssMiB": 958.8,
+      "heapDeltaMiB": 105.1,
+      "p50Ms": 177,
+      "recallCount": 22,
+      "mrr10": 0.73419
+    },
+    {
+      "name": "streaming-final",
+      "mode": "semantic",
+      "workerDefault": 2,
+      "peakRssMiB": 851.1,
+      "heapDeltaMiB": 101.54,
+      "coldMs": 3180,
+      "p50Ms": 175,
+      "recallCount": 22,
+      "mrr10": 0.73419
+    },
+    {
+      "name": "streaming-budget",
+      "mode": "semantic",
+      "workerDefault": "up to 10",
+      "peakRssMiB": 1131,
+      "recallCount": 21
+    }
+  ],
+  "rejectedTwoWorkerProduction": {
+    "semanticPeakRssMiB": [1070.640625, 921.9375],
+    "offlinePeakRssMiB": 762.90625,
+    "reason": "One semantic run exceeded the memory limit. A passing prototype did not provide enough production margin."
+  },
+  "final": {
+    "workerDefault": 1,
+    "bounds": {
+      "candidateFiles": 128,
+      "symbolsPerFile": 64,
+      "symbolBodyCharacters": 2000,
+      "sampleCharactersPerFile": 65536,
+      "sampleTokensPerFile": 256,
+      "modelVocabulary": 4096,
+      "cachedQueries": 128
+    },
+    "semanticRuns": [
+      {
+        "peakRssMiB": 898.953125,
+        "heapDeltaMiB": 104.656816,
+        "coldMs": 3063.922,
+        "p50Ms": 198.785,
+        "p95Ms": 333.126,
+        "cachedP50Ms": 208.278,
+        "cachedP95Ms": 340.254
+      },
+      {
+        "peakRssMiB": 854.71875,
+        "heapDeltaMiB": 106.330736,
+        "coldMs": 3653.853,
+        "p50Ms": 209.544,
+        "p95Ms": 395.249,
+        "cachedP50Ms": 189.956,
+        "cachedP95Ms": 332.097
+      }
+    ],
+    "offlineRun": {
+      "peakRssMiB": 704.5625,
+      "heapDeltaMiB": 76.126,
+      "coldMs": 3263.023,
+      "p50Ms": 186.5,
+      "p95Ms": 322.51,
+      "cachedP50Ms": 183.985,
+      "cachedP95Ms": 322.51
+    },
+    "semanticRanking": {
+      "all": { "recallCount": 22, "mrr10": 0.735515873, "top1": 16 },
+      "tuning": { "recallCount": 14, "mrr10": 0.753968254, "top1": 10 },
+      "heldout": { "recallCount": 8, "mrr10": 0.704761905, "top1": 6 }
+    },
+    "offlineRanking": {
+      "all": { "recallCount": 22, "mrr10": 0.74171627, "top1": 16 },
+      "tuning": { "recallCount": 14, "mrr10": 0.763888889, "top1": 10 },
+      "heldout": { "recallCount": 8, "mrr10": 0.704761905, "top1": 6 }
+    },
+    "verification": {
+      "testsPassed": 37,
+      "testsFailed": 0,
+      "assertions": 76,
+      "typecheck": "passed",
+      "memoryRunsPassed": 3
+    },
+    "tradeoffs": [
+      "Warm queries take about 190 to 210 ms instead of the prior 7.5 ms cached median.",
+      "Overall top1 falls from 17 to 16. Heldout top1 improves from 5 to 6.",
+      "History projection, secret vault, parseGoUnit, and the heldout history query rank lower.",
+      "Caller graphs cover selected candidates, not the whole repository.",
+      "One default WASM worker also reduces parallelism for other ripgrep operations."
+    ],
+    "remainingMisses": [
+      "HTTP API server routes",
+      "Which generated and hand-written client modules define the effect-based API surface?"
+    ]
+  },
+  "mainIntegration": {
+    "baseRevision": "431ca69e",
+    "note": "This run uses the newer main corpus and the moved release documentation target. It is not a direct comparison with the historical corpus above.",
+    "mode": "semantic",
+    "peakRssMiB": 772.625,
+    "heapDeltaMiB": 105.237967,
+    "coldMs": 3403.110584,
+    "p50Ms": 192.598083,
+    "p95Ms": 302.78825,
+    "cachedP50Ms": 192.327167,
+    "cachedP95Ms": 295.476625,
+    "recallCount": 22,
+    "mrr10": 0.687996032,
+    "top1": 14,
+    "verification": { "testsPassed": 37, "testsFailed": 0, "assertions": 76, "typecheck": "passed" },
+    "afterThrottleRepair": {
+      "peakRssMiB": 717.453125,
+      "heapDeltaMiB": 105.751951,
+      "coldMs": 3502.44825,
+      "cachedP50Ms": 184.836416,
+      "recallCount": 22,
+      "mrr10": 0.687996032,
+      "top1": 14,
+      "coreTestsPassed": 37,
+      "coreAssertions": 77,
+      "workloadTestsPassed": 8,
+      "workloadAssertions": 105,
+      "typecheck": "passed"
+    }
+  }
+}

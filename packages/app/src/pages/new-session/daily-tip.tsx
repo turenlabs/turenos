@@ -1,12 +1,23 @@
 import { For, onCleanup, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { TranslationKey } from "@/context/language"
-import { dailyTip, localDay, tips } from "./daily-tips"
+import { dailyTip, localDay, tips, type Tip } from "./daily-tips"
 import { readTipPreferences, writeTipPreference, type TipStore } from "./tip-preferences"
+
+type Translate = (key: TranslationKey, params?: Record<string, string>) => string
+
+export type TipCommands = {
+  keybind: (command: string) => string
+  // Only commands registered and enabled on the current surface can be tried; others still show
+  // their shortcut so the tip stays useful once the user is in a session.
+  available: (command: string) => boolean
+  run: (command: string) => void
+}
 
 export function DailyTips(props: {
   storage: TipStore
-  translate: (key: TranslationKey) => string
+  translate: Translate
+  commands: TipCommands
   date?: Date
   openTips: () => void
   onSaveFailed: () => void
@@ -80,6 +91,7 @@ export function DailyTips(props: {
               <div class="text-[11px] text-v2-text-text-faint">{props.translate("tips.label")}</div>
               <strong class="text-[13px] text-v2-text-text-base">{props.translate(tip.title)}</strong>
               <p class="text-[12px] leading-5">{props.translate(tip.body)}</p>
+              <TipCommand tip={tip} commands={props.commands} translate={props.translate} />
             </div>
             <button
               type="button"
@@ -111,7 +123,7 @@ export function DailyTips(props: {
   )
 }
 
-export function TipCatalog(props: { translate: (key: TranslationKey) => string }) {
+export function TipCatalog(props: { translate: Translate; commands: TipCommands }) {
   return (
     <ul class="flex flex-col gap-3">
       <For each={tips}>
@@ -119,9 +131,37 @@ export function TipCatalog(props: { translate: (key: TranslationKey) => string }
           <li class="rounded-lg border border-v2-border-border-muted px-4 py-3">
             <strong class="text-[13px] text-v2-text-text-base">{props.translate(tip.title)}</strong>
             <p class="mt-1 text-[12px] leading-5 text-v2-text-text-muted">{props.translate(tip.body)}</p>
+            <TipCommand tip={tip} commands={props.commands} translate={props.translate} />
           </li>
         )}
       </For>
     </ul>
+  )
+}
+
+function TipCommand(props: { tip: Tip; commands: TipCommands; translate: Translate }) {
+  return (
+    <Show when={props.tip.command}>
+      {(command) => (
+        <Show when={props.commands.keybind(command()) || props.commands.available(command())}>
+          <div class="mt-1 flex flex-wrap items-center gap-x-3 text-[11px] text-v2-text-text-faint">
+            <Show when={props.commands.keybind(command())}>
+              {(keys) => <span data-slot="tip-shortcut">{props.translate("tips.shortcut", { keys: keys() })}</span>}
+            </Show>
+            <Show when={props.commands.available(command())}>
+              <button
+                type="button"
+                data-slot="tip-try"
+                aria-label={props.translate("tips.tryNamed", { title: props.translate(props.tip.title) })}
+                class="rounded text-v2-text-text-base underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-v2-border-border-focus"
+                onClick={() => props.commands.run(command())}
+              >
+                {props.translate("tips.try")}
+              </button>
+            </Show>
+          </div>
+        </Show>
+      )}
+    </Show>
   )
 }

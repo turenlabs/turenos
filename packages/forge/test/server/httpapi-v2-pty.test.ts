@@ -37,7 +37,7 @@ const testStateLayer = Layer.effectDiscard(
 )
 
 const servedRoutes: Layer.Layer<never, EffectConfig.ConfigError, HttpServer.HttpServer> = HttpRouter.serve(
-  HttpApiApp.routes,
+  HttpApiApp.createRoutes({ cors: ["https://pty.example"] }),
   { disableListenLog: true, disableLogger: true },
 )
 
@@ -213,11 +213,30 @@ describe("v2 pty HttpApi", () => {
         expect(yield* takeUntil("ping-v2")).toContain("ping-v2")
         yield* write(new Socket.CloseEvent(1000, "done")).pipe(Effect.catch(() => Effect.void))
 
+        const nextToken = yield* HttpClientRequest.post(`/api/pty/${info.id}/connect-token`).pipe(
+          directoryHeader(dir),
+          HttpClientRequest.setHeader("x-forge-ticket", "1"),
+          HttpClientRequest.setHeader("origin", "https://pty.example"),
+          HttpClient.execute,
+        )
+        expect(nextToken.status).toBe(200)
+        const nextTicket = yield* Schema.decodeUnknownEffect(Location.response(PtyTicket.ConnectToken))(
+          yield* nextToken.json,
+        )
         const removed = yield* HttpClientRequest.delete(`/api/pty/${info.id}`).pipe(
           directoryHeader(dir),
           HttpClient.execute,
         )
         expect(removed.status).toBe(204)
+
+        // The configured origin must reach both token issuance and pre-Location
+        // validation. Only a valid ticket can observe that the PTY was removed.
+        const connect = HttpClientRequest.get(`/api/pty/${info.id}/connect?ticket=${nextTicket.data.ticket}`).pipe(
+          directoryHeader(dir),
+          HttpClientRequest.setHeader("origin", "https://pty.example"),
+        )
+        expect((yield* HttpClient.execute(connect)).status).toBe(404)
+        expect((yield* HttpClient.execute(connect)).status).toBe(403)
       }),
   )
 })

@@ -57,6 +57,7 @@ const wasmLeaves = [
   "installer-inspect",
   "java-inspect",
   "json-query",
+  "jwt-audit",
   "macos-artifacts",
   "minidump",
   "pdf-inspect",

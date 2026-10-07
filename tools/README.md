@@ -54,6 +54,9 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   validation.
 - [`tools/json-query`](json-query): bounded jq-style queries via jaq
   plus JSON validation, shape stats, and path discovery.
+- [`tools/jwt-audit`](jwt-audit): offline JWT inspection and pinned RS256/ES256
+  verification with a supplied public JWK and issuer/audience/time policy.
+  Never fetches key URLs or grants authorization.
 - [`tools/pdf-inspect`](pdf-inspect): bounded PDF structure, object,
   stream-decode, and text inspection with exploit-document findings.
 - [`tools/minidump`](minidump): Windows minidump and Breakpad/Crashpad
@@ -90,11 +93,15 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   and u-boot environment, Intel HEX/S-Record, and Android sparse images.
 - [`tools/binary-diff`](binary-diff): bounded binary compare/regions,
   bipatch-format diff production, patch application, and patch introspection.
+- [`tools/text-diff`](text-diff): bounded line diff built on `similar`: added and
+  removed line counts plus a unified patch compatible with the `diff` package's
+  `createTwoFilesPatch`, with a deterministic work budget instead of a deadline.
 - [`tools/browser-artifacts`](browser-artifacts): Chromium LevelDB
   log/table, Simple Cache, and Safari binarycookies forensic parsing.
 - [`tools/sqlite-inspect`](sqlite-inspect): read-only SQLite 3 database
   forensics — header, schema, b-tree stats, rows, freelist, and heuristic
-  deleted-record carving.
+  deleted-record carving, plus WAL checksum and commit-boundary inspection
+  without replay.
 - [`tools/capa-match`](capa-match): static-subset capa capability
   matcher — about 1,050 embedded Mandiant rules, string/byte/import/section/format
   features; non-file-scope rules report unsupported, never fabricate.

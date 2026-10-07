@@ -30,6 +30,10 @@ For each provider turn the registry:
 Most tools use their own name as the permission action; `edit`, `write`, and `apply_patch` share the `edit` action, and
 `shell_job` uses the `bash` action, so a whole-tool `bash` deny also hides it.
 
+When a user rejects a V2 `edit`, `write`, or `apply_patch` permission request with corrective feedback, the tool
+returns that feedback as its model-visible error. This applies to both `external_directory` and `edit` approval;
+the rejected operation does not read the target's contents or change the file.
+
 A call is settled against the registration it was advertised with. If that registration has since been replaced or
 closed, the call returns `Stale tool call: <name>` and nothing executes; a name that was never advertised returns
 `Unknown tool: <name>`.
@@ -129,6 +133,18 @@ never advertises `edit` and `apply_patch` to the same model; see [Shell tool rou
 `packages/core/src/tool/team-board.ts` defines `board_post` and `board_read`, but no runtime registers them; agents
 coordinate through the swarm room tools.
 
+## Filesystem search permissions
+
+V2 `grep` and `glob` resolve their search root through `LocationMutation`, like `read`. Relative paths must stay inside
+the active Location; a relative `..` escape or an in-Location symlink that resolves outside it fails before permission
+or search execution. An explicit external absolute path requires `external_directory` authorization for the canonical
+directory (`<directory>/*`), followed by the tool's own `grep` or `glob` permission. For an external file searched with
+`grep`, the directory resource is its canonical parent. Glob line counting happens only after both permissions pass.
+
+The search uses the resolved canonical target, rather than resolving the original alias again after approval. This is
+a path authorization boundary, not an OS sandbox: canonicalization does not pin filesystem objects against concurrent
+replacement. Recursive searches do not enable symlink following.
+
 ## Limits
 
 - The registry performs no execution authorization; each tool checks permission itself. A tool that never asks, such as
@@ -137,6 +153,9 @@ coordinate through the swarm room tools.
 ## Source
 
 - [`packages/core/src/tool/tool.ts`](../../packages/core/src/tool/tool.ts)
+- [`packages/core/src/tool/grep.ts`](../../packages/core/src/tool/grep.ts)
+- [`packages/core/src/tool/glob.ts`](../../packages/core/src/tool/glob.ts)
+- [`packages/core/src/location-mutation.ts`](../../packages/core/src/location-mutation.ts)
 - [`packages/core/src/tool/registry.ts`](../../packages/core/src/tool/registry.ts)
 - [`packages/core/src/tool/tools.ts`](../../packages/core/src/tool/tools.ts)
 - [`packages/core/src/tool/application-tools.ts`](../../packages/core/src/tool/application-tools.ts)

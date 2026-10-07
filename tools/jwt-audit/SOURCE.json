@@ -1,0 +1,27 @@
+{
+  "crate": "turen-jwt-audit-wasm",
+  "version": "0.1.0",
+  "derivation": "Original bounded JWT/JWS wrapper with unmodified exact-pinned crates.io dependencies and Cargo.lock.",
+  "rust": "1.97.1",
+  "wasmPack": "0.15.0",
+  "specifications": [
+    "https://www.rfc-editor.org/rfc/rfc7515",
+    "https://www.rfc-editor.org/rfc/rfc7517",
+    "https://www.rfc-editor.org/rfc/rfc7518",
+    "https://www.rfc-editor.org/rfc/rfc7519",
+    "https://www.rfc-editor.org/rfc/rfc8725"
+  ],
+  "network": false,
+  "filesystem": false,
+  "executesInput": false,
+  "randomness": false,
+  "limits": {
+    "inputBytes": 131072,
+    "keyBytes": 16384,
+    "optionsBytes": 4096,
+    "headerEncodedBytes": 8192,
+    "topLevelMembers": 256,
+    "outputBytes": 262144,
+    "rsaBits": [2048, 4096]
+  }
+}

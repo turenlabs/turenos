@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
-import { ConfigProvider, Effect, Layer } from "effect"
+import { ConfigProvider, Effect, Fiber, Layer } from "effect"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { FSUtil } from "@turenlabs/core/fs-util"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -127,6 +127,50 @@ test.skipIf(!Fff.available())("answers the first fff search after its scan", asy
 
     expect(result.grep).toEqual([RelativePath.make("src/match.ts")])
     expect(result.found).toContain(RelativePath.make("src/match.ts"))
+  } finally {
+    await tmp[Symbol.asyncDispose]()
+  }
+})
+
+// Stopping a turn interrupts the search that is building the finder. The build has to outlive that
+// search: `Effect.cached` otherwise keeps the interruption as the answer to every later search.
+test.skipIf(!Fff.available())("answers a later search after the first was interrupted while building", async () => {
+  const tmp = await tmpdir()
+  try {
+    await fs.mkdir(path.join(tmp.path, "src"))
+    await fs.writeFile(path.join(tmp.path, "src", "match.ts"), "needle\n")
+
+    const runtime = AppNodeBuilder.build(
+      LayerNode.make({
+        service: FileSystemSearch.Service,
+        layer: FileSystemSearch.fffLayer,
+        deps: [FSUtil.node, Location.node, Ripgrep.node],
+      }),
+      [
+        [
+          Location.node,
+          Layer.succeed(
+            Location.Service,
+            Location.Service.of(location(Location.Ref.make({ directory: AbsolutePath.make(tmp.path) }))),
+          ),
+        ],
+      ],
+    )
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const search = yield* FileSystemSearch.Service
+        // Runs until the build suspends on the scan, then the turn is stopped.
+        const first = yield* search
+          .grep({ pattern: "needle", limit: 10 })
+          .pipe(Effect.forkChild({ startImmediately: true }))
+        yield* Fiber.interrupt(first)
+        const grep = yield* search.grep({ pattern: "needle", limit: 10 })
+        return grep.map((match) => match.entry.path)
+      }).pipe(Effect.scoped, Effect.provide(runtime)),
+    )
+
+    expect(result).toEqual([RelativePath.make("src/match.ts")])
   } finally {
     await tmp[Symbol.asyncDispose]()
   }

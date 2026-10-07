@@ -50,6 +50,14 @@ The target inventory, with one line per target, is in `README.md`.
 
 ## Runtime Boundary
 
+`tools/jwt-audit` verifies compact JWT signatures against one supplied public
+JWK and an explicit algorithm/issuer/audience/time policy. Keep token key hints
+untrusted and offline. Never sign, fetch keys, or claim authorization.
+
+`tools/sqlite-inspect` also accepts one WAL file for `sqlite_wal_inspect`.
+Keep inspection metadata-only, validate the sequential checksum/salt prefix,
+and never replay pages or infer database association from checksums.
+
 `wasm-tools` is for deterministic, bounded byte processing. A normal target
 accepts bytes plus structured options and returns bounded JSON or one bounded
 byte vector.
@@ -87,6 +95,7 @@ These targets have their own rules; follow the target's file when working in it:
 - `goblin/AGENTS.md`
 - `stng-core/AGENTS.md`
 - `libpcap/AGENTS.md`
+- `jwt-audit/AGENTS.md`
 - `static-unpack/AGENTS.md`
 - `static-analysis/AGENTS.md`
 - `protocol-inspect/AGENTS.md`

@@ -207,7 +207,10 @@ export const run = Effect.fn("ApplyPatchTool.run")(function* (input: {
       error instanceof ToolFailure
         ? error
         : new ToolFailure({
-            message: `Unable to apply patch: ${error instanceof Error ? error.message : String(error)}`,
+            message:
+              error instanceof PermissionV2.CorrectedError
+                ? error.feedback
+                : `Unable to apply patch: ${error instanceof Error ? error.message : String(error)}`,
           }),
     ),
   )

@@ -5,7 +5,7 @@ import { SecretVault } from "@turenlabs/core/secret-vault"
 import { Storage } from "@turenlabs/core/storage"
 import { StorageStateTable } from "@turenlabs/core/storage/sql"
 import { SecurityProxy } from "@turenlabs/schema/security-proxy"
-import { Effect, Exit, Layer } from "effect"
+import { Effect, Exit, Layer, Schema } from "effect"
 import { tmpdir } from "./fixture/tmpdir"
 
 const owner: SecurityProxy.Owner = { directory: "/proxy/project", workspaceID: "workspace_a" }
@@ -55,6 +55,33 @@ function fixture(path: string) {
 const owned = { owner, caseID: input.id }
 
 describe("durable security proxy storage", () => {
+  test("shares bounded flow pagination fields across command schemas", () => {
+    const command = {
+      type: "flows",
+      ...owned,
+      cursor: { key: "data/case_a/flow/flow_a", timeCreated: 777 },
+      filter: {
+        query: "api",
+        content: true,
+        method: "POST",
+        mime: "json",
+        host: "example.test",
+        status: "200",
+        source: "browser",
+      },
+      view: "masked",
+    }
+    for (const decode of [
+      Schema.decodeUnknownSync(SecurityProxy.Command),
+      Schema.decodeUnknownSync(SecurityProxy.StoreCommand),
+    ]) {
+      expect(decode(command)).toMatchObject(command)
+      expect(() => decode({ ...command, cursor: { key: "x".repeat(4097), timeCreated: 1 } })).toThrow()
+      expect(() => decode({ ...command, filter: { query: "x".repeat(4097) } })).toThrow()
+      expect(() => decode({ ...command, view: "unmasked" })).toThrow()
+    }
+  })
+
   test("validates creates, reconciles exact input, and isolates full owners", async () => {
     await using tmp = await tmpdir()
     const store = fixture(tmp.path)
@@ -257,18 +284,163 @@ describe("durable security proxy storage", () => {
           yield* service.execute({
             type: "put",
             ...owned,
-            flow: { ...flow, id: `flow_${String(index).padStart(4, "0")}` },
+            flow: {
+              ...flow,
+              id: `flow_${String(index).padStart(4, "0")}`,
+              request: { ...flow.request, method: index < 5 ? "PATCH" : "POST" },
+            },
           })
         }
+        const database = yield* Database.Service
+        yield* database.db.update(StorageStateTable).set({ time_created: 777 }).run()
         const listed = yield* service.execute({ type: "flows", ...owned })
         expect(listed.flows).toHaveLength(200)
+        expect(listed.total).toBe(205)
+        expect(listed.nextCursor).toEqual({ key: "data/case_a/flow/flow_0005", timeCreated: 777 })
         expect(listed.flows![0]!.id).toBe("flow_0204")
         expect(listed.flows!.at(-1)!.id).toBe("flow_0005")
+        const older = yield* service.execute({ type: "flows", ...owned, cursor: listed.nextCursor })
+        expect(older.flows).toHaveLength(5)
+        expect(older.nextCursor).toBeUndefined()
+        expect(new Set([...listed.flows!, ...older.flows!].map((item) => item.id)).size).toBe(205)
+        const filtered = yield* service.execute({ type: "flows", ...owned, filter: { method: "patch" } })
+        expect(filtered.flows).toEqual([])
+        expect(filtered.nextCursor).toEqual(listed.nextCursor)
+        const matches = yield* service.execute({
+          type: "flows",
+          ...owned,
+          filter: { method: "patch" },
+          cursor: filtered.nextCursor,
+        })
+        expect(matches.flows).toHaveLength(5)
+        expect(matches.total).toBe(205)
+        const invalid = yield* Effect.exit(
+          service.execute({
+            type: "flows",
+            ...owned,
+            cursor: { key: "data/other_case/flow/flow_a", timeCreated: 777 },
+          }),
+        )
+        expect(Exit.isFailure(invalid)).toBe(true)
         yield* service.execute({ type: "delete", ...owned })
       }),
     )
     expect((await store.rows()).every((row) => row.deleted && row.value === "")).toBe(true)
   }, 30_000)
+
+  test("keeps MIME compact and searches only masked content with bounded export pages", async () => {
+    await using tmp = await tmpdir()
+    const store = fixture(tmp.path)
+    await store.run(
+      Effect.gen(function* () {
+        const service = yield* SecurityProxyStore.Service
+        yield* service.execute({ type: "create", owner, input })
+        const captured: SecurityProxy.Flow = {
+          ...flow,
+          responseHeaders: [
+            ...flow.responseHeaders,
+            { name: "cOnTeNt-TyPe", value: "Application/JSON; charset=utf-8; boundary=parameter-secret" },
+            { name: "X-Public", value: "public-header" },
+          ],
+          responseBody: { ...body, data: '{"message":"public-body","token":"response-secret"}', size: 51 },
+          originalRequest: flow.request,
+        }
+        for (let index = 0; index < 12; index++) {
+          yield* service.execute({ type: "put", ...owned, flow: { ...captured, id: `export_${index}` } })
+        }
+        const summary = yield* service.execute({ type: "flows", ...owned })
+        expect(summary.flows).toHaveLength(12)
+        expect(summary.flows![0]!.responseHeaders).toEqual([{ name: "Content-Type", value: "application/json" }])
+        expect(JSON.stringify(summary)).not.toContain("parameter-secret")
+        expect(Buffer.byteLength(JSON.stringify(summary.flows![0]))).toBeLessThan(1024)
+        for (const filter of [
+          { method: "post", status: "20", mime: "JSON", host: "EXAMPLE.TEST", source: "browser" as const },
+          { status: "COMPLETE" },
+          { query: "public-header", content: true },
+          { query: "public-body", content: true },
+          { query: "export_" },
+        ]) {
+          expect((yield* service.execute({ type: "flows", ...owned, filter })).flows).toHaveLength(12)
+        }
+        for (const query of [
+          "url-secret",
+          "header-secret",
+          "body-secret",
+          "cookie-secret",
+          "note-secret",
+          "response-secret",
+        ]) {
+          for (const view of ["summary", "revealed"] as const) {
+            const result = yield* service.execute({ type: "flows", ...owned, view, filter: { query, content: true } })
+            expect(result.flows).toEqual([])
+            if (view === "revealed") expect(result.nextCursor).toBeDefined()
+          }
+        }
+        expect((yield* service.execute({ type: "flows", ...owned, filter: { query: "public-body" } })).flows).toEqual(
+          [],
+        )
+        expect((yield* service.execute({ type: "flows", ...owned, filter: { host: "test" } })).flows).toEqual([])
+        expect((yield* service.execute({ type: "flows", ...owned, filter: { source: "replay" } })).flows).toEqual([])
+        const masked = yield* service.execute({ type: "flows", ...owned, view: "masked" })
+        expect(masked.flows).toHaveLength(10)
+        expect(masked.flows![0]!.request.headers[0]!.value).toBe("[REDACTED]")
+        expect(masked.flows![0]!.responseBody.data).toContain("public-body")
+        expect(masked.flows![0]!.originalRequest).toBeDefined()
+        expect(masked.flows![0]!.note).toBe("[REDACTED]")
+        const tail = yield* service.execute({ type: "flows", ...owned, view: "masked", cursor: masked.nextCursor })
+        expect(tail.flows).toHaveLength(2)
+        expect(tail.nextCursor).toBeUndefined()
+        const revealed = yield* service.execute({ type: "flows", ...owned, view: "revealed" })
+        expect(revealed.flows).toHaveLength(1)
+        expect(revealed.flows![0]!.request).toEqual(captured.request)
+        expect(revealed.flows![0]!.responseBody).toEqual(captured.responseBody)
+        expect(revealed.flows![0]!.note).toBe(captured.note)
+        expect(revealed.nextCursor).toBeDefined()
+        expect(
+          Exit.isFailure(
+            yield* Effect.exit(service.execute({ type: "flows", ...owned, owner: other, view: "revealed" })),
+          ),
+        ).toBe(true)
+      }),
+    )
+  })
+
+  test("hydrates persisted legacy summaries without exposing headers or body data", async () => {
+    await using tmp = await tmpdir()
+    const store = fixture(tmp.path)
+    await store.execute({ type: "create", owner, input })
+    await store.execute({
+      type: "put",
+      ...owned,
+      flow: {
+        ...flow,
+        responseHeaders: [...flow.responseHeaders, { name: "Content-Type", value: "Text/HTML; charset=utf-8" }],
+      },
+    })
+    await store.run(
+      Effect.gen(function* () {
+        const storage = yield* Storage.Service
+        const vault = yield* SecretVault.Service
+        const rows = yield* Database.Service.use((database) => database.db.select().from(StorageStateTable).all())
+        const row = rows.find((row) => row.key.includes("/flow/"))!
+        const manifest = Schema.decodeUnknownSync(Schema.Struct({ summary: SecurityProxy.Flow }), {
+          onExcessProperty: "preserve",
+        })(JSON.parse(yield* vault.open(row.scope, row.key, row.value)))
+        const legacy = { ...manifest, summaryVersion: undefined, summary: { ...manifest.summary, responseHeaders: [] } }
+        yield* storage.set({
+          scope: row.scope,
+          key: row.key,
+          value: yield* vault.seal(row.scope, row.key, JSON.stringify(legacy)),
+        })
+      }),
+    )
+    const listed = await fixture(tmp.path).execute({ type: "flows", ...owned, filter: { mime: "html" } })
+    expect(listed.flows).toHaveLength(1)
+    expect(listed.flows![0]!.responseHeaders).toEqual([{ name: "Content-Type", value: "text/html" }])
+    expect(listed.flows![0]!.request.headers).toEqual([])
+    expect(listed.flows![0]!.request.body.data).toBe("")
+    expect(JSON.stringify(listed)).not.toContain("cookie-secret")
+  })
 
   test("separate service instances reconcile concurrent creates using persisted guards", async () => {
     await using tmp = await tmpdir()

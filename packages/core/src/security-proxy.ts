@@ -32,6 +32,7 @@ const Record = Schema.Struct({
 })
 const Manifest = Schema.Struct({
   summary: SecurityProxy.Flow,
+  summaryVersion: Schema.optionalKey(Schema.Number),
   chunks: Schema.Array(Schema.String),
   bytes: Schema.Number,
   digest: Schema.String,
@@ -185,14 +186,46 @@ export const layer = Layer.effect(
         return { case: updated }
       }
       if (command.type === "flows") {
-        // The frozen command has no cursor: return only the latest bounded page.
-        const page = yield* storage.query({ scope, prefix: `${prefix}flow/`, order: "time-created-desc", limit: 200 })
+        const flowPrefix = `${prefix}flow/`
+        if (command.cursor && !command.cursor.key.startsWith(flowPrefix))
+          return yield* new Error({ message: "Invalid flow cursor" })
+        const limit = command.view === "revealed" ? 1 : command.view === "masked" ? 10 : 200
+        const page = yield* storage.query({
+          scope,
+          prefix: flowPrefix,
+          order: "time-created-desc",
+          limit,
+          cursor: command.cursor
+            ? { key: Storage.Key.make(command.cursor.key), timeCreated: command.cursor.timeCreated }
+            : undefined,
+        })
         const flows = yield* Effect.forEach(
           page,
-          (item) => readManifest(item).pipe(Effect.map((item) => item.summary)),
+          (item) =>
+            Effect.gen(function* () {
+              const manifest = yield* readManifest(item)
+              const loaded = manifest.summaryVersion === 1 ? undefined : (yield* readFlow(item)).flow
+              const summary = loaded ? flowSummary(loaded) : manifest.summary
+              if (!matchesMetadata(summary, command.filter)) return undefined
+              const needsContent = !!command.filter?.content && !!command.filter.query?.trim()
+              const full =
+                needsContent || (command.view && command.view !== "summary")
+                  ? (loaded ?? (yield* readFlow(item)).flow)
+                  : undefined
+              // Search never uses revealed data, even for an explicit revealed export.
+              if (!matchesQuery(needsContent ? publicFlow(full!) : summary, command.filter)) return undefined
+              if (command.view === "revealed") return full!
+              if (command.view === "masked") return publicFlow(full!)
+              return summary
+            }),
           { concurrency: 1 },
         )
-        return { flows }
+        const last = page.at(-1)
+        return {
+          flows: flows.filter((flow) => flow !== undefined),
+          total: record.count,
+          ...(last && page.length === limit ? { nextCursor: { key: last.key, timeCreated: last.timeCreated } } : {}),
+        }
       }
 
       const flowID = command.type === "put" || command.type === "reserve" ? command.flow.id : command.flowID
@@ -258,6 +291,7 @@ export const layer = Layer.effect(
       )
       const manifest: typeof Manifest.Type = {
         summary: flowSummary(flow),
+        summaryVersion: 1,
         chunks,
         bytes: bytes.length,
         digest: hash,
@@ -345,7 +379,13 @@ function flowSummary(value: SecurityProxy.Flow): SecurityProxy.Flow {
       headers: [],
       body: { ...value.request.body, data: "", state: "unavailable" },
     },
-    responseHeaders: [],
+    responseHeaders: value.responseHeaders
+      .flatMap((header) => {
+        if (header.name.toLowerCase() !== "content-type") return []
+        const mime = header.value.split(";", 1)[0]!.trim().toLowerCase()
+        return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mime) ? [{ name: "Content-Type", value: mime }] : []
+      })
+      .slice(0, 1),
     responseBody: { ...value.responseBody, data: "", state: "unavailable" },
     note: value.note ? "[REDACTED]" : "",
     ...(value.error ? { error: "[REDACTED]" } : {}),
@@ -358,4 +398,34 @@ function publicFlow(value: SecurityProxy.Flow): SecurityProxy.Flow {
     note: value.note ? "[REDACTED]" : "",
     ...(value.error ? { error: "[REDACTED]" } : {}),
   }
+}
+
+function matchesMetadata(value: SecurityProxy.Flow, filter?: SecurityProxy.FlowFilter) {
+  if (!filter) return true
+  if (filter.method && value.request.method.toLowerCase() !== filter.method.trim().toLowerCase()) return false
+  if (filter.source && value.source !== filter.source) return false
+  if (
+    filter.status &&
+    !`${value.status ?? ""} ${value.state}`.toLowerCase().includes(filter.status.trim().toLowerCase())
+  )
+    return false
+  if (filter.mime && !value.responseHeaders.some((header) => header.value.includes(filter.mime!.trim().toLowerCase())))
+    return false
+  if (filter.host && URL.parse(value.request.url)?.hostname.toLowerCase() !== filter.host.trim().toLowerCase())
+    return false
+  return true
+}
+
+function matchesQuery(value: SecurityProxy.Flow, filter?: SecurityProxy.FlowFilter) {
+  const query = filter?.query?.trim().toLowerCase()
+  if (!query) return true
+  const content = filter?.content
+    ? [
+        ...value.request.headers.map((header) => `${header.name}: ${header.value}`),
+        ...value.responseHeaders.map((header) => `${header.name}: ${header.value}`),
+        value.request.body.data,
+        value.responseBody.data,
+      ]
+    : []
+  return [value.id, value.request.url, ...content].some((text) => text.toLowerCase().includes(query))
 }

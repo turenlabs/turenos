@@ -43,7 +43,6 @@ const toModelOutput = (output: ModelOutput) => {
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tools = yield* Tools.Service
-    const location = yield* Location.Service
     const permission = yield* PermissionV2.Service
     const search = yield* CodeSearch.Service
 
@@ -51,7 +50,7 @@ const layer = Layer.effectDiscard(
       .register({
         [name]: Tool.make({
           description:
-            "Ranked semantic-and-structural search over the codebase: function/type declarations, file paths, and content are indexed per Location. Prefer this over grep when looking for where something is implemented, how a concept is expressed, or what calls a symbol ('callers of X'). Pass 1-4 query phrasings — the caller's rephrasing is the main lever on result quality. Returns ranked file:line anchors; follow up with read or grep on the hits.",
+            "Ranked code search using cached file paths and sampled vocabulary. Streams rare-term matches, then extracts symbols and a call graph from a bounded candidate set. Prefer it for implementation and symbol questions, including 'callers of X'. Caller results cover selected candidates, not the whole repository. Pass 1-4 query phrasings; each scores independently. Returns ranked file:line anchors; follow up with read or grep.",
           input: Input,
           output: Output,
           toModelOutput: ({ output }) => [{ type: "text", text: toModelOutput(output) }],

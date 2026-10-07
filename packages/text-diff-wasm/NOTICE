@@ -1,0 +1,14 @@
+Turen Text Diff wraps the similar crate 2.7.0, a Rust diffing library by
+Armin Ronacher, Pierre-Étienne Meunier, Brandon Williams and contributors,
+distributed under the Apache License, Version 2.0.
+Upstream: https://github.com/mitsuhiko/similar
+
+Only the library's Myers line diff and hunk grouping are used. The text, inline,
+and unicode features, deadlines, and every clock or I/O path are not compiled in.
+The unified patch writer and its size bounds are Turen's own, and its output
+format is compatible with the `diff` npm package's createTwoFilesPatch.
+
+Transitive Rust dependencies used by the compiled module are licensed under
+permissive terms (MIT, Apache-2.0, or Unicode-3.0). The compiled module also uses
+Rust standard-library components distributed under Apache-2.0 or MIT.
+See Cargo.lock for the complete pinned dependency closure.
