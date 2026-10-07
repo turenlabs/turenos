@@ -13,7 +13,8 @@ const commands: Record<AgentCommand, string> = {
   sessions: `Usage: turen-tui sessions [--dir <path>] [--limit N] [--all]
 
 List recent sessions: id, state, updated time, directory, parent and title.
-State is running, needs-input (a pending permission or question) or idle.
+State is running, needs-input (a pending permission or question), failed or interrupted (the
+latest turn ended in error or was stopped) or idle.
   --dir <path>   Only sessions in this server directory
   --limit N      How many to list (1-100, default 30)
   --all          Include archived sessions`,
@@ -60,7 +61,8 @@ Reject a permission request.`,
 A label outside the options is accepted only when the question allows custom answers.`,
   stop: `Usage: turen-tui stop <session> [--tasks]
 
-Interrupt the session's current work. --tasks also cancels its active subagent tasks.`,
+Interrupt the session's current work; a session that is not running is reported as such and
+not interrupted. --tasks also cancels its active subagent tasks.`,
 }
 
 export function commandHelp(command: AgentCommand) {

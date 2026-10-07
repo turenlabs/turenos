@@ -13,6 +13,7 @@ test("sessions lists state, and asks for pending input only about running sessio
       ],
       cursor: {},
     }),
+    "GET /api/session/ses_idle/message": () => ({ data: [], cursor: {} }),
     "GET /api/session/ses_busy/permission": () => ({ data: [permission("per_9", { sessionID: "ses_busy" })] }),
     "GET /api/session/ses_busy/question": () => ({ data: [] }),
   })
@@ -38,6 +39,35 @@ test("sessions lists state, and asks for pending input only about running sessio
   expect(text.stdout).toContain("ses_busy · needs-input")
   // The idle session was never asked about pending requests.
   expect(server.paths()).not.toContain("/api/session/ses_idle/permission")
+})
+
+test("sessions reports a session whose latest turn failed or was stopped, as wait does", async () => {
+  const error = (message: string) => ({ ...assistant("e", "partial"), finish: "error", error: { message } })
+  const turns: Record<string, unknown[]> = {
+    ses_failed: [user("q", "go"), error("Model unavailable")],
+    ses_stopped: [user("q", "go"), error("Provider turn interrupted")],
+    ses_fine: [user("q", "go"), assistant("ok", "done")],
+    ses_recovered: [user("q", "go"), error("Model unavailable"), user("r", "again"), assistant("ok", "done")],
+  }
+  const server = world({
+    "GET /api/session": () => ({ data: Object.keys(turns).map((id) => session(id.slice(4))), cursor: {} }),
+    ...Object.fromEntries(
+      Object.entries(turns).map(([id, messages]) => [
+        `GET /api/session/${id}/message`,
+        () => ({ data: messages.toReversed(), cursor: {} }),
+      ]),
+    ),
+  })
+  const listed = document(await agent(["sessions", "--json"], { url: server.url })).sessions as {
+    id: string
+    state: string
+  }[]
+  expect(listed.map((item) => [item.id, item.state])).toEqual([
+    ["ses_failed", "failed"],
+    ["ses_stopped", "interrupted"],
+    ["ses_fine", "idle"],
+    ["ses_recovered", "idle"],
+  ])
 })
 
 test("sessions passes its filters and rejects bad values without echoing them", async () => {
@@ -125,6 +155,37 @@ test("show --all follows the history cursor to the start, oldest first, and stop
   expect(capped.stdout).toContain("message 2150")
   expect(capped.stdout).toContain("message 151")
   expect(capped.stdout).not.toContain("message 150\n")
+})
+
+test("show says earlier messages exist only when they do, though the server always returns a next cursor", async () => {
+  const history: unknown[] = []
+  const server = world({
+    "GET /api/session/ses_main/message": (_, url) => {
+      const offset = Number(url.searchParams.get("cursor") ?? 0)
+      const data = history.toReversed().slice(offset, offset + Number(url.searchParams.get("limit") ?? 30))
+      return { data, cursor: { next: String(offset + data.length) } }
+    },
+  })
+  history.splice(0, history.length, assistant("a", "one"), assistant("b", "two"))
+  const short = await agent(["show", "ses_main"], { url: server.url })
+  expect(short.stdout).not.toContain("earlier messages are not shown")
+  expect(document(await agent(["show", "ses_main", "--json"], { url: server.url })).truncated).toBe(false)
+
+  history.splice(
+    0,
+    history.length,
+    ...Array.from({ length: 31 }, (_, index) => assistant(`m${index}`, `message ${index}`)),
+  )
+  const long = await agent(["show", "ses_main"], { url: server.url })
+  expect(long.stdout).toContain("[earlier messages are not shown; use --all]")
+  expect(document(await agent(["show", "ses_main", "--json"], { url: server.url })).truncated).toBe(true)
+
+  history.splice(
+    0,
+    history.length,
+    ...Array.from({ length: 30 }, (_, index) => assistant(`m${index}`, `message ${index}`)),
+  )
+  expect(document(await agent(["show", "ses_main", "--json"], { url: server.url })).truncated).toBe(false)
 })
 
 test("show reports an unknown session plainly", async () => {

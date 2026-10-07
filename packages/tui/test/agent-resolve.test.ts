@@ -102,6 +102,7 @@ test("answer accepts custom text where allowed, several choices where multiple, 
 
 test("stop interrupts, and --tasks reports cancelled, failed and not-listed tasks as the dashboard does", async () => {
   const { server, posts } = resolving()
+  server.state.active.add("ses_main")
   expect((await agent(["stop", "ses_main"], { url: server.url })).stdout).toBe("interrupted ses_main\n")
   const tasks = (failing: boolean) => ({
     "GET /api/session/ses_main/task": () => ({
@@ -117,17 +118,41 @@ test("stop interrupts, and --tasks reports cancelled, failed and not-listed task
     "POST /api/session/ses_main/interrupt": noContent,
   })
   const calm = world(tasks(false))
+  calm.state.active.add("ses_main")
   const done = await agent(["stop", "ses_main", "--tasks", "--json"], { url: calm.url })
   expect(done.code).toBe(0)
   expect(document(done)).toEqual({
     ok: true,
     session: "ses_main",
+    running: true,
     tasks: { cancelled: 2, failed: 0, gone: 1, more: true },
   })
-  const failing = await agent(["stop", "ses_main", "--tasks"], { url: world(tasks(true)).url })
+  const broken = world(tasks(true))
+  broken.state.active.add("ses_main")
+  const failing = await agent(["stop", "ses_main", "--tasks"], { url: broken.url })
   expect(failing.code).toBe(1)
   expect(failing.stderr).toContain("tasks: 1 cancelled, 1 failed, 1 not listed")
   expect(posts.map((post) => post.path)).toEqual(["interrupt"])
+})
+
+test("stop on a session that is not running says so and does not interrupt it, and --tasks still applies", async () => {
+  const { server, posts } = resolving()
+  const idle = await agent(["stop", "ses_main"], { url: server.url })
+  expect(idle.code).toBe(0)
+  expect(idle.stdout).toBe("ses_main was not running\n")
+  expect(document(await agent(["stop", "ses_main", "--json"], { url: server.url }))).toEqual({
+    ok: true,
+    session: "ses_main",
+    running: false,
+  })
+  expect(posts).toEqual([])
+
+  const withTasks = world({
+    "GET /api/session/ses_main/task": () => ({ data: [], active: [task("tsk_a")], cursor: {} }),
+    "POST /api/session/ses_main/task/tsk_a/cancel": () => ({ data: task("tsk_a", { revision: 2 }) }),
+  })
+  const result = await agent(["stop", "ses_main", "--tasks"], { url: withTasks.url })
+  expect(result.stdout).toBe("ses_main was not running; tasks: 1 cancelled, 0 failed, 0 not listed.\n")
 })
 
 test("an explicit URL that needs a password says which variable holds it, and never falls back to discovery", async () => {

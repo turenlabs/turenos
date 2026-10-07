@@ -2,8 +2,9 @@ import type { MessagesListOutput, PermissionsListOutput, QuestionsListOutput } f
 import { identifier } from "../response-validation"
 import { httpStatus, type Connection } from "../server"
 import { AgentError, usage } from "./errors"
+import { turnFailure } from "./failure"
 
-export type State = "running" | "needs-input" | "idle"
+export type State = "running" | "needs-input" | "idle" | "failed" | "interrupted"
 export type Pending = { permissions: PermissionsListOutput; questions: QuestionsListOutput }
 export type Message = MessagesListOutput["data"][number]
 
@@ -14,9 +15,22 @@ export function needsInput(pending: Pending) {
   return pending.permissions.length + pending.questions.length > 0
 }
 
-export function stateOf(running: boolean, pending: Pending): State {
+export function stateOf(running: boolean, pending: Pending, ended?: State): State {
   if (needsInput(pending)) return "needs-input"
-  return running ? "running" : "idle"
+  if (running) return "running"
+  return ended ?? "idle"
+}
+
+/**
+ * `failed` or `interrupted` when a session that is not running ended its latest turn in error, as `wait` reports it, else `idle`.
+ * A few messages reach back past the system and switch messages that can follow the turn's assistant message.
+ */
+export async function endedState(connection: Connection, sessionID: string): Promise<State> {
+  const messages = await latestMessages(connection, sessionID, 8).catch((error: unknown) => {
+    if (httpStatus(error) === 404) return []
+    throw error
+  })
+  return turnFailure(messages)?.state ?? "idle"
 }
 
 /** A session ID or message ID argument; the value is never echoed back. */
@@ -46,7 +60,11 @@ export async function pendingFor(connection: Connection, sessionID: string): Pro
 }
 
 /** Runs `task` over `items`, at most `size` at a time, keeping order. */
-export async function inBatches<Item, Result>(items: Item[], size: number, task: (item: Item) => Promise<Result>) {
+export async function inBatches<Item, Result>(
+  items: readonly Item[],
+  size: number,
+  task: (item: Item) => Promise<Result>,
+) {
   const results: Result[] = []
   for (let offset = 0; offset < items.length; offset += size)
     results.push(...(await Promise.all(items.slice(offset, offset + size).map(task))))

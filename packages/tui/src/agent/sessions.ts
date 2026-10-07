@@ -2,7 +2,7 @@ import { checkDirectory } from "../response-validation"
 import { clean, emit, isoTime, type Run } from "./context"
 import { usage } from "./errors"
 import { whole } from "./options"
-import { activeIDs, inBatches, pendingFor, stateOf, type State } from "./state"
+import { activeIDs, endedState, inBatches, pendingFor, stateOf, type State } from "./state"
 
 export type Summary = {
   id: string
@@ -24,11 +24,18 @@ export async function sessions(run: Run) {
     activeIDs(run.connection),
   ])
   // Only a running session can be waiting for input, so only those are asked.
+  // The others are asked how their latest turn ended, so a failed or stopped turn does not read as idle.
   const states = new Map(
     await inBatches(
-      page.data.filter((session) => running.has(session.id)),
+      page.data,
       8,
-      async (session) => [session.id, stateOf(true, await pendingFor(run.connection, session.id))] as const,
+      async (session) =>
+        [
+          session.id,
+          running.has(session.id)
+            ? stateOf(true, await pendingFor(run.connection, session.id))
+            : await endedState(run.connection, session.id),
+        ] as const,
     ),
   )
   const list = page.data.map(

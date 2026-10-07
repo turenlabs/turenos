@@ -50,7 +50,7 @@ export function isAgentCommand(word: string | undefined): word is AgentCommand {
 
 /** The block `turen-tui --help` shows after the dashboard options. */
 export const agentOverview = `Agent and script commands (no terminal needed; add --json for one JSON document):
-  sessions                 Recent sessions and their state (running, needs-input, idle)
+  sessions                 Recent sessions and their state (running, needs-input, failed, interrupted, idle)
   show <session>           A session's transcript and pending requests
   send <session> [text]    Reply to a session; "-" reads stdin; --new starts a session
   wait <session>           Block until the session is idle or needs input

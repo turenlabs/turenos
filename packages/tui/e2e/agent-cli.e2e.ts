@@ -56,9 +56,9 @@ test("stop interrupts a running turn and show prints the whole transcript", asyn
   expect(shown.stdout).not.toMatch(/\u001b\[/)
 })
 
-test("sessions --json lists the session as idle", async () => {
+test("sessions --json lists the stopped session as interrupted, as wait reports it", async () => {
   const result = await tui.cli(["sessions", "--json"])
   expect(result.status).toBe(0)
   const sessions = (JSON.parse(result.stdout) as { sessions: { id: string; state: string }[] }).sessions
-  expect(sessions.find((session) => session.id === state.session)?.state).toBe("idle")
+  expect(sessions.find((session) => session.id === state.session)?.state).toBe("interrupted")
 })

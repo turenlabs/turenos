@@ -3,7 +3,7 @@ import { clean, emit, indented, type Run } from "./context"
 import { usage } from "./errors"
 import { whole } from "./options"
 import { requestsText } from "./requests"
-import { activeIDs, getSession, idArgument, pendingFor, stateOf, type Message } from "./state"
+import { activeIDs, endedState, getSession, idArgument, needsInput, pendingFor, stateOf, type Message } from "./state"
 
 const maxMessages = 2000
 
@@ -17,7 +17,11 @@ export async function show(run: Run) {
     activeIDs(run.connection),
     pendingFor(run.connection, sessionID),
   ])
-  const state = stateOf(running.has(sessionID), waiting)
+  const state = stateOf(
+    running.has(sessionID),
+    waiting,
+    running.has(sessionID) || needsInput(waiting) ? undefined : await endedState(run.connection, sessionID),
+  )
   const note = history.truncated
     ? run.values.all
       ? `[showing the newest ${maxMessages} messages; older ones are omitted]`
@@ -49,7 +53,10 @@ export async function show(run: Run) {
 
 async function latest(run: Run, sessionID: string, limit: number) {
   const page = await run.connection.client.messages.list({ sessionID, limit, order: "desc" })
-  return { messages: page.data.toReversed(), truncated: !!page.cursor.next }
+  // The server hands out a next cursor even when nothing older exists, so one message past it confirms.
+  const next = page.cursor.next
+  const older = next ? await run.connection.client.messages.list({ sessionID, limit: 1, cursor: next }) : undefined
+  return { messages: page.data.toReversed(), truncated: !!older?.data.length }
 }
 
 /** Follows the history cursor to the first message, oldest first, up to the cap. */
