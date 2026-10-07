@@ -625,7 +625,7 @@ def main():
         key(f"\x1b[<{button};{x + 1};{y + 1}M" + (f"\x1b[<{button};{x + 1};{y + 1}m" if button < 64 else ""), literal=True)
 
     def finder_position():
-        found = re.search(r"(\d+)/(\d+) ·", frame())
+        found = re.search(r"(\d+)/(\d+)(?: main sessions)? ·", frame())
         if not found:
             raise AssertionError("Finder selection/count footer is missing")
         return tuple(map(int, found.groups()))
@@ -1010,7 +1010,7 @@ def main():
                 key("Live", literal=True)
                 wait("[completed] Live worker")
                 plain = capture("roster-live-update")
-                check("Root-wide recent and active tasks" in plain and "Live" in plain, "open task roster refreshes without leaving picker")
+                check("Recent and active subagent tasks" in plain and "Live" in plain, "open task roster refreshes without leaving picker")
 
             with scenario("keyboard-workflow", width, height):
                 start = len(result["requests"])
@@ -1077,7 +1077,7 @@ def main():
                 writes = writes_since(start)
                 check(len(writes) == 1 and writes[0]["path"] == "/api/session/ses_review/command" and writes[0]["body"]["arguments"] == " recent changes" and writes[0]["body"].get("resume") is True and "delivery" not in writes[0]["body"], "server slash command preserves arguments and uses command endpoint", writes)
                 key("C-x")
-                wait("Root-wide recent and active tasks")
+                wait("Recent and active subagent tasks")
                 capture("subagent-browser")
                 check(len(writes_since(start)) == 1, "Ctrl+X opens subagent browser without sending")
 
@@ -1292,7 +1292,11 @@ def main():
                 query_row = next(i for i, line in enumerate(top.splitlines()) if FINDER in line)
                 left = top.splitlines()[query_row].index(FINDER)
                 right = top.splitlines()[query_row].index("│", left)
-                ordered = sorted((session for session in inventory if not session.get("parentID")), key=lambda session: session["location"]["directory"])
+                # The switcher leads with the folder of the session on screen (ses_review in DIRECTORY), then sorts by folder.
+                ordered = sorted(
+                    (session for session in inventory if not session.get("parentID")),
+                    key=lambda session: (session["location"]["directory"] != DIRECTORY, session["location"]["directory"]),
+                )
                 check("Finder child" not in top and "ses_review" in top and DIRECTORY in top, "picker keeps compact groups and exposes selected-session details under the list")
                 for _ in range(len(ordered)):
                     if finder_position()[0] == 1:
@@ -1582,7 +1586,7 @@ def main():
                 wait("Question 2 of 2")
                 key("Left")
                 wait("Question 1 of 2")
-                check("[x] New design" in frame(), "back navigation preserves the first answer")
+                check("(•) New design" in frame(), "back navigation preserves the first answer")
                 key("Right", "Right")
                 wait("Review answers")
                 plain = capture("question-review")
