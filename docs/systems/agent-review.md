@@ -110,11 +110,32 @@ The stock built-in `adversarial-review` agent is read-only and evidence-first. I
   cancellation, stranded work, and crash recovery when the changed behavior touches those boundaries;
 - retains a finding only when the actual code, repository rules, actionability, and a senior-engineer acceptance bar
   support it;
-- returns at most three findings, ordered by severity, and supplies a path, code behavior, and reproducible scenario
-  for each one.
+- returns every finding that survives validation, ordered by severity and marked confirmed or unproven, with a path,
+  code behavior, and reproducible scenario for each one. The reviewer does not drop lower-severity findings to shorten
+  the report; the parent decides which findings to act on.
 
 Style, best-practice, and design preferences are omitted unless they have a concrete behavioral consequence. If no
-defect is confirmed, the reviewer says so and identifies the boundaries it inspected.
+defect is confirmed, the reviewer says so and identifies the boundaries it inspected. A review that could not read the
+supplied regions, diff, or files reports itself as not performed and names the missing input; it does not return an
+empty finding set, because an empty set would read as a clean review.
+
+## Reviewer model
+
+The reviewer inherits the parent's model unless configuration sets one. Reviewer and writer models share blind spots,
+so a review of consequential changes is more useful when a different model, ideally from a different provider, reads
+the code. Set it per agent in configuration with the `provider/model` form:
+
+```json
+{
+  "agents": {
+    "adversarial-review": { "model": "anthropic/claude-opus-5-5" }
+  }
+}
+```
+
+This is an explicit choice, not a default: the intent contract, changed regions or diff, and verification evidence the
+parent supplies are sent to the configured provider. Do not point the reviewer at a second provider unless that provider
+may receive the repository content under review.
 
 ## Default authority
 
@@ -181,7 +202,8 @@ bun typecheck
 - The workflow is advisory and can be unavailable, ignored by the model, disabled, or changed by agent configuration.
   Tests verify the stock prompts and permissions, not defect-detection accuracy.
 - Review attribution depends on the parent supplying changed regions or a bounded diff.
-- Reviewer and writer models can share blind spots even when they run in separate Sessions.
+- Reviewer and writer models can share blind spots even when they run in separate Sessions; a configured reviewer
+  model reduces this only to the extent the models differ.
 - The intent contract persists only as ordinary prompt data; there is no dedicated structured intent snapshot, drift
   score, review revision, or production-calibrated recall measurement.
 - An empty finding set is not proof that the change is correct.
