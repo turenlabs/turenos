@@ -2,6 +2,7 @@ import type { CliRenderer } from "@opentui/core"
 import type { Dialogs } from "./dialogs"
 import { matchesKey } from "./keys"
 import { mentionInReply, openPanel, type Drafts } from "./panel"
+import { mentionText } from "./prompt-files"
 import type { Connection } from "./server"
 import type { DashboardState } from "./state"
 import { cycle, load, paint, showFile, type Review } from "./changes/review"
@@ -36,7 +37,12 @@ export function createChanges(
         : key.sequence === "m"
           ? () => cycle(review)
           : key.sequence === "@"
-            ? () => mentionInReply(panel, dialogs, session, review.files[panel.list.getSelectedIndex()]?.file, drafts)
+            ? () => {
+                const file = review.files[panel.list.getSelectedIndex()]?.file
+                if (file && !mentionText(file))
+                  return (panel.dialog.error.content = "This file's path cannot be mentioned. Esc close")
+                mentionInReply(panel, dialogs, session, file, drafts)
+              }
             : undefined
       if (!action) return false
       void action()

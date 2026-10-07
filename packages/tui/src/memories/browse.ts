@@ -11,8 +11,20 @@ import type { MemoriesContext, Memory, Place } from "./types"
 
 type Panel = NonNullable<ReturnType<typeof openPanel>>
 
-/** The open memory list; `armed` is the memory a first Ctrl+D has marked for deletion. */
-type View = { ctx: MemoriesContext; panel: Panel; place: Place; items: Memory[]; armed: string; note: string }
+/**
+ * The open memory list; `armed` is the memory a first Ctrl+D has marked for deletion until `until`,
+ * `deleting` is set while that request is in flight, and `loads` numbers list requests so only the latest paints.
+ */
+type View = {
+  ctx: MemoriesContext
+  panel: Panel
+  place: Place
+  items: Memory[]
+  armed?: { id: string; until: number }
+  deleting: boolean
+  loads: number
+  note: string
+}
 
 /** The hint fits two lines at any width; a note takes the first line and leaves one of hints. */
 function hints(view: View, note = "") {
@@ -37,7 +49,7 @@ export function browse(ctx: MemoriesContext, place: Place, back: () => void, not
   const panel = openPanel(ctx.renderer, ctx.dialogs, title)
   if (!panel) return
   panel.dialog.back = back
-  const view: View = { ctx, panel, place, items: [], armed: "", note }
+  const view: View = { ctx, panel, place, items: [], deleting: false, loads: 0, note }
   const reopen = (done?: string) => browse(ctx, place, back, done)
   panel.list.on("selectionChanged", () => describe(view))
   panel.dialog.key = (key) => {
@@ -45,7 +57,7 @@ export function browse(ctx: MemoriesContext, place: Place, back: () => void, not
     const action = matchesKey(key, "r", { ctrl: true })
       ? () => load(view)
       : matchesKey(key, "d", { ctrl: true })
-        ? () => remove(view)
+        ? () => remove(view, key.eventType === "repeat")
         : key.sequence === "a" && place.roomID
           ? () => edit(ctx, place, undefined, reopen)
           : key.sequence === "a"
@@ -63,9 +75,10 @@ export function browse(ctx: MemoriesContext, place: Place, back: () => void, not
 
 async function load(view: View) {
   const { ctx, panel, place } = view
+  const request = ++view.loads
   try {
     const list = await ctx.connection.client.memories.list({ wingID: place.wingID, roomID: place.roomID })
-    if (ctx.state.modal !== panel.dialog) return
+    if (ctx.state.modal !== panel.dialog || request !== view.loads) return
     view.items = list
       .filter((item) => !item.supersededBy)
       .toSorted((a, b) => Number(b.timeUpdated) - Number(a.timeUpdated))
@@ -83,7 +96,7 @@ async function load(view: View) {
 
 function describe(view: View) {
   const { panel, place } = view
-  view.armed = ""
+  view.armed = undefined
   const item = view.items[panel.list.getSelectedIndex()]
   if (!item)
     return panel.show(place.roomID ? "No memories here yet. a adds one." : "No memories yet. Open a room to add one.")
@@ -92,28 +105,34 @@ function describe(view: View) {
     new StyledText([
       fg(color.text)(`${display(item.title, 500)}\n`),
       fg(color.muted)(
-        `${item.kind} · by ${label(item.provenance.assertedBy, 40)} (${item.provenance.source})${anchor ? ` · ${label(anchor, 200)}` : ""}\n\n`,
+        `${item.kind} · by ${label(item.provenance.assertedBy, 40)} (${label(item.provenance.source, 40)})${anchor ? ` · ${label(anchor, 200)}` : ""}\n\n`,
       ),
       fg(color.text)(display(item.body, 48000)),
     ]),
   )
 }
 
-function remove(view: View) {
+function remove(view: View, repeat: boolean) {
   const { panel } = view
   const item = view.items[panel.list.getSelectedIndex()]
-  if (!item) return
-  if (view.armed !== item.id) {
-    view.armed = item.id
+  // Key auto-repeat is not a second press, and a delete in flight is not sent again.
+  if (!item || repeat || view.deleting) return
+  if (view.armed?.id !== item.id || view.armed.until < Date.now()) {
+    view.armed = { id: item.id, until: Date.now() + 2500 }
     hints(view, `Ctrl+D again deletes "${label(item.title, 40)}".`)
     return
   }
-  void view.ctx.connection.client.memories.remove({ drawerID: item.id, wingID: item.wingID }).then(
-    () => {
-      view.ctx.say(`Deleted "${label(item.title, 40)}".`)
-      hints(view, `Deleted "${label(item.title, 40)}".`)
-      return load(view)
-    },
-    (error: unknown) => hints(view, `! ${errorText(error)}`),
-  )
+  view.armed = undefined
+  view.deleting = true
+  void view.ctx.connection.client.memories
+    .remove({ drawerID: item.id, wingID: item.wingID })
+    .then(
+      () => {
+        view.ctx.say(`Deleted "${label(item.title, 40)}".`)
+        hints(view, `Deleted "${label(item.title, 40)}".`)
+        return load(view)
+      },
+      (error: unknown) => hints(view, `! ${errorText(error)}`),
+    )
+    .finally(() => (view.deleting = false))
 }

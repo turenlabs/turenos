@@ -21,7 +21,7 @@ export function agents(ctx: SettingsContext) {
           .filter((agent) => !agent.hidden)
           .toSorted((a, b) => a.id.localeCompare(b.id))
           .map((agent) => ({
-            name: `${label(agent.id, 40)} · ${agent.mode}`,
+            name: `${label(agent.id, 40)} · ${label(agent.mode, 20)}`,
             description: modelName(agent.model ?? saved.get(agent.id)),
             run: () => defaultModel(ctx, agent.id, catalog.models),
           })),
@@ -45,7 +45,7 @@ async function defaults(ctx: SettingsContext, where: string) {
 }
 
 function modelName(model: { providerID: string; id: string } | undefined) {
-  return model ? `${model.providerID}/${model.id}` : "Server default model"
+  return model ? `${label(model.providerID, 60)}/${label(model.id, 100)}` : "Server default model"
 }
 
 type CatalogModel = { providerID: string; id: string; name: string; providerName: string }
@@ -58,16 +58,18 @@ function defaultModel(ctx: SettingsContext, agentID: string, models: CatalogMode
     memory: ctx.memory,
     choices: models.map((model) => ({
       name: `${label(model.providerName, 30)} · ${label(model.name, 50)}`,
-      description: `${model.providerID}/${model.id}`,
+      description: `${label(model.providerID, 60)}/${label(model.id, 100)}`,
       run: () =>
         confirm(
           ctx,
           `Use ${model.name} for ${agentID}?`,
           "Changes this agent's default for every session.",
           async () => {
+            // The answer is the whole configuration, which may hold credentials: never read it.
             await ctx.connection.api("/global/config", {
               method: "PATCH",
               body: { agent: { [agentID]: { model: `${model.providerID}/${model.id}` } } },
+              discard: true,
             })
             ctx.say(`${agentID} now defaults to ${model.name}.`)
           },

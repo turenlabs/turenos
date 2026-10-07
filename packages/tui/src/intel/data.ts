@@ -35,10 +35,16 @@ async function advisories(intel: Intel, page: number) {
       optional(item.url, string)
       const severity = string(item.severity, 16)
       return {
-        title: `${TAG[severity] ?? severity.toUpperCase()} ${string(item.title, 2000)}`,
-        meta: `${string(item.id, 256)} · ${string(item.source, 256)} · ${date(item.publishedAt)}${typeof item.cvss === "number" ? ` · CVSS ${item.cvss}` : ""}`,
-        body: `${display((item.summary as string | undefined) ?? "", 8000)}${item.url ? `\n\n${label(item.url as string, 500)}` : ""}`,
-        tone: SEVERITY[severity] ?? color.muted,
+        title: label(
+          `${Object.hasOwn(TAG, severity) ? TAG[severity]! : severity.toUpperCase()} ${string(item.title, 2000)}`,
+          2000,
+        ),
+        meta: label(
+          `${string(item.id, 256)} · ${string(item.source, 256)} · ${date(item.publishedAt)}${typeof item.cvss === "number" ? ` · CVSS ${item.cvss}` : ""}`,
+          600,
+        ),
+        body: `${display((item.summary as string | undefined) ?? "", 8000)}${item.url ? `\n\n${link(item.url as string)}` : ""}`,
+        tone: Object.hasOwn(SEVERITY, severity) ? SEVERITY[severity]! : color.muted,
       }
     }),
   }
@@ -52,9 +58,12 @@ async function kev(intel: Intel, page: number) {
       const item = object(value)
       optional(item.url, string)
       return {
-        title: `${string(item.cveID, 64)} ${string(item.name, 2000)}`,
-        meta: `${string(item.vendor, 256)} ${string(item.product, 256)} · added ${date(item.dateAdded)}${typeof item.dueDate === "number" ? ` · remediate by ${date(item.dueDate)}` : ""}`,
-        body: item.url ? label(item.url as string, 500) : "",
+        title: label(`${string(item.cveID, 64)} ${string(item.name, 2000)}`, 2000),
+        meta: label(
+          `${string(item.vendor, 256)} ${string(item.product, 256)} · added ${date(item.dateAdded)}${typeof item.dueDate === "number" ? ` · remediate by ${date(item.dueDate)}` : ""}`,
+          600,
+        ),
+        body: item.url ? link(item.url as string) : "",
         tone: color.error,
       }
     }),
@@ -69,9 +78,9 @@ async function news(intel: Intel, page: number) {
       const item = object(value)
       optional(item.summary, string)
       return {
-        title: string(item.title, 2000),
-        meta: `${string(item.source, 256)} · ${date(item.publishedAt)}`,
-        body: `${display((item.summary as string | undefined) ?? "", 8000)}\n\n${label(string(item.url, 2000), 500)}`,
+        title: label(string(item.title, 2000), 2000),
+        meta: label(`${string(item.source, 256)} · ${date(item.publishedAt)}`, 300),
+        body: `${display((item.summary as string | undefined) ?? "", 8000)}\n\n${link(string(item.url, 2000))}`,
         tone: color.muted,
       }
     }),
@@ -80,4 +89,13 @@ async function news(intel: Intel, page: number) {
 
 function date(value: unknown) {
   return new Date(numeric(value)).toLocaleDateString()
+}
+
+/** A web link shown as the URL parser reads it (punycode host), or withheld when it could read as something else. */
+function link(value: string) {
+  // oxlint-disable-next-line no-control-regex -- control and invisible characters are the point of this check
+  const hidden = /[\s\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/
+  const url = hidden.test(value) ? null : URL.parse(value)
+  if (!url || !["http:", "https:"].includes(url.protocol) || /[^\x21-\x7e]/.test(url.hostname)) return "(link withheld)"
+  return label(url.href, 500)
 }

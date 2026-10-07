@@ -23,6 +23,8 @@ type View = {
   /** True while `/` has the keyboard: printable keys edit the filter instead of acting on a row. */
   typing: boolean
   note: string
+  /** True while a change is in flight, so a second one cannot be answered out of order. */
+  busy: boolean
 }
 
 /** `select` is the extension to land on and `note` what the form that returned here just did. */
@@ -31,7 +33,7 @@ export function openExtensions(ctx: ExtensionsContext, back?: () => void, select
   const root = back ? "Settings › Extensions" : "Extensions"
   const panel = openPanel(ctx.renderer, ctx.dialogs, root)
   if (!panel) return
-  const view: View = { ctx, panel, back, all: [], items: [], select, filter: "", typing: false, note }
+  const view: View = { ctx, panel, back, all: [], items: [], select, filter: "", typing: false, note, busy: false }
   // Esc clears a filter first by reopening the list without it; the next Esc goes back.
   panel.dialog.back = () => (view.filter ? openExtensions(ctx, back, chosen(view)?.id) : back?.())
   panel.list.on("selectionChanged", () => describe(view))
@@ -98,7 +100,7 @@ function show(view: View, list: Extension[], select?: string) {
       )),
   )
   panel.list.options = view.items.map((item) => ({
-    name: `${item.enabled ? "●" : "○"} ${label(item.name, 120)} · ${item.status}`,
+    name: `${item.enabled ? "●" : "○"} ${label(item.name, 120)} · ${label(item.status, 40)}`,
     description: "",
   }))
   panel.list.setSelectedIndex(
@@ -155,13 +157,17 @@ async function load(view: View) {
 
 async function update(view: View, item: Extension, change: Record<string, unknown>, done: string) {
   if (!item.mutable) return note(view, "This extension is managed and cannot change on this server.")
+  if (view.busy) return note(view, "Wait for the previous change to finish.")
+  view.busy = true
   try {
-    const result = extensionList(await patch(view.ctx, item, change))
+    const result = extensionList(await patch(view.ctx, item, change, crypto.randomUUID()))
     if (view.ctx.state.modal !== view.panel.dialog) return
     show(view, result, item.id)
     note(view, done)
   } catch (error) {
     note(view, `! ${errorText(error)}`)
+  } finally {
+    view.busy = false
   }
 }
 

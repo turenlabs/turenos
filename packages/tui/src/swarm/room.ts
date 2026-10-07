@@ -48,7 +48,8 @@ export async function load(v: SwarmView, reset = false) {
     if (reset) v.entries.length = 0
     v.entries.push(...page.entries.filter((entry) => entry.seq > v.head || reset))
     v.entries.splice(0, Math.max(0, v.entries.length - 500))
-    v.head = page.head
+    // `head` is the room's newest entry; after a full page, resume from the last one read instead.
+    v.head = page.hasMore ? (page.entries.at(-1)?.seq ?? page.head) : page.head
     paint(v, room)
   } catch (error) {
     if (v.state.modal !== v.panel.dialog) return
@@ -90,9 +91,11 @@ function paint(v: SwarmView, room: Room) {
 function entryText(entries: Entry[]) {
   return new StyledText(
     entries.flatMap((entry) => [
-      fg(color.muted)(`#${entry.seq} ${new Date(entry.timeCreated).toLocaleTimeString()} ${entry.kind} · `),
+      fg(color.muted)(`#${entry.seq} ${new Date(entry.timeCreated).toLocaleTimeString()} ${label(entry.kind, 32)} · `),
       fg(entry.actor.type === "human" ? color.accent : color.text)(`${label(entry.actor.name, 60)}\n`),
-      fg(KIND[entry.kind] ?? color.text)(`${display(entry.text, 4000)}\n\n`),
+      fg((Object.hasOwn(KIND, entry.kind) ? KIND[entry.kind] : undefined) ?? color.text)(
+        `${display(entry.text, 4000)}\n\n`,
+      ),
     ]),
   )
 }

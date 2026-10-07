@@ -66,14 +66,21 @@ export function styledPatch(patch: string, limit = 4000) {
 
 function patchLines(patch: string, limit = MAX_FILE_LINES, size = 64000): DiffLine[] {
   const all = display(patch, size).split("\n")
-  return [...all.slice(0, limit).map(toLine), ...note(all.length > limit, `[${all.length - limit} more patch line(s)]`)]
+  // `+++`/`---` are file headers only between a `diff` line (or the start) and the next hunk;
+  // inside a hunk they are an added `++x` or a removed `--x`.
+  let header = true
+  const lines = all.slice(0, limit).map((raw) => {
+    if (raw.startsWith("diff ")) header = true
+    else if (raw.startsWith("@@")) header = false
+    return toLine(raw, header)
+  })
+  return [...lines, ...note(all.length > limit, `[${all.length - limit} more patch line(s)]`)]
 }
 
-// `+++`/`---` are file headers, not additions and removals, so they are matched
-// before the single-character prefixes.
-function toLine(raw: string): DiffLine {
+function toLine(raw: string, header: boolean): DiffLine {
   const text = clean(raw, 2000).replace(/\t/g, "  ")
-  if (/^(\+\+\+|---|@@|diff |index |old mode|new mode|similarity |rename )/.test(text)) return { text, tone: "meta" }
+  if (/^(@@|diff |index |old mode|new mode|similarity |rename )/.test(text) || (header && /^(\+\+\+|---)/.test(text)))
+    return { text, tone: "meta" }
   if (text.startsWith("+")) return { text, tone: "added" }
   if (text.startsWith("-")) return { text, tone: "removed" }
   return { text, tone: "context" }

@@ -1,7 +1,10 @@
 import { TextRenderable } from "@opentui/core"
 import { identifier, object } from "../response-validation"
+import { refused } from "../server"
+import { display } from "../messages"
 import { label } from "../state"
 import { color } from "../theme"
+import { scheduleText } from "../chrome"
 import { markFocus } from "./focus"
 import { parseSchedule, scheduleInput, scheduleProblem } from "./schedule"
 import type { AutomationsContext, Loop } from "./types"
@@ -17,13 +20,21 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
   if (!dialog) return
   dialog.back = back
   const session = state.snapshot?.sessions.find((item) => item.id === state.selected)
-  const name = dialogs.input(dialog, "Name", loop?.name ?? "")
-  const prompt = dialogs.input(dialog, "Prompt the agent runs each time", loop?.prompt ?? "")
-  const schedule = dialogs.input(
-    dialog,
-    "Schedule: every 2h, or cron (0 9 * * 1-5)",
-    loop ? scheduleInput(loop) : "every 1h",
-  )
+  // Input fields write their text to the terminal as it is, so server text is stripped of control sequences first.
+  const name = dialogs.input(dialog, "Name", display(loop?.name ?? "", 512))
+  const prompt = dialogs.input(dialog, "Prompt the agent runs each time", display(loop?.prompt ?? "", 4096))
+  // The server reports an event-triggered automation with a placeholder interval; sending it would replace the trigger.
+  const schedule = loop?.eventTrigger
+    ? undefined
+    : dialogs.input(dialog, "Schedule: every 2h, or cron (0 9 * * 1-5)", loop ? scheduleInput(loop) : "every 1h")
+  if (loop?.eventTrigger)
+    dialog.form.add(
+      new TextRenderable(ctx.renderer, {
+        content: `Trigger: ${scheduleText(loop.schedule, loop.eventTrigger)}\nThe trigger is edited in the desktop.`,
+        fg: color.muted,
+        wrapMode: "word",
+      }),
+    )
   const folder = loop
     ? undefined
     : dialogs.input(
@@ -34,9 +45,13 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
   for (const field of [name, prompt, schedule, folder]) if (field) markFocus(field)
   let created = false
   dialog.submit = async () => {
-    const when = parseSchedule(schedule.value)
+    // An unchanged schedule is not sent again: that would restart its countdown.
+    const when =
+      schedule && (!loop || schedule.value.trim() !== scheduleInput(loop))
+        ? parseSchedule(schedule.value, loop?.schedule)
+        : {}
     if (!name.value.trim() || !prompt.value.trim()) throw new Error("Enter a name and a prompt.")
-    if (!when) throw new Error(scheduleProblem(schedule.value))
+    if (!when) throw new Error(scheduleProblem(schedule!.value))
     const fields = { name: name.value.trim(), prompt: prompt.value.trim(), ...when }
     if (loop) {
       await ctx.connection.client.loops.edit({ loopID: loop.id, ...fields })
@@ -46,7 +61,13 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
     if (created) throw new Error("The automation may already exist. Esc and check the Automations tab.")
     created = true
     const result = object(
-      await ctx.connection.client.loops.create({ ...fields, location: { directory: folder!.value } }),
+      await ctx.connection.client.loops
+        .create({ ...fields, location: { directory: folder!.value } })
+        .catch((error: unknown) => {
+          // A definite refusal admitted nothing, so corrected fields may be sent again.
+          if (refused(error)) created = false
+          throw error
+        }),
     )
     identifier(result.id)
     ctx.say("Automation created.")

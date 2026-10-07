@@ -1,6 +1,8 @@
 import { SelectRenderable, TextAttributes, TextareaRenderable, TextRenderable } from "@opentui/core"
 import type { KeyEvent } from "@opentui/core"
 import { matchesKey } from "../keys"
+import { display } from "../messages"
+import { refused } from "../server"
 import { color } from "../theme"
 import { KINDS, type MemoriesContext, type Memory, type Place } from "./types"
 
@@ -11,8 +13,9 @@ export function edit(ctx: MemoriesContext, place: Place, item: Memory | undefine
   dialogs.close(false)
   const dialog = dialogs.open(item ? "Edit memory" : "New memory", false, 30)
   if (!dialog) return
-  const title = dialogs.input(dialog, "Title", item?.title ?? "")
-  const body = bodyField(ctx, dialog, item?.body ?? "")
+  // Fields write their text to the terminal as it is, so server text is stripped of control sequences first.
+  const title = dialogs.input(dialog, "Title", display(item?.title ?? "", 4096))
+  const body = bodyField(ctx, dialog, display(item?.body ?? "", 48000))
   const kind = kindField(ctx, dialog, item?.kind)
   dialog.key = (key: KeyEvent) => {
     if (!kind.focused || (!matchesKey(key, "up") && !matchesKey(key, "down"))) return false
@@ -21,6 +24,7 @@ export function edit(ctx: MemoriesContext, place: Place, item: Memory | undefine
     return true
   }
   let done = ""
+  let created = false
   dialog.submit = async () => {
     if (!title.value.trim() || !body.plainText.trim()) throw new Error("Enter a title and a body.")
     const fields = { kind: KINDS[kind.getSelectedIndex()]!, title: title.value.trim(), body: body.plainText }
@@ -33,7 +37,16 @@ export function edit(ctx: MemoriesContext, place: Place, item: Memory | undefine
         roomID: item.roomID,
         ...fields,
       })
-    else await memories.create({ wingID: place.wingID, roomID: place.roomID!, ...fields })
+    else {
+      // A retry after an uncertain create must not add a second memory.
+      if (created) throw new Error("The memory may already exist. Esc and check the list.")
+      created = true
+      await memories.create({ wingID: place.wingID, roomID: place.roomID!, ...fields }).catch((error: unknown) => {
+        // A definite refusal admitted nothing, so corrected fields may be sent again.
+        if (refused(error)) created = false
+        throw error
+      })
+    }
     done = item ? "Memory saved." : "Memory added."
     ctx.say(done)
   }

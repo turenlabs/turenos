@@ -51,7 +51,7 @@ export function createInspect(
     if (!session || !dialogs.navigate()) return
     const panel = openPanel(renderer, dialogs, `Trace · ${label(session.title || session.id, 60)}`)
     if (!panel) return
-    const view: TraceView = { state, connection, session, panel, events: [], cursor: {} }
+    const view: TraceView = { state, connection, session, panel, events: [], cursor: {}, request: 0 }
     panel.list.on("selectionChanged", () => describe(view))
     panel.dialog.key = (key) => pageKey(view, key.sequence)
     void load(view)

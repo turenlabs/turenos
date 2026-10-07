@@ -7,13 +7,13 @@ import type { Extension } from "./types"
 export function details(item: Extension) {
   const missing = item.contributions.flatMap((contribution) =>
     contribution.secrets
-      .filter((secret) => secret.required && !item.secretsSet[secret.id])
+      .filter((secret) => secret.required && !(Object.hasOwn(item.secretsSet, secret.id) && item.secretsSet[secret.id]))
       .map((secret) => secret.label),
   )
   return new StyledText([
     fg(color.text)(`${display(item.name, 200)}\n`),
     fg(color.muted)(
-      `${item.enabled ? "On" : "Off"} · ${item.status}${item.mutable ? "" : " · managed (read-only here)"}\n\n`,
+      `${item.enabled ? "On" : "Off"} · ${label(item.status, 40)}${item.mutable ? "" : " · managed (read-only here)"}\n\n`,
     ),
     fg(color.text)(`${display(item.description, 4000)}\n\n`),
     ...(item.detail ? [fg(color.warning)(`${display(item.detail, 2000)}\n\n`)] : []),
@@ -23,7 +23,7 @@ export function details(item: Extension) {
     fg(color.muted)("PROVIDES\n"),
     ...item.contributions.map((contribution) =>
       fg(color.text)(
-        `  ${contribution.type} · ${label(contribution.name, 60)}${contribution.authentication && contribution.authentication !== "none" ? ` · sign-in: ${contribution.authentication}` : ""}\n    ${label(contribution.description, 200)}\n`,
+        `  ${label(contribution.type, 40)} · ${label(contribution.name, 60)}${contribution.authentication && contribution.authentication !== "none" ? ` · sign-in: ${label(contribution.authentication, 40)}` : ""}\n    ${label(contribution.description, 200)}\n`,
       ),
     ),
   ])

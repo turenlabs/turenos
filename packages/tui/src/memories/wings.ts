@@ -17,7 +17,7 @@ export function openWings(ctx: MemoriesContext, back?: () => void, note = "") {
     picker.set([
       ...wings.map((wing) => ({
         name: label(wing.name, 60),
-        description: `${wing.kind} · ${label(wing.key, 80)}`,
+        description: `${label(wing.kind, 32)} · ${label(wing.key, 80)}`,
         run: () => rooms(ctx, { wingID: wing.id, name: wing.name }, () => void openWings(ctx, back)),
       })),
       {
@@ -84,7 +84,7 @@ function rooms(ctx: MemoriesContext, wing: Place, back: () => void, note = "") {
         { name: "All rooms", run: () => browse(ctx, wing, () => void rooms(ctx, wing, back)) },
         ...list.map((room) => ({
           name: label(room.name, 60),
-          description: room.slug,
+          description: label(room.slug, 60),
           run: () => browse(ctx, { ...wing, roomID: room.id, room: room.name }, () => void rooms(ctx, wing, back)),
         })),
       ])

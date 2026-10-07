@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { assistant, dashboard, session } from "./support"
+import { assistant, dashboard, session, until } from "./support"
 
 const catalog = {
   all: [
@@ -26,6 +26,10 @@ async function open(routes: Parameters<typeof dashboard>[0]) {
   const app = await dashboard(routes)
   await app.screen("main task")
   app.view.mockInput.pressEnter()
+  // Opening a session opens its reply editor; Esc leaves it so `m` is the model shortcut.
+  await app.screen("Typing")
+  app.view.mockInput.pressEscape()
+  await until(() => !app.view.captureCharFrame().includes("Typing"))
   return app
 }
 

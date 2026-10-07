@@ -29,6 +29,8 @@ export type FileBrowser = {
   folder: string
   entries: Entry[]
   request: number
+  /** Previews count separately so one cannot discard a folder listing, or a listing a preview. */
+  preview: number
 }
 
 export async function listFolder(b: FileBrowser, path: string, select = "") {
@@ -58,7 +60,7 @@ export async function listFolder(b: FileBrowser, path: string, select = "") {
     void preview(b)
   } catch (error) {
     if (version !== b.request || state.modal !== b.panel.dialog) return
-    b.panel.show(`Could not list ${b.folder || "this folder"}: ${errorText(error)}`)
+    b.panel.show(`Could not list ${path ? label(path, 300) : "this folder"}: ${errorText(error)}`)
   }
 }
 
@@ -69,22 +71,22 @@ function fitPath(b: FileBrowser) {
 
 export async function preview(b: FileBrowser) {
   const { state, connection } = b.ctx
+  // Counted before the early returns, so a file preview still in flight cannot overwrite them.
+  const version = ++b.preview
   const entry = b.entries[b.panel.list.getSelectedIndex()]
   if (!entry) return b.panel.show(b.folder ? "Empty folder." : "No files.")
   if (entry.type === "directory") return b.panel.show(`${label(entry.path, 300)}/\n\nEnter opens this folder.`)
-  const version = ++b.request
   b.panel.show(`Loading ${label(entry.path, 300)}…`)
   try {
     const file = object(await connection.api("/file/content", { directory: b.directory, query: { path: entry.path } }))
-    if (version !== b.request || state.modal !== b.panel.dialog) return
+    if (version !== b.preview || state.modal !== b.panel.dialog) return
     choice(file.type, ["text", "binary"])
     optional(file.mimeType, string)
-    const text = string(file.content)
     if (file.type === "binary")
       return b.panel.show(`Binary file${file.mimeType ? ` (${label(file.mimeType as string, 100)})` : ""}.`)
-    b.panel.show(numbered(text))
+    b.panel.show(numbered(string(file.content)))
   } catch (error) {
-    if (version !== b.request || state.modal !== b.panel.dialog) return
+    if (version !== b.preview || state.modal !== b.panel.dialog) return
     b.panel.show(`Could not read ${label(entry.path, 300)}: ${errorText(error)}`)
   }
 }

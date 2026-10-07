@@ -203,15 +203,16 @@ test("a message draft is only announced when there is one", async () => {
   const { view, screen } = await dashboard({})
   await screen("main task")
   view.mockInput.pressKey("f")
-  await screen("Your message")
+  await screen("Typing")
   view.mockInput.pressEscape()
-  for (let attempt = 0; attempt < 100 && view.captureCharFrame().includes("Your message"); attempt++) {
+  for (let attempt = 0; attempt < 100 && view.captureCharFrame().includes("Typing"); attempt++) {
     await view.renderOnce()
     await Bun.sleep(10)
   }
-  expect(view.captureCharFrame()).not.toContain("Your message")
+  expect(view.captureCharFrame()).not.toContain("Typing")
   expect(view.captureCharFrame()).not.toContain("Message draft kept")
   view.mockInput.pressKey("f")
+  await screen("Typing")
   await view.mockInput.typeText("half a thought")
   view.mockInput.pressEscape()
   await screen("Message draft kept")

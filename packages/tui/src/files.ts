@@ -36,6 +36,7 @@ export function createFiles(
       folder: "",
       entries: [],
       request: 0,
+      preview: 0,
     }
     panel.list.on("selectionChanged", () => void preview(browser))
     panel.dialog.key = (key) => {

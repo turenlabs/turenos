@@ -23,9 +23,19 @@ export function diffList(value: unknown): FileDiff[] {
     const entry = object(item)
     if (entry.file === undefined) return []
     optional(entry.status, (status) => choice(status, ["added", "deleted", "modified"]))
+    const file = string(entry.file, 4096)
+    // Paths go into the reply as `@path` and back to the server as relative queries; anything else is dropped.
+    // oxlint-disable-next-line no-control-regex -- control characters are the point of this check
+    if (
+      !file ||
+      file.startsWith("/") ||
+      file.split(/[\\/]/).includes("..") ||
+      /[\u0000-\u001f\u007f-\u009f]/.test(file)
+    )
+      return []
     return [
       {
-        file: string(entry.file, 4096),
+        file,
         patch: entry.patch === undefined ? undefined : string(entry.patch),
         additions: numeric(entry.additions),
         deletions: numeric(entry.deletions),

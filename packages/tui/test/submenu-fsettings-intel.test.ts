@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
-import { cleanup, dashboard, terminal, turen } from "./support"
+import { cleanup, dashboard, terminal, turen, until } from "./support"
 import { connect } from "../src/server"
 import { mountDashboard } from "../src"
 
@@ -52,6 +52,10 @@ test("at 60 columns the CVE id stays whole and the hint fits two lines", async (
   const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url)
   cleanup.push(app.dispose)
   await app.ready
+  // Below 90 columns the transcript has focus, so the reply editor is open until Esc.
+  await screen("Reply to main task")
+  view.mockInput.pressEscape()
+  await until(() => !view.captureCharFrame().includes("Reply to main task"))
   view.mockInput.pressKey("I")
   const frame = await screen("Heap overflow")
   expect(frame).toContain("CVE-2025-6917")

@@ -2,7 +2,7 @@ import { TextRenderable, type CliRenderer } from "@opentui/core"
 import type { Dialogs } from "../dialogs"
 import { openSection, type Choice, type Picker } from "../picker"
 import type { Connection } from "../server"
-import type { DashboardState } from "../state"
+import { label, type DashboardState } from "../state"
 import { color } from "../theme"
 
 export type SettingsHooks = {
@@ -62,7 +62,7 @@ export function section<T>(
     (value, picker) => {
       fill(value, picker)
       if (!ctx.notice) return
-      picker.text.content = `${ctx.notice}\n${picker.text.plainText}`
+      picker.text.content = `${label(ctx.notice, 300)}\n${picker.text.plainText}`
       picker.fit()
       ctx.notice = ""
     },

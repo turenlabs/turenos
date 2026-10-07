@@ -3,6 +3,7 @@ import type { Loop } from "./types"
 const UNIT: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 }
 const EVERY = /^(?:every\s+)?(\d+)\s*(s|sec|secs|m|min|mins|h|hr|hrs|hour|hours|d|day|days)$/
 const MINIMUM = 60
+const MAXIMUM = 366 * 86400
 const NAMES = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
 const FIELDS = [
@@ -15,17 +16,22 @@ const FIELDS = [
 
 /**
  * "every 15m", "every 2h", "30m", or a five-field cron expression such as "0 9 * * 1-5", which runs
- * in this computer's time zone.
+ * in this computer's time zone. An edit that leaves a cron expression as it was keeps the time zone
+ * it was created in, which can differ from this computer's.
  */
-export function parseSchedule(text: string) {
+export function parseSchedule(text: string, current?: Loop["schedule"]) {
   const value = text.trim().toLowerCase()
   const every = EVERY.exec(value)
   if (every) {
     const intervalSeconds = Number(every[1]) * UNIT[every[2]![0]!]!
-    return intervalSeconds >= MINIMUM ? { intervalSeconds } : undefined
+    return intervalSeconds >= MINIMUM && intervalSeconds <= MAXIMUM ? { intervalSeconds } : undefined
   }
-  if (validCron(value)) return { cronExpression: value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }
-  return undefined
+  if (!validCron(value)) return undefined
+  const unchanged = current?.type === "cron" && current.expression.toLowerCase() === value
+  return {
+    cronExpression: value,
+    timezone: unchanged ? current.timezone : Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }
 }
 
 /** Why `text` is not a schedule, in words the form can show as it is. */
@@ -33,6 +39,7 @@ export function scheduleProblem(text: string) {
   const value = text.trim().toLowerCase()
   const every = EVERY.exec(value)
   if (every && Number(every[1]) * UNIT[every[2]![0]!]! < MINIMUM) return "The shortest interval is every 1m."
+  if (every) return "The longest interval is every 366d."
   if (/^(\S+\s+){4}\S+$/.test(value))
     return "That cron expression is not valid. Use five fields: minute hour day month weekday."
   return "Use a schedule like every 30m, every 1d, or a five-field cron expression."

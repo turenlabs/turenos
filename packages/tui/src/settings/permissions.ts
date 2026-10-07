@@ -3,6 +3,12 @@ import { errorText } from "../server"
 import { label } from "../state"
 import { confirm, section, trail, type SettingsContext } from "./shared"
 
+const CHECKS = {
+  unknown: "The server did not report this; the toggle is unavailable",
+  on: "Tools ask before acting unless a rule allows them",
+  off: "Tools act without asking",
+}
+
 export function permissions(ctx: SettingsContext) {
   const { connection } = ctx
   const reopen = () => void permissions(ctx)
@@ -11,7 +17,9 @@ export function permissions(ctx: SettingsContext) {
     trail("Permissions"),
     () => Promise.all([connection.api("/global/permission-checks").then(object), savedRules(ctx)]),
     ([checks, saved], picker) => {
-      const enforced = checks.enforced === true
+      // A missing or malformed field must not read as "off": the toggle stays unavailable until the server says.
+      const enforced = typeof checks.enforced === "boolean" ? checks.enforced : undefined
+      const status = enforced === undefined ? "unknown" : enforced ? "on" : "off"
       picker.text.content = `Saved rules come from "Allow always". ${saved.length ? "Enter on a rule removes it." : "None saved."}`
       const setChecks = async () => {
         await connection.api("/global/permission-checks", { method: "PUT", body: { enforced: !enforced } })
@@ -25,18 +33,20 @@ export function permissions(ctx: SettingsContext) {
         })
       picker.set([
         {
-          name: `Permission checks: ${enforced ? "on" : "off"}`,
-          description: enforced ? "Tools ask before acting unless a rule allows them" : "Tools act without asking",
+          name: `Permission checks: ${status}`,
+          description: CHECKS[status],
           run: () =>
-            enforced
-              ? confirm(
-                  ctx,
-                  "Turn permission checks off?",
-                  "Agents on this server will run tools without asking.",
-                  setChecks,
-                  reopen,
-                )
-              : turnOn(),
+            enforced === undefined
+              ? reopen()
+              : enforced
+                ? confirm(
+                    ctx,
+                    "Turn permission checks off?",
+                    "Agents on this server will run tools without asking.",
+                    setChecks,
+                    reopen,
+                  )
+                : turnOn(),
         },
         ...saved.map((rule) => ({
           name: `${label(rule.action, 30)} · ${label(rule.resource, 80)}`,
@@ -45,7 +55,7 @@ export function permissions(ctx: SettingsContext) {
             confirm(
               ctx,
               "Remove this saved rule?",
-              `${rule.action} ${rule.resource} will ask again.`,
+              `${label(rule.action, 30)} ${label(rule.resource, 200)} will ask again.`,
               async () => {
                 await connection.client.permissions.removeSaved({ id: rule.id })
                 ctx.say("Saved rule removed.")

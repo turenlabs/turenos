@@ -25,17 +25,19 @@ export function feeds(ctx: IntelContext, back: () => void, note = "") {
     { title: "Intel › Feeds", back, memory: ctx.memory, keys: "↑↓ choose · Enter toggle · Esc back" },
     intel.feeds,
     (list, picker) => {
-      picker.text.content = `${note ? `${note}\n` : ""}Enter turns a feed on or off. Feeds are polled on the server every six hours.`
+      picker.text.content = `${note ? `${label(note, 300)}\n` : ""}Enter turns a feed on or off. Feeds are polled on the server every six hours.`
       picker.set(
         list.map((feed) => ({
-          name: `${feed.enabled ? "●" : "○"} ${label(feed.name, 60)} · ${feed.kind}`,
+          name: `${feed.enabled ? "●" : "○"} ${label(feed.name, 60)} · ${label(feed.kind, 32)}`,
           description: label(feed.url, 120),
           run: async () => {
             const result = await intel.feedUpdate({ feedID: feed.id, enabled: !feed.enabled }).then(
-              () => `${feed.name} turned ${feed.enabled ? "off" : "on"}.`,
+              () => `${label(feed.name, 60)} turned ${feed.enabled ? "off" : "on"}.`,
               (error: unknown) => `! ${errorText(error)}`,
             )
             ctx.say(result, result.startsWith("!"))
+            // Whatever the user opened while the request ran stays open, with its draft.
+            if (ctx.state.modal) return
             await feeds(ctx, back, result)
           },
         })),

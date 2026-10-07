@@ -17,17 +17,20 @@ export type TraceView = {
   panel: Panel
   events: TraceEvent[]
   cursor: { previous?: string; next?: string }
+  /** The latest page request; an older one that answers later must not paint over it. */
+  request: number
 }
 
 export async function load(t: TraceView, page?: string) {
   const { panel } = t
+  const version = ++t.request
   try {
     const result = await t.connection.client.sessions.replayHistory({
       sessionID: t.session.id,
       limit: 200,
       cursor: page,
     })
-    if (t.state.modal !== panel.dialog) return
+    if (version !== t.request || t.state.modal !== panel.dialog) return
     t.events = array(result.data, 1000).map((value) => {
       const event = object(value)
       return {
@@ -43,7 +46,7 @@ export async function load(t: TraceView, page?: string) {
     panel.dialog.error.content = KEYS
     describe(t)
   } catch (error) {
-    if (t.state.modal === panel.dialog) panel.show(`Trace unavailable: ${errorText(error)}`)
+    if (version === t.request && t.state.modal === panel.dialog) panel.show(`Trace unavailable: ${errorText(error)}`)
   }
 }
 
@@ -58,7 +61,9 @@ function paintRows(t: TraceView) {
 export function describe(t: TraceView) {
   const event = t.events[t.panel.list.getSelectedIndex()]
   t.panel.show(
-    event ? `${event.type}\n${event.id}\n\n${display(JSON.stringify(event.data, null, 2) ?? "", 64000)}` : "No events.",
+    event
+      ? `${label(event.type, 256)}\n${event.id}\n\n${display(JSON.stringify(event.data, null, 2) ?? "", 64000)}`
+      : "No events.",
   )
 }
 

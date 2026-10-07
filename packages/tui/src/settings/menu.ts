@@ -38,7 +38,7 @@ export function openMenu(ctx: SettingsContext) {
         : []),
       {
         name: "Appearance",
-        description: "Motion and transcript display on this computer",
+        description: "Motion, alerts and transcript display on this computer",
         run: () => appearance(ctx),
       },
     ],

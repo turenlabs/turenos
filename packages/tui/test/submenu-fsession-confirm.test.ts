@@ -14,25 +14,25 @@ async function gone(view: { renderOnce: () => Promise<void>; captureCharFrame: (
 
 const interrupt = { "POST /api/session/ses_main/interrupt": () => new Response(null, { status: 204 }) }
 
-test("the stop panel names its verb, keeps it after a wrong word and clears the error once the text changes", async () => {
-  const { server, view, screen, confirm } = await dashboard(interrupt)
+test("the kill panel names its verb, keeps it after a wrong word and clears the error once the text changes", async () => {
+  const { server, view, screen, palette, confirm } = await dashboard(interrupt)
   await screen("main task")
-  view.mockInput.pressKey("x")
-  const panel = await screen("Stop session")
-  expect(panel).toContain("Ctrl+S stop")
+  await palette("Kill session")
+  const panel = await screen("Ctrl+S kill")
+  expect(panel).toContain("Kill session")
   expect(panel).not.toContain("Ctrl+S Send")
-  await confirm("sto")
-  const failed = await screen("Type stop to confirm.")
-  expect(failed).toContain("Ctrl+S stop")
+  await confirm("kil")
+  const failed = await screen("Type kill to confirm.")
+  expect(failed).toContain("Ctrl+S kill")
   expect(failed).not.toContain("Ctrl+S retry")
   expect(server.sent("/api/session/ses_main/interrupt")).toHaveLength(0)
-  await view.mockInput.typeText("p")
+  await view.mockInput.typeText("l")
   await view.renderOnce()
   const corrected = view.captureCharFrame()
-  expect(corrected).not.toContain("Type stop to confirm.")
-  expect(corrected).toContain("Ctrl+S stop")
+  expect(corrected).not.toContain("Type kill to confirm.")
+  expect(corrected).toContain("Ctrl+S kill")
   view.mockInput.pressKey("s", { ctrl: true })
-  await screen("Session interrupted.")
+  await screen("Session killed.")
   expect(server.sent("/api/session/ses_main/interrupt")).toHaveLength(1)
 })
 

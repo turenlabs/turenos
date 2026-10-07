@@ -12,11 +12,11 @@ function brief(value: string, limit: number) {
 export function toolText(snapshot: Record<string, unknown>, modelNote = "") {
   const visible = array(snapshot.visible, 2000).map((value) => {
     const tool = object(value)
-    return `  ${label(string(tool.id, 256), 40)} · ${string(tool.source, 32)} — ${brief(typeof tool.description === "string" ? tool.description : "", 100)}`
+    return `  ${label(string(tool.id, 256), 40)} · ${label(string(tool.source, 32), 32)} — ${brief(typeof tool.description === "string" ? tool.description : "", 100)}`
   })
   const servers = array(snapshot.mcpServers, 256).map((value) => {
     const server = object(value)
-    return `  ${label(string(server.id, 256), 40)} · ${string(server.status, 32)}${typeof server.detail === "string" ? ` — ${brief(server.detail, 120)}` : ""}`
+    return `  ${label(string(server.id, 256), 40)} · ${label(string(server.status, 32), 32)}${typeof server.detail === "string" ? ` — ${brief(server.detail, 120)}` : ""}`
   })
   const excluded = array(snapshot.exclusions, 2000).map((value) => {
     const item = object(value)

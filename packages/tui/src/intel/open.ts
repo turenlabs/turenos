@@ -17,6 +17,8 @@ type View = {
   panel: Panel
   mode: Mode
   page: number
+  /** Pages in the list as last loaded; `]` stops here. */
+  pages: number
   items: Item[]
   request: number
   /** The last action's result, shown above a short hint until the next one. */
@@ -46,7 +48,7 @@ export function openIntel(ctx: IntelContext) {
   if (!ctx.dialogs.navigate()) return
   const panel = openPanel(ctx.renderer, ctx.dialogs, `Intel › ${TITLES.advisories}`)
   if (!panel) return
-  const view: View = { ctx, panel, mode: "advisories", page: 1, items: [], request: 0, note: "" }
+  const view: View = { ctx, panel, mode: "advisories", page: 1, pages: 1, items: [], request: 0, note: "" }
   panel.list.on("selectionChanged", () => describe(view))
   panel.dialog.key = (key) => {
     const action = matchesKey(key, "r", { ctrl: true })
@@ -73,18 +75,20 @@ export function openIntel(ctx: IntelContext) {
   void load(view)
 }
 
-async function load(view: View) {
+/** A page that fails to load is not kept: `view.page` moves only once its items arrive. */
+async function load(view: View, page = view.page) {
   const { ctx, panel } = view
   const version = ++view.request
   view.note = ""
   panel.dialog.frame.title = ` Intel › ${TITLES[view.mode]} `
   panel.heading.content = `${TITLES[view.mode]} · loading…`
   try {
-    const result = await fetchPage(ctx.connection.client["server.intel"], view.mode, view.page)
+    const result = await fetchPage(ctx.connection.client["server.intel"], view.mode, page)
     if (version !== view.request || ctx.state.modal !== panel.dialog) return
     view.items = result.items
-    const pages = Math.max(1, Math.ceil(result.total / PAGE))
-    panel.heading.content = `${TITLES[view.mode]} · page ${view.page} of ${pages} · ${result.total} items`
+    view.page = page
+    view.pages = Math.max(1, Math.ceil(result.total / PAGE))
+    panel.heading.content = `${TITLES[view.mode]} · page ${view.page} of ${view.pages} · ${result.total} items`
     panel.list.options = view.items.map((item) => ({ name: label(item.title, 80), description: "" }))
     panel.list.setSelectedIndex(0)
     paintHints(view)
@@ -126,6 +130,6 @@ async function poll(view: View) {
 }
 
 function turn(view: View, step: number) {
-  view.page = Math.max(1, view.page + step)
-  return load(view)
+  const page = Math.min(view.pages, Math.max(1, view.page + step))
+  if (page !== view.page) return load(view, page)
 }
