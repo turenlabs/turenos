@@ -83,6 +83,7 @@ function createContext(
       renderingList: false,
       quitArmedUntil: 0,
       quitDiscards: false,
+      shortcutsFor: "",
       quitTimer: undefined,
       disposed: false,
       views: new Map(),

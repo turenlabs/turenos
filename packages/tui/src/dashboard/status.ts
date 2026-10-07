@@ -8,7 +8,8 @@ import { renderActionRow } from "./actions"
 import type { DashboardContext } from "./context"
 
 export function resize(d: DashboardContext) {
-  d.ui.resize()
+  d.run.shortcutsFor = shortcutsKey(d)
+  d.ui.resize(quitArmed(d))
   renderTabs(d)
   renderSidebarTitle(d)
   renderStatus(d)
@@ -36,6 +37,8 @@ export function renderActivity(d: DashboardContext) {
 }
 
 export function renderStatus(d: DashboardContext) {
+  // The shortcuts are painted by the layout pass, so a change to what they depend on repaints through it.
+  if (shortcutsKey(d) !== d.run.shortcutsFor) return resize(d)
   d.ui.heading.content = d.renderer.width < 90 ? "TurenOS" : headerLeft(d.state.snapshot)
   d.ui.running.content = headerRight(d.state, d.state.snapshot)
   d.ui.running.visible = d.ui.running.plainText.length > 0
@@ -104,9 +107,9 @@ export function clearTitle(d: DashboardContext) {
 
 /**
  * Fits the top bar: the heading and the running state always stay. The address shortens first
- * (host:port, then the port); only then do buttons go, lowest value first, and the address does not
- * grow back, so a narrower terminal never shows more than a wider one. An address that fits in no form
- * is left out rather than cut: the dot still says whether the server answers.
+ * (host:port, then the port); only then do buttons go, lowest value first, and the port outlasts every
+ * button, so a narrower terminal never shows more than a wider one. An address whose port does not fit
+ * even alone is left out rather than cut: the dot still says whether the server answers.
  */
 function renderServer(d: DashboardContext) {
   const ui = d.ui
@@ -138,11 +141,12 @@ function renderServer(d: DashboardContext) {
   ]
   const attempts = [
     ...sets.flatMap((nodes) => [...new Set([text, address])].map((tier) => ({ tier, nodes }))),
-    ...(port && port !== address ? sets.map((nodes) => ({ tier: port, nodes })) : []),
+    // The port is the last form of the address to go, so it may also take every button's place.
+    ...(port ? [...sets, []].map((nodes) => ({ tier: port, nodes })) : []),
   ]
   const whole = attempts.find((attempt) => attempt.tier.length <= room - others(attempt.nodes))
   for (const node of shown) {
-    // Out of room even for the port: drop every button, never the heading or the running state.
+    // The chosen form dropped this button (the port alone drops them all); the heading and running state stay.
     if (!whole?.nodes.includes(node)) node.visible = false
   }
   ui.server.content = t`${dot(d.state.connected ? "●" : "○")} ${whole?.tier ?? ""}`
@@ -183,8 +187,18 @@ function dropStaleNotice(d: DashboardContext) {
 
 /** What the next quit key does while a quit is armed, so the footer says it as well as the status line. */
 export function quitPrompt(d: DashboardContext) {
-  if (!(Date.now() < d.run.quitArmedUntil)) return ""
+  if (!quitArmed(d)) return ""
   return `${d.state.modal ? "Ctrl+C" : "q"} again quits${d.run.quitDiscards ? " and discards" : ""}`
+}
+
+function quitArmed(d: DashboardContext) {
+  return Date.now() < d.run.quitArmedUntil
+}
+
+/** What the footer shortcuts depend on besides the layout: an armed quit and, on a narrow row, the status text beside them. */
+function shortcutsKey(d: DashboardContext) {
+  const narrow = d.renderer.width < layout.narrowBreakpoint
+  return `${quitArmed(d)}:${narrow ? statusline(d.state, d.state.snapshot, d.renderer.width).length : 0}`
 }
 
 export function renderTabs(d: DashboardContext) {

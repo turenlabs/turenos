@@ -1,13 +1,13 @@
 import type { CliRenderer, Renderable } from "@opentui/core"
 import { color, layout } from "../theme"
 import type { DashboardState } from "../state"
-import { footerShortcuts } from "../chrome"
+import { footerShortcuts, statusline } from "../chrome"
 import { folderContains } from "../working-folders"
 import { sizeFloating } from "../dialogs/size"
 import type { LayoutParts } from "./parts"
 
 /** Re-applies size- and modal-dependent visibility and dimensions to every part. */
-export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts: LayoutParts) {
+export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts: LayoutParts, quitArmed = false) {
   const narrow = renderer.width < layout.narrowBreakpoint
   resizeSizeNotice(renderer, state, parts)
   resizeTopbar(state, parts)
@@ -19,7 +19,16 @@ export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts
   parts.footerRow.visible = !state.modal || !!state.modal.composer
   // Ctrl+C stops the selected session's running turn before it quits, so the hint follows that.
   const running = !!state.selected && Object.hasOwn(state.snapshot?.active ?? {}, state.selected)
-  parts.shortcuts.content = footerShortcuts(renderer.width, parts.sidebar.visible, !!state.modal?.composer, running)
+  // Narrow footers share the row: the shortcuts take what the status text on the left leaves.
+  const left = statusline(state, state.snapshot, renderer.width).length
+  parts.shortcuts.content = footerShortcuts(
+    renderer.width,
+    parts.sidebar.visible,
+    !!state.modal?.composer,
+    running,
+    quitArmed,
+    left,
+  )
 }
 
 function resizeSizeNotice(renderer: CliRenderer, state: DashboardState, parts: LayoutParts) {

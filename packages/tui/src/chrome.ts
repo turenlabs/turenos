@@ -124,25 +124,41 @@ function agentModel(state: DashboardState, snapshot: Snapshot | undefined) {
   return `${label(agent ?? "server default", 40)} · ${model ? label(`${model.providerID}/${model.id}${model.variant ? ` (${model.variant})` : ""}`, 80) : "server default"}`
 }
 
-/** The footer's right side. Narrow widths budget for a status text of about 26 columns on the left. */
-export function footerShortcuts(width: number, sidebarVisible: boolean, typing = false, running = false) {
+/**
+ * The footer's right side, whole entries only. `armed` is a quit waiting for its second press: the quit entry
+ * then says what the press does. Narrow widths share the row with the status text on the left, `left` columns
+ * (about 26 at most); `? help` outlasts every entry but the two the narrow footer was built around.
+ */
+export function footerShortcuts(
+  width: number,
+  sidebarVisible: boolean,
+  typing = false,
+  running = false,
+  armed = false,
+  left = 26,
+) {
   const sidebar = sidebarVisible ? "Tab pane" : "b sidebar"
+  const quit = armed ? "q again quits" : "q quit"
   // While typing, letters go into the reply, so only the keys that work from the editor are named.
   const sets = typing
     ? [
-        ["Esc shortcuts", "Ctrl+P commands", running ? "Ctrl+C stop" : "Ctrl+C quit"],
+        ["Esc shortcuts", "Ctrl+P commands", armed ? "Ctrl+C again quits" : running ? "Ctrl+C stop" : "Ctrl+C quit"],
         ["Esc shortcuts", "Ctrl+P commands"],
         ["Esc shortcuts", "Ctrl+P"],
         ["Esc shortcuts"],
       ]
     : [
-        ["Ctrl+P commands", sidebar, "? help", "q quit"],
-        ["Ctrl+P commands", "? help", "q quit"],
+        ["Ctrl+P commands", sidebar, "? help", quit],
+        ["Ctrl+P commands", sidebar, "? help"],
+        ["Ctrl+P commands", "? help", quit],
         ["Ctrl+P commands", sidebar],
-        ["Ctrl+P commands", "q quit"],
+        [sidebar, "? help", quit],
+        ["Ctrl+P commands", "? help"],
+        [sidebar, "? help"],
+        ["? help"],
       ]
-  const budget = width - 4 - (width < layout.narrowBreakpoint ? 28 : 0)
-  return (sets.find((set) => set.join(" · ").length <= budget) ?? sets[3]!).join(" · ")
+  const budget = width - 4 - (width < layout.narrowBreakpoint ? left + 2 : 0)
+  return (sets.find((set) => set.join(" · ").length <= budget) ?? sets.at(-1)!).join(" · ")
 }
 
 export function promptBoxText(

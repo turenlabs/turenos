@@ -32,9 +32,12 @@ export function createLayout(renderer: CliRenderer, state: DashboardState) {
   const parts: LayoutParts = { root, body, tabButtons, ...topbar, ...sidebar, ...main, ...footer, ...size }
   watchPaneFocus(renderer, state, parts)
   renderer.setCursorPosition(0, 0, false)
+  const armed = { quit: false }
   return exposedLayout(parts, {
-    resize: () => {
-      resizeLayout(renderer, state, parts)
+    // A resize that does not know about the quit (a dialog opening) keeps the last one it was told.
+    resize: (quitArmed = armed.quit) => {
+      armed.quit = quitArmed
+      resizeLayout(renderer, state, parts, quitArmed)
       fitDrawer(renderer, state, parts)
     },
     focus: () => focusLayout(renderer, state, parts),
@@ -44,7 +47,7 @@ export function createLayout(renderer: CliRenderer, state: DashboardState) {
 export type DashboardLayout = ReturnType<typeof createLayout>
 
 // The parts the dashboard may use; `body`, the footer row, shortcuts and the size text stay internal.
-function exposedLayout(parts: LayoutParts, actions: { resize: () => void; focus: () => void }) {
+function exposedLayout(parts: LayoutParts, actions: { resize: (quitArmed?: boolean) => void; focus: () => void }) {
   return {
     root: parts.root,
     main: parts.main,

@@ -26,8 +26,8 @@ export function markUnread(c: Conversation, content: string) {
   c.drawn = content
   if (c.position?.scroll === Number.MAX_SAFE_INTEGER || atBottom(c)) return clearUnread(c)
   if (changed) c.unread = true
-  if (c.unread && !c.ui.context.plainText.includes(NEW_OUTPUT_CUE))
-    c.ui.context.content = `${c.ui.context.plainText.replace(SCROLLED_CUE, "")} · ${cue(c)}`
+  if (c.unread && !c.ui.context.full.includes(NEW_OUTPUT_CUE))
+    c.ui.context.content = `${c.ui.context.full.replace(SCROLLED_CUE, "")} · ${cue(c)}`
 }
 
 /** A calm cue on the context line while the reader is above the latest output; the new-output cue takes its place. */
@@ -40,13 +40,13 @@ export function syncScrolledCue(c: Conversation) {
     c.state.detail?.sessionID === c.state.selected &&
     c.position?.scroll !== Number.MAX_SAFE_INTEGER &&
     !atBottom(c)
-  const shown = SCROLLED_CUE.test(context.plainText)
-  if (away && !shown) context.content = `${context.plainText} · ↑ scrolled up · ${jumpKey(c)} for latest`
-  if (!away && shown) context.content = context.plainText.replace(SCROLLED_CUE, "")
+  const shown = SCROLLED_CUE.test(context.full)
+  if (away && !shown) context.content = `${context.full} · ↑ scrolled up · ${jumpKey(c)} for latest`
+  if (!away && shown) context.content = context.full.replace(SCROLLED_CUE, "")
 }
 
 export function clearUnread(c: Conversation) {
   if (!c.unread) return
   c.unread = false
-  c.ui.context.content = c.ui.context.plainText.replace(/ · ↓ new output below · (End|PgDn)/, "")
+  c.ui.context.content = c.ui.context.full.replace(/ · ↓ new output below · (End|PgDn)/, "")
 }

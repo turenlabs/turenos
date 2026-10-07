@@ -1,6 +1,7 @@
 import { BoxRenderable, ScrollBoxRenderable, TextAttributes, TextRenderable, type CliRenderer } from "@opentui/core"
 import { createMarkdown } from "../markdown"
 import { color } from "../theme"
+import { ContextLine } from "./context-line"
 
 /** Builds the title and context lines at the top of the main pane, and the activity line `createMain` places under the transcript. */
 export function createSessionHeader(renderer: CliRenderer, main: BoxRenderable) {
@@ -14,7 +15,7 @@ export function createSessionHeader(renderer: CliRenderer, main: BoxRenderable) 
     truncate: true,
   })
   main.add(sessionTitle)
-  const context = new TextRenderable(renderer, {
+  const context = new ContextLine(renderer, {
     content: "",
     height: 1,
     flexShrink: 0,

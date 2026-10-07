@@ -173,7 +173,8 @@ test("the Ctrl+C that stops a turn still says a second press quits once the turn
   app.view.mockInput.pressEnter()
   await app.screen("Ctrl+C stop")
   app.view.mockInput.pressKey("c", { ctrl: true })
-  // The footer's typing hint flips back to quit only after a refresh has seen the turn end.
-  const frame = await app.screen("Ctrl+C quit")
-  expect(frame).toContain("Session interrupted. Ctrl+C again quits.")
+  // The footer's typing hint says what the second press does, and keeps saying so once the turn has ended.
+  const frame = await app.screen("Session interrupted. Ctrl+C again quits.")
+  expect(frame.trimEnd().split("\n").at(-1)).toContain("Ctrl+C again quits")
+  expect(frame.trimEnd().split("\n").at(-1)).not.toContain("Ctrl+C stop")
 })

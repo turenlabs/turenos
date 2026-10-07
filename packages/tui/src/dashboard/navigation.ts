@@ -116,7 +116,7 @@ export function hop(d: DashboardContext, direction: number) {
 /** `/`: the session switcher on the Sessions tab, an inline sidebar search elsewhere. */
 export function filter(d: DashboardContext) {
   if (!d.c.dialogs.navigate()) return
-  if (d.state.tab === "sessions") return d.c.menus.switcher("recent", true)
+  if (d.state.tab === "sessions") return d.c.menus.switcher()
   d.state.searching = { query: d.state.query, selected: d.state.selected }
   d.state.sidebarHidden = false
   d.ui.search.value = d.state.query
