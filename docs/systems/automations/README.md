@@ -84,7 +84,7 @@ Cron fire times follow the Automation's IANA timezone (for example `America/New_
 
 **Session-end triggers** fire each time a Session step on the selected server in the Automation's directory ends (`success`) or fails (`failure`), not once when the whole Session finishes. Optional filters narrow which events count: `outcomes` (`success` and/or `failure`), a `sessionID`, and/or an `agent`. Omitted filters match anything, and the scheduler's own Automation runs never fire it. An `agent` filter also passes when the Session has no recorded agent, and a Session whose directory cannot be resolved matches every session-end Automation regardless of directory.
 
-Event Automations have no ticking schedule: they stay active with no next run time until a matching event fires. If an event arrives while an earlier occurrence is still running, it is recorded as `skipped`, exactly like an overlapping interval tick. Events are delivered by the scheduler on the selected server — there is no network trigger source.
+Event Automations have no ticking schedule: they stay active with no next run time until a matching event fires. Events admitted before a configured `startsAt` are rejected without creating a run; they are not queued for later. Resuming an interval or cron Automation, or editing its schedule, preserves its future start boundary. Deliberate manual runs remain available before that boundary. If an event arrives while an earlier occurrence is still running, it is recorded as `skipped`, exactly like an overlapping interval tick. Events are delivered by the scheduler on the selected server — there is no network trigger source.
 
 ## Step data bindings
 
