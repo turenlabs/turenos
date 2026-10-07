@@ -1,7 +1,7 @@
 import { TextRenderable } from "@opentui/core"
 import type { Session } from "../server"
 import { display } from "../messages"
-import { label, type MessageDraft } from "../state"
+import { sessionTitle, type MessageDraft } from "../state"
 import { color } from "../theme"
 import { matchesKey } from "../keys"
 import { owner, type RequestContext } from "./context"
@@ -61,7 +61,7 @@ function openButton(ctx: RequestContext, kind: "main" | "parent") {
 
 function explanation(ctx: RequestContext, kind: "main" | "parent", target: string | undefined, draft?: MessageDraft) {
   const guidance = target
-    ? `Open its ${kind} session to give instructions instead.\nTarget: ${label(ctx.state.snapshot?.sessions.find((item) => item.id === target)?.title ?? target, 200)}`
+    ? `Open its ${kind} session to give instructions instead.\nTarget: ${sessionTitle(ctx.state.snapshot?.sessions.find((item) => item.id === target)?.title ?? target, 200)}`
     : "Open Tasks (t) to locate the owning main session."
   const saved = draft ? `\n\nSaved child draft (not moved or sent):\n${display(draft.text, 32000)}` : ""
   return `This subagent is controlled by its owning task and cannot accept direct replies.\n\n${guidance}\n\nNo message will be sent.${saved}`

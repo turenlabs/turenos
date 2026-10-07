@@ -2,7 +2,7 @@ import { TextRenderable } from "@opentui/core"
 import type { Dialogs } from "../dialogs"
 import type { CliRenderer } from "@opentui/core"
 import type { Connection, Session } from "../server"
-import { label, type DashboardState } from "../state"
+import { label, sessionTitle, type DashboardState } from "../state"
 import { color } from "../theme"
 
 export type SessionContext = {
@@ -32,7 +32,7 @@ export function openControl(ctx: SessionContext, title: string) {
   dialog.recipient = session
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
-      content: `For: ${label(session.title || session.id, 100)}\n${session.id}\n${label(session.location.directory, 200)}`,
+      content: `For: ${sessionTitle(session.title || session.id, 100)}\n${session.id}\n${label(session.location.directory, 200)}`,
       fg: color.muted,
       wrapMode: "word",
     }),

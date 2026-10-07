@@ -1,7 +1,7 @@
 import { attachTerminal, type AttachTarget } from "../attach"
 import { identifier } from "../response-validation"
 import { errorText } from "../server"
-import { label } from "../state"
+import { label, sessionTitle } from "../state"
 import { selected, target, where, type Context } from "./context"
 
 /** Hands the whole terminal to the PTY until it detaches or exits, then redraws the dashboard. */
@@ -54,7 +54,7 @@ export async function shared(ctx: Context) {
     identifier(terminal.ptyID, "pty_")
     await attach(ctx, {
       id: terminal.ptyID,
-      title: `Shared terminal · ${session.title || session.id}`,
+      title: `Shared terminal · ${sessionTitle(session.title || session.id)}`,
       directory: session.location.directory,
       workspace: terminal.workspaceID ?? session.location.workspaceID,
     })

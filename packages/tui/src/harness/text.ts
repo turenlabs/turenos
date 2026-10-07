@@ -1,6 +1,6 @@
 import { display } from "../messages"
 import type { Session } from "../server"
-import { label } from "../state"
+import { label, sessionTitle } from "../state"
 import type { Proposal, State } from "./actions"
 
 export function describe(session: Session, harness: State) {
@@ -11,7 +11,7 @@ export function describe(session: Session, harness: State) {
   ).map(([status, items]) => `${items.length} ${status}`)
   return display(
     [
-      `For: ${label(session.title || session.id, 100)}`,
+      `For: ${sessionTitle(session.title || session.id, 100)}`,
       snapshot
         ? `Snapshot v${snapshot.version} · ${snapshot.status} · from ${snapshot.source} · validation ${snapshot.validation.status}`
         : "No harness snapshot yet.",

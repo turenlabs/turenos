@@ -1,7 +1,7 @@
 import { SelectRenderable, TextRenderable } from "@opentui/core"
 import { display } from "../messages"
 import { matchesKey } from "../keys"
-import { label } from "../state"
+import { sessionTitle } from "../state"
 import { color } from "../theme"
 import { act, discard, refresh, type Dock, type QueueContext } from "./dock"
 
@@ -37,7 +37,7 @@ export function openQueue(ctx: QueueContext) {
   list.on("selectionChanged", () => {
     dock.armed = ""
     const input = dock.inputs[list.getSelectedIndex()]
-    if (input) text.content = `For: ${label(session.title || session.id, 100)}\n\n${display(input.prompt.text, 4000)}`
+    if (input) text.content = `For: ${sessionTitle(session.title || session.id, 100)}\n\n${display(input.prompt.text, 4000)}`
   })
   dialog.refresh = () => void refresh(dock)
   dialog.key = (key) => {

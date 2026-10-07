@@ -1,6 +1,6 @@
 import { TextRenderable } from "@opentui/core"
 import { refused, type Session } from "../server"
-import { label, type MessageDraft, type ModalState } from "../state"
+import { sessionTitle, type MessageDraft, type ModalState } from "../state"
 import { color } from "../theme"
 import { matchesKey } from "../keys"
 import { outsideNotice } from "../mentions/outside"
@@ -115,7 +115,7 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
     const waiting = waitingRequest(ctx, session.id)
     heading.content = waiting
       ? `${mode} · ${waiting} · Esc then Enter to answer`
-      : `${mode} · Reply to ${label(title, 100)}${session.revert ? " · undo staged" : ""}`
+      : `${mode} · Reply to ${sessionTitle(title, 100)}${session.revert ? " · undo staged" : ""}`
     heading.fg = waiting || session.revert ? color.warning : color.muted
     const listed = (dialog.suggestionRows ?? 0) + (dialog.mentionRows ?? 0) > 0
     const hint = listed

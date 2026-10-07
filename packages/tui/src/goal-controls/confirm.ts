@@ -3,7 +3,7 @@ import type { SessionsGoalSetInput } from "@turenlabs/client"
 import { matchesKey } from "../keys"
 import { display } from "../messages"
 import type { Session } from "../server"
-import { label, type ModalState } from "../state"
+import { label, sessionTitle, type ModalState } from "../state"
 import { color } from "../theme"
 import { current, type Action, type Goal, type GoalEnv } from "./context"
 import { requireWord } from "../dialogs/fields"
@@ -81,7 +81,7 @@ function addSummary(env: GoalEnv, dialog: ModalState, session: Session, base: Go
   )
   dialog.form.add(
     new TextRenderable(env.renderer, {
-      content: `For: ${label(session.title || session.id, 100)}\n${base ? `Goal: ${base.id}\nRevision: ${base.revision} | ${base.status}\n${display(base.objective, 4000)}` : "Create a new active goal."}${action === "Set" ? `\nAgent: ${label(session.agent ?? "server default")}\nModel: ${session.model ? label(`${session.model.providerID}/${session.model.id} (${session.model.variant ?? "default"})`, 200) : "server default"}` : ""}`,
+      content: `For: ${sessionTitle(session.title || session.id, 100)}\n${base ? `Goal: ${base.id}\nRevision: ${base.revision} | ${base.status}\n${display(base.objective, 4000)}` : "Create a new active goal."}${action === "Set" ? `\nAgent: ${label(session.agent ?? "server default")}\nModel: ${session.model ? label(`${session.model.providerID}/${session.model.id} (${session.model.variant ?? "default"})`, 200) : "server default"}` : ""}`,
       fg: color.text,
     }),
   )

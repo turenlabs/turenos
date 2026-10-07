@@ -3,7 +3,7 @@ import type { Dialogs } from "./dialogs"
 import { openPanel } from "./panel"
 import { object } from "./response-validation"
 import type { Connection } from "./server"
-import { label, type DashboardState } from "./state"
+import { sessionTitle, type DashboardState } from "./state"
 import { openTools } from "./inspect/tools"
 import { describe, load, pageKey, type TraceView } from "./inspect/trace"
 
@@ -49,7 +49,7 @@ export function createInspect(
   function trace() {
     const session = selected()
     if (!session || !dialogs.navigate()) return
-    const panel = openPanel(renderer, dialogs, `Trace · ${label(session.title || session.id, 60)}`)
+    const panel = openPanel(renderer, dialogs, `Trace · ${sessionTitle(session.title || session.id, 60)}`)
     if (!panel) return
     const view: TraceView = { state, connection, session, panel, events: [], cursor: {}, request: 0 }
     panel.list.on("selectionChanged", () => describe(view))

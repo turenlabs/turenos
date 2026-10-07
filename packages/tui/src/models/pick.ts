@@ -3,7 +3,7 @@ import { setRows } from "../dialogs/size"
 import { matchesKey } from "../keys"
 import type { Connection } from "../server"
 import { errorText } from "../server"
-import { label } from "../state"
+import { label, sessionTitle } from "../state"
 import type { ModalState } from "../state"
 import { color } from "../theme"
 import { currentText, modelRows, ROW_LIMIT, type Row } from "./rows"
@@ -92,7 +92,7 @@ function addHeader(ctx: ModelsContext, dialog: ModalState, target: ModelTarget, 
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
       content: target.recipient
-        ? `For: ${label(target.recipient.title || target.recipient.id, 80)} · from the next turn\nCurrent: ${current}`
+        ? `For: ${sessionTitle(target.recipient.title || target.recipient.id, 80)} · from the next turn\nCurrent: ${current}`
         : `For this launch draft. Selecting a model does not send the task.\nCurrent: ${current}`,
       fg: color.muted,
     }),

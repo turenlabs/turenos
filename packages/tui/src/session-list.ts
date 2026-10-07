@@ -1,7 +1,7 @@
 import { ScrollBoxRenderable, TextRenderable, TextAttributes, type CliRenderer, type KeyEvent } from "@opentui/core"
 import { matchesKey } from "./keys"
 import type { Session } from "./server"
-import { label, type Row } from "./state"
+import { label, sessionTitle, type Row } from "./state"
 import { color } from "./theme"
 
 export type SidebarRow = Row & { group?: string; groupLabel?: string; running?: boolean; needsInput?: boolean }
@@ -51,7 +51,7 @@ export function sessionRows(
         .sort((a, b) => b.time.updated - a.time.updated || b.time.created - a.time.created || compare(a.id, b.id))
         .map((session) => ({
           id: session.id,
-          name: `${needsInput.includes(session.id) ? "? " : Object.hasOwn(active, session.id) ? "* " : ""}${label(session.title || session.id)}`,
+          name: `${needsInput.includes(session.id) ? "? " : Object.hasOwn(active, session.id) ? "* " : ""}${sessionTitle(session.title || session.id)}`,
           // Keep metadata searchable without repeating it in the visible session rows.
           description: `${Object.hasOwn(active, session.id) ? "running" : "idle"} ${session.time.archived !== undefined ? "archived" : ""} ${label(session.agent ?? "default")} ${label(session.location.directory, 250)}`,
           group,

@@ -1,7 +1,7 @@
 import { BoxRenderable, InputRenderable, SelectRenderable, StyledText, TextRenderable, fg } from "@opentui/core"
 import { changeSummary, diffLines, type DiffTone } from "../diff"
 import { display } from "../messages"
-import { label } from "../state"
+import { label, sessionTitle } from "../state"
 import { color } from "../theme"
 import type { RewindAction, RewindEnv, RewindFlow } from "./flow"
 import { requireWord } from "../dialogs/fields"
@@ -40,7 +40,7 @@ export function addPanels(env: RewindEnv, dialog: ModalState, session: Session, 
   )
   dialog.form.add(
     new TextRenderable(env.renderer, {
-      content: `For: ${label(session.title || session.id, 100)}`,
+      content: `For: ${sessionTitle(session.title || session.id, 100)}`,
       fg: color.muted,
       height: 1,
       flexShrink: 0,

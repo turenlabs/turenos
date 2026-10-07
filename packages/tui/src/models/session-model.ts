@@ -1,4 +1,4 @@
-import { label } from "../state"
+import { sessionTitle } from "../state"
 import type { Session } from "../server"
 import { modelIdentity } from "./identity"
 import { pick } from "./pick"
@@ -33,11 +33,11 @@ async function switchModel(ctx: ModelsContext, session: Session, value: string) 
   ctx.onUpdate(updated)
   if (unchanged) {
     ctx.say(
-      `Model unchanged: ${modelIdentity(current.model)}. No switch sent for ${label(current.title || current.id, 80)}.`,
+      `Model unchanged: ${modelIdentity(current.model)}. No switch sent for ${sessionTitle(current.title || current.id, 80)}.`,
     )
     return
   }
   ctx.say(
-    `${current.model?.variant && current.model.variant !== "default" ? "Variant reset to model default. " : ""}Model selected for ${label(current.title || current.id, 80)}: ${value}. Applies to subsequent turns.`,
+    `${current.model?.variant && current.model.variant !== "default" ? "Variant reset to model default. " : ""}Model selected for ${sessionTitle(current.title || current.id, 80)}: ${value}. Applies to subsequent turns.`,
   )
 }

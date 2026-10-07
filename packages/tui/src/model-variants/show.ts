@@ -1,7 +1,7 @@
 import { SelectRenderable, TextRenderable } from "@opentui/core"
 import { matchesKey } from "../keys"
 import { errorText, type Session } from "../server"
-import { label, type ModalState } from "../state"
+import { label, sessionTitle, type ModalState } from "../state"
 import { color } from "../theme"
 import type { Target, VariantsContext } from "./types"
 
@@ -79,7 +79,7 @@ function addSummary(ctx: VariantsContext, dialog: ModalState, target: Target, re
     })
   dialog.form.add(
     line(
-      recipient ? `For: ${label(recipient.title || recipient.id, 100)}` : "Launch draft only. No task is sent.",
+      recipient ? `For: ${sessionTitle(recipient.title || recipient.id, 100)}` : "Launch draft only. No task is sent.",
       color.muted,
     ),
   )

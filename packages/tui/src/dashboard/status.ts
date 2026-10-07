@@ -2,7 +2,7 @@ import { fg, t, TextAttributes } from "@opentui/core"
 import { display } from "../messages"
 import { color, layout } from "../theme"
 import { headerLeft, headerRight, sidebarTitle, statusline, welcomeBody } from "../chrome"
-import { label } from "../state"
+import { label, sessionTitle } from "../state"
 import { activityFrame } from "../activity"
 import { renderActionRow } from "./actions"
 import type { DashboardContext } from "./context"
@@ -84,7 +84,7 @@ export function renderAttention(d: DashboardContext) {
   const ended = !!state.workingSession && state.workingSession === session?.id && !running
   state.workingSession = session && running ? session.id : ""
   if (ended) ring(d)
-  const name = session ? ` · ${label(session.title || session.id, 60)}` : ""
+  const name = session ? ` · ${sessionTitle(session.title || session.id, 60)}` : ""
   writeTitle(d, `TurenOS · ${waiting ? "needs input" : running ? "working" : "idle"}${name}`)
 }
 

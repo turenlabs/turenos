@@ -3,7 +3,7 @@ import type { CliRenderer } from "@opentui/core"
 import type { Dialogs } from "../dialogs"
 import { display } from "../messages"
 import { errorText, refused, type Connection, type Session } from "../server"
-import { label, type DashboardState, type ModalState } from "../state"
+import { label, sessionTitle, type DashboardState, type ModalState } from "../state"
 import type { Input } from "./inputs"
 import { waiting } from "./inputs"
 
@@ -58,7 +58,7 @@ export async function refresh(dock: Dock, note = "") {
     const left = previous !== undefined && index < 0
     if (left || dock.armed !== dock.inputs[list.getSelectedIndex()]?.id) dock.armed = ""
     text.content = dock.inputs.length
-      ? `For: ${label(session.title || session.id, 100)}\n\n${display(dock.inputs[list.getSelectedIndex()]?.prompt.text ?? "", 4000)}`
+      ? `For: ${sessionTitle(session.title || session.id, 100)}\n\n${display(dock.inputs[list.getSelectedIndex()]?.prompt.text ?? "", 4000)}`
       : "Nothing is waiting. Messages the agent has already read appear in the transcript."
     const notice =
       note || (left && dock.inputs.length ? "The selected message left the queue; check the one now selected." : "")

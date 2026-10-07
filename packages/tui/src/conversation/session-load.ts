@@ -1,5 +1,5 @@
-import { pendingQuestions, transcript, display } from "../messages"
-import { label, type DashboardState } from "../state"
+import { pendingQuestions, transcript } from "../messages"
+import { label, sessionTitle, type DashboardState } from "../state"
 import { color } from "../theme"
 import type { Conversation } from "./context"
 import { sentByReader } from "./follow"
@@ -17,10 +17,10 @@ export async function loadSession(c: Conversation, snapshot: Snapshot, session: 
   if (state.detail?.sessionID !== id) {
     state.detail = undefined
     if (!c.live.has(id) || state.history) {
-      ui.renderContent(`Loading ${display(session.title)}…`)
+      ui.renderContent(`Loading ${sessionTitle(session.title)}…`)
     }
   }
-  ui.sessionTitle.content = `${label(session.title || "Untitled session", 150)}${session.time.archived !== undefined ? " · Archived" : ""}`
+  ui.sessionTitle.content = `${sessionTitle(session.title || "Untitled session", 150)}${session.time.archived !== undefined ? " · Archived" : ""}`
   ui.context.visible = !state.modal?.inline
   ui.context.fg = color.muted
   ui.context.content = `${state.history ? "History" : "Transcript"}${Object.hasOwn(snapshot.active, id) ? " · Working" : ""} · ${label(session.location.directory, 250)}`

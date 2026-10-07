@@ -1,6 +1,6 @@
 import { TextRenderable } from "@opentui/core"
 import { display } from "../messages"
-import { label, type DashboardState } from "../state"
+import { label, sessionTitle, type DashboardState } from "../state"
 import { color } from "../theme"
 import { stamp } from "./stamp"
 import type { MenuContext } from "./context"
@@ -51,7 +51,7 @@ function sessionLines(session: Session, result: Detail | undefined) {
     ? `${model.providerID}/${model.id}${model.variant ? ` (${model.variant})` : ""}`
     : "server default"
   return [
-    label(session.title || "Untitled session", 200),
+    sessionTitle(session.title || "Untitled session", 200),
     ...(session.time.archived !== undefined ? ["Archived · Ctrl+P restore brings it back to the lists"] : []),
     `Session ID: ${session.id}`,
     ...(session.parentID ? [`Parent ID: ${session.parentID}`] : []),

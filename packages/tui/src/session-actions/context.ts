@@ -1,7 +1,7 @@
 import { TextRenderable, type CliRenderer } from "@opentui/core"
 import type { Dialogs } from "../dialogs"
 import type { Connection, Session } from "../server"
-import { label, type DashboardState, type ModalState } from "../state"
+import { label, sessionTitle, type DashboardState, type ModalState } from "../state"
 import { color } from "../theme"
 
 export type SessionActionsContext = {
@@ -29,7 +29,7 @@ export function recipient(ctx: SessionActionsContext, dialog: ModalState, sessio
   dialog.recipient = session
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
-      content: `${label(session.title)}\n${label(session.id, 256)}\n${label(session.location.directory, 4096)}`,
+      content: `${sessionTitle(session.title)}\n${label(session.id, 256)}\n${label(session.location.directory, 4096)}`,
       fg: color.muted,
       wrapMode: "word",
     }),
@@ -40,6 +40,6 @@ export function recipient(ctx: SessionActionsContext, dialog: ModalState, sessio
 export function announceOpen(ctx: SessionActionsContext, dialog: ModalState, closed: Session, message: string) {
   dialog.afterSubmit = () => {
     const open = ctx.state.snapshot?.sessions.find((item) => item.id === ctx.state.selected)
-    ctx.say(open && open.id !== closed.id ? `${message} Now showing ${label(open.title || open.id, 60)}.` : message)
+    ctx.say(open && open.id !== closed.id ? `${message} Now showing ${sessionTitle(open.title || open.id, 60)}.` : message)
   }
 }

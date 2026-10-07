@@ -1,7 +1,7 @@
 import { TextRenderable } from "@opentui/core"
 import { matchesKey } from "../keys"
 import { errorText, refused, type Session } from "../server"
-import { label } from "../state"
+import { sessionTitle } from "../state"
 import { color } from "../theme"
 import { apply, done, still, title, type Action } from "./actions"
 import type { HarnessContext } from "./context"
@@ -28,7 +28,7 @@ export function confirm(ctx: HarnessContext, session: Session, action: Action, b
   const body = confirmBody(action)
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
-      content: `For: ${label(session.title || session.id, 100)}\n\n${body.text}`,
+      content: `For: ${sessionTitle(session.title || session.id, 100)}\n\n${body.text}`,
       fg: color.text,
     }),
   )

@@ -1,6 +1,6 @@
 import { SelectRenderable, TextRenderable, TextAttributes } from "@opentui/core"
 import { display } from "../messages"
-import { label } from "../state"
+import { label, sessionTitle } from "../state"
 import { color } from "../theme"
 import { printableKey } from "../keys"
 import type { ModalState } from "../state"
@@ -100,7 +100,7 @@ function describe(ctx: RequestContext, dialog: ModalState, request: Request) {
   dialog.recipient = session
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
-      content: [label(session?.title ?? request.sessionID, 80), label(session?.location.directory ?? "", 200)]
+      content: [sessionTitle(session?.title ?? request.sessionID, 80), label(session?.location.directory ?? "", 200)]
         .filter(Boolean)
         .join(" · "),
       fg: color.muted,

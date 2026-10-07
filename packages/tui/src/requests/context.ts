@@ -1,6 +1,6 @@
 import { TextRenderable, type CliRenderer } from "@opentui/core"
 import type { Connection, Session } from "../server"
-import { label, type DashboardState, type MessageDraft, type ModalState } from "../state"
+import { label, sessionTitle, type DashboardState, type MessageDraft, type ModalState } from "../state"
 import { color } from "../theme"
 import type { Dialogs } from "../dialogs"
 import type { SlashCommands } from "../slash"
@@ -63,7 +63,7 @@ export function recipient(ctx: RequestContext, dialog: ModalState, sessionID: st
   dialog.recipient = session
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
-      content: [label(session?.title ?? sessionID), label(session?.location.directory ?? ""), label(sessionID)].join(
+      content: [sessionTitle(session?.title ?? sessionID), label(session?.location.directory ?? ""), label(sessionID)].join(
         "\n",
       ),
       fg: color.muted,

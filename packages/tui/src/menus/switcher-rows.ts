@@ -1,5 +1,5 @@
 import { TextRenderable } from "@opentui/core"
-import { label } from "../state"
+import { label, sessionTitle } from "../state"
 import { color } from "../theme"
 import { fitHeading } from "../changes/heading"
 import { sessionRows } from "../session-list"
@@ -44,7 +44,7 @@ export function paint(s: Switcher, index: number) {
   row.bg = index === s.selected ? color.accent : color.panel
   row.fg = index === s.selected ? color.bg : color.text
   const markers = `${session.id === state.selected ? " · current" : ""}${Object.hasOwn(state.snapshot?.active ?? {}, session.id) ? " *" : ""}${actions.hasDraft(session.id) ? " [draft]" : ""}${session.time.archived !== undefined && s.scope !== "archived" ? " [archived]" : ""}`
-  row.content = `${index === s.selected ? "▶ " : "  "}${label(session.title || "Untitled session", 150)}${session.parentID ? " [child]" : ""}${markers}`
+  row.content = `${index === s.selected ? "▶ " : "  "}${sessionTitle(session.title || "Untitled session", 150)}${session.parentID ? " [child]" : ""}${markers}`
 }
 
 /** Sessions the current scope and query select, grouped by project folder. */

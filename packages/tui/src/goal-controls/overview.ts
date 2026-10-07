@@ -2,7 +2,7 @@ import { SelectRenderable, TextRenderable } from "@opentui/core"
 import { matchesKey } from "../keys"
 import { display } from "../messages"
 import { errorText, type Session } from "../server"
-import { label, type ModalState } from "../state"
+import { sessionTitle, type ModalState } from "../state"
 import { color } from "../theme"
 import { confirm } from "./confirm"
 import { current, fresh, type Action, type Goal, type GoalEnv } from "./context"
@@ -100,7 +100,7 @@ async function refresh(flow: OverviewFlow) {
 
 function overviewText(flow: OverviewFlow) {
   const { goal, session } = flow
-  return `For: ${label(session.title || session.id, 100)}\n${goal ? `Status: ${goal.status} | Revision: ${goal.revision}\nTokens: ${goal.tokensUsed} | Time: ${goal.timeUsedSeconds}s\n\n${display(goal.objective, 4000)}` : "No goal. Set requires explicit start confirmation."}\n\nOrdinary reply drafts stay unchanged.${session.revert ? "\nUndo is staged. Starting a new goal also commits it." : ""}${flow.env.blocked(session.id) ? "\nTask-owned session: overview is read-only." : ""}`
+  return `For: ${sessionTitle(session.title || session.id, 100)}\n${goal ? `Status: ${goal.status} | Revision: ${goal.revision}\nTokens: ${goal.tokensUsed} | Time: ${goal.timeUsedSeconds}s\n\n${display(goal.objective, 4000)}` : "No goal. Set requires explicit start confirmation."}\n\nOrdinary reply drafts stay unchanged.${session.revert ? "\nUndo is staged. Starting a new goal also commits it." : ""}${flow.env.blocked(session.id) ? "\nTask-owned session: overview is read-only." : ""}`
 }
 
 function choose(flow: OverviewFlow) {
