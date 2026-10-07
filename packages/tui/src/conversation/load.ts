@@ -110,11 +110,12 @@ function showTerminal(c: Conversation, snapshot: Snapshot, id: string) {
   const item = snapshot.terminals.find((item) => item.id === id)
   if (!item) return
   ui.context.content = `${label(item.status)} · ${label(item.cwd, 250)}`
-  ui.sessionTitle.content = item.title ? `Terminal · ${label(item.title, 150)}` : "Terminal"
+  // A server-named terminal is already called "Terminal …"; the heading does not say it twice.
+  ui.sessionTitle.content = item.title ? label(item.title, 150) : "Terminal"
   ui.renderContent(
-    // The title and folder are already in the heading and context line above.
+    // The title, status and folder are already in the heading and context line above.
     display(
-      `PID ${item.pid}  ·  ${item.status}${item.exitCode !== undefined ? `  ·  exit ${item.exitCode}` : ""}\n\n$ ${[item.command, ...item.args].join(" ")}\n\nID ${item.id}\n\n${item.status === "running" ? "Enter attaches (Ctrl+] detaches)\n" : ""}a add terminal · R rename · d close${folderNote(snapshot)}`,
+      `$ ${[item.command, ...item.args].join(" ")}\n\nPID ${item.pid}${item.exitCode !== undefined ? `  ·  exit ${item.exitCode}` : ""}\n\n${item.status === "running" ? "Enter attaches (Ctrl+] detaches)\n" : ""}a add terminal · R rename · d close\n\nTerminal ID: ${item.id}${folderNote(snapshot)}`,
     ),
   )
 }
@@ -137,7 +138,7 @@ async function showAutomation(c: Conversation, snapshot: Snapshot, id: string, v
     ? `Trigger: ${scheduleText(item.schedule, item.eventTrigger)}\nSchedule: ${scheduleText(item.schedule)}`
     : scheduleText(item.schedule)
   const overview = display(
-    `${triggerDetails}\nNext run: ${typeof item.nextRunAt === "number" ? stamp(item.nextRunAt) : "unscheduled"}\n\n${item.prompt}\n\nID ${item.id}\n\nEnter manage (run now, pause, edit, runs)\na add · E edit · d delete`,
+    `${triggerDetails}\nNext run: ${typeof item.nextRunAt === "number" ? stamp(item.nextRunAt) : "unscheduled"}\n\n${item.prompt}\n\nEnter manage (run now, pause, edit, runs)\na add · E edit · d delete\n\nAutomation ID: ${item.id}`,
   )
   ui.renderContent(overview)
   const runs = await c.connection.runs(id).catch((error: unknown) => errorText(error))

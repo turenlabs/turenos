@@ -16,7 +16,7 @@ export function openBlockedReply(ctx: RequestContext, session: Session, reopen: 
   dialog.recipient = session
   const draft = ctx.messages.get(sessionID)
   const redirect = !!target && target !== sessionID
-  if (redirect) dialog.form.add(openButton(ctx, rootID ? "main" : "parent"))
+  // The reason comes first, so the button reads as the answer to it.
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
       content: explanation(ctx, rootID ? "main" : "parent", target, draft),
@@ -24,6 +24,7 @@ export function openBlockedReply(ctx: RequestContext, session: Session, reopen: 
       wrapMode: "word",
     }),
   )
+  if (redirect) dialog.form.add(openButton(ctx, rootID ? "main" : "parent"))
   dialog.error.content = redirect
     ? `Enter Open ${rootID ? "main" : "parent"} + reply · Esc close${draft ? "\nChild draft stays here; Ctrl+Y copies selected text." : ""}`
     : "Esc close · t Tasks"
