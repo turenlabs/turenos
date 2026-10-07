@@ -1,6 +1,6 @@
 import { TextBufferRenderable, type Renderable } from "@opentui/core"
 import type { Conversation } from "./context"
-import { clearUnread } from "./follow"
+import { clearUnread, syncScrolledCue } from "./follow"
 
 export function atBottom(c: Conversation) {
   return c.ui.detail.scrollTop + c.ui.detail.viewport.height >= c.ui.detail.scrollHeight - 1
@@ -72,6 +72,7 @@ export function installTextAnchor(c: Conversation) {
   ui.detail.renderAfter = function (buffer, delta) {
     renderAfter?.call(this, buffer, delta)
     if (c.unread && atBottom(c)) clearUnread(c)
+    syncScrolledCue(c)
     if (state.tab !== "sessions" || state.modal?.inline || state.detail?.sessionID !== state.selected) {
       c.textAnchor = undefined
       return

@@ -4,6 +4,7 @@ import { changeDiff } from "./changes"
 import { codeSpan, literal } from "./literal"
 import type { Collapse } from "./collapse"
 import { answeredQuestions } from "./question"
+import { startedAgents } from "./subagent"
 import { todoChecklist } from "./todos"
 
 type Message = MessagesListOutput["data"][number]
@@ -41,6 +42,8 @@ function toolBody(part: ToolPart, view: ToolView) {
   if (answers) return answers
   const diff = changeDiff(part, view)
   if (diff) return diff
+  const started = view.rich ? startedAgents(part, view) : undefined
+  if (started) return started
   const text = state.content.map((item) => (item.type === "text" ? toolResult(item.text) : fileLine(item))).join("\n")
   return view.rich ? literal(text, view) : text
 }

@@ -648,6 +648,16 @@ test("new output below a scrolled-up reader is announced until they return to th
   await waitForFrame(f.view, (frame) => frame.includes("More output") && !frame.includes("new output below"))
 })
 
+test("a reader above the latest output sees a calm cue until they return to the tail", async () => {
+  const f = await fixture()
+  f.top()
+  await waitForFrame(f.view, (frame) => frame.includes("Live line 0") && frame.includes("↑ scrolled up · End for latest"))
+  expect(f.view.captureCharFrame()).not.toContain("new output below")
+  f.conversation.cancelPosition()
+  f.ui.detail.scrollTo(Number.MAX_SAFE_INTEGER)
+  await waitForFrame(f.view, (frame) => frame.includes("Live line 44") && !frame.includes("scrolled up"))
+})
+
 test("one message past the rich budget degrades alone: the short one stays rich and no role chip shows backticks", async () => {
   const long = Array.from({ length: 400 }, (_, i) => `Long line ${i} of a very long reply`).join("\n")
   const f = await fixture([message("msg_short", "**Bold head**\nShort marker"), message("msg_long", long)])

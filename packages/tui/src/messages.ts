@@ -3,6 +3,7 @@ import { assistantHeader, chip } from "./messages/header"
 import { toolBlock, TOOL_INTERRUPTED, type ToolView } from "./messages/tool"
 import { continuesTurn, startsTurn, turnTime } from "./messages/turns"
 import { noticeLine } from "./messages/notice"
+import { foldParentContext } from "./messages/parent-context"
 import { shellBlock, shellOutcome } from "./messages/shell"
 
 type Source = NonNullable<Extract<MessagesListOutput["data"][number], { type: "user" }>["source"]>
@@ -296,10 +297,13 @@ function messageText(message: Message, raw: boolean, rich: boolean, view: Transc
   if (message.type === "user" && message.source && message.source !== "user")
     return `${sourceLabel[message.source].toUpperCase()}\n${notice(message.source, message.text, raw)}`
   // A label over nothing reads as a cut-off turn.
-  if ("text" in message)
+  if ("text" in message) {
+    const body =
+      chips && message.type === "user" ? foldParentContext(message.text, view.expanded === true) : display(message.text)
     return message.text.trim()
-      ? `${chips ? chip(display(message.type, 64).toUpperCase()) : display(message.type, 64).toUpperCase()}\n${display(message.text)}`
+      ? `${chips ? chip(display(message.type, 64).toUpperCase()) : display(message.type, 64).toUpperCase()}\n${body}`
       : ""
+  }
   return `[${display((message as { type?: string }).type ?? "unknown", 64)}]`
 }
 
@@ -316,6 +320,7 @@ function assistantText(message: Assistant, raw: boolean, rich: boolean, view: Tr
       return toolBlock(part, tool)
     }),
     ...(message.error ? [errorLine(message.error.message, raw, rich)] : []),
+    ...(message.error && rich && !raw ? [keyHint(message.error.message)] : []),
   ].filter(Boolean)
   // Another step of the turn the previous message started has no header of its own.
   if (continuesTurn(message, at.previous)) return parts.join("\n\n")
@@ -333,6 +338,15 @@ function errorLine(message: string, raw: boolean, rich: boolean) {
   const bold = rich && !raw
   if (TURN_INTERRUPTED.test(message)) return styled("INTERRUPTED:", "the turn was stopped before it finished.", bold)
   return styled("ERROR:", display(raw ? message : providerError(message)), bold)
+}
+
+// A refused key is the one provider failure whose next step is always the same.
+const KEY_REFUSED =
+  /\bHTTP (?:401|403)\b|\bunauthori[sz]ed\b|\bkey\b.{0,40}\b(?:refused|rejected|invalid|incorrect|revoked|expired)\b/i
+
+function keyHint(message: string) {
+  if (TURN_INTERRUPTED.test(message) || !KEY_REFUSED.test(message.slice(0, 2000))) return ""
+  return "Check the provider's key: Models (m), then F2 for provider setup, or Settings › Providers."
 }
 
 // Bold in the dashboard, where this is Markdown; the words already mark the line everywhere else. Only
