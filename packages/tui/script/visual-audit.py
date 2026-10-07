@@ -823,8 +823,7 @@ def main():
                 wait("Switch session")
                 plain = capture("sidebar-finder")
                 check("[Recent]" in plain and "Archived" in plain, "sidebar finder exposes the same scopes as Ctrl+K")
-                if width >= 90:
-                    check("Live transcript end" in plain, "right-side finder leaves desktop conversation visible")
+                check("││" not in plain and "│╭" not in plain, "sidebar finder opens the centred Ctrl+K finder, not a docked copy")
                 key("server startup", literal=True)
                 key("Enter")
                 wait("The startup checks are complete")
