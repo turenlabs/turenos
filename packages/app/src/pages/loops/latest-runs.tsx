@@ -1,5 +1,6 @@
 import { useNavigate } from "@solidjs/router"
-import { For, Show, createMemo, createSignal, onMount } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { createStore } from "solid-js/store"
 import { useGlobal } from "@/context/global"
 import { useServer } from "@/context/server"
 import { useSettings } from "@/context/settings"
@@ -56,14 +57,18 @@ function useLatestRuns(limit: number) {
   const server = useServer()
   const global = useGlobal()
   const connection = createMemo(() => server.current)
-  const [loaded, setLoaded] = createSignal(false)
-  const [entries, setEntries] = createSignal<ReadonlyArray<{ automation: LoopInfo; runs: LoopRun[] }>>([])
-  onMount(() => {
+  const [state, setState] = createStore<{
+    loaded: boolean
+    entries: ReadonlyArray<{ automation: LoopInfo; runs: LoopRun[] }>
+  }>({ loaded: false, entries: [] })
+  createEffect(() => {
     const current = connection()
-    if (!current) {
-      setLoaded(true)
-      return
-    }
+    let active = true
+    onCleanup(() => {
+      active = false
+    })
+    setState({ loaded: !current, entries: [] })
+    if (!current) return
     const api = loopApi(global.ensureServerCtx(current).sdk.client)
     void api
       .list()
@@ -79,12 +84,15 @@ function useLatestRuns(limit: number) {
           ),
         ),
       )
-      .then((next) => setEntries(next))
-      .catch(() => setEntries([]))
-      .finally(() => setLoaded(true))
+      .then((next) => {
+        if (active) setState({ entries: next, loaded: true })
+      })
+      .catch(() => {
+        if (active) setState({ entries: [], loaded: true })
+      })
   })
-  const runs = createMemo(() => latestRunsAcross(entries(), limit))
-  return { loaded, runs }
+  const runs = createMemo(() => latestRunsAcross(state.entries, limit))
+  return { loaded: () => state.loaded, runs }
 }
 
 function RunHeadline(props: { item: LatestRun }) {
