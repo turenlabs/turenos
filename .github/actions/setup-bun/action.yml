@@ -12,8 +12,8 @@ inputs:
 runs:
   using: "composite"
   steps:
-    # node-gyp@latest (invoked via bunx for native install scripts) requires Node >=22;
-    # some runner images ship an older system Node on PATH
+    # Vite, electron-vite and the smoke scripts run on Node, and some runner images ship an
+    # older system Node on PATH.
     - name: Setup Node
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
@@ -63,10 +63,6 @@ runs:
         key: ${{ runner.os }}-bun-${{ runner.os == 'Windows' && 'checkout-volume-v1-' || '' }}${{ hashFiles('bun.lock') }}
         restore-keys: |
           ${{ runner.os }}-bun-${{ runner.os == 'Windows' && 'checkout-volume-v1-' || '' }}
-
-    - name: Install setuptools for distutils compatibility
-      run: python3 -m pip install setuptools || pip install setuptools || true
-      shell: bash
 
     - name: Install dependencies
       run: |

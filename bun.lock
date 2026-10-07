@@ -961,11 +961,8 @@
     },
   },
   "trustedDependencies": [
-    "esbuild",
-    "tree-sitter-powershell",
     "electron",
-    "web-tree-sitter",
-    "tree-sitter-bash",
+    "esbuild",
   ],
   "patchedDependencies": {
     "@pierre/trees@1.0.0-beta.4": "patches/@pierre%2Ftrees@1.0.0-beta.4.patch",
