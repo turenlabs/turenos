@@ -6,6 +6,7 @@ import { dirname, join } from "node:path"
 import { bypassLoopbackProxy } from "../src/server/proxy"
 import { sshEnvironment } from "../src/servers/ssh"
 import { createServers, parseSshTarget, PasswordRequired, type Endpoint, type Target } from "../src/servers"
+import { agent, world } from "./agent-fixture"
 
 const cleanup: (() => unknown)[] = []
 afterEach(async () => {
@@ -922,4 +923,103 @@ test("the loopback proxy bypass covers the bracketed IPv6 host", () => {
   process.env.NO_PROXY = ""
   bypassLoopbackProxy(new URL("http://[::1]:4096"))
   expect(process.env.NO_PROXY!.split(",")).toEqual(expect.arrayContaining(["::1", "[::1]"]))
+})
+
+describe("an explicit URL that names a server whose record this client trusts", () => {
+  /** The server's answers plus the Authorization header of every request it saw. */
+  function watched(serverID?: string) {
+    const seen: (string | null)[] = []
+    const listener = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        seen.push(request.headers.get("authorization"))
+        if (request.headers.get("authorization") !== `Basic ${btoa("forge:secret")}`)
+          return new Response(null, { status: 401 })
+        const path = new URL(request.url).pathname
+        if (path === "/global/health") return Response.json({ healthy: true, version: "1.0.32" })
+        return path === "/global/server" ? Response.json({ serverID }) : new Response(null, { status: 404 })
+      },
+    })
+    cleanup.push(() => listener.stop(true))
+    return { origin: listener.url.origin, seen }
+  }
+
+  const named = (url: string) => ({ kind: "url", id: "cli", name: "cli", url, saved: false }) as const
+
+  test("uses the record's credentials when no password is exported", async () => {
+    const home = await scratch()
+    const trusted = watched()
+    await desktop(home, trusted.origin)
+    const endpoint = await local(home).resolve(named(trusted.origin))
+    expect(endpoint).toMatchObject({ url: trusted.origin, username: "forge", password: "secret", version: "1.0.32" })
+  })
+
+  test("keeps the record's serverID check", async () => {
+    const home = await scratch()
+    const impostor = watched("srv_other")
+    await desktop(home, impostor.origin, { serverID: "srv_1" })
+    await expect(local(home).resolve(named(impostor.origin))).rejects.toThrow("not the server that published")
+  })
+
+  test("a URL that differs by port never receives the record's password", async () => {
+    const home = await scratch()
+    const trusted = watched()
+    const elsewhere = watched()
+    await desktop(home, trusted.origin)
+    await expect(local(home).resolve(named(elsewhere.origin))).rejects.toBeInstanceOf(PasswordRequired)
+    expect(elsewhere.seen.every((header) => header === null)).toBe(true)
+  })
+
+  test("an exported FORGE_SERVER_PASSWORD, even an empty one, keeps the record out of it", async () => {
+    const home = await scratch()
+    const trusted = watched()
+    await desktop(home, trusted.origin)
+    const servers = local(home, { env: { FORGE_SERVER_PASSWORD: "" } })
+    await expect(servers.resolve(named(trusted.origin))).rejects.toBeInstanceOf(PasswordRequired)
+    expect(trusted.seen.every((header) => header === null)).toBe(true)
+  })
+
+  test("agent commands connect with the record and no exported password", async () => {
+    const home = await scratch()
+    const config = join(home, "config")
+    const server = world({}, "secret")
+    const directory = join(config, "com.turenlabs.forge")
+    await mkdir(directory, { recursive: true })
+    await writeFile(
+      join(directory, "attach.json"),
+      JSON.stringify({ version: 1, url: server.url, username: "forge", password: "secret", pid: process.pid }),
+      { mode: 0o600 },
+    )
+    const result = await agent(["pending", "ses_main", "--json"], { url: server.url, env: { XDG_CONFIG_HOME: config } })
+    expect(result.stderr).toBe("")
+    expect(result.code).toBe(0)
+  })
+
+  test("agent commands do not lend the record's password to another port", async () => {
+    const home = await scratch()
+    const config = join(home, "config")
+    const trusted = world({}, "secret")
+    const elsewhere = world({}, "secret")
+    const directory = join(config, "com.turenlabs.forge")
+    await mkdir(directory, { recursive: true })
+    await writeFile(
+      join(directory, "attach.json"),
+      JSON.stringify({ version: 1, url: trusted.url, username: "forge", password: "secret", pid: process.pid }),
+      { mode: 0o600 },
+    )
+    const result = await agent(["pending", "ses_main"], { url: elsewhere.url, env: { XDG_CONFIG_HOME: config } })
+    expect(result.code).not.toBe(0)
+    expect(result.stderr).toContain("requires a password")
+  })
+
+  test("a discovered server keeps its published username whatever --username says", async () => {
+    const home = await scratch()
+    const trusted = watched()
+    await desktop(home, trusted.origin)
+    const servers = local(home, { username: "someone-else" })
+    const [entry] = await servers.scan()
+    expect((await servers.resolve(entry!.target)).username).toBe("forge")
+    expect((await servers.resolve(named(trusted.origin))).username).toBe("forge")
+  })
 })

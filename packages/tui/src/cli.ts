@@ -12,7 +12,8 @@ const help = `Usage: turen-tui [url] [options]
 
 Open the terminal dashboard for TurenOS. Without a URL it connects to TurenOS on
 this computer: the running desktop app, then this host's quick-connect or
-persistent server. Press s in the dashboard to switch servers.
+persistent server, then (Linux, with FORGE_SERVER_PASSWORD set) a headless
+server on 127.0.0.1:4096 that you own. Press s in the dashboard to switch servers.
 
 Options:
   --server <name>    Open a saved server (see the s server picker)
@@ -26,9 +27,11 @@ Options:
 
 Server URL: positional URL, then TURENOS_SERVER_URL, then local discovery.
 Use an HTTP(S) origin without credentials, a path prefix, query, or fragment.
-Username: --username, then FORGE_SERVER_USERNAME, discovered username, then forge.
-Password: FORGE_SERVER_PASSWORD only; an explicitly empty value disables auth
-and discovery. There is no password flag. Credentials require HTTPS except for
+Username: --username, then FORGE_SERVER_USERNAME, then forge. A discovered server,
+or a URL naming one, always uses the username it publishes.
+Password: FORGE_SERVER_PASSWORD only (a URL naming a discovered server uses that
+server's published password unless it is set); an explicitly empty value disables
+auth and discovery. There is no password flag. Credentials require HTTPS except for
 HTTP on 127.0.0.1 or [::1]. Saved servers live in
 $XDG_CONFIG_HOME/turen-tui/servers.json and never store passwords.
 The dashboard needs an interactive terminal on stdin and stdout.

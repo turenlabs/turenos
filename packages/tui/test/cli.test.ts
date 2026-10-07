@@ -241,6 +241,8 @@ describe("CLI entrypoint", () => {
         "--discover-auth",
         "--version",
         "FORGE_SERVER_PASSWORD",
+        "127.0.0.1:4096",
+        "always uses the username it publishes",
       ]) {
         expect(result.stdout).toContain(text)
       }

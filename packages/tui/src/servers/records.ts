@@ -54,6 +54,17 @@ export async function persistentRecord(ctx: Context) {
   return record
 }
 
+/** The record, among those this client trusts, whose server is exactly `origin`. */
+export async function trustedRecord(ctx: Context, origin: string) {
+  const root = appData(ctx)
+  const records = await Promise.all([
+    ...APPS.map(([appId]) => (root ? desktopRecord(ctx, join(root, appId, "attach.json")) : undefined)),
+    shimRecord(ctx),
+    ctx.platform === "linux" ? persistentRecord(ctx).catch(() => undefined) : undefined,
+  ])
+  return records.find((record) => record?.url === origin)
+}
+
 export function forgeBinary(ctx: Context) {
   if (ctx.forge !== undefined) return ctx.forge ?? undefined
   // A pinned binary is never replaced by whatever PATH offers.

@@ -43,12 +43,36 @@ async function explicit(address: string, values: Values, io: Io) {
     discoverAuth: values["discover-auth"],
     env: io.env,
   })
+  // Like the dashboard: a URL naming a server whose owner published a record we trust uses that record.
+  const published =
+    auth.password === undefined && io.env.FORGE_SERVER_PASSWORD === undefined
+      ? await recorded(url, values, io)
+      : undefined
+  if (published) return published
   return {
     url: url.href,
     username: checkUsername(auth.username),
     password: auth.password || undefined,
     unauthorized: `The server at ${url.origin} requires a password. Set FORGE_SERVER_PASSWORD in the environment (there is no password flag) and retry.`,
     close: undefined,
+  }
+}
+
+async function recorded(url: URL, values: Values, io: Io) {
+  const servers = createServers({ env: io.env, username: values.username })
+  if (!(await servers.trusts(url.origin))) return undefined
+  const target = { kind: "url", id: "cli", name: url.host, url: url.origin, saved: false } as const
+  const endpoint = await servers.resolve(target).catch((error: unknown) => {
+    throw error instanceof PasswordRequired
+      ? new AgentError(`The server at ${url.origin} rejected its published credentials. Restart it, then try again.`)
+      : error
+  })
+  return {
+    url: endpoint.url,
+    username: checkUsername(endpoint.username),
+    password: endpoint.password,
+    unauthorized: undefined,
+    close: endpoint.close,
   }
 }
 

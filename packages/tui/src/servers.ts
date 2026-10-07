@@ -1,6 +1,8 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { preferred, scan } from "./servers/discovery"
+import { readProc } from "./servers/listener"
+import { trustedRecord } from "./servers/records"
 import { resolve } from "./servers/resolve"
 import { add, importDesktop, load, remove } from "./servers/saved"
 import type { Context, Options, State, Target } from "./servers/types"
@@ -24,6 +26,7 @@ export function createServers(options: Options = {}) {
     persistentPath: options.persistentRecord ?? "/etc/turenos/attach.json",
     forge: options.forge,
     username: options.username,
+    readProc: options.readProc ?? readProc,
   }
   const state: State = {
     passwords: new Map(),
@@ -42,6 +45,8 @@ export function createServers(options: Options = {}) {
     load: () => load(ctx, state),
     scan: () => scan(ctx, state),
     preferred: () => preferred(ctx, state),
+    /** Whether a local server's owner published a record for exactly this origin. */
+    trusts: async (origin: string) => !!(await trustedRecord(ctx, origin)),
     resolve: (target: Target, input?: Parameters<typeof resolve>[3]) => resolve(ctx, state, target, input),
     importDesktop: (endpoint: Parameters<typeof importDesktop>[1]) => importDesktop(state, endpoint),
     remember: (target: Target, password: string) => state.passwords.set(target.id, password),

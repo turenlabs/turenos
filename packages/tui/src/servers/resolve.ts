@@ -1,5 +1,6 @@
 import { startHeadless } from "./headless"
-import { desktopRecord, persistentRecord, shimRecord, username } from "./records"
+import { envRefusal } from "./listener"
+import { desktopRecord, persistentRecord, shimRecord, trustedRecord, username } from "./records"
 import { connectSsh } from "./ssh"
 import { verified } from "./verify"
 import type { Context, Endpoint, State, Target } from "./types"
@@ -29,6 +30,8 @@ export async function resolve(ctx: Context, state: State, target: Target, input:
       signal,
       "The persistent server is not answering. Check it with systemctl status turenos.",
     )
+  const refusal = envRefusal(ctx)
+  if (refusal) throw new Error(refusal)
   return verified(
     target,
     { url: target.url, username: username(ctx), password: ctx.env.FORGE_SERVER_PASSWORD ?? "" },
@@ -37,9 +40,16 @@ export async function resolve(ctx: Context, state: State, target: Target, input:
   )
 }
 
-function resolveUrl(ctx: Context, state: State, target: Extract<Target, { kind: "url" }>, signal: AbortSignal) {
+async function resolveUrl(ctx: Context, state: State, target: Extract<Target, { kind: "url" }>, signal: AbortSignal) {
   const password = state.passwords.get(target.id) ?? (target.passwordEnv ? ctx.env[target.passwordEnv] : undefined)
   const url = new URL(target.url)
+  // The URL names a server whose owner published a record this client already trusts, so it gets that record's
+  // credentials. An exported FORGE_SERVER_PASSWORD, even an empty one, is the caller's own choice and wins.
+  const record =
+    password === undefined && ctx.env.FORGE_SERVER_PASSWORD === undefined
+      ? await trustedRecord(ctx, url.origin)
+      : undefined
+  if (record) return verified(target, record, signal, `${target.name} is not reachable at ${url.origin}.`)
   if (password && url.protocol !== "https:" && !["127.0.0.1", "[::1]"].includes(url.hostname))
     throw new Error("Server credentials require HTTPS, or HTTP on 127.0.0.1 or [::1] for an SSH tunnel.")
   return verified(

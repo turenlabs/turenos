@@ -26,7 +26,8 @@ export type SshTarget = {
 }
 
 export type Group = "Opened this session" | "This computer" | "Saved" | "From TurenOS Desktop"
-export type Entry = { target: Target; group: Group; detail: string }
+/** `url` is the endpoint a local entry stands for, so the picker can tell it is the one already connected. */
+export type Entry = { target: Target; group: Group; detail: string; url?: string }
 
 export type Endpoint = {
   target: Target
@@ -58,6 +59,8 @@ export type Options = {
   forge?: string | null
   persistentRecord?: string
   username?: string
+  /** Reads a /proc file as text; undefined when it cannot be read. */
+  readProc?: (path: string) => string | undefined
 }
 
 /** A server's address and credentials as published by its owner. */
@@ -80,6 +83,7 @@ export type Context = {
   persistentPath: string
   forge: string | null | undefined
   username: string | undefined
+  readProc: (path: string) => string | undefined
 }
 
 export type PrivateServer = { child: ReturnType<typeof Bun.spawn>; url: string; password: string }
