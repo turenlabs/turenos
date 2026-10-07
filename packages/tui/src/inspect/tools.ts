@@ -44,7 +44,11 @@ export async function openTools(
   dialog.form.focus()
   try {
     const snapshot = await load()
-    if (state.modal === dialog) body.content = toolText(snapshot, modelNote)
+    // Rows are broken here, one column short of the viewport for the scroll bar, so a wrapped description keeps its indent.
+    const show = () => (body.content = toolText(snapshot, modelNote, Math.max(20, dialog.form.viewport.width - 1)))
+    if (state.modal !== dialog) return
+    show()
+    dialog.form.viewport.on("resize", show)
   } catch (error) {
     if (state.modal === dialog) body.content = `Tools unavailable: ${errorText(error)}\nEnter retries.`
   }

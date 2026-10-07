@@ -10,7 +10,7 @@ export function create(ctx: Context) {
   const dialog = ctx.dialogs.open("New terminal", false, 20)
   if (!dialog) return
   const session = ctx.state.snapshot?.sessions.find((item) => item.id === ctx.state.selected)
-  const title = ctx.dialogs.input(dialog, "Title (optional)")
+  const title = ctx.dialogs.input(dialog, "Title (optional; blank names it after the folder)")
   const folder = ctx.dialogs.input(
     dialog,
     "Folder on the server",
@@ -23,7 +23,10 @@ export function create(ctx: Context) {
   dialog.submit = async () => {
     if (!ctx.state.connected) throw new Error("Reconnect before opening a terminal.")
     created ??= await ctx.connection.client.ptys
-      .create({ location: { directory: folder.value }, title: title.value.trim() || undefined })
+      .create({
+        location: { directory: folder.value },
+        title: title.value.trim() || `Shell in ${folder.value.replace(/\/+$/, "").split("/").at(-1) || "/"}`,
+      })
       .then((response) => {
         const pty = object(response.data)
         return {
@@ -39,7 +42,7 @@ export function create(ctx: Context) {
     if (ctx.state.tab === "terminals") ctx.state.selected = created.id
     void attach(ctx, created)
   }
-  dialog.error.content = "Ctrl+S Open and attach · Esc cancel"
+  dialog.error.content = "Tab next field · Ctrl+S Open and attach · Esc cancel"
   title.focus()
 }
 

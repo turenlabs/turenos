@@ -13,7 +13,7 @@ export function describe(session: Session, harness: State) {
     [
       `For: ${sessionTitle(session.title || session.id, 100)}`,
       snapshot
-        ? `Snapshot v${snapshot.version} · ${snapshot.status} · from ${snapshot.source} · validation ${snapshot.validation.status}`
+        ? `Snapshot v${snapshot.version} · ${snapshot.status} · from ${snapshot.source} · validation ${snapshot.validation.status}\nA snapshot is the saved set of tools and guidance this session's agent works with.`
         : "No harness snapshot yet.",
       ...(snapshot?.validation.errors.length ? [`Errors: ${snapshot.validation.errors.join("; ")}`] : []),
       "",

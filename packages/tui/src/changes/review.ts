@@ -12,14 +12,18 @@ const MODES: Record<Mode, string> = {
 }
 const STATUS: Record<string, string> = { added: "A", deleted: "D", modified: "M" }
 
+const NAMES: Record<string, string> = { A: "added", D: "deleted", M: "modified" }
+
+/** The mode hint with the active one in brackets, so the choice reads without colour. */
+function modeHint(mode: Mode) {
+  const word = (item: Mode, text: string) => (item === mode ? `[${text}]` : text)
+  return `m mode: ${word("git", "uncommitted")} · ${word("branch", "branch")} · ${word("turn", "last turn")}`
+}
+
 /** Hint parts by priority: the trailing ones drop first when the panel is narrow. */
-const HINTS = [
-  "↑↓ file",
-  "m mode: uncommitted · branch · last turn",
-  "@ mention in reply",
-  "PgUp/PgDn scroll",
-  "Ctrl+R refresh",
-]
+const hints = (mode: Mode) => ["↑↓ file", modeHint(mode), "@ mention in reply", "PgUp/PgDn scroll", "Ctrl+R refresh"]
+
+const letter = (file: FileDiff) => STATUS[file.status ?? ""] ?? "M"
 
 /** One open Changes panel: the mode shown, its files, and the latest request that may still paint. */
 export type Review = {
@@ -47,13 +51,13 @@ export async function load(r: Review) {
     paint(r)
     panel.list.setSelectedIndex(0)
     showFile(r)
-    panel.hints(HINTS, ["Esc close"])
+    panel.hints(hints(r.mode), ["Esc close"])
   } catch (error) {
     if (version !== r.request || r.state.modal !== panel.dialog) return
     r.files = []
     panel.list.options = []
     panel.show(`${MODES[r.mode]} unavailable: ${errorText(error)}`)
-    panel.dialog.error.content = "m mode: uncommitted · branch · last turn\nCtrl+R retry · Esc close"
+    panel.dialog.error.content = `${modeHint(r.mode)}\nCtrl+R retry · Esc close`
   }
 }
 
@@ -63,9 +67,11 @@ export function paint(r: Review) {
   const { panel } = r
   const added = r.files.reduce((total, file) => total + file.additions, 0)
   const removed = r.files.reduce((total, file) => total + file.deletions, 0)
+  // Only the letters on screen are spelled out, so a one-kind list stays short.
+  const legend = [...new Set(r.files.map(letter))].toSorted().map((code) => `${code} ${NAMES[code]}`)
   panel.heading.content = fitHeading(
     panelWidth(panel),
-    `${MODES[r.mode]} · ${r.files.length} file${r.files.length === 1 ? "" : "s"} +${added} -${removed} · `,
+    `${MODES[r.mode]} · ${r.files.length} file${r.files.length === 1 ? "" : "s"} +${added} -${removed} · ${legend.length ? `${legend.join(", ")} · ` : ""}`,
     label(r.session.location.directory, 400),
     "",
     "start",
@@ -73,7 +79,7 @@ export function paint(r: Review) {
   panel.list.options = r.files.map((file) => ({
     name: fitRow(
       panelWidth(panel),
-      `${STATUS[file.status ?? ""] ?? "M"} `,
+      `${letter(file)} `,
       label(file.file, 200),
       `  +${file.additions} -${file.deletions}`,
     ),

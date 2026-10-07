@@ -3,6 +3,7 @@ import type { Detail } from "../server"
 import { label, type ModalState } from "../state"
 import { color } from "../theme"
 import type { SessionActionsContext } from "./context"
+import { fitHints } from "../changes/heading"
 import { todoText } from "./todos"
 
 type LoadedTask = Detail["tasks"]["data"][number]
@@ -43,7 +44,7 @@ function paint(picker: TaskPicker, index: number) {
   const selected = index === picker.selected
   row.bg = selected ? color.accent : color.panel
   row.fg = selected ? color.bg : task.status === "failed" ? color.error : color.text
-  row.content = `${selected ? "▶" : " "} [${task.status}] ${label(task.description, 200)}\n  ${label(task.agent)} · ${task.childSessionID}\n  ${task.error ? `Failure: ${label(task.error, 500)}` : `Task: ${task.id}`}`
+  row.content = `${selected ? "▶" : " "} [${task.status}] ${label(task.description, 200)}\n  ${label(task.agent)} agent\n  ${task.error ? `Failure: ${label(task.error, 500)}` : `${task.id} · ${task.childSessionID}`}`
 }
 
 export function choose(picker: TaskPicker, index: number) {
@@ -57,7 +58,18 @@ export function choose(picker: TaskPicker, index: number) {
     ? "No matching loaded tasks."
     : "No tasks yet. Subagent work started in this session appears here."
   picker.dialog.error.content = picker.matches.length
-    ? `${picker.selected + 1}/${picker.matches.length} · ↑/↓ choose · Enter open · Esc close\nPgUp/PgDn page${picker.detail.tasks.cursor.next ? " · Older tasks are not loaded" : ""}`
+    ? fitHints(
+        (picker.dialog.frame.width > 1 ? picker.dialog.frame.width : Math.min(96, picker.ctx.renderer.width)) - 6,
+        [],
+        [
+          `${picker.selected + 1}/${picker.matches.length}`,
+          "↑/↓ choose",
+          "Enter open",
+          "PgUp/PgDn page",
+          ...(picker.detail.tasks.cursor.next ? ["Older tasks are not loaded"] : []),
+          "Esc close",
+        ],
+      )
     : "Esc close"
 }
 

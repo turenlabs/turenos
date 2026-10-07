@@ -8,10 +8,10 @@ import { entryList, type Entry } from "./entries"
 
 const MAX_LINES = 5000
 
-/** Hint parts by priority: the trailing ones drop first when the panel is narrow. */
-const HINTS = [
+/** Hint parts by priority: the trailing ones drop first when the panel is narrow. Enter acts only on a folder. */
+const hints = (entry: Entry | undefined) => [
   "↑↓ choose",
-  "Enter open folder",
+  ...(entry?.type === "directory" ? ["Enter open folder"] : []),
   "←/Backspace up",
   "@ mention in reply",
   "PgUp/PgDn scroll",
@@ -40,9 +40,12 @@ export async function listFolder(b: FileBrowser, path: string, select = "") {
     const result = entryList(await connection.api("/file", { directory: b.directory, query: { path } }))
     if (version !== b.request || state.modal !== b.panel.dialog) return
     b.folder = path
+    // Folders first, and the repository's own `.git` last of all: it is rarely what the reader came for.
     b.entries = result.toSorted(
       (left, right) =>
-        Number(right.type === "directory") - Number(left.type === "directory") || left.name.localeCompare(right.name),
+        Number(left.name === ".git") - Number(right.name === ".git") ||
+        Number(right.type === "directory") - Number(left.type === "directory") ||
+        left.name.localeCompare(right.name),
     )
     b.panel.fit("heading", () => (b.panel.heading.content = fitPath(b)))
     // The trailing slash marks a folder, so the selection arrow is the only leading glyph.
@@ -56,7 +59,6 @@ export async function listFolder(b: FileBrowser, path: string, select = "") {
         b.entries.findIndex((entry) => entry.path === select),
       ),
     )
-    b.panel.hints(HINTS, ["Esc close"])
     void preview(b)
   } catch (error) {
     if (version !== b.request || state.modal !== b.panel.dialog) return
@@ -74,17 +76,19 @@ export async function preview(b: FileBrowser) {
   // Counted before the early returns, so a file preview still in flight cannot overwrite them.
   const version = ++b.preview
   const entry = b.entries[b.panel.list.getSelectedIndex()]
+  b.panel.hints(hints(entry), ["Esc close"])
   if (!entry) return b.panel.show(b.folder ? "Empty folder." : "No files.")
   if (entry.type === "directory") return b.panel.show(`${label(entry.path, 300)}/\n\nEnter opens this folder.`)
-  b.panel.show(`Loading ${label(entry.path, 300)}…`)
+  const title = label(entry.path, 300)
+  b.panel.show(`Loading ${title}…`)
   try {
     const file = object(await connection.api("/file/content", { directory: b.directory, query: { path: entry.path } }))
     if (version !== b.preview || state.modal !== b.panel.dialog) return
     choice(file.type, ["text", "binary"])
     optional(file.mimeType, string)
     if (file.type === "binary")
-      return b.panel.show(`Binary file${file.mimeType ? ` (${label(file.mimeType as string, 100)})` : ""}.`)
-    b.panel.show(numbered(string(file.content)))
+      return b.panel.show(`${title}\n\nBinary file${file.mimeType ? ` (${label(file.mimeType as string, 100)})` : ""}.`)
+    b.panel.show(`${title}\n\n${numbered(string(file.content))}`)
   } catch (error) {
     if (version !== b.preview || state.modal !== b.panel.dialog) return
     b.panel.show(`Could not read ${label(entry.path, 300)}: ${errorText(error)}`)

@@ -30,7 +30,7 @@ export function createSwarmRoom(
     panel.dialog.recipient = session
     panel.dialog.error.marginRight = 2
     const post = new InputRenderable(renderer, {
-      placeholder: "Post as a human member · Enter posts",
+      placeholder: "Type here to post as a human member · Enter posts",
       value: drafts.get(session.id) ?? "",
       maxLength: 8000,
       flexShrink: 0,

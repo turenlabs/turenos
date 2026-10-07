@@ -55,9 +55,11 @@ export async function load(v: SwarmView, reset = false) {
     if (v.state.modal !== v.panel.dialog) return
     v.panel.dialog.error.content = KEYS
     v.panel.heading.content = "No swarm room"
+    // With no lanes to choose, the empty list would squeeze the message into a narrow column.
+    v.panel.list.visible = false
     v.panel.show(
       httpStatus(error) === 404 || /not ?found|404/i.test(errorText(error))
-        ? "This session has no\nswarm room yet.\n\nPosting below creates one.\nThe agent opens one for\nsubagent work. Subagents\nshare the main one."
+        ? "This session has no swarm room yet.\n\nPosting below creates one. The agent opens one for subagent work, and its subagents share the main one."
         : `Swarm room unavailable: ${errorText(error)}`,
     )
   } finally {
@@ -67,6 +69,7 @@ export async function load(v: SwarmView, reset = false) {
 
 function paint(v: SwarmView, room: Room) {
   const { panel } = v
+  panel.list.visible = true
   const active = room.members.filter((member) => member.state === "active" || member.state === "parked")
   panel.heading.content = fitHeading(
     panelWidth(panel),

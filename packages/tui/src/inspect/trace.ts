@@ -5,7 +5,7 @@ import { array, identifier, numeric, object, string } from "../response-validati
 import { errorText, type Connection, type Session } from "../server"
 import { label, type DashboardState } from "../state"
 
-type TraceEvent = { id: string; type: string; seq: number; data: unknown }
+type TraceEvent = { id: string; type: string; seq: number; aggregate: string; data: unknown }
 
 const KEYS = "↑↓ event · [ older · ] newer · PgUp/PgDn read · Esc close"
 
@@ -39,11 +39,12 @@ export async function load(t: TraceView, page?: { cursor: string; direction: "be
         id: identifier(event.id),
         type: string(event.type, 256),
         seq: numeric(object(event.durable).seq),
+        aggregate: string(object(event.durable).aggregateID, 256),
         data: event.data,
       }
     })
     t.cursor = neighbours(t.events, result.cursor, page)
-    panel.heading.content = `${t.events.length} events${t.events[0] ? ` · #${t.events[0].seq}–#${t.events.at(-1)!.seq}` : ""}`
+    panel.heading.content = heading(t.events)
     panel.fit("rows", () => paintRows(t))
     panel.dialog.error.content = KEYS
     describe(t)
@@ -66,19 +67,40 @@ function neighbours(
   return { previous: events[0]?.id, next: cursor.next }
 }
 
+/** Each source (the session, a task it started) numbers its own events, so one page can repeat a seq. */
+function heading(events: TraceEvent[]) {
+  const sources = new Set(events.map((event) => event.aggregate)).size
+  if (sources > 1) return `${events.length} events from ${sources} sources · # is the row; seq counts per source`
+  return `${events.length} events${events[0] ? ` · seq #${events[0].seq}–#${events.at(-1)!.seq}` : ""}`
+}
+
 /** Event names fitted to the list column with an ellipsis, so a long name never ends mid-word unmarked. */
 function paintRows(t: TraceView) {
   const width = Math.max(24, Math.floor(panelWidth(t.panel) * 0.34)) - 4
-  const names = t.events.map((event) => fitHeading(width, `#${event.seq} `, label(event.type, 256), "", "end"))
+  // One source: its seq is unique on the page. Several sources repeat seqs, so rows are numbered by position.
+  const bySeq = new Set(t.events.map((event) => event.aggregate)).size < 2
+  const names = t.events.map((event, index) => eventRow(width, `#${bySeq ? event.seq : index + 1} `, label(event.type, 256)))
   if (names.join("\n") === t.panel.list.options.map((option) => option.name).join("\n")) return
   t.panel.list.options = names.map((name) => ({ name, description: "" }))
+}
+
+const COMMON = "session.next."
+
+/** Cuts the shared `session.next.` first, then the middle, so the ends that tell `prompted` from `prompt.admitted` stay visible. */
+function eventRow(width: number, lead: string, type: string) {
+  const space = width - lead.length
+  if (type.length <= space || !type.startsWith(COMMON)) return fitHeading(width, lead, type, "", "end")
+  const short = type.slice(COMMON.length)
+  if (short.length <= space) return `${lead}${short}`
+  const head = COMMON.length - 1
+  return `${lead}${type.slice(0, head)}…${type.slice(type.length - Math.max(1, space - head - 1))}`
 }
 
 export function describe(t: TraceView) {
   const event = t.events[t.panel.list.getSelectedIndex()]
   t.panel.show(
     event
-      ? `${label(event.type, 256)}\n${event.id}\n\n${display(JSON.stringify(event.data, null, 2) ?? "", 64000)}`
+      ? `${label(event.type, 256)}\n${event.id} · seq #${event.seq} of ${label(event.aggregate, 100)}\n\n${display(JSON.stringify(event.data, null, 2) ?? "", 64000)}`
       : "No events.",
   )
 }

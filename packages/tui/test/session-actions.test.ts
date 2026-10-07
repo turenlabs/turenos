@@ -282,7 +282,7 @@ test("tasks deduplicate active records, show failures and keep search typing foc
   const app = await fixture()
   app.actions.tasks()
   const frame = await app.screen("[running] Review code")
-  expect(frame).toContain("Root-wide")
+  expect(frame).toContain("Recent and active subagent tasks")
   expect(frame).toContain("[failed] Nested checks")
   expect(frame).toContain("Failure: Permission denied")
   expect(frame).toContain("1/2")

@@ -26,7 +26,7 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
   // The server reports an event-triggered automation with a placeholder interval; sending it would replace the trigger.
   const schedule = loop?.eventTrigger
     ? undefined
-    : dialogs.input(dialog, "Schedule: every 2h, or cron (0 9 * * 1-5)", loop ? scheduleInput(loop) : "every 1h")
+    : dialogs.input(dialog, "Schedule: like every 1h, or cron (0 9 * * 1-5)", loop ? scheduleInput(loop) : "every 1h")
   if (loop?.eventTrigger)
     dialog.form.add(
       new TextRenderable(ctx.renderer, {
@@ -42,7 +42,12 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
         "Folder on the server",
         session?.location.directory ?? state.snapshot?.location.directory ?? "",
       )
-  for (const field of [name, prompt, schedule, folder]) if (field) markFocus(field)
+  for (const field of [name, prompt, schedule, folder]) {
+    if (!field) continue
+    markFocus(field)
+    // Values line up under their captions, which leave two columns for the focus arrow.
+    field.marginLeft = 2
+  }
   let created = false
   dialog.submit = async () => {
     // An unchanged schedule is not sent again: that would restart its countdown.
