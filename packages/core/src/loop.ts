@@ -427,15 +427,6 @@ const layer = Layer.effect(
       const invalidWorkflow = input.workflow ? validateWorkflow(input.workflow) : undefined
       if (invalidWorkflow) return yield* invalidWorkflow
       const now = Date.now()
-      const nextForSchedule =
-        schedule.kind === "none"
-          ? undefined
-          : schedule.kind === "event"
-            ? null
-            : schedule.scheduleType === "interval"
-              ? now + schedule.seconds * 1_000
-              : computeCronNext(schedule.expression, schedule.timezone, now)
-      if (nextForSchedule instanceof InvalidInputError) return yield* nextForSchedule
       const result = yield* db
         .transaction(
           (tx) =>
@@ -443,6 +434,14 @@ const layer = Layer.effect(
               const current = yield* tx.select().from(LoopTable).where(eq(LoopTable.id, input.id)).get()
               if (!current) return { type: "not-found" } as const
               if (current.expires_at <= now) return { type: "state" } as const
+              const nextForSchedule =
+                schedule.kind === "none"
+                  ? undefined
+                  : schedule.kind === "event"
+                    ? null
+                    : schedule.scheduleType === "interval"
+                      ? Math.max(current.starts_at, now + schedule.seconds * 1_000)
+                      : computeCronNext(schedule.expression, schedule.timezone, Math.max(now, current.starts_at - 1))
               const next =
                 current.status === "active" &&
                 schedule.kind === "none" &&
@@ -578,8 +577,8 @@ const layer = Layer.effect(
                 return { type: "event", row: current } as const
               const next =
                 current.schedule_type === "cron" && current.cron_expression
-                  ? computeCronNext(current.cron_expression, current.timezone, now)
-                  : now + current.interval_seconds * 1_000
+                  ? computeCronNext(current.cron_expression, current.timezone, Math.max(now, current.starts_at - 1))
+                  : Math.max(current.starts_at, now + current.interval_seconds * 1_000)
               if (next instanceof InvalidInputError) return { type: "invalid", message: next.message } as const
               const row = yield* tx
                 .update(LoopTable)
@@ -698,6 +697,7 @@ const layer = Layer.effect(
               if (!loop) return { type: "not-found" } as const
               if (loop.expires_at <= now) return { type: "expired" } as const
               if (loop.status !== "active") return { type: "inactive" } as const
+              if (loop.starts_at > now) return { type: "not-started" } as const
               if ((loop.trigger_type ?? "scheduled") !== input.trigger) return { type: "mismatch" } as const
               if (input.trigger === "session-end" && !matchesSessionEndFilter(loop.trigger_config, input.payload))
                 return { type: "filtered" } as const
@@ -734,6 +734,8 @@ const layer = Layer.effect(
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
       if (result.type === "expired" || result.type === "inactive")
         return yield* new InvalidStateError({ id: input.id, message: "Loop is not active" })
+      if (result.type === "not-started")
+        return yield* new InvalidStateError({ id: input.id, message: "Loop has not started" })
       if (result.type === "mismatch")
         return yield* new InvalidInputError({ message: `Loop does not listen for ${input.trigger} events` })
       if (result.type === "filtered")
