@@ -1,26 +1,26 @@
 import { join } from "node:path"
 import { APPS, appData, desktopRecord, desktopRunning, forgeBinary, persistentRecord, shimRecord } from "./records"
 import { shortPath } from "./text"
-import { sshDestination } from "./targets"
+import { sshAddress } from "./targets"
 import type { Context, Entry, State } from "./types"
 
 /** Every server this client can offer: local records, saved servers, then the desktop's SSH servers. */
 export async function scan(ctx: Context, state: State): Promise<Entry[]> {
   const local = await localEntries(ctx, state)
-  const destinations = new Set(state.saved.flatMap((target) => (target.kind === "ssh" ? [sshDestination(target)] : [])))
+  const destinations = new Set(state.saved.flatMap((target) => (target.kind === "ssh" ? [sshAddress(target)] : [])))
   return [
     ...local,
     ...state.saved.map((target) => ({
       target,
       group: "Saved" as const,
-      detail: target.kind === "url" ? target.url : `ssh ${sshDestination(target)}`,
+      detail: target.kind === "url" ? target.url : `ssh ${sshAddress(target)}`,
     })),
     ...state.imported
-      .filter((target) => !destinations.has(sshDestination(target)))
+      .filter((target) => !destinations.has(sshAddress(target)))
       .map((target) => ({
         target,
         group: "From TurenOS Desktop" as const,
-        detail: `ssh ${sshDestination(target)}`,
+        detail: `ssh ${sshAddress(target)}`,
       })),
   ]
 }
@@ -68,6 +68,8 @@ async function localEntries(ctx: Context, state: State) {
     })
   const binary = forgeBinary(ctx)
   if (binary) local.push(headlessEntry(ctx, state, binary))
+  else if (ctx.forge === undefined && ctx.env.TURENOS_FORGE)
+    state.notes.push("TURENOS_FORGE must be the absolute path of an executable file.")
   return local
 }
 

@@ -18,6 +18,14 @@ export function sshDestination(target: { host: string; user?: string }) {
   return target.user ? `${target.user}@${target.host}` : target.host
 }
 
+/** `[user@]host[:port]`, as a saved server names it and as the picker shows it. */
+export function sshAddress(target: { host: string; user?: string; port?: number }) {
+  return `${sshDestination(target)}${target.port ? `:${target.port}` : ""}`
+}
+
+/** Hostnames, IPv4 addresses and ssh config aliases; nothing ssh would expand (`%h`) or a shell would read. */
+const HOST = /^[A-Za-z0-9._-]+$/
+
 /** `[user@]host[:port]`, rejecting anything that could smuggle ssh options through the destination. */
 export function parseSshTarget(input: string) {
   const value = input.trim()
@@ -29,7 +37,9 @@ export function parseSshTarget(input: string) {
   if (!withPort && rest.includes(":")) return undefined
   const port = withPort ? Number(withPort[2]) : undefined
   if (port !== undefined && (port < 1 || port > 65535)) return undefined
-  return { user: at?.[1], host: withPort ? withPort[1]! : rest, port }
+  const host = withPort ? withPort[1]! : rest
+  if (!HOST.test(host)) return undefined
+  return { user: at?.[1], host, port }
 }
 
 export function sshTarget(input: Omit<SshTarget, "kind">) {
@@ -38,7 +48,7 @@ export function sshTarget(input: Omit<SshTarget, "kind">) {
   if (
     !input.host ||
     input.host.length > 255 ||
-    !clean(input.host, /^[^\s@\u0000-\u001f]+$/) ||
+    !clean(input.host, HOST) ||
     !clean(input.user, /^[^\s@:/\u0000-\u001f]{1,64}$/) ||
     !clean(input.identityFile, /^[^\u0000-\u001f]{1,4096}$/) ||
     (input.port !== undefined && (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535)) ||
@@ -63,9 +73,14 @@ export function urlTarget(input: Omit<Extract<Target, { kind: "url" }>, "kind">)
   )
     return undefined
   if (input.username !== undefined && !validUsername(input.username)) return undefined
-  if (input.passwordEnv !== undefined && !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(input.passwordEnv)) return undefined
+  if (input.passwordEnv !== undefined && !validPasswordEnv(input.passwordEnv)) return undefined
   if (!input.name.trim() || input.name.length > 128) return undefined
   return { kind: "url" as const, ...input, url: url.origin }
+}
+
+/** A shared servers.json must not be able to send an unrelated secret (GITHUB_TOKEN) to its URL. */
+export function validPasswordEnv(name: string) {
+  return /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(name) && /TURENOS|FORGE/i.test(name) && name !== "FORGE_SERVER_PASSWORD"
 }
 
 export function savedTarget(value: unknown) {

@@ -3,12 +3,28 @@ import { existsSync } from "node:fs"
 import { connect as connectSocket, createServer, type Socket } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { readBounded } from "../response-validation/body"
 import { running } from "./processes"
 import { attachRecord, shimState } from "./records"
 import { sshDestination } from "./targets"
 import { parseJSON, summarize } from "./text"
 import { verified } from "./verify"
 import type { Context, Endpoint, SshTarget } from "./types"
+
+/** What a login needs. Everything else, such as FORGE_SERVER_PASSWORD or a vault key, stays out of ssh and its ProxyCommand. */
+const SSH_ENVIRONMENT =
+  /^(PATH|HOME|USER|LOGNAME|SHELL|TERM|TMPDIR|LANG|LC_.*|SSH_AUTH_SOCK|SSH_AGENT_PID|KRB5CCNAME|XDG_RUNTIME_DIR)$/
+
+/** The probe and the tunnel are the most output this client reads from ssh; a longer answer is not a probe. */
+const SSH_OUTPUT_BYTES = 64 * 1024
+
+export function sshEnvironment(env: NodeJS.ProcessEnv) {
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      (entry): entry is [string, string] => SSH_ENVIRONMENT.test(entry[0]) && entry[1] !== undefined,
+    ),
+  )
+}
 
 const PROBE = [
   'f="/etc/turenos/attach.json"',
@@ -38,10 +54,15 @@ export async function connectSsh(
     "StrictHostKeyChecking=ask",
     "-o",
     "ConnectTimeout=15",
+    // A user's ControlMaster/ControlPersist would keep a forward alive after this client quits.
+    "-o",
+    "ControlMaster=no",
+    "-o",
+    "ControlPath=none",
     ...(target.port ? ["-p", String(target.port)] : []),
     ...(target.identityFile ? ["-i", target.identityFile] : []),
   ]
-  const remote = await findRemote(ctx, target, [...base, destination, "sh -s"], signal, progress)
+  const remote = await findRemote(ctx, target, [...base, "--", destination, "sh -s"], signal, progress)
   progress?.(`Opening a tunnel to ${target.name}…`)
   const tunnel = await openTunnel(ctx, base, destination, Number(new URL(remote.url).port), signal)
   return verified(
@@ -97,7 +118,13 @@ async function startRemote(
   progress?.(`Starting the TurenOS server on ${target.name}…`)
   const started = await runSsh(ctx, command, ensureScript(key), 90_000, signal)
   const state = shimState(started.stdout.split(/\r?\n/g).map((line) => line.trim()))
-  if (!state) throw new Error(sshFailure(target, started.stderr || started.stdout))
+  // Never quote stdout: a record this client rejects can still carry the remote password.
+  if (!state)
+    throw new Error(
+      started.stderr.trim()
+        ? sshFailure(target, started.stderr)
+        : `forge-remote on ${target.name} did not publish a usable server record.`,
+    )
   return state
 }
 
@@ -118,9 +145,10 @@ async function openTunnel(ctx: Context, base: string[], destination: string, rem
       "ServerAliveCountMax=2",
       "-L",
       `${socketPath}:127.0.0.1:${remotePort}`,
+      "--",
       destination,
     ],
-    { stdin: "ignore", stdout: "ignore", stderr: "pipe" },
+    { stdin: "ignore", stdout: "ignore", stderr: "pipe", env: sshEnvironment(ctx.env) },
   )
   running.add(child)
   const proxy = loopbackProxy(socketPath)
@@ -141,12 +169,19 @@ async function openTunnel(ctx: Context, base: string[], destination: string, rem
     throw error
   })
   const deadline = Date.now() + 20_000
-  const stderr = new Response(child.stderr).text()
+  // Only the tail explains a failure; a tunnel that runs for hours must not accumulate its stderr.
+  let stderr = ""
+  const drained = (async () => {
+    const reader = child.stderr.pipeThrough(new TextDecoderStream()).getReader()
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read())
+      stderr = (stderr + chunk.value).slice(-8192)
+  })().catch(() => {})
   // The socket appears once ssh has authenticated and registered the forward.
   while (!existsSync(socketPath)) {
     if (child.exitCode !== null || signal.aborted || Date.now() > deadline) {
       close()
-      const detail = summarize(await stderr)
+      await drained
+      const detail = summarize(stderr)
       throw new Error(signal.aborted ? "Connection cancelled." : `The SSH tunnel did not open. ${detail}`.trim())
     }
     await Bun.sleep(100)
@@ -186,15 +221,22 @@ async function runSsh(ctx: Context, args: string[], input: string, timeout: numb
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
+    env: sshEnvironment(ctx.env),
     signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]),
   })
+  running.add(child)
+  void child.exited.then(() => running.delete(child))
   child.stdin.write(input)
   await child.stdin.end()
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ])
+  const read = (stream: ReadableStream<Uint8Array>) =>
+    readBounded(stream, { bytes: SSH_OUTPUT_BYTES }).then(
+      (chunks) => new Blob(chunks).text(),
+      () => {
+        child.kill()
+        throw new Error("The SSH command produced more output than this client accepts.")
+      },
+    )
+  const [stdout, stderr, code] = await Promise.all([read(child.stdout), read(child.stderr), child.exited])
   if (signal.aborted) throw new Error("Connection cancelled.")
   return { stdout, stderr, code }
 }

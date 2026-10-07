@@ -33,7 +33,8 @@ async function setup(
   }
   const servers = createServers({ home, platform: "darwin", env: {}, forge: null, config: join(home, "servers.json") })
   await servers.add({ address: beta.listener.url.origin, name: "beta" })
-  const { view, screen } = await terminal()
+  // Ctrl+C is left to the dashboard, as the client's own renderer does.
+  const { view, screen } = await terminal(120, 36, true)
   let quits = 0
   const discarded: number[] = []
   const app = mountApp(view.renderer, servers, {
@@ -155,11 +156,12 @@ test("a freshly connected dashboard has keyboard focus, so Enter opens the reply
   const { view, screen } = await setup()
   await screen("alpha says hello")
   expect(view.renderer.currentFocusedRenderable).toBeTruthy()
-  // First Enter opens the focused session from the list; the second opens its reply editor.
+  // Enter opens the focused session from the list, and with it the reply editor, which takes typing.
   view.mockInput.pressEnter()
-  await view.renderOnce()
-  view.mockInput.pressEnter()
-  await screen("Your message")
+  await screen("Typing")
+  await view.mockInput.typeText("hello")
+  await screen("hello")
+  expect(view.renderer.currentFocusedEditor?.plainText).toBe("hello")
 })
 
 test("a dashboard reached by switching servers also has keyboard focus", async () => {
@@ -174,11 +176,12 @@ test("a dashboard reached by switching servers also has keyboard focus", async (
   view.mockInput.pressEnter()
   await screen("beta says hello")
   expect(view.renderer.currentFocusedRenderable).toBeTruthy()
-  // First Enter opens the focused session from the list; the second opens its reply editor.
+  // Enter opens the focused session from the list, and with it the reply editor, which takes typing.
   view.mockInput.pressEnter()
-  await view.renderOnce()
-  view.mockInput.pressEnter()
-  await screen("Your message")
+  await screen("Typing")
+  await view.mockInput.typeText("hello")
+  await screen("hello")
+  expect(view.renderer.currentFocusedEditor?.plainText).toBe("hello")
 })
 
 test("quitting reports the unsent drafts it discards so the closing line can say so", async () => {

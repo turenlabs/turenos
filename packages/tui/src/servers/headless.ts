@@ -33,7 +33,10 @@ export async function startHeadless(
     stderr: "pipe",
   })
   running.add(child)
-  void child.exited.then(() => running.delete(child))
+  void child.exited.then(() => {
+    running.delete(child)
+    if (state.headless?.child === child) state.headless = undefined
+  })
   const started = await waitForPort(child, signal)
   if (!started.port) {
     child.kill()

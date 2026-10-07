@@ -1,6 +1,11 @@
 import { isRecord } from "../response-validation"
+import { boundedText } from "../response-validation/body"
+import { bypassLoopbackProxy } from "../server/proxy"
 import { parseJSON } from "./text"
 import { PasswordRequired, type AttachRecord, type Endpoint, type Target } from "./types"
+
+/** Verification answers are small; a server that sends more than this is not answering as one. */
+const VERIFY_BYTES = 64 * 1024
 
 /** Proves the credentials against the server before any dashboard is built on them. */
 export async function verified(
@@ -35,20 +40,19 @@ export async function verified(
   }
 }
 
-/**
- * Servers that publish `GET /global/server` name themselves; a 404 is a server that predates it, with
- * nothing to compare. Any other answer that does not carry the record's serverID is refused.
- */
+/** A record that names a serverID is only its owner's when the server answers with that same ID. */
 async function sameServer(record: AttachRecord, signal: AbortSignal) {
   const response = await request(record, "/global/server", signal)
-  if (response?.status === 404) return true
   if (!response?.ok) return false
-  const body = parseJSON((await response.text()).slice(0, 65536))
+  const body = parseJSON((await boundedText(response, VERIFY_BYTES)) ?? "")
   return isRecord(body) && body.serverID === record.serverID
 }
 
 function request(record: AttachRecord, path: string, signal: AbortSignal) {
-  return fetch(new URL(path, record.url), {
+  const address = new URL(path, record.url)
+  // Verification runs before any Connection exists, so the loopback bypass must be installed here too.
+  bypassLoopbackProxy(address)
+  return fetch(address, {
     headers: record.password
       ? { Authorization: `Basic ${Buffer.from(`${record.username}:${record.password}`).toString("base64")}` }
       : {},
@@ -60,10 +64,11 @@ function request(record: AttachRecord, path: string, signal: AbortSignal) {
 async function health(record: AttachRecord, signal: AbortSignal) {
   const response = await request(record, "/global/health", signal)
   if (!response) return { ok: false, status: 0 }
-  const body = response.ok ? parseJSON((await response.text()).slice(0, 65536)) : undefined
+  const text = response.ok ? await boundedText(response, VERIFY_BYTES) : undefined
   await response.body?.cancel().catch(() => {})
+  const body = parseJSON(text ?? "")
   return {
-    ok: response.ok,
+    ok: response.ok && text !== undefined,
     status: response.status,
     version: isRecord(body) && typeof body.version === "string" ? body.version.slice(0, 64) : undefined,
   }

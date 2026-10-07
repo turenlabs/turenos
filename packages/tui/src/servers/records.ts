@@ -1,7 +1,7 @@
 import { accessSync, constants, statSync } from "node:fs"
 import { open, readlink } from "node:fs/promises"
 import { hostname } from "node:os"
-import { join } from "node:path"
+import { isAbsolute, join } from "node:path"
 import { isRecord } from "../response-validation"
 import { writtenSinceStart } from "./freshness"
 import { parseJSON, validUsername } from "./text"
@@ -40,8 +40,8 @@ export async function shimRecord(ctx: Context) {
     ),
   )
   if (!alive(Number(pid?.trim())) || !password?.trim()) return undefined
-  if (!(await writtenSinceStart(Number(pid?.trim()), ["server.pid", "server.auth"].map((name) => join(directory, name)))))
-    return undefined
+  const files = ["server.pid", "server.port", "server.auth"].map((name) => join(directory, name))
+  if (!(await writtenSinceStart(Number(pid?.trim()), files))) return undefined
   return shimState([
     `FORGE_REMOTE ${JSON.stringify({ port: Number(port?.trim()), username: "forge", password: password.trim() })}`,
   ])
@@ -56,8 +56,10 @@ export async function persistentRecord(ctx: Context) {
 
 export function forgeBinary(ctx: Context) {
   if (ctx.forge !== undefined) return ctx.forge ?? undefined
+  // A pinned binary is never replaced by whatever PATH offers.
+  const pinned = ctx.env.TURENOS_FORGE
+  if (pinned) return isAbsolute(pinned) && executable(pinned) ? pinned : undefined
   return [
-    ctx.env.TURENOS_FORGE,
     Bun.which("forge", { PATH: ctx.env.PATH ?? "" }) ?? undefined,
     join(ctx.home, ".forge", "bin", "forge"),
     ctx.platform === "darwin" ? "/Applications/TurenOS.app/Contents/Resources/forge-cli" : undefined,

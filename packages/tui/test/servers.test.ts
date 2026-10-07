@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
 import { hostname, tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
+import { bypassLoopbackProxy } from "../src/server/proxy"
+import { sshEnvironment } from "../src/servers/ssh"
 import { createServers, parseSshTarget, PasswordRequired, type Endpoint, type Target } from "../src/servers"
 
 const cleanup: (() => unknown)[] = []
@@ -135,7 +137,7 @@ describe("local discovery", () => {
 
   test("the persistent server's attach record is read on Linux", async () => {
     const home = await scratch()
-    const listener = server()
+    const listener = server("secret", { "/global/server": { serverID: "srv_1" } })
     const record = join(home, "attach.json")
     await writeFile(
       record,
@@ -151,6 +153,22 @@ describe("local discovery", () => {
     const target = await servers.preferred()
     expect(target?.kind).toBe("persistent")
     expect((await open(servers, target!)).url).toBe(listener.url.origin)
+  })
+
+  test("TURENOS_FORGE pins the forge binary and never falls through to PATH", async () => {
+    const directory = await scratch()
+    const forge = join(directory, "forge")
+    await writeFile(forge, "#!/bin/sh\n", { mode: 0o755 })
+    const kinds = async (TURENOS_FORGE: string) => {
+      const servers = local(await scratch(), { forge: undefined, env: { TURENOS_FORGE, PATH: directory } })
+      return { kinds: (await servers.scan()).map((entry) => entry.target.kind), problems: servers.problems() }
+    }
+    expect(await kinds("forge")).toEqual({
+      kinds: [],
+      problems: ["TURENOS_FORGE must be the absolute path of an executable file."],
+    })
+    expect((await kinds(join(directory, "missing"))).kinds).toEqual([])
+    expect(await kinds(forge)).toEqual({ kinds: ["headless"], problems: [] })
   })
 
   test("FORGE_SERVER_PASSWORD keeps the port-4096 workflow available", async () => {
@@ -185,13 +203,13 @@ describe("saved servers", () => {
     await reloaded.load()
     expect((await reloaded.scan()).map((entry) => [entry.group, entry.target.name, entry.detail])).toEqual([
       ["Saved", "turen.example", "https://turen.example"],
-      ["Saved", "lab", "ssh dad@10.0.0.4"],
+      ["Saved", "lab", "ssh dad@10.0.0.4:2222"],
     ])
     await reloaded.remove(reloaded.find("lab")!)
     expect(JSON.parse(await readFile(file, "utf8")).servers).toHaveLength(1)
   })
 
-  for (const address of ["https://turen.example/prefix", "ftp://x", "-oProxyCommand=sh", "a b", "user@@host", "host:0"])
+  for (const address of ["https://turen.example/prefix", "ftp://x", "-oProxyCommand=sh", "a b", "user@@host", "host:0", "host%h", "host;x", "host`x`"])
     test(`rejects the address ${JSON.stringify(address)}`, async () => {
       await expect(local(await scratch()).add({ address })).rejects.toThrow()
     })
@@ -230,6 +248,55 @@ describe("saved servers", () => {
       expect(await readFile(file, "utf8")).toBe(contents)
     })
 
+  test("a newer servers.json version is reported and never rewritten", async () => {
+    const home = await scratch()
+    const file = join(home, "servers.json")
+    const contents = JSON.stringify({ version: 2, servers: [{ name: "ok", url: "https://ok.example" }] })
+    await writeFile(file, contents, { mode: 0o600 })
+    const servers = local(home)
+    await servers.load()
+    expect(servers.problems().join(" ")).toContain("written by a newer version")
+    await expect(servers.add({ address: "https://new.example" })).rejects.toThrow("written by a newer version")
+    expect(await readFile(file, "utf8")).toBe(contents)
+  })
+
+  test("a failed write leaves no temporary file beside servers.json", async () => {
+    const home = await scratch()
+    const servers = local(home)
+    await servers.load()
+    // A directory in the way makes the final rename fail.
+    await mkdir(join(home, "servers.json", "keep"), { recursive: true })
+    await expect(servers.add({ address: "https://new.example" })).rejects.toThrow()
+    expect(await readdir(home)).toEqual(["servers.json"])
+  })
+
+  test("passwordEnv must name a TurenOS variable", async () => {
+    const home = await scratch()
+    const entry = (name: string, passwordEnv: string) => ({ name, url: `https://${name}.example`, passwordEnv })
+    await writeFile(
+      join(home, "servers.json"),
+      JSON.stringify({
+        servers: [
+          entry("team", "TEAM_TURENOS_PASSWORD"),
+          entry("lower", "forge_team_pw"),
+          entry("token", "GITHUB_TOKEN"),
+          entry("sidecar", "FORGE_SERVER_PASSWORD"),
+        ],
+      }),
+      { mode: 0o600 },
+    )
+    const servers = local(home)
+    await servers.load()
+    expect((await servers.scan()).map((item) => item.target.name)).toEqual(["team", "lower"])
+    const file = join(home, "servers.json")
+    expect(servers.problems()).toEqual(
+      [3, 4].map(
+        (index) =>
+          `Skipped server ${index} in ${file}; it is kept unchanged. passwordEnv must name a TURENOS or FORGE variable other than FORGE_SERVER_PASSWORD.`,
+      ),
+    )
+  })
+
   test("a URL server asks for a password and uses the remembered one", async () => {
     const home = await scratch()
     const listener = server()
@@ -252,7 +319,7 @@ describe("saved servers", () => {
 test("SSH destinations cannot smuggle options", () => {
   expect(parseSshTarget("dad@10.0.0.4:2222")).toEqual({ user: "dad", host: "10.0.0.4", port: 2222 })
   expect(parseSshTarget("eaw")).toEqual({ user: undefined, host: "eaw", port: undefined })
-  for (const value of ["-oProxyCommand=x", "dad@-oX", "a\nb", "host:99999", "fe80::1"])
+  for (const value of ["-oProxyCommand=x", "dad@-oX", "a\nb", "host:99999", "fe80::1", "host%h", "host;x", "host`x`"])
     expect(parseSshTarget(value)).toBeUndefined()
 })
 
@@ -271,7 +338,7 @@ import { connect, createServer } from "node:net"
 const args = process.argv.slice(2)
 const forward = args.indexOf("-L")
 const stdin = forward === -1 ? await Bun.stdin.text() : ""
-appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, stdin }) + "\\n")
+appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, stdin, env: Object.keys(process.env) }) + "\\n")
 if (forward !== -1) {
   const spec = args[forward + 1]
   const at = spec.lastIndexOf(":127.0.0.1:")
@@ -293,7 +360,7 @@ if (forward !== -1) {
       (await readFile(log, "utf8"))
         .trim()
         .split("\n")
-        .map((line) => JSON.parse(line) as { args: string[]; stdin: string })
+        .map((line) => JSON.parse(line) as { args: string[]; stdin: string; env: string[] })
     const reply = (key: string, value: string) =>
       readFile(replies, "utf8").then((text) =>
         writeFile(replies, JSON.stringify({ ...JSON.parse(text), [key]: value })),
@@ -318,11 +385,28 @@ if (forward !== -1) {
     expect(endpoint.url).not.toBe(listener.url.origin)
     expect(await healthy(endpoint)).toBe(200)
     const [probe, tunnel] = await ssh.calls()
-    expect(probe!.args.slice(-2)).toEqual(["dad@lab.example", "sh -s"])
+    expect(probe!.args.slice(-3)).toEqual(["--", "dad@lab.example", "sh -s"])
+    expect(probe!.args).toEqual(expect.arrayContaining(["ControlMaster=no", "ControlPath=none"]))
     expect(probe!.args).toContain("BatchMode=yes")
     expect(probe!.args).toEqual(expect.arrayContaining(["-p", "2222"]))
-    expect(tunnel!.args.at(-1)).toBe("dad@lab.example")
+    expect(tunnel!.args.slice(-2)).toEqual(["--", "dad@lab.example"])
+    expect(tunnel!.args).toEqual(expect.arrayContaining(["ControlMaster=no", "ControlPath=none"]))
     expect(tunnel!.args).toContain("-N")
+  })
+
+  test("a rejected remote record never reaches the error text", async () => {
+    const ssh = await fakeSsh("FORGE_ATTACH missing\nFORGE_REMOTE_STOPPED\n")
+    await ssh.reply("ensure", 'FORGE_REMOTE {"port":99999,"username":"forge","password":"remote-secret"}\n')
+    const { servers, target } = await lab(ssh.script, {
+      FORGE_SECRET_VAULT_KEY_ID: "key-1",
+      FORGE_SECRET_VAULT_KEY: Buffer.alloc(32, 7).toString("base64"),
+    })
+    const message = await servers.resolve(target).then(
+      () => "",
+      (error: Error) => error.message,
+    )
+    expect(message).toContain("did not publish a usable server record")
+    expect(message).not.toContain("remote-secret")
   })
 
   test("a dropped tunnel keeps its loopback port reserved until the endpoint is closed", async () => {
@@ -350,7 +434,7 @@ if (forward !== -1) {
   })
 
   test("prefers a managed persistent server's attach record", async () => {
-    const listener = server()
+    const listener = server("secret", { "/global/server": { serverID: "srv_1" } })
     const record = {
       version: 1,
       serverID: "srv_1",
@@ -387,6 +471,55 @@ if (forward !== -1) {
     expect(calls.flatMap((call) => call.args).join(" ")).not.toContain(key)
   })
 
+  test("ssh children get a login environment, never the client's secrets", async () => {
+    expect(sshEnvironment({ PATH: "/bin", LC_ALL: "C", SSH_AUTH_SOCK: "/a", FORGE_SERVER_PASSWORD: "p" })).toEqual({
+      PATH: "/bin",
+      LC_ALL: "C",
+      SSH_AUTH_SOCK: "/a",
+    })
+    const listener = server()
+    const ssh = await fakeSsh(
+      `FORGE_ATTACH missing\nFORGE_REMOTE {"port":${listener.port},"username":"forge","password":"secret"}\n`,
+    )
+    const { servers, target } = await lab(ssh.script, {
+      FORGE_SERVER_PASSWORD: "p",
+      FORGE_SECRET_VAULT_KEY_ID: "k",
+      LAB_PASSWORD: "x",
+      SSH_AUTH_SOCK: "/tmp/agent",
+      PATH: process.env.PATH,
+    })
+    await open(servers, target)
+    const calls = await ssh.calls()
+    expect(calls).toHaveLength(2)
+    for (const call of calls) {
+      expect(call.env).toContain("SSH_AUTH_SOCK")
+      for (const name of ["FORGE_SERVER_PASSWORD", "FORGE_SECRET_VAULT_KEY_ID", "LAB_PASSWORD"])
+        expect(call.env).not.toContain(name)
+    }
+  })
+
+  test("ssh output over the probe limit fails the probe without quoting it", async () => {
+    const ssh = await fakeSsh("SECRETOUTPUT".repeat(6000))
+    const { servers, target } = await lab(ssh.script)
+    const message = await servers.resolve(target).then(
+      () => "",
+      (error: Error) => error.message,
+    )
+    expect(message).toBe("The SSH command produced more output than this client accepts.")
+  })
+
+  test("a record with a serverID is refused when the server does not name itself, and its tunnel closes", async () => {
+    const listener = server()
+    const record = { version: 1, serverID: "srv_1", url: listener.url.origin, username: "forge", password: "secret" }
+    const ssh = await fakeSsh(`FORGE_ATTACH readable ${JSON.stringify(record)}\n`)
+    const { servers, target } = await lab(ssh.script)
+    await expect(servers.resolve(target)).rejects.toThrow("not the server that published")
+    const tunnel = (await ssh.calls()).find((call) => call.args.includes("-L"))!
+    const socket = tunnel.args[tunnel.args.indexOf("-L") + 1]!.split(":127.0.0.1:")[0]!
+    await Bun.sleep(500)
+    expect(await stat(dirname(socket)).then(() => true, () => false)).toBe(false)
+  })
+
   test("a host without TurenOS points to the desktop installer", async () => {
     const ssh = await fakeSsh("FORGE_ATTACH missing\nFORGE_REMOTE_MISSING\n")
     const { servers, target } = await lab(ssh.script)
@@ -401,6 +534,7 @@ if (forward !== -1) {
           value: JSON.stringify([
             { id: "ssh:dad@10.0.0.4", host: "10.0.0.4", user: "dad", port: null, displayName: "eaw" },
             { id: "ssh:dad@lab.example:2222", host: "lab.example", user: "dad", port: 2222, displayName: null },
+            { id: "ssh:dad@lab.example:2200", host: "lab.example", user: "dad", port: 2200, displayName: "lab-alt" },
             { id: "ssh:bad", host: "-oProxyCommand=x", user: null },
           ]),
         },
@@ -412,8 +546,9 @@ if (forward !== -1) {
     await servers.importDesktop(await open(servers, (await servers.preferred())!))
     expect((await servers.scan()).map((entry) => [entry.group, entry.target.name, entry.detail])).toEqual([
       ["This computer", "TurenOS", `Desktop app · port ${listener.port}`],
-      ["Saved", "lab", "ssh dad@lab.example"],
+      ["Saved", "lab", "ssh dad@lab.example:2222"],
       ["From TurenOS Desktop", "eaw", "ssh dad@10.0.0.4"],
+      ["From TurenOS Desktop", "lab-alt", "ssh dad@lab.example:2200"],
     ])
   })
 })
@@ -445,6 +580,25 @@ console.log("forge server listening on http://127.0.0.1:" + listener.port)
     expect(endpoint.password).toHaveLength(32)
     expect((await open(servers, entry.target)).url).toBe(endpoint.url)
     expect((await servers.scan()).find((item) => item.target.kind === "headless")?.detail).toStartWith("Running · port")
+  })
+
+  test("a private server that exits is no longer offered as running", async () => {
+    const forge = await fakeForge(`
+const password = process.env.FORGE_SERVER_PASSWORD
+const listener = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (request) =>
+  request.headers.get("authorization") === "Basic " + btoa("forge:" + password)
+    ? Response.json({ healthy: true, version: "9.9.9" })
+    : new Response(null, { status: 401 }) })
+console.log("forge server listening on http://127.0.0.1:" + listener.port)
+setTimeout(() => process.exit(0), 1500)
+`)
+    const servers = local(await scratch(), { forge })
+    cleanup.push(() => servers.stopHeadless())
+    const detail = async () => (await servers.scan()).find((item) => item.target.kind === "headless")!.detail
+    await open(servers, (await servers.scan()).find((item) => item.target.kind === "headless")!.target)
+    expect(await detail()).toStartWith("Running")
+    for (let wait = 0; wait < 50 && (await detail()).startsWith("Running"); wait++) await Bun.sleep(100)
+    expect(await detail()).toStartWith("forge serve from")
   })
 
   test("explains a missing vault key", async () => {
@@ -536,6 +690,21 @@ describe("record identity", () => {
     expect(await local(home).scan()).toEqual([])
   })
 
+  test("a quick-connect port file older than its pid is ignored", async () => {
+    const home = await scratch()
+    const run = join(home, ".forge", "run")
+    await mkdir(run, { recursive: true })
+    for (const [name, value] of [
+      ["server.pid", String(process.pid)],
+      ["server.port", "4321"],
+      ["server.auth", "secret"],
+    ] as const)
+      await writeFile(join(run, name), value, { mode: 0o600 })
+    expect(await local(home).scan()).toHaveLength(1)
+    await age(join(run, "server.port"), 24 * hour)
+    expect(await local(home).scan()).toEqual([])
+  })
+
   async function persistent(url: string, serverID: string) {
     const home = await scratch()
     const record = join(home, "attach.json")
@@ -557,4 +726,187 @@ describe("record identity", () => {
     const servers = await persistent(server("secret", { "/global/server": { serverID: "srv_1" } }).url.origin, "srv_1")
     expect((await servers.resolve((await servers.preferred())!)).version).toBe("1.0.32")
   })
+
+  test("a server that answers 404 for its descriptor is refused when the record names a serverID", async () => {
+    const servers = await persistent(server().url.origin, "srv_1")
+    await expect(servers.resolve((await servers.preferred())!)).rejects.toThrow("not the server that published")
+  })
+})
+
+describe("verification bounds", () => {
+  /** A server whose `path` answers with an endless body, counting what the client pulled; health is normal. */
+  function endless(path: string) {
+    let pulled = 0
+    const listener = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        if (request.headers.get("authorization") !== `Basic ${btoa("forge:secret")}`)
+          return new Response(null, { status: 401 })
+        const requested = new URL(request.url).pathname
+        if (requested !== path) {
+          return requested === "/global/health"
+            ? Response.json({ healthy: true, version: "1.0.32" })
+            : new Response(null, { status: 404 })
+        }
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              pulled += 65536
+              controller.enqueue(new Uint8Array(65536).fill(32))
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        )
+      },
+    })
+    cleanup.push(() => listener.stop(true))
+    return { url: listener.url.origin, pulled: () => pulled }
+  }
+
+  test("a health answer over the verification limit is refused without being buffered", async () => {
+    const home = await scratch()
+    const fixture = endless("/global/health")
+    await desktop(home, fixture.url)
+    const servers = local(home)
+    const started = Date.now()
+    await expect(servers.resolve((await servers.preferred())!)).rejects.toThrow("is not answering")
+    expect(Date.now() - started).toBeLessThan(4000)
+    expect(fixture.pulled()).toBeLessThan(8 * 1024 * 1024)
+  })
+
+  test("a server descriptor over the verification limit is refused", async () => {
+    const home = await scratch()
+    const fixture = endless("/global/server")
+    const record = join(home, "attach.json")
+    await writeFile(
+      record,
+      JSON.stringify({ version: 1, serverID: "srv_1", url: fixture.url, username: "forge", password: "secret" }),
+    )
+    const servers = local(home, { platform: "linux", uid: undefined, persistentRecord: record })
+    await expect(servers.resolve((await servers.preferred())!)).rejects.toThrow("not the server that published")
+    expect(fixture.pulled()).toBeLessThan(8 * 1024 * 1024)
+  })
+
+  test("a desktop SSH list over the import limit is ignored", async () => {
+    const home = await scratch()
+    const fixture = endless("/global/storage")
+    await desktop(home, fixture.url)
+    const servers = local(home)
+    await servers.importDesktop(await open(servers, (await servers.preferred())!))
+    expect((await servers.scan()).map((entry) => entry.group)).toEqual(["This computer"])
+    expect(fixture.pulled()).toBeLessThan(8 * 1024 * 1024)
+  })
+})
+
+test("verifying a local record bypasses inherited proxies", async () => {
+  const direct: (string | null)[] = []
+  const proxied: string[] = []
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      direct.push(request.headers.get("authorization"))
+      return Response.json({ healthy: true, version: "1.0.32" })
+    },
+  })
+  const proxy = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      proxied.push(request.url)
+      return Response.json({ healthy: true, version: "1.0.32" })
+    },
+  })
+  cleanup.push(() => server.stop(true), () => proxy.stop(true))
+  // The record must be written by the process whose pid it names, so the child writes it.
+  const script = `
+import { mkdir, writeFile } from "node:fs/promises"
+import { join } from "node:path"
+import { createServers } from ${JSON.stringify(new URL("../src/servers.ts", import.meta.url).href)}
+const home = process.env.TUI_TEST_HOME
+const directory = join(home, "Library", "Application Support", "com.turenlabs.forge")
+await mkdir(directory, { recursive: true })
+const record = { version: 1, url: process.env.TUI_TEST_URL, username: "forge", password: "secret", pid: process.pid }
+await writeFile(join(directory, "attach.json"), JSON.stringify(record), { mode: 0o600 })
+const servers = createServers({ home, platform: "darwin", env: {}, forge: null, config: join(home, "servers.json") })
+const endpoint = await servers.resolve(await servers.preferred())
+endpoint.close?.()
+`
+  const child = Bun.spawn([process.execPath, "--eval", script], {
+    env: {
+      ...process.env,
+      TUI_TEST_HOME: await scratch(),
+      TUI_TEST_URL: server.url.origin,
+      HTTP_PROXY: proxy.url.href,
+      HTTPS_PROXY: proxy.url.href,
+      ALL_PROXY: proxy.url.href,
+      http_proxy: proxy.url.href,
+      https_proxy: proxy.url.href,
+      all_proxy: proxy.url.href,
+      NO_PROXY: "",
+      no_proxy: "",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 15000,
+  })
+  const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+  expect(stderr).toBe("")
+  expect(code).toBe(0)
+  expect(direct).toEqual([`Basic ${btoa("forge:secret")}`])
+  expect(proxied).toEqual([])
+})
+
+test.each(["SIGTERM", "SIGHUP", "SIGINT"] as const)("private servers and tunnels are stopped when this client receives %s", async (signal) => {
+  const directory = await scratch()
+  const script = `
+import { writeFileSync } from "node:fs"
+import { running } from ${JSON.stringify(new URL("../src/servers/processes.ts", import.meta.url).href)}
+const child = Bun.spawn(["sleep", "30"])
+running.add(child)
+writeFileSync(process.env.TUI_TEST_PID_FILE, String(child.pid))
+await Bun.sleep(10_000)
+`
+  const file = join(directory, "child.pid")
+  const client = Bun.spawn([process.execPath, "--eval", script], {
+    env: { ...process.env, TUI_TEST_PID_FILE: file },
+    stdout: "ignore",
+    stderr: "pipe",
+  })
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+  let pid = 0
+  try {
+    while (!pid) {
+      pid = Number(await readFile(file, "utf8").catch(() => "0"))
+      if (!pid) await Bun.sleep(20)
+    }
+    expect(alive(pid)).toBe(true)
+    client.kill(signal)
+    await client.exited
+    await Bun.sleep(100)
+    expect(alive(pid)).toBe(false)
+  } finally {
+    if (pid && alive(pid)) process.kill(pid, "SIGKILL")
+    client.kill()
+  }
+})
+
+test("the loopback proxy bypass covers the bracketed IPv6 host", () => {
+  const saved = [process.env.NO_PROXY, process.env.no_proxy]
+  cleanup.push(() => {
+    for (const [name, value] of [["NO_PROXY", saved[0]], ["no_proxy", saved[1]]] as const)
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+  })
+  process.env.NO_PROXY = ""
+  bypassLoopbackProxy(new URL("http://[::1]:4096"))
+  expect(process.env.NO_PROXY!.split(",")).toEqual(expect.arrayContaining(["::1", "[::1]"]))
 })

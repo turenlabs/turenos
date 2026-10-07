@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto"
 import { mkdir, open, rename, rm } from "node:fs/promises"
 import { dirname } from "node:path"
 import { isRecord } from "../response-validation"
+import { boundedText } from "../response-validation/body"
+import { bypassLoopbackProxy } from "../server/proxy"
 import { readPrivate } from "./records"
-import { parseAddress, parseSshTarget, savedTarget, sshDestination, sshTarget } from "./targets"
+import { parseAddress, parseSshTarget, savedTarget, sshAddress, sshTarget, validPasswordEnv } from "./targets"
 import { parseJSON } from "./text"
 import type { Context, Endpoint, State, Target } from "./types"
 
@@ -27,11 +29,19 @@ export async function load(ctx: Context, state: State) {
     state.problems = [state.unwritable]
     return
   }
+  // A newer client may have added fields this one would drop on the next write.
+  if (isRecord(value) && value.version !== undefined && value.version !== 1) {
+    state.unwritable = `${ctx.configPath} was written by a newer version of this client. Update it before adding or removing servers.`
+    state.problems = [state.unwritable]
+  }
   state.saved = list.flatMap((item, index) => {
     const target = savedTarget(item)
     if (target) return [target]
     state.preserved.push(item)
-    state.problems.push(`Skipped server ${index + 1} in ${ctx.configPath}; it is kept unchanged.`)
+    const badEnv = isRecord(item) && typeof item.passwordEnv === "string" && !validPasswordEnv(item.passwordEnv)
+    state.problems.push(
+      `Skipped server ${index + 1} in ${ctx.configPath}; it is kept unchanged.${badEnv ? " passwordEnv must name a TURENOS or FORGE variable other than FORGE_SERVER_PASSWORD." : ""}`,
+    )
     return []
   })
 }
@@ -59,10 +69,14 @@ export async function remove(ctx: Context, state: State, target: Target) {
   })
 }
 
+/** The desktop's SSH list is small; more than this is not a list this client should import. */
+const IMPORT_BYTES = 1024 * 1024
+
 /** Reads the desktop's saved SSH servers from its storage; they carry no secrets. */
 export async function importDesktop(state: State, endpoint: Endpoint) {
   if (endpoint.target.kind !== "desktop") return
   const address = new URL("/global/storage", endpoint.url)
+  bypassLoopbackProxy(address)
   address.searchParams.set("scope", "desktop/store/product-state-v1")
   address.searchParams.set("key", "ssh-servers")
   const response = await fetch(address, {
@@ -73,7 +87,7 @@ export async function importDesktop(state: State, endpoint: Endpoint) {
     signal: AbortSignal.timeout(5000),
   }).catch(() => undefined)
   if (!response?.ok) return
-  const body = parseJSON((await response.text()).slice(0, 1024 * 1024))
+  const body = parseJSON((await boundedText(response, IMPORT_BYTES)) ?? "")
   const stored = isRecord(body) && isRecord(body.state) ? body.state : undefined
   const list = typeof stored?.value === "string" ? parseJSON(stored.value) : undefined
   if (!Array.isArray(list)) return
@@ -105,15 +119,14 @@ async function persist(ctx: Context, state: State) {
   await mkdir(dirname(ctx.configPath), { recursive: true, mode: 0o700 })
   const temporary = `${ctx.configPath}.${randomUUID()}`
   const handle = await open(temporary, "wx", 0o600)
-  try {
-    await handle.writeFile(JSON.stringify({ version: 1, servers: serverList(state) }, null, 2) + "\n")
-  } finally {
-    await handle.close()
-  }
-  await rename(temporary, ctx.configPath).catch(async (error) => {
-    await rm(temporary, { force: true })
-    throw error
-  })
+  await handle
+    .writeFile(JSON.stringify({ version: 1, servers: serverList(state) }, null, 2) + "\n")
+    .finally(() => handle.close())
+    .then(() => rename(temporary, ctx.configPath))
+    .catch(async (error) => {
+      await rm(temporary, { force: true })
+      throw error
+    })
 }
 
 function serverList(state: State) {
@@ -130,7 +143,7 @@ function serverList(state: State) {
         : {
             id: target.id,
             name: target.name,
-            ssh: `${sshDestination(target)}${target.port ? `:${target.port}` : ""}`,
+            ssh: sshAddress(target),
             identityFile: target.identityFile,
           },
     ),
