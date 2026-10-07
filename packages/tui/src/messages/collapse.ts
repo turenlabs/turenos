@@ -13,15 +13,12 @@ export function hiddenNote(hidden: number) {
   return `… +${hidden} lines · Ctrl+O expands`
 }
 
-/** The first lines of a long text and a note counting the rest; short text and an expanded view are unchanged. */
-export function collapseText(text: string, view: Collapse) {
-  if (!view.rich || view.expanded) return text
+/** The first lines of a long text and how many were hidden; short text and an expanded view are unchanged. */
+export function foldLines(text: string, view: Collapse = { rich: false, expanded: true }) {
+  if (!view.rich || view.expanded) return { text, hidden: 0 }
   const lines = text.trimEnd().split("\n")
-  if (lines.length <= BODY_LIMIT) return text
-  const kept = lines.slice(0, BODY_KEEP)
-  // A fence opened in the kept lines would swallow the note and everything after it.
-  const open = kept.filter((line) => /^\s*(```|~~~)/.test(line)).length % 2 === 1
-  return [...kept, ...(open ? ["```"] : []), hiddenNote(lines.length - BODY_KEEP)].join("\n")
+  if (lines.length <= BODY_LIMIT) return { text, hidden: 0 }
+  return { text: lines.slice(0, BODY_KEEP).join("\n"), hidden: lines.length - BODY_KEEP }
 }
 
 /** The rows that stay visible and how many were hidden. */

@@ -290,7 +290,7 @@ function messageText(message: Message, raw: boolean, rich: boolean, view: Transc
     return `MODEL SWITCHED\nSwitched model to ${display(message.model.providerID)}/${display(message.model.id)}${message.model.variant ? ` (${display(message.model.variant)})` : ""}`
   if (message.type === "compaction")
     return `COMPACTION (${display(message.reason)})\n${display(message.summary || "Conversation history compacted.")}`
-  if (message.type === "shell") return shellBlock(message)
+  if (message.type === "shell") return shellBlock(message, chips)
   if (message.type === "user" && message.source === "subagent_board")
     return `AGENT UPDATE\n${raw ? display(message.text) : boardMessage(message.text)}`
   if (message.type === "user" && message.source && message.source !== "user")

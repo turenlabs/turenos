@@ -97,8 +97,7 @@ function indentedRuns(text: string) {
  * inline `[text]` not followed by `(`, `:` or `[` becomes a code span, as status rows already are.
  */
 function literalBrackets(text: string, defined: Set<string>) {
-  return fenceJson(text)
-    .split(/(```[\s\S]*?```|`+[^`\n]*`+)/g)
+  return codeSpans(fenceJson(text))
     .map((piece, i) =>
       i % 2 === 1
         ? piece
@@ -112,6 +111,17 @@ function literalBrackets(text: string, defined: Set<string>) {
             .replace(/(?<![^\s])([A-Za-z][\w.-]*_\d[\w.-]*)(?![\w`/(])/g, "`$1`"),
     )
     .join("")
+}
+
+/** Alternating text and code spans (odd entries); a span closes at a backtick run as long as the one that opened it. */
+function codeSpans(text: string) {
+  const pieces: string[] = []
+  let end = 0
+  for (const match of text.matchAll(/```[\s\S]*?```|(`+)(?!`)[^\n]*?(?<!`)\1(?!`)/g)) {
+    pieces.push(text.slice(end, match.index), match[0])
+    end = match.index + match[0].length
+  }
+  return [...pieces, text.slice(end)]
 }
 
 /** A footnote label, or a label with a `[label]: url` definition in the document, is a reference rather than text. */

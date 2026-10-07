@@ -1,5 +1,6 @@
 import type { MessagesListOutput } from "@turenlabs/client"
 import { display } from "../messages"
+import { codeSpan, literal } from "./literal"
 
 type Shell = Extract<MessagesListOutput["data"][number], { type: "shell" }>
 
@@ -10,16 +11,34 @@ function shellStatus(message: Shell) {
   return `${status === "completed" ? "failed" : status} · exit ${message.exitCode}`
 }
 
-export function shellBlock(message: Shell) {
+/** `rich` is the dashboard's Markdown view: the command and output are shown literally there, and untouched otherwise. */
+export function shellBlock(message: Shell, rich = false) {
   const output = display(message.output)
   const finished = message.status !== undefined && message.status !== "running"
+  const status = `[${shellStatus(message)}] $`
+  if (!rich)
+    return [
+      `${status} ${display(message.command)}`,
+      output.trim() || (finished ? "(no output)" : ""),
+      ...(message.error ? [display(message.error, 1000)] : []),
+    ]
+      .filter(Boolean)
+      .join("\n")
   return [
-    `[${shellStatus(message)}] $ ${display(message.command)}`,
-    output.trim() || (finished ? "(no output)" : ""),
-    ...(message.error ? [display(message.error, 1000)] : []),
+    shellCommand(status, display(message.command)),
+    output.trim() ? literal(output) : finished ? "(no output)" : "",
+    ...(message.error ? [literal(display(message.error, 1000))] : []),
   ]
     .filter(Boolean)
     .join("\n")
+}
+
+/** The status and command on one line when the command is one line; a multi-line command sits in a block below it. */
+function shellCommand(status: string, command: string) {
+  const text = command.trim()
+  if (!text) return status
+  if (!text.includes("\n") && command.length <= 16000) return `${status} ${codeSpan(text)}`
+  return `${status}\n${literal(command)}`
 }
 
 /** The one-line status for a finished shell command, or undefined while it is running or unknown. */

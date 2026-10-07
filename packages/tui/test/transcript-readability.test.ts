@@ -89,11 +89,11 @@ test("a tool body over six lines shows four and counts the rest; Ctrl+O shows al
   expect(transcript([step("a2", [tool("read", { path: "s" }, lines(6))])], false, true)).not.toContain("expands")
 })
 
-test("a collapsed body cannot leave a code fence open over the note", () => {
+test("a collapsed body that holds a code fence stays inside a longer fence, with the note after it", () => {
   const body = ["```ts", ...Array.from({ length: 12 }, (_, index) => `const a${index} = 1`), "```"].join("\n")
   const text = transcript([step("a1", [tool("read", { path: "a.ts" }, body)])], false, true)
-  expect(count(text, "```") % 2).toBe(0)
-  expect(text.indexOf("Ctrl+O expands")).toBeGreaterThan(text.lastIndexOf("```"))
+  expect(text).toContain("````text\n```ts\nconst a0 = 1")
+  expect(text.indexOf("Ctrl+O expands")).toBeGreaterThan(text.lastIndexOf("````"))
 })
 
 test("the to-do checklist is never collapsed", () => {

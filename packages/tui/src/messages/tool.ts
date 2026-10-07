@@ -1,7 +1,8 @@
 import type { MessagesListOutput } from "@turenlabs/client"
 import { display, toolResult } from "../messages"
 import { changeDiff } from "./changes"
-import { collapseText, type Collapse } from "./collapse"
+import { codeSpan, literal } from "./literal"
+import type { Collapse } from "./collapse"
 import { answeredQuestions } from "./question"
 import { todoChecklist } from "./todos"
 
@@ -19,8 +20,11 @@ export function toolBlock(part: ToolPart, view: ToolView) {
   const state = part.state
   const stopped = state.status === "error" && state.error.message === TOOL_INTERRUPTED
   const status = stopped ? "interrupted" : display(state.status, 32)
-  const failure = state.status === "error" && !stopped ? `\n${display(state.error.message)}` : ""
-  return `  [${status}] ${display(part.name, 200)}${toolSummary(state)}\n${toolBody(part, view)}${failure}`
+  const failure =
+    state.status === "error" && !stopped
+      ? `\n${view.rich ? literal(display(state.error.message)) : display(state.error.message)}`
+      : ""
+  return `  [${status}] ${display(part.name, 200)}${toolSummary(state, view.rich)}\n${toolBody(part, view)}${failure}`
 }
 
 function toolBody(part: ToolPart, view: ToolView) {
@@ -38,7 +42,7 @@ function toolBody(part: ToolPart, view: ToolView) {
   const diff = changeDiff(part, view)
   if (diff) return diff
   const text = state.content.map((item) => (item.type === "text" ? toolResult(item.text) : fileLine(item))).join("\n")
-  return collapseText(text, view)
+  return view.rich ? literal(text, view) : text
 }
 
 function fileLine(item: { uri: string }) {
@@ -50,7 +54,7 @@ function fileLine(item: { uri: string }) {
 const summaryKeys = ["command", "pattern", "query", "url", "filePath", "path", "file", "description"]
 
 /** One line saying what a tool ran: " · <command, path or pattern>", or nothing when the input has none. */
-function toolSummary(state: ToolPart["state"]) {
+function toolSummary(state: ToolPart["state"], rich: boolean) {
   if (state.status === "pending" || typeof state.input !== "object" || state.input === null) return ""
   const input = state.input as Record<string, unknown>
   const key = summaryKeys.find((key) => typeof input[key] === "string" && (input[key] as string).trim())
@@ -58,5 +62,6 @@ function toolSummary(state: ToolPart["state"]) {
   const line = display((input[key] as string).slice(0, 400))
     .replace(/\s+/g, " ")
     .trim()
-  return ` · ${line.length > 120 ? `${line.slice(0, 119)}…` : line}`
+  const shown = line.length > 120 ? `${line.slice(0, 119)}…` : line
+  return ` · ${rich ? codeSpan(shown) : shown}`
 }

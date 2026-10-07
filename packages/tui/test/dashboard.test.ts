@@ -2764,8 +2764,8 @@ test("long tool output is folded by default and the palette expands and folds it
   const view = await createTestRenderer({ width: 100, height: 36 })
   cleanup.push(() => view.renderer.destroy())
   await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
-  const folded = await waitForFrame(view, (frame) => frame.includes("+26 lines"))
-  expect(folded).toContain("output row 4")
+  // Fenced output can paint a frame after the fold note, so wait for both.
+  const folded = await waitForFrame(view, (frame) => frame.includes("+26 lines") && frame.includes("output row 4"))
   expect(folded).not.toContain("output row 30")
   view.mockInput.pressKey("p", { ctrl: true })
   await view.mockInput.typeText("Expand tool output")
