@@ -32,6 +32,8 @@ File-change triggers match bounded relative globs under the Automation's directo
 
 Automation metadata is listed from the selected server's process-global SQLite index. Listing does not open project directories; the run's Location is resolved when execution begins. The [Protocol Loop group](../../../packages/protocol/src/groups/loop.ts) defines the `/api/loop` create, list, get, edit, pause, resume, delete, run, history, and cancellation endpoints and their current payload schemas.
 
+Run responses include an optional `execution` snapshot (title, prompt, Location, execution choices, and workflow). Run history and latest-run summaries use its step order and names instead of the editable Automation definition. Older responses without a snapshot fall back to the current definition; a snapshot of a prompt-only run does not inherit a workflow added later.
+
 ## Limits
 
 The scheduler claims at most 32 runs per scan and scans again immediately while more work is due. The five-minute lease and one-minute renewal are scheduler constants. Definition limits, trigger syntax, and the user-facing workflow are in [Automations](./README.md).

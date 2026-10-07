@@ -8094,28 +8094,63 @@ export type LoopsRunNowInput = { readonly loopID: { readonly loopID: string }["l
 export type LoopsRunNowOutput = {
   readonly id: string
   readonly loopID: string
-  readonly scheduledAt: number
+  readonly scheduledAt: number | "Infinity" | "-Infinity" | "NaN"
   readonly status: "claimed" | "running" | "succeeded" | "failed" | "cancelled" | "skipped" | "stale"
   readonly trigger: "scheduled" | "manual" | "file-change" | "session-end"
-  readonly triggerPayload?: { readonly [x: string]: unknown } | undefined
-  readonly currentStep: number
-  readonly sessionID?: string | undefined
+  readonly triggerPayload?: { readonly [x: string]: JsonValue } | null
+  readonly currentStep: number | "Infinity" | "-Infinity" | "NaN"
+  readonly sessionID?: string | null
   readonly outputs: {
     readonly [x: string]: {
       readonly text: string
-      readonly json?: unknown | undefined
+      readonly json?: JsonValue | null
       readonly artifacts: ReadonlyArray<
-        | { readonly type: "file"; readonly uri: string; readonly mime: string; readonly name?: string | undefined }
+        | { readonly type: "file"; readonly uri: string; readonly mime: string; readonly name?: string | null }
         | { readonly type: "output" | "changed"; readonly path: string }
       >
     }
   }
-  readonly error?: string | undefined
+  readonly execution?: {
+    readonly title: string
+    readonly prompt: string
+    readonly location: { readonly directory: string; readonly workspaceID?: string | null }
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly skill?: string | null
+    readonly workflow?: {
+      readonly version: 1
+      readonly steps: ReadonlyArray<
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "agent"
+            readonly prompt: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "skill"
+            readonly skill: string
+            readonly instructions: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+      >
+      readonly delivery: { readonly type: "turen" }
+    } | null
+  } | null
+  readonly error?: string | null
   readonly time: {
-    readonly created: number
-    readonly updated: number
-    readonly started?: number | undefined
-    readonly completed?: number | undefined
+    readonly created: number | "Infinity" | "-Infinity" | "NaN"
+    readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+    readonly started?: number | "Infinity" | "-Infinity" | "NaN" | null
+    readonly completed?: number | "Infinity" | "-Infinity" | "NaN" | null
   }
 }
 
@@ -8124,28 +8159,63 @@ export type LoopsRunListInput = { readonly loopID: { readonly loopID: string }["
 export type LoopsRunListOutput = ReadonlyArray<{
   readonly id: string
   readonly loopID: string
-  readonly scheduledAt: number
+  readonly scheduledAt: number | "Infinity" | "-Infinity" | "NaN"
   readonly status: "claimed" | "running" | "succeeded" | "failed" | "cancelled" | "skipped" | "stale"
   readonly trigger: "scheduled" | "manual" | "file-change" | "session-end"
-  readonly triggerPayload?: { readonly [x: string]: unknown } | undefined
-  readonly currentStep: number
-  readonly sessionID?: string | undefined
+  readonly triggerPayload?: { readonly [x: string]: JsonValue } | null
+  readonly currentStep: number | "Infinity" | "-Infinity" | "NaN"
+  readonly sessionID?: string | null
   readonly outputs: {
     readonly [x: string]: {
       readonly text: string
-      readonly json?: unknown | undefined
+      readonly json?: JsonValue | null
       readonly artifacts: ReadonlyArray<
-        | { readonly type: "file"; readonly uri: string; readonly mime: string; readonly name?: string | undefined }
+        | { readonly type: "file"; readonly uri: string; readonly mime: string; readonly name?: string | null }
         | { readonly type: "output" | "changed"; readonly path: string }
       >
     }
   }
-  readonly error?: string | undefined
+  readonly execution?: {
+    readonly title: string
+    readonly prompt: string
+    readonly location: { readonly directory: string; readonly workspaceID?: string | null }
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly skill?: string | null
+    readonly workflow?: {
+      readonly version: 1
+      readonly steps: ReadonlyArray<
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "agent"
+            readonly prompt: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "skill"
+            readonly skill: string
+            readonly instructions: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+      >
+      readonly delivery: { readonly type: "turen" }
+    } | null
+  } | null
+  readonly error?: string | null
   readonly time: {
-    readonly created: number
-    readonly updated: number
-    readonly started?: number | undefined
-    readonly completed?: number | undefined
+    readonly created: number | "Infinity" | "-Infinity" | "NaN"
+    readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+    readonly started?: number | "Infinity" | "-Infinity" | "NaN" | null
+    readonly completed?: number | "Infinity" | "-Infinity" | "NaN" | null
   }
 }>
 
@@ -8157,28 +8227,63 @@ export type LoopsRunGetInput = {
 export type LoopsRunGetOutput = {
   readonly id: string
   readonly loopID: string
-  readonly scheduledAt: number
+  readonly scheduledAt: number | "Infinity" | "-Infinity" | "NaN"
   readonly status: "claimed" | "running" | "succeeded" | "failed" | "cancelled" | "skipped" | "stale"
   readonly trigger: "scheduled" | "manual" | "file-change" | "session-end"
-  readonly triggerPayload?: { readonly [x: string]: unknown } | undefined
-  readonly currentStep: number
-  readonly sessionID?: string | undefined
+  readonly triggerPayload?: { readonly [x: string]: JsonValue } | null
+  readonly currentStep: number | "Infinity" | "-Infinity" | "NaN"
+  readonly sessionID?: string | null
   readonly outputs: {
     readonly [x: string]: {
       readonly text: string
-      readonly json?: unknown | undefined
+      readonly json?: JsonValue | null
       readonly artifacts: ReadonlyArray<
-        | { readonly type: "file"; readonly uri: string; readonly mime: string; readonly name?: string | undefined }
+        | { readonly type: "file"; readonly uri: string; readonly mime: string; readonly name?: string | null }
         | { readonly type: "output" | "changed"; readonly path: string }
       >
     }
   }
-  readonly error?: string | undefined
+  readonly execution?: {
+    readonly title: string
+    readonly prompt: string
+    readonly location: { readonly directory: string; readonly workspaceID?: string | null }
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly skill?: string | null
+    readonly workflow?: {
+      readonly version: 1
+      readonly steps: ReadonlyArray<
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "agent"
+            readonly prompt: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "skill"
+            readonly skill: string
+            readonly instructions: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+      >
+      readonly delivery: { readonly type: "turen" }
+    } | null
+  } | null
+  readonly error?: string | null
   readonly time: {
-    readonly created: number
-    readonly updated: number
-    readonly started?: number | undefined
-    readonly completed?: number | undefined
+    readonly created: number | "Infinity" | "-Infinity" | "NaN"
+    readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+    readonly started?: number | "Infinity" | "-Infinity" | "NaN" | null
+    readonly completed?: number | "Infinity" | "-Infinity" | "NaN" | null
   }
 }
 
@@ -8190,28 +8295,63 @@ export type LoopsRunCancelInput = {
 export type LoopsRunCancelOutput = {
   readonly id: string
   readonly loopID: string
-  readonly scheduledAt: number
+  readonly scheduledAt: number | "Infinity" | "-Infinity" | "NaN"
   readonly status: "claimed" | "running" | "succeeded" | "failed" | "cancelled" | "skipped" | "stale"
   readonly trigger: "scheduled" | "manual" | "file-change" | "session-end"
-  readonly triggerPayload?: { readonly [x: string]: unknown } | undefined
-  readonly currentStep: number
-  readonly sessionID?: string | undefined
+  readonly triggerPayload?: { readonly [x: string]: JsonValue } | null
+  readonly currentStep: number | "Infinity" | "-Infinity" | "NaN"
+  readonly sessionID?: string | null
   readonly outputs: {
     readonly [x: string]: {
       readonly text: string
-      readonly json?: unknown | undefined
+      readonly json?: JsonValue | null
       readonly artifacts: ReadonlyArray<
-        | { readonly type: "file"; readonly uri: string; readonly mime: string; readonly name?: string | undefined }
+        | { readonly type: "file"; readonly uri: string; readonly mime: string; readonly name?: string | null }
         | { readonly type: "output" | "changed"; readonly path: string }
       >
     }
   }
-  readonly error?: string | undefined
+  readonly execution?: {
+    readonly title: string
+    readonly prompt: string
+    readonly location: { readonly directory: string; readonly workspaceID?: string | null }
+    readonly agent?: string | null
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly skill?: string | null
+    readonly workflow?: {
+      readonly version: 1
+      readonly steps: ReadonlyArray<
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "agent"
+            readonly prompt: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "skill"
+            readonly skill: string
+            readonly instructions: string
+            readonly agent?: string | null
+            readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+            readonly when?: string | null
+            readonly onFailure?: "stop" | "continue" | null
+          }
+      >
+      readonly delivery: { readonly type: "turen" }
+    } | null
+  } | null
+  readonly error?: string | null
   readonly time: {
-    readonly created: number
-    readonly updated: number
-    readonly started?: number | undefined
-    readonly completed?: number | undefined
+    readonly created: number | "Infinity" | "-Infinity" | "NaN"
+    readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+    readonly started?: number | "Infinity" | "-Infinity" | "NaN" | null
+    readonly completed?: number | "Infinity" | "-Infinity" | "NaN" | null
   }
 }
 

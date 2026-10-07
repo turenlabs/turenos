@@ -181,6 +181,17 @@ export const Run = Schema.Struct({
   currentStep: Schema.Number,
   sessionID: Schema.optional(Schema.String),
   outputs: Schema.Record(Schema.String, StepOutput),
+  execution: Schema.optional(
+    Schema.Struct({
+      title: Schema.String,
+      prompt: Schema.String,
+      location: Schema.Struct({ directory: Schema.String, workspaceID: Schema.optional(Schema.String) }),
+      agent: Schema.optional(Agent.ID),
+      model: Schema.optional(Model.Ref),
+      skill: Schema.optional(Schema.String),
+      workflow: Schema.optional(Workflow),
+    }),
+  ),
   error: Schema.optional(Schema.String),
   time: Schema.Struct({
     created: Schema.Number,

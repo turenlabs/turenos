@@ -40,6 +40,7 @@ import {
   orderedStepOutputs,
   runProgressLabel,
   runTotal,
+  runSteps,
   STEP_STATE_LABEL,
   STEP_STATE_TONE,
   stepChipFor,
@@ -944,7 +945,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                                 {runStatusLabel(run().status).toLowerCase()} ·{" "}
                                 {new Date(run().scheduledAt).toLocaleDateString()}
                                 <Show when={isActiveRun(run())}>
-                                  {` · step ${currentStepIndex(run()) + 1} of ${item.workflow?.steps.length ?? Math.max(Object.keys(run().outputs).length, 1)}`}
+                                  {` · step ${currentStepIndex(run()) + 1} of ${runTotal(run(), runSteps(run(), item))}`}
                                 </Show>
                               </span>
                             )}
@@ -1766,7 +1767,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                   }
                 >
                   {(run) => {
-                    const steps = () => selected()?.workflow?.steps ?? []
+                    const steps = () => runSteps(run, selected())
                     const entries = () => orderedStepOutputs(run, steps())
                     const total = () => runTotal(run, steps())
                     const progress = () => runProgressLabel(run, steps())
