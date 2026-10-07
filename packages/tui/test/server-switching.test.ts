@@ -9,7 +9,7 @@ import { cleanup, terminal, turen, until } from "./support"
 async function setup(
   options: {
     desktop?: boolean
-    initial?: (servers: Servers, beta: ReturnType<typeof turen>) => Target
+    initial?: (servers: Servers, beta: ReturnType<typeof turen>, alpha: ReturnType<typeof turen>) => Target
   } = {},
 ) {
   const home = await mkdtemp(join(tmpdir(), "turen-tui-switch-"))
@@ -38,7 +38,7 @@ async function setup(
   let quits = 0
   const discarded: number[] = []
   const app = mountApp(view.renderer, servers, {
-    initial: options.initial ? options.initial(servers, beta) : await servers.preferred(),
+    initial: options.initial ? options.initial(servers, beta, alpha) : await servers.preferred(),
     onQuit: (drafts) => {
       quits++
       discarded.push(drafts)
@@ -194,4 +194,22 @@ test("quitting reports the unsent drafts it discards so the closing line can say
   view.mockInput.pressKey("c", { ctrl: true })
   await until(() => quits() === 1)
   expect(discarded).toEqual([1])
+})
+
+test("a server opened by the URL of a discovered one is that server's row, listed once and marked current", async () => {
+  const { view, screen } = await setup({
+    initial: (servers, _, alpha) => {
+      const target = { kind: "url", id: "cli", name: "cli-alpha", url: alpha.listener.url.origin, saved: false } as const
+      servers.remember(target, "secret")
+      return target
+    },
+  })
+  await screen("alpha says hello")
+  view.mockInput.pressKey("s")
+  const picker = await screen("THIS COMPUTER")
+  expect(picker).not.toContain("OPENED THIS SESSION")
+  expect(picker).toMatch(/● TurenOS\s+Desktop app · port \d+\s+· current/)
+  // Enter on the row that is already connected closes the picker rather than reconnecting.
+  view.mockInput.pressEnter()
+  expect(await screen("alpha says hello")).not.toContain("THIS COMPUTER")
 })

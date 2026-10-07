@@ -8,14 +8,21 @@ export async function rescan(picker: Picker) {
   const next = await picker.servers.scan()
   if (!picker.view) return
   // Read after the scan, so a cursor move made while it ran is kept; a freshly opened picker starts on the current server.
-  const id = picker.focusID ?? picker.entries[picker.selected]?.target.id ?? current?.id
+  const wanted = picker.focusID ?? picker.entries[picker.selected]?.target.id ?? current?.id
   picker.focusID = undefined
+  // A URL naming a discovered local server is that server's own row, so it is not listed twice.
+  const opened = [...picker.visited.values()]
+  const duplicates = new Map(
+    opened.flatMap((target) => {
+      const match = next.find((entry) => entry.url === target.url)
+      return match ? [[target.id, match.target.id] as const] : []
+    }),
+  )
+  const id = duplicates.get(wanted ?? "") ?? wanted
   picker.entries = [
-    ...[...picker.visited.values()].map((target) => ({
-      target,
-      group: "Opened this session" as const,
-      detail: target.url,
-    })),
+    ...opened
+      .filter((target) => !duplicates.has(target.id))
+      .map((target) => ({ target, group: "Opened this session" as const, detail: target.url })),
     ...next,
   ]
   const found = picker.entries.findIndex((entry) => entry.target.id === id)

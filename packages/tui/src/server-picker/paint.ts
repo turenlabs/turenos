@@ -1,6 +1,6 @@
 import { TextAttributes, TextRenderable } from "@opentui/core"
 import { display } from "../messages"
-import { serverLabel, type Target } from "../servers"
+import { serverLabel, type Entry, type Target } from "../servers"
 import { label } from "../state"
 import { color } from "../theme"
 import type { Picker, Tone, View } from "./types"
@@ -25,7 +25,7 @@ export function paint(picker: Picker) {
   view.fields.visible = picker.mode === "add" || picker.mode === "password"
   view.rows.forEach((row) => row.destroyRecursively())
   const offsets: number[] = []
-  view.rows = entryRows(picker, current?.target.id, offsets)
+  view.rows = entryRows(picker, current?.target, offsets)
   if (!picker.entries.length)
     view.rows.push(
       new TextRenderable(picker.renderer, {
@@ -40,7 +40,7 @@ export function paint(picker: Picker) {
 }
 
 /** Group headings and one row per entry; fills `offsets` with each entry's screen line. */
-function entryRows(picker: Picker, currentID: Target["id"] | undefined, offsets: number[]) {
+function entryRows(picker: Picker, current: Target | undefined, offsets: number[]) {
   const { entries, renderer } = picker
   const width = Math.min(30, Math.max(10, ...entries.map((entry) => label(entry.target.name, 64).length)))
   // Screen line of each entry, counting group headings and the gap above all but the first.
@@ -59,7 +59,7 @@ function entryRows(picker: Picker, currentID: Target["id"] | undefined, offsets:
             }),
           ]
         : []
-    const active = currentID === entry.target.id
+    const active = isCurrent(current, entry)
     const chosen = index === picker.selected
     const row = new TextRenderable(renderer, {
       content: `${chosen ? "▶" : " "} ${active ? "●" : "○"} ${label(entry.target.name, 64).padEnd(width)}  ${label(entry.detail, 200)}${active ? "  · current" : ""}`,
@@ -81,6 +81,14 @@ function entryRows(picker: Picker, currentID: Target["id"] | undefined, offsets:
     offsets.push(line++)
     return [...heading, row]
   })
+}
+
+/** A discovered local server is the current one when it is the endpoint a URL connection opened. */
+export function isCurrent(current: Target | undefined, entry: Entry) {
+  return (
+    current?.id === entry.target.id ||
+    (current?.kind === "url" && entry.url !== undefined && entry.url === current.url)
+  )
 }
 
 function scrollToSelected(picker: Picker, view: View, top: number) {
