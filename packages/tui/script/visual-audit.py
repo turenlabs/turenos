@@ -39,6 +39,7 @@ from PIL import Image, ImageDraw, ImageFont
 SIZES = [(160, 48), (120, 36), (90, 28), (80, 24), (60, 24)]
 DIRECTORY = "/srv/projects/terminal-workbench/packages/runtime"
 TITLE = "Review terminal workbench runtime navigation and preserve every unfinished investigation draft"
+LAUNCH = "What would you like to do?"
 FINDER = "Search title, project, agent, or session ID\u2026"
 ENTER_KEYS = [("Return", "\r"), ("keypad Enter", "\x1b[57414u"), ("LF", "\n")]
 UPDATE = (
@@ -50,6 +51,7 @@ UPDATE = (
     + "\n\n".join(f"Read marker {i:02d}: synthetic review notes." for i in range(1, 41))
     + "\n\n## Live transcript end"
 )
+TYPING = re.compile(r"\bTyping\b|\u2502\s+(?:Send|Steer|Queue) \u00b7 ")
 ANSI = re.compile(r"\x1b\[[0-9;:]*m|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 BASIC = [
     "#000000", "#cd0000", "#00cd00", "#cdcd00", "#0000ee", "#cd00cd", "#00cdcd", "#e5e5e5",
@@ -284,6 +286,8 @@ def main():
     result["fixture"]["session_count"] = len(inventory)
     result["input_encoding"] = {"enter": dict(ENTER_KEYS), "Alt+Enter": "\x1b\r", "Shift+Enter": "\x1b[13;2u", "method": "tmux send-keys -l injects delivered PTY bytes; not physical keyboard capability verification"}
     sessions = []
+    # The Ctrl+C that ends a scenario stops a running fixture turn, which is cleanup rather than behaviour under test.
+    cleaning = {"on": False}
     stage, size, last_capture = "startup", "", None
     stream_state = {"complete": False, "roster_done": False, "active": True}
     variant_body = {"model": {"providerID": "fixture", "id": "local", "variant": "audit-high"}}
@@ -305,17 +309,17 @@ def main():
 
         def send(self, data, status=200):
             payload = json.dumps(data).encode()
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
             try:
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
                 self.wfile.write(payload)
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
         def record(self, body=None):
-            request = {"scenario": stage, "size": size, "method": self.command, "path": self.path, "body": body, "authorization_present": "Authorization" in self.headers}
+            request = {"scenario": stage, "size": size, "method": self.command, "path": self.path, "body": body, "authorization_present": "Authorization" in self.headers, "cleanup": cleaning["on"]}
             result["requests"].append(request)
             return request
 
@@ -439,6 +443,10 @@ def main():
                 data = {"data": []}
             elif session and path == f"/api/session/{sid}":
                 data = {"data": session}
+            elif re.fullmatch(r"/api/session/ses_[0-9a-f]+", path):
+                # A launch whose prompt is refused locally probes whether its draft session id exists.
+                self.send({"message": "Session not found"}, 404)
+                return
             else:
                 result.setdefault("unexpected_routes", []).append(self.path)
                 self.send({"message": "Unknown synthetic fixture route"}, 404)
@@ -447,7 +455,7 @@ def main():
 
         def mutate(self):
             path = urlsplit(self.path).path
-            if self.command == "POST" and stage == "rewind" and path in ("/api/session/ses_review/interrupt", "/api/session/ses_review/revert/clear"):
+            if self.command == "POST" and stage in ("rewind", "exit-running-ctrl-c") and path in ("/api/session/ses_review/interrupt", "/api/session/ses_review/revert/clear"):
                 self.record()
                 if path.endswith("/interrupt"):
                     stream_state["active"] = False
@@ -536,15 +544,59 @@ def main():
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
             plain = frame()
-            if (text in plain) != absent:
+            # A notice that wraps at narrow widths still counts as the same sentence.
+            if (text in plain or text in " ".join(plain.split())) != absent:
                 return plain
             time.sleep(0.1)
         raise AssertionError(f"{'Unexpected remaining' if absent else 'Missing'} terminal text: {text!r}")
+
+    def typing(plain=None):
+        """True while the reply editor holds the keyboard. The footer says Typing, but it truncates at 60 columns, so the docked editor's heading counts too."""
+        return bool(TYPING.search(frame() if plain is None else plain))
+
+    def wait_typing(absent=False, seconds=6):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            plain = frame()
+            if typing(plain) != absent:
+                return plain
+            time.sleep(0.1)
+        raise AssertionError(f"{'Unexpected remaining' if absent else 'Missing'} reply editor (Typing)")
+
+    def shortcuts():
+        """Leave the reply editor, which holds the keyboard while a session is in view, so letters act as shortcuts."""
+        if typing():
+            key("Escape")
+        wait_typing(absent=True)
+
+    def compose():
+        """Open the reply editor from shortcut mode with f, or keep it when it is already open."""
+        time.sleep(0.3)  # a closing dialog may hand the keyboard back to the editor just now
+        if typing():
+            return
+        key("f")
+        wait_typing()
+
+    def is_open(kind):
+        return typing() if kind == "reply" else LAUNCH in frame()
+
+    def wait_open(kind):
+        return wait_typing() if kind == "reply" else wait(LAUNCH)
+
+    def open_kind(kind):
+        """Open the reply editor (f) or the New session dialog (n) from whatever the screen holds."""
+        if kind == "reply":
+            return compose()
+        shortcuts()
+        key("n")
+        wait(LAUNCH)
 
     def writes_since(start):
         return [r for r in result["requests"][start:] if r["method"] != "GET"]
 
     def allowed_request(request):
+        if request.get("cleanup"):
+            return request["method"] == "GET" or request["path"] == "/api/session/ses_review/interrupt"
         if request["authorization_present"]:
             return False
         if request["method"] == "GET":
@@ -560,6 +612,8 @@ def main():
             return path == "/api/session/ses_review/command" and body.get("command") == "audit"
         if request["scenario"] == "session-controls":
             return path == "/api/session/ses_review/compact" or (path == "/api/session/ses_review/agent" and body.get("agent") == "plan")
+        if request["scenario"] == "exit-running-ctrl-c":
+            return path == "/api/session/ses_review/interrupt"
         if request["scenario"] == "rewind":
             return path in ("/api/session/ses_review/interrupt", "/api/session/ses_review/revert/clear") or (path == "/api/session/ses_review/revert/stage" and body == {"messageID": "msg_rewind_user", "files": False})
         if request["scenario"] == "question-picker":
@@ -605,7 +659,8 @@ def main():
         stream_state.update(complete=False, roster_done=False, active=True)
         variant_confirmation["armed"] = False
         sessions[:] = [] if name == "welcome" else [session.copy() for session in inventory]
-        if name == "welcome":
+        if name == "welcome" or (name.startswith("exit-") and not name.startswith("exit-running")) or name == "keyboard-workflow":
+            # Nothing running, so q and Ctrl+C quit at once instead of stopping or warning first.
             stream_state["active"] = False
         try:
             tmux("new-session", "-d", "-s", "audit", "-x", str(width), "-y", str(height), "-c", str(repo), "/bin/sh")
@@ -638,9 +693,11 @@ def main():
             result["checks"].append({"scenario": stage, "size": size, "check": "scenario completed", "passed": False, "details": str(error), "png": last_capture["png"] if last_capture else None})
             print(f"FAIL {size} {stage}: {error}", flush=True)
         finally:
+            cleaning["on"] = True
             tmux("send-keys", "-t", "audit:0.0", "C-c", check=False)
-            time.sleep(0.2)
+            time.sleep(0.4)
             tmux("kill-session", "-t", "audit", check=False)
+            cleaning["on"] = False
 
     def edited_draft(kind):
         key("alpha beta gamma", literal=True)
@@ -659,6 +716,7 @@ def main():
         return "lpha preserved"
 
     def choose_session(query, expected):
+        shortcuts()
         key("C-k")
         wait(FINDER)
         key(query, literal=True)
@@ -671,16 +729,33 @@ def main():
     old_signals = {sig: signal.signal(sig, stop_on_signal) for sig in (signal.SIGTERM, signal.SIGINT)}
     try:
         for width, height in sizes:
-            for exit_kind in ("q", "ctrl-c", "draft", "resize", "late-csi", "late-osc"):
+            for exit_kind in ("q", "ctrl-c", "draft", "draft-q", "resize", "late-csi", "late-osc", "running-q", "running-ctrl-c"):
                 with scenario(f"exit-{exit_kind}", width, height):
                     start = len(result["requests"])
                     if exit_kind == "draft":
-                        key("f")
-                        wait("Your message")
+                        # The reply editor holds the draft; the first Ctrl+C only warns.
+                        compose()
                         key("Unsent exit fixture", literal=True)
                         key("C-c")
-                        wait("Your message", absent=True)
-                        check("RETURNED-TO-SHELL" not in frame(), "first Ctrl+C retains a draft without exiting")
+                        wait("Draft kept. Ctrl+C again quits and discards unsent drafts.")
+                        check("RETURNED-TO-SHELL" not in frame() and typing(), "first Ctrl+C retains a draft without exiting")
+                    if exit_kind == "draft-q":
+                        compose()
+                        key("Unsent exit fixture", literal=True)
+                        shortcuts()
+                        key("q")
+                        wait("Unsent drafts are kept only until you quit.")
+                        check("RETURNED-TO-SHELL" not in frame(), "first q retains a draft without exiting")
+                    if exit_kind == "running-q":
+                        shortcuts()
+                        key("q")
+                        wait("The agent is still working. Press q again to quit")
+                        check("RETURNED-TO-SHELL" not in frame() and not writes_since(start), "first q on a running session warns without stopping it")
+                    if exit_kind == "running-ctrl-c":
+                        key("C-c")
+                        wait("Session interrupted. Ctrl+C again quits.")
+                        check([r["path"] for r in writes_since(start)] == ["/api/session/ses_review/interrupt"], "first Ctrl+C stops the running turn and does not exit")
+                        check("RETURNED-TO-SHELL" not in frame(), "Ctrl+C that stopped a turn leaves the TUI running")
                     if exit_kind == "resize":
                         tmux("resize-window", "-t", "audit:0", "-x", "59", "-y", "23")
                         wait("Resize the terminal")
@@ -691,24 +766,29 @@ def main():
                         time.sleep(0.06)
                         reply = "\x1b[4;480;800t" if exit_kind == "late-csi" else "\x1b]11;rgb:1111/2222/3333\x07"
                         tmux("send-keys", "-t", "audit:0.0", "-l", reply)
+                    elif exit_kind in ("q", "resize"):
+                        shortcuts()
+                        key("q")
                     else:
-                        key("C-c" if exit_kind in ("ctrl-c", "draft") else "q")
+                        key("C-c" if exit_kind in ("ctrl-c", "draft", "running-ctrl-c") else "q")
                     wait("RETURNED-TO-SHELL")
                     plain = capture(f"exit-restored-{exit_kind}")
                     check(plain.splitlines()[0].strip() == "PREVIOUS-SHELL-SCREEN", "exit restores the previous shell screen")
-                    check("Live transcript end" not in plain and "Your message" not in plain, "exit leaves no TUI transcript or reply artifacts")
+                    check("Live transcript end" not in plain and "Type a message" not in plain, "exit leaves no TUI transcript or reply artifacts")
                     check("4;480;800t" not in plain and "rgb:1111/2222/3333" not in plain and "^[" not in plain, "late terminal replies do not leak into the shell")
                     drift = stty_changes(stty_before, stty_after)
                     check("APP_EXIT:0" in plain and not drift, "exit succeeds and restores original stty modes", drift or None)
                     modes = tmux("display-message", "-p", "-t", "audit:0.0", "#{alternate_on}:#{cursor_flag}:#{mouse_any_flag}:#{mouse_button_flag}:#{mouse_standard_flag}").strip()
                     check(modes == "0:1:0:0:0", "exit leaves normal screen, visible cursor, and mouse reporting off", modes)
-                    check(not writes_since(start), "exiting never sends a prompt or stops server work")
+                    expected = ["/api/session/ses_review/interrupt"] if exit_kind == "running-ctrl-c" else []
+                    check([r["path"] for r in writes_since(start)] == expected, "exiting never sends a prompt or stops server work beyond the Ctrl+C that asked for it")
             if args.exit_only:
                 continue
             with scenario("text-lifecycle", width, height):
                 start = len(result["requests"])
-                for shortcut, title in (("C-n", "What would you like to do?"), ("C-k", "Switch session")):
+                for shortcut, title in (("C-n", LAUNCH), ("C-k", "Switch session")):
                     for cycle in range(2):
+                        shortcuts()
                         key(shortcut)
                         wait(title)
                         key("Escape")
@@ -724,7 +804,7 @@ def main():
             with scenario("launch-logo", width, height):
                 start = len(result["requests"])
                 key("C-n")
-                wait("What would you like to do?")
+                wait(LAUNCH)
                 plain = capture("launch-retro-logo")
                 check("▀" in plain and "[ Send (Enter) ]" in plain, "retro logo retains visible task and Send controls")
                 ansi = tmux("capture-pane", "-p", "-e", "-t", "audit:0.0")
@@ -735,6 +815,7 @@ def main():
             with scenario("sidebar-finder", width, height):
                 start = len(result["requests"])
                 if width < 90:
+                    shortcuts()
                     key("b")
                 sidebar = wait("Find a session").splitlines()
                 row = next(i for i, line in enumerate(sidebar) if "Find a session" in line)
@@ -764,19 +845,20 @@ def main():
                 start = len(result["requests"])
                 plain = capture("welcome")
                 check("Connected" in plain and "Ctrl+K Session picker" in plain and "? Help" in plain, "welcome shows connection and direct shortcuts")
+                shortcuts()
                 key("C-k")
                 wait(FINDER)
                 key("Escape")
                 wait("[ Turen ]")
+                shortcuts()
                 key("n")
-                wait("What would you like to do?")
+                wait(LAUNCH)
                 check(not writes_since(start), "welcome opens picker and New session without an extra gate or submission")
                 key("F4")
             if (width, height) in ((60, 24), (160, 48)):
                 with scenario("goal-controls", width, height):
                     start = len(result["requests"])
-                    key("f")
-                    wait("Your message")
+                    compose()
                     key("/goal", literal=True)
                     key("Enter")
                     wait("Enter choose · Ctrl+R refresh · Esc close")
@@ -810,8 +892,7 @@ def main():
 
                 with scenario("model-variants", width, height):
                     start = len(result["requests"])
-                    key("f")
-                    wait("Your message")
+                    compose()
                     key("/effort", literal=True)
                     key("Enter")
                     wait("audit-high")
@@ -825,8 +906,7 @@ def main():
                     capture("effort-confirmed")
                     writes = writes_since(start)
                     check(len(writes) == 1 and allowed_request(writes[0]), "explicit effort selection sends only exact synthetic model write", writes)
-                    key("f")
-                    wait("Your message")
+                    compose()
                     key("/effort", literal=True)
                     key("Enter")
                     wait("audit-high")
@@ -835,28 +915,29 @@ def main():
 
                 with scenario("launch-variant", width, height):
                     start = len(result["requests"])
+                    shortcuts()
                     key("n")
-                    wait("What would you like to do?")
+                    wait(LAUNCH)
                     key("C-l")
                     wait("Find a model or provider")
                     key("Local Audit Model", literal=True)
                     key("Enter")
-                    wait("What would you like to do?")
+                    wait(LAUNCH)
                     key("/effort", literal=True)
                     key("Enter")
                     wait("audit-high")
                     capture("launch-effort-advertised")
                     key("Down", "Down", "Enter")
-                    wait("What would you like to do?")
+                    wait(LAUNCH)
                     key("LAUNCH-DRAFT-MARKER", literal=True)
                     key("Escape", "n")
-                    wait("What would you like to do?")
+                    wait(LAUNCH)
                     plain = capture("launch-effort-draft-restored")
                     check("LAUNCH-DRAFT-MARKER" in plain and "audit-high" in plain, "new-session task and local variant survive cancel and reopen")
                     key("C-l")
                     wait("Find a model or provider")
                     key("Escape")
-                    wait("What would you like to do?")
+                    wait(LAUNCH)
                     check("LAUNCH-DRAFT-MARKER" in frame() and "audit-high" in frame(), "local model picker cancellation preserves task and effort")
                     key("F4")
                     check(not writes_since(start), "launch effort selection and draft preservation never create a session or send work")
@@ -865,13 +946,19 @@ def main():
                 plain = capture("dashboard")
                 check("Live transcript end" in plain and "ses_review" not in plain, "default conversation follows latest transcript without internal IDs")
                 check(("2 Term" in plain) == (width >= 90), "sidebar default follows 90-column breakpoint")
+                shortcuts()
                 key("b")
                 plain = capture("dashboard-sidebar-hidden" if width >= 90 else "dashboard-sidebar-shown")
                 check(("2 Term" in plain) == (width < 90), "b toggles sidebar")
                 if width < 90:
                     check("> * Review" in plain, "shown narrow sidebar reveals the current session")
                 check("Live transcript end" in plain, "conversation remains visible when sidebar toggled")
+                shortcuts()
                 key("b")
+                shortcuts()
+                # The fixture session is running, so the first q only warns that it keeps running.
+                key("q")
+                wait("The agent is still working. Press q again to quit")
                 key("q")
                 time.sleep(0.3)
                 check(tmux("display-message", "-p", "-t", "audit:0.0", "#{pane_dead}:#{pane_dead_status}").strip() == "1:0", "q exits source TUI cleanly")
@@ -891,8 +978,7 @@ def main():
                 wait("UNDO STAGED")
                 plain = capture("undo-staged")
                 check("Live transcript end" not in plain, "recent view hides staged-away output")
-                key("f")
-                wait("Your message")
+                compose()
                 wait("Prior user prompt for undo.")
                 capture("undo-restored-draft")
                 key("Escape")
@@ -918,6 +1004,7 @@ def main():
                 check(not writes_since(start), "live events are read-only")
 
             with scenario("live-roster", width, height):
+                shortcuts()
                 key("t")
                 wait("Live worker")
                 key("Live", literal=True)
@@ -929,17 +1016,16 @@ def main():
                 start = len(result["requests"])
                 if width >= 90:
                     key("Enter")
-                key("Enter")
-                wait("Your message")
+                wait_typing()
                 key("Up")
                 wait("Prior user prompt for recall.")
                 capture("prompt-recall")
                 key("C-c")
                 wait("Draft kept.")
-                check("Your message" not in frame(), "Ctrl+C leaves editor and keeps draft before quitting")
-                key("f")
-                wait("Your message")
-                check("Prior user prompt for recall." in frame(), "draft survives Ctrl+C cancel")
+                check(typing() and "Prior user prompt for recall." in frame(), "Ctrl+C keeps the draft in the open editor and does not quit")
+                shortcuts()
+                compose()
+                check("Prior user prompt for recall." in frame(), "draft survives leaving and reopening the editor")
                 key("C-c")
                 wait("Draft kept.")
                 key("C-c")
@@ -973,8 +1059,9 @@ def main():
                 start = len(result["requests"])
                 if width >= 90:
                     key("Enter")
+                shortcuts()
                 key("/", literal=True)
-                wait("Your message")
+                wait_typing()
                 key("hel", literal=True)
                 wait("Keyboard help")
                 capture("slash-suggestions")
@@ -982,8 +1069,7 @@ def main():
                 wait("Keyboard shortcuts")
                 check(not writes_since(start), "local slash help opens UI without sending a prompt")
                 key("Escape")
-                key("f")
-                wait("Your message")
+                compose()
                 key("/audit  recent changes", literal=True)
                 key("Enter")
                 wait("Reply sent.")
@@ -997,6 +1083,8 @@ def main():
 
             with scenario("copy-mouse", width, height):
                 start = len(result["requests"])
+                # A first click in the transcript opens the reply editor and moves the rows, so open it before aiming.
+                compose()
                 lines = frame().splitlines()
                 row = next(i for i, line in enumerate(lines) if "Live transcript end" in line)
                 column = lines[row].index("Live transcript end")
@@ -1016,18 +1104,20 @@ def main():
             with scenario("owned-reply", width, height):
                 start = len(result["requests"])
                 choose_session("Finder child 05", "Fixture session: ses_finder_05")
+                shortcuts()
                 key("/", literal=True)
                 wait("Find a command")
                 key("help", literal=True)
                 key("Enter")
                 wait("Keyboard shortcuts")
                 key("Escape")
+                shortcuts()
                 key("f")
                 wait("Task-owned subagent")
                 plain = capture("owned-child-reply")
-                check("Your message" not in plain, "owned child offers navigation instead of an invalid reply editor")
+                check(not typing(plain), "owned child offers navigation instead of an invalid reply editor")
                 key("Enter")
-                wait("Your message")
+                wait_typing()
                 check("Reply to" in frame(), "owning-session navigation opens its reply editor")
                 check(not writes_since(start), "opening the owning main session sends no prompt")
                 key("F4")
@@ -1043,8 +1133,7 @@ def main():
                     tmux("resize-window", "-t", "audit:0", "-x", str(columns), "-y", str(height))
                     wait(marker)
                     check("Live transcript end" not in frame(), "width reflow keeps the reader's paragraph rather than jumping to the tail")
-                key("f")
-                wait("Your message")
+                compose()
                 draft = "Wrapped draft words preserve spaces. " * 35 + "\nDRAFTEND"
                 key("\x1b[200~" + draft + "\x1b[201~", literal=True)
                 wait("DRAFTEND")
@@ -1052,7 +1141,7 @@ def main():
                     tmux("resize-window", "-t", "audit:0", "-x", str(columns), "-y", str(height))
                     wait("DRAFTEND")
                     plain = capture(f"wrapped-reply-{columns}")
-                    check("Send (Enter)" in plain and "F4 discard" in plain, "wrapped draft keeps its tail and controls visible")
+                    check("Enter Send" in plain and "F4 discard" in plain, "wrapped draft keeps its tail and controls visible")
                 check(not writes_since(start), "wrapping and resizing never submits the draft")
                 key("F4")
 
@@ -1066,6 +1155,7 @@ def main():
                     wait("10. Tenth item:")
                     plain = capture(f"numbered-list-{columns}")
                     check("9. Ninth item:" in plain and "10. Tenth item:" in plain, "number and next-line item text share a row after reflow")
+                shortcuts()
                 key("r")
                 wait("10. Tenth item:")
                 check(not writes_since(start), "numbered-list inspection and refresh send no prompt")
@@ -1091,6 +1181,8 @@ def main():
                 start = len(result["requests"])
                 if width >= 90:
                     key("Enter")
+                # With the reply editor open, paging up only reveals what is cached; older pages load in shortcut mode.
+                shortcuts()
                 for _ in range(12):
                     key("PPage")
                     if "Earlier prompt from the previous page." in frame():
@@ -1100,6 +1192,7 @@ def main():
                 check("History" not in plain.splitlines()[3], "older messages remain in the live transcript")
                 key("End")
                 wait("Live transcript end")
+                shortcuts()
                 key("r")
                 for _ in range(12):
                     key("PPage")
@@ -1134,16 +1227,17 @@ def main():
                         check(current == baseline, "repeated resize restores the settled full frame without stale cells", differences)
 
             with scenario("help", width, height):
+                shortcuts()
                 key("?", literal=True)
                 wait("Keyboard shortcuts")
                 top = capture("help-top")
                 check("ESSENTIALS" in top and re.search(r"F4\s+discard", top), "help starts at essentials with current discard key")
                 for _ in range(10):
                     key("NPage")
-                    if re.search(r"Interrupt\s+type stop", frame()):
+                    if re.search(r"Esc\s+closes without responding", " ".join(frame().split())):
                         break
                 bottom = capture("help-bottom")
-                check(re.search(r"Interrupt\s+type stop", bottom) and "ESSENTIALS" not in bottom, "Page Down reaches help bottom")
+                check(re.search(r"Esc\s+closes without responding", " ".join(bottom.split())) and "ESSENTIALS" not in bottom, "Page Down reaches help bottom")
                 key("PPage")
                 check(frame() != bottom, "Page Up moves back through help")
                 key("Escape")
@@ -1156,13 +1250,14 @@ def main():
                 capture("commands")
                 key("new session", literal=True)
                 key("Enter")
-                wait("What would you like to do?")
+                wait(LAUNCH)
                 capture("commands-launch")
                 check(True, "command search and Enter open New session")
                 key("F4")
-                wait("What would you like to do?", absent=True)
+                wait(LAUNCH, absent=True)
 
             with scenario("picker", width, height):
+                shortcuts()
                 key("C-k")
                 wait(FINDER)
                 capture("picker")
@@ -1178,6 +1273,7 @@ def main():
                 key("Enter")
                 wait("The startup checks are complete")
                 check(True, "clearing empty picker and selecting result opens correct conversation")
+                shortcuts()
                 key("C-k")
                 wait(FINDER)
                 key("Escape")
@@ -1190,6 +1286,7 @@ def main():
 
             with scenario("finder-browsing", width, height):
                 start = len(result["requests"])
+                shortcuts()
                 key("C-k")
                 top = wait(FINDER)
                 query_row = next(i for i, line in enumerate(top.splitlines()) if FINDER in line)
@@ -1251,6 +1348,7 @@ def main():
                 mouse(0, plain.splitlines()[row].index("Finder session 29"), row)
                 wait("Fixture session: ses_finder_29")
                 check(True, "clicking finder title opens its exact synthetic session")
+                shortcuts()
                 key("C-k")
                 wait(FINDER)
                 key("Finder session", literal=True)
@@ -1266,6 +1364,7 @@ def main():
 
             with scenario("models", width, height):
                 start = len(result["requests"])
+                shortcuts()
                 key("m")
                 wait("Find a model or provider")
                 key("Down", "Up")
@@ -1293,21 +1392,23 @@ def main():
                 check(all(r["method"] == "GET" for r in result["requests"][start:]), "models and provider browsing/cancel send no writes")
 
             with scenario("launch", width, height):
+                shortcuts()
                 key("n")
-                wait("What would you like to do?")
+                wait(LAUNCH)
                 capture("launch")
                 draft = edited_draft("launch")
                 key("Escape")
                 choose_session("server startup", "The startup checks are complete")
+                shortcuts()
                 key("n")
-                wait("What would you like to do?")
+                wait(LAUNCH)
                 check(draft in frame(), "launch draft survives Escape, dashboard picker, and resume")
                 key("C-l")
                 wait("Find a model or provider")
                 key("review", literal=True)
                 wait("Review Audit Model")
                 key("Enter")
-                wait("What would you like to do?")
+                wait(LAUNCH)
                 check(draft in frame(), "local model selection preserves launch task")
                 capture("launch-model-selected")
                 key("Tab")
@@ -1320,19 +1421,20 @@ def main():
                 capture("launch-sent")
                 writes = [r for r in result["requests"][start:] if r["method"] != "GET"]
                 check(len(writes) == 2 and writes[0]["path"] == "/api/session" and writes[0]["body"]["location"]["directory"] == DIRECTORY and writes[0]["body"].get("model") == {"providerID": "fixture", "id": "review"} and writes[1]["body"]["prompt"]["text"] == draft and writes[1]["path"] == f"/api/session/{writes[0]['body']['id']}/prompt", "Enter creates one synthetic launch with original directory, selected model, and exact edited prompt", writes)
+                shortcuts()
                 key("n")
-                wait("What would you like to do?")
+                wait(LAUNCH)
                 key("discard launch marker", literal=True)
                 key("F4")
-                wait("What would you like to do?", absent=True)
+                wait(LAUNCH, absent=True)
+                shortcuts()
                 key("n")
-                wait("What would you like to do?")
+                wait(LAUNCH)
                 check("discard launch marker" not in frame(), "F4 clears local launch draft")
                 key("F4")
 
             with scenario("reply", width, height):
-                key("f")
-                wait("Your message")
+                compose()
                 key("Keep this reply draft.", literal=True)
                 plain = capture("reply")
                 check("Live transcript end" in plain and "Reply to" in plain and "Keep this reply draft." in plain, "docked reply keeps conversation, recipient, and draft visible")
@@ -1350,7 +1452,7 @@ def main():
                 for _, enter in ENTER_KEYS[1:]:
                     key(enter, literal=True)
                 tmux("resize-window", "-t", "audit:0", "-x", str(width), "-y", str(height))
-                wait("Your message")
+                wait_typing()
                 capture("reply-restored")
                 check("Keep this reply draft." in frame() and "BLOCKED" not in frame() and all(r["method"] == "GET" for r in result["requests"][start:]), "59x23 shield blocks edits, discard, navigation, and sends; resize restores draft")
                 key("C-a", "C-k")
@@ -1359,8 +1461,7 @@ def main():
                 wait("The startup checks are complete")
                 key("M-Left")
                 wait("Live transcript end")
-                key("f")
-                wait("Your message")
+                compose()
                 check(draft in frame(), "reply survives Escape then dashboard Alt hopping and resume")
                 key("PPage")
                 scrolled = capture("reply-reading")
@@ -1375,36 +1476,35 @@ def main():
                 capture("reply-sent")
                 writes = [r for r in result["requests"][start:] if r["method"] != "GET"]
                 check(len(writes) == 1 and writes[0]["path"] == "/api/session/ses_review/prompt" and writes[0]["body"]["prompt"]["text"] == draft and writes[0]["body"].get("delivery") == "queue", "Enter sends exact edited reply once to original fixture recipient", writes)
-                key("f")
-                wait("Your message")
+                compose()
                 key("discard reply marker", literal=True)
                 key("F4")
-                wait("Your message", absent=True)
-                key("f")
-                wait("Your message")
+                # The editor reopens empty once the draft is gone.
+                time.sleep(0.5)
+                compose()
                 check("discard reply marker" not in frame(), "F4 clears local reply draft")
                 key("F4")
 
-            for kind, shortcut, heading, notice in (("launch", "n", "What would you like to do?", "Task sent."), ("reply", "f", "Your message", "Reply sent.")):
+            for kind, notice in (("launch", "Task sent."), ("reply", "Reply sent.")):
                 with scenario(f"{kind}-composition", width, height):
-                    key(shortcut)
-                    wait(heading)
+                    open_kind(kind)
                     for name, enter in ENTER_KEYS:
                         start = len(result["requests"])
                         key(enter, literal=True)
-                        check(not writes_since(start) and heading in frame(), f"blank {kind}: {name} does not mutate or close editor")
+                        check(not writes_since(start) and is_open(kind), f"blank {kind}: {name} does not mutate or close editor")
                     key(" ", literal=True)
                     key("\x1b\r", literal=True)
                     key("Enter")
-                    check(not writes_since(start) and heading in frame(), f"whitespace-only {kind}: Enter does not mutate")
-                    key("F4", shortcut)
-                    wait(heading)
+                    check(not writes_since(start) and is_open(kind), f"whitespace-only {kind}: Enter does not mutate")
+                    key("F4")
+                    time.sleep(0.5)
+                    open_kind(kind)
                     key("first", literal=True)
                     start = len(result["requests"])
                     for modifier in (6, 7, 13, 21):
                         key(f"\x1b[115;{modifier}u\x1b[13;{modifier}u", literal=True)
                     key("\x1b[13;9u\x1b[13;17u\x1b[13;1:3u", literal=True)
-                    check(not writes_since(start) and heading in frame() and "first" in frame(), f"{kind}: extra-modified send keys and Enter release do not submit")
+                    check(not writes_since(start) and is_open(kind) and "first" in frame(), f"{kind}: extra-modified send keys and Enter release do not submit")
                     if kind == "launch":
                         for field in ("directory", "agent", "model"):
                             key("Tab")
@@ -1425,10 +1525,10 @@ def main():
                     key("Home", "Right", "Right", "Escape")
                     choose_session("server startup", "The startup checks are complete")
                     if kind == "reply":
+                        shortcuts()
                         key("M-Left")
                         wait("Live transcript end")
-                    key(shortcut)
-                    wait(heading)
+                    open_kind(kind)
                     key("CURSOR", literal=True)
                     check("fiCURSORrst" in frame(), f"{kind}: reopened draft restores interior cursor, not just text")
                     expected = "fiCURSORrst\nsecond\npasted third\npasted fourth\n"
@@ -1436,7 +1536,7 @@ def main():
                         key("C-l")
                         wait("Find a model or provider")
                         key("Escape")
-                        wait(heading)
+                        wait(LAUNCH)
                         key("MODEL", literal=True)
                         expected = expected.replace("CURSOR", "CURSORMODEL")
                         check("fiCURSORMODELrst" in frame(), "launch model-picker return restores draft cursor")
@@ -1449,8 +1549,7 @@ def main():
                     check(len(writes) == (2 if kind == "launch" else 1) and writes[-1]["path"] == target and writes[-1]["body"]["prompt"]["text"] == expected, f"{kind}: Return sends exact restored multiline draft once", writes)
                 for name, enter in ENTER_KEYS[1:] + [("Ctrl+S", "\x13")]:
                     with scenario(f"{kind}-send-{name.replace(' ', '-').replace('+', '-')}", width, height):
-                        key(shortcut)
-                        wait(heading)
+                        open_kind(kind)
                         text = f"{kind} via {name}"
                         key(text, literal=True)
                         start = len(result["requests"])
@@ -1473,6 +1572,7 @@ def main():
                 key("Space", "Down", "Down", "Enter")
                 wait("Your answer")
                 key("Alpha, beta", literal=True)
+                shortcuts()
                 key("C-k")
                 wait(FINDER)
                 key("Escape")
@@ -1497,12 +1597,11 @@ def main():
 
             with scenario("request-enter-guards", width, height):
                 wait("Needs input")
-                for shortcut, title, control in (("p", "Permission request", "Reject"), ("o", "Answer agent", "Question 1 of 1"), ("x", "Interrupt session", "Confirmation")):
+                for shortcut, title, control in (("p", "Permission request", "Reject"), ("o", "Answer agent", "Question 1 of 1")):
+                    shortcuts()
                     key(shortcut)
                     wait(control)
                     key("Tab")
-                    if shortcut == "x":
-                        key("stop", literal=True)
                     start = len(result["requests"])
                     for name, enter in ENTER_KEYS:
                         key(enter, literal=True)
@@ -1537,7 +1636,7 @@ def main():
         for width, height in sizes:
             if args.exit_only or args.lifecycle_only:
                 continue
-            for name in ("dashboard", "undo-confirmation", "undo-staged", "undo-restored-draft", "redo-restored", "live-in-progress", "live-completed", "roster-live-update", "prompt-recall", "agent-selected", "session-compacted", "slash-suggestions", "slash-command-sent", "copy-selection", "mouse-restored", "owned-child-reply", "particle-orb-0", "transcript-earlier", "help-top", "help-bottom", "launch", "reply", "finder-page-down", "finder-last-page", "finder-unselected-opened", "launch-multiline-paste", "reply-multiline-paste", "x-enter-not-confirmed", f"resize-cycle-{width}x{height}"):
+            for name in ("dashboard", "undo-confirmation", "undo-staged", "undo-restored-draft", "redo-restored", "live-in-progress", "live-completed", "roster-live-update", "prompt-recall", "agent-selected", "session-compacted", "slash-suggestions", "slash-command-sent", "copy-selection", "mouse-restored", "owned-child-reply", "particle-orb-0", "transcript-earlier", "help-top", "help-bottom", "launch", "reply", "finder-page-down", "finder-last-page", "finder-unselected-opened", "launch-multiline-paste", "reply-multiline-paste", "o-enter-not-confirmed", f"resize-cycle-{width}x{height}"):
                 result["checks"].append({"scenario": "coverage", "size": f"{width}x{height}", "check": f"required {name} PNG captured", "passed": any(c["name"] == name and c["actual_size"] == [width, height] for c in result["captures"])})
         failed = [c for c in result["checks"] if not c["passed"]]
         result["passed"] = not failed and "fatal" not in result
