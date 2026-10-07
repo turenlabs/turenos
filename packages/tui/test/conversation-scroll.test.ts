@@ -722,3 +722,33 @@ test("steps of one turn keep a single header when earlier history joins them", a
   expect(f.content().match(/sandbox\/scripted/g)?.length).toBe(1)
   expect(f.content()).toContain("All read.")
 })
+
+test.each([
+  ["the docked reply editor", true, ["older"]],
+  ["a real dialog", false, []],
+])("paging up at the top with %s open (fetches: %p)", async (_, composer, expected) => {
+  const f = await fixture()
+  f.conversation.cancelPosition()
+  const dialogs = createDialogs(f.view.renderer, f.state, f.ui, {
+    rememberPosition: f.conversation.rememberPosition,
+    cancelPosition: f.conversation.cancelPosition,
+    changed: () => f.ui.resize(),
+    submitted: async () => {},
+    say() {},
+  })
+  const dialog = dialogs.open("Reply", false, 24, true)!
+  dialog.composer = composer
+  dialogs.prompt(dialog, "Message", "")
+  f.ui.resize()
+  f.ui.detail.scrollTo(0)
+  const before = await waitForFrame(f.view, (frame) => frame.includes("Live line 0"))
+  const row = before.split("\n").findIndex((line) => line.includes("Live line 0"))
+  const height = f.ui.detail.scrollHeight
+  await f.conversation.scrollEarlier()
+  await f.view.renderOnce()
+  expect(f.cursors.filter(Boolean)).toEqual(expected)
+  if (!composer) return
+  await waitForFrame(f.view, (frame) => frame.includes("Live line 0") && f.ui.detail.scrollHeight > height)
+  expect(f.ui.detail.scrollTop).toBe(f.ui.detail.scrollHeight - height)
+  expect(f.view.captureCharFrame().split("\n")[row]).toContain("Live line 0")
+})

@@ -1,6 +1,7 @@
 import { changeTab, filter, hop } from "./navigation"
 import { openServers, quit } from "./lifecycle"
 import { toggleMotion, toggleRaw, toggleSidebar } from "./toggles"
+import { label } from "../state"
 import type { DashboardContext } from "./context"
 
 type Command = { name: string; description: string; run: () => void }
@@ -88,38 +89,55 @@ function serverSlash(d: DashboardContext): Command[] {
   ]
 }
 
-/** Ctrl+P: every dashboard action with its key. */
+/** A palette row: name, what it does, and the key or slash command that does it without the palette. */
+type Entry = { name: string; description: string; key?: string; run: () => void }
+
+/** Ctrl+P: every dashboard action, grouped Session, Conversation, Requests, Panels, Terminals, Settings, View. */
 export function openCommands(d: DashboardContext) {
-  d.c.menus.commands([
-    ...sessionCommands(d),
-    ...modelCommands(d),
-    ...panelCommands(d),
-    ...terminalCommands(d),
-    ...viewCommands(d),
-  ])
+  const groups = [
+    sessionEntries(d),
+    conversationEntries(d),
+    requestEntries(d),
+    panelEntries(d),
+    terminalEntries(d),
+    settingsEntries(d),
+    viewEntries(d),
+  ]
+  d.c.menus.commands(groups.flat().map((entry) => row(d, entry)))
 }
 
-function sessionCommands(d: DashboardContext): Command[] {
+/**
+ * Every row reads `Name  · Description (key)`. The menu adds the name and the dot; the description is cut with an
+ * ellipsis before the key so a narrow terminal never loses the key or ends a row mid-word. The dialog frame is the
+ * terminal width less 3, at most 70, and the marker, borders, padding and scrollbar take 9 more.
+ */
+function row(d: DashboardContext, entry: Entry) {
+  const key = entry.key ? ` (${entry.key})` : ""
+  const room = Math.min(70, d.renderer.width - 3) - 9 - entry.name.length - 4 - key.length
+  return { name: entry.name, run: entry.run, description: label(entry.description, Math.max(1, room)) + key }
+}
+
+function sessionEntries(d: DashboardContext): Entry[] {
   const c = d.c
   return [
-    { name: "Switch session", description: "Ctrl+K", run: c.menus.switcher },
-    ...(d.options.servers ? [{ name: "Switch server", description: "s", run: () => openServers(d) }] : []),
+    { name: "Switch session", description: "Jump to a session", key: "Ctrl+K", run: c.menus.switcher },
+    { name: "Next session", description: "Hop forward", key: "Alt+Right", run: () => hop(d, 1) },
+    { name: "Previous session", description: "Hop back", key: "Alt+Left", run: () => hop(d, -1) },
+    { name: "New session", description: "Folder, agent, model", key: "n", run: c.launch.open },
     { name: "Browse all sessions", description: "Server title search", run: () => c.menus.switcher("all") },
-    {
-      name: "Working folders",
-      description: "Open or close folders shared with the GUI",
-      run: () => c.menus.workingFolders(),
-    },
     { name: "Browse archived sessions", description: "Restore older work", run: () => c.menus.switcher("archived") },
     { name: "Open session by ID", description: "Includes older sessions", run: c.menus.openByID },
-    { name: "Next session", description: "Alt+Right", run: () => hop(d, 1) },
-    { name: "Previous session", description: "Alt+Left", run: () => hop(d, -1) },
-    { name: "New session", description: "n", run: c.launch.open },
     { name: "Rename session", description: "Change the selected title", run: c.sessions.rename },
     { name: "Archive / restore session", description: "Hide or restore history", run: c.sessions.archive },
     { name: "Delete session", description: "Permanently, with its subagents", run: c.sessions.remove },
-    { name: "Tasks and subagents", description: "Ctrl+X / t", run: c.sessions.tasks },
-    ...(hasParent(d) ? [{ name: "Go to parent session", description: "Open parent", run: c.sessions.parent }] : []),
+    { name: "Tasks and subagents", description: "Delegated work", key: "t", run: c.sessions.tasks },
+    ...(hasParent(d)
+      ? [{ name: "Go to parent session", description: "Open the parent", run: c.sessions.parent }]
+      : []),
+    ...(d.options.servers
+      ? [{ name: "Switch server", description: "Choose a server", key: "s", run: () => openServers(d) }]
+      : []),
+    { name: "Working folders", description: "Shared with the GUI", run: () => c.menus.workingFolders() },
   ]
 }
 
@@ -127,97 +145,102 @@ function hasParent(d: DashboardContext) {
   return !!d.state.snapshot?.sessions.find((session) => session.id === d.state.selected)?.parentID
 }
 
-function modelCommands(d: DashboardContext): Command[] {
+function conversationEntries(d: DashboardContext): Entry[] {
   const c = d.c
   return [
-    { name: "Choose model for this session", description: "m", run: c.models.open },
-    { name: "Choose model effort / variant", description: "/effort", run: c.variants.open },
-    { name: "Session goal", description: "/goal", run: c.goals.open },
-    { name: "Session harness", description: "H / /harness", run: c.harness.open },
-    { name: "Choose agent for this session", description: "/agent", run: c.controls.agent },
-    { name: "Compact session context", description: "/compact", run: c.controls.compact },
-    { name: "Undo conversation turn", description: "/undo", run: c.rewind.undo },
-    { name: "Rewind to an earlier message", description: "/rewind", run: c.rewind.pick },
-    { name: "Redo conversation turn", description: "/redo", run: c.rewind.redo },
-    { name: "Connect provider / add custom model", description: "API key or OAuth", run: c.models.connect },
-    { name: "Sessions", description: "1", run: () => changeTab(d, "sessions") },
-    { name: "Terminal processes", description: "2", run: () => changeTab(d, "terminals") },
-    { name: "Automations", description: "3", run: () => changeTab(d, "automations") },
-    { name: "Send follow-up", description: "f", run: c.requests.followup },
-    { name: "Queued messages", description: "u · send now, edit, or discard", run: c.queue.open },
+    { name: "Send follow-up", description: "Reply to the session", key: "f", run: c.requests.followup },
+    { name: "Queued messages", description: "Send now, edit, discard", key: "u", run: c.queue.open },
+    { name: "Choose model for this session", description: "Model for new turns", key: "m", run: c.models.open },
+    { name: "Choose model effort / variant", description: "Reasoning effort", key: "/effort", run: c.variants.open },
+    { name: "Choose agent for this session", description: "Switch agent", key: "/agent", run: c.controls.agent },
+    { name: "Connect a provider", description: "API key or OAuth", run: c.models.connect },
+    { name: "Session goal", description: "Inspect and control", key: "/goal", run: c.goals.open },
+    { name: "Session harness", description: "Tools and guidance", key: "H or /harness", run: c.harness.open },
+    { name: "Compact session context", description: "Summarize history", key: "/compact", run: c.controls.compact },
+    { name: "Undo conversation turn", description: "Stage a rewind", key: "/undo", run: c.rewind.undo },
+    { name: "Rewind to an earlier message", description: "Pick a message", key: "/rewind", run: c.rewind.pick },
+    { name: "Redo conversation turn", description: "Restore a staged turn", key: "/redo", run: c.rewind.redo },
   ]
 }
 
-function panelCommands(d: DashboardContext): Command[] {
+function requestEntries(d: DashboardContext): Entry[] {
   const c = d.c
   return [
-    { name: "Review changes", description: "d · uncommitted, branch, last turn", run: c.changes.open },
-    { name: "Browse files", description: "e · read files, @ mention in reply", run: c.files.open },
-    { name: "Open session terminal", description: "T · shared with the agent", run: () => void c.terminals.shared() },
-    { name: "Swarm room", description: "w · subagent lanes and messages", run: c.room.open },
-    { name: "New automation", description: "a in Automations", run: c.automations.create },
-    {
-      name: "Manage automation",
-      description: "Enter in Automations · run, pause, edit, runs",
-      run: c.automations.manage,
-    },
-    { name: "Settings", description: ", · providers, usage, extensions, memories", run: c.settings.open },
-    { name: "Extensions", description: "Skills, MCP servers, data sources", run: () => c.extensions.open() },
-    { name: "Memories", description: "Wings, rooms, and notes agents recall", run: () => void c.memories.open() },
-    { name: "Intel", description: "I · advisories, KEV, security news", run: c.intel.open },
-    {
-      name: "Session tools",
-      description: "/tools · built-in, MCP, and excluded tools",
-      run: () => void c.inspect.tools(),
-    },
-    { name: "Session trace", description: "/trace · the session's event log", run: c.inspect.trace },
-  ]
-}
-
-function terminalCommands(d: DashboardContext): Command[] {
-  const c = d.c
-  return [
-    { name: "New terminal", description: "a in Terminals", run: c.terminals.create },
-    { name: "Attach to terminal", description: "Enter in Terminals · Ctrl+] detaches", run: c.terminals.open },
-    { name: "Rename terminal", description: "R in Terminals", run: c.terminals.rename },
-    { name: "Close terminal", description: "d in Terminals", run: c.terminals.close },
-    { name: "Review permission", description: "p", run: c.requests.permission },
-    { name: "Answer question", description: "o", run: c.requests.question },
+    { name: "Review permission", description: "Allow or reject", key: "p", run: c.requests.permission },
+    { name: "Answer question", description: "Reply to the agent", key: "o", run: c.requests.question },
     { name: "Reject question", description: "Confirm without answering", run: () => c.requests.question(true) },
-    { name: "Stop session", description: "x · /stop · interrupt the running turn", run: c.requests.interrupt },
-    { name: "Kill session (stop and cancel tasks)", description: "/kill", run: c.requests.kill },
-    { name: "Stop all agents", description: "Kill switch for this server", run: c.requests.stopAll },
+    { name: "Stop session", description: "Interrupt the running turn", key: "x or /stop", run: c.requests.interrupt },
+    { name: "Kill session", description: "Stop and cancel its tasks", key: "/kill", run: c.requests.kill },
+    { name: "Stop all agents", description: "Kill switch for this server", key: "/stop-all", run: c.requests.stopAll },
   ]
 }
 
-function viewCommands(d: DashboardContext): Command[] {
+function panelEntries(d: DashboardContext): Entry[] {
   const c = d.c
   return [
-    { name: "Search items", description: "/", run: () => filter(d) },
-    { name: "Refresh", description: "r", run: () => void d.refresh() },
-    { name: "Keyboard help", description: "?", run: c.menus.help },
-    { name: "Copy selected text", description: "Ctrl+Y / right-click", run: c.copy.copySelection },
-    { name: "Toggle terminal mouse selection", description: "F6", run: c.copy.toggleMouse },
-    { name: "Session history / live transcript", description: "h", run: c.conversation.toggleHistory },
+    { name: "Review changes", description: "Uncommitted, branch, last turn", key: "d", run: c.changes.open },
+    { name: "Browse files", description: "Read files, @ mention", key: "e", run: c.files.open },
+    { name: "Open session terminal", description: "Shared with the agent", key: "T", run: () => void c.terminals.shared() },
+    { name: "Swarm room", description: "Subagent lanes and messages", key: "w", run: c.room.open },
+    { name: "Session tools", description: "Built-in, MCP, excluded", key: "/tools", run: () => void c.inspect.tools() },
+    { name: "Session trace", description: "The event log", key: "/trace", run: c.inspect.trace },
+    { name: "Session and connection details", description: "Session and server", key: "i", run: () => c.menus.information(d.serverAddress) },
+  ]
+}
+
+function terminalEntries(d: DashboardContext): Entry[] {
+  const c = d.c
+  return [
+    { name: "Sessions", description: "Show the session list", key: "1", run: () => changeTab(d, "sessions") },
+    { name: "Terminal processes", description: "Show terminals", key: "2", run: () => changeTab(d, "terminals") },
+    { name: "New terminal", description: "In the Terminals tab", key: "a", run: c.terminals.create },
+    { name: "Attach to terminal", description: "Ctrl+] detaches", key: "Enter", run: c.terminals.open },
+    { name: "Rename terminal", description: "In the Terminals tab", key: "R", run: c.terminals.rename },
+    { name: "Close terminal", description: "In the Terminals tab", key: "d", run: c.terminals.close },
+    { name: "Automations", description: "Show automations", key: "3", run: () => changeTab(d, "automations") },
+    { name: "New automation", description: "In the Automations tab", key: "a", run: c.automations.create },
+    { name: "Manage automation", description: "Run, pause, edit, runs", key: "Enter", run: c.automations.manage },
+  ]
+}
+
+function settingsEntries(d: DashboardContext): Entry[] {
+  const c = d.c
+  return [
+    { name: "Settings", description: "Providers, usage, servers", key: ",", run: c.settings.open },
+    { name: "Extensions", description: "Skills, MCP, data sources", run: () => c.extensions.open() },
+    { name: "Memories", description: "What agents recall", run: () => void c.memories.open() },
+    { name: "Intel", description: "Advisories, KEV, news", key: "I", run: c.intel.open },
+  ]
+}
+
+function viewEntries(d: DashboardContext): Entry[] {
+  const c = d.c
+  return [
+    { name: "Search items", description: "Find or filter the list", key: "/", run: () => filter(d) },
+    { name: "Refresh", description: "Reload from the server", key: "r", run: () => void d.refresh() },
+    { name: "Keyboard help", description: "All shortcuts", key: "?", run: c.menus.help },
+    { name: "Copy selected text", description: "Selection to clipboard", key: "Ctrl+Y", run: c.copy.copySelection },
+    { name: "Toggle terminal mouse selection", description: "Native selection", key: "F6", run: c.copy.toggleMouse },
+    { name: "Session history / live transcript", description: "Switch the view", key: "h", run: c.conversation.toggleHistory },
     {
       name: d.state.rawResponses ? "Show formatted responses" : "Show raw responses",
-      description: "Tool results and agent updates",
+      description: "Tool results and updates",
       run: () => toggleRaw(d),
     },
     {
       name: d.state.expandToolOutput ? "Collapse tool output" : "Expand tool output",
-      description: "Ctrl+O · long tool results",
+      description: "Long tool results",
+      key: "Ctrl+O",
       run: c.conversation.toggleToolOutput,
     },
-    { name: "Older history page", description: "[ in History", run: () => c.conversation.page("next") },
-    { name: "Newer history page", description: "] in History", run: () => c.conversation.page("previous") },
-    { name: "Session and connection details", description: "i", run: () => c.menus.information(d.serverAddress) },
-    { name: "Toggle sidebar", description: "b / Ctrl+B", run: () => toggleSidebar(d) },
+    { name: "Older history page", description: "In History", key: "[", run: () => c.conversation.page("next") },
+    { name: "Newer history page", description: "In History", key: "]", run: () => c.conversation.page("previous") },
+    { name: "Toggle sidebar", description: "Show or hide the list", key: "b or Ctrl+B", run: () => toggleSidebar(d) },
     {
       name: "Toggle reduced motion",
-      description: d.state.reducedMotion ? "Now on · animation off" : "Now off · animation on",
+      description: d.state.reducedMotion ? "Now on, animation off" : "Now off, animation on",
       run: () => toggleMotion(d),
     },
-    { name: "Quit dashboard", description: "q / Ctrl+C", run: () => quit(d) },
+    { name: "Quit dashboard", description: "Repeat if work is unsent", key: "q or Ctrl+C", run: () => quit(d) },
   ]
 }

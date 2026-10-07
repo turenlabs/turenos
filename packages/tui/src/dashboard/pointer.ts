@@ -11,6 +11,30 @@ export function bindPointer(d: DashboardContext) {
   bindActionRow(d)
   bindSearch(d)
   bindList(d)
+  bindTranscript(d)
+}
+
+/**
+ * A press on the transcript holds the reply editor shut until release. Opening it mid-drag docks it under the
+ * transcript, shifts the rows and drops the selection; a plain click still lets it open afterwards.
+ */
+function bindTranscript(d: DashboardContext) {
+  const detail = d.ui.detail
+  const handle = detail.onMouse
+  let held: { navigating: boolean; dragged: boolean } | undefined
+  detail.onMouse = (event) => {
+    handle?.call(detail, event)
+    if (event.type === "down" && event.button === 0 && !d.state.modal) {
+      held = { navigating: held?.navigating ?? d.state.navigating, dragged: false }
+      d.state.navigating = true
+      return
+    }
+    if (!held) return
+    if (event.type === "drag") held.dragged = true
+    if (event.type !== "up" && event.type !== "drag-end") return
+    if (!held.dragged) d.state.navigating = held.navigating
+    held = undefined
+  }
 }
 
 /** A left-button press that runs `action`; any press disarms a pending quit confirmation. */
@@ -115,6 +139,8 @@ function bindList(d: DashboardContext) {
     state.navigating = false
     ui.focus()
     renderActions(d)
+    // Terminals attach and automations open their menu at once, as the detail pane's Enter does.
+    if (state.tab !== "sessions" && state.selected) primaryAction(d)
   })
   ui.list.on("focused", () => {
     const dialog = state.modal

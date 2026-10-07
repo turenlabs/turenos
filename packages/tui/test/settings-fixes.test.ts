@@ -60,7 +60,7 @@ test("typing a provider name selects it instead of the pinned custom row", async
     "GET /provider": () => catalog,
     "GET /provider/auth": () => ({}),
   })
-  await app.palette("Connect provider")
+  await app.palette("Connect a provider")
   await app.screen("Find a provider")
   await app.view.mockInput.typeText("openai")
   await Bun.sleep(50)

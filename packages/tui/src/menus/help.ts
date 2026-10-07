@@ -3,8 +3,8 @@ import { color } from "../theme"
 import type { MenuContext } from "./context"
 import { helpSections } from "./help-text"
 
-/** Width of the key column; a longer key wraps inside it. */
-const keyWidth = 16
+/** Width of the key column; the longest key ("Ctrl+P · Ctrl+X") leaves a gap before the text, a longer one wraps. */
+export const keyWidth = 18
 
 export function help(ctx: MenuContext) {
   const dialog = ctx.dialogs.open("Keyboard shortcuts")
@@ -24,7 +24,11 @@ export function help(ctx: MenuContext) {
   const hint = () => {
     const form = dialog.form
     const more = form.scrollTop + form.viewport.height < form.scrollHeight - 1
-    dialog.error.content = `${more ? "More below · " : ""}PgUp/PgDn scroll · Esc close`
+    // PgDn moves one viewport less a line, so pages are counted in those steps.
+    const step = Math.max(1, form.viewport.height - 1)
+    const last = Math.ceil(Math.max(0, form.scrollHeight - form.viewport.height) / step) + 1
+    const page = more ? Math.min(last - 1, Math.floor(form.scrollTop / step) + 1) : last
+    dialog.error.content = `${page}/${last} · ${more ? "More below · " : ""}PgUp/PgDn scroll · Esc close`
   }
   dialog.key = (key) => {
     if (key.name !== "pageup" && key.name !== "pagedown") return false

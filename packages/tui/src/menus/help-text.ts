@@ -1,17 +1,16 @@
-/** The Keyboard shortcuts text: sections of [keys, what they do]. Keys stay under 16 columns. */
+/** The Keyboard shortcuts text: sections of [keys, what they do]. Keys stay under `keyWidth` columns (help.ts). */
 export const helpSections: [string, [string, string][]][] = [
   [
     "ESSENTIALS",
     [
       ["Typing", "a session in view has its reply editor open: letters type, Enter sends"],
-      ["Esc", "leaves the editor for these shortcuts; Enter or f types again"],
+      ["Esc", "leaves the editor or closes a dialog; drafts are kept"],
       ["Enter", "opens the primary action; sends from the editor"],
       ["n · f", "new session · reply"],
       ["Up · Down", "walk your earlier prompts in an empty editor"],
       ["Esc Esc", "stops the running turn; on an idle session, opens undo"],
       ["x · /stop", "stops it at once; /kill also cancels its tasks"],
       ["Shift+Enter", "adds a line (Alt+Enter too); Ctrl+S also sends"],
-      ["Esc", "closes a dialog and keeps the draft"],
       ["F4", "discard local draft"],
       ["/ · Ctrl+P", "commands in the conversation or editor · all actions"],
       ["Ctrl+C", "closes a form or stops a running turn; repeat to quit"],
@@ -29,7 +28,7 @@ export const helpSections: [string, [string, string][]][] = [
       ["w · H · i", "swarm room (lanes, entries, Tab to post) · harness · details"],
       ["/tools · /trace", "the agent's tools and MCP servers · the event log"],
       ["Context", "the action row shows the context window: Context 45% · 90k/200k"],
-      ["Ctrl+O", "shows or folds long tool output in the transcript"],
+      ["Ctrl+O", "in the transcript: shows or folds long tool output"],
     ],
   ],
   [
@@ -98,21 +97,22 @@ export const helpSections: [string, [string, string][]][] = [
     ],
   ],
   [
-    "EDITING AND DRAFTS",
+    "IN THE REPLY EDITOR",
     [
-      ["Ctrl+D · Ctrl+K", "delete forward · delete to line end"],
+      ["Ctrl+D", "deletes forward"],
+      ["Ctrl+K", "deletes to line end (Esc first to switch session)"],
       ["Ctrl+A", "line start; Alt+Left/Right word motion"],
       ["F2 · Ctrl+G", "or /editor composes the draft in $EDITOR"],
-      ["Ctrl+P · Ctrl+X", "also work from the reply; Esc first for Ctrl+K or Alt+Left/Right"],
+      ["Ctrl+P · Ctrl+X", "also work from the reply; Esc first for Alt+Left/Right"],
       ["Ctrl+N", "new session; also works in drafts and the switcher"],
       ["Tab", "next field (Shift+Tab previous); click Settings reveals launch settings"],
       ["Reply", "Ctrl+T Steer/Queue before sending · PgUp/PgDn reads the conversation"],
-      ["Ctrl+O", "inspect the attempted launch session"],
+      ["Ctrl+O", "in a failed launch form: opens the attempted session"],
       ["", "Drafts last until quit; discard does not stop server work."],
     ],
   ],
   [
-    "PICKERS AND MODELS",
+    "IN PICKERS AND MODELS",
     [
       ["Up/Down", "choose · Enter select · Esc back"],
       [
@@ -120,7 +120,7 @@ export const helpSections: [string, [string, string][]][] = [
         "type anytime; Tab stays in search; F2 Recent / All / Archived; F3 older and Shift+F3 newer title search",
       ],
       ["PgUp/PgDn", "or the wheel browse; click a result to open"],
-      ["Ctrl+O", "open an older session by ID"],
+      ["Ctrl+O", "in the session picker: open an older session by ID"],
       ["t · Ctrl+P", "Tasks · rename, archive/restore, delete, or open parent"],
       ["m · Ctrl+L", "session model · model in New session"],
       ["Tab", "New session settings: folder, agent, model, new git worktree"],

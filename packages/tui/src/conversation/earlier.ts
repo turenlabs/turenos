@@ -32,8 +32,8 @@ export async function scrollEarlier(c: Conversation) {
     return
   if (!cached.expanded && cached.messages.length > 6) return expandWindow(c, token, id, cached)
   cached.expanded = true
-  // Preserve/reveal the local reading window while composing, without paging remotely.
-  if (state.modal) return
+  // A dialog pages only the local window; the docked reply editor, open by default, still fetches older pages.
+  if (state.modal && !state.modal.composer) return
   if (ui.detail.scrollTop > Math.max(10, ui.detail.viewport.height)) return
   if (cached.capped) return hooks.say("Live scrollback limit reached. Press h, then [ for further history.")
   const cursor = cached.cursor
@@ -74,7 +74,7 @@ function fetchEarlier(c: Conversation, token: number, id: string, cursor: string
     state.selected === id &&
     !state.history &&
     state.tab === "sessions" &&
-    !state.modal &&
+    (!state.modal || state.modal.composer) &&
     state.detail?.sessionID === id &&
     !state.detail.questions.length
   c.earlier = (async () => {

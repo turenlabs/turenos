@@ -598,7 +598,7 @@ for (const picker of ["k", "p"] as const) {
         .at(-1)!
       expect(select.getSelectedIndex()).toBe(0)
       await view.mockInput.typeText("Switch session")
-      expect(select.options[select.getSelectedIndex()]?.name).toBe("Switch session  · Ctrl+K")
+      expect(select.options[select.getSelectedIndex()]?.name).toBe("Switch session  · Jump to a session (Ctrl+K)")
     }
     if (picker === "k") {
       await view.renderOnce()
@@ -969,7 +969,7 @@ test("b, Ctrl+B, and palette sidebar/quit actions work without stealing editor i
   view.mockInput.pressKey("p", { ctrl: true })
   await view.mockInput.typeText("sidebar")
   await view.renderOnce()
-  expect(view.captureCharFrame()).toContain("Toggle sidebar  · b / Ctrl+B")
+  expect(view.captureCharFrame()).toContain("Toggle sidebar  · Show or hide the list (b or Ctrl+B)")
   view.mockInput.pressEnter()
   await view.renderOnce()
   expect(view.captureCharFrame()).not.toContain("1 Sess")
@@ -982,7 +982,7 @@ test("b, Ctrl+B, and palette sidebar/quit actions work without stealing editor i
   view.mockInput.pressKey("p", { ctrl: true })
   await view.mockInput.typeText("quit")
   await view.renderOnce()
-  expect(view.captureCharFrame()).toContain("Quit dashboard  · q / Ctrl+C")
+  expect(view.captureCharFrame()).toContain("Quit dashboard  · Repeat if work is unsent (q or Ctrl+C)")
   view.mockInput.pressEnter()
   expect(view.renderer.isDestroyed).toBe(false)
   await waitForFrame(view, (frame) => frame.includes("Unsent drafts"))
@@ -2493,7 +2493,7 @@ test("commands filter by typing and Enter runs the matching action without a ser
   expect(view.captureCharFrame()).toContain("Terminal processes")
   expect(view.captureCharFrame()).not.toContain("Send follow-up")
   view.mockInput.pressEnter()
-  await waitForFrame(view, (frame) => /Terminal( · |\n)/.test(frame) && frame.includes("PID 4242"))
+  await waitForFrame(view, (frame) => frame.includes("Terminal ID:") && frame.includes("PID 4242"))
   expect(server.posts).toHaveLength(0)
 })
 
@@ -2710,7 +2710,7 @@ test("command selection remains visible at the minimum supported size", async ()
   const select = descendants(view.renderer.root)
     .filter((node) => node instanceof SelectRenderable)
     .at(-1)!
-  expect(select.options[select.getSelectedIndex()]?.name).toBe("Refresh  · r")
+  expect(select.options[select.getSelectedIndex()]?.name).toBe("Refresh  · Reload from the server (r)")
   expect(server.posts).toHaveLength(0)
 })
 
