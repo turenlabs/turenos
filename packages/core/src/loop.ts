@@ -443,6 +443,16 @@ const layer = Layer.effect(
               const current = yield* tx.select().from(LoopTable).where(eq(LoopTable.id, input.id)).get()
               if (!current) return { type: "not-found" } as const
               if (current.expires_at <= now) return { type: "state" } as const
+              const next =
+                current.status === "active" &&
+                schedule.kind === "none" &&
+                input.timezone !== undefined &&
+                input.timezone !== current.timezone &&
+                current.schedule_type === "cron" &&
+                current.cron_expression
+                  ? computeCronNext(current.cron_expression, input.timezone, Math.max(now, current.starts_at - 1))
+                  : nextForSchedule
+              if (next instanceof InvalidInputError) return { type: "invalid", message: next.message } as const
               const nextSkill = input.resetSkill ? undefined : (input.skill ?? current.skill ?? undefined)
               if (!(input.prompt ?? current.prompt).trim() && !nextSkill && !(input.workflow ?? current.workflow))
                 return { type: "task" } as const
@@ -488,8 +498,7 @@ const layer = Layer.effect(
                   skill: input.resetSkill ? null : input.skill,
                   workflow: input.workflow,
                   expires_at: input.expiresAt,
-                  next_run_at:
-                    current.status === "active" && schedule.kind !== "none" ? nextForSchedule : undefined,
+                  next_run_at: current.status === "active" ? next : undefined,
                   time_updated: now,
                 })
                 .where(eq(LoopTable.id, input.id))
@@ -502,6 +511,7 @@ const layer = Layer.effect(
         .pipe(Effect.orDie, Effect.ensuring(stateChanged))
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
       if (result.type === "state") return yield* new InvalidStateError({ id: input.id, message: "Loop has expired" })
+      if (result.type === "invalid") return yield* new InvalidInputError({ message: result.message })
       if (result.type === "task")
         return yield* new InvalidInputError({ message: "A custom prompt or skill is required" })
       if (result.type === "expiry") return yield* new InvalidInputError({ message: "Expiry must be in the future" })
