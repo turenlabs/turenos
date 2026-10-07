@@ -44,13 +44,16 @@ export function mergeLive(c: Conversation, messages: Messages, older = false) {
     c.generation++
     c.hooks.say("Recent messages moved beyond cached history. Scroll up to reload; h opens full History.")
   }
-  const merged = new Map(
-    (older ? [...incoming, ...cached.messages] : [...cached.messages, ...incoming]).map((item) => [item.id, item]),
-  )
-  cached.messages = [...merged.values()]
+  // Server order. A refetched page replaces its cached entries in place; an older page is stale for any
+  // message already cached, so the cached copy wins and only the unseen older messages go first.
+  const have = new Set((older ? cached.messages : incoming).map((item) => item.id))
+  cached.messages = older
+    ? [...incoming.filter((item) => !have.has(item.id)), ...cached.messages]
+    : [...cached.messages.filter((item) => !have.has(item.id)), ...incoming]
   // Older messages change how the first cached one reads: its header and turn break depend on what precedes it.
   if (older) rebuild(cached, state.expandToolOutput)
   let size = cached.messages.reduce((sum, item) => sum + Math.max(item.formatted.length, item.raw.length) + 2, 0)
+  // Only older messages are evicted; the newest (the running reply) stays even when it alone exceeds the budget.
   while (cached.messages.length > 1 && (cached.messages.length > 120 || size > 80000)) {
     const removed = cached.messages.shift()!
     size -= Math.max(removed.formatted.length, removed.raw.length) + 2
@@ -58,7 +61,6 @@ export function mergeLive(c: Conversation, messages: Messages, older = false) {
   }
   c.live.delete(id)
   c.live.set(id, cached)
-  if (size > 80000) cached.capped = true
   if (c.live.size > 5) {
     const evicted = c.live.keys().next().value!
     c.live.delete(evicted)
