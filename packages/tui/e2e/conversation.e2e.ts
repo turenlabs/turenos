@@ -42,8 +42,7 @@ test("a long reply can be scrolled back while the tail stays reachable", async (
 })
 
 test("Up in an empty reply recalls the previous message", async () => {
-  await tui.keys("f")
-  await tui.waitFor("Your message")
+  await tui.compose()
   await tui.keys("Up")
   await tui.waitFor("a long one please")
   await tui.keys("Escape")

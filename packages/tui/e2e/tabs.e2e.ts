@@ -5,7 +5,8 @@ const tui = sandbox("tabs")
 
 test("a terminal is created, attached, used and detached", async () => {
   await tui.keys("2")
-  await tui.waitFor("2 Term")
+  // Brackets mark the open tab; the unbracketed label is always in the tab bar.
+  await tui.waitFor("[2 Term]")
   await tui.keys("a")
   await tui.waitFor("New terminal")
   await tui.keys("C-s")
@@ -25,7 +26,7 @@ test("a terminal is created, attached, used and detached", async () => {
 
 test("an automation is created on the Automations tab", async () => {
   await tui.keys("3")
-  await tui.waitFor("3 Auto")
+  await tui.waitFor("[3 Auto]")
   await tui.keys("a")
   await tui.waitFor("New automation")
   await tui.type("Nightly summary")

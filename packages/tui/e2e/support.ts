@@ -17,6 +17,11 @@ export function sandbox(file: string, size: Size = { cols: 120, rows: 36 }) {
     await waitFor(name, "Connected", 30_000)
   }, 120_000)
   afterAll(() => stop(name), 30_000)
+  /** Leaves the selected session's reply editor open: it already is after a launch or a send. */
+  async function compose() {
+    if (!(await settle(name)).includes("Shift/Alt+Enter newline")) await keys(name, "f")
+    await waitFor(name, "Shift/Alt+Enter newline")
+  }
   return {
     name,
     keys: (...names: string[]) => keys(name, ...names),
@@ -67,10 +72,10 @@ export function sandbox(file: string, size: Size = { cols: 120, rows: 36 }) {
       await keys(name, "Enter")
       await waitFor(name, "USER")
     },
+    compose,
     /** Replies to the selected session. */
     reply: async (text: string) => {
-      await keys(name, "f")
-      await waitFor(name, "Your message")
+      await compose()
       await type(name, text)
       await keys(name, "Enter")
     },

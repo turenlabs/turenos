@@ -62,7 +62,11 @@ export async function start(name: string, options: StartOptions = {}) {
     serverEnv(password),
     options,
     180_000,
-  )
+  ).catch((error: unknown) => {
+    // No record exists yet, so `stop` could not find the model; end it here.
+    signal(model.pid, "SIGKILL")
+    throw error
+  })
   const record: Record = {
     name,
     url: server.match[1]!,
@@ -174,7 +178,7 @@ function writeConfig(p: Paths, port: number) {
 }
 
 export function sandboxEnv(p: Paths) {
-  const pass = ["PATH", "LANG", "LC_ALL", "USER", "LOGNAME", "SHELL", "TZ"].filter(
+  const pass = ["PATH", "LANG", "LC_ALL", "USER", "LOGNAME", "SHELL", "TZ", "TURENOS_REDUCED_MOTION"].filter(
     (key) => process.env[key] !== undefined,
   )
   return {

@@ -11,6 +11,9 @@ test("at 60x24 a session can be started and answered", async () => {
 })
 
 test("help opens and closes at 60x24", async () => {
+  // At 60 columns the transcript has focus, so the launched session's reply editor is open until Esc.
+  await tui.keys("Escape")
+  await tui.waitFor("f Reply")
   await tui.keys("?")
   await tui.waitFor("Keyboard shortcuts")
   await tui.keys("Escape")
@@ -21,13 +24,13 @@ test("a reply keeps streaming across resizes and can be stopped", async () => {
   await tui.reply("a slow one")
   await tui.waitFor("word2")
   tui.resize({ cols: 120, rows: 36 })
+  await tui.waitFor("Esc Esc to stop")
+  // Esc leaves the reply editor, so x is the stop shortcut again (and the first Esc of Esc Esc is armed).
+  await tui.keys("Escape")
   await tui.waitFor("x Stop")
   tui.resize({ cols: 80, rows: 24 })
   await tui.waitFor(/word1\d/)
   await tui.keys("x")
-  await tui.waitFor("Type stop")
-  await tui.type("stop")
-  await tui.keys("C-s")
   await tui.waitFor("INTERRUPTED")
   await tui.idle()
 })
@@ -40,6 +43,8 @@ test("below the minimum size the TUI asks for a bigger terminal, then recovers",
 })
 
 test("q quits, restores the terminal and says so", async () => {
+  // q warns first while the client still shows the stopped turn as running; wait for the header to say idle.
+  await tui.waitFor(/TurenOS.*\bidle\b/)
   await tui.keys("q")
   const screen = await tui.waitFor("[sandbox] turen-tui exited with status 0")
   expect(screen).toContain("Turen TUI closed.")

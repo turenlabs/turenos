@@ -27,8 +27,8 @@ TUI in a private tmux server (agents and tests)
   launch <name> [--size WxH] [--cli path]             Start it in the background (default 120x36);
                                                       --cli runs another entry, e.g. dist/cli.js
   screen <name> [--color]                             Print the screen as plain text
-  keys <name> <key>...                                Send keys: Enter Escape C-s Up PageDown S-Enter q
-  type <name> <text>                                  Type text literally
+  keys <name> [--] <key>...                           Send keys: Enter Escape C-s Up PageDown S-Enter q
+  type <name> [--] <text>                             Type text literally; after -- the text may start with -
   wait <name> <text> [--regex] [--timeout ms]         Wait until the screen shows text
   settle <name>                                       Wait until the screen stops changing
   resize <name> <W>x<H>                               Resize the terminal
@@ -139,8 +139,8 @@ const commands: { [command: string]: () => Promise<unknown> | unknown } = {
     )
   },
   screen: () => process.stdout.write(screen(checkName(name), options.color)),
-  keys: () => keys(checkName(name), ...rest),
-  type: () => type(checkName(name), rest.join(" ")),
+  keys: () => keys(checkName(name), ...(split < 0 ? rest : argv.slice(split + 1))),
+  type: () => type(checkName(name), (split < 0 ? rest : argv.slice(split + 1)).join(" ")),
   async wait() {
     const text = rest.join(" ")
     if (!text) throw new Error("Usage: bun run sandbox wait <name> <text> [--regex]")

@@ -66,8 +66,8 @@ export function screen(name: string, color = false) {
 /** Sends key names (`Enter`, `C-s`, `Escape`, `PageDown`, `S-Enter`, a single character). */
 export async function keys(name: string, ...names: string[]) {
   for (const key of names) {
-    if (sequences[key]) tmux(name, "send-keys", "-t", target, "-l", sequences[key]!)
-    else tmux(name, "send-keys", "-t", target, key)
+    if (sequences[key]) tmux(name, "send-keys", "-t", target, "-l", "--", sequences[key]!)
+    else tmux(name, "send-keys", "-t", target, "--", key)
     // A lone Escape followed at once by another byte reads as Alt+key; give the parser a gap.
     if (key === "Escape" || key === "Esc") await Bun.sleep(120)
     else await Bun.sleep(15)
@@ -76,7 +76,7 @@ export async function keys(name: string, ...names: string[]) {
 
 /** Types text literally, as if pasted key by key. */
 export async function type(name: string, text: string) {
-  tmux(name, "send-keys", "-t", target, "-l", text)
+  tmux(name, "send-keys", "-t", target, "-l", "--", text)
   await Bun.sleep(30)
 }
 
