@@ -94,6 +94,10 @@ const yolk = item("yolk", {
 })
 
 describe("filterExtensionItems", () => {
+  test.each(["github-actions-security-review", "zizmor"])("classifies %s as supply-chain security", (id) => {
+    expect(extensionCategory({ ...tool, manifest: { ...tool.manifest, id: `turenlabs/${id}` } })).toBe("supply-chain")
+  })
+
   test("uses reviewed manifest IDs for security focus without inferring unknown entries", () => {
     const sentinel = { ...mcp, manifest: { ...mcp.manifest, id: "turenlabs/microsoft-sentinel" } }
     const unknown = { ...mcp, manifest: { ...mcp.manifest, id: "constructor" } }

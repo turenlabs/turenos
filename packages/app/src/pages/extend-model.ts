@@ -69,6 +69,8 @@ const categoryByExtensionID: Readonly<Record<string, ClassifiedExtensionCategory
   "turenlabs/dependency-risk-review": "supply-chain",
   "turenlabs/dependency-upgrade-impact": "supply-chain",
   "turenlabs/slsa-provenance-review": "supply-chain",
+  "turenlabs/github-actions-security-review": "supply-chain",
+  "turenlabs/zizmor": "supply-chain",
   "turenlabs/binary-static-snapshot": "security-knowledge",
   "turenlabs/pcap-triage": "security-operations",
   "turenlabs/threat-intel-enrichment": "threat-intelligence",
