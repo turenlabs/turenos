@@ -22,7 +22,7 @@ MCP servers are contacted only when the Session assembles tools for a turn. A co
 
 ## Recovery and leases
 
-A claimed or running row has a five-minute lease, renewed every minute while its scheduler owns the run. An expired **claimed** row can be reclaimed with its existing run and Session identity. An expired **running** row is marked `stale`; it is not restarted automatically because provider or tool effects may already have happened. If execution loses its lease or its outcome is otherwise unknown, the scheduler interrupts local Session ownership and does not replay the turn. Cancellation persists and interrupts the active Session.
+A claimed or running row has a five-minute lease, renewed every minute while its scheduler owns the run. An expired **claimed** row can be reclaimed with its existing run and Session identity, step cursor, and outputs, but waits while another run owns the same Automation. Recovery renews at most one claim per Automation in a scan; blocked claims remain durable and do not force immediate scheduler wakeups. An expired **running** row is marked `stale`; it is not restarted automatically because provider or tool effects may already have happened. If execution loses its lease or its outcome is otherwise unknown, the scheduler interrupts local Session ownership and does not replay the turn. Cancellation persists and interrupts the active Session.
 
 Run history exposes `claimed`, `running`, `succeeded`, `failed`, `cancelled`, `skipped`, and `stale` states. Operators must inspect a stale run before deciding whether to create new work.
 
