@@ -28,7 +28,7 @@ export function runs(ctx: AutomationsContext, loop: Loop, back: () => void) {
       items = result.slice(0, 50)
       text.content = items.length ? `${items.length} recent run${items.length === 1 ? "" : "s"}` : "No runs yet."
       list.options = items.map((run) => ({
-        name: `${label(run.status, 20)} · ${run.time?.created === undefined ? label(run.id) : stamp(run.time.created)} · ${label(run.trigger ?? "", 40)}`,
+        name: `${label(run.status, 20)} · ${typeof run.time?.created === "number" ? stamp(run.time.created) : label(run.id)} · ${label(run.trigger ?? "", 40)}`,
         description: run.error ? label(run.error, 200) : "",
       }))
       dialog.error.content = keys

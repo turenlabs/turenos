@@ -143,7 +143,7 @@ async function showAutomation(c: Conversation, snapshot: Snapshot, id: string, v
             // A run without its creation time (a malformed item) shows its ID rather than failing the pane.
             .map(
               (run) =>
-                `${label(run.status)} · ${run.time?.created === undefined ? label(run.id) : stamp(run.time.created)}`,
+                `${label(run.status)} · ${typeof run.time?.created === "number" ? stamp(run.time.created) : label(run.id)}`,
             )
             .join("\n") || "No runs yet."
     }`,
