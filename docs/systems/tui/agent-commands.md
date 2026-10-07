@@ -4,7 +4,7 @@
 
 ## Commands
 
-The first argument picks a command; anything else (a URL, an option or nothing) opens the dashboard as before. Each command takes `--help`.
+The first argument picks a command. A lowercase word that is not a command, such as the typo `sesions`, is a usage error (exit 2) that names the nearest command when one is close. Anything else (a URL, an option or nothing) opens the dashboard as before. Each command takes `--help`.
 
 | Command                                                                    | Does                                                                                                                                                                                                                                    |
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -12,14 +12,14 @@ The first argument picks a command; anything else (a URL, an option or nothing) 
 | `show <session> [--limit N] [--all] [--raw]`                               | The transcript, then pending requests with the commands that resolve them. `--limit` 1-30 (the server's page size); `--all` follows history to the start, oldest first, up to 2,000 messages.                                           |
 | `send <session> [text \| -] [--queue] [--wait]`                            | Reply to a session. The text is the argument, or stdin for `-` or no argument. A leading `/` runs a server command and a leading `!` a shell command, as in the dashboard; neither takes `--queue`. Delivery is steer unless `--queue`. |
 | `send --new [text \| -] [--dir D] [--model P/M] [--agent A] [--variant V]` | Start a session. `--dir` defaults to the server's directory.                                                                                                                                                                            |
-| `wait <session> [--timeout S]`                                             | Block until the session is idle (prints its last reply) or needs input.                                                                                                                                                                 |
+| `wait <session> [--timeout S]`                                             | Block until the session is idle (prints its last reply) or needs input; exits 5 if the last turn failed or was interrupted.                                                                                                             |
 | `pending [<session>]`                                                      | Pending permissions and questions for one session, or for every running session.                                                                                                                                                        |
 | `approve <session> <permission-id> [--always]`                             | Allow once; `--always` also saves the rule the request offers.                                                                                                                                                                          |
 | `reject <session> <permission-id>`                                         | Reject a permission request.                                                                                                                                                                                                            |
 | `answer <session> <question-id> --choice <label>...`                       | Answer one question by label (repeat for several options), `--answers '[["Red"],["Yes"]]'` for several questions, or `--reject`. A label outside the options is accepted only when the question allows custom answers.                  |
 | `stop <session> [--tasks]`                                                 | Interrupt the session; `--tasks` also cancels its active subagent tasks.                                                                                                                                                                |
 
-Every command takes `--url <origin>`, `--server <name>`, `--username <name>`, `--discover-auth` and `--json`. The server is `--url`, then `TURENOS_SERVER_URL`, then the local TurenOS; an explicit URL or saved server never falls back to discovery. The password comes only from `FORGE_SERVER_PASSWORD` or a record the local server publishes; there is no password flag.
+`send` also takes `--timeout S`, `--id msg_…`, `--session-id ses_…` (with `--new`) and `--allow-outside`. Text that starts with `-` goes after `--` (`turen-tui send ses_x -- "- item"`) or on stdin, and a label that starts with `-` is written `--choice=<label>`. Every command takes `--url <origin>`, `--server <name>`, `--username <name>`, `--discover-auth` and `--json`. The server is `--url`, then `TURENOS_SERVER_URL`, then the local TurenOS; an explicit URL or saved server never falls back to discovery. The password comes only from `FORGE_SERVER_PASSWORD` or a record the local server publishes; there is no password flag.
 
 ```sh
 turen-tui send --new "fix the failing test" --dir /srv/app --wait
@@ -30,7 +30,9 @@ turen-tui show ses_abc --all --json
 
 ## Waiting
 
-`send --wait` and `wait` block until the session is idle and has a reply after the sent message, or until it needs input. The live event stream only wakes the wait early; every pass re-reads the session's state, at most a second apart, because the server may drop events for a slow reader. The default timeout is 600 seconds, and `--timeout 0` waits without limit.
+`send --wait` and `wait` block until the session is idle and has a reply after the sent message, or until it needs input. The live event stream only wakes the wait early; every pass re-reads the session's state, at most a second apart, because the server may drop events for a slow reader. The default timeout is 600 seconds, and `--timeout 0` waits without limit. A server that stops answering, a request that times out, a 5xx, a 408 or a 409 does not end the wait: the next pass runs after 2, 4 and then every 5 seconds until the timeout; a session deleted meanwhile ends it with exit 1. A wait also ends with exit 3 when a subagent the session started is waiting for a permission or question, and the printed commands then name the child session. With `--queue`, a reply from the turn that was already running is not taken as the answer while the message is still queued.
+
+When the session goes idle and its latest turn ended in an error, the state line reads `failed` (or `interrupted` when the turn was stopped), the next line gives the error as the dashboard shows it (for example `HTTP 401: invalid x-api-key`), and the exit code is 5. With `--json`, `state` is `"failed"` or `"interrupted"` and `error` carries the text. A turn that recovered after a provider retry ends normally.
 
 When a permission or question is pending, the output lists each request with the exact command that resolves it, for example:
 
@@ -42,24 +44,27 @@ permission per_123 · session ses_abc · bash · echo sandbox-marker && ls
 
 ## Output and exit codes
 
-Text output is plain: labelled lines, no colour, spinners or boxes, with server text stripped of terminal controls. `--json` prints exactly one document on stdout (`{"sessions": [...]}`, `{"session", "state", "messages", "pending"}`, `{"ok": true, ...}`); an error prints one line on stderr and, with `--json`, `{"error": {"message", "retry"?}}` on stdout.
+Text output is plain: labelled lines, no colour, spinners or boxes, with server text stripped of terminal controls. Transcript text is set in by four spaces, and every line the client prints starts in column 0, or at two spaces under a request, so a caller can tell the client's lines from anything a message contains (`^permission `, `^  approve: `). Text output cuts each text part at 16,000 characters and a transcript at 80,000, keeping the newest and marking the cut; `--json` is complete. Error messages are one line. A reader that closes early (`turen-tui show … | head`) ends the command quietly. `--json` prints exactly one document on stdout (`{"sessions": [...]}`, `{"session", "state", "messages", "pending"}`, `{"ok": true, ...}`); an error prints one line on stderr and, with `--json`, `{"error": {"message", "retry"?}}` on stdout.
 
 | Exit | Meaning                                                               |
 | ---- | --------------------------------------------------------------------- |
 | 0    | Done                                                                  |
 | 1    | Failed: a server or transport error, a refusal, or an unknown outcome |
-| 2    | Usage error                                                           |
+| 2    | Usage error, including an unknown command                             |
 | 3    | The session needs input                                               |
 | 4    | The wait timed out                                                    |
+| 5    | The session went idle after a failed or interrupted turn              |
 
 ## Retries
 
-Every write carries a client-generated ID (`msg_…`, and `ses_…` for `send --new`), or the caller's `--id` and `--session-id`. When a send fails after the request may have reached the server, the command exits 1 with `Outcome unknown`, prints the ID, and says to retry with `--id`: the server drops a message whose ID it already has, so the retry cannot send it twice. A definite refusal (a 4xx other than 408 or 409) says that nothing was sent. Length, mention, command and shell checks all run before anything is sent.
+Every write carries a client-generated ID (`msg_…`, and `ses_…` for `send --new`), or the caller's `--id` and `--session-id`. When a send fails after the request may have reached the server, the command exits 1 with `Outcome unknown`, prints the ID, and says to retry with `--id`: the server drops a message whose ID it already has, so the retry cannot send it twice. Repeat the same session, text and options: the server drops a repeated ID whatever its text, so a retry with other text is dropped silently yet reported as sent. A definite refusal (a 4xx other than 408 or 409) says that nothing was sent, and an invalid `--model`, `--agent` or `--variant` is a usage error (exit 2) that creates nothing. Length, mention, command and shell checks all run before anything is sent. When the send succeeded but `--wait` then failed, the error says so, names the message and gives the `wait` command to resume; with `--json` the error carries `session`, `messageID` and `"state": "sent"` and no `retry`.
 
 ## Limits
 
 - A child session owned by a subagent task refuses direct replies, as in the dashboard, and the command names the owning session when it can.
-- `--allow-outside` lets `@file` mentions outside the session directory attach; the dashboard asks for a second send instead.
+- `--allow-outside` lets `@file` mentions outside the session directory attach; the dashboard asks for a second send instead. `send --new` resolves a leading `/` against the server's commands first; text that only looks like a command is a prompt and gets the same mention check.
+- `answer` matches a label exactly before it matches one with its control characters removed; a label outside the options is sent as a custom answer only when the question allows one, and the command says so on stderr. A blank label is refused.
+- Standard input is limited to 256 KiB, must be UTF-8, and a leading byte-order mark is ignored.
 - `show --all` makes one request per 30 messages.
 
 ## Source

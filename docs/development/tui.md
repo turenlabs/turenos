@@ -25,6 +25,8 @@ The tests (`packages/tui/test/`) drive the real client against synthetic HTTP fi
 - Never restart a live server or a running client to test the client. Tests and the PTY audit start their own loopback servers.
 - Keep generated evidence (PNGs, logs, `evidence.json`) outside the repository.
 - Keyboard fixtures use `mockInput.pressEnter()`, `pressArrow(direction, modifiers)` and `pressKey("ESCAPE")`. Confirm key delivery, and wait for the expected frame after a modal transition, before typing again.
+- While a session is in view with the conversation focused, its reply editor has the keyboard (footer `Typing`), including at startup below 90 columns. Press Escape and wait for the frame to leave `Typing` before a single-letter shortcut.
+- OpenTUI's test renderer destroys itself on `Ctrl+C` unless it is created with `exitOnCtrlC: false`, as the client's own renderer is; `terminal(width, height, true)` in `test/support.ts` does that.
 - A Bun run that only prints usage or package scripts is not a passing test run, even with exit status zero.
 
 Input and layout changes need both renderer tests and a real PTY. Preserve exact shortcut modifiers, captured request recipients, retry identifiers, transport limits, secret handling and focus when dialogs close or asynchronous responses arrive. Test reading positions during prepend-plus-stream updates, width reflow and docked replies, not only while following the tail. Exercise controls at 60x24 as well as larger sizes.
@@ -56,13 +58,14 @@ bun run sandbox launch demo --size 80x24      # default 120x36; --cli dist/cli.j
 bun run sandbox wait demo "Connected"         # polls the screen; --regex, --timeout <ms> (default 15 s)
 bun run sandbox keys demo n                   # tmux key names: Enter Escape C-s Up PageDown F2 BTab; S-Enter, M-Enter
 bun run sandbox type demo "please run the marker"
+bun run sandbox type demo -- "- a list item"    # text after -- may start with -
 bun run sandbox keys demo Enter
 bun run sandbox screen demo                   # plain text, as an agent reads it; --color keeps the SGR codes
 bun run sandbox idle demo                     # waits until the server reports no running session
 bun run sandbox attach demo                   # a person watches or takes over; detach with Ctrl+B d
 ```
 
-`settle` waits until the screen stops changing, `resize <W>x<H>` resizes the terminal, `close` ends the TUI (relaunch with `launch`), and `list` shows the sandboxes. `api <name> <METHOD> <path> [json]` sends an authenticated request to the sandbox server, for seeding state or checking what the server holds. `exec <name> -- <command>` runs a command with the sandbox's environment, `TURENOS_SERVER_URL` and `FORGE_SERVER_PASSWORD` set, for example `bun run sandbox exec demo -- bun src/cli.ts sessions --json`. After `keys` sends Escape it pauses 120 ms, because Escape followed at once by another byte reads as Alt+key.
+`settle` waits until the screen stops changing, `resize <W>x<H>` resizes the terminal, `close` ends the TUI (relaunch with `launch`), and `list` shows the sandboxes. `api <name> <METHOD> <path> [json]` sends an authenticated request to the sandbox server, for seeding state or checking what the server holds. `exec <name> -- <command>` runs a command with the sandbox's environment, `TURENOS_SERVER_URL` and `FORGE_SERVER_PASSWORD` set, for example `bun run sandbox exec demo -- bun src/cli.ts sessions --json`. After `keys` sends Escape it pauses 120 ms, because Escape followed at once by another byte reads as Alt+key. When the TUI shows a session with the conversation focused, its reply editor has the keyboard (the footer reads `Typing`): `type` goes into it, and single-letter shortcuts need `keys Escape` first. In the e2e driver, `compose()` opens the reply editor only when it is not already open.
 
 ### Scripted model
 
@@ -90,7 +93,7 @@ After a tool result the model replies `Done: the <tool> tool returned:` with the
 ### Isolation
 
 - Everything lives in `$XDG_RUNTIME_DIR/turen-tui-sandbox/<name>` (`TUREN_SANDBOX_ROOT` overrides; it must be outside the repository): home, XDG directories, the project, logs (`server.log`, `model.log`, `tui.log`) and `sandbox.json`. The tmux socket sits there too, so the path stays short; tmux refuses socket paths of 104 bytes or more.
-- The server, the model and the TUI get an environment built from an allowlist (`PATH`, locale, user and shell), so the owner's API keys, server URLs and `TMUX` never reach them. The server runs with `FORGE_DISABLE_MODELS_FETCH`, `FORGE_DISABLE_AUTOUPDATE` and `FORGE_DISABLE_CLAUDE_CODE`, and a throwaway vault key.
+- The server, the model and the TUI get an environment built from an allowlist (`PATH`, locale, user and shell, plus `TURENOS_REDUCED_MOTION` when set), so the owner's API keys, server URLs and `TMUX` never reach them. The server runs with `FORGE_DISABLE_MODELS_FETCH`, `FORGE_DISABLE_AUTOUPDATE` and `FORGE_DISABLE_CLAUDE_CODE`, and a throwaway vault key.
 - The sandbox password is random per start and kept in a `0600` file in the run directory, which the TUI's shell reads, so it never appears in an argument list. The run directory is deleted on `stop`.
 - Where `systemd-run --user` works, the server and the model run in their own scope capped at 3 GB (`--memory-max <size>`, or `0` for no cap).
 - Permission checks are turned on (`PUT /global/permission-checks`) and the config sets `bash` to ask, unless `start` gets `--no-permissions`.

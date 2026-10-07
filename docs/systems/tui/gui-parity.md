@@ -7,12 +7,12 @@ The TurenOS terminal client and TurenOS Desktop are two clients of the same serv
 | Desktop                                             | TUI                                                                     |
 | --------------------------------------------------- | ----------------------------------------------------------------------- |
 | Transcript with live streaming, history paging      | Main pane; `h`, `[`, `]` for history                                    |
-| Composer: steer or queue, slash commands, `@` files | `f` reply, `Ctrl+T` steer/queue, `/`, `@`                               |
+| Composer: steer or queue, slash commands, `@` files | Reply editor open under the transcript; `Ctrl+T`, `/`, `@`              |
 | Skills from extensions in the slash list            | `/` lists them, marked **Skill**                                        |
 | Shell mode (`!`)                                    | `!` at the start of a message                                           |
 | Queued follow-up dock: send now, edit               | `u` (also discard)                                                      |
 | Agent, model, and effort pickers                    | `/agent`, `m`, `/effort`                                                |
-| Permission dock: deny, allow once, allow always     | `p`                                                                     |
+| Permission dock: deny, allow once, allow always     | Opens itself; `1`, `2`, `3` answer; `p` reopens it                      |
 | Question dock                                       | `o` (opens automatically)                                               |
 | Goal dock                                           | `/goal`                                                                 |
 | Harness panel                                       | `H`                                                                     |
@@ -24,7 +24,7 @@ The TurenOS terminal client and TurenOS Desktop are two clients of the same serv
 | Shared session terminal and private terminals       | `T`; Terminals tab `2` (`Enter` attach, `a` new, `R` rename, `d` close) |
 | Activity tab: tools and MCP servers                 | `/tools`                                                                |
 | Traces: a session's event history                   | `/trace`                                                                |
-| Undo, redo, compact                                 | `/undo`, `/redo`, `/compact`                                            |
+| Undo, redo, compact                                 | `/undo`, `/redo`, `/rewind`, `/compact`                                 |
 | Rename, archive, restore, delete                    | `/rename`; `Ctrl+P`; `/delete`                                          |
 | Kill switch (stop all agents)                       | `/stop-all`                                                             |
 | New session in a new worktree                       | New session settings: **Workspace**                                     |

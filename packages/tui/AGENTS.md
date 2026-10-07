@@ -6,7 +6,7 @@
 
 Run from `packages/tui` unless noted.
 
-- `bun run test` (tests need the script's `--timeout 30000`; a focused run is `bun test test/dashboard.test.ts --timeout 30000`), `bun typecheck`, `bun run build` (writes ignored `dist/cli.js`).
+- `bun run test` (tests need the script's `--timeout 30000`; a focused run is `bun test test/dashboard.test.ts --timeout 30000`), `bun typecheck`, `bun run build` (writes the ignored dist build the PTY audit's `--built` runs).
 - Run `bun run tui` from the repository root, where the root `package.json` defines it, to start the client (it runs `bun --cwd packages/tui start`).
 - Real-server checks: `bun run sandbox start <name>` starts a throwaway server from this checkout with a scripted model; `bun run sandbox launch <name>` then `screen`, `keys`, `type`, `wait` and `idle` drive the TUI in the sandbox's private tmux; `bun run sandbox stop <name>` when done. `bun run test:e2e` runs the `e2e/*.e2e.ts` scenarios (tmux, a few minutes; not in CI). Workflow, trigger words and isolation: `docs/development/tui.md`.
 - Non-interactive agent commands (`turen-tui sessions|show|send|wait|pending|approve|reject|answer|stop`, `--json`) live in `src/agent/`; check them against a sandbox through `bun run sandbox exec`, which runs a command with the sandbox's URL and password in its environment.
@@ -23,6 +23,7 @@ Run from `packages/tui` unless noted.
 
 - Preserve exact key modifiers, modal focus, captured request recipients, retry IDs, transport limits and credential restrictions. Local slash admission covers keyboard and mouse submission, not only Enter.
 - Anything a dashboard registers on the renderer is released in its `dispose()` (`src/dashboard/lifecycle.ts`), or it leaks across server switches. `mountApp` mounts the new dashboard before disposing the old one.
+- While a session is in view, its reply editor is open and letters type into it (footer `Typing`); drivers and keyboard fixtures send Escape before single-letter shortcuts.
 - Size reply editors with `editor.lineInfo.lineSources.length`; `virtualLineCount` can be viewport-limited. Reserve the scrollbar column.
 - `parentID` is navigation metadata, not proof of task ownership. Never transfer or send a child's draft to the main session.
 - Live text comes from the global `/api/event` stream (`src/live-events/`); polling is reconciliation, not the only update path.
