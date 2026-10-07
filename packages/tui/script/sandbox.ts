@@ -12,7 +12,7 @@ import { attachCommand, close, exited, keys, open, resize, screen, settle, type,
 const usage = `Usage: bun run sandbox <command> <name> [options]
 
 Server
-  start <name> [--memory-max 3G] [--no-permissions]   Start a sandbox server (10-60 s)
+  start <name> [--memory-max 3G] [--no-permissions]   Start a sandbox server (about a minute at most; gives up after 3)
   stop <name> [--keep]                                Stop it and delete its run directory
   list                                                Running sandboxes
   api <name> <METHOD> <path> [json]                   Authenticated request to the sandbox server
@@ -21,18 +21,21 @@ Server
                                                       TURENOS_SERVER_URL and FORGE_SERVER_PASSWORD
 
 TUI in your terminal (people)
-  tui <name> [--size WxH] [-- turen-tui options]      Run the TUI here against the sandbox
+  tui <name> [-- turen-tui options]                   Run the TUI here against the sandbox
 
 TUI in a private tmux server (agents and tests)
-  launch <name> [--size WxH] [--cli path]             Start it in the background (default 120x36);
+  launch <name> [--size WxH] [--cli path] [-- turen-tui options]
+                                                      Start it in the background (default 120x36);
                                                       --cli runs another entry, e.g. dist/cli.js
   screen <name> [--color]                             Print the screen as plain text
-  keys <name> [--] <key>...                           Send keys: Enter Escape C-s Up PageDown S-Enter q
+  keys <name> [--] <key>...                           Send keys: Enter Escape C-s Up PageDown S-Enter M-Enter C-Enter q
   type <name> [--] <text>                             Type text literally; after -- the text may start with -
   wait <name> <text> [--regex] [--timeout ms]         Wait until the screen shows text
   settle <name>                                       Wait until the screen stops changing
   resize <name> <W>x<H>                               Resize the terminal
   attach <name>                                       Watch or take over (detach: Ctrl+B d)
+  exited <name>                                       Print exited once the TUI process has ended, else running
+  close <name>                                        End the TUI (relaunch with launch)
 
 The run directory is $XDG_RUNTIME_DIR/turen-tui-sandbox/<name> (TUREN_SANDBOX_ROOT overrides).
 It never connects to another server and never uses the default tmux server.`

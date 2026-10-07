@@ -39,7 +39,7 @@ export async function start(name: string, options: StartOptions = {}) {
     {},
     options,
   )
-  writeConfig(p, Number(model.match[1]))
+  writeConfig(p, Number(model.match[1]), options.permissions !== false)
   const password = writePassword(p)
   const server = await spawnReady(
     p,
@@ -56,7 +56,7 @@ export async function start(name: string, options: StartOptions = {}) {
       "--hostname",
       "127.0.0.1",
       "--port",
-      "0",
+      String(freePort()),
     ],
     p.serverLog,
     /listening on (http:\/\/127\.0\.0\.1:\d+)/,
@@ -150,11 +150,23 @@ function seedProject(p: Paths) {
   }
 }
 
-function writeConfig(p: Paths, port: number) {
+/**
+ * A free loopback port. The server treats `--port 0` as "4096 first", the desktop's default port, so
+ * a sandbox must name its own. Another process could take it before the server binds; that start fails loudly.
+ */
+export function freePort() {
+  const listener = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
+  const port = listener.port!
+  void listener.stop(true)
+  return port
+}
+
+/** The sandbox's `forge.json`; with permissions on, bash asks, and `--no-permissions` leaves it unconfigured. */
+export function writeConfig(p: Paths, port: number, permissions: boolean) {
   const config = {
     model: "sandbox/scripted",
     autoupdate: false,
-    permission: { bash: "ask" },
+    ...(permissions ? { permission: { bash: "ask" } } : {}),
     provider: {
       sandbox: {
         name: "Sandbox scripted model",

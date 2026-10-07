@@ -2,8 +2,8 @@ import { afterEach, expect, test } from "bun:test"
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { alive, paths } from "../script/sandbox/run"
-import { sandboxEnv, start } from "../script/sandbox/server"
+import { alive, createDirs, paths } from "../script/sandbox/run"
+import { freePort, sandboxEnv, start, writeConfig } from "../script/sandbox/server"
 import { keys, type } from "../script/sandbox/terminal"
 
 const saved = { ...process.env }
@@ -60,4 +60,42 @@ esac`,
   })
   await Bun.sleep(200)
   expect(alive(pid)).toBe(false)
+})
+
+test("the sandbox config asks for bash only while permissions are on", () => {
+  shims({})
+  const p = paths("probe")
+  createDirs(p)
+  const read = (permissions: boolean) => {
+    writeConfig(p, 4321, permissions)
+    return JSON.parse(readFileSync(join(p.config, "forge", "forge.json"), "utf8"))
+  }
+  expect(read(true).permission).toEqual({ bash: "ask" })
+  expect(read(false)).not.toHaveProperty("permission")
+  expect(read(false).provider.sandbox.api).toBe("http://127.0.0.1:4321/v1")
+})
+
+test("the sandbox picks a free loopback port of its own, never forge's 4096 default", async () => {
+  const taken = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
+  cleanup.push(() => void taken.stop(true))
+  const ports = Array.from({ length: 5 }, freePort)
+  for (const port of ports) {
+    expect(port).toBeGreaterThan(0)
+    expect(port).not.toBe(0)
+    expect(port).not.toBe(taken.port!)
+    Bun.serve({ hostname: "127.0.0.1", port, fetch: () => new Response() }).stop(true)
+  }
+})
+
+test("the server is started on the port freePort chose, not --port 0", async () => {
+  const dir = shims({
+    bun: `case "$*" in
+  *model.ts*) echo "MODEL_READY 4321"; exec sleep 600 ;;
+  *) echo "$*" > "$(dirname "$0")/server.args"; exit 1 ;;
+esac`,
+  })
+  await expect(start("probe", { memoryMax: "0" })).rejects.toThrow("did not start")
+  const args = readFileSync(join(dir, "server.args"), "utf8").trim().split(" ")
+  const port = args[args.indexOf("--port") + 1]
+  expect(Number(port)).toBeGreaterThan(0)
 })

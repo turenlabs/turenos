@@ -46,30 +46,30 @@ The checks build on each other, from fastest to most real:
 
 ```sh
 cd packages/tui
-bun run sandbox start demo      # 5-60 s; prints the URL, the project folder and the model's trigger words
-bun run sandbox tui demo        # people: the TUI in this terminal, connected to the sandbox
-bun run sandbox stop demo       # stops the processes it started and deletes the run directory
+bun run sandbox start demo      # under a minute (gives up after 3); prints the URL, the project folder and the model's trigger words
+bun run sandbox tui demo        # people: the TUI in this terminal, connected to the sandbox; options for it follow --
+bun run sandbox stop demo       # stops the processes it started and deletes the run directory; --keep leaves it for the logs
 ```
 
 An agent, or a script, drives the TUI in the background instead:
 
 ```sh
-bun run sandbox launch demo --size 80x24      # default 120x36; --cli dist/cli.js runs a build
+bun run sandbox launch demo --size 80x24      # default 120x36; --cli dist/cli.js runs a build; options for the TUI follow --
 bun run sandbox wait demo "Connected"         # polls the screen; --regex, --timeout <ms> (default 15 s)
-bun run sandbox keys demo n                   # tmux key names: Enter Escape C-s Up PageDown F2 BTab; S-Enter, M-Enter
+bun run sandbox keys demo n                   # tmux key names: Enter Escape C-s Up PageDown F2 BTab; also S-Enter, M-Enter, C-Enter
 bun run sandbox type demo "please run the marker"
 bun run sandbox type demo -- "- a list item"    # text after -- may start with -
 bun run sandbox keys demo Enter
 bun run sandbox screen demo                   # plain text, as an agent reads it; --color keeps the SGR codes
-bun run sandbox idle demo                     # waits until the server reports no running session
+bun run sandbox idle demo                     # waits until the server reports no running session; --timeout <ms> (default 60 s)
 bun run sandbox attach demo                   # a person watches or takes over; detach with Ctrl+B d
 ```
 
-`settle` waits until the screen stops changing, `resize <W>x<H>` resizes the terminal, `close` ends the TUI (relaunch with `launch`), and `list` shows the sandboxes. `api <name> <METHOD> <path> [json]` sends an authenticated request to the sandbox server, for seeding state or checking what the server holds. `exec <name> -- <command>` runs a command with the sandbox's environment, `TURENOS_SERVER_URL` and `FORGE_SERVER_PASSWORD` set, for example `bun run sandbox exec demo -- bun src/cli.ts sessions --json`. After `keys` sends Escape it pauses 120 ms, because Escape followed at once by another byte reads as Alt+key. When the TUI shows a session with the conversation focused, its reply editor has the keyboard (the footer reads `Typing`): `type` goes into it, and single-letter shortcuts need `keys Escape` first. In the e2e driver, `compose()` opens the reply editor only when it is not already open.
+`settle` waits until the screen stops changing, `resize <W>x<H>` resizes the terminal, `close` ends the TUI (relaunch with `launch`), `exited` prints `exited` once the TUI process has ended (the pane keeps its last output) and `running` before that, and `list` shows the sandboxes. `api <name> <METHOD> <path> [json]` sends an authenticated request to the sandbox server, for seeding state or checking what the server holds. `exec <name> -- <command>` runs a command with the sandbox's environment, `TURENOS_SERVER_URL` and `FORGE_SERVER_PASSWORD` set, for example `bun run sandbox exec demo -- bun src/cli.ts sessions --json`. After `keys` sends Escape it pauses 120 ms, because Escape followed at once by another byte reads as Alt+key. When the TUI shows a session with the conversation focused, its reply editor has the keyboard (the footer reads `Typing`): `type` goes into it, and single-letter shortcuts need `keys Escape` first. In the e2e driver, `compose()` opens the reply editor only when it is not already open.
 
 ### Scripted model
 
-The latest user message chooses the reply by the first trigger word it contains. Anything else gets a short reply that lists the words.
+The latest user message chooses the reply: the first row of the table below whose word the message contains, not the first word in the message (`write and run` runs, because `run` comes first). Anything else gets a short reply that lists the words. A message that begins with `<` is a server notice (a child's result, room updates) and gets `Noted.`, so a quoted trigger word cannot loop.
 
 | Word        | Reply                                                                           |
 | ----------- | ------------------------------------------------------------------------------- |
@@ -88,16 +88,17 @@ The latest user message chooses the reply by the first trigger word it contains.
 | `fail`      | HTTP 401, which the server does not retry                                       |
 | `flaky`     | HTTP 503 five times, then a reply; the server retries on its own                |
 
-After a tool result the model replies `Done: the <tool> tool returned:` with the result, so a scenario finishes in one turn. Titles come from the first words of the first message.
+After a tool result the model replies `Done: the <tool> tool returned:` with the result, so a scenario finishes in one turn. If the server did not offer the scenario's tool to the agent, the reply says `The server did not offer the <tool> tool to this agent, so nothing ran.` Titles come from the first words of the first message.
 
 ### Isolation
 
 - Everything lives in `$XDG_RUNTIME_DIR/turen-tui-sandbox/<name>` (`TUREN_SANDBOX_ROOT` overrides; it must be outside the repository): home, XDG directories, the project, logs (`server.log`, `model.log`, `tui.log`) and `sandbox.json`. The tmux socket sits there too, so the path stays short; tmux refuses socket paths of 104 bytes or more.
-- The server, the model and the TUI get an environment built from an allowlist (`PATH`, locale, user and shell, plus `TURENOS_REDUCED_MOTION` when set), so the owner's API keys, server URLs and `TMUX` never reach them. `tui <name>` adds your terminal's `TERM` and `COLORTERM` so colours match it, and `launch` sets `TERM=xterm-256color` with `COLORTERM=truecolor` in the private tmux. The server runs with `FORGE_DISABLE_MODELS_FETCH`, `FORGE_DISABLE_AUTOUPDATE` and `FORGE_DISABLE_CLAUDE_CODE`, and a throwaway vault key.
+- The server, the model and the TUI get an environment built from an allowlist (`PATH`, `LANG`, `LC_ALL`, `USER`, `LOGNAME`, `SHELL`, `TZ`, plus `TURENOS_REDUCED_MOTION` when set), so the owner's API keys, server URLs and `TMUX` never reach them. `tui <name>` adds your terminal's `TERM` and `COLORTERM` so colours match it (`xterm-256color` and an empty `COLORTERM` when yours are unset), and `launch` sets `TERM=xterm-256color`, `COLORTERM=truecolor` and `LANG=C.UTF-8` in the private tmux. The server runs with `FORGE_DISABLE_MODELS_FETCH`, `FORGE_DISABLE_AUTOUPDATE` and `FORGE_DISABLE_CLAUDE_CODE`, and a throwaway vault key.
 - The sandbox password is random per start and kept in a `0600` file in the run directory, which the TUI's shell reads, so it never appears in an argument list. The run directory is deleted on `stop`.
 - Where `systemd-run --user` works, the server and the model run in their own scope capped at 3 GB (`--memory-max <size>`, or `0` for no cap).
 - Permission checks are turned on (`PUT /global/permission-checks`) and the config sets `bash` to ask, unless `start` gets `--no-permissions`.
-- The TUI always gets the sandbox URL. Its server picker still discovers what this machine publishes, such as `/etc/turenos/attach.json`, and lists a headless server on port 4096 because `FORGE_SERVER_PASSWORD` is set. Never select those from a sandbox.
+- The server listens on a free loopback port the script picks itself. The server's own `--port 0` means "4096 first", the desktop's default port, so the sandbox never passes it.
+- The TUI always gets the sandbox URL. Its server picker still discovers what this machine publishes, such as `/etc/turenos/attach.json`, and lists a headless server on port 4096 because `FORGE_SERVER_PASSWORD` is set; that entry is never the sandbox itself. Never select those from a sandbox.
 
 ## End-to-end tests
 
