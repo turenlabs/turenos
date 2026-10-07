@@ -90,7 +90,7 @@ function snapshotLines(snapshot: Snapshot, connected: boolean, sessionDirectory:
   const terminals = snapshot.inventoryErrors.terminals
     ? `Terminal inventory unavailable: ${snapshot.inventoryErrors.terminals}`
     : snapshot.terminalsAvailable
-      ? `${snapshot.terminals.length} managed terminals`
+      ? `${snapshot.terminals.length} managed terminals${snapshot.terminalFolderErrors.length ? ` (unavailable in ${snapshot.terminalFolderErrors.map((item) => label(item.directory, 4096)).join(", ")})` : ""}`
       : "Terminal inventory unavailable on this server version"
   return [
     "PROJECT",

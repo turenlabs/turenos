@@ -116,6 +116,7 @@ async function fixture(options: { status?: Proposal["status"]; owned?: boolean }
     terminalsAvailable: true,
     loops: [],
     inventoryErrors: { terminals: "", automations: "" },
+    terminalFolderErrors: [],
     updated: 2,
     more: false,
   }

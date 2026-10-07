@@ -83,6 +83,7 @@ async function fixture(options: { catalog?: Promise<void>; lookupStatus?: number
     terminalsAvailable: true,
     loops: [],
     inventoryErrors: { terminals: "", automations: "" },
+    terminalFolderErrors: [],
     updated: 2,
     more: false,
   }

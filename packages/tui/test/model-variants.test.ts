@@ -112,6 +112,7 @@ async function fixture(
     terminalsAvailable: true,
     loops: [],
     inventoryErrors: { terminals: "", automations: "" },
+    terminalFolderErrors: [],
     updated: 2,
     more: false,
   }

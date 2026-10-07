@@ -82,6 +82,7 @@ async function fixture(latest?: MessagesListOutput["data"]) {
     terminalsAvailable: true,
     loops: [],
     inventoryErrors: { terminals: "", automations: "" },
+    terminalFolderErrors: [],
     updated: 1,
     more: false,
   }
@@ -474,6 +475,7 @@ test("initial session load paints the tail on the very first frame without flash
     terminalsAvailable: true,
     loops: [],
     inventoryErrors: { terminals: "", automations: "" },
+    terminalFolderErrors: [],
     updated: 1,
     more: false,
   }

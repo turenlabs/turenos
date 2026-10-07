@@ -30,14 +30,7 @@ export async function snapshot(ctx: Context) {
   const needsInput = omitted > 0 ? [] : await waitingOnInput(ctx.client, Object.keys(active).slice(0, 8), request)
   // Terminals are location-scoped on the server; read the server location and open folders.
   const directories = [...new Set([location.directory, ...(ctx.folders.current() ?? [])])].slice(0, 8)
-  const pages = await Promise.all(
-    directories.map((directory) =>
-      ctx.client.ptys
-        .list({ location: { directory } }, request())
-        .catch((error: unknown) => inventoryError(inventoryErrors, "terminals", error)),
-    ),
-  )
-  const terminals = pages.filter((page) => page !== undefined)
+  const terminals = await readTerminals(ctx.client, directories, request, inventoryErrors)
   const folderStatus: { workingFolders?: string[]; folderError?: string } = {
     workingFolders: ctx.folders.current(),
     folderError,
@@ -56,15 +49,38 @@ export async function snapshot(ctx: Context) {
     ...(omitted > 0 ? { activeOmitted: omitted } : {}),
     terminals: [
       ...new Map(
-        terminals.flatMap((page) => page.data.map((pty) => [pty.id, { ...pty, location: page.location }])),
+        terminals.pages.flatMap((page) => page.data.map((pty) => [pty.id, { ...pty, location: page.location }])),
       ).values(),
     ],
-    terminalsAvailable: terminals.length > 0,
+    terminalsAvailable: terminals.pages.length > 0,
     loops: loops ?? [],
     inventoryErrors,
+    terminalFolderErrors: terminals.folderErrors,
     updated: Date.now(),
     more: !!recent.cursor.next,
   }
+}
+
+/** Each folder's terminals. Folders that fail beside ones that answer are listed, not reported as the whole inventory failing. */
+async function readTerminals(
+  client: Client,
+  directories: string[],
+  request: () => { signal: AbortSignal },
+  inventoryErrors: InventoryErrors,
+) {
+  const results = await Promise.all(
+    directories.map((directory) =>
+      client.ptys.list({ location: { directory } }, request()).then(
+        (page) => ({ page }),
+        (error: unknown) => ({ directory, error: rethrowUnauthorized(error) }),
+      ),
+    ),
+  )
+  const pages = results.flatMap((result) => ("page" in result ? [result.page] : []))
+  const failures = results.flatMap((result) => ("error" in result ? [result] : []))
+  if (!pages.length) failures.forEach((failure) => inventoryError(inventoryErrors, "terminals", failure.error))
+  const folderErrors = failures.map((failure) => ({ directory: failure.directory, error: errorText(failure.error) }))
+  return { pages, folderErrors: pages.length ? folderErrors : [] }
 }
 
 /** The recent page plus every active session, and a root session when the page holds none. */
@@ -119,12 +135,21 @@ async function waitingOnInput(client: Client, running: string[], request: () => 
   return waiting
 }
 
+/** A rejected credential fails the snapshot; any other error is returned for the caller to record. */
+function rethrowUnauthorized(error: unknown) {
+  if (statusOf(error) === 401 || statusOf(error) === 403 || (isRecord(error) && error._tag === "UnauthorizedError"))
+    throw error
+  return error
+}
+
+function statusOf(error: unknown) {
+  return error instanceof ClientError && error.reason === "UnexpectedStatus" && isRecord(error.cause)
+    ? error.cause.status
+    : undefined
+}
+
 function inventoryError(inventoryErrors: InventoryErrors, kind: keyof InventoryErrors, error: unknown) {
-  const status =
-    error instanceof ClientError && error.reason === "UnexpectedStatus" && isRecord(error.cause)
-      ? error.cause.status
-      : undefined
-  if (status === 401 || status === 403 || (isRecord(error) && error._tag === "UnauthorizedError")) throw error
-  if (kind !== "terminals" || status !== 404) inventoryErrors[kind] = errorText(error)
+  rethrowUnauthorized(error)
+  if (kind !== "terminals" || statusOf(error) !== 404) inventoryErrors[kind] = errorText(error)
   return undefined
 }

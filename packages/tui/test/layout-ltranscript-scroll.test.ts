@@ -57,6 +57,7 @@ async function fixture(width: number, height: number) {
     terminalsAvailable: true,
     loops: [],
     inventoryErrors: { terminals: "", automations: "" },
+    terminalFolderErrors: [],
     updated: 1,
     more: false,
   }

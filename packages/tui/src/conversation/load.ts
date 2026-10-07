@@ -97,7 +97,7 @@ function showWelcome(c: Conversation, snapshot: Snapshot) {
         : state.tab === "terminals" && !snapshot.terminalsAvailable
           ? "Global terminal inventory is unavailable on this server version.\n\nUpdate the server to inspect terminal processes.\nSessions and agent launch are available."
           : state.tab === "terminals"
-            ? "No terminals yet. Press Enter or a to open one."
+            ? `No terminals yet. Press Enter or a to open one.${folderNote(snapshot)}`
             : "No automations yet. Press a to add one.",
   )
   ui.sessionTitle.content = "Welcome to TurenOS"
@@ -113,9 +113,16 @@ function showTerminal(c: Conversation, snapshot: Snapshot, id: string) {
   ui.renderContent(
     // The title and folder are already in the heading and context line above.
     display(
-      `PID ${item.pid}  ·  ${item.status}${item.exitCode !== undefined ? `  ·  exit ${item.exitCode}` : ""}\n\n$ ${[item.command, ...item.args].join(" ")}\n\nID ${item.id}\n\n${item.status === "running" ? "Enter attaches (Ctrl+] detaches)\n" : ""}a add terminal · R rename · d close`,
+      `PID ${item.pid}  ·  ${item.status}${item.exitCode !== undefined ? `  ·  exit ${item.exitCode}` : ""}\n\n$ ${[item.command, ...item.args].join(" ")}\n\nID ${item.id}\n\n${item.status === "running" ? "Enter attaches (Ctrl+] detaches)\n" : ""}a add terminal · R rename · d close${folderNote(snapshot)}`,
     ),
   )
+}
+
+/** Folders whose terminals could not be read while others answered, so a short list is not mistaken for a full one. */
+function folderNote(snapshot: Snapshot) {
+  return snapshot.terminalFolderErrors.length
+    ? `\n\nTerminals unavailable in: ${snapshot.terminalFolderErrors.map((item) => `${item.directory} (${item.error})`).join(", ")}`
+    : ""
 }
 
 async function showAutomation(c: Conversation, snapshot: Snapshot, id: string, version: number) {
