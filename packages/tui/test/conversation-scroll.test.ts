@@ -107,7 +107,12 @@ async function fixture(latest?: MessagesListOutput["data"]) {
   conversation.loadPosition()
   await conversation.render()
   const newest = data.latest[0]!
-  const tail = "text" in newest ? newest.text.split("\n").at(-1)! : ""
+  const tail =
+    "text" in newest
+      ? newest.text.split("\n").at(-1)!
+      : newest.type === "assistant"
+        ? (newest.content.findLast((part) => part.type === "text")?.text ?? "")
+        : ""
   await waitForFrame(view, (frame) => !!tail && frame.includes(tail))
   const top = () => {
     conversation.cancelPosition()
@@ -294,7 +299,7 @@ test("scrollback is bounded and points to explicit History at the cap", async ()
   await f.conversation.scrollEarlier()
   expect(f.cursors.length).toBe(count)
   expect(f.notices.at(-1)).toContain("Press h, then [")
-  expect(f.ui.detail.scrollHeight).toBeLessThan(600)
+  expect(f.ui.detail.scrollHeight).toBeLessThan(700)
 })
 
 test("starts with six messages and reveals the fetched local prefix before requesting older history", async () => {
@@ -639,4 +644,69 @@ test("new output below a scrolled-up reader is announced until they return to th
   f.conversation.cancelPosition()
   f.ui.detail.scrollTo(Number.MAX_SAFE_INTEGER)
   await waitForFrame(f.view, (frame) => frame.includes("More output") && !frame.includes("new output below"))
+})
+
+test("one message past the rich budget degrades alone: the short one stays rich and no role chip shows backticks", async () => {
+  const long = Array.from({ length: 400 }, (_, i) => `Long line ${i} of a very long reply`).join("\n")
+  const f = await fixture([message("msg_short", "**Bold head**\nShort marker"), message("msg_long", long)])
+  const frame = f.view.captureCharFrame()
+  expect(frame).toContain("Bold head")
+  expect(frame).not.toContain("**Bold head**")
+  expect(frame).not.toContain("`")
+  expect(f.content()).toContain("`USER`\n**Bold head**")
+  expect(f.content()).toContain("```text\nUSER\nLong line 0")
+})
+
+function readTurn(): MessagesListOutput["data"] {
+  const model = { providerID: "sandbox", id: "scripted" }
+  const rows = Array.from({ length: 30 }, (_, index) => `file row ${index + 1}`).join("\n")
+  const read = {
+    type: "tool",
+    id: "call_read",
+    name: "read",
+    time: { created: 1 },
+    state: { status: "completed", input: { path: "big.txt" }, structured: {}, content: [{ type: "text", text: rows }] },
+  }
+  return [
+    message("msg_prompt", "Read the file"),
+    { id: "msg_step1", type: "assistant", agent: "build", model, time: { created: 1, completed: 2 }, content: [read] },
+    {
+      id: "msg_step2",
+      type: "assistant",
+      agent: "build",
+      model,
+      time: { created: 2, completed: 3 },
+      content: [{ type: "text", id: "part_done", text: "All read." }],
+    },
+  ] as MessagesListOutput["data"]
+}
+
+test("Ctrl+O's toggle folds and unfolds tool output in the live transcript, including for earlier pages", async () => {
+  // The server lists newest first.
+  const f = await fixture(readTurn().slice(1).reverse())
+  f.data.older = [readTurn()[0]!]
+  expect(f.content()).toContain("+26 lines")
+  expect(f.content()).not.toContain("file row 30")
+  f.conversation.toggleToolOutput()
+  await waitForFrame(f.view, () => f.content().includes("file row 30"))
+  expect(f.content()).not.toContain("+26 lines")
+  f.conversation.toggleToolOutput()
+  await waitForFrame(f.view, () => f.content().includes("+26 lines"))
+  expect(f.state.expandToolOutput).toBe(false)
+  f.top()
+  await f.conversation.scrollEarlier()
+  expect(f.content()).toContain("Read the file")
+  expect(f.content()).toContain("+26 lines")
+})
+
+test("steps of one turn keep a single header when earlier history joins them", async () => {
+  const [prompt, first, second] = readTurn()
+  const f = await fixture([second!])
+  f.data.older = [first!, prompt!]
+  expect(f.content().match(/sandbox\/scripted/g)?.length).toBe(1)
+  f.top()
+  await f.conversation.scrollEarlier()
+  await waitForFrame(f.view, () => f.content().includes("Read the file"))
+  expect(f.content().match(/sandbox\/scripted/g)?.length).toBe(1)
+  expect(f.content()).toContain("All read.")
 })

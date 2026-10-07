@@ -1,11 +1,11 @@
-import { color } from "../theme"
+import { color, layout } from "../theme"
 import { label } from "../state"
 import { promptBoxText, statusline } from "../chrome"
 import { contextUsage, meterText } from "../context-meter"
 import { todoProgress } from "../session-actions"
 import { waiting } from "../queue"
 import { fitActionRow } from "../layout/fit"
-import { renderActivity } from "./status"
+import { renderActivity, resize } from "./status"
 import type { Detail } from "../server"
 import type { DashboardContext } from "./context"
 
@@ -29,7 +29,8 @@ export function renderActions(d: DashboardContext) {
   ui.composer.content = `${primary}${staged ? " · commits undo" : ""}`
   ui.composer.fg =
     !state.connected || pending?.permissions.length || pending?.questions.length ? color.warning : color.text
-  ui.composer.visible = !state.connected || (state.tab === "sessions" && !!state.selected)
+  // While typing, the reply editor stands in for this prompt line.
+  ui.composer.visible = !state.modal?.composer && (!state.connected || (state.tab === "sessions" && !!state.selected))
   renderActionRow(d, pending)
   ui.historyActions.visible = state.tab === "sessions" && state.history && !!state.selected && !state.modal?.inline
   ui.older.fg = pending?.cursor.next ? color.accent : color.muted
@@ -39,7 +40,13 @@ export function renderActions(d: DashboardContext) {
     : "Loading…"
   ui.footer.content = statusline(state, state.snapshot, d.renderer.width)
   queueMicrotask(() => {
-    if (!ui.sizeNotice.visible && !d.options.blocked?.()) d.c.requests.offerQuestion()
+    if (ui.sizeNotice.visible || d.options.blocked?.()) return
+    const before = state.modal
+    d.c.requests.offerInput()
+    // Opening a dialog here changes the rows below the transcript (the reply editor hides the prompt line).
+    if (state.modal === before) return
+    renderActions(d)
+    resize(d)
   })
 }
 
@@ -56,24 +63,36 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
   const usage = pending && !state.history ? contextUsage(pending.messages) : undefined
   const limit = session && usage ? d.c.limits(session.location.directory, usage.model) : undefined
   const meter = session && usage ? meterText(usage, limit) : ""
+  // While typing, letters go into the reply, so the row keeps only its status, without the keys.
+  const typing = !!state.modal?.composer
+  const key = (letter: string) => (typing ? "" : `${letter} `)
   const row = [
-    { node: ui.stop, show: running, text: "x Stop", rank: 100 },
-    { node: ui.history, show: live, text: state.history ? "h Live" : "h History", rank: 50 },
-    { node: ui.information, show: true, text: "i Details", rank: 40 },
-    { node: ui.changes, show: live, text: "d Changes", rank: 30 },
-    { node: ui.files, show: live, text: "e Files", rank: 20 },
-    { node: ui.tasks, show: hasTasks, text: `t Tasks${todos ? ` · ${todos}` : ""}`, short: "t Tasks", rank: 60 },
-    { node: ui.queued, show: queued > 0, text: `u ${queued} queued`, short: `u ${queued}`, rank: 90 },
-    { node: ui.harness, show: live, text: "H Harness", rank: 10 },
+    { node: ui.stop, show: running && !typing, text: "x Stop", rank: 100 },
+    { node: ui.history, show: live && !typing, text: state.history ? "h Live" : "h History", rank: 50 },
+    { node: ui.information, show: !typing, text: "i Details", rank: 40 },
+    { node: ui.changes, show: live && !typing, text: "d Changes", rank: 30 },
+    { node: ui.files, show: live && !typing, text: "e Files", rank: 20 },
+    {
+      node: ui.tasks,
+      show: hasTasks,
+      text: `${key("t")}Tasks${todos ? ` · ${todos}` : ""}`,
+      short: `${key("t")}Tasks`,
+      rank: 60,
+    },
+    { node: ui.queued, show: queued > 0, text: `${key("u")}${queued} queued`, short: `${key("u")}${queued}`, rank: 90 },
+    { node: ui.harness, show: live && !typing, text: "H Harness", rank: 10 },
     { node: ui.meter, show: !!meter, text: meter, short: usage && meterText(usage, limit, true), rank: 80 },
   ]
   fitActionRow(row, actionWidth(d))
-  ui.actions.visible = !state.modal && ui.composer.visible
+  ui.actions.visible = typing || (!state.modal && ui.composer.visible)
+  ui.actions.height = typing ? 1 : 2
+  ui.actions.marginTop = typing ? 0 : 1
 }
 
-/** Columns left for the action row: the screen minus the root padding, a beside-layout sidebar, and the row's own border and padding. */
+/** Columns left for the action row: the screen minus the root padding, a beside-layout sidebar (the narrow drawer sits under the transcript), and the row's own border and padding. */
 function actionWidth(d: DashboardContext) {
-  const sidebar = d.ui.sidebar.visible && typeof d.ui.sidebar.width === "number" ? d.ui.sidebar.width + 2 : 0
+  const beside = d.renderer.width >= layout.narrowBreakpoint
+  const sidebar = beside && d.ui.sidebar.visible && typeof d.ui.sidebar.width === "number" ? d.ui.sidebar.width + 2 : 0
   return d.renderer.width - 4 - sidebar - 5
 }
 
@@ -85,6 +104,8 @@ export function primaryAction(d: DashboardContext) {
   if (state.tab === "terminals") return state.selected ? d.c.terminals.open() : d.c.terminals.create()
   if (state.tab === "automations") return state.selected ? d.c.automations.manage() : d.c.automations.create()
   if (state.tab !== "sessions" || !state.selected) return d.c.launch.open()
+  // Enter goes back to typing: once a request it opens is answered, the reply editor returns.
+  state.navigating = false
   const pending = state.detail?.sessionID === state.selected ? state.detail : undefined
   if (pending?.permissions.length) return d.c.requests.permission()
   if (pending?.questions.length) return d.c.requests.question()

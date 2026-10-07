@@ -1,6 +1,6 @@
 import { CodeRenderable, type CliRenderer, type MarkdownRenderable } from "@opentui/core"
 import { color } from "./theme"
-import { guard } from "./markdown/guard"
+import { guard, guardInitialChunks } from "./markdown/guard"
 import { normalizeMarkdown } from "./markdown/normalize"
 import { BoundedMarkdown } from "./markdown/renderable"
 import { markdownStyle } from "./markdown/style"
@@ -19,6 +19,8 @@ export function createMarkdown(renderer: CliRenderer): MarkdownRenderable {
     conceal: true,
     concealCode: false,
     streaming: true,
+    // With renderNode, the default "coalesced" mode drops the blank-line tokens, so paragraphs lose their gap.
+    internalBlockMode: "top-level",
     tableOptions: { style: "columns", wrapMode: "word" },
     renderNode(token, context) {
       const node = context.defaultRender()
@@ -28,6 +30,7 @@ export function createMarkdown(renderer: CliRenderer): MarkdownRenderable {
       return node
     },
   })
+  guardInitialChunks(markdown)
   // The renderer emits destroy before destroying children that still use this style.
   renderer.once("destroy", () => queueMicrotask(() => style.destroy()))
   return markdown

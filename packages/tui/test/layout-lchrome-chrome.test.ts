@@ -94,8 +94,8 @@ test("the top bar keeps the running state and shows less as the terminal narrows
   const [wide, mid, narrow] = [await header(120), await header(80), await header(60)]
   for (const row of [wide, mid, narrow]) expect(row).toContain("● 1 running")
   expect(wide).toContain("127.0.0.1:43623")
+  // The host stays ahead of the Servers button while it fits, and only the port remains at 60 columns.
   expect(mid).toContain(":43623")
-  expect(mid).not.toContain("127.0.0.1")
   expect(narrow).not.toContain("127.0.0.1")
   expect(narrow).toContain(":43623")
   const items = (row: string) =>

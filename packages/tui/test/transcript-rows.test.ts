@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import type { MessagesListOutput } from "@turenlabs/client"
 import { latestMessage, transcript } from "../src/messages"
 import { toolText } from "../src/inspect/tool-text"
+import { todoChecklist } from "../src/messages/todos"
 
 type Message = MessagesListOutput["data"][number]
 
@@ -94,4 +95,8 @@ test("a user message with no text adds no bare label to the transcript", () => {
     { id: "msg_2", type: "user", text: "  \n", time: { created: 2 } },
   ] as Message[]
   expect(transcript(messages)).toBe("USER\nhello")
+})
+
+test("a to-do status the checklist does not know, even an inherited name, shows as pending", () => {
+  expect(todoChecklist({ todos: [{ content: "odd", status: "constructor" }] })).toBe("  [ ] odd")
 })

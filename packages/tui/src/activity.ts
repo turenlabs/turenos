@@ -23,6 +23,9 @@ const globe = Array.from({ length: 24 }, (_, frame) => {
   return cells.map((cell) => String.fromCharCode(0x2800 + cell)).join("")
 })
 
+// The quickest stop, not `x`: Esc Esc works from the reply editor and the dashboard alike.
+const stopHint = "Esc Esc to stop"
+
 export type ActivityFrame = {
   content: string
   tone: "muted" | "accent" | "warning" | "error"
@@ -66,7 +69,7 @@ export function activityFrame(state: DashboardState, frame: number, reducedMotio
   }
 }
 
-/** "Working (12s · x to stop)", or "Running bash (4s · x to stop)" while a tool runs. */
+/** "Working (12s · Esc Esc to stop)", or "Running bash (4s · Esc Esc to stop)" while a tool runs. */
 function working(state: DashboardState, detail: DashboardState["detail"]) {
   // History pages and older messages cannot identify the currently running tool or turn.
   const messages = state.history && state.historyCursor ? [] : (detail?.messages ?? [])
@@ -80,13 +83,13 @@ function working(state: DashboardState, detail: DashboardState["detail"]) {
   const elapsed =
     started && Date.now() >= started && Date.now() - started < 86_400_000 ? `${duration(Date.now() - started)} · ` : ""
   const action = tool?.type === "tool" ? `Running ${label(tool.name, 80).trim() || "tool"}` : "Working"
-  return `${action} (${elapsed}x to stop)`
+  return `${action} (${elapsed}${stopHint})`
 }
 
 function retrying(retry: Retry) {
   const wait = retry.at - Date.now()
   const when = wait > 500 ? `in ${duration(wait)}` : "now"
-  return `Retrying ${when} (attempt ${retry.attempt} · x to stop)${retry.message ? `: ${label(retry.message, 72)}` : ""}`
+  return `Retrying ${when} (attempt ${retry.attempt} · ${stopHint})${retry.message ? `: ${label(retry.message, 72)}` : ""}`
 }
 
 function duration(milliseconds: number) {

@@ -2,7 +2,7 @@ import { BoxRenderable, ScrollBoxRenderable, TextAttributes, TextRenderable, typ
 import { createMarkdown } from "../markdown"
 import { color } from "../theme"
 
-/** Builds the title, context and activity lines at the top of the main pane. */
+/** Builds the title and context lines at the top of the main pane, and the activity line `createMain` places under the transcript. */
 export function createSessionHeader(renderer: CliRenderer, main: BoxRenderable) {
   const sessionTitle = new TextRenderable(renderer, {
     content: "Welcome to TurenOS",
@@ -32,7 +32,6 @@ export function createSessionHeader(renderer: CliRenderer, main: BoxRenderable) 
     truncate: true,
     wrapMode: "none",
   })
-  main.add(activity)
   return { sessionTitle, context, activity }
 }
 

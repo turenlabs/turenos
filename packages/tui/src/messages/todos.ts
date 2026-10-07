@@ -12,7 +12,9 @@ export function todoChecklist(input: unknown) {
       if (typeof todo !== "object" || todo === null || !("content" in todo) || typeof todo.content !== "string")
         return []
       const status = "status" in todo && typeof todo.status === "string" ? todo.status : "pending"
-      return [`  ${mark[status] ?? "[ ]"} ${display(todo.content, 300).replace(/\s+/g, " ").trim()}`]
+      return [
+        `  ${Object.hasOwn(mark, status) ? mark[status] : "[ ]"} ${display(todo.content, 300).replace(/\s+/g, " ").trim()}`,
+      ]
     })
     .join("\n")
 }

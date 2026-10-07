@@ -4,9 +4,13 @@ import type { Session } from "./server"
 import { label, type Row } from "./state"
 import { color } from "./theme"
 
-export type SidebarRow = Row & { group?: string; groupLabel?: string }
+export type SidebarRow = Row & { group?: string; groupLabel?: string; running?: boolean; needsInput?: boolean }
 
-export function sessionRows(sessions: readonly Session[], active: Record<string, unknown>): SidebarRow[] {
+export function sessionRows(
+  sessions: readonly Session[],
+  active: Record<string, unknown>,
+  needsInput: readonly string[] = [],
+): SidebarRow[] {
   const groups = new Map<string, { directory: string; workspace?: string; sessions: Session[] }>()
   for (const session of sessions) {
     const { directory, workspaceID: workspace } = session.location
@@ -47,17 +51,19 @@ export function sessionRows(sessions: readonly Session[], active: Record<string,
         .sort((a, b) => b.time.updated - a.time.updated || b.time.created - a.time.created || compare(a.id, b.id))
         .map((session) => ({
           id: session.id,
-          name: `${Object.hasOwn(active, session.id) ? "* " : ""}${label(session.title || session.id)}`,
+          name: `${needsInput.includes(session.id) ? "? " : Object.hasOwn(active, session.id) ? "* " : ""}${label(session.title || session.id)}`,
           // Keep metadata searchable without repeating it in the visible session rows.
           description: `${Object.hasOwn(active, session.id) ? "running" : "idle"} ${session.time.archived !== undefined ? "archived" : ""} ${label(session.agent ?? "default")} ${label(session.location.directory, 250)}`,
           group,
           groupLabel,
+          running: Object.hasOwn(active, session.id),
+          needsInput: needsInput.includes(session.id),
         }))
     })
 }
 
 export class SessionListRenderable extends ScrollBoxRenderable {
-  private items: { name: string; description?: string; group?: string; groupLabel?: string }[] = []
+  private items: { name: string; description?: string; group?: string; groupLabel?: string; running?: boolean }[] = []
   private lines: TextRenderable[] = []
   private selected = 0
   private reveal = false
@@ -133,7 +139,7 @@ export class SessionListRenderable extends ScrollBoxRenderable {
     const previous = this.selected
     this.selected = Math.max(0, Math.min(index, this.items.length - 1))
     for (const [i, line] of this.lines.entries()) {
-      const active = this.items[i]!.name.startsWith("* ")
+      const active = this.items[i]!.running === true
       line.content = `${i === this.selected ? "> " : "  "}${this.items[i]!.name}`
       line.bg = i === this.selected ? color.selected : color.panel
       // A running session is a clear active line, not just a marker glyph.

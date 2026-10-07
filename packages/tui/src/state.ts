@@ -51,6 +51,8 @@ export type ModalState = {
   docked: boolean
   height: number
   recipient?: Session
+  /** The reply editor docked under the transcript, which stays open while the session is in view. */
+  composer?: boolean
   editor?: TextareaRenderable
   suggestionRows?: number
   mentionRows?: number
@@ -88,6 +90,8 @@ export type DashboardState = {
   streamStatus: "connecting" | "live" | "polling"
   detailVersion: number
   detailFocused: boolean
+  /** Esc left the reply editor: single-letter shortcuts work until Enter, f or opening a session types again. */
+  navigating: boolean
   history: boolean
   historyCursor: string | undefined
   connectionError: string
@@ -96,7 +100,15 @@ export type DashboardState = {
   searching: { query: string; selected: string } | undefined
   modal: ModalState | undefined
   reducedMotion: boolean
+  /** Bell and terminal title when a session needs the user; Settings › Appearance, off with TURENOS_NO_ATTENTION=1. */
+  attention: boolean
+  /** The title last written to the terminal, so only changes are written; empty when none is set. */
+  terminalTitle: string
+  /** The selected session while its turn runs, so the end of that turn rings once. */
+  workingSession: string
   rawResponses: boolean
+  /** Show whole tool results; by default long ones show their first lines (Ctrl+O). */
+  expandToolOutput: boolean
   /** The app can switch servers (s); a bare dashboard cannot. */
   serverSwitching: boolean
   /** Provider retries the server announced per session, until the turn makes progress again. */
@@ -122,6 +134,7 @@ export function createDashboardState(): DashboardState {
     streamStatus: "connecting",
     detailVersion: 0,
     detailFocused: false,
+    navigating: false,
     history: false,
     historyCursor: undefined,
     connectionError: "",
@@ -130,7 +143,11 @@ export function createDashboardState(): DashboardState {
     searching: undefined,
     modal: undefined,
     reducedMotion: process.env.TURENOS_REDUCED_MOTION === "1",
+    attention: process.env.TURENOS_NO_ATTENTION !== "1",
+    terminalTitle: "",
+    workingSession: "",
     rawResponses: false,
+    expandToolOutput: false,
     serverSwitching: false,
     retries: {},
     sentMessages: new Set(),

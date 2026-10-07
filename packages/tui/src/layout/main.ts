@@ -13,11 +13,10 @@ export function createMain(renderer: CliRenderer, body: BoxRenderable) {
     paddingLeft: 1,
   })
   body.add(main)
-  return {
-    main,
-    ...createSessionHeader(renderer, main),
-    ...createHistoryActions(renderer, main),
-    ...createTranscript(renderer, main),
-    ...createActions(renderer, main),
-  }
+  const header = createSessionHeader(renderer, main)
+  const history = createHistoryActions(renderer, main)
+  const transcript = createTranscript(renderer, main)
+  // "Working (12s · Esc Esc to stop)" sits where new output and the reply editor are, not above the transcript.
+  main.add(header.activity)
+  return { main, ...header, ...history, ...transcript, ...createActions(renderer, main) }
 }

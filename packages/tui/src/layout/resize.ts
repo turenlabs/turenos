@@ -15,8 +15,9 @@ export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts
   resizeSidebar(renderer, state, parts, narrow)
   resizeMain(state, parts, narrow)
   resizeDockedModal(renderer, state)
-  parts.footerRow.visible = !state.modal
-  parts.shortcuts.content = footerShortcuts(renderer.width, parts.sidebar.visible)
+  // The reply editor stays open while typing, so the footer stays with it.
+  parts.footerRow.visible = !state.modal || !!state.modal.composer
+  parts.shortcuts.content = footerShortcuts(renderer.width, parts.sidebar.visible, !!state.modal?.composer)
 }
 
 function resizeSizeNotice(renderer: CliRenderer, state: DashboardState, parts: LayoutParts) {
@@ -69,7 +70,7 @@ function resizeMain(state: DashboardState, parts: LayoutParts, narrow: boolean) 
   parts.sessionTitle.visible = !state.modal?.inline
   parts.context.visible = !state.modal?.inline && !!state.selected
   parts.historyActions.visible = state.tab === "sessions" && state.history && !!state.selected && !state.modal?.inline
-  parts.actions.visible = !state.modal && parts.composer.visible
+  parts.actions.visible = state.modal ? !!state.modal.composer : parts.composer.visible
 }
 
 function resizeDockedModal(renderer: CliRenderer, state: DashboardState) {
@@ -94,7 +95,12 @@ function resizeDockedModal(renderer: CliRenderer, state: DashboardState) {
   modal.frame.height = "100%"
   modal.box.height = Math.min(
     Math.floor(renderer.height / 2),
-    editorHeight + requestedHeight(modal.error) + 3 + (modal.suggestionRows ?? 0) + (modal.mentionRows ?? 0),
+    // The heading row; an editor that is not the docked reply also has its caption and Send button.
+    editorHeight +
+      requestedHeight(modal.error) +
+      (modal.composer ? 1 : 3) +
+      (modal.suggestionRows ?? 0) +
+      (modal.mentionRows ?? 0),
   )
 }
 

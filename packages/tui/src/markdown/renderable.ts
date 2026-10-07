@@ -20,7 +20,8 @@ export class BoundedMarkdown extends MarkdownRenderable {
       this.fallback.destroy()
       this.fallback = undefined
     }
-    if (!richContent(value)) {
+    // A live window holds up to six messages, each already held to the single-message budget.
+    if (!richContent(value, 6)) {
       super.content = ""
       this.fallback = new TextRenderable(this.ctx, {
         id: "markdown-plain",

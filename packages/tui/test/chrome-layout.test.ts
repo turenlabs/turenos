@@ -2,7 +2,10 @@ import { afterEach, expect, test } from "bun:test"
 import { RGBA } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { headerLeft, promptBoxText, scheduleText, statusline, welcomeBody } from "../src/chrome"
+import { mountDashboard } from "../src/index"
 import { createLayout } from "../src/layout"
+import { connect } from "../src/server"
+import { turen, terminal, cleanup as supportCleanup } from "./support"
 import { createDashboardState } from "../src/state"
 import { color } from "../src/theme"
 
@@ -218,3 +221,25 @@ test("scheduleText formats intervals, cron expressions, file changes, and sessio
   const genericSessionTrigger = { type: "session-end" as const }
   expect(scheduleText(interval, genericSessionTrigger)).toBe("Session end (any)")
 })
+
+test.each([60, 66])(
+  "at %i columns the footer keeps Ctrl+P commands and the top bar keeps host:port over Servers",
+  async (width) => {
+    const server = turen()
+    const { view, screen } = await terminal(width, 24)
+    const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url, () => {}, {
+      server: "http://x.lan:4096",
+      servers() {},
+    })
+    supportCleanup.push(app.dispose)
+    await app.ready
+    await screen("main says hello")
+    // Esc leaves the reply editor, so the footer shows the shortcut set rather than the typing set.
+    view.mockInput.pressKey("ESCAPE")
+    const lines = (await screen("Ctrl+P commands")).trimEnd().split("\n")
+    expect(lines.at(-1)).toContain("Ctrl+P commands")
+    if (width === 60) expect(lines.at(-1)).toContain("b sidebar")
+    // The host and port stay whole ahead of the Servers button; 60 columns fit only the port.
+    expect(lines[1]).toContain(width === 66 ? "x.lan:4096" : ":4096")
+  },
+)

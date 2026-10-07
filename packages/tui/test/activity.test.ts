@@ -84,7 +84,7 @@ describe("activity frames", () => {
     state.snapshot!.active = { ses_test: { type: "running" } }
     state.detail = undefined
     expect(activityFrame(state, 0, false)).toEqual({
-      content: "Working (x to stop) \u2828\u2869\u2824",
+      content: "Working (Esc Esc to stop) \u2828\u2869\u2824",
       tone: "accent",
       animate: true,
     })
@@ -170,7 +170,7 @@ describe("activity frames", () => {
     state.detail!.messages = [assistant([tool()])]
     expect(activityFrame(state, 0, false)).toBeUndefined()
     state.snapshot!.active = { ses_test: { type: "running" } }
-    expect(activityFrame(state, 0, false)?.content).toBe("Working (x to stop) \u2828\u2869\u2824")
+    expect(activityFrame(state, 0, false)?.content).toBe("Working (Esc Esc to stop) \u2828\u2869\u2824")
   })
 
   test("delegated tasks and queued inputs do not imply waiting or execution", () => {
@@ -200,7 +200,7 @@ describe("activity frames", () => {
     ]
     expect(activityFrame(state, 0, false)).toBeUndefined()
     state.snapshot!.active = { ses_test: { type: "running" } }
-    expect(activityFrame(state, 0, false)?.content).toBe("Working (x to stop) \u2828\u2869\u2824")
+    expect(activityFrame(state, 0, false)?.content).toBe("Working (Esc Esc to stop) \u2828\u2869\u2824")
   })
 
   test("only a running tool in the actual latest message supplies a specific label", () => {
@@ -213,7 +213,7 @@ describe("activity frames", () => {
       { type: "text", id: "part_text", text: "A readable update" },
     ])
     state.detail!.messages = [running]
-    expect(activityFrame(state, 0, false)?.content).toBe("Running search (x to stop) \u2828\u2869\u2824")
+    expect(activityFrame(state, 0, false)?.content).toBe("Running search (Esc Esc to stop) \u2828\u2869\u2824")
     const newer: MessagesListOutput["data"] = [
       assistant(),
       assistant([{ type: "text", id: "part_reply", text: "Finished" }]),
@@ -222,7 +222,7 @@ describe("activity frames", () => {
     ]
     for (const message of newer) {
       state.detail!.messages = [running, message]
-      expect(activityFrame(state, 0, false)?.content).toBe("Working (x to stop) \u2828\u2869\u2824")
+      expect(activityFrame(state, 0, false)?.content).toBe("Working (Esc Esc to stop) \u2828\u2869\u2824")
     }
     for (const part of [
       tool("pending", { status: "pending", input: "" }),
@@ -236,7 +236,7 @@ describe("activity frames", () => {
       }),
     ]) {
       state.detail!.messages = [assistant([part])]
-      expect(activityFrame(state, 0, false)?.content).toBe("Working (x to stop) \u2828\u2869\u2824")
+      expect(activityFrame(state, 0, false)?.content).toBe("Working (Esc Esc to stop) \u2828\u2869\u2824")
     }
     state.detail!.messages = [running]
     state.snapshot!.active = {}
@@ -249,24 +249,24 @@ describe("activity frames", () => {
     state.detail!.messages = [assistant([tool()])]
     state.history = true
     state.historyCursor = "older-page"
-    expect(activityFrame(state, 0, false)?.content).toBe("Working (x to stop) \u2828\u2869\u2824")
+    expect(activityFrame(state, 0, false)?.content).toBe("Working (Esc Esc to stop) \u2828\u2869\u2824")
     state.historyCursor = undefined
-    expect(activityFrame(state, 0, false)?.content).toBe("Running read_file (x to stop) \u2828\u2869\u2824")
+    expect(activityFrame(state, 0, false)?.content).toBe("Running read_file (Esc Esc to stop) \u2828\u2869\u2824")
     state.history = false
     state.historyCursor = "saved-history-position"
-    expect(activityFrame(state, 0, false)?.content).toBe("Running read_file (x to stop) \u2828\u2869\u2824")
+    expect(activityFrame(state, 0, false)?.content).toBe("Running read_file (Esc Esc to stop) \u2828\u2869\u2824")
   })
 
   test("dotted particle orbits loop every 24 ticks in three Braille cells", () => {
     const state = dashboard()
     state.snapshot!.active = { ses_test: { type: "running" } }
     const frames = Array.from({ length: 24 }, (_, frame) => activityFrame(state, frame, false)!)
-    expect(frames[0]!.content).toBe("Working (x to stop) \u2828\u2869\u2824")
+    expect(frames[0]!.content).toBe("Working (Esc Esc to stop) \u2828\u2869\u2824")
     expect(new Set(frames.map((frame) => frame.content)).size).toBeGreaterThan(16)
     for (let frame = -48; frame <= 48; frame++) {
       const result = activityFrame(state, frame, false)!
-      expect(result.content).toMatch(/^Working \(x to stop\) [\u2800-\u28ff]{3}$/)
-      expect(result.content).toHaveLength(23)
+      expect(result.content).toMatch(/^Working \(Esc Esc to stop\) [\u2800-\u28ff]{3}$/)
+      expect(result.content).toHaveLength(29)
       expect(result.content).not.toMatch(/%|ETA|\d|#/)
       expect(result.animate).toBe(true)
       expect(result).toEqual(activityFrame(state, frame + 24, false)!)
@@ -286,7 +286,7 @@ describe("activity frames", () => {
       if (activity === "Sending message") state.modal = { busy: true, editor: {} } as ModalState
       for (const frame of [0, 1, 6, 12, 13, 10000]) {
         expect(activityFrame(state, frame, true)).toEqual({
-          content: `${activity}${activity.startsWith("Working") || activity.startsWith("Running") ? " (x to stop)" : ""} \u2828\u2869\u2824`,
+          content: `${activity}${activity.startsWith("Working") || activity.startsWith("Running") ? " (Esc Esc to stop)" : ""} \u2828\u2869\u2824`,
           tone: activity === "Connecting" ? "muted" : "accent",
           animate: false,
         })
@@ -308,7 +308,7 @@ describe("activity frames", () => {
       expect(result.content).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/)
     }
     state.detail!.messages = [assistant([tool("\u001b\u0007\n\t")])]
-    expect(activityFrame(state, 0, false)?.content).toBe("Running tool (x to stop) \u2828\u2869\u2824")
+    expect(activityFrame(state, 0, false)?.content).toBe("Running tool (Esc Esc to stop) \u2828\u2869\u2824")
   })
 })
 
@@ -320,9 +320,9 @@ describe("retries and elapsed time", () => {
     const state = dashboard()
     state.snapshot!.active = { ses_test: { type: "running" } }
     state.detail!.messages = [user(Date.now() - 75_000)]
-    expect(activityFrame(state, 0, true)?.content).toBe("Working (1m 15s · x to stop) ⠨⡩⠤")
+    expect(activityFrame(state, 0, true)?.content).toBe("Working (1m 15s · Esc Esc to stop) ⠨⡩⠤")
     state.detail!.messages = [user(Date.now() - 2 * 86_400_000)]
-    expect(activityFrame(state, 0, true)?.content).toBe("Working (x to stop) ⠨⡩⠤")
+    expect(activityFrame(state, 0, true)?.content).toBe("Working (Esc Esc to stop) ⠨⡩⠤")
   })
 
   test("a pending provider retry replaces Working with the wait, attempt and reason", () => {
@@ -330,18 +330,18 @@ describe("retries and elapsed time", () => {
     state.snapshot!.active = { ses_test: { type: "running" } }
     state.retries = { ses_test: { attempt: 3, at: Date.now() + 4000, message: "HTTP 503: provider is busy" } }
     expect(activityFrame(state, 0, true)).toEqual({
-      content: "Retrying in 4s (attempt 3 · x to stop): HTTP 503: provider is busy ⠨⡩⠤",
+      content: "Retrying in 4s (attempt 3 · Esc Esc to stop): HTTP 503: provider is busy ⠨⡩⠤",
       tone: "warning",
       animate: false,
     })
     state.retries.ses_test!.at = Date.now() - 1000
-    expect(activityFrame(state, 0, true)?.content).toStartWith("Retrying now (attempt 3 · x to stop)")
+    expect(activityFrame(state, 0, true)?.content).toStartWith("Retrying now (attempt 3 · Esc Esc to stop)")
   })
 
   test("another session's retry does not relabel the selected session", () => {
     const state = dashboard()
     state.snapshot!.active = { ses_test: { type: "running" } }
     state.retries = { ses_other: { attempt: 1, at: Date.now(), message: "" } }
-    expect(activityFrame(state, 0, true)?.content).toBe("Working (x to stop) ⠨⡩⠤")
+    expect(activityFrame(state, 0, true)?.content).toBe("Working (Esc Esc to stop) ⠨⡩⠤")
   })
 })

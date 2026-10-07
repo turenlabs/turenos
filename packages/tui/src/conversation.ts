@@ -2,7 +2,15 @@ import type { MessagesListOutput } from "@turenlabs/client"
 import type { DashboardLayout } from "./layout"
 import type { Connection } from "./server"
 import type { DashboardState } from "./state"
-import { invalidateAll, invalidateSession, loadPosition, page, toggleHistory, updateLive } from "./conversation/actions"
+import {
+  invalidateAll,
+  invalidateSession,
+  loadPosition,
+  page,
+  toggleHistory,
+  toggleToolOutput,
+  updateLive,
+} from "./conversation/actions"
 import { newConversation, type ConversationHooks } from "./conversation/context"
 import { cancelPosition, scrollEarlier } from "./conversation/earlier"
 import { render } from "./conversation/load"
@@ -39,6 +47,7 @@ export function createConversation(
     cancelPosition: () => cancelPosition(c),
     scrollEarlier: () => scrollEarlier(c),
     toggleHistory: () => toggleHistory(c),
+    toggleToolOutput: () => toggleToolOutput(c),
     page: (direction: "next" | "previous") => page(c, direction),
     dispose() {
       c.disposed = true

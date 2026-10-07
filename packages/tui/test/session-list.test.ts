@@ -229,3 +229,20 @@ test("j/k and shifted arrows retain native five-item navigation across headers",
   view.mockInput.pressArrow("up", { shift: true })
   expect(list.getSelectedIndex()).toBe(7)
 })
+
+test("an idle session titled like the running marker is not drawn as running", async () => {
+  const view = await createTestRenderer({ width: 40, height: 12, kittyKeyboard: true })
+  cleanup.push(() => view.renderer.destroy())
+  const list = new SessionListRenderable(view.renderer)
+  view.renderer.root.add(list)
+  const rows = sessionRows([{ ...session("a", "/remote/alpha"), title: "* deploy" }, session("b", "/remote/beta")], {
+    b: {},
+  })
+  expect(rows.map((row) => row.running)).toEqual([false, true])
+  list.options = rows
+  list.focus()
+  await view.renderOnce()
+  const lines = list.getChildren().filter((child): child is TextRenderable => child instanceof TextRenderable)
+  expect(lines.find((line) => line.plainText.includes("* deploy"))!.fg).toEqual(RGBA.fromHex(color.text))
+  expect(lines.find((line) => line.plainText.includes("Title b"))!.fg).toEqual(RGBA.fromHex(color.accent))
+})

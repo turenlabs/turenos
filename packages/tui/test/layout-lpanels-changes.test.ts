@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { mountDashboard } from "../src/index"
 import { connect } from "../src/server"
-import { cleanup, terminal, turen } from "./support"
+import { cleanup, terminal, turen, until } from "./support"
 
 async function changes(width: number, height: number) {
   const server = turen({
@@ -22,6 +22,12 @@ async function changes(width: number, height: number) {
   const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url)
   cleanup.push(app.dispose)
   await app.ready
+  if (width < 90) {
+    // Below 90 columns the transcript has focus, so the reply editor is open until Esc.
+    await screen("Reply to main task")
+    view.mockInput.pressEscape()
+    await until(() => !view.captureCharFrame().includes("Reply to main task"))
+  }
   view.mockInput.pressKey("d")
   await screen("diff --git")
   await view.renderOnce()

@@ -95,7 +95,8 @@ export function invalidateSession(c: Conversation, sessionID: string) {
 export function invalidateAll(c: Conversation) {
   c.live.clear()
   c.positions.clear()
-  if (c.state.selected) invalidateSession(c, c.state.selected)
+  // On another tab the selection is a terminal or automation, whose pane must stay as it is.
+  if (c.state.selected && c.state.tab === "sessions") invalidateSession(c, c.state.selected)
 }
 
 export function page(c: Conversation, direction: "next" | "previous") {
@@ -113,4 +114,12 @@ export function page(c: Conversation, direction: "next" | "previous") {
   c.pageRequest = { sessionID: state.selected, cursor, direction }
   c.hooks.say("Loading history page…")
   void render(c)
+}
+
+/** Shows or folds the long bodies of tool results in the transcript; returns the new setting. */
+export function toggleToolOutput(c: Conversation) {
+  c.state.expandToolOutput = !c.state.expandToolOutput
+  c.hooks.say(c.state.expandToolOutput ? "Tool output expanded." : "Tool output collapsed.")
+  void render(c)
+  return c.state.expandToolOutput
 }

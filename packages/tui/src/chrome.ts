@@ -2,6 +2,7 @@ import { label } from "./state"
 import { layout } from "./theme"
 import type { DashboardState } from "./state"
 import type { Detail, Snapshot } from "./server"
+import { turnFailure } from "./messages/failure"
 import { scheduleInput } from "./automations/schedule"
 import type { Loop } from "./automations/types"
 
@@ -35,7 +36,20 @@ export function headerRight(state: DashboardState, snapshot: Snapshot | undefine
   if (!state.connected) return state.connectionError ? "Disconnected" : "Connecting…"
   if (!snapshot) return ""
   const running = Object.keys(snapshot.active).length
-  if (state.tab === "sessions") return running ? `● ${running} running` : "idle"
+  // The active map is cut at 128 entries; a plus sign beats a count that is too small.
+  const shown = snapshot.activeOmitted ? `${running}+` : `${running}`
+  if (state.tab === "sessions") {
+    const waiting = snapshot.needsInput?.length
+    // The transcript shows the error itself; the header keeps saying so after the view scrolls on.
+    const failure =
+      state.detail?.sessionID === state.selected && !Object.hasOwn(snapshot.active, state.selected)
+        ? turnFailure(state.detail.messages)
+        : undefined
+    return [
+      running ? `● ${shown} running${waiting ? ` · ? ${waiting} need input` : ""}` : "idle",
+      ...(failure ? [`! last turn ${failure.state}`] : []),
+    ].join(" · ")
+  }
   if (state.tab === "terminals")
     return snapshot.terminalsAvailable ? count(state, snapshot.terminals.length, "terminal") : "Terminals unavailable"
   return snapshot.inventoryErrors.automations
@@ -71,9 +85,11 @@ export function statusline(state: DashboardState, snapshot: Snapshot | undefined
         ? "Live"
         : "Polling"
       : ""
-  const focus = hidden
-    ? ""
-    : `Focus: ${state.detailFocused ? (state.tab === "sessions" ? "transcript" : "detail") : "sidebar"}`
+  const focus = state.modal?.composer
+    ? "Typing"
+    : hidden
+      ? ""
+      : `Focus: ${state.detailFocused ? (state.tab === "sessions" ? "transcript" : "detail") : "sidebar"}`
   if (narrow) {
     const view = `View ${["sessions", "terminals", "automations"].indexOf(state.tab) + 1}/3`
     return [hidden ? `${view} ${names[state.tab]}` : view, hidden ? live : focus].filter(Boolean).join(" · ")
@@ -81,7 +97,7 @@ export function statusline(state: DashboardState, snapshot: Snapshot | undefined
   const base = [state.tab === "sessions" ? "" : names[state.tab], live, focus].filter(Boolean).join(" · ")
   const extra = agentModel(state, snapshot)
   // The shortcuts keep their row; the agent and model go first when the two would not fit together.
-  const room = width - 4 - footerShortcuts(width, !hidden).length - 2
+  const room = width - 4 - footerShortcuts(width, !hidden, !!state.modal?.composer).length - 2
   return extra && base.length + 3 + extra.length <= room ? [base, extra].filter(Boolean).join(" · ") : base
 }
 
@@ -100,14 +116,22 @@ function agentModel(state: DashboardState, snapshot: Snapshot | undefined) {
 }
 
 /** The footer's right side. Narrow widths budget for a status text of about 26 columns on the left. */
-export function footerShortcuts(width: number, sidebarVisible: boolean) {
+export function footerShortcuts(width: number, sidebarVisible: boolean, typing = false) {
   const sidebar = sidebarVisible ? "Tab pane" : "b sidebar"
-  const sets = [
-    ["Ctrl+P commands", sidebar, "? help", "q quit"],
-    ["Ctrl+P", sidebar, "? help", "q quit"],
-    [sidebar, "? help", "q quit"],
-    [sidebar, "q quit"],
-  ]
+  // While typing, letters go into the reply, so only the keys that work from the editor are named.
+  const sets = typing
+    ? [
+        ["Esc shortcuts", "Ctrl+P commands", "Ctrl+C quit"],
+        ["Esc shortcuts", "Ctrl+P commands"],
+        ["Esc shortcuts", "Ctrl+P"],
+        ["Esc shortcuts"],
+      ]
+    : [
+        ["Ctrl+P commands", sidebar, "? help", "q quit"],
+        ["Ctrl+P commands", "? help", "q quit"],
+        ["Ctrl+P commands", sidebar],
+        ["Ctrl+P commands", "q quit"],
+      ]
   const budget = width - 4 - (width < layout.narrowBreakpoint ? 28 : 0)
   return (sets.find((set) => set.join(" · ").length <= budget) ?? sets[3]!).join(" · ")
 }

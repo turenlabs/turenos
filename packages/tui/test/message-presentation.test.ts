@@ -378,3 +378,10 @@ test("the dashboard's rich transcript marks role labels as chips; plain text for
   expect(rich).toContain("`build` · test/model")
   expect(transcript(messages, true, true)).not.toContain("`")
 })
+
+test("a board envelope without its closing tag renders without regex backtracking", () => {
+  const started = Date.now()
+  const text = transcript([message(`<forge-team-board-update>${" ".repeat(15000)}`)])
+  expect(text).toContain("Untrusted board observations")
+  expect(Date.now() - started).toBeLessThan(2000)
+})

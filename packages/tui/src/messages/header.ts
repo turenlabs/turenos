@@ -4,7 +4,7 @@ import { display } from "../messages"
 type Assistant = Extract<MessagesListOutput["data"][number], { type: "assistant" }>
 
 /** "build · sandbox/scripted (fast) · 12s": the agent, the model when known, and how long the turn took. */
-export function assistantHeader(message: Assistant, rich = false) {
+export function assistantHeader(message: Assistant, rich = false, time = message.time) {
   const model = message.model
   const known = model.providerID !== "unknown" || model.id !== "unknown"
   const agent = display(message.agent, 256)
@@ -15,7 +15,7 @@ export function assistantHeader(message: Assistant, rich = false) {
           `${display(model.providerID, 256)}/${display(model.id, 512)}${model.variant ? ` (${display(model.variant, 256)})` : ""}`,
         ]
       : []),
-    ...duration(message.time),
+    ...duration(time),
   ].join(" · ")
 }
 

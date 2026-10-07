@@ -17,8 +17,20 @@ export type SavedPosition = { history: boolean; latest: number; transcript: numb
 /** Where the conversation is scrolled: `MAX_SAFE_INTEGER` follows the tail. */
 export type ReadingPosition = { sessionID: string; history: boolean; scroll: number }
 
+/** One cached message with its text in both views; `turn` opens a new turn, `continued` is another step of the one before. */
+export type LiveMessage = {
+  id: string
+  message: MessagesListOutput["data"][number]
+  formatted: string
+  raw: string
+  turn: boolean
+  continued: boolean
+}
+
 export type LivePage = {
-  messages: { id: string; formatted: string; raw: string }[]
+  messages: LiveMessage[]
+  /** Whether `formatted` was built with whole tool bodies. */
+  toolsExpanded: boolean
   cursor?: string
   capped: boolean
   expanded: boolean

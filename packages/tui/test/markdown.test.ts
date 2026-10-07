@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test"
 import {
   CodeRenderable,
+  StyledText,
   RGBA,
   TextRenderable,
   TextTableRenderable,
@@ -228,9 +229,9 @@ test("disables malformed and control-bearing hyperlink targets without hiding th
   expect(result?.flatMap((chunk) => chunk.link?.url ?? [])).toEqual(["https://example.com/docs"])
 })
 
-test("preserves complex output as plain text and resumes rich rendering on the next update", async () => {
+test("preserves output past the six-message window budget as plain text and resumes rich rendering on the next update", async () => {
   const view = await setup()
-  for (const value of ["x".repeat(16_001), ">".repeat(513) + " kept", "row\n".repeat(257)]) {
+  for (const value of ["x".repeat(96_001), ">".repeat(3073) + " kept", "row\n".repeat(1537)]) {
     view.markdown.content = value
     expect(view.markdown.content).toBe(value)
     const fallback = view.markdown.getChildren().find((node) => node instanceof TextRenderable)!
@@ -315,4 +316,91 @@ test("identifiers with an underscore before a digit keep their underscores; real
   const frame = await rendered(view, "end")
   expect(frame).toContain("ids ses_4ab6 and msg_01 here")
   expect(frame).toContain("then real emphasis end")
+})
+
+test("the chunks painted before the first highlight carry only HTTP and HTTPS links", async () => {
+  const view = await setup()
+  view.markdown.content = [
+    "[Script](javascript:alert(1)) and [Docs](https://example.com/docs) in a paragraph",
+    "- [File](file:///tmp/example) in a list",
+  ].join("\n\n")
+  // Streaming paints OpenTUI's initial inline chunks at once; none may keep a non-HTTP target.
+  const initial = descendants(view.markdown)
+    .filter((node) => node instanceof CodeRenderable)
+    .flatMap((node) => (node as unknown as { _initialStyledText?: StyledText })._initialStyledText?.chunks ?? [])
+  expect(initial.length).toBeGreaterThan(0)
+  expect([...new Set(initial.flatMap((chunk) => chunk.link?.url ?? []))]).toEqual(["https://example.com/docs"])
+  expect(initial.some((chunk) => chunk.text === "Script")).toBe(true)
+  await rendered(view, "Docs")
+})
+
+test("normalizeMarkdown leaves underscores alone inside link destinations, autolinks and bare URLs", () => {
+  for (const text of [
+    "[docs](https://x.com/p?a=1&user_1=2)",
+    "see https://x.com/?foo_1=bar now",
+    "<https://a.b/c?x_1>",
+  ])
+    expect(normalizeMarkdown(text)).toBe(text)
+  expect(normalizeMarkdown("id ses_4ab6 here")).toBe("id `ses_4ab6` here")
+})
+
+test("normalizeMarkdown leaves indented code, footnotes and defined references alone", () => {
+  expect(normalizeMarkdown("Code:\n\n    a[0] = 1\n\nand a [note].")).toBe("Code:\n\n    a[0] = 1\n\nand a `[note]`.")
+  expect(normalizeMarkdown("- item\n\n    nested [0] stays in the list")).toBe(
+    "- item\n\n    nested `[0]` stays in the list",
+  )
+  expect(normalizeMarkdown("Text[^1] and [foo] here.\n\n[^1]: A note.\n[foo]: https://x.test")).toBe(
+    "Text[^1] and [foo] here.\n\n[^1]: A note.\n[foo]: https://x.test",
+  )
+  expect(normalizeMarkdown("[Foo] first\n\n[foo]: https://x.test")).toBe("[Foo] first\n\n[foo]: https://x.test")
+})
+
+test("a longer fence is closed only by a fence at least as long", () => {
+  const nested = "````md\n```js\n[0] inner\n```\n[1] still code\n````\n[2] after"
+  expect(normalizeMarkdown(nested)).toBe("````md\n```js\n[0] inner\n```\n[1] still code\n````\n`[2]` after")
+  expect(normalizeMarkdown("~~~~\n~~~\n[0]\n~~~~")).toBe("~~~~\n~~~\n[0]\n~~~~")
+})
+
+function rowsBetween(frame: string, first: string, second: string) {
+  const rows = frame.split("\n")
+  return rows.slice(
+    rows.findIndex((row) => row.includes(first)) + 1,
+    rows.findIndex((row) => row.includes(second)),
+  )
+}
+
+// OpenTUI's default block mode drops the blank-line tokens once a renderNode is set, so paragraphs ran together.
+test("paragraphs separated by a blank line render with one blank row between them", async () => {
+  const view = await setup()
+  view.markdown.content = "First paragraph.\n\nSecond paragraph.\nSame paragraph.\n\nThird paragraph."
+  const frame = await rendered(view, "Third paragraph.")
+  expect(rowsBetween(frame, "First paragraph.", "Second paragraph.").map((row) => row.trim())).toEqual([""])
+  expect(rowsBetween(frame, "Second paragraph.", "Same paragraph.")).toEqual([])
+  expect(rowsBetween(frame, "Same paragraph.", "Third paragraph.").map((row) => row.trim())).toEqual([""])
+})
+
+test("each turn is set apart: a rule between a reply and the next message, a header tight on its text", async () => {
+  const view = await setup()
+  view.markdown.content = transcript(
+    [
+      { id: "u1", type: "user", text: "First prompt", time: { created: 1 } },
+      {
+        id: "a1",
+        type: "assistant",
+        agent: "build",
+        model: { providerID: "test", id: "model" },
+        time: { created: 1 },
+        content: [{ id: "p1", type: "text", text: "Reply one.\n\nReply two." }],
+      },
+      { id: "u2", type: "user", text: "Second prompt", time: { created: 2 } },
+    ],
+    false,
+    true,
+  )
+  const frame = await rendered(view, "Second prompt")
+  expect(rowsBetween(frame, "USER", "First prompt")).toEqual([])
+  expect(rowsBetween(frame, "build", "Reply one.")).toEqual([])
+  const between = rowsBetween(frame, "Reply two.", "Second prompt").map((row) => row.trim())
+  expect(between.filter((row) => row.startsWith("─")).length).toBe(1)
+  expect(between.filter((row) => row === "").length).toBeGreaterThanOrEqual(2)
 })
