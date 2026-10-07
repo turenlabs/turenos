@@ -91,7 +91,6 @@ const modelOutput = (output: Output) => {
  * Minimal V2 core shell boundary. Keep parity debt visible without pulling the
  * legacy shell runtime into core.
  */
-// TODO: Port tree-sitter bash / PowerShell parser-based approval reduction.
 // TODO: Port BashArity reusable command-prefix approvals.
 // TODO: Replace token-based command-argument external-directory advisories with parser-based detection.
 // TODO: Restore PowerShell and cmd-specific invocation/path handling on Windows.
@@ -253,10 +252,13 @@ const layer = Layer.effect(
               (directory) =>
                 `Command argument references approved external directory ${path.join(directory, "*").replaceAll("\\", "/")}.`,
             )
+            // Rules are matched per simple command, not per line: a `git *` allow must not
+            // approve `git status; cp .env /tmp/leak`, and "always" remembers each command separately.
+            const commands = yield* ShellSafety.commands({ command: input.command, shell: ShellSafety.kind(shell) })
             yield* assertPermission({
               action: name,
-              resources: [input.command],
-              save: [input.command],
+              resources: commands,
+              save: commands,
               metadata: { workdir: target.resource },
               sessionID: context.sessionID,
               agent: context.agent,
