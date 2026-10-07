@@ -20,6 +20,10 @@ export function createLogo(
   })
   const resize = () => {
     if (state.closed || state.modal !== dialog || logo.isDestroyed) return
+    // Open settings need every row on a short terminal; the mark and the frame's spacer rows return when the screen grows.
+    const tight = ui.settingsOpen && renderer.height < 32
+    logo.visible = !tight
+    dialog.frame.paddingTop = dialog.frame.paddingBottom = tight ? 0 : 1
     Object.assign(
       logo,
       turenLogo(
@@ -59,8 +63,7 @@ export function createContext(renderer: CliRenderer, dialog: ModalState, editDir
 
 export function createAgentSelect(renderer: CliRenderer, agent: string | undefined) {
   return new SelectRenderable(renderer, {
-    height: 3,
-    marginBottom: 1,
+    height: agent ? 2 : 1,
     options: [{ name: "Server default", description: "" }, ...(agent ? [{ name: label(agent), description: "" }] : [])],
     backgroundColor: color.bg,
     textColor: color.text,
@@ -75,7 +78,6 @@ export function createAgentSelect(renderer: CliRenderer, agent: string | undefin
 export function createWorkspaceSelect(renderer: CliRenderer, isolate: boolean | undefined) {
   const workspace = new SelectRenderable(renderer, {
     height: 2,
-    marginBottom: 1,
     options: [
       { name: "This folder", description: "" },
       { name: "New git worktree", description: "" },

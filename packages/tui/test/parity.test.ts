@@ -128,7 +128,7 @@ test("the kill switch stops every session only after typing stop all", async () 
     "POST /api/session/interrupt-all": () => ({ data: { interrupted: 3, failed: 0 } }),
   })
   await palette("Stop all agents")
-  await screen("Type stop all, then Ctrl+S")
+  await screen("Confirmation (type stop all)")
   await confirm("stop")
   await screen("Type stop all to confirm.")
   await confirm(" all")

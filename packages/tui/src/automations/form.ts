@@ -35,9 +35,8 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
         "Folder on the server",
         session?.location.directory ?? state.snapshot?.location.directory ?? "",
       )
-  // Values line up under their captions, which leave two columns for the focus arrow.
+  // Values line up under their captions: the focus arrow and the field's `[ ` take the same two columns.
   const fields = [name, prompt, schedule, folder].filter((field) => field !== undefined)
-  fields.forEach((field) => (field.marginLeft = 2))
   fields.forEach(markFocus)
   let created = false
   dialog.submit = async () => {

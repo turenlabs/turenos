@@ -1,5 +1,6 @@
 import { TextRenderable, type InputRenderable, type SelectRenderable } from "@opentui/core"
 import type { ModalState } from "../../state"
+import { fitHints } from "../../changes/heading"
 import { color } from "../../theme"
 import type { QuestionDraft, RequestContext } from "../context"
 
@@ -48,6 +49,23 @@ export function text(flow: QuestionFlow, content: string, accent = false) {
   return node
 }
 
+/** Key hints that wrap between entries, never inside one, and repaint when the dialog is resized. */
+export function hints(flow: QuestionFlow, optional: string[], essential: string[]) {
+  const { dialog, ctx } = flow
+  let painted = 0
+  const paint = () => {
+    const width = dialog.frame.width > 1 ? dialog.frame.width : ctx.renderer.width
+    // A size change that keeps the width must not bring the hints back over a message shown since.
+    if (width === painted) return
+    painted = width
+    const content = fitHints(width - 4, optional, essential)
+    dialog.error.content = content
+    dialog.error.height = content.split("\n").length
+  }
+  dialog.frame.onSizeChange = paint
+  paint()
+}
+
 export function keepCustom(flow: QuestionFlow) {
   if (!flow.input) return
   flow.draft.custom[flow.page] = flow.input.value
@@ -56,10 +74,10 @@ export function keepCustom(flow: QuestionFlow) {
 
 export function editCustom(flow: QuestionFlow, restore = false) {
   if (flow.input) return flow.input.focus()
-  const input = flow.ctx.dialogs.input(flow.dialog, "Your answer", flow.draft.custom[flow.page])
+  const input = flow.ctx.dialogs.input(flow.dialog, "Your answer", flow.draft.custom[flow.page], "Type your answer")
   flow.input = input
   if (restore) input.cursorOffset = Math.min(flow.draft.cursor, input.plainText.length)
-  flow.dialog.error.content = "Enter Save custom answer\nCtrl+B Back to choices\nCtrl+K Sessions · Esc close"
+  hints(flow, [], ["Enter Save custom answer", "Ctrl+B Back to choices", "Ctrl+K Sessions", "Esc close"])
   flow.ctx.dialogs.resize()
   input.focus()
 }

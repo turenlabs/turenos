@@ -14,6 +14,7 @@ export function loadAgents(form: LaunchForm): Promise<void> {
   form.loaded = undefined
   form.loadError = undefined
   agent.options = [{ name: "Loading agents…", description: "" }]
+  agent.height = 1
   form.loading = connection
     .agents(requested)
     .then((result) => {
@@ -26,6 +27,8 @@ export function loadAgents(form: LaunchForm): Promise<void> {
         { name: "Server default", description: "" },
         ...form.choices.map((id) => ({ name: label(id), description: "" })),
       ]
+      // Every agent shows up to three rows; more scroll inside the list.
+      agent.height = Math.min(3, agent.options.length)
       agent.setSelectedIndex(
         requested === current.directory && current.agent ? form.choices.indexOf(current.agent) + 1 : 0,
       )

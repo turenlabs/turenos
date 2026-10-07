@@ -4,7 +4,7 @@ import { display } from "../messages"
 import { label, sessionTitle } from "../state"
 import { color } from "../theme"
 import type { RewindEnv, RewindFlow } from "./flow"
-import { requireWord } from "../dialogs/fields"
+import { frameField, requireWord } from "../dialogs/fields"
 import { hasFiles } from "./session"
 import type { ModalState } from "../state"
 import type { Session } from "../server"
@@ -98,18 +98,14 @@ export function addConfirmation(flow: RewindFlow) {
   )
   flow.confirmation = new InputRenderable(renderer, {
     maxLength: 32,
-    width: "100%",
-    // The word shows in the empty box, so the field is visible without its colours.
-    placeholder: action,
-    placeholderColor: color.muted,
     backgroundColor: color.bg,
     focusedBackgroundColor: color.selected,
     textColor: color.text,
   })
   captions.push(caption(flow.confirmation, `Confirmation (type ${action})`))
-  controls.add(flow.confirmation)
+  controls.add(frameField(renderer, flow.confirmation))
   dialogs.track(dialog, flow.confirmation)
-  // Focus has no other plain-text cue between the mode list and the typed word; the list's own marker is ▶ too.
+  // Focus has no other plain-text cue between the mode list and the typed word, so only the focused field's caption has ▶.
   const paintFocus = () =>
     captions.forEach((item) => {
       if (!item.text.isDestroyed) item.text.content = `${item.field.focused ? "▶ " : "  "}${item.name}`
@@ -119,7 +115,7 @@ export function addConfirmation(flow: RewindFlow) {
     item.field.on("blurred", paintFocus)
   })
   requireWord(dialog, flow.confirmation, action, dialogs.resize)
-  dialog.error.content = `Ctrl+S ${action} · Enter does not confirm\n${action === "undo" ? "Tab chooses file mode / confirmation. " : ""}${flow.summary ? "Ctrl+D shows the staged patch · PgUp/PgDn scroll · " : ""}Esc close`
+  dialog.error.content = `Ctrl+S ${flow.picked ? "rewind" : action} · Enter does not confirm\n${action === "undo" ? "Tab chooses file mode / confirmation. " : ""}${flow.summary ? "Ctrl+D shows the staged patch · PgUp/PgDn scroll · " : ""}Esc close`
   flow.ready = true
   flow.confirmation.focus()
   paintFocus()
@@ -127,17 +123,22 @@ export function addConfirmation(flow: RewindFlow) {
 
 /** Each mode says what it does to the files, next to the choice rather than in a warning above the dialog. */
 function fileMode(flow: RewindFlow) {
-  return new SelectRenderable(flow.renderer, {
+  const names = ["Conversation only · files stay as they are", "Conversation + files · restores affected files now"]
+  // The chosen mode is marked by its radio; the list's own ▶ would compete with the focused caption's.
+  const options = (chosen: number) =>
+    names.map((name, index) => ({ name: `${index === chosen ? "(•)" : "( )"} ${name}`, description: "" }))
+  const select = new SelectRenderable(flow.renderer, {
     height: 2,
-    options: [
-      { name: "Conversation only · files stay as they are", description: "" },
-      { name: "Conversation + files · restores affected files now", description: "" },
-    ],
+    options: options(0),
     showDescription: false,
-    showSelectionIndicator: true,
+    showSelectionIndicator: false,
     backgroundColor: color.panel,
     textColor: color.text,
     selectedBackgroundColor: color.selected,
     selectedTextColor: color.accent,
   })
+  select.on("selectionChanged", () => {
+    select.options = options(select.getSelectedIndex())
+  })
+  return select
 }

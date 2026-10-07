@@ -96,7 +96,8 @@ test("the custom answer box does not repeat its label as a placeholder", async (
   view.mockInput.pressEnter()
   const frame = await screen("Save custom answer")
   expect(frame).toContain("Your answer")
-  expect(frame).not.toContain("Type your answer")
+  // The empty field is boxed and its placeholder differs from the label, so neither reads as typed text.
+  expect(frame).toContain("[ Type your answer")
 })
 
 // Slash list
@@ -190,8 +191,8 @@ test("undo puts file consequences by the file-mode choice and shows a visible co
   expect(frame).toContain("Session: ses_main")
   expect(frame).toContain("Directory: /srv/main")
   expect(frame).not.toContain("»")
-  // The empty box says what to type.
-  expect(rows[rows.findIndex((line) => line.includes("Confirmation (type undo)")) + 1]).toContain("undo")
+  // The empty field is boxed and shows no placeholder that could read as the typed word.
+  expect(rows[rows.findIndex((line) => line.includes("Confirmation (type undo)")) + 1]).toMatch(/^\[ +\]/)
   view.mockInput.pressTab()
   await view.renderOnce()
   expect(count(view.captureCharFrame(), "▶ File mode")).toBe(1)

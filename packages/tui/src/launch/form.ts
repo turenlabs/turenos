@@ -79,6 +79,8 @@ function addSettings(deps: LaunchDeps, dialog: ModalState, current: LaunchDraft)
   const workspace = createWorkspaceSelect(renderer, current.isolate)
   dialog.form.add(workspace)
   dialogs.track(dialog, workspace)
+  // The captions above each field already separate them; spare rows keep every setting on a short terminal.
+  for (const field of [directory, model]) if (field.parent) field.parent.marginBottom = 0
   return { directory, agent, model, workspace }
 }
 

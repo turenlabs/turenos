@@ -1,7 +1,7 @@
 import { display } from "../../messages"
 import { compactRows } from "../../dialogs/size"
 import { label } from "../../state"
-import { answers, text, type QuestionFlow } from "./flow"
+import { answers, hints, text, type QuestionFlow } from "./flow"
 import { renderQuestionPage } from "./page"
 
 /** Rebuilds the dialog body for the current page, the review screen, or the reject confirmation. */
@@ -9,6 +9,7 @@ export function render(flow: QuestionFlow) {
   const { dialog, questions } = flow
   flow.input = undefined
   flow.picker = undefined
+  dialog.frame.onSizeChange = undefined
   dialog.fields = []
   dialog.index = 0
   for (const child of dialog.form.getChildren()) child.destroyRecursively()
@@ -46,11 +47,10 @@ function renderReview(flow: QuestionFlow) {
     event.preventDefault()
     if (event.button === 0 && !flow.dialog.busy) void flow.ctx.dialogs.submit()
   }
-  flow.dialog.error.height = 2
-  flow.dialog.error.content =
-    flow.ctx.renderer.height < compactRows
-      ? "← Edit · PgUp/PgDn Scroll\nCtrl+R Reject request · Esc close"
-      : "← Edit · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject request · Esc close"
+  hints(flow, ["← Edit", "PgUp/PgDn Scroll", ...(flow.ctx.renderer.height < compactRows ? [] : ["Ctrl+K Sessions"])], [
+    "Ctrl+R Reject request",
+    "Esc close",
+  ])
   flow.dialog.form.focus()
 }
 

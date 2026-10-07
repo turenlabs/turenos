@@ -89,7 +89,7 @@ export function stopAll(ctx: RequestContext) {
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
       content:
-        "Interrupt every running session on this server, including other clients' work?\nQueued messages stay queued; nothing is deleted.\n\nType stop all, then Ctrl+S to confirm.",
+        "Interrupt every running session on this server, including other clients' work?\nQueued messages stay queued; nothing is deleted.",
       fg: color.text,
       wrapMode: "word",
     }),

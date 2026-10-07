@@ -1,4 +1,13 @@
-import { InputRenderable, TextareaRenderable, TextRenderable, TextAttributes, fg, t } from "@opentui/core"
+import {
+  BoxRenderable,
+  InputRenderable,
+  TextareaRenderable,
+  TextRenderable,
+  TextAttributes,
+  fg,
+  t,
+  type CliRenderer,
+} from "@opentui/core"
 import { color } from "../theme"
 import type { Field, ModalState } from "../state"
 import type { DialogContext } from "./context"
@@ -15,9 +24,8 @@ export function input(ctx: DialogContext, dialog: ModalState, label: string, val
     textColor: color.text,
     focusedBackgroundColor: color.selected,
     placeholderColor: color.muted,
-    marginBottom: 1,
   })
-  dialog.form.add(field)
+  dialog.form.add(frameField(ctx.renderer, field, 1))
   caption.onMouseDown = (event) => {
     event.preventDefault()
     field.focus()
@@ -25,6 +33,33 @@ export function input(ctx: DialogContext, dialog: ModalState, label: string, val
   track(ctx, dialog, field)
   clearStaleError(ctx, dialog, field)
   return field
+}
+
+/** Id of the row `frameField` makes, so a caption above an input is still found beside the row. */
+export const fieldFrame = "field-frame"
+
+/**
+ * One row that shows a text input as a field in plain text: `[ value ]`. Background colours alone
+ * left an empty input looking like blank space, and a placeholder looking like typed text.
+ */
+export function frameField(renderer: CliRenderer, field: InputRenderable, marginBottom = 0) {
+  const edge = (content: string) => new TextRenderable(renderer, { content, fg: color.border, width: 2, flexShrink: 0 })
+  const left = edge("[ ")
+  const right = edge(" ]")
+  field.flexGrow = 1
+  field.flexShrink = 1
+  field.minWidth = 0
+  const paint = () => {
+    if (left.isDestroyed) return
+    left.fg = right.fg = field.focused ? color.accent : color.border
+  }
+  field.on("focused", paint)
+  field.on("blurred", paint)
+  const row = new BoxRenderable(renderer, { id: fieldFrame, flexDirection: "row", height: 1, flexShrink: 0, marginBottom })
+  row.add(left)
+  row.add(field)
+  row.add(right)
+  return row
 }
 
 const hints = new WeakMap<ModalState, { content: string; height: TextRenderable["height"] }>()

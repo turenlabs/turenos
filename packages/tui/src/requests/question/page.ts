@@ -3,7 +3,7 @@ import { display } from "../../messages"
 import { color } from "../../theme"
 import { compactRows } from "../../dialogs/size"
 import { matchesKey, printableKey } from "../../keys"
-import { advance, answers, editCustom, text, type QuestionFlow, type Questions } from "./flow"
+import { advance, answers, editCustom, hints, text, type QuestionFlow, type Questions } from "./flow"
 
 /** Longest description that still fits under its option on the narrowest terminal. */
 const underLimit = 44
@@ -50,7 +50,7 @@ export function renderQuestionPage(flow: QuestionFlow, question: Questions[numbe
       advance(flow)
     else select(false)
   })
-  dialog.error.content = footer(flow, question)
+  footer(flow, question)
   bindKeys(flow, question, choice, select)
   if (draft.editing) {
     draft.editing = false
@@ -145,9 +145,14 @@ function selectOption(
 /** The key hints, which say where Enter goes so choosing and moving on is never a surprise. */
 function footer(flow: QuestionFlow, question: Questions[number]) {
   const last = answers(flow).every((answer, index) => index === flow.page || answer.length > 0)
-  const keys = question.multiple
-    ? "↑↓ Move · Space or 1-9 Toggle · Enter Next"
-    : `↑↓ or 1-9 Move · Enter Choose, then ${last ? "review answers" : "next question"}`
-  if (flow.ctx.renderer.height < compactRows) return `${keys}\n←/→ Question · Ctrl+R Reject request · Esc close`
-  return `${keys}\n←/→ Question · PgUp/PgDn Scroll\nCtrl+K Sessions · Ctrl+R Reject request · Esc close`
+  hints(
+    flow,
+    [
+      ...(question.multiple
+        ? ["↑↓ Move", "Space or 1-9 Toggle", "Enter Next"]
+        : ["↑↓ or 1-9 Move", `Enter Choose, then ${last ? "review answers" : "next question"}`]),
+      ...(flow.ctx.renderer.height < compactRows ? [] : ["PgUp/PgDn Scroll", "Ctrl+K Sessions"]),
+    ],
+    ["←/→ Question", "Ctrl+R Reject request", "Esc close"],
+  )
 }
