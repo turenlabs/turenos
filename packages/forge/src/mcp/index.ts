@@ -39,7 +39,7 @@ import { McpBroker } from "./broker"
 import { SERVER_KEY } from "@/security/settings"
 import { SecurityStorage } from "@/security/storage"
 import { Scanner } from "@/security/util/scanner"
-import { FORGE_CLI_COMMAND, resolvePtyCommand } from "@/server/pty-command"
+import { FORGE_CLI_COMMAND, resolveForgeCommand } from "@/server/pty-command"
 import { McpIntegration } from "./integration"
 import { McpCaBundle } from "./ca-bundle"
 import { McpRuntime } from "./runtime"
@@ -247,8 +247,8 @@ export function isolatedStdioEnvironment(environment: Readonly<Record<string, st
   }
 }
 
-export const resolveSecurityMcpCommand = Effect.fnUntraced(function* () {
-  const resolved = resolvePtyCommand(FORGE_CLI_COMMAND, ["security-mcp"])
+export const resolveSecurityMcpCommand = Effect.fnUntraced(function* (directory: string) {
+  const resolved = resolveForgeCommand(["security-mcp"], directory)
   const command =
     resolved.command === FORGE_CLI_COMMAND
       ? yield* Effect.promise(() => Scanner.which(FORGE_CLI_COMMAND))
@@ -881,7 +881,8 @@ const layer = (allowUnmanaged: boolean, managedRetryMs = MANAGED_RETRY_MS) =>
         Effect.fn("MCP.state")(function* () {
           const cfg = yield* cfgSvc.get()
           const securityEnabled = yield* enabledSecurity()
-          const command = securityEnabled.size > 0 ? yield* resolveSecurityMcpCommand() : undefined
+          const command =
+            securityEnabled.size > 0 ? yield* resolveSecurityMcpCommand(yield* InstanceState.directory) : undefined
           if (securityEnabled.size > 0 && !command) {
             return yield* Effect.die(new Error("cannot locate the forge binary to spawn the security MCP server"))
           }
