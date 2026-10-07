@@ -141,7 +141,7 @@ test("loading the catalog is read-only and reselecting the same model preserves 
   const select = app.state.modal?.fields.find((field) => field instanceof SelectRenderable)
   expect(select?.options).toHaveLength(3)
   expect(select?.options.find((option) => option.name.startsWith("* "))?.description).toBe(
-    "test/org/model (variant: high)",
+    "  test/org/model (variant: high) · Test Provider",
   )
   app.view.mockInput.pressEnter()
   app.view.mockInput.pressEnter()

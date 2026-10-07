@@ -77,6 +77,7 @@ test("list projects only display metadata and connected models with the selected
       { id: "offline", name: "Disconnected", connected: false },
     ],
     models: [{ providerID: "openai", id: "org/model:v1", name: "Model One", providerName: "OpenAI" }],
+    defaults: { openai: "org/model:v1" },
   })
   expect(JSON.stringify(result)).not.toContain("must-not-retain")
   expect(requests).toEqual([
@@ -794,4 +795,30 @@ test("numeric loopback key requests bypass inherited shell proxies", async () =>
   expect(code).toBe(0)
   expect(direct).toBe(1)
   expect(proxied).toBe(0)
+})
+
+test("catalog keeps valid release dates and defaults and drops malformed ones without rejecting the catalog", async () => {
+  const dated = (id: string, release_date: unknown) => ({ id, providerID: "openai", name: id, release_date })
+  const { providers } = fixture(() =>
+    Response.json({
+      all: [
+        {
+          id: "openai",
+          name: "OpenAI",
+          models: {
+            good: dated("good", "2026-02-03"),
+            stamp: dated("stamp", "2026-02-03T10:00:00Z"),
+            month: dated("month", "2026-13-01"),
+            text: dated("text", "yesterday"),
+            number: dated("number", 20260203),
+          },
+        },
+      ],
+      connected: ["openai"],
+      default: { openai: "good", "bad id!": "x", other: 5, constructor: "x" },
+    }),
+  )
+  const result = await providers.list("/srv")
+  expect(result.models.map((item) => item.release)).toEqual(["2026-02-03", "2026-02-03", undefined, undefined, undefined])
+  expect(result.defaults).toEqual({ openai: "good" })
 })

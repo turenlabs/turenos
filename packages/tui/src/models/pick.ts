@@ -6,10 +6,8 @@ import { errorText } from "../server"
 import { label } from "../state"
 import type { ModalState } from "../state"
 import { color } from "../theme"
-import { modelIdentity } from "./identity"
+import { currentText, modelRows, ROW_LIMIT, type Row } from "./rows"
 import type { ModelsContext, ModelTarget } from "./types"
-
-type Row = { ref: string; name: string; description: string }
 
 /** The picker's open dialog and what it currently shows. */
 type View = {
@@ -90,9 +88,7 @@ export function pick(ctx: ModelsContext, target: ModelTarget) {
 }
 
 function addHeader(ctx: ModelsContext, dialog: ModalState, target: ModelTarget, setup: () => void) {
-  const current = target.recipient?.model
-    ? modelIdentity(target.recipient.model)
-    : label(target.current || "Server default", 150)
+  const current = currentText(ctx, target)
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
       content: target.recipient
@@ -118,24 +114,17 @@ function update(view: View) {
   const { catalog, query, select, target, dialog } = view
   if (!catalog) return
   const selected = view.matches[select.getSelectedIndex()]?.ref ?? target.current
-  const terms = query.value.toLowerCase().trim().split(/\s+/).filter(Boolean)
-  const rows = [
-    ...(!target.recipient
-      ? [{ ref: "", name: "Server default", description: "Let the server select an available model" }]
-      : []),
-    ...catalog.models.map((model) => ({
-      ref: `${model.providerID}/${model.id}`,
-      name: `${model.name} (${model.providerName})`,
-      description:
-        `${model.providerID}/${model.id}` === target.current && target.recipient?.model
-          ? modelIdentity(target.recipient.model)
-          : `${model.providerID}/${model.id}`,
-    })),
-  ].filter((model) => terms.every((term) => `${model.name} ${model.description}`.toLowerCase().includes(term)))
-  view.matches = rows.slice(0, 100)
+  const rows = modelRows(
+    view.ctx,
+    target,
+    catalog,
+    query.value.toLowerCase().trim().split(/\s+/).filter(Boolean),
+  )
+  view.matches = rows.slice(0, ROW_LIMIT)
+  // The marker column is shared: OpenTUI draws the name after a 2-column indicator, so the second line is indented to the name.
   select.options = view.matches.map((model) => ({
     name: `${model.ref === target.current ? "* " : "  "}${label(model.name, 150)}`,
-    description: label(model.description, 2048),
+    description: `  ${label(model.description, 2048)}`,
   }))
   setRows(select, view.matches.length * 2)
   select.setSelectedIndex(
@@ -144,11 +133,14 @@ function update(view: View) {
       view.matches.findIndex((model) => model.ref === selected),
     ),
   )
-  dialog.error.content = !catalog.models.length
-    ? "No connected models. F2 connects a provider.\nCtrl+R refresh catalog · Esc back"
-    : !view.matches.length
-      ? "No matching models. Change the search or F2 to connect.\nCtrl+R refresh catalog · Esc back"
-      : `Up/Down choose · Enter select · Esc back\nF2 connect · Ctrl+R refresh${rows.length > 100 ? " · First 100; narrow search" : ""}`
+  dialog.error.content = hint(view, catalog.models.length, rows.length)
+}
+
+function hint(view: View, models: number, rows: number) {
+  if (!models) return "No connected models. F2 connects a provider.\nCtrl+R refresh catalog · Esc back"
+  const esc = view.query.value ? "Esc clear search · Esc again back" : "Esc back"
+  if (!view.matches.length) return `No matching models. Change the search or F2 to connect.\nCtrl+R refresh catalog · ${esc}`
+  return `${view.query.value ? "" : "Up/Down choose · "}Enter select · ${esc}\nF2 connect · Ctrl+R refresh${rows > ROW_LIMIT ? ` · Newest ${ROW_LIMIT} of ${rows}; narrow search` : ""}`
 }
 
 async function load(view: View) {

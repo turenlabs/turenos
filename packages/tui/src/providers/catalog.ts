@@ -1,6 +1,6 @@
 import { invalid, isRecord } from "../response-validation"
 import type { ProviderRequest } from "./request"
-import { array, id, record, text } from "./validation"
+import { array, defaultModels, id, record, releaseDate, text } from "./validation"
 
 type CatalogModel = {
   providerID: string
@@ -10,6 +10,8 @@ type CatalogModel = {
   variants?: string[]
   /** The published context window in tokens, when the provider states one. */
   context?: number
+  /** The release day as `YYYY-MM-DD`, when the server states a valid one. */
+  release?: string
 }
 
 export async function catalog(request: ProviderRequest, selected: string, signal?: AbortSignal) {
@@ -35,7 +37,7 @@ export async function catalog(request: ProviderRequest, selected: string, signal
     return provider
   })
   if ([...connected].some((value) => !seen.has(value))) invalid("unknown connected provider")
-  return { providers, models }
+  return { providers, models, defaults: defaultModels(result.default) }
 }
 
 function catalogModel(key: string, value: unknown, provider: { id: string; name: string }): CatalogModel {
@@ -49,12 +51,14 @@ function catalogModel(key: string, value: unknown, provider: { id: string; name:
       ? undefined
       : array(Object.keys(record(model.variants)), 128).map((value) => id(value, true))
   const context = isRecord(model.limit) ? model.limit.context : undefined
+  const release = releaseDate(model.release_date)
   return {
     providerID: provider.id,
     id: modelID,
     name,
     providerName: provider.name,
     ...(variants && variants.length > 0 ? { variants } : {}),
+    ...(release ? { release } : {}),
     ...(typeof context === "number" && Number.isSafeInteger(context) && context > 0 ? { context } : {}),
   }
 }

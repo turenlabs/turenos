@@ -44,6 +44,30 @@ export function id(value: unknown, model = false) {
   return result
 }
 
+/** An optional ISO release date: only a real calendar date survives, as `YYYY-MM-DD`; anything else is dropped. */
+export function releaseDate(value: unknown) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value) || value.length > 64) return undefined
+  const day = value.slice(0, 10)
+  const time = Date.parse(`${day}T00:00:00Z`)
+  return Number.isNaN(time) || new Date(time).toISOString().slice(0, 10) !== day ? undefined : day
+}
+
+/** The server's per-provider default models. One bad entry is skipped; it never rejects the catalog. */
+export function defaultModels(value: unknown) {
+  if (!isRecord(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value)
+      .slice(0, 1024)
+      .flatMap(([providerID, modelID]) => {
+        try {
+          return [[id(providerID), id(modelID, true)] as const]
+        } catch {
+          return []
+        }
+      }),
+  )
+}
+
 export function credential(value: unknown) {
   const result = text(value, "credential", 8192)
   if (result !== result.trim()) throw new Error("Remove surrounding whitespace from the credential.")
