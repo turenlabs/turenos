@@ -89,7 +89,7 @@ function addTaskWidgets(ctx: SessionActionsContext, dialog: ModalState, detail: 
   dialog.frame.add(query, 0)
   dialog.frame.add(
     new TextRenderable(ctx.renderer, {
-      content: "Recent and active subagent tasks of this session, including nested ones.",
+      content: "Recent and active subagent tasks across this session's tree, including nested ones.",
       fg: color.muted,
       flexShrink: 0,
       wrapMode: "word",
