@@ -304,7 +304,7 @@ describe("activity frames", () => {
     for (const reducedMotion of [false, true]) {
       const result = activityFrame(state, 6, reducedMotion)!
       expect(result.content).toStartWith("Running read  file")
-      expect(result.content).toContain("[display shortened]")
+      expect(result.content).toContain("…")
       expect(result.content.length).toBeLessThanOrEqual(128)
       expect(result.content).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/)
     }

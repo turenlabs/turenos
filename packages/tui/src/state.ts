@@ -154,6 +154,25 @@ export function createDashboardState(): DashboardState {
   }
 }
 
+/** One line of untrusted text, at most `limit` characters; a cut ends in "…" so it reads as one label. */
 export function label(value: string, limit = 150) {
-  return display(value, limit).replace(/\s/g, " ")
+  // Control characters are removed before measuring; text past the bounded window is cut either way.
+  const window = value.slice(0, limit * 4 + 256)
+  const text = display(window, window.length).replace(/\s/g, " ")
+  if (text.length <= limit && window.length === value.length) return text
+  return `${text.slice(0, Math.max(0, limit - 1))}…`
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+/**
+ * A session title as people read it. The server names an untitled session `New session - <ISO time>` and keeps
+ * that name when its first turn fails, so the timestamp is shown as a short local time instead.
+ */
+export function sessionTitle(title: string, limit = 150) {
+  const placeholder = /^New session - (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z)$/.exec(title)
+  const time = placeholder ? new Date(placeholder[1]!) : undefined
+  if (!time || Number.isNaN(time.getTime())) return label(title, limit)
+  const clock = [time.getHours(), time.getMinutes()].map((part) => String(part).padStart(2, "0")).join(":")
+  return label(`New session · ${MONTHS[time.getMonth()]} ${time.getDate()} ${clock}`, limit)
 }
