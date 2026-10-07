@@ -1,37 +1,56 @@
-import { SelectRenderable, type KeyEvent } from "@opentui/core"
+import type { KeyEvent, SelectRenderable } from "@opentui/core"
 import { color } from "../theme"
 import { matchesKey } from "../keys"
 import { listRows, setRows } from "../dialogs/size"
+import { ResizingSelect } from "../picker"
 import { fuzzyRank } from "../suggest/fuzzy"
+import { rowChars } from "../settings/column"
+import { label } from "../state"
 import type { MenuContext } from "./context"
 
-export function commands(ctx: MenuContext, actions: { name: string; description: string; run: () => void }[]) {
+/** Rows read `Name  · Description (key)`; the description gives up its end, with `…`, so the key stays whole. */
+export function commands(
+  ctx: MenuContext,
+  actions: { name: string; description: string; key?: string; run: () => void }[],
+) {
   const dialog = ctx.dialogs.open("Commands")
   if (!dialog) return
   const query = ctx.dialogs.input(dialog, "Find a command")
   const choices = actions.map((action) => ({
     ...action,
     title: action.name.toLowerCase(),
-    name: `${action.name}  · ${action.description}`,
+    name: `${action.name}  · ${action.description}${action.key ? ` (${action.key})` : ""}`,
+    row: `${action.name}  · ${action.description}`,
+    suffix: action.key ? ` (${action.key})` : "",
   }))
   let matches = choices
   // The caption, the field, its spacer and the hint's gap are the other rows; the list keeps the rest, so the form never scrolls.
   const rows = () => Math.min(Math.max(1, matches.length), listRows(ctx.renderer, 5))
-  const select = new SelectRenderable(ctx.renderer, {
+  const select = new ResizingSelect(ctx.renderer, {
     height: rows(),
-    options: choices,
+    options: [],
     showDescription: false,
     backgroundColor: color.panel,
     textColor: color.text,
     selectedTextColor: color.accent,
     selectedBackgroundColor: color.selected,
   })
+  // The dialog's laid-out width decides the cut, so rows are painted again when it changes.
+  const paint = () => {
+    const chars = select.width > 4 ? rowChars(select.width) : 150
+    select.options = matches.map((match) => ({
+      name: label(match.row, chars - match.suffix.length) + match.suffix,
+      description: "",
+    }))
+  }
+  select.onSizeChange = paint
+  paint()
   dialog.form.add(select)
   ctx.dialogs.track(dialog, select)
   dialog.error.content = "Type to search · ↑/↓ choose · Enter run · Esc close"
   query.on("input", () => {
     matches = rank(choices, query.value.toLowerCase().trim())
-    select.options = matches
+    paint()
     setRows(select, rows())
     select.setSelectedIndex(0)
     position()

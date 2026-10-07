@@ -241,7 +241,7 @@ function createSettingsControls(d: DashboardContext) {
       {
         name: `Attention alerts: ${state.attention ? "on" : "off"}`,
         description: state.attention
-          ? "Bell and title alert when a turn ends or input is needed · Enter turns them off"
+          ? "Bell and title alerts · Enter turns them off"
           : "No bell or title alert · Enter turns them on",
         run: () => toggleAttention(d),
       },

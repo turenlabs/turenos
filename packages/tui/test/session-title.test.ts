@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test"
+import { stamp } from "../src/menus/stamp"
 import { sessionTitle } from "../src/state"
 
-test("a server placeholder title reads as a short local time", () => {
-  expect(sessionTitle("New session - 2026-10-07T17:32:46.744Z")).toMatch(
-    /^New session · [A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}$/,
-  )
+test("a server placeholder title reads as a local `YYYY-MM-DD HH:MM` stamp", () => {
+  const title = sessionTitle("New session - 2026-10-07T17:32:46.744Z")
+  expect(title).toMatch(/^New session · \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+  expect(title).toBe(`New session · ${stamp(Date.parse("2026-10-07T17:32:46.744Z"))}`)
   expect(sessionTitle("New session - 2026-10-07T17:32:46Z")).toMatch(/^New session · /)
 })
 

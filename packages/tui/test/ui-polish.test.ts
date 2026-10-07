@@ -91,7 +91,7 @@ test("Settings › Appearance states each current setting and fits a narrow dial
     "Motion: on",
     "Enter turns animation off",
     "Attention alerts: on",
-    "Bell and title alert when a turn ends or input is needed",
+    "Bell and title alerts · Enter turns them off",
     "Responses: formatted",
     "Enter shows raw text",
     "Tool output: first lines only (Ctrl+O)",

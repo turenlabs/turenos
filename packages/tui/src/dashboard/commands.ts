@@ -1,7 +1,6 @@
 import { changeTab, filter, hop } from "./navigation"
 import { openServers, quit } from "./lifecycle"
 import { toggleMotion, toggleRaw, toggleSidebar } from "./toggles"
-import { label } from "../state"
 import type { DashboardContext } from "./context"
 
 type Command = { name: string; description: string; run: () => void }
@@ -103,18 +102,7 @@ export function openCommands(d: DashboardContext) {
     settingsEntries(d),
     viewEntries(d),
   ]
-  d.c.menus.commands(groups.flat().map((entry) => row(d, entry)))
-}
-
-/**
- * Every row reads `Name  · Description (key)`. The menu adds the name and the dot; the description is cut with an
- * ellipsis before the key so a narrow terminal never loses the key or ends a row mid-word. The dialog frame is the
- * terminal width less 3, at most 70, and the marker, borders, padding and scrollbar take 9 more.
- */
-function row(d: DashboardContext, entry: Entry) {
-  const key = entry.key ? ` (${entry.key})` : ""
-  const room = Math.min(70, d.renderer.width - 3) - 9 - entry.name.length - 4 - key.length
-  return { name: entry.name, run: entry.run, description: label(entry.description, Math.max(1, room)) + key }
+  d.c.menus.commands(groups.flat())
 }
 
 function sessionEntries(d: DashboardContext): Entry[] {

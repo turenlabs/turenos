@@ -3,11 +3,12 @@ import { fitHeading, fitHints, panelWidth } from "../changes/heading"
 import { matchesKey, printableKey } from "../keys"
 import { openPanel } from "../panel"
 import { errorText } from "../server"
+import { fillRows } from "../settings/column"
 import { label } from "../state"
 import { details } from "./details"
 import { patch, pickField } from "./fields"
 import { extensionList } from "./parse"
-import { extensionRow } from "./row"
+import { extensionRows } from "./row"
 import type { Extension, ExtensionsContext } from "./types"
 
 type Panel = NonNullable<ReturnType<typeof openPanel>>
@@ -100,12 +101,7 @@ function show(view: View, list: Extension[], select?: string) {
         "start",
       )),
   )
-  // Rows are cut to the list column, so they are painted again whenever the panel's width changes.
-  panel.fit("rows", () => {
-    const index = panel.list.getSelectedIndex()
-    panel.list.options = view.items.map((item) => ({ name: extensionRow(panel.width(), item), description: "" }))
-    panel.list.setSelectedIndex(index)
-  })
+  fillRows(panel, (chars) => extensionRows(chars, view.items))
   panel.list.setSelectedIndex(
     Math.max(
       0,

@@ -1,4 +1,3 @@
-import { listChars } from "../settings/column"
 import { label } from "../state"
 import type { Extension } from "./types"
 
@@ -12,13 +11,23 @@ export function stateWord(item: Extension) {
 const MIN_NAME = 12
 const MIN_STATUS_NAME = 14
 
-/** One list row: the state word stays whole and the name gives up its end, with an ellipsis, to fit `width`. */
-export function extensionRow(width: number, item: Extension) {
-  const room = (state: string) => listChars(width) - 2 - 3 - state.length
-  // The status wording needs most of the name's letters to stay; plain enabled or disabled needs twelve; on or off is the last resort.
-  const word =
-    [stateWord(item), item.enabled ? "enabled" : "disabled"].find(
-      (state, index) => room(state) >= (index ? MIN_NAME : Math.min(item.name.length, MIN_STATUS_NAME)),
-    ) ?? (item.enabled ? "on" : "off")
-  return `${item.enabled ? "●" : "○"} ${label(item.name, Math.max(2, room(word)))} · ${word}`
+/**
+ * The list's rows. The vocabulary is one for the whole list: `enabled` and `disabled` while the longest of them leaves
+ * a name twelve letters, `on` and `off` otherwise. Where it is wide, a status wording stays only if the name keeps
+ * most of its letters. The state word stays whole and the name gives up its end, with an ellipsis.
+ */
+export function extensionRows(chars: number, items: Extension[]) {
+  const room = (state: string) => chars - 2 - 3 - state.length
+  const wide = room("disabled") >= MIN_NAME
+  return items.map((item) => {
+    const plain = item.enabled ? "enabled" : "disabled"
+    const word = !wide
+      ? item.enabled
+        ? "on"
+        : "off"
+      : room(stateWord(item)) >= Math.min(item.name.length, MIN_STATUS_NAME)
+        ? stateWord(item)
+        : plain
+    return `${item.enabled ? "●" : "○"} ${label(item.name, Math.max(2, room(word)))} · ${word}`
+  })
 }

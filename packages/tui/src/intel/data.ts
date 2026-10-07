@@ -12,6 +12,8 @@ type Intel = Connection["client"]["server.intel"]
 
 export const TITLES: Record<Mode, string> = { advisories: "Advisories", kev: "Known exploited (KEV)", news: "News" }
 export const PAGE = 50
+/** The server keeps the first 500 characters of a feed item's description, so text that long was cut mid-sentence. */
+const STORED_SUMMARY = 500
 const TAG: Record<string, string> = { critical: "CRIT", high: "HIGH", medium: "MED", low: "LOW", info: "INFO" }
 const SEVERITY: Record<string, string> = {
   critical: color.error,
@@ -102,11 +104,12 @@ function date(value: unknown) {
 
 /** Advisory text arrives as Markdown, which this pane does not render: the markup characters are dropped. */
 function plain(text: string) {
-  return text
+  const unmarked = text
     .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, "$1 ($2)")
     .replace(/(\*\*|__)(.+?)\1/gs, "$2")
     .replace(/`+/g, "")
     .replace(/^#{1,6}\s+/gm, "")
+  return text.length >= STORED_SUMMARY ? `${unmarked.trimEnd()}…` : unmarked
 }
 
 /** A web link shown as the URL parser reads it (punycode host), or withheld when it could read as something else. */

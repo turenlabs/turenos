@@ -8,6 +8,7 @@ import type {
 } from "@opentui/core"
 import type { KeyEvent } from "@opentui/core"
 import { display } from "./messages"
+import { stamp } from "./menus/stamp"
 import type { Connection, Detail, Session, Snapshot } from "./server"
 
 export type Tab = "sessions" | "terminals" | "automations"
@@ -163,16 +164,13 @@ export function label(value: string, limit = 150) {
   return `${text.slice(0, Math.max(0, limit - 1))}…`
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-
 /**
  * A session title as people read it. The server names an untitled session `New session - <ISO time>` and keeps
- * that name when its first turn fails, so the timestamp is shown as a short local time instead.
+ * that name when its first turn fails, so the timestamp is shown as a local `YYYY-MM-DD HH:MM`, like every other date.
  */
 export function sessionTitle(title: string, limit = 150) {
   const placeholder = /^New session - (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z)$/.exec(title)
   const time = placeholder ? new Date(placeholder[1]!) : undefined
   if (!time || Number.isNaN(time.getTime())) return label(title, limit)
-  const clock = [time.getHours(), time.getMinutes()].map((part) => String(part).padStart(2, "0")).join(":")
-  return label(`New session · ${MONTHS[time.getMonth()]} ${time.getDate()} ${clock}`, limit)
+  return label(`New session · ${stamp(time.getTime())}`, limit)
 }

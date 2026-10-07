@@ -6,7 +6,7 @@ import { errorText } from "../server"
 import { label } from "../state"
 import { color } from "../theme"
 import { fitHints } from "../changes/heading"
-import { listChars } from "../settings/column"
+import { fillRows } from "../settings/column"
 import { fetchPage, PAGE, TITLES, type Item, type Mode } from "./data"
 import { feeds, type IntelContext } from "./feeds"
 
@@ -90,15 +90,7 @@ async function load(view: View, page = view.page) {
     view.page = page
     view.pages = Math.max(1, Math.ceil(result.total / PAGE))
     panel.heading.content = `${TITLES[view.mode]} · page ${view.page} of ${view.pages} · ${result.total} items`
-    // Rows are cut to the list column, so they are painted again whenever the panel's width changes.
-    panel.fit("rows", () => {
-      const index = panel.list.getSelectedIndex()
-      panel.list.options = view.items.map((item) => ({
-        name: label(item.row, listChars(panel.width())),
-        description: "",
-      }))
-      panel.list.setSelectedIndex(index)
-    })
+    fillRows(panel, (chars) => view.items.map((item) => label(item.row, chars)))
     panel.list.setSelectedIndex(0)
     paintHints(view)
     describe(view)

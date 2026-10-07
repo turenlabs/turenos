@@ -23,7 +23,7 @@ export function createMenus(
       openSwitcher(ctx, initialScope, sidebar),
     workingFolders: () => workingFolders(ctx),
     openByID: (value?: string) => openByID(ctx, value),
-    commands: (list: { name: string; description: string; run: () => void }[]) => commands(ctx, list),
+    commands: (list: { name: string; description: string; key?: string; run: () => void }[]) => commands(ctx, list),
     information: (address: string) => information(ctx, address),
     help: () => help(ctx),
   }

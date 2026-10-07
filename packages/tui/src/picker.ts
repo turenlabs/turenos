@@ -2,8 +2,9 @@ import { SelectRenderable, TextRenderable, type CliRenderer, type ScrollBoxRende
 import type { Dialogs } from "./dialogs"
 import { setRows } from "./dialogs/size"
 import { matchesKey } from "./keys"
+import { rowChars } from "./settings/column"
 import { errorText } from "./server"
-import type { DashboardState } from "./state"
+import { label, type DashboardState } from "./state"
 import { color } from "./theme"
 
 export type Choice = { name: string; description?: string; run: () => unknown }
@@ -57,11 +58,20 @@ export function openPicker(
     return true
   }
   const fit = () => fitText(renderer, form, text)
+  // Names and descriptions are cut with an ellipsis to the list's laid-out width, and again whenever it changes.
+  const paint = () => {
+    const chars = list.width > 4 ? rowChars(list.width) : 150
+    list.options = choices.map((choice) => ({
+      name: label(choice.name, chars),
+      description: label(choice.description ?? "", chars),
+    }))
+  }
+  list.onSizeChange = paint
   function set(next: Choice[]) {
     fit()
     const keep = input.memory?.get(input.title) ?? 0
     choices = next
-    list.options = next.map((choice) => ({ name: choice.name, description: choice.description ?? "" }))
+    paint()
     setRows(list, next.length * 2)
     list.setSelectedIndex(Math.max(0, Math.min(keep, next.length - 1)))
   }
@@ -71,8 +81,16 @@ export function openPicker(
   return { dialog, list, text, set, fit }
 }
 
+/** OpenTUI's select skips its base `onResize`, so its `onSizeChange` never fires; this one reports its layout. */
+export class ResizingSelect extends SelectRenderable {
+  protected override onResize(width: number, height: number) {
+    super.onResize(width, height)
+    this.onSizeChange?.()
+  }
+}
+
 function choiceList(renderer: CliRenderer) {
-  return new SelectRenderable(renderer, {
+  return new ResizingSelect(renderer, {
     flexGrow: 0,
     flexShrink: 1,
     minHeight: 2,

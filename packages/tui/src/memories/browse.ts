@@ -4,6 +4,7 @@ import { display } from "../messages"
 import { fitHints } from "../changes/heading"
 import { openPanel } from "../panel"
 import { errorText } from "../server"
+import { fillRows } from "../settings/column"
 import { label } from "../state"
 import { color } from "../theme"
 import { edit } from "./edit"
@@ -89,10 +90,7 @@ async function load(view: View) {
     panel.heading.content = `${view.items.length} memor${view.items.length === 1 ? "y" : "ies"}`
     // Sized like the other Settings dialogs: as tall as the list needs, not the whole terminal.
     panel.dialog.frame.height = Math.max(18, view.items.length + 10)
-    panel.list.options = view.items.map((item) => ({
-      name: `[${item.kind}] ${label(item.title, 60)}`,
-      description: "",
-    }))
+    fillRows(panel, (chars) => view.items.map((item) => label(`[${item.kind}] ${item.title}`, chars)))
     hints(view, view.note)
     describe(view)
   } catch (error) {
@@ -110,7 +108,9 @@ function describe(view: View) {
   panel.show(
     new StyledText([
       // The list row already shows a title that fits, so the pane repeats it only when the row cut it.
-      ...(label(item.title, 60) === display(item.title, 500) ? [] : [fg(color.text)(`${display(item.title, 500)}\n`)]),
+      ...(panel.list.options[panel.list.getSelectedIndex()]?.name === `[${item.kind}] ${display(item.title, 500)}`
+        ? []
+        : [fg(color.text)(`${display(item.title, 500)}\n`)]),
       fg(color.muted)(
         `Recorded by ${label(item.provenance.assertedBy, 40)} (${label(item.provenance.source, 40)})${anchor ? ` · ${label(anchor, 200)}` : ""}\n\n`,
       ),

@@ -63,11 +63,6 @@ export function sessionRows(
     })
 }
 
-/** Cuts a row to `width` columns with an ellipsis at its end; OpenTUI's own truncation elides the middle. */
-function fit(text: string, width: number) {
-  return width > 0 && text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text
-}
-
 export class SessionListRenderable extends ScrollBoxRenderable {
   private items: { name: string; description?: string; group?: string; groupLabel?: string; running?: boolean }[] = []
   private lines: TextRenderable[] = []
@@ -146,9 +141,10 @@ export class SessionListRenderable extends ScrollBoxRenderable {
   /** Rewrites every row for the current selection and width: prefix and marker count toward the width. */
   private paint() {
     const width = this.viewport.width
+    const chars = width > 0 ? width : Infinity
     for (const [i, line] of this.lines.entries()) {
       const active = this.items[i]!.running === true
-      line.content = fit(`${i === this.selected ? "> " : "  "}${this.items[i]!.name}`, width)
+      line.content = label(`${i === this.selected ? "> " : "  "}${this.items[i]!.name}`, chars)
       line.bg = i === this.selected ? color.selected : color.panel
       // A running session is a clear active line, not just a marker glyph.
       line.fg = i === this.selected ? color.text : active ? color.accent : color.text
@@ -156,7 +152,7 @@ export class SessionListRenderable extends ScrollBoxRenderable {
     }
     for (const heading of this.headings)
       heading.node.content =
-        width > 0 && heading.text.startsWith("/") ? fitPath(heading.text, width) : fit(heading.text, width)
+        width > 0 && heading.text.startsWith("/") ? fitPath(heading.text, width) : label(heading.text, chars)
   }
 
   setSelectedIndex(index: number, notify = true) {
