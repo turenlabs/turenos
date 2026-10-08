@@ -15,6 +15,10 @@ dashboard -> Connection (src/server/) -> HTTP(S) TurenOS server, directly or thr
 
 `src/cli.ts` parses arguments and `src/tui-auth.ts` resolves credentials for an explicit URL. A first argument that names an agent command (`sessions`, `show`, `send`, `wait`, `pending`, `approve`, `reject`, `answer`, `stop`) runs it from `src/agent/` instead and never starts the renderer. A lowercase word in that position that is not a command, such as a typo, takes the same path and fails as a usage error (exit 2) instead of being read as a server URL. `runTui` requires an interactive stdin and stdout, starts the OpenTUI renderer and hands it to `mountApp`. `mountApp` owns the server picker and the dashboard for the connected server. It resolves a target to an endpoint and mounts the new dashboard before disposing the old one, so a failed switch leaves the current dashboard untouched. `dispose()` removes the dashboard's key and resize listeners, timers, live stream, connection and renderables without destroying the renderer. The package depends on the workspace `@turenlabs/client` (the generated Promise client) and on no other TurenOS runtime package.
 
+## Shared with TurenOS
+
+The client's only TurenOS dependency is `@turenlabs/client`. Rules the desktop app applies too come from it rather than from copies: model ordering and visibility (`./models`), context-window usage (`./context`) and `file://` attachment URLs (`./paths`). Formats the server writes come the same way: placeholder session titles, the interrupted-turn messages and the provider base-URL rule (`./session-title`, `./turn-interruption`, `./provider-url`, re-exported from `@turenlabs/schema`, where core reads them). These modules import nothing heavy, and `packages/client/test/import-boundaries.test.ts` keeps `effect` out of them. Terminal-specific work stays in the client: rendering, the event fold, response validation and the mention grammar.
+
 ## Module map
 
 Every feature folder under `packages/tui/src/` has a façade module beside it (`harness.ts` for `harness/`, `index.ts` for `dashboard/`) that exposes the feature's controls; the folder holds the implementation. Files stay under 400 lines and functions under 60, enforced by the root lint job.
@@ -131,4 +135,5 @@ The code started in the standalone `turen-tui` repository, which derived from th
 - `packages/tui/src/harness.ts`, `packages/tui/src/harness/confirm.ts`, `packages/tui/src/goal-controls.ts`
 - `packages/tui/src/server/queries.ts`, `packages/tui/src/prompt-files.ts`
 - `packages/client/src/models.ts`, `packages/tui/src/models/rows.ts`
+- `packages/client/src/context.ts`, `packages/client/src/paths.ts`, `packages/schema/src/session-title.ts`, `packages/schema/src/turn-interruption.ts`, `packages/schema/src/provider-url.ts`
 - `packages/tui/package.json`
