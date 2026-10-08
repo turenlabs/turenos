@@ -1,5 +1,5 @@
 export { transcript } from "./messages"
-export { errorText, httpStatus, refused } from "./server/errors"
+export { errorText, httpStatus, refused, routeMissing } from "./server/errors"
 export { connect } from "./server/connect"
 export { WorktreeNotStartedError } from "./server/worktree"
 export { checkLaunch } from "./server/launch"

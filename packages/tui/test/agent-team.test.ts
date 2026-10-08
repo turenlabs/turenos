@@ -92,6 +92,14 @@ function team(routes: Record<string, Route> = {}) {
 const conflict = () =>
   Response.json({ _tag: "ConflictError", message: "Archived rooms are read-only" }, { status: 409 })
 
+test("a server from before Team rooms is named as such, not as a bare 404", async () => {
+  const server = turen({ routes: {} })
+  const result = await agent(["team", "rooms"], { url: server.url })
+  expect(result.code).toBe(1)
+  expect(result.stderr).toContain("no Team rooms")
+  expect(result.stderr).not.toContain("HTTP 404")
+})
+
 test("team rooms lists active rooms in one request, and --all adds archived ones", async () => {
   const reads: string[] = []
   const server = team({

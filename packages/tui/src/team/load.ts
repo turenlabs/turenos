@@ -1,7 +1,10 @@
 import { mergeMessages } from "@turenlabs/client/team"
-import { errorText } from "../server"
+import { errorText, routeMissing } from "../server"
 import { MAX_MESSAGES, PAGE, viewOf, type Answer, type TeamContext } from "./types"
 import type { TeamStateOutput } from "@turenlabs/client"
+
+/** What a server from before Team rooms (TurenOS 1.0.43) answers instead of a room. */
+export const teamMissing = "This server has no Team rooms; they need TurenOS 1.0.43 or later"
 
 /** The in-flight load; a request that arrives meanwhile runs once more afterwards. */
 export type Loader = { ctx: TeamContext; running: Promise<void> | undefined; again: boolean; older: boolean }
@@ -51,7 +54,7 @@ async function once(loader: Loader) {
     else await open(loader, wanted)
     if (!state.closed) view.error = undefined
   } catch (error) {
-    if (!state.closed) view.error = errorText(error)
+    if (!state.closed) view.error = routeMissing(error) ? teamMissing : errorText(error)
   }
 }
 

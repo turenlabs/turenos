@@ -50,6 +50,11 @@ export function httpStatus(error: unknown): number | undefined {
   return undefined
 }
 
+/** A 404 with no declared error body: the server has no such route, as opposed to a route reporting a missing item. */
+export function routeMissing(error: unknown) {
+  return error instanceof ClientError && error.reason === "UnexpectedStatus" && httpStatus(error) === 404
+}
+
 /**
  * True when the server definitely refused a request (4xx other than 408 and 409), so nothing was
  * admitted. Transport failures, timeouts, 5xx and 409 are ambiguous: the request may have landed.

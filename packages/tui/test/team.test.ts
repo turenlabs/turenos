@@ -34,6 +34,8 @@ test("polling asks after the highest loaded message and merges the answer", asyn
 test("a server without the Team route shows why, keeps the dashboard connected, and offers Sessions", async () => {
   const { view, screen } = await open({})
   const frame = await screen("Team unavailable")
+  expect(frame).toContain("no Team rooms")
+  expect(frame).toContain("1.0.43")
   expect(frame).toContain("Press r to retry.")
   expect(frame).toContain("Sessions remain available")
   expect(frame).not.toContain("Disconnected")
