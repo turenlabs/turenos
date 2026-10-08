@@ -83,6 +83,8 @@ import { SessionV2Cutover } from "@/session/v2-cutover"
 import { SecurityStorage } from "@/security/storage"
 import { LoopScheduler } from "@/loop/scheduler"
 import { Loop } from "@turenlabs/core/loop"
+import { TeamWorkspace } from "@turenlabs/core/team/workspace"
+import { TeamRuntime } from "@/team/runtime"
 import { lazy } from "@/util/lazy"
 import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@turenlabs/server/cors"
 import { ServerAuth } from "@/server/auth"
@@ -361,6 +363,8 @@ export function createRoutes(
             SessionReviewer.node,
             Loop.node,
             LoopScheduler.node,
+            TeamWorkspace.node,
+            TeamRuntime.node,
           ]),
           [
             [LocationServiceMap.node, locationServiceMapV2],

@@ -1,5 +1,9 @@
 # Automations
 
+Automations now appear as duties under persistent teammates in **Team**.
+See [Team](../team.md) for room messaging and teammate operation.
+This page remains the workflow and trigger reference.
+
 Automations are durable workflows that run Agent and Skill steps on a schedule and deliver their results inside TurenOS. They run on the currently selected configured TurenOS server and are independent of the conversation that created them.
 
 For the scheduler, lease model, storage, and HTTP surface behind them, see
@@ -7,7 +11,7 @@ For the scheduler, lease model, storage, and HTTP surface behind them, see
 
 ## Create an Automation
 
-Open **Automations** from the left rail. The builder provides reusable starter blueprints for common workflows, including daily briefings, CI failure triage, and documentation drift.
+Open **Team** from the left rail, select a teammate, and add a duty. The builder provides starter blueprints for daily briefings, CI failure triage, and documentation drift.
 
 The builder is a node canvas: the schedule trigger, each workflow step, and TurenOS delivery appear as connected nodes. Selecting a node opens its configuration in the inspector panel, and the `+` connectors insert a step at that position. Saved Automations have two tabs: **Editor** for the canvas and **Runs** for run history. The sidebar list shows each Automation's most recent run status.
 

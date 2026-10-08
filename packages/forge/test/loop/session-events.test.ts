@@ -1,6 +1,7 @@
 import { expect } from "bun:test"
 import { Deferred, Effect, Layer, LayerMap, Stream } from "effect"
 import { Loop } from "@turenlabs/core/loop"
+import { TeamWorkspace } from "@turenlabs/core/team/workspace"
 import { Database } from "@turenlabs/core/database/database"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -12,7 +13,7 @@ import type { LocationServices } from "@turenlabs/core/location-services"
 import { LoopScheduler } from "../../src/loop/scheduler"
 import { awaitWithTimeout, testEffect } from "../lib/effect"
 
-const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Loop.node])))
+const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Loop.node, TeamWorkspace.node])))
 const unexpected = () => Effect.die("Unexpected probe service call")
 
 for (const scenario of [
@@ -92,6 +93,7 @@ for (const scenario of [
   it.live(scenario.name, () =>
     Effect.gen(function* () {
       const loops = yield* Loop.Service
+      const team = yield* TeamWorkspace.Service
       const directory = "/work/probe-source"
       const info = yield* loops.create({
         name: "session-end probe",
@@ -104,6 +106,7 @@ for (const scenario of [
       const event = { data: { sessionID, finish: "stop" } }
       const dependencies = Layer.mergeAll(
         Layer.succeed(Loop.Service, loops),
+        Layer.succeed(TeamWorkspace.Service, team),
         Layer.mock(SessionV2.Service, {
           goal: { get: unexpected, set: unexpected, edit: unexpected, status: unexpected, clear: unexpected },
           revert: { stage: unexpected, clear: unexpected, commit: unexpected },
@@ -139,7 +142,7 @@ for (const scenario of [
           LoopScheduler.node.implementation as Layer.Layer<
             LoopScheduler.Service,
             never,
-            Loop.Service | SessionV2.Service | LocationServiceMap.Service | EventV2.Service
+            Loop.Service | TeamWorkspace.Service | SessionV2.Service | LocationServiceMap.Service | EventV2.Service
           >
         ).pipe(Layer.provide(dependencies)),
       )

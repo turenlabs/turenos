@@ -9,7 +9,16 @@ import { Font } from "@turenlabs/ui/font"
 import { Splash } from "@turenlabs/ui/logo"
 import { ThemeProvider } from "@turenlabs/ui/theme/context"
 import { MetaProvider } from "@solidjs/meta"
-import { type BaseRouterProps, Navigate, Route, Router, useNavigate, useParams, useSearchParams } from "@solidjs/router"
+import {
+  type BaseRouterProps,
+  Navigate,
+  Route,
+  Router,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "@solidjs/router"
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query"
 import { Effect } from "effect"
 import { base64Encode } from "@turenlabs/core/util/encode"
@@ -67,6 +76,7 @@ import { ProviderUsagePage } from "@/pages/provider-usage"
 
 const NewSession = lazy(() => import("@/pages/new-session"))
 const AutomationsPage = lazy(() => import("@/pages/loops"))
+const TeamPage = lazy(() => import("@/pages/team"))
 const ExtendPage = lazy(() => import("@/pages/extend"))
 const SystemMapPage = lazy(() => import("@/pages/system-map"))
 const SessionReplayPage = lazy(() => import("@/pages/session-replay"))
@@ -83,25 +93,17 @@ const LobbyBetaRoute = () => {
   )
 }
 
-const AutomationsGate = (props: ParentProps) => {
-  const settings = useSettings()
-  return (
-    <Show when={settings.ready()} fallback={<div class="size-full min-h-0 bg-v2-background-bg-deep" aria-busy="true" />}>
-      <Show when={settings.general.automationsEnabled()} fallback={<Navigate href="/" />}>
-        {props.children}
-      </Show>
-    </Show>
-  )
-}
-
-const AutomationsRoute = () => (
-  <AutomationsGate>
-    <Suspense fallback={<div class="size-full min-h-0 bg-v2-background-bg-deep" aria-busy="true" />}>
-      <AutomationsPage />
-    </Suspense>
-  </AutomationsGate>
+const TeamRoute = () => (
+  <Suspense fallback={<div class="size-full min-h-0 bg-v2-background-bg-deep" aria-busy="true" />}>
+    <TeamPage />
+  </Suspense>
 )
 
+const TeamDutyRoute = () => (
+  <Suspense fallback={<div class="size-full min-h-0 bg-v2-background-bg-deep" aria-busy="true" />}>
+    <AutomationsPage />
+  </Suspense>
+)
 
 const SessionRoute = () => {
   const settings = useSettings()
@@ -670,9 +672,9 @@ function Routes(props: { serverScoped?: JSX.Element }) {
         <Route path="/lobby/:roomID?" component={LobbyBetaRoute} />
         <Route path="/:dir/session/:id" component={NewLayoutLegacySessionRedirect} />
         <Route path="/server/:serverKey/session/:id" component={TargetSessionRoute} />
-        {/* Automations resolves the currently selected configured server itself, so the
-            route stays server-agnostic while its page owns the SDK connection. */}
-        <Route path="/automations/:id?" component={AutomationsRoute} />
+        <Route path="/team/duties/:id?" component={TeamDutyRoute} />
+        <Route path="/team/:roomID?" component={TeamRoute} />
+        <Route path="/automations/:id?" component={LoopsLegacyRedirect} />
         <Route path="/loops/:id?" component={LoopsLegacyRedirect} />
       </Show>
       <Route path="/new-session" component={DraftRoute} />
@@ -700,10 +702,14 @@ function PlannedSurface(props: { name: string }) {
 
 function LoopsLegacyRedirect() {
   const params = useParams<{ id?: string }>()
+  const location = useLocation()
+  const [search] = useSearchParams<{ teammate?: string }>()
   return (
-    <AutomationsGate>
-      <Navigate href={params.id ? `/automations/${params.id}` : "/automations"} />
-    </AutomationsGate>
+    <Navigate
+      href={
+        (params.id ? `/team/duties/${params.id}` : search.teammate ? "/team/duties/new" : "/team") + location.search
+      }
+    />
   )
 }
 
