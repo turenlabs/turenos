@@ -1,5 +1,5 @@
 import { outsideNotice } from "../mentions/outside"
-import { errorText } from "../server"
+import { errorText, WorktreeNotStartedError } from "../server"
 import { folderContains } from "../working-folders"
 import type { LaunchForm } from "./context"
 import { loadAgents } from "./agents"
@@ -13,7 +13,12 @@ export async function submitLaunch(form: LaunchForm) {
   if (!current.start.input()) {
     if (form.task.plainText.trim().startsWith("!"))
       throw new Error("Shell commands run in an existing session: start the session, then send !command.")
-    const notice = outsideNotice(form.task.plainText, form.directory.value.trim(), form.outsideAck)
+    const notice = outsideNotice(
+      form.task.plainText,
+      form.directory.value.trim(),
+      form.outsideAck,
+      form.deps.connection,
+    )
     form.outsideAck = notice.key
     if (notice.message) throw new Error(notice.message)
     await prepare(form)
@@ -76,7 +81,10 @@ async function prepareWorktree(form: LaunchForm) {
   )
   // The server keeps preparing after Esc; the same name lets the next send find that worktree.
   const result = await Promise.race([
-    form.deps.connection.worktree(directory.value.trim(), worktree.name, retry, stop.signal),
+    form.deps.connection.worktree(directory.value.trim(), worktree.name, retry, stop.signal).catch((error) => {
+      if (error instanceof WorktreeNotStartedError) worktree.attempted = false
+      throw error
+    }),
     cancelled,
   ]).finally(() => {
     form.preparing = undefined

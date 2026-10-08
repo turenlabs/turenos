@@ -1,4 +1,4 @@
-import { checkDirectory, isRecord } from "../response-validation"
+import { pathKey } from "../path-key"
 
 export const scope = "desktop/store/working-folders"
 export const key = "open"
@@ -21,7 +21,9 @@ export function directories(value: unknown): string[] {
     invalid()
   for (const directory of value.directories) checkDirectory(directory)
   if (new Set(value.directories).size !== value.directories.length) invalid()
-  return [...value.directories] as string[]
+  // Older TUI versions compared strings literally; equivalent drive spellings
+  // remain readable and converge to one entry on the next membership change.
+  return [...new Map((value.directories as string[]).map((directory) => [pathKey(directory), directory])).values()]
 }
 
 export function state(value: unknown): State {
@@ -29,6 +31,21 @@ export function state(value: unknown): State {
   for (const field of [value.revision, value.timeCreated, value.timeUpdated]) {
     if (typeof field !== "number" || !Number.isSafeInteger(field) || field < 0) invalid()
   }
-  if (Buffer.byteLength(value.value, "utf8") > limit) invalid()
+  if (new TextEncoder().encode(value.value).byteLength > limit) invalid()
   return { revision: value.revision as number, directories: directories(JSON.parse(value.value)) }
+}
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+export function checkDirectory(value: unknown): asserts value is string {
+  if (
+    typeof value !== "string" ||
+    !value ||
+    value.length > 4096 ||
+    /[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/.test(value) ||
+    !(value.startsWith("/") || value.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(value))
+  )
+    invalid()
 }

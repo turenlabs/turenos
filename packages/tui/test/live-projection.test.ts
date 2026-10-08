@@ -54,6 +54,53 @@ function start(projection: ReturnType<typeof createLiveProjection>, messageID = 
 }
 
 describe("selected-session live projection", () => {
+  test("a settled persisted overlay leaves when more than a page arrives between snapshots", () => {
+    const projection = createLiveProjection(session)
+    projection.snapshot([assistant("Old answer")])
+    projection.apply(event("step.ended", { finish: "stop", cost: 0, tokens: session.tokens }))
+    const page = Array.from({ length: 30 }, (_, i) => ({
+      id: `msg_new_${i}`,
+      type: "user" as const,
+      text: "Newer request",
+      time: { created: 0 },
+    }))
+    expect(projection.snapshot(page)).toEqual(page)
+    expect(projection.messages().at(-1)?.id).toBe("msg_new_29")
+  })
+
+  test("a settled overlay leaves when an overlapping snapshot advances past it", () => {
+    const projection = createLiveProjection(session)
+    const anchor = { id: "msg_anchor", type: "user" as const, text: "Next request", time: { created: 0 } }
+    // Ordering is the page's order, not its timestamps or lexical IDs.
+    projection.snapshot([assistant("Old answer"), anchor])
+    projection.apply(event("step.ended", { finish: "stop", cost: 0, tokens: session.tokens }))
+    const page = [anchor, ...Array.from({ length: 29 }, (_, i) => ({ ...anchor, id: `msg_new_${i}` }))]
+    expect(projection.snapshot(page)).toEqual(page)
+    expect(projection.messages().at(-1)?.id).toBe("msg_new_28")
+  })
+
+  test("rollover retains a new settled overlay not yet observed in a snapshot", () => {
+    const projection = createLiveProjection(session)
+    const anchor = { id: "msg_anchor", type: "user" as const, text: "Request", time: { created: 1 } }
+    projection.snapshot([anchor])
+    start(projection)
+    projection.apply(event("text.ended", { textID: "part", text: "Fresh answer" }))
+    projection.apply(event("step.ended", { finish: "stop", cost: 0, tokens: session.tokens }))
+    expect(projection.snapshot([{ ...anchor, id: "msg_newer" }]).at(-1)).toMatchObject({
+      id: "msg_assistant",
+      finish: "stop",
+    })
+  })
+
+  test("empty and older overlapping snapshots retain a settled overlay", () => {
+    const projection = createLiveProjection(session)
+    const anchor = { id: "msg_anchor", type: "user" as const, text: "Request", time: { created: 1 } }
+    projection.snapshot([anchor, assistant("Fresh answer")])
+    projection.apply(event("step.ended", { finish: "stop", cost: 0, tokens: session.tokens }))
+    expect(projection.snapshot([anchor]).at(-1)?.id).toBe("msg_assistant")
+    expect(projection.snapshot([]).at(-1)?.id).toBe("msg_assistant")
+  })
+
   test("completed snapshots release overlay capacity for later active turns", () => {
     const projection = createLiveProjection(session)
     for (let turn = 0; turn < 20; turn++) {

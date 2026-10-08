@@ -1,9 +1,9 @@
 import type { CliRenderer, InputRenderable, SelectRenderable, TextRenderable } from "@opentui/core"
 import type { Dialogs } from "../dialogs"
 import type { changeSummary } from "../diff"
-import type { Connection, Session } from "../server"
+import { sameSession, type Connection, type Session } from "../server"
 import type { DashboardState, ModalState } from "../state"
-import { boundary, sameSession } from "./session"
+import { boundary } from "./session"
 
 export type RewindAction = "undo" | "redo"
 

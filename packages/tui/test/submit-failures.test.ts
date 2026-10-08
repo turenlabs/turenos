@@ -3,8 +3,7 @@ import { promptPayload } from "../src/prompt-files"
 import { connect } from "../src/server"
 import { cleanup, dashboard, session, turen, type Route } from "./support"
 
-const invalid = (message: string) => () =>
-  Response.json({ _tag: "InvalidRequestError", message }, { status: 400 })
+const invalid = (message: string) => () => Response.json({ _tag: "InvalidRequestError", message }, { status: 400 })
 const agents = (_: Request, url: URL) => ({
   location: { directory: url.searchParams.get("location[directory]") },
   data: [{ id: "build", mode: "primary", hidden: false, request: { headers: {}, body: {} }, permissions: [] }],
@@ -33,7 +32,8 @@ test("a shell command over the local limit leaves the reply editable and unlocke
 test("a prompt the server rejects with a 4xx stays editable and resends under the same ID", async () => {
   let calls = 0
   const { server, view, screen } = await dashboard({
-    "POST /api/session/ses_main/prompt": (request) => (++calls === 1 ? invalid("Prompt rejected for now")() : accepted(request)),
+    "POST /api/session/ses_main/prompt": (request) =>
+      ++calls === 1 ? invalid("Prompt rejected for now")() : accepted(request),
   })
   view.mockInput.pressKey("f")
   await view.mockInput.typeText("first")
@@ -134,35 +134,19 @@ test("one deleted active session does not fail the snapshot", async () => {
   expect(snapshot.sessions.map((item) => item.id)).toEqual(["ses_main"])
 })
 
-test("kill reports task cancels that failed and ignores tasks that already finished", async () => {
-  const task = (id: string, revision: number) => ({
-    id,
-    rootSessionID: "ses_main",
-    parentSessionID: "ses_main",
-    childSessionID: `ses_${id}`,
-    agent: "explore",
-    description: id,
-    depth: 1,
-    status: "running",
-    revision,
-    time: { created: 1, updated: 1 },
-  })
-  const { screen, palette, confirm } = await dashboard({
-    "GET /api/session/ses_main/task": () => ({
-      data: [],
-      active: [task("tsk_a", 1), task("tsk_b", 2), task("tsk_c", 3)],
-      cursor: { next: "older" },
-    }),
-    "POST /api/session/ses_main/interrupt": () => new Response(null, { status: 204 }),
-    "POST /api/session/ses_main/task/tsk_a/cancel": () => new Response("boom", { status: 500 }),
-    "POST /api/session/ses_main/task/tsk_b/cancel": () =>
-      Response.json({ _tag: "TaskNotFoundError", message: "gone" }, { status: 404 }),
-    "POST /api/session/ses_main/task/tsk_c/cancel": () => ({ data: task("tsk_c", 4) }),
+test("kill reports server task-tree cancellation failure without claiming success", async () => {
+  const { screen, palette, confirm, server } = await dashboard({
+    "POST /api/session/ses_main/interrupt": () =>
+      Response.json(
+        { _tag: "ServiceUnavailableError", message: "Child execution did not stop", service: "session.interrupt" },
+        { status: 503 },
+      ),
   })
   await palette("kill")
   await screen("Confirmation (type kill)")
   await confirm("kill")
-  await screen("1 cancelled, 1 failed, 1 not listed")
+  await screen("Child execution did not stop")
+  expect(server.sent("/api/session/ses_main/interrupt")).toHaveLength(1)
 })
 
 test("an escaping or malformed mention is flagged before send, and a malformed range is not attached", async () => {

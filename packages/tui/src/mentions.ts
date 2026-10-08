@@ -1,5 +1,5 @@
 import type { CliRenderer, KeyEvent, TextareaRenderable } from "@opentui/core"
-import { acceptMention, mentionKey } from "./mentions/accept"
+import { submitMention, mentionKey } from "./mentions/accept"
 import { createMentionPopup, type Entry, type Location } from "./mentions/popup"
 import type { DashboardState, ModalState } from "./state"
 import type { SuggestionPopup } from "./suggest"
@@ -8,6 +8,7 @@ export function createMentions(
   renderer: CliRenderer,
   state: Pick<DashboardState, "modal" | "closed">,
   connection: {
+    missingFiles?: Set<string>
     findFiles: (
       directory: string,
       query: string,
@@ -26,11 +27,7 @@ export function createMentions(
     const popup = createMentionPopup(env, dialog, editor, location, locked)
     current = popup
     const previousSubmit = dialog.beforeSubmit
-    dialog.beforeSubmit = () => {
-      if (popup.usable() && popup.visible && popup.status === "ready" && popup.choices.length)
-        return acceptMention(popup)
-      return previousSubmit?.() ?? false
-    }
+    dialog.beforeSubmit = () => submitMention(popup, editor) || (previousSubmit?.() ?? false)
     return { key: (event: KeyEvent) => mentionKey(popup, editor, event) }
   }
 

@@ -9,6 +9,10 @@ test("working folders include nested directories but not prefix siblings", () =>
   expect(folderContains("/", "/srv/repo")).toBe(true)
   expect(folderContains("C:\\Repo", "c:/repo/package")).toBe(true)
   expect(folderContains("C:\\Repo", "C:\\Repo-other")).toBe(false)
+  expect(folderContains("\\\\wsl$\\Ubuntu\\Repo", "\\\\wsl$\\Ubuntu\\Repo\\src")).toBe(true)
+  expect(folderContains("\\\\wsl$\\Ubuntu\\Repo", "\\\\wsl$\\Ubuntu\\repo\\src")).toBe(false)
+  expect(folderContains("\\\\?\\C:\\Repo", "c:/repo/src")).toBe(true)
+  expect(folderContains("\\\\?\\UNC\\wsl$\\Ubuntu\\Repo", "\\\\wsl$\\Ubuntu\\repo")).toBe(false)
 })
 
 const scope = "desktop/store/working-folders"

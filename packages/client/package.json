@@ -8,8 +8,11 @@
     ".": "./src/index.ts",
     "./effect": "./src/effect.ts",
     "./models": "./src/models.ts",
+    "./automation-schedule": "./src/automation-schedule.ts",
     "./context": "./src/context.ts",
     "./paths": "./src/paths.ts",
+    "./path-key": "./src/path-key.ts",
+    "./working-folders": "./src/working-folders.ts",
     "./provider-url": "./src/provider-url.ts",
     "./session-title": "./src/session-title.ts",
     "./turn-interruption": "./src/turn-interruption.ts"

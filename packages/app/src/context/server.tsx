@@ -1,9 +1,12 @@
 import { createSimpleContext } from "@turenlabs/ui/context"
-import { type Accessor, batch, createMemo } from "solid-js"
+import { type Accessor, batch, createMemo, createEffect, onCleanup } from "solid-js"
 import { createStore, produce, type SetStoreFunction, type Store } from "solid-js/store"
 import { Persist, persisted } from "@/utils/persist"
 import { pathKey } from "@/utils/path-key"
 import { ServerScope } from "@/utils/server-scope"
+import { createServerFolderStores, reconcileWorkingFolders } from "@/utils/working-folder-sync"
+import { usePlatform } from "./platform"
+import { showToast } from "@/utils/toast"
 
 type StoredProject = { worktree: string; expanded: boolean }
 type StoredServer = string | ServerConnection.HttpBase | ServerConnection.Http
@@ -114,6 +117,7 @@ export function createServerProjects<T extends ServerProjectState>(input: {
   scope: Accessor<ServerScope>
   store: Store<T>
   setStore: SetStoreFunction<T>
+  changed?: (directory: string, open: boolean) => void
 }) {
   const setStore = input.setStore as unknown as SetStoreFunction<ServerProjectState>
   const current = () => input.store.projects[input.scope()] ?? []
@@ -129,12 +133,14 @@ export function createServerProjects<T extends ServerProjectState>(input: {
       input.scope(),
       current().filter((project) => pathKey(project.worktree) !== key),
     )
+    input.changed?.(directory, false)
   }
   return {
     list: current,
     recentlyClosed: currentClosed,
     remove,
     open(directory: string) {
+      input.changed?.(directory, true)
       const scope = input.scope()
       const key = pathKey(directory)
       const closed = currentClosed()
@@ -322,6 +328,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     canonicalLocalServer?: ServerConnection.Key
     servers?: Array<ServerConnection.Any>
   }) => {
+    const platform = usePlatform()
     const [store, setStore, _, ready] = persisted(
       {
         ...Persist.global("server", ["server.v3"]),
@@ -390,12 +397,67 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     )
 
     const scope = (key = state.active) => ServerScope.fromServerKey(key, props.canonicalLocalServer)
-    const projects = createServerProjects({ scope, store, setStore })
+    const folderStores = createServerFolderStores({
+      connection: (key) => allServers().find((server) => ServerConnection.key(server) === key),
+      projects: (key) => store.projects[scope(key)] ?? [],
+      apply: (key, directories) => {
+        const current = store.projects[scope(key)] ?? []
+        const opened = new Set(directories.map(pathKey))
+        const closed = current
+          .filter((project) => !opened.has(pathKey(project.worktree)))
+          .map((project) => project.worktree)
+        batch(() => {
+          setStore("projects", scope(key), reconcileWorkingFolders(current, directories))
+          setStore(
+            "recentlyClosed",
+            scope(key),
+            [...closed, ...(store.recentlyClosed[scope(key)] ?? [])]
+              .filter(
+                (directory, index, values) =>
+                  !opened.has(pathKey(directory)) &&
+                  values.findIndex((value) => pathKey(value) === pathKey(directory)) === index,
+              )
+              .slice(0, RECENTLY_CLOSED_HISTORY_LIMIT),
+          )
+        })
+      },
+      failed: (error) =>
+        showToast({
+          title: "Could not sync working folders",
+          description: error instanceof Error ? error.message : String(error),
+        }),
+      fetch: platform.fetch ?? fetch,
+    })
+    onCleanup(() => folderStores.dispose())
+    createEffect(() => {
+      if (!ready()) return
+      const folders = folderStores.get(state.active)
+      if (!folders) return
+      const refresh = () => void folders.refresh().catch(() => {})
+      refresh()
+      const timer = setInterval(refresh, 2000)
+      onCleanup(() => clearInterval(timer))
+    })
+    const projects = createServerProjects({
+      scope,
+      store,
+      setStore,
+      changed: (directory, open) => {
+        void folderStores.get(state.active)?.change(directory, open)
+      },
+    })
     const projectStores = new Map<ServerConnection.Key, ReturnType<typeof createServerProjects>>()
     const projectsForServer = (key: ServerConnection.Key) => {
       const existing = projectStores.get(key)
       if (existing) return existing
-      const next = createServerProjects({ scope: () => scope(key), store, setStore })
+      const next = createServerProjects({
+        scope: () => scope(key),
+        store,
+        setStore,
+        changed: (directory, open) => {
+          void folderStores.get(key)?.change(directory, open)
+        },
+      })
       projectStores.set(key, next)
       return next
     }

@@ -11,6 +11,7 @@ export type MentionEnvironment = {
   renderer: CliRenderer
   state: Pick<DashboardState, "modal" | "closed">
   connection: {
+    missingFiles?: Set<string>
     findFiles: (
       directory: string,
       query: string,
@@ -53,7 +54,10 @@ export function createMentionPopup(
       // A bare `#` range addresses an already-chosen file. Inside quotes it is
       // part of the name, so only the bare form stops searching.
       if (!quoted && query.includes("#")) return undefined
-      return { query, start: cursor - query.length - (quoted ? 2 : 1), end: cursor }
+      // Folder completion leaves the caret before this quote; replace it with
+      // the completed path's quote rather than retaining a second one.
+      const end = quoted && text[cursor] === '"' ? cursor + 1 : cursor
+      return { query, start: cursor - query.length - (quoted ? 2 : 1), end }
     },
     scope: (query) => JSON.stringify([location().directory, location().workspaceID, query]),
     async load(query, signal) {
@@ -61,7 +65,8 @@ export function createMentionPopup(
       if (query.length < minQuery) return []
       const where = location()
       const found = await env.connection.findFiles(where.directory, query, where.workspaceID, signal)
-      recordSearch(where.directory, query, found.length > 0)
+      if (!signal.aborted && env.connection.missingFiles)
+        recordSearch(env.connection.missingFiles, where, query, found.length > 0)
       return found
     },
     // Recursive search is expensive; match the session finder's typing pause.

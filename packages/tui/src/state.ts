@@ -11,6 +11,7 @@ import { SessionTitle } from "@turenlabs/client/session-title"
 import { display } from "./messages"
 import { stamp } from "./menus/stamp"
 import type { Connection, Detail, Session, Snapshot } from "./server"
+import type { promptPayload } from "./prompt-files"
 
 export type Tab = "sessions" | "terminals" | "automations"
 export type Field = InputRenderable | TextareaRenderable | SelectRenderable
@@ -33,6 +34,7 @@ export type MessageDraft = {
   recipient: Session
   delivery: "steer" | "queue"
   submitted?: string
+  prompt?: ReturnType<typeof promptPayload>
   command?: { command: string; arguments: string }
   shell?: string
   restoredFrom?: string

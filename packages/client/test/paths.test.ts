@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { fileURLToPath } from "node:url"
 import { absolutePath, encodeFilePath, isAbsolutePath } from "../src/paths"
 
 describe("absolutePath", () => {
@@ -22,11 +23,17 @@ describe("absolutePath", () => {
   test("joins a relative path to the directory once", () => {
     expect(absolutePath("/repo/", "src/a.ts")).toBe("/repo/src/a.ts")
     expect(absolutePath("C:\\repo\\", "src/a.ts")).toBe("C:\\repo/src/a.ts")
+    expect(absolutePath("/repo\\", "a.ts")).toBe("/repo\\/a.ts")
   })
 })
 
 describe("encodeFilePath", () => {
   describe("Linux/Unix paths", () => {
+    test("round-trips literal backslashes in POSIX filenames and directory names", () => {
+      for (const path of ["/srv/a\\b.ts", "/srv/dir\\/a.ts", "/srv/a\\# b.ts"]) {
+        expect(fileURLToPath(`file://${encodeFilePath(path)}`, { windows: false })).toBe(path)
+      }
+    })
     test("should handle Linux absolute path", () => {
       const linuxPath = "/home/user/project/README.md"
       const result = encodeFilePath(linuxPath)
@@ -96,6 +103,11 @@ describe("encodeFilePath", () => {
   })
 
   describe("Windows paths", () => {
+    test("preserves UNC and drive separator normalization", () => {
+      expect(encodeFilePath("\\\\host\\share\\a b.ts")).toBe("//host/share/a%20b.ts")
+      expect(encodeFilePath("//host/share\\a b.ts")).toBe("//host/share/a%20b.ts")
+      expect(encodeFilePath(absolutePath("C:\\repo", "src\\a b.ts"))).toBe("/C:/repo/src/a%20b.ts")
+    })
     test("should handle Windows absolute path with backslashes", () => {
       const windowsPath = "D:\\dev\\projects\\opencode\\README.bs.md"
       const result = encodeFilePath(windowsPath)

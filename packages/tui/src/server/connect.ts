@@ -26,7 +26,8 @@ export function connect(options: ConnectionOptions) {
   const client = Forge.make({ baseUrl: url.href, headers, fetch: transport })
   const folders = createWorkingFolders({ url, headers, transport })
   const api = createApi({ url, headers, signal: controller.signal })
-  const ctx: Context = { url, headers, controller, options, transport, client, folders, api }
+  const missingFiles = new Set<string>()
+  const ctx: Context = { url, headers, controller, options, transport, client, folders, api, missingFiles }
   const providers = createProviders({ url, headers, signal: controller.signal })
   return {
     address: url.origin,
@@ -34,6 +35,7 @@ export function connect(options: ConnectionOptions) {
     folders,
     client,
     api,
+    missingFiles,
     events: (signal: AbortSignal) => liveEvents(url, headers, AbortSignal.any([controller.signal, signal])),
     snapshot: () => snapshot(ctx),
     searchSessions: (input: SessionSearch, signal?: AbortSignal) => searchSessions(ctx, input, signal),

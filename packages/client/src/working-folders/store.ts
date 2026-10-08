@@ -1,5 +1,6 @@
-import { ClientError } from "@turenlabs/client"
-import { checkDirectory, isRecord } from "../response-validation"
+import { ClientError } from "../index"
+import { checkDirectory, isRecord } from "./validate"
+import { pathKey } from "../path-key"
 import { directories, invalid, key, limit, scope, state, type State } from "./validate"
 
 type Transport = (input: URL, init?: RequestInit) => Promise<Response>
@@ -61,7 +62,41 @@ async function request(s: Store, url: URL, init: RequestInit) {
       throw new Error("Authentication required. Check the server credentials.")
     throw new ClientError("UnexpectedStatus", { cause: { status: response.status } })
   }
-  return response.json() as Promise<unknown>
+  return readResponse(response)
+}
+
+/** The JSON envelope can escape every byte of its bounded stored value. */
+async function readResponse(response: Response): Promise<unknown> {
+  const maximum = limit * 2 + 8192
+  if (Number(response.headers.get("content-length")) > maximum) {
+    await response.body?.cancel()
+    invalid()
+  }
+  const reader = response.body?.getReader()
+  if (!reader) invalid()
+  const decoder = new TextDecoder()
+  const parts: string[] = []
+  let bytes = 0
+  try {
+    for (;;) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      bytes += chunk.value.byteLength
+      if (bytes > maximum) {
+        await reader.cancel()
+        invalid()
+      }
+      parts.push(decoder.decode(chunk.value, { stream: true }))
+    }
+    parts.push(decoder.decode())
+  } finally {
+    reader.releaseLock()
+  }
+  try {
+    return JSON.parse(parts.join("")) as unknown
+  } catch {
+    invalid()
+  }
 }
 
 export async function fetchState(s: Store) {
@@ -79,14 +114,14 @@ async function mutate(s: Store, directory: string, open: boolean) {
     const previous = await fetchState(s)
     const before = previous?.directories ?? []
     const after = open
-      ? before.includes(directory)
+      ? before.some((item) => pathKey(item) === pathKey(directory))
         ? before
         : [...before, directory]
-      : before.filter((item) => item !== directory)
+      : before.filter((item) => pathKey(item) !== pathKey(directory))
     if (previous && before.length === after.length) return current(s)
     directories({ version: 1, directories: after })
     const value = JSON.stringify({ version: 1, directories: after })
-    if (Buffer.byteLength(value, "utf8") > limit) invalid()
+    if (new TextEncoder().encode(value).byteLength > limit) invalid()
     const order = ++s.sequence
     try {
       const next = state(
@@ -116,6 +151,43 @@ async function mutate(s: Store, directory: string, open: boolean) {
 /** Writes run one at a time, each re-reading the revision it replaces. */
 export function enqueue(s: Store, directory: string, open: boolean) {
   const operation = s.queue.then(() => mutate(s, directory, open))
+  s.queue = operation.catch(() => {})
+  return operation
+}
+
+/** A first GUI visit may seed its legacy list, but never overwrites a shared list another client created. */
+export function migrate(s: Store, legacy: string[]) {
+  const operation = s.queue.then(async () => {
+    const existing = await fetchState(s)
+    if (existing) return current(s)
+    const unique = [...new Map(legacy.map((directory) => [pathKey(directory), directory])).values()]
+    directories({ version: 1, directories: unique })
+    const value = JSON.stringify({ version: 1, directories: unique })
+    if (new TextEncoder().encode(value).byteLength > limit) invalid()
+    const order = ++s.sequence
+    try {
+      const next = state(
+        await request(s, s.address, {
+          method: "PUT",
+          headers: s.headers,
+          body: JSON.stringify({ scope, key, value, expectedRevision: null }),
+        }),
+      )
+      if (JSON.stringify(next.directories) !== JSON.stringify(unique)) invalid()
+      observe(s, next, order)
+      return current(s)
+    } catch (error) {
+      if (
+        !(error instanceof ClientError) ||
+        error.reason !== "UnexpectedStatus" ||
+        !isRecord(error.cause) ||
+        error.cause.status !== 409
+      )
+        throw error
+      await fetchState(s)
+      return current(s)
+    }
+  })
   s.queue = operation.catch(() => {})
   return operation
 }

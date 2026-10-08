@@ -13,18 +13,24 @@ export type PromptFile = {
  * a shorter — possibly different — file. A leading delimiter keeps email
  * addresses and `a@b` from becoming attachments.
  */
-const mention = /(^|[\s([{"'])@(?:"([^"\u0000-\u001f\u007f-\u009f]{1,4096})"(#\d+(?:-\d+)?)?(?!#)|([^\s()[\]{}"'`]+))/g
+const mention =
+  /(^|[\s([{"'])@(?:"([^"\u0000-\u001f\u007f-\u009f]{1,4096})"(#\d+(?:-\d+)?)?(?=$|[\s()[\]{}"'`.,!?;:])|([^\s()[\]{}"'`]+))/g
 const hazard = /^[^\s()[\]{}"'`]+$/
 // A bare `file#5-` or `file#a-b` is a malformed range, not a file whose name ends that way.
 const malformedRange = /#(?:\d*|\w*-[\w-]*)$/
 
-/** Paths a finished file search found nothing for; such a mention stays text instead of becoming an attachment. */
-const missing = new Set<string>()
+/** Search results belong to one connection and workspace; parsing without a scope is independent of UI searches. */
+export type MentionScope = { missingFiles: ReadonlySet<string>; workspaceID?: string }
 
 /** Records what the server's file search answered for `query`, so a path it never resolved is not attached. */
-export function recordSearch(directory: string, query: string, found: boolean) {
-  if (!query || query.endsWith("/") || isAbsolutePath(query) || escapes(query)) return
-  const key = `${directory}\0${query}`
+export function recordSearch(
+  missing: Set<string>,
+  location: { directory: string; workspaceID?: string },
+  query: string,
+  found: boolean,
+) {
+  if (!query || query.endsWith("/") || escapes(query)) return
+  const key = searchKey(location.directory, query, location.workspaceID)
   if (found) missing.delete(key)
   else missing.add(key)
   if (missing.size > 256) missing.delete(missing.values().next().value!)
@@ -35,15 +41,15 @@ export function recordSearch(directory: string, query: string, found: boolean) {
  * slices any `?start=&end=` range at materialization time. This client never
  * opens the path itself, which is what lets it address files on a remote server.
  */
-export function parseMentions(text: string, directory: string): PromptFile[] {
-  return mentionReport(text, directory).files
+export function parseMentions(text: string, directory: string, scope?: MentionScope): PromptFile[] {
+  return mentionReport(text, directory, scope).files
 }
 
 /** The attachments a text produces, plus the mention texts whose path leaves the session directory. */
-export function mentionReport(text: string, directory: string) {
+export function mentionReport(text: string, directory: string, scope?: MentionScope) {
   const seen = new Set<string>()
   const found = [...text.matchAll(mention)]
-    .flatMap((match) => decodeMention(match, directory) ?? [])
+    .flatMap((match) => decodeMention(match, directory, scope) ?? [])
     .filter((item) => !seen.has(item.file.uri) && seen.add(item.file.uri))
     .slice(0, 32)
   const attached = found.filter((item) => !item.unresolved)
@@ -56,8 +62,8 @@ export function mentionReport(text: string, directory: string) {
 
 // A prompt without mentions keeps its original body, so ordinary messages and
 // their retries stay byte-identical to what earlier servers already accept.
-export function promptPayload(text: string, directory: string) {
-  const files = parseMentions(text, directory)
+export function promptPayload(text: string, directory: string, scope?: MentionScope) {
+  const files = parseMentions(text, directory, scope)
   return files.length ? { text, files } : { text }
 }
 
@@ -72,7 +78,7 @@ export function mentionText(path: string) {
   return bare ? `@${path}` : `@"${path}"`
 }
 
-function decodeMention(match: RegExpExecArray, directory: string) {
+function decodeMention(match: RegExpExecArray, directory: string, scope?: MentionScope) {
   const quoted = match[2] !== undefined
   const token = quoted ? match[2]! : match[4]!.replace(/[.,!?;:]+$/, "")
   const split = quoted ? undefined : /^(.+?)(#\d+(?:-\d+)?)$/.exec(token)
@@ -87,10 +93,18 @@ function decodeMention(match: RegExpExecArray, directory: string) {
   const offset = match.index + match[1]!.length
   const file: PromptFile = {
     uri,
-    name: path.split(/[\\/]/).at(-1) || path,
+    name: decodeURIComponent(new URL(uri).pathname.split("/").at(-1) || "") || path,
     source: { start: offset, end: offset + text.length, text },
   }
-  return { file, outside: escapes(path), unresolved: missing.has(`${directory}\0${path}`) }
+  return {
+    file,
+    outside: escapes(path),
+    unresolved: scope?.missingFiles.has(searchKey(directory, path, scope.workspaceID)),
+  }
+}
+
+function searchKey(directory: string, path: string, workspaceID?: string) {
+  return JSON.stringify([directory, workspaceID ?? null, path])
 }
 
 /** An absolute path, `~`, or a `..` segment reaches outside the directory the session works in. */

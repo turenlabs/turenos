@@ -523,6 +523,8 @@ import type {
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
+  WorktreeCreationStatusErrors,
+  WorktreeCreationStatusResponses,
   WorktreeListErrors,
   WorktreeListResponses,
   WorktreeRemoveErrors,
@@ -2121,6 +2123,42 @@ export class Worktree extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Get named worktree creation status
+   *
+   * Read a named creation in this server process. Unknown means no retained outcome, never ready.
+   */
+  public creationStatus<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      name: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "name" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      WorktreeCreationStatusResponses,
+      WorktreeCreationStatusErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/worktree/status",
+      ...options,
+      ...params,
     })
   }
 

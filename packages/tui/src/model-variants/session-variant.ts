@@ -1,5 +1,5 @@
 import { label } from "../state"
-import { errorText, refused, type Session } from "../server"
+import { errorText, refused, sameSession, type Session } from "../server"
 import { show } from "./show"
 import type { VariantsContext } from "./types"
 
@@ -89,16 +89,7 @@ async function fresh(ctx: VariantsContext, session: Session, model: { providerID
   if (ctx.blocked(session.id)) throw new Error("Task-owned subagent: use its owning session. Nothing changed.")
   const current = await ctx.connection.client.sessions.get({ sessionID: session.id })
   if (state.closed || ctx.blocked(session.id)) throw new Error("Session is no longer available for this action.")
-  if (
-    current.id !== session.id ||
-    current.projectID !== session.projectID ||
-    current.parentID !== session.parentID ||
-    current.subpath !== session.subpath ||
-    current.time.created !== session.time.created ||
-    current.location.directory !== session.location.directory ||
-    current.location.workspaceID !== session.location.workspaceID
-  )
-    throw new Error("Session identity changed. Close and reopen this control.")
+  if (!sameSession(current, session)) throw new Error("Session identity changed. Close and reopen this control.")
   // A session that never chose a model runs the one the footer shows, so it may still have none.
   if (current.model ? current.model.providerID !== model.providerID || current.model.id !== model.id : !!session.model)
     throw new Error("Model identity changed. Close and reopen this control.")

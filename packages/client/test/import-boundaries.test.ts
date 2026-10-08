@@ -32,11 +32,22 @@ describe("public import boundaries", () => {
 
   // The terminal client loads these without depending on `effect`.
   test("keeps the shared client rules free of effect", async () => {
-    for (const rules of ["models", "context", "paths", "provider-url", "session-title", "turn-interruption"]) {
-      const inputs = await bundleInputs(`@turenlabs/client/${rules}`, "bun")
+    for (const rules of [
+      "models",
+      "context",
+      "paths",
+      "path-key",
+      "working-folders",
+      "automation-schedule",
+      "provider-url",
+      "session-title",
+      "turn-interruption",
+    ]) {
+      const inputs = await bundleInputs(`@turenlabs/client/${rules}`, "browser")
       expect({ rules, effect: within(inputs, effect) }).toEqual({ rules, effect: [] })
       expect(within(inputs, protocol)).toEqual([])
       expect(within(inputs, core)).toEqual([])
+      expect(within(inputs, server)).toEqual([])
     }
   })
 })

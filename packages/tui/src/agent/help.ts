@@ -61,8 +61,9 @@ Reject a permission request.`,
 A label outside the options is accepted only when the question allows custom answers.`,
   stop: `Usage: turen-tui stop <session> [--tasks]
 
-Interrupt the session's current work; a session that is not running is reported as such and
-not interrupted. --tasks also cancels its active subagent tasks.`,
+Interrupt the running session and its unfinished subagent tasks through the server.
+An idle parent is not interrupted unless --tasks is given; that also cancels its unfinished
+subagent tasks. --json with --tasks reports tasks.status as cancelled, without per-task counts.`,
 }
 
 export function commandHelp(command: AgentCommand) {

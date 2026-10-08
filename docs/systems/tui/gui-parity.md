@@ -31,19 +31,19 @@ The TurenOS terminal client and TurenOS Desktop are two clients of the same serv
 
 ## Home, navigation, and settings
 
-| Desktop                                                 | TUI                                          |
-| ------------------------------------------------------- | -------------------------------------------- |
-| Session list, search, archived sessions                 | Sidebar, `Ctrl+K` (Recent, All, Archived)    |
-| Open project folders                                    | Working folders (shared with the desktop)    |
-| Automations: create, edit, pause, run now, runs, delete | Automations tab `3`                          |
-| Intel: advisories, KEV, news, feeds                     | `I`                                          |
-| Providers: connect, disconnect, remove                  | `,` → Providers; `F2` in the model picker    |
-| Usage and limits                                        | `,` → Usage and limits                       |
-| Extend: skills, MCP, data; secrets, settings, sign-in   | `,` → Extensions                             |
-| Memories                                                | `,` → Memories                               |
-| Agents' default models                                  | `,` → Agents                                 |
-| Permission checks                                       | `,` → Permissions (also removes saved rules) |
-| Servers: local app, SSH, URLs                           | `s`                                          |
+| Desktop                                                 | TUI                                              |
+| ------------------------------------------------------- | ------------------------------------------------ |
+| Session list, search, archived sessions                 | Sidebar, `Ctrl+K` (Recent, All, Archived)        |
+| Open project folders                                    | Working folders (shared server membership) |
+| Automations: create, edit, pause, run now, runs, delete | Automations tab `3`                              |
+| Intel: advisories, KEV, news, feeds                     | `I`                                              |
+| Providers: connect, disconnect, remove                  | `,` → Providers; `F2` in the model picker        |
+| Usage and limits                                        | `,` → Usage and limits                           |
+| Extend: skills, MCP, data; secrets, settings, sign-in   | `,` → Extensions                                 |
+| Memories                                                | `,` → Memories                                   |
+| Agents' default models                                  | `,` → Agents                                     |
+| Permission checks                                       | `,` → Permissions (also removes saved rules)     |
+| Servers: local app, SSH, URLs                           | `s`                                              |
 
 ## Left to the desktop
 

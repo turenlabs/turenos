@@ -509,9 +509,7 @@ test("enabled extension skills appear as slash commands and run as commands", as
 })
 
 /** Starts a new session with Workspace set to a new git worktree, against the given worktree routes. */
-async function worktreeLaunch(
-  routes: (events: ReturnType<typeof globalEvents>, order: string[]) => Record<string, Route>,
-) {
+async function worktreeLaunch(routes: (order: string[]) => Record<string, Route>) {
   const events = globalEvents()
   const order: string[] = []
   const app = await dashboard({
@@ -525,7 +523,7 @@ async function worktreeLaunch(
       const body = (await request.json()) as Record<string, unknown>
       return { data: { ...session(), id: body.id, location: body.location } }
     },
-    ...routes(events, order),
+    ...routes(order),
   })
   const view = app.view
   view.mockInput.pressKey("n")
@@ -546,40 +544,38 @@ async function worktreeLaunch(
 
 const worktreeName = async (request: Request) => ((await request.json()) as { name: string }).name
 
-test("a new worktree session starts only after the server has checked the worktree out", async () => {
-  const { screen, order, created } = await worktreeLaunch((events, order) => ({
-    "POST /experimental/worktree": async (request) => {
-      const name = await worktreeName(request)
-      order.push("created")
-      setTimeout(() => {
-        order.push("ready")
-        events.emit({ directory: `/srv/wt/${name}`, payload: { type: "worktree.ready", properties: { name } } })
-      }, 200)
-      return { name, branch: `turen/${name}`, directory: `/srv/wt/${name}` }
-    },
-  }))
-  await screen("Preparing a new git worktree")
-  await until(() => !!created())
-  expect(order).toEqual(["created", "ready", "session"])
-  expect(created()?.body).toMatchObject({
-    location: { directory: expect.stringMatching(/^\/srv\/wt\/tui-[0-9a-f]{8}$/) },
-  })
-})
-
-test("a worktree the server fails to prepare is reported, and the next try makes a new one", async () => {
+test("a new worktree session starts only after authoritative bootstrap readiness", async () => {
   const names: string[] = []
-  const { view, screen, created } = await worktreeLaunch((events) => ({
+  const { order, created } = await worktreeLaunch((order) => ({
     "POST /experimental/worktree": async (request) => {
       const name = await worktreeName(request)
       names.push(name)
-      setTimeout(() => {
-        events.emit({
-          directory: `/srv/wt/${name}`,
-          payload: { type: "worktree.failed", properties: { message: "checkout failed" } },
-        })
-      }, 50)
+      order.push("created")
       return { name, directory: `/srv/wt/${name}` }
     },
+    "GET /experimental/worktree/status": () => {
+      if (!names.length) return { status: "unknown" }
+      order.push("ready")
+      return { status: "ready", directory: `/srv/wt/${names[0]}` }
+    },
+  }))
+  await until(() => !!created())
+  expect(order).toEqual(["created", "ready", "session"])
+  expect(created()?.body).toMatchObject({ location: { directory: `/srv/wt/${names[0]}` } })
+})
+
+test("a failed worktree is reported, and the next try makes a new one", async () => {
+  const names: string[] = []
+  const { view, screen, created } = await worktreeLaunch(() => ({
+    "POST /experimental/worktree": async (request) => {
+      const name = await worktreeName(request)
+      names.push(name)
+      return { name, directory: `/srv/wt/${name}` }
+    },
+    "GET /experimental/worktree/status": (_, url) =>
+      names.includes(url.searchParams.get("name") ?? "")
+        ? { status: "failed", message: "checkout failed" }
+        : { status: "unknown" },
   }))
   await screen("could not prepare the worktree: checkout failed")
   view.mockInput.pressKey("s", { ctrl: true })
@@ -588,53 +584,53 @@ test("a worktree the server fails to prepare is reported, and the next try makes
   expect(created()).toBeUndefined()
 })
 
-test("Escape stops waiting for a worktree that never becomes ready and sends nothing else", async () => {
-  let streamClosed = false
+test("Escape stops waiting for pending worktree readiness without launching", async () => {
+  let posted = false
   const { view, screen, created, server } = await worktreeLaunch(() => ({
-    "GET /global/event": () =>
-      new Response(
-        new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(
-              new TextEncoder().encode(
-                `data: ${JSON.stringify({ payload: { type: "server.connected", properties: {} } })}\n\n`,
-              ),
-            )
-          },
-          cancel() {
-            streamClosed = true
-          },
-        }),
-        { headers: { "content-type": "text/event-stream" } },
-      ),
+    "GET /experimental/worktree/status": () => ({ status: posted ? "pending" : "unknown" }),
     "POST /experimental/worktree": async (request) => {
-      const name = await worktreeName(request)
-      return { name, directory: `/srv/wt/${name}` }
+      posted = true
+      return { name: await worktreeName(request), directory: "/srv/wt/pending" }
     },
   }))
+  await until(() => posted)
   await screen("Esc stops waiting")
-  const started = Date.now()
   view.mockInput.pressEscape()
   await screen("Stopped waiting for the worktree")
-  expect(Date.now() - started).toBeLessThan(1000)
-  await until(() => streamClosed)
   expect(created()).toBeUndefined()
   expect(server.requests.filter((item) => item.method === "POST")).toHaveLength(1)
   expect(view.captureCharFrame()).toContain("Esc keep draft")
 })
 
-test("after an uncertain worktree request, a retry reuses the worktree it made", async () => {
+test("preflight failure keeps a fresh creation safe to retry", async () => {
+  let reads = 0
+  let name = ""
+  const { view, screen, created, server } = await worktreeLaunch(() => ({
+    "GET /experimental/worktree/status": () => {
+      if (++reads === 1) return new Response("offline", { status: 503 })
+      return name ? { status: "ready", directory: `/srv/wt/${name}` } : { status: "unknown" }
+    },
+    "POST /experimental/worktree": async (request) => {
+      name = await worktreeName(request)
+      return { name, directory: `/srv/wt/${name}` }
+    },
+  }))
+  await screen("Worktree creation has not started")
+  expect(server.requests.filter((item) => item.method === "POST")).toHaveLength(0)
+  view.mockInput.pressKey("s", { ctrl: true })
+  await until(() => !!created())
+  expect(server.sent("/experimental/worktree")).toHaveLength(1)
+})
+
+test("after an uncertain worktree request, a retry reuses its authoritative outcome", async () => {
   const names: string[] = []
   const { view, screen, created } = await worktreeLaunch(() => ({
     "POST /experimental/worktree": async (request) => {
       names.push(await worktreeName(request))
       return new Response("upstream reset", { status: 502 })
     },
-    "GET /experimental/worktree": () => names.map((name) => `/srv/wt/${name}`),
-    "GET /file": () => [
-      { name: ".git", path: ".git", absolute: "/srv/wt/x/.git", type: "file", ignored: true },
-      { name: "README.md", path: "README.md", absolute: "/srv/wt/x/README.md", type: "file", ignored: false },
-    ],
+    "GET /experimental/worktree/status": () =>
+      names.length ? { status: "ready", directory: `/srv/wt/${names[0]}` } : { status: "unknown" },
   }))
   await screen("Server returned HTTP 502")
   view.mockInput.pressKey("s", { ctrl: true })

@@ -9,7 +9,7 @@ import type { MenuContext } from "./context"
 export type FoldersContext = MenuContext
 
 const INTRO =
-  "Open folders are shared with the GUI. Closing only hides a folder; it does not delete sessions or stop work."
+  "Working folders are shared with other clients on this server. Closing only hides a folder; it does not delete sessions or stop work."
 
 export function workingFolders(ctx: FoldersContext) {
   const { state, dialogs, connection, renderer } = ctx
@@ -37,7 +37,7 @@ export function workingFolders(ctx: FoldersContext) {
   const hint = () => {
     dialog.error.height = 3
     dialog.frame.title = ` Working folders › ${closing ? "Close" : "Open"} `
-    dialog.error.content = `Ctrl+S ${closing ? "Close folder in both clients" : "Open folder in both clients"}\nCtrl+R switch to ${closing ? "Open" : "Close"} mode · Tab switch field\nEsc close`
+    dialog.error.content = `Ctrl+S ${closing ? "Close" : "Open"} folder\nCtrl+R switch to ${closing ? "Open" : "Close"} mode · Tab switch field\nEsc close`
     dialog.error.fg = closing ? color.warning : color.muted
   }
   hint()
@@ -74,7 +74,7 @@ async function applyFolder(ctx: FoldersContext, target: string, closing: boolean
   if (state.snapshot) state.snapshot.workingFolders = result
   if (!closing) state.workingDirectory = target
   else if (state.workingDirectory === target) state.workingDirectory = undefined
-  ctx.actions.say(`${closing ? "Closed" : "Opened"} ${label(target, 200)} in both clients.`)
+  ctx.actions.say(`${closing ? "Closed" : "Opened"} ${label(target, 200)}.`)
 }
 
 /** Opening a folder the server cannot read would only fail later, as an HTTP 500 on session creation. */

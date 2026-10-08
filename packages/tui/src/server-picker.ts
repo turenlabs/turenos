@@ -55,7 +55,10 @@ export function createServerPicker(renderer: CliRenderer, servers: Servers, hook
     open,
     /** Opens straight into connecting, as at startup. */
     start(target: Target) {
+      // A failed explicit URL still needs a row to retry; remembering it lasts only for this picker.
+      if (target.kind === "url" && !target.saved) picker.visited.set(target.id, target)
       open()
+      picker.focusID = target.id
       void connect(picker, target)
     },
     close: (restore = true) => close(picker, restore),

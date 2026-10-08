@@ -66,13 +66,13 @@ test("a name-only edit leaves the schedule alone and a changed schedule is sent"
   expect(patched(changed)).toMatchObject({ intervalSeconds: 7200 })
 })
 
-test("an interval beyond 366 days is refused with a reason", async () => {
+test("an interval too long to count in seconds is refused with a reason", async () => {
   const app = await editLoop(loop)
   app.view.mockInput.pressTab()
   app.view.mockInput.pressTab()
   for (let step = 0; step < 8; step++) app.view.mockInput.pressBackspace()
   await app.confirm("every 999999999999999999d")
-  await app.screen("The longest interval is every 366d.")
+  await app.screen("That interval is too long.")
   expect(patched(app)).toBeUndefined()
 })
 

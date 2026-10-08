@@ -66,7 +66,7 @@ function openReply(ctx: RequestContext, session: Session, keepNotice = false) {
   ctx.messages.set(sessionID, draft)
   const delivery = wireDelivery(ctx, dialog, session, draft)
   const task = createReplyEditor(ctx, dialog, draft)
-  showAttachments(ctx, dialog, task, session.location.directory)
+  showAttachments(ctx, dialog, task, draft)
   dialog.save = () => {
     draft.text = draft.submitted ?? task.plainText
     draft.cursor = task.cursorOffset
@@ -191,9 +191,12 @@ async function submitReply(
     )
   // Every local check runs before the draft locks: a message that was never sent stays editable.
   const directory = current.location.directory
-  const request = prepare(ctx, draft, task.plainText, sessionID, directory)
+  const request = prepare(ctx, draft, task.plainText, current)
   if (draft.submitted === undefined && !draft.shell && !draft.command) {
-    const notice = outsideNotice(task.plainText, directory, attached.acknowledged)
+    const notice = outsideNotice(task.plainText, directory, attached.acknowledged, {
+      missingFiles: ctx.connection.missingFiles,
+      workspaceID: current.location.workspaceID,
+    })
     attached.acknowledged = notice.key
     if (notice.message) throw new Error(notice.message)
   }
@@ -205,7 +208,10 @@ async function submitReply(
     await request()
   } catch (error) {
     // A definite 4xx admitted nothing, so the text is editable again; the ID stays for the next send.
-    if (refused(error)) draft.submitted = undefined
+    if (refused(error)) {
+      draft.submitted = undefined
+      draft.prompt = undefined
+    }
     throw ownedError(ctx, sessionID, error)
   }
   ctx.messages.delete(sessionID)
@@ -234,7 +240,8 @@ async function classify(ctx: RequestContext, draft: MessageDraft, text: string, 
 }
 
 /** Builds the exact request from validated input, so nothing that can throw locally runs after the lock. */
-function prepare(ctx: RequestContext, draft: MessageDraft, text: string, sessionID: string, directory: string) {
+function prepare(ctx: RequestContext, draft: MessageDraft, text: string, session: Session) {
+  const sessionID = session.id
   if (draft.shell) {
     const command = draft.shell
     ctx.connection.checkShell(sessionID, draft.id, command)
@@ -244,7 +251,12 @@ function prepare(ctx: RequestContext, draft: MessageDraft, text: string, session
     const command = draft.command
     return () => ctx.connection.client.sessions.command({ sessionID, id: draft.id, ...command, resume: true })
   }
-  const prompt = promptPayload(text, directory)
+  if (draft.submitted === undefined)
+    draft.prompt = promptPayload(text, session.location.directory, {
+      missingFiles: ctx.connection.missingFiles,
+      workspaceID: session.location.workspaceID,
+    })
+  const prompt = draft.prompt!
   return () => ctx.connection.client.sessions.prompt({ sessionID, id: draft.id, prompt, delivery: draft.delivery })
 }
 

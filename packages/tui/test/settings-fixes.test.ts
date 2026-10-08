@@ -122,16 +122,18 @@ test("Intel sorts advisories by severity and a poll that outlives its dialog sta
 })
 
 test("a path the server search never resolved stays text, and the summary says so", () => {
-  expect(promptPayload("see @zzzq now", "/srv/p").files).toHaveLength(1)
-  recordSearch("/srv/p", "zzzq", false)
-  expect(promptPayload("see @zzzq now", "/srv/p")).toEqual({ text: "see @zzzq now" })
-  expect(parseMentions("see @zzzq now", "/srv/p")).toEqual([])
-  expect(attachmentSummary("see @zzzq now", "/srv/p")).toContain("No file matches @zzzq")
-  recordSearch("/srv/p", "zzzq", true)
-  expect(promptPayload("see @zzzq now", "/srv/p").files).toHaveLength(1)
+  const scope = { missingFiles: new Set<string>() }
+  const location = { directory: "/srv/p" }
+  expect(promptPayload("see @zzzq now", "/srv/p", scope).files).toHaveLength(1)
+  recordSearch(scope.missingFiles, location, "zzzq", false)
+  expect(promptPayload("see @zzzq now", "/srv/p", scope)).toEqual({ text: "see @zzzq now" })
+  expect(parseMentions("see @zzzq now", "/srv/p", scope)).toEqual([])
+  expect(attachmentSummary("see @zzzq now", "/srv/p", scope)).toContain("No file matches @zzzq")
+  recordSearch(scope.missingFiles, location, "zzzq", true)
+  expect(promptPayload("see @zzzq now", "/srv/p", scope).files).toHaveLength(1)
   // Absolute and escaping paths are never judged by the project search.
-  recordSearch("/srv/p", "/etc/hosts", false)
-  expect(promptPayload("@/etc/hosts", "/srv/p").files).toHaveLength(1)
+  recordSearch(scope.missingFiles, location, "/etc/hosts", false)
+  expect(promptPayload("@/etc/hosts", "/srv/p", scope).files).toHaveLength(1)
 })
 
 test("a leading ! announces shell mode", () => {

@@ -25,4 +25,5 @@ export type Context = {
   client: Client
   folders: ReturnType<typeof createWorkingFolders>
   api: Api
+  missingFiles: Set<string>
 }

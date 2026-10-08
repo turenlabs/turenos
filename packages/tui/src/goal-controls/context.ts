@@ -1,7 +1,7 @@
 import type { CliRenderer } from "@opentui/core"
 import type { SessionsGoalGetOutput } from "@turenlabs/client"
 import type { Dialogs } from "../dialogs"
-import type { Connection, Session } from "../server"
+import { sameSession, type Connection, type Session } from "../server"
 import type { DashboardState, ModalState } from "../state"
 
 export type Goal = SessionsGoalGetOutput
@@ -38,16 +38,4 @@ export async function fresh(env: GoalEnv, session: Session, dialog: ModalState) 
 
 export function sameGoal(left: Goal, right: Goal) {
   return left === null ? right === null : right !== null && left.id === right.id && left.revision === right.revision
-}
-
-function sameSession(left: Session, right: Session) {
-  return (
-    left.id === right.id &&
-    left.projectID === right.projectID &&
-    left.parentID === right.parentID &&
-    left.subpath === right.subpath &&
-    left.time.created === right.time.created &&
-    left.location.directory === right.location.directory &&
-    left.location.workspaceID === right.location.workspaceID
-  )
 }

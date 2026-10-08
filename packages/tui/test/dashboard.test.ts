@@ -991,7 +991,7 @@ test("b, Ctrl+B, and palette sidebar/quit actions work without stealing editor i
   expect(server.posts).toHaveLength(0)
 })
 
-test("kill interrupts the session and cancels active tasks after typed confirmation", async () => {
+test("kill delegates the session and task-tree interruption to the server after typed confirmation", async () => {
   const server = fixture({
     tasks: {
       data: [],
@@ -1024,12 +1024,8 @@ test("kill interrupts the session and cancels active tasks after typed confirmat
   expect(server.posts).toHaveLength(0)
   await view.mockInput.typeText("kill")
   view.mockInput.pressKey("s", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("Session killed. Cancelled 1 active task."))
-  expect(server.posts.map((post) => post.path)).toEqual([
-    "/api/session/ses_running/interrupt",
-    "/api/session/ses_running/task/tsk_child/cancel",
-  ])
-  expect(server.posts[1]?.body).toEqual({ expectedRevision: 3 })
+  await waitForFrame(view, (frame) => frame.includes("Session killed."))
+  expect(server.posts.map((post) => post.path)).toEqual(["/api/session/ses_running/interrupt"])
 })
 
 test.each([60, 120])("a running session shows x Stop in the action row at %i columns", async (width) => {
@@ -2188,7 +2184,7 @@ test("shared working folders update the sidebar and explicit folder controls nev
   await clickText(view, "Working folders")
   await waitForFrame(view, (frame) => frame.includes("Directory on the server"))
   view.mockInput.pressKey("r", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("Close folder in both clients"))
+  await waitForFrame(view, (frame) => frame.includes("Close folder"))
   view.mockInput.pressKey("s", { ctrl: true })
   await waitForFrame(view, (frame) => !frame.includes("Directory on the server"))
   expect(options.workingFolders).toEqual(["/srv/empty"])

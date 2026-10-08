@@ -102,6 +102,29 @@ test("a quoted mention carries paths the bare grammar would truncate, and comple
   expect(mentionText("bad\u0007.ts")).toBeUndefined()
 })
 
+test("quoted ranges consume the entire suffix instead of attaching a valid prefix", () => {
+  for (const suffix of ["#3-", "#3-nope", "#3-9oops", "#3-9-10", "#nope", "#3#4"]) {
+    const text = `@"a.ts"${suffix} and @"b.ts"#2-4.`
+    expect(parseMentions(text, "/srv/p").map((file) => file.uri)).toEqual(["file:///srv/p/b.ts?start=2&end=4"])
+  }
+})
+
+test("mentions preserve POSIX literal backslashes and normalize Windows separators", () => {
+  expect(parseMentions(mentionText("a\\b.ts")!, "/srv/p")[0]).toMatchObject({
+    uri: "file:///srv/p/a%5Cb.ts",
+    name: "a\\b.ts",
+  })
+  expect(parseMentions("@a.ts", "/srv/p\\")[0]?.uri).toBe("file:///srv/p%5C/a.ts")
+  expect(parseMentions(mentionText("src\\a.ts")!, "C:\\repo")[0]).toMatchObject({
+    uri: "file:///C:/repo/src/a.ts",
+    name: "a.ts",
+  })
+  expect(parseMentions('@"\\\\host\\share\\a b.ts"#2', "/srv/p")[0]).toMatchObject({
+    uri: "file:////host/share/a%20b.ts?start=2&end=2",
+    name: "a b.ts",
+  })
+})
+
 test("malformed mentions are dropped rather than attached, and the count is bounded", () => {
   for (const text of ["@a.ts#0", "@a.ts#9-2", "@a.ts#99999999999999999999", `@${"x".repeat(5000)}`, "@\u0007bad"]) {
     expect(promptPayload(text, "/srv/p")).toEqual({ text })
@@ -199,6 +222,8 @@ async function picker(entries: () => Promise<Entry[]>) {
   editor.focus()
   const suggestions = dialog.form.getChildren().find((child) => child.id === `${editor.id}-mentions`) as TextRenderable
   return {
+    view,
+    dialogs,
     dialog,
     editor,
     mentions,
@@ -314,3 +339,59 @@ test("an unavailable file search never blocks the draft or completes a guess", a
   expect(f.mentions.key(key("tab"))).toBe(true)
   expect(f.editor.plainText).toBe("look at @src/auth.ts ")
 })
+
+test.each(["Enter", "Ctrl+Enter", "Ctrl+S", "Send"])(
+  "%s keeps a pending mention search out of submission",
+  async (route) => {
+    const pending = Promise.withResolvers<Entry[]>()
+    const f = await picker(() => pending.promise)
+    const sent: string[] = []
+    f.dialog.submit = async () => {
+      sent.push(f.editor.plainText)
+    }
+    f.view.renderer.keyInput.on("keypress", (event) => {
+      if (!f.mentions.key(event)) f.dialogs.keypress(event)
+    })
+    const send = async () => {
+      if (route === "Send") await f.view.mockMouse.click(f.dialog.send!.x + 1, f.dialog.send!.y)
+      if (route === "Enter") f.view.mockInput.pressEnter()
+      if (route === "Ctrl+Enter") f.view.mockInput.pressEnter({ ctrl: true })
+      if (route === "Ctrl+S") f.view.mockInput.pressKey("s", { ctrl: true })
+      await f.view.renderOnce()
+    }
+    await f.type("look at @au")
+    expect(f.suggestions.plainText).toContain("Searching files")
+    await send()
+    expect(sent).toEqual([])
+    expect(f.editor.plainText).toBe("look at @au")
+    pending.resolve([{ path: "src/auth.ts", type: "file" }])
+    await Bun.sleep(10)
+    await f.view.renderOnce()
+    await send()
+    expect(sent).toEqual([])
+    expect(f.editor.plainText).toBe("look at @src/auth.ts ")
+    await send()
+    expect(sent).toEqual(["look at @src/auth.ts "])
+  },
+)
+
+test.each(["", " and explain", "#12-20 and explain"])(
+  "quoted folder-to-file completion preserves suffix %j",
+  async (suffix) => {
+    let entries: Entry[] = [{ path: "src/app/(auth)", type: "directory" }]
+    const f = await picker(async () => entries)
+    await f.type("open @src/ap")
+    expect(f.mentions.key(key("tab"))).toBe(true)
+    expect(f.editor.plainText).toBe('open @"src/app/(auth)/"')
+    const cursor = f.editor.cursorOffset
+    f.editor.setText(f.editor.plainText + suffix)
+    f.editor.cursorOffset = cursor
+    entries = [{ path: "src/app/(auth)/page.tsx", type: "file" }]
+    await f.append("page")
+    expect(f.mentions.key(key("tab"))).toBe(true)
+    expect(f.editor.plainText).toBe(`open @"src/app/(auth)/page.tsx"${suffix || " "}`)
+    expect(parseMentions(f.editor.plainText, "/srv/project").map((file) => file.uri)).toEqual([
+      `file:///srv/project/src/app/(auth)/page.tsx${suffix.startsWith("#") ? "?start=12&end=20" : ""}`,
+    ])
+  },
+)

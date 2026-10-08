@@ -16,6 +16,7 @@ type LaunchState = {
   created?: LaunchInput
   draft?: LaunchInput
   routing?: Promise<{ command: string; arguments: string } | undefined>
+  prompt?: ReturnType<typeof promptPayload>
 }
 
 // Retain the same identifiers across ambiguous network failures so retrying
@@ -71,6 +72,7 @@ async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
     },
   ))
   // Freeze the fields and the prompt route only once bytes may go out.
+  if (!state.draft && !command) state.prompt = promptPayload(input.prompt, input.directory, ctx)
   state.draft = { ...input }
   try {
     return await write(ctx, state, input, model, command)
@@ -79,6 +81,7 @@ async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
     if (refused(error)) {
       state.draft = undefined
       state.routing = undefined
+      state.prompt = undefined
     }
     throw error
   }
@@ -112,7 +115,7 @@ async function write(
     await ctx.client.sessions.prompt({
       sessionID: state.admitted.id,
       id: state.messageID,
-      prompt: promptPayload(input.prompt, input.directory),
+      prompt: state.prompt!,
     })
   }
   return state.admitted

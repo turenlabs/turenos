@@ -1,12 +1,12 @@
 import { TextRenderable } from "@opentui/core"
 import { attachmentSummary, withoutOpenMention } from "../mentions/outside"
-import type { ModalState } from "../state"
+import type { MessageDraft, ModalState } from "../state"
 import { color } from "../theme"
 import type { RequestContext } from "./context"
 import type { ReplyEditor } from "./reply"
 
 /** A line under the reply editor that lists what the text will attach, flagging paths outside the directory. */
-export function showAttachments(ctx: RequestContext, dialog: ModalState, task: ReplyEditor, directory: string) {
+export function showAttachments(ctx: RequestContext, dialog: ModalState, task: ReplyEditor, draft: MessageDraft) {
   const line = new TextRenderable(ctx.renderer, {
     content: "",
     fg: color.muted,
@@ -21,7 +21,9 @@ export function showAttachments(ctx: RequestContext, dialog: ModalState, task: R
     const listed = (dialog.mentionRows ?? 0) > 0
     const summary = attachmentSummary(
       listed ? withoutOpenMention(task.plainText, task.cursorOffset) : task.plainText,
-      directory,
+      draft.recipient.location.directory,
+      { missingFiles: ctx.connection.missingFiles, workspaceID: dialog.recipient?.location.workspaceID },
+      draft.submitted !== undefined ? (draft.prompt?.files ?? []) : undefined,
     )
     line.visible = summary !== undefined
     line.content = summary ?? ""
