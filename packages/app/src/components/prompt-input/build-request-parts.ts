@@ -1,3 +1,4 @@
+import { absolutePath, encodeFilePath } from "@turenlabs/client/paths"
 import { getFilename } from "@turenlabs/core/util/path"
 import {
   type AgentPartInput,
@@ -7,7 +8,6 @@ import {
   type TextPartInput,
 } from "@turenlabs/sdk/v2/client"
 import type { FileSelection } from "@/context/file"
-import { encodeFilePath } from "@/context/file/path"
 import type { AgentPart, FileAttachmentPart, ImageAttachmentPart, Prompt, SurfacePart } from "@/context/prompt"
 import { Identifier } from "@/utils/id"
 import { createCommentMetadata, formatCommentNote, readCommentMetadata } from "@/utils/comment-note"
@@ -45,13 +45,6 @@ type BuildRequestPartsInput = {
   messageID: string
   sessionID: string
   sessionDirectory: string
-}
-
-const absolute = (directory: string, path: string) => {
-  if (path.startsWith("/")) return path
-  if (/^[A-Za-z]:[\\/]/.test(path) || /^[A-Za-z]:$/.test(path)) return path
-  if (path.startsWith("\\\\") || path.startsWith("//")) return path
-  return `${directory.replace(/[\\/]+$/, "")}/${path}`
 }
 
 const fileQuery = (selection: FileSelection | undefined) =>
@@ -117,7 +110,7 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
   ]
 
   const files = input.prompt.filter(isFileAttachment).map((attachment) => {
-    const path = absolute(input.sessionDirectory, attachment.path)
+    const path = absolutePath(input.sessionDirectory, attachment.path)
     const source = attachment.source
       ? {
           ...attachment.source,
@@ -175,7 +168,7 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
 
   const used = new Set(files.map((part) => part.url))
   const context = input.context.flatMap((item) => {
-    const path = absolute(input.sessionDirectory, item.path)
+    const path = absolutePath(input.sessionDirectory, item.path)
     const url = `file://${encodeFilePath(path)}${fileQuery(item.selection)}`
     const comment = item.comment?.trim()
     if (!comment && used.has(url)) return []
@@ -192,7 +185,7 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
     if (!comment) return [filePart]
 
     const mentions = parseCommentMentions(comment).flatMap((path) => {
-      const url = `file://${encodeFilePath(absolute(input.sessionDirectory, path))}`
+      const url = `file://${encodeFilePath(absolutePath(input.sessionDirectory, path))}`
       if (used.has(url)) return []
       used.add(url)
       return [
