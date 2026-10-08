@@ -7,6 +7,8 @@ export type ModelTarget = {
   directory: string
   current: string
   recipient?: Session
+  /** What the choice is for, when it is not a launch draft's model. */
+  note?: string
   choose: (model: string) => Promise<void> | void
   cancel?: () => void
 }

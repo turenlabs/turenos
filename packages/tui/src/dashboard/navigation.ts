@@ -27,6 +27,13 @@ export function changeTab(d: DashboardContext, tab: Tab) {
   if (tab === "team") void d.c.team.sync()
 }
 
+/** Switches to the Automations tab with `id` selected, as the Team duty list does. */
+export function openAutomation(d: DashboardContext, id: string) {
+  if (!d.c.dialogs.navigate()) return
+  d.run.views.set("automations", { selected: id, query: "" })
+  changeTab(d, "automations")
+}
+
 /** Selects a session, fetching it first when the snapshot lacks it; `inspect` pins it as an attempted session. */
 export function openSession(d: DashboardContext, id: string, inspect = false, session?: Session) {
   const state = d.state

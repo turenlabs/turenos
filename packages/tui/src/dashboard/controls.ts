@@ -28,6 +28,7 @@ import { createLaunch } from "../launch"
 import { createSessionActions } from "../session-actions"
 import { createMenus } from "../menus"
 import { renderActions } from "./actions"
+import { openAutomation } from "./navigation"
 import { renderList } from "./list"
 import { slashCommands } from "./commands"
 import { refresh } from "./refresh"
@@ -216,6 +217,8 @@ function createWorkspaceControls(d: DashboardContext) {
       void d.c.conversation.render()
     },
     atTop: () => d.ui.detail.scrollTop <= 0,
+    pickModel: (target) => d.c.models.pick(target),
+    openAutomation: (id) => openAutomation(d, id),
   })
   const extensions = createExtensions(
     renderer,

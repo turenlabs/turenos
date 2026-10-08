@@ -74,7 +74,7 @@ function bindButtons(d: DashboardContext) {
 function addAction(d: DashboardContext) {
   if (d.state.tab === "terminals") return d.c.terminals.create()
   if (d.state.tab === "automations") return d.c.automations.create()
-  if (d.state.tab === "team") return d.c.team.post()
+  if (d.state.tab === "team") return d.c.team.keys.a!()
   d.c.launch.open()
 }
 
@@ -90,9 +90,9 @@ function bindActionRow(d: DashboardContext) {
   ui.information.onMouseDown = unlessModal(() => d.c.menus.information(d.serverAddress))
   ui.stop.onMouseDown = unlessModal(() => d.c.requests.interrupt())
   ui.tasks.onMouseDown = unlessModal(() => (d.state.tab === "team" ? d.c.team.keys.t!() : d.c.sessions.tasks()))
-  ui.harness.onMouseDown = unlessModal(() => d.c.harness.open())
+  ui.harness.onMouseDown = unlessModal(() => (d.state.tab === "team" ? d.c.team.keys.F!() : d.c.harness.open()))
   ui.queued.onMouseDown = unlessModal(() => d.c.queue.open())
-  ui.changes.onMouseDown = unlessModal(() => d.c.changes.open())
+  ui.changes.onMouseDown = unlessModal(() => (d.state.tab === "team" ? d.c.team.keys.M!() : d.c.changes.open()))
   ui.files.onMouseDown = unlessModal(() => (d.state.tab === "team" ? d.c.team.older() : d.c.files.open()))
 }
 

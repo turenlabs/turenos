@@ -51,7 +51,7 @@ test("a plain click on the transcript still opens the reply editor", async () =>
 })
 
 test("help keys leave a gap before their text, Esc appears once in Essentials, Ctrl+O rows name their context", async () => {
-  const { view, screen } = await open(110, 130)
+  const { view, screen } = await open(110, 140)
   view.mockInput.pressKey("?")
   const frame = await screen("Keyboard shortcuts")
   const lines = frame.split("\n")

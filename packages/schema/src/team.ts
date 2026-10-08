@@ -5,7 +5,7 @@ import { Agent } from "./agent"
 import { Model } from "./model"
 import { optional } from "./schema"
 
-export { mentionedHandles } from "./team-mention"
+export { mentionedHandles, teammateHandle } from "./team-mention"
 
 const boundedText = (max: number) => Schema.String.pipe(Schema.check(Schema.isMaxLength(max)))
 const requiredText = (max: number) =>

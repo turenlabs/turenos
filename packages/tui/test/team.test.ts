@@ -1,86 +1,7 @@
 import { expect, test } from "bun:test"
 import { validateResponse } from "../src/response-validation"
-import { mount, until, type Route } from "./support"
-
-const room = { id: "trm_team", name: "team", topic: "Ship it", head: 3 }
-const old = { id: "trm_old", name: "retro", topic: "", head: 1, archived: true }
-const teammate = (handle: string, name: string, status = "active", created = 1) => ({
-  id: `tm_${handle}`,
-  roomID: "trm_team",
-  name,
-  handle,
-  role: "Engineer",
-  mission: "",
-  status,
-  directory: "/srv/main",
-  time: { created, updated: created },
-})
-const mates = [teammate("moss", "Morgan"), teammate("rae", "Rachel", "paused", 2)]
-const message = (seq: number, text: string, extra: Record<string, unknown> = {}) => ({
-  id: `msg_${seq}`,
-  roomID: "trm_team",
-  seq,
-  kind: "human",
-  author: "You",
-  text,
-  time: Date.UTC(2026, 9, 8, 9, seq),
-  ...extra,
-})
-const task = (status: string, extra: Record<string, unknown> = {}) => ({
-  id: "job_1",
-  roomID: "trm_team",
-  messageID: "msg_2",
-  teammateID: "tm_moss",
-  sessionID: "ses_main",
-  status,
-  time: { created: 2, updated: 2 },
-  ...extra,
-})
-
-function answer(messages: unknown[], extra: Record<string, unknown> = {}) {
-  return {
-    rooms: [old, room],
-    room,
-    teammates: mates,
-    messages,
-    tasks: [task("queued")],
-    duties: [],
-    factoryRuns: [],
-    hasMore: false,
-    ...extra,
-  }
-}
-
-const log = [
-  message(1, "Welcome"),
-  message(2, "Please review @moss"),
-  message(3, "Done", { kind: "teammate", author: "Morgan", teammateID: "tm_moss" }),
-]
-
-/** A Team server whose log grows when `more` has items; `calls` records every state query. */
-function server(more: ReturnType<typeof message>[] = []) {
-  const calls: URLSearchParams[] = []
-  const routes: Record<string, Route> = {
-    "GET /api/team": (_, url) => {
-      calls.push(url.searchParams)
-      if (url.searchParams.get("roomID") === "trm_old")
-        return answer([{ ...message(1, "Wrapped up"), roomID: "trm_old" }], { room: old, teammates: [], tasks: [] })
-      const after = Number(url.searchParams.get("after") ?? 0)
-      return answer(url.searchParams.has("after") ? [...log, ...more].filter((item) => item.seq > after) : log)
-    },
-  }
-  return { calls, routes }
-}
-
-async function open(routes: Record<string, Route>, width = 120) {
-  const app = await mount(width, routes)
-  app.view.mockInput.pressKey("ESCAPE")
-  await app.screen("f Reply")
-  // A key right after Escape would read as Alt+key.
-  await Bun.sleep(150)
-  app.view.mockInput.pressKey("4")
-  return app
-}
+import { until } from "./support"
+import { answer, log, message, mates, old, open, room, server, task } from "./team-fixture"
 
 test("the Team tab lists rooms and shows the latest messages of the selected room", async () => {
   const { routes } = server()
@@ -309,4 +230,93 @@ test("the Team validator accepts a valid state and rejects malformed ones", () =
     "Invalid server response",
   )
   expect(() => check({ ...valid(), messages: [log[0], log[0]] })).toThrow("duplicate")
+})
+
+const write = (path: string, method: string, value: unknown) =>
+  validateResponse(new URL(`http://x/api/team${path}`), { method }, value)
+const factory = {
+  revision: 1,
+  config: {
+    outcome: "Ship",
+    parameters: {},
+    constraints: "",
+    acceptanceCriteria: "Done",
+    directory: "/srv/main",
+    coordinatorTeammateID: "tm_moss",
+    teammateIDs: ["tm_moss"],
+  },
+}
+const finished = {
+  id: "run_1",
+  roomID: "trm_team",
+  status: "succeeded",
+  phase: "done",
+  taskIDs: ["job_1"],
+  result: "ok",
+  time: { created: 1, updated: 2 },
+}
+
+test("the Team validator checks the answers of the write routes", () => {
+  expect(write("/room", "POST", room)).toBeDefined()
+  expect(write("/room/trm_team", "PATCH", room)).toBeDefined()
+  expect(write("/room/trm_team/archive", "POST", { ...room, archived: true })).toBeDefined()
+  expect(write("/room/trm_team/factory", "PUT", { ...room, factory })).toBeDefined()
+  expect(() => write("/room/trm_old", "PATCH", room)).toThrow("room identity")
+  expect(() => write("/room", "POST", { ...room, id: "bad id" })).toThrow("Invalid server response")
+  expect(() => write("/room/trm_team/factory", "PUT", { ...room, factory: { revision: 1, config: {} } })).toThrow(
+    "Invalid server response",
+  )
+  expect(() => write("/room/trm_team/factory", "PUT", { ...room, factory: { ...factory, revision: -1 } })).toThrow(
+    "Invalid server response",
+  )
+  expect(write("/teammate", "POST", mates[0])).toBeDefined()
+  expect(
+    write("/teammate/tm_moss", "PATCH", {
+      ...mates[0],
+      id: "tm_moss",
+      agent: "plan",
+      model: { providerID: "p", id: "m" },
+    }),
+  ).toBeDefined()
+  expect(() => write("/teammate/tm_other", "PATCH", mates[0])).toThrow("teammate identity")
+  expect(() => write("/teammate", "POST", { ...mates[0], handle: "bad handle" })).toThrow("Invalid server response")
+  expect(() => write("/teammate", "POST", { ...mates[0], directory: "relative" })).toThrow("Invalid server response")
+  expect(() => write("/teammate", "POST", { ...mates[0], model: { providerID: "p" } })).toThrow(
+    "Invalid server response",
+  )
+  expect(write("/teammate/tm_moss/duty", "POST", { loopID: "loop_1", teammateID: "tm_moss" })).toBeDefined()
+  expect(() => write("/teammate/tm_moss/duty", "POST", { loopID: "loop_1", teammateID: "tm_rae" })).toThrow("identity")
+  expect(write("/room/trm_team/factory/run", "POST", finished)).toBeDefined()
+  expect(write("/factory-run/run_1", "GET", finished)).toBeDefined()
+  expect(write("/factory-run/run_1/cancel", "POST", { ...finished, status: "cancelled" })).toBeDefined()
+  expect(() => write("/factory-run/run_2", "GET", finished)).toThrow("Invalid server response")
+  expect(() => write("/factory-run/run_1", "GET", { ...finished, status: "weird" })).toThrow("Invalid server response")
+  expect(() => write("/factory-run/run_1", "GET", { ...finished, time: { created: "NaN", updated: 1 } })).toThrow(
+    "Invalid server response",
+  )
+  expect(() => write("/factory-run/run_1", "GET", { ...finished, taskIDs: ["../x"] })).toThrow(
+    "Invalid server response",
+  )
+})
+
+test("a factory run's result is cut rather than rejected, and its error is bounded", () => {
+  const long = write("/factory-run/run_1", "GET", { ...finished, result: "x".repeat(40_000) }) as { result: string }
+  expect(long.result.length).toBeLessThan(33_000)
+  expect(long.result).toContain("[truncated")
+  expect(() => write("/factory-run/run_1", "GET", { ...finished, error: "x".repeat(9000) })).toThrow(
+    "Invalid server response",
+  )
+})
+
+test("the state answer validates the factory runs and duties it carries", () => {
+  expect(() => check({ ...valid(), factoryRuns: [{ ...finished, id: "bad id" }] })).toThrow("Invalid server response")
+  expect(() => check({ ...valid(), factoryRuns: [finished, finished] })).toThrow("duplicate")
+  expect(() => check({ ...valid(), duties: [{ loopID: "loop_1" }] })).toThrow("Invalid server response")
+  expect(() =>
+    check({
+      ...valid(),
+      room: { ...room, factory: { revision: 1, config: { ...factory.config, outcome: "x".repeat(4001) } } },
+      rooms: [old, { ...room, factory: { revision: 1, config: { ...factory.config, outcome: "x".repeat(4001) } } }],
+    }),
+  ).toThrow("Invalid server response")
 })

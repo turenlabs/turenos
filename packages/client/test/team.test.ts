@@ -12,6 +12,7 @@ import {
   roomCoordinator,
   roomDeleteBlocker,
   selectFactoryTeammate,
+  teammateDraft,
 } from "@turenlabs/client/team"
 
 const teammate = (handle: string) => ({ handle }) as Team.Teammate
@@ -93,9 +94,20 @@ describe("team room rules", () => {
     expect(roomDeleteBlocker({ ...value, duties: [{ loopID: "duty", teammateID: "mate" }] }, [])).toContain("duties")
     expect(roomDeleteBlocker(value, [{ factoryRoomID: "room-a" }])).toContain("schedules")
     expect(roomDeleteBlocker(value, [{ factoryRoomID: "room-b" }])).toBeUndefined()
+    expect(roomDeleteBlocker(value, [{ factoryRoomID: null, teammateID: null }])).toBeUndefined()
     expect(
       roomDeleteBlocker({ ...value, teammates: [{ id: "mate" } as Team.Teammate] }, [{ teammateID: "mate" }]),
     ).toContain("schedules")
+  })
+
+  test("normalizes a new teammate the way the create form sends it", () => {
+    expect(teammateDraft({ name: "  Morgan ", handle: " @moss ", role: "  ", mission: " Review. " })).toEqual({
+      name: "Morgan",
+      handle: "moss",
+      role: "Security teammate",
+      mission: " Review. ",
+    })
+    expect(teammateDraft({ name: "Rae", handle: "rae", role: " Lead ", mission: "" }).role).toBe("Lead")
   })
 
   test("matches only the token at the caret with a valid mention boundary", () => {
@@ -144,6 +156,7 @@ describe("team room rules", () => {
   test("reports the first factory configuration problem", () => {
     const config = {
       outcome: "ship",
+      constraints: "",
       acceptanceCriteria: "works",
       directory: "/srv/app",
       coordinatorTeammateID: "a",
@@ -157,6 +170,9 @@ describe("team room rules", () => {
       "coordinator",
     )
     expect(factoryConfigProblem(config, [{ id: "a" }])).toContain("belong to this room")
+    expect(factoryConfigProblem({ ...config, outcome: "x".repeat(4001) }, mates)).toContain("Outcome is limited")
+    expect(factoryConfigProblem({ ...config, constraints: "x".repeat(8001) }, mates)).toContain("Constraints")
+    expect(factoryConfigProblem({ ...config, acceptanceCriteria: "x".repeat(4001) }, mates)).toContain("criteria")
     const many = Array.from({ length: 11 }, (_, index) => `m${index}`)
     expect(
       factoryConfigProblem(

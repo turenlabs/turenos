@@ -9,9 +9,29 @@ export type Plan =
   | { kind: "tool"; name: string; args: unknown }
   | { kind: "fail"; status: number; message: string }
 
-type Scenario = { trigger: RegExp; about: string; tool?: string; plan: (prompt: string) => Plan }
+type Scenario = { trigger: RegExp; about: string; tool?: string; plan: (lower: string, prompt: string) => Plan }
 
 const scenarios: Scenario[] = [
+  // The factory prompts carry the outcome and room text, which may contain any trigger word below, so these two come first.
+  {
+    trigger: /return only factoryplan json/,
+    about: "a Team factory coordinator's plan: one short assignment per selected teammate",
+    plan: (_, prompt) => ({ kind: "text", text: factoryPlan(prompt), delay: 5 }),
+  },
+  {
+    trigger: /return only factorycheck json/,
+    about: "a Team factory coordinator's check: accepts the outputs",
+    plan: () => ({
+      kind: "text",
+      text: JSON.stringify({ status: "accepted", summary: "Sandbox check accepted the outputs." }),
+      delay: 5,
+    }),
+  },
+  {
+    trigger: /reply with one short line about the outcome/,
+    about: "a Team factory worker's assignment (its prompt mentions the factory run, which would trigger run)",
+    plan: () => ({ kind: "text", text: "Sandbox worker line: the outcome is covered.", delay: 5 }),
+  },
   {
     trigger: /\brun\b/,
     about: "bash tool call (permission request when checks are on)",
@@ -127,7 +147,7 @@ export function plan(messages: Message[], tools: string[]): Plan {
       text: `The server did not offer the ${scenario.tool} tool to this agent, so nothing ran.`,
       delay: 10,
     }
-  if (scenario) return scenario.plan(lower)
+  if (scenario) return scenario.plan(lower, prompt)
   return { kind: "text", text: `Sandbox reply to: ${clip(prompt, 200)}\n\n${menu()}`, delay: 15 }
 }
 
@@ -153,6 +173,17 @@ const attempts = new Map<string, number>()
 function attempt(prompt: string) {
   attempts.set(prompt, (attempts.get(prompt) ?? 0) + 1)
   return attempts.get(prompt)!
+}
+
+/** The factory prompt lists the selected teammate IDs as a JSON array; the plan gives each one a short task. */
+function factoryPlan(prompt: string) {
+  const ids: unknown = JSON.parse(/Selected IDs: (\[[^\]]*\])/.exec(prompt)?.[1] ?? "[]")
+  return JSON.stringify({
+    assignments: (Array.isArray(ids) ? ids : []).map((teammateID) => ({
+      teammateID,
+      prompt: "Reply with one short line about the outcome.",
+    })),
+  })
 }
 
 function tool(name: string, args: unknown): Plan {

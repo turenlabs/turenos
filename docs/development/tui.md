@@ -69,24 +69,27 @@ bun run sandbox attach demo                   # a person watches or takes over; 
 
 ### Scripted model
 
-The latest user message chooses the reply: the first row of the table below whose word the message contains, not the first word in the message (`write and run` runs, because `run` comes first). Anything else gets a short reply that lists the words. A message that begins with `<` is a server notice (a child's result, room updates) and gets `Noted.`, so a quoted trigger word cannot loop.
+The latest user message chooses the reply: the first row of the table below whose word the message contains (the three factory rows come first, because a factory prompt carries the outcome and room text, which may hold any other word), not the first word in the message (`write and run` runs, because `run` comes first). Anything else gets a short reply that lists the words. A message that begins with `<` is a server notice (a child's result, room updates) and gets `Noted.`, so a quoted trigger word cannot loop.
 
-| Word        | Reply                                                                           |
-| ----------- | ------------------------------------------------------------------------------- |
-| `run`       | A `bash` call, `echo sandbox-marker && ls`; permission checks make it ask first |
-| `ask twice` | Two questions, the second multiple choice                                       |
-| `ask me`    | One single-choice question (Red or Blue)                                        |
-| `write`     | A `write` call creating `notes.md`                                              |
-| `edit`      | An `edit` call changing `42` to `43` in `answer.ts`                             |
-| `read`      | A `read` call on `README.md`                                                    |
-| `todo`      | A `todowrite` call with three to-dos in three states                            |
-| `delegate`  | A `spawn_agent` call; the child session answers plainly                         |
-| `slow`      | About 40 s of streamed words, for interrupting                                  |
-| `long`      | Sixty varied paragraphs, for scrolling and history                              |
-| `markdown`  | Headings, lists, code, a table, a link and a quote                              |
-| `think`     | Reasoning before the answer                                                     |
-| `fail`      | HTTP 401, which the server does not retry                                       |
-| `flaky`     | HTTP 503 five times, then a reply; the server retries on its own                |
+| Word                                          | Reply                                                                                                                   |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `Return only FactoryPlan JSON`                | Exactly a Team factory plan: the `Selected IDs: [...]` of the prompt, one short assignment each                         |
+| `Return only FactoryCheck JSON`               | Exactly `{"status":"accepted","summary":"Sandbox check accepted the outputs."}`                                         |
+| `Reply with one short line about the outcome` | One line, `Sandbox worker line: the outcome is covered.`; the plan's assignment text, which would otherwise match `run` |
+| `run`                                         | A `bash` call, `echo sandbox-marker && ls`; permission checks make it ask first                                         |
+| `ask twice`                                   | Two questions, the second multiple choice                                                                               |
+| `ask me`                                      | One single-choice question (Red or Blue)                                                                                |
+| `write`                                       | A `write` call creating `notes.md`                                                                                      |
+| `edit`                                        | An `edit` call changing `42` to `43` in `answer.ts`                                                                     |
+| `read`                                        | A `read` call on `README.md`                                                                                            |
+| `todo`                                        | A `todowrite` call with three to-dos in three states                                                                    |
+| `delegate`                                    | A `spawn_agent` call; the child session answers plainly                                                                 |
+| `slow`                                        | About 40 s of streamed words, for interrupting                                                                          |
+| `long`                                        | Sixty varied paragraphs, for scrolling and history                                                                      |
+| `markdown`                                    | Headings, lists, code, a table, a link and a quote                                                                      |
+| `think`                                       | Reasoning before the answer                                                                                             |
+| `fail`                                        | HTTP 401, which the server does not retry                                                                               |
+| `flaky`                                       | HTTP 503 five times, then a reply; the server retries on its own                                                        |
 
 After a tool result the model replies `Done: the <tool> tool returned:` with the result, so a scenario finishes in one turn. If the server did not offer the scenario's tool to the agent, the reply says `The server did not offer the <tool> tool to this agent, so nothing ran.` Titles come from the first words of the first message.
 
@@ -110,7 +113,7 @@ bun run test:e2e                              # every scenario file
 bun test ./e2e/requests.e2e.ts --timeout 120000
 ```
 
-The files cover the conversation (streaming, Markdown, reasoning, scrolling, recall), requests (permissions, questions, stopping, provider errors and retries), panels (Changes, Files, Tasks, subagents), the Terminals and Automations tabs, the 60x24 layout with resizing and quitting, and the agent commands with the dashboard watching. Tests in a file share one sandbox and run in order. Assert on what the screen says and, where the server is the truth, on `api()` and `idle()`; a scenario that waits for text should wait for the specific line, not sleep.
+The files cover the conversation (streaming, Markdown, reasoning, scrolling, recall), requests (permissions, questions, stopping, provider errors and retries), panels (Changes, Files, Tasks, subagents), the Terminals, Automations and Team tabs (two teammates, a configured factory and a run that reads `succeeded` with the check summary), the 60x24 layout with resizing and quitting, and the agent commands with the dashboard watching. Tests in a file share one sandbox and run in order. Assert on what the screen says and, where the server is the truth, on `api()` and `idle()`; a scenario that waits for text should wait for the specific line, not sleep.
 
 ## PTY audit
 

@@ -96,7 +96,7 @@ function addHeader(ctx: ModelsContext, dialog: ModalState, target: ModelTarget, 
     new TextRenderable(ctx.renderer, {
       content: target.recipient
         ? `For: ${sessionTitle(target.recipient.title || target.recipient.id, 80)} · from the next turn\nCurrent: ${current}`
-        : `For this launch draft. Selecting a model does not send the task.\nCurrent: ${current}`,
+        : `${target.note ?? "For this launch draft. Selecting a model does not send the task."}\nCurrent: ${current}`,
       fg: color.muted,
     }),
   )

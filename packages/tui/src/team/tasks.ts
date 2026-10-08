@@ -1,10 +1,8 @@
-import { TextRenderable } from "@opentui/core"
-import { requireWord } from "../dialogs/fields"
 import { matchesKey } from "../keys"
 import { openPicker, type Choice, type Picker } from "../picker"
 import { errorText } from "../server"
 import { label } from "../state"
-import { color } from "../theme"
+import { confirm } from "./confirm"
 import { handleOf, statusWord } from "./format"
 import { viewOf, type Task, type TeamContext } from "./types"
 
@@ -76,28 +74,21 @@ function taskKey(
 }
 
 function confirmCancel(ctx: TeamContext, task: Task, refresh: () => Promise<void>) {
-  const dialog = ctx.dialogs.open("Cancel task", false, 23)
-  if (!dialog) return
-  dialog.form.add(
-    new TextRenderable(ctx.renderer, {
-      content: `Cancels ${handleOf(viewOf(ctx.state).teammates, task.teammateID)} · ${statusWord(task.status)} · ${label(task.id, 80)}\nWork already done stays in its session.`,
-      fg: color.warning,
-      wrapMode: "word",
-    }),
-  )
-  const confirmation = ctx.dialogs.input(dialog, "Confirmation (type cancel)")
-  dialog.submit = async () => {
-    if (!ctx.state.connected) throw new Error("Reconnect before cancelling a task.")
-    const cancelled = await ctx.connection.client.team.taskCancel({ taskID: task.id }).catch((error: unknown) => {
-      throw new Error(errorText(error))
-    })
-    const view = viewOf(ctx.state)
-    view.tasks = view.tasks.map((item) => (item.id === task.id ? { ...item, status: cancelled.status } : item))
-    ctx.say("Task cancelled.")
-  }
-  dialog.back = () => openTasks(ctx, refresh)
-  dialog.afterSubmit = () => openTasks(ctx, refresh)
-  dialog.error.content = "Ctrl+S cancel task · Esc back"
-  requireWord(dialog, confirmation, "cancel", ctx.dialogs.resize)
-  confirmation.focus()
+  confirm(ctx, {
+    title: "Cancel task",
+    warning: `Cancels ${handleOf(viewOf(ctx.state).teammates, task.teammateID)} · ${statusWord(task.status)} · ${label(task.id, 80)}\nWork already done stays in its session.`,
+    word: "cancel",
+    verb: "cancel task",
+    back: () => openTasks(ctx, refresh),
+    done: () => openTasks(ctx, refresh),
+    run: async () => {
+      if (!ctx.state.connected) throw new Error("Reconnect before cancelling a task.")
+      const cancelled = await ctx.connection.client.team.taskCancel({ taskID: task.id }).catch((error: unknown) => {
+        throw new Error(errorText(error))
+      })
+      const view = viewOf(ctx.state)
+      view.tasks = view.tasks.map((item) => (item.id === task.id ? { ...item, status: cancelled.status } : item))
+      ctx.say("Task cancelled.")
+    },
+  })
 }

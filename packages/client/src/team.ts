@@ -1,7 +1,7 @@
 import type { Team } from "@turenlabs/schema/team"
-import { mentionedHandles } from "@turenlabs/schema/team-mention"
+import { mentionedHandles, teammateHandle } from "@turenlabs/schema/team-mention"
 
-export { mentionedHandles }
+export { mentionedHandles, teammateHandle }
 
 export function mergeMessages<M extends { id: string; seq: number }>(existing: readonly M[], incoming: readonly M[]) {
   const messages = new Map(existing.map((message) => [message.id, message]))
@@ -25,9 +25,16 @@ export function roomCoordinator<T extends { id: string; status: string; time: { 
     .sort((a, b) => a.time.created - b.time.created || a.id.localeCompare(b.id))[0]
 }
 
+/** Structural, so a client holding only part of the state (or loops whose optional fields are null) can ask too. */
 export function roomDeleteBlocker(
-  value: Team.State,
-  schedules: readonly { factoryRoomID?: string; teammateID?: string }[],
+  value: {
+    room: { id: string; archived?: boolean }
+    tasks: readonly { status: string }[]
+    factoryRuns?: readonly { status: string }[]
+    duties: readonly unknown[]
+    teammates?: readonly { id: string }[]
+  },
+  schedules: readonly { factoryRoomID?: string | null; teammateID?: string | null }[],
 ) {
   if (value.room.id === "trm_team") return "The default Team room cannot be deleted."
   if (!value.room.archived) return "Archive this room before you delete it."
@@ -45,6 +52,16 @@ export function roomDeleteBlocker(
     )
   )
     return "Remove linked duties and schedules before you delete this room."
+}
+
+/** What the create form sends: the name trimmed, the handle without a leading `@`, and a role that falls back to a default. */
+export function teammateDraft(input: { name: string; handle: string; role: string; mission: string }) {
+  return {
+    name: input.name.trim(),
+    handle: input.handle.trim().replace(/^@/, ""),
+    role: input.role.trim() || "Security teammate",
+    mission: input.mission,
+  }
 }
 
 export function parseFactoryParameters(value: string): Team.FactoryConfig["parameters"] {
@@ -86,6 +103,7 @@ export function insertMention(value: string, token: NonNullable<ReturnType<typeo
 export function factoryConfigProblem(
   config: {
     outcome: string
+    constraints: string
     acceptanceCriteria: string
     directory: string
     coordinatorTeammateID: string
@@ -95,6 +113,10 @@ export function factoryConfigProblem(
 ) {
   if (!config.outcome.trim() || !config.acceptanceCriteria.trim() || !config.directory.trim())
     return "Outcome, acceptance criteria, and directory are required"
+  // The limits Team.FactoryConfig enforces on the server.
+  if (config.outcome.length > 4000) return "Outcome is limited to 4000 characters"
+  if (config.constraints.length > 8000) return "Constraints are limited to 8000 characters"
+  if (config.acceptanceCriteria.length > 4000) return "Acceptance criteria are limited to 4000 characters"
   if (!config.coordinatorTeammateID || !config.teammateIDs.includes(config.coordinatorTeammateID))
     return "Select a coordinator from the selected teammates"
   if (config.teammateIDs.length < 1 || config.teammateIDs.length > 10) return "Select between 1 and 10 teammates"

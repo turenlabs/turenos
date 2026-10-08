@@ -12,6 +12,8 @@ export function showRoom(c: Conversation, id: string) {
   const { state, ui } = c
   const view = viewOf(state)
   state.detail = undefined
+  // An open panel (the factory) reads the view this poll just updated.
+  state.modal?.refresh?.()
   ui.sessionTitle.content = "Team"
   ui.context.visible = false
   if (view.error)

@@ -23,9 +23,19 @@ export function createTeam(
   dialogs: Dialogs,
   say: (message: string, error?: boolean) => void,
   openSession: (id: string, inspect?: boolean, session?: Session) => void,
-  hooks: { repaint: () => void; atTop: () => boolean },
+  hooks: Pick<TeamContext, "repaint" | "pickModel" | "openAutomation"> & { atTop: () => boolean },
 ) {
-  const ctx: TeamContext = { renderer, state, connection, dialogs, say, openSession, repaint: hooks.repaint }
+  const ctx: TeamContext = {
+    renderer,
+    state,
+    connection,
+    dialogs,
+    say,
+    openSession,
+    repaint: hooks.repaint,
+    pickModel: hooks.pickModel,
+    openAutomation: hooks.openAutomation,
+  }
   const loader = newLoader(ctx)
   const poster: Poster = {
     ctx,

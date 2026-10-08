@@ -250,13 +250,19 @@ A new automation starts at `every 1h`. Schedules are written as `every 30m`, `ev
 
 Press `4` or choose **Team** in `Ctrl+P` for the desktop's Team page: rooms of teammates (agents with a handle, a role and a mission) that take tasks from messages. The sidebar lists rooms as `# <name>` with the topic below, or the teammate count for the open room and the message count for the others. Archived rooms are hidden, with a note saying how many, until `A` shows them. The detail pane shows the selected room: the title, a line with the topic, `<n> teammates` and, while a factory run is active, `factory: working (run fr_…)`, then the log oldest first. Each entry reads `HH:MM <author>  <text>`, with `@handle` for a teammate, the author's name for a person and `·` for the system; later lines of a message are indented under it. A message that created tasks is followed by `  → @moss queued · session ses_…` for each task (`queued`, `claimed`, `running`, `done`, `failed`, `cancelled`, `stale`). A teammate's reply that came from a session adds `  ↳ full output in session ses_… (t, then Enter)`; the desktop's tool cards are not drawn here, the session view shows that output. An archived room starts with `Archived · read-only. Restore does not resume paused schedules.`
 
-| Key            | Team tab                                                                                                                          |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `Enter`, `f`   | Open the post editor docked under the log.                                                                                        |
-| `t`            | The room's tasks, newest first. `Enter` opens the task's session in the Sessions tab, `c` cancels a queued, claimed or running task after typing `cancel`, `r` refreshes. |
-| `A`            | Show or hide archived rooms.                                                                                                      |
-| `[`, `PageUp`  | Load the 100 messages before the oldest loaded one (`PageUp` when the log is already at its top).                                 |
-| `r`            | Refresh.                                                                                                                          |
+| Key           | Team tab                                                                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Enter`, `f`  | Open the post editor docked under the log.                                                                                                                                |
+| `t`           | The room's tasks, newest first. `Enter` opens the task's session in the Sessions tab, `c` cancels a queued, claimed or running task after typing `cancel`, `r` refreshes. |
+| `a`, `E`      | New room (name, optional topic), and edit the open room's name and topic.                                                                                                 |
+| `d`           | Room actions: **Archive** (typed word `archive`) for an active room; **Restore** and **Delete permanently** (typed word `delete`) for an archived one.                    |
+| `M`           | The room's teammates; see below.                                                                                                                                          |
+| `F`           | The room's factory; see below.                                                                                                                                            |
+| `A`           | Show or hide archived rooms.                                                                                                                                              |
+| `[`, `PageUp` | Load the 100 messages before the oldest loaded one (`PageUp` when the log is already at its top).                                                                         |
+| `r`           | Refresh.                                                                                                                                                                  |
+
+All of these are also in `Ctrl+P`, and the action row shows `M Members` and `F Factory` for the open room.
 
 The tab polls with the dashboard's two-second refresh, and only while it is shown. A poll asks for the messages after the highest loaded one, keeps asking while a page holds 100, and merges by message ID; the rooms, teammates, tasks and factory runs are replaced by the latest answer. Choosing another room restarts the log at its latest page. At most 500 messages stay in memory; the oldest drop first. The log follows new messages while you are at its end and keeps your position when you have scrolled up or loaded older messages. A server without the Team route, or a failed request, shows `Team unavailable: <reason>. Press r to retry. Sessions remain available: press 1.` in the detail pane; the connection and the other tabs are unaffected.
 
@@ -264,7 +270,42 @@ In the post editor, `Enter` posts, `Shift+Enter` or `Alt+Enter` adds a line, `Es
 
 Mentions use the desktop's grammar (`@turenlabs/client/team`). Typing `@` lists the room's teammates (`@handle  name · role`, `paused` when so), narrowed by what you type in the handle, name or role; `Tab` or `Enter` inserts `@handle ` and `Esc` closes the list without changing the draft. A line under the editor says who the message tasks (`Tasks for: @moss, @rae`), or, with no mention, who replies (`No mention: @moss (coordinator) replies.`, or `No active teammate will reply.`), and flags a handle that is not in the room (`@zed is not in this room`). A paused teammate that is mentioned gets no task; the server decides, and the answer is shown as it is. After a post the line reads `Posted. @moss and @rae got tasks.` or `Posted.`
 
-Desktop-only for now: creating, editing, archiving, restoring and deleting rooms, teammate management and avatars, factory configuration and runs, and duties.
+### Rooms
+
+`a` asks for a name (required) and a topic, creates the room and selects it. `E` edits the open room (an archived room is read-only). **Archive** explains that the room becomes read-only, that attached schedules pause and that active work must finish first, and sends only after you type `archive`; the next active room is selected. **Restore** notes that it does not resume paused schedules. **Delete permanently** applies the desktop's rule (`roomDeleteBlocker` from `@turenlabs/client/team`) against the loaded room and the automation list before it asks: the default room, a room that is not archived, active tasks or a running factory run, and linked duties or schedules each refuse locally and show their reason in the menu. Otherwise it asks for the word `delete`, removes the room with its teammates and history (sessions are kept) and selects the next active room.
+
+### Teammates
+
+`M` lists the room's teammates, one row each: `@handle  name · role · active|paused · <n> active tasks · <n> duties`. `a` adds one: **Name**, **Handle** (letters, digits, `_` and `-`, starting with a letter, up to 32; sent in lowercase, and the server checks it too and its message is shown), **Role** (blank becomes `Security teammate`, as in the desktop), **Mission** (required; several lines: `Enter` adds a line, `Ctrl+S` saves), **Directory** (blank uses the server's), **Agent** and **Model**. `F3` lists the server's agents for the directory and `Ctrl+L` opens the model picker; both keep what you typed, and each field also takes typed text (`provider/model` for the model). Choosing sends nothing until you save. `Enter` on a teammate opens its menu:
+
+| Entry                    | Does                                                                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Edit                     | The same fields without the handle. Clearing a field that was set sends the reset (`resetAgent`, `resetModel`).        |
+| Pause, Resume            | No new tasks start while paused; work already running continues. Resuming does not resume independently paused duties. |
+| Stop work                | Cancels the teammate's active tasks and duty runs after you type `stop`. It does not pause future duties.              |
+| Duties                   | The teammate's duties; see below.                                                                                      |
+| Open latest task session | Opens the session of the teammate's newest task in the Sessions tab.                                                   |
+
+In an archived room the list can be read and the sessions opened; adding, editing, pausing, stopping and duty changes are refused.
+
+### Duties
+
+A duty is an automation a teammate owns. The list shows each duty by its automation's name, status and schedule from the automation list, or by its ID when that list does not have it. `Enter` switches to the Automations tab with that automation selected, `r` runs it now, `a` assigns an existing automation that is not a duty yet, and `n` opens the automation form with the teammate preset, so the created automation becomes its duty. Rows are fixed when the list is drawn; a refresh in the background never changes what `Enter` or `r` acts on.
+
+### Factory
+
+`F` opens the factory panel for the open room: the latest runs on the left (status, phase `plan`, `work`, `check` or `done`, and the start time) and, on the right, the setup (outcome, acceptance criteria, constraints, parameters, coordinator, teammates, directory and revision, or `Not configured. s opens settings.`) above the selected run: its stage, created and updated times, its tasks (`@handle status · session ses_…`), and its result or error. A run that reads `needs_input` says `Needs your answer: open the task session to answer its request.` The panel repaints with each poll. `Enter` lists the selected run's tasks and opens one's session.
+
+| Key      | Factory panel                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `s`      | Settings: **Outcome** (required, up to 4000), **Parameters** (a JSON object; an error shows under the field as you type), **Constraints** (up to 8000), **Acceptance criteria** (required, up to 4000), **Working directory** (required), the room's teammates (`Space` marks, at most 10) and the coordinator among the marked. The desktop's checks (`factoryConfigProblem`) run before anything is sent. Saving does not start work. |
+| `Ctrl+R` | Run, with an optional request up to 4000 characters. Needs a configured factory.                                                                                                                                                                                                                                                                                                                                                        |
+| `x`      | Stop the running run after you type `stop`.                                                                                                                                                                                                                                                                                                                                                                                             |
+| `t`      | Add a trigger: the automation form with this room and the factory's directory preset; the server makes the coordinator the duty's owner.                                                                                                                                                                                                                                                                                                |
+
+A run takes a random ID when you first press `Ctrl+S` in the run dialog. A timeout, network error, `5xx`, `408` or `409` keeps that ID and the request text and reloads the room, so `Ctrl+S` again sends the same run and the server answers with the one it stored; it cannot start a second run. A `4xx` refusal or a success clears the ID. An archived room's panel is read-only: only `Enter` and `Esc` work.
+
+Desktop-only for now: pixel avatars (teammates get none here) and workflow or event-trigger editing in the duty form, which keeps the Automations tab's schedule fields.
 
 ## Session views
 

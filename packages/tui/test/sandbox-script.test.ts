@@ -3,6 +3,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { alive, createDirs, paths } from "../script/sandbox/run"
+import { plan } from "../script/sandbox/scenarios"
 import { freePort, sandboxEnv, start, writeConfig } from "../script/sandbox/server"
 import { keys, type } from "../script/sandbox/terminal"
 
@@ -98,4 +99,27 @@ esac`,
   const args = readFileSync(join(dir, "server.args"), "utf8").trim().split(" ")
   const port = args[args.indexOf("--port") + 1]
   expect(Number(port)).toBeGreaterThan(0)
+})
+
+test("the scripted model answers the Team factory prompts with exact JSON, whatever trigger words they carry", () => {
+  const user = (content: string) => [{ role: "user", content }]
+  const ask = `Return only FactoryPlan JSON with assignments of teammateID and prompt. Selected IDs: ["tm_Ab1","tm_Cd2"]. Outcome: run the tests, then write and read notes\nRequest: `
+  const planned = plan(user(ask), ["bash"])
+  expect(planned.kind).toBe("text")
+  expect(JSON.parse(planned.kind === "text" ? planned.text : "")).toEqual({
+    assignments: [
+      { teammateID: "tm_Ab1", prompt: "Reply with one short line about the outcome." },
+      { teammateID: "tm_Cd2", prompt: "Reply with one short line about the outcome." },
+    ],
+  })
+  const checked = plan(
+    user("Return only FactoryCheck JSON. Status must be accepted. Worker outputs: run write edit fail"),
+    [],
+  )
+  expect(checked.kind === "text" && JSON.parse(checked.text)).toEqual({
+    status: "accepted",
+    summary: "Sandbox check accepted the outputs.",
+  })
+  const worker = plan(user("Team context: factory run run_1\n\nReply with one short line about the outcome."), ["bash"])
+  expect(worker).toMatchObject({ kind: "text", text: "Sandbox worker line: the outcome is covered." })
 })

@@ -10,7 +10,8 @@ import type { AutomationsContext, Loop } from "./types"
 /** The action menu for one automation: run now, pause or resume, runs, edit, delete. */
 export function manage(ctx: AutomationsContext, loop: Loop, selected = 0) {
   const { dialogs } = ctx
-  const dialog = dialogs.open(`Automation › ${label(loop.name, 50)}`, false, 20)
+  const title = `Automation › ${label(loop.name, 50)}`
+  const dialog = dialogs.open(title, false, 20)
   if (!dialog) return
   const loops = ctx.connection.client.loops
   const toggle =
@@ -18,8 +19,8 @@ export function manage(ctx: AutomationsContext, loop: Loop, selected = 0) {
       ? (["Resume", "Resumed.", loops.resume] as const)
       : (["Pause", "Paused.", loops.pause] as const)
   const actions = [
-    { name: "Run now", run: () => act(ctx, loop, "Started a run.", () => loops.runNow({ loopID: loop.id })) },
-    { name: toggle[0], run: () => act(ctx, loop, toggle[1], () => toggle[2]({ loopID: loop.id })) },
+    { name: "Run now", run: () => act(ctx, title, "Started a run.", () => loops.runNow({ loopID: loop.id })) },
+    { name: toggle[0], run: () => act(ctx, title, toggle[1], () => toggle[2]({ loopID: loop.id })) },
     { name: "Runs", run: () => runs(ctx, loop, () => manage(ctx, loop, 2)) },
     { name: "Edit", run: () => form(ctx, loop, () => manage(ctx, loop, 3)) },
     { name: "Delete", run: () => remove(ctx, loop, () => manage(ctx, loop, 4)) },
@@ -53,9 +54,17 @@ export function manage(ctx: AutomationsContext, loop: Loop, selected = 0) {
   list.focus()
 }
 
-function act(ctx: AutomationsContext, loop: Loop, done: string, request: () => Promise<unknown>) {
-  const dialog = ctx.dialogs.open(`Automation › ${label(loop.name, 50)}`, false, 12)
+/** Runs one request in a small dialog that shows its failure and closes on success; `after` runs once it did. */
+export function act(
+  ctx: AutomationsContext,
+  title: string,
+  done: string,
+  request: () => Promise<unknown>,
+  after?: () => void,
+) {
+  const dialog = ctx.dialogs.open(title, false, 12)
   if (!dialog) return
+  dialog.afterSubmit = after
   dialog.form.add(new TextRenderable(ctx.renderer, { content: "Working…", fg: color.muted }))
   dialog.submit = async () => {
     await request()

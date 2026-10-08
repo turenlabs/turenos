@@ -116,7 +116,7 @@ test("the palette is as tall as its matches", async () => {
   const app = await opened([160, 48], (app) => app.view.mockInput.pressKey("p", { ctrl: true }))
   await app.screen("Find a command")
   await app.view.mockInput.typeText("archive")
-  await app.screen("1/3 ·")
+  await app.screen("1/4 ·")
   // The scroll box settles on the frame after the list changes.
   await app.view.renderOnce()
   expect(frameRows(app.view.captureCharFrame(), "Commands")).toBeLessThan(14)

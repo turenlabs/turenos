@@ -9,16 +9,19 @@ import { markFocus } from "./focus"
 import { parseSchedule, scheduleInput, scheduleProblem } from "./schedule"
 import type { AutomationsContext, Loop } from "./types"
 
-/** The create form, or the edit form when `loop` is given; `back` returns to the menu that opened it. */
-export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
+/** What a create form from the Team tab fixes: the owner or room the new automation belongs to, and where it starts. */
+export type Preset = { title: string; teammateID?: string; factoryRoomID?: string; directory?: string }
+
+/**
+ * The create form, or the edit form when `loop` is given; `back` returns to the menu that opened it. A `preset`
+ * (create only) sends its owner with the create call and returns to `back` once the automation exists.
+ */
+export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void, preset?: Preset) {
   const { dialogs, state } = ctx
-  const dialog = dialogs.open(
-    loop ? (back ? `Automation › ${label(loop.name, 40)} › Edit` : "Edit automation") : "New automation",
-    false,
-    30,
-  )
+  const dialog = dialogs.open(formTitle(loop, back, preset), false, 30)
   if (!dialog) return
   dialog.back = back
+  if (preset) dialog.afterSubmit = back
   const session = state.snapshot?.sessions.find((item) => item.id === state.selected)
   // Input fields write their text to the terminal as it is, so server text is stripped of control sequences first.
   const name = dialogs.input(dialog, "Name", display(loop?.name ?? "", 512))
@@ -33,7 +36,7 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
     : dialogs.input(
         dialog,
         "Folder on the server",
-        session?.location.directory ?? state.snapshot?.location.directory ?? "",
+        preset?.directory ?? session?.location.directory ?? state.snapshot?.location.directory ?? "",
       )
   // Values line up under their captions: the focus arrow and the field's `[ ` take the same two columns.
   const fields = [name, prompt, schedule, folder].filter((field) => field !== undefined)
@@ -57,7 +60,12 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
     created = true
     const result = object(
       await ctx.connection.client.loops
-        .create({ ...fields, location: { directory: folder!.value } })
+        .create({
+          ...fields,
+          location: { directory: folder!.value },
+          ...(preset?.teammateID ? { teammateID: preset.teammateID } : {}),
+          ...(preset?.factoryRoomID ? { factoryRoomID: preset.factoryRoomID } : {}),
+        })
         .catch((error: unknown) => {
           // A definite refusal admitted nothing, so corrected fields may be sent again.
           if (refused(error)) created = false
@@ -69,6 +77,11 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
   }
   dialog.error.content = `Tab next field · Ctrl+S save · Esc ${back ? "back" : "close"}`
   name.focus()
+}
+
+function formTitle(loop: Loop | undefined, back: (() => void) | undefined, preset: Preset | undefined) {
+  if (!loop) return preset?.title ?? "New automation"
+  return back ? `Automation › ${label(loop.name, 40)} › Edit` : "Edit automation"
 }
 
 export function remove(ctx: AutomationsContext, loop: Loop, back?: () => void) {

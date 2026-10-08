@@ -1,7 +1,8 @@
 import { array, choice, clip, identifier, invalid, numeric, object, optional, string, unique } from "./primitives"
+import { duty, factoryRun, integer, room, teammate } from "./team-entities"
+import { teamAnswer } from "./team-answers"
 
 const taskStatuses = ["queued", "claimed", "running", "succeeded", "failed", "cancelled", "stale"]
-const handle = /^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/
 
 /**
  * The Team routes the TUI reads: the room state, a posted message and a cancelled task. Everything shown
@@ -21,7 +22,7 @@ export function team(route: string[], init: RequestInit | undefined, value: unkn
     if (identifier(object(value).id) !== identifier(route[2])) invalid("task identity")
     return value
   }
-  return undefined
+  return teamAnswer(route, init, value)
 }
 
 function state(value: Record<string, unknown>) {
@@ -41,45 +42,10 @@ function state(value: Record<string, unknown>) {
     task(object(item))
     if (object(item).roomID !== current.id) invalid("task identity")
   })
-  for (const duty of array(value.duties, 1000)) {
-    identifier(object(duty).loopID)
-    identifier(object(duty).teammateID)
-  }
-  optional(value.factoryRuns, (runs) =>
-    unique(array(runs, 50), (item) => {
-      const run = object(item)
-      identifier(run.roomID)
-      choice(run.status, ["running", "succeeded", "needs_input", "failed", "cancelled", "stale"])
-      choice(run.phase, ["plan", "work", "check", "done"])
-      for (const id of array(run.taskIDs, 256)) identifier(id)
-    }),
-  )
+  for (const item of array(value.duties, 1000)) duty(object(item))
+  optional(value.factoryRuns, (runs) => unique(array(runs, 50), (item) => factoryRun(object(item))))
   if (typeof value.hasMore !== "boolean") invalid("hasMore")
   return value
-}
-
-function room(item: Record<string, unknown>) {
-  identifier(item.id, "trm_")
-  string(item.name, 512)
-  string(item.topic, 4096)
-  integer(item.head)
-  optional(item.archived, (flag) => typeof flag === "boolean" || invalid("archived"))
-  optional(item.factory, (value) => {
-    const config = object(object(value).config)
-    string(config.coordinatorTeammateID, 256)
-    for (const id of array(config.teammateIDs, 10)) string(id, 256)
-  })
-}
-
-function teammate(item: Record<string, unknown>, roomID: unknown) {
-  identifier(item.id)
-  if (item.roomID !== roomID) invalid("teammate identity")
-  string(item.name, 512)
-  if (typeof item.handle !== "string" || !handle.test(item.handle)) invalid("handle")
-  string(item.role, 512)
-  choice(item.status, ["active", "paused"])
-  // The coordinator rule orders by creation time.
-  numeric(object(item.time).created)
 }
 
 function message(item: Record<string, unknown>) {
@@ -105,8 +71,4 @@ function task(item: Record<string, unknown>) {
   choice(item.status, taskStatuses)
   optional(item.error, (text) => string(text, 8000))
   numeric(object(item.time).created)
-}
-
-function integer(value: unknown) {
-  if (!Number.isSafeInteger(numeric(value)) || (value as number) < 0) invalid("number")
 }

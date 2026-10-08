@@ -2,6 +2,7 @@ import type { TeamStateOutput } from "@turenlabs/client"
 import type { CliRenderer } from "@opentui/core"
 import type { Dialogs } from "../dialogs"
 import type { Connection, Session } from "../server"
+import type { ModelTarget } from "../models/types"
 import type { DashboardState } from "../state"
 
 /** The server's numbers are finite here: the response validator rejects the non-finite strings the generated types allow. */
@@ -18,6 +19,14 @@ export type Room = Answer["rooms"][number]
 export type Teammate = Answer["teammates"][number]
 export type Message = Answer["messages"][number]
 export type Task = Answer["tasks"][number]
+export type Duty = Answer["duties"][number]
+export type FactoryRun = NonNullable<Answer["factoryRuns"]>[number]
+export type Factory = NonNullable<Room["factory"]>
+
+/** A server answer that passed the response validator, so its numbers are finite (the generated types also allow "NaN" strings). */
+export function finite<T>(value: T) {
+  return value as unknown as Finite<T>
+}
 
 /** What the Team tab shows: the latest answer for one room, with its log merged across polls. */
 export type TeamView = {
@@ -36,6 +45,10 @@ export type TeamView = {
   showArchived: boolean
   /** Set when this client posted, so the next paint follows the tail. */
   follow?: boolean
+  /** Factory runs being started, by room: the ID survives an uncertain failure so a retry cannot start a second run. */
+  pendingRuns: Map<string, { id: string; request: string }>
+  /** What the factory panel last did or refused. The panel covers the footer, so it shows this in its own hint lines. */
+  panelNote?: string
 }
 
 /** At most this many messages stay in memory; the oldest drop first and `hasMore` says so. */
@@ -51,6 +64,10 @@ export type TeamContext = {
   openSession: (id: string, inspect?: boolean, session?: Session) => void
   /** Repaints the sidebar and the room after the view changed. */
   repaint: () => void
+  /** Browses the server's models and hands back the choice without applying it to a session. */
+  pickModel: (target: ModelTarget) => void
+  /** Switches to the Automations tab with this automation selected. */
+  openAutomation: (id: string) => void
 }
 
 export function emptyView(): TeamView {
@@ -64,6 +81,7 @@ export function emptyView(): TeamView {
     factoryRuns: [],
     hasMore: false,
     showArchived: false,
+    pendingRuns: new Map(),
   }
 }
 

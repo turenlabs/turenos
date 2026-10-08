@@ -95,7 +95,6 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()("@forge/TeamWorkspace") {}
 
 const DEFAULT_ROOM_ID = "trm_team"
-const HANDLE = /^[a-z][a-z0-9_-]{0,31}$/
 const TERMINAL_TASKS = ["succeeded", "failed", "cancelled", "stale"] as const
 
 const layer = Layer.effect(
@@ -1064,7 +1063,7 @@ const layer = Layer.effect(
           !input.name.trim() ||
           !input.role.trim() ||
           !input.mission.trim() ||
-          !HANDLE.test(input.handle) ||
+          !Team.teammateHandle.test(input.handle) ||
           input.name.length > 120 ||
           input.mission.length > 20000
         )

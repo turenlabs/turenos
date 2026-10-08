@@ -62,7 +62,7 @@ function sidebarActions(d: DashboardContext) {
     state.tab === "sessions"
       ? `${d.c.launch.hasDraft ? "Resume draft" : "New session"}    n`
       : state.tab === "team"
-        ? "Post to room    f"
+        ? "New room    a"
         : `New ${state.tab === "terminals" ? "terminal" : "automation"}    a`
   return ` + ${add}\n / ${state.query && state.query !== state.inspection ? `Find: ${label(state.query, 18)}` : `Find ${noun}`}`
 }
@@ -93,7 +93,7 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
       rank: 50,
     },
     { node: ui.information, show: !typing, text: "i Details", rank: 40 },
-    { node: ui.changes, show: live && !typing, text: "d Changes", rank: 30 },
+    { node: ui.changes, show: (live || room) && !typing, text: room ? "M Members" : "d Changes", rank: 30 },
     {
       node: ui.files,
       show: (live || (room && !!state.team?.hasMore)) && !typing,
@@ -108,7 +108,7 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
       rank: 60,
     },
     { node: ui.queued, show: queued > 0, text: `${key("u")}${queued} queued`, short: `${key("u")}${queued}`, rank: 90 },
-    { node: ui.harness, show: live && !typing, text: "H Harness", rank: 10 },
+    { node: ui.harness, show: (live || room) && !typing, text: room ? "F Factory" : "H Harness", rank: 10 },
     { node: ui.meter, show: !!meter, text: meter, short: usage && meterText(usage, limit, true), rank: 80 },
   ]
   const width = actionWidth(d)
