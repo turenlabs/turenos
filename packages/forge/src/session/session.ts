@@ -5,6 +5,7 @@ import { PermissionV1 } from "@turenlabs/core/v1/permission"
 import { Slug } from "@turenlabs/core/util/slug"
 import { SessionV1 } from "@turenlabs/core/v1/session"
 import { INTERNAL_METADATA_KEY } from "@turenlabs/schema/session"
+import { SessionTitle } from "@turenlabs/schema/session-title"
 import { serviceUse } from "@turenlabs/core/effect/service-use"
 import path from "path"
 import { BackgroundJob } from "@/background/job"
@@ -52,8 +53,6 @@ import { SessionTranscriptAdoption } from "@turenlabs/core/session/transcript-ad
 import { EventSequenceTable, EventTable } from "@turenlabs/core/event/sql"
 import { SessionTaskActorClaimTable } from "@turenlabs/core/session/task.sql"
 
-const parentTitlePrefix = "New session - "
-const childTitlePrefix = "Child session - "
 const taskEventPurgeBatchSize = 400
 const visibleSession = and(
   sql`${SessionTable.id} NOT LIKE 'ses_lobby_%'`,
@@ -61,9 +60,7 @@ const visibleSession = and(
 )!
 
 export function isDefaultTitle(title: string) {
-  return new RegExp(
-    `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
-  ).test(title)
+  return SessionTitle.parsePlaceholder(title) !== undefined
 }
 
 type SessionRow = typeof SessionTable.$inferSelect
@@ -574,7 +571,7 @@ const layer: Layer.Layer<
         path: input.path,
         workspaceID: input.workspaceID,
         parentID: input.parentID,
-        title: input.title ?? (input.parentID ? childTitlePrefix : parentTitlePrefix) + new Date().toISOString(),
+        title: input.title ?? SessionTitle.placeholder(input.parentID ? "child" : "new", Date.now()),
         agent: input.agent,
         model: input.model,
         metadata: input.metadata,
