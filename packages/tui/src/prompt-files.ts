@@ -1,3 +1,5 @@
+import { absolutePath, encodeFilePath, isAbsolutePath } from "@turenlabs/client/paths"
+
 export type PromptFile = {
   uri: string
   name: string
@@ -21,7 +23,7 @@ const missing = new Set<string>()
 
 /** Records what the server's file search answered for `query`, so a path it never resolved is not attached. */
 export function recordSearch(directory: string, query: string, found: boolean) {
-  if (!query || query.endsWith("/") || absolutePath(query) || escapes(query)) return
+  if (!query || query.endsWith("/") || isAbsolutePath(query) || escapes(query)) return
   const key = `${directory}\0${query}`
   if (found) missing.delete(key)
   else missing.add(key)
@@ -79,7 +81,7 @@ function decodeMention(match: RegExpExecArray, directory: string) {
   if (!path || path.length > 4096 || query === undefined) return undefined
   if (/[\u0000-\u001f\u007f-\u009f]/.test(path)) return undefined
   if (!quoted && !split && malformedRange.test(path)) return undefined
-  const uri = fileURI(absolute(directory, path), query)
+  const uri = fileURI(absolutePath(directory, path), query)
   if (!uri) return undefined
   const text = quoted ? match[0].slice(match[1]!.length) : `@${token}`
   const offset = match.index + match[1]!.length
@@ -93,13 +95,13 @@ function decodeMention(match: RegExpExecArray, directory: string) {
 
 /** An absolute path, `~`, or a `..` segment reaches outside the directory the session works in. */
 function escapes(path: string) {
-  return absolutePath(path) || path.startsWith("~") || path.split(/[\\/]/).includes("..")
+  return isAbsolutePath(path) || path.startsWith("~") || path.split(/[\\/]/).includes("..")
 }
 
 // A lone surrogate cannot be percent-encoded; such a mention stays plain text instead of failing the send.
 function fileURI(path: string, query: string) {
   try {
-    return `file://${encodePath(path)}${query}`
+    return `file://${encodeFilePath(path)}${query}`
   } catch {
     return undefined
   }
@@ -115,23 +117,4 @@ function lineQuery(range: string | undefined) {
   const end = parts[2] === undefined ? start : Number(parts[2])
   if (!Number.isSafeInteger(start) || start < 1 || !Number.isSafeInteger(end) || end < start) return undefined
   return `?start=${start}&end=${end}`
-}
-
-function absolutePath(path: string) {
-  return path.startsWith("/") || path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path)
-}
-
-function absolute(directory: string, path: string) {
-  if (absolutePath(path)) return path
-  return `${directory.replace(/[\\/]+$/, "")}/${path}`
-}
-
-// Windows drive paths become `/C:/...` so the server's file URL parser keeps the
-// drive; the colon must survive segment encoding for that to work.
-function encodePath(path: string) {
-  const normalized = path.replace(/\\/g, "/")
-  return (/^[A-Za-z]:/.test(normalized) ? `/${normalized}` : normalized)
-    .split("/")
-    .map((segment, index) => (index === 1 && /^[A-Za-z]:$/.test(segment) ? segment : encodeURIComponent(segment)))
-    .join("/")
 }

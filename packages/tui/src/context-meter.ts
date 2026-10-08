@@ -1,3 +1,4 @@
+import { contextTokens, usagePercent } from "@turenlabs/client/context"
 import type { Connection, Detail } from "./server"
 
 type Message = Detail["messages"][number]
@@ -16,10 +17,9 @@ export function contextUsage(messages: readonly Message[]) {
 
 export function meterText(usage: ReturnType<typeof contextUsage>, limit: number | undefined, short = false) {
   if (!usage) return ""
-  if (short) return limit ? `Ctx ${Math.round((usage.total / limit) * 100)}%` : `Ctx ${compact(usage.total)}`
-  return limit
-    ? `Context ${Math.round((usage.total / limit) * 100)}% · ${compact(usage.total)}/${compact(limit)}`
-    : `Context ${compact(usage.total)}`
+  if (!limit) return short ? `Ctx ${compact(usage.total)}` : `Context ${compact(usage.total)}`
+  const percent = usagePercent(usage.total, limit)
+  return short ? `Ctx ${percent}%` : `Context ${percent}% · ${compact(usage.total)}/${compact(limit)}`
 }
 
 /**
@@ -52,8 +52,7 @@ export function createContextLimits(connection: Connection, loaded: () => void) 
 }
 
 function total(message: Extract<Message, { type: "assistant" }>) {
-  const tokens = message.tokens
-  return tokens ? tokens.input + tokens.cache.read + tokens.cache.write + tokens.output + tokens.reasoning : 0
+  return message.tokens ? contextTokens(message.tokens) : 0
 }
 
 function compact(value: number) {

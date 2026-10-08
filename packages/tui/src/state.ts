@@ -7,6 +7,7 @@ import type {
   TextRenderable,
 } from "@opentui/core"
 import type { KeyEvent } from "@opentui/core"
+import { SessionTitle } from "@turenlabs/client/session-title"
 import { display } from "./messages"
 import { stamp } from "./menus/stamp"
 import type { Connection, Detail, Session, Snapshot } from "./server"
@@ -165,12 +166,12 @@ export function label(value: string, limit = 150) {
 }
 
 /**
- * A session title as people read it. The server names an untitled session `New session - <ISO time>` and keeps
- * that name when its first turn fails, so the timestamp is shown as a local `YYYY-MM-DD HH:MM`, like every other date.
+ * A session title as people read it. The server names an untitled session `New session - <ISO time>` (a child
+ * session `Child session - <ISO time>`) and keeps that name when its first turn fails, so the timestamp is shown
+ * as a local `YYYY-MM-DD HH:MM`, like every other date.
  */
 export function sessionTitle(title: string, limit = 150) {
-  const placeholder = /^New session - (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z)$/.exec(title)
-  const time = placeholder ? new Date(placeholder[1]!) : undefined
-  if (!time || Number.isNaN(time.getTime())) return label(title, limit)
-  return label(`New session · ${stamp(time.getTime())}`, limit)
+  const placeholder = SessionTitle.parsePlaceholder(title)
+  if (!placeholder || Number.isNaN(placeholder.at)) return label(title, limit)
+  return label(`${placeholder.kind === "child" ? "Child" : "New"} session · ${stamp(placeholder.at)}`, limit)
 }

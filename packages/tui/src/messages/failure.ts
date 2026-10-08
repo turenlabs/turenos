@@ -1,4 +1,5 @@
-import { display, providerError, TURN_INTERRUPTED } from "../messages"
+import { TurnInterruption } from "@turenlabs/client/turn-interruption"
+import { display, providerError } from "../messages"
 import type { Message } from "../agent/state"
 
 // A restart or crash leaves the step's message without the completion time, finish reason and error
@@ -14,7 +15,7 @@ export function turnFailure(messages: Message[]) {
   const last = lastAssistant(messages)
   if (!last) return undefined
   if (!last.error) return unfinished(last) ? { state: "interrupted" as const, text: UNFINISHED } : undefined
-  if (TURN_INTERRUPTED.test(last.error.message))
+  if (TurnInterruption.isTurnInterrupted(last.error.message))
     return { state: "interrupted" as const, text: "The turn was stopped before it finished." }
   const text = display(providerError(last.error.message), 1000).replace(/\s+/g, " ").trim()
   return { state: "failed" as const, text: text || "The assistant reported an error." }

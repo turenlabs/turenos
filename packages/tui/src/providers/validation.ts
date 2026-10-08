@@ -1,3 +1,4 @@
+import { ProviderURL } from "@turenlabs/client/provider-url"
 import { invalid, isRecord } from "../response-validation"
 import { UNSAFE_TEXT } from "../response-validation/primitives"
 
@@ -94,14 +95,7 @@ export function endpoint(value: string) {
   const url = URL.parse(text(value, "provider URL", 4096))
   if (!url || url.username || url.password || value.includes("?") || value.includes("#"))
     throw new Error("Use a provider URL without credentials, a query, or a fragment.")
-  // Match SessionRunnerModel's runtime policy without importing Core into the TUI.
-  const octets = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(url.hostname) ? url.hostname.split(".").map(Number) : []
-  const local =
-    ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) ||
-    octets[0] === 10 ||
-    (octets[0] === 172 && octets[1] !== undefined && octets[1] >= 16 && octets[1] <= 31) ||
-    (octets[0] === 192 && octets[1] === 168)
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && local))
+  if (!ProviderURL.qualified(value))
     throw new Error("Use HTTPS, or HTTP on a runtime-supported private or loopback provider address.")
   return url.href
 }

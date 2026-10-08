@@ -1,4 +1,5 @@
 import type { MessagesListOutput } from "@turenlabs/client"
+import { TurnInterruption } from "@turenlabs/client/turn-interruption"
 import { display, toolResult } from "../messages"
 import { changeDiff } from "./changes"
 import { codeSpan, literal } from "./literal"
@@ -13,13 +14,10 @@ export type ToolPart = Extract<Extract<Message, { type: "assistant" }>["content"
 /** `raw` shows the server's bounded text untouched; `rich` is the dashboard view, which may collapse and style. */
 export type ToolView = Collapse & { raw: boolean }
 
-// The server's wording for a tool that was stopped (packages/core/src/session/runner/llm.ts).
-export const TOOL_INTERRUPTED = "Tool execution interrupted"
-
 /** A status line for one tool call followed by its result, shortened to the first lines in the dashboard. */
 export function toolBlock(part: ToolPart, view: ToolView) {
   const state = part.state
-  const stopped = state.status === "error" && state.error.message === TOOL_INTERRUPTED
+  const stopped = state.status === "error" && state.error.message === TurnInterruption.TOOL
   // The status is one of the fixed words the response validation allows, and the name has no control characters.
   const status = stopped ? "interrupted" : display(state.status, 32)
   const failure =

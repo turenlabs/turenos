@@ -1,6 +1,7 @@
 import type { MessagesListOutput, QuestionsListOutput } from "@turenlabs/client"
+import { TurnInterruption } from "@turenlabs/client/turn-interruption"
 import { assistantHeader, chip } from "./messages/header"
-import { toolBlock, TOOL_INTERRUPTED, type ToolView } from "./messages/tool"
+import { toolBlock, type ToolView } from "./messages/tool"
 import { continuesTurn, startsTurn, turnTime } from "./messages/turns"
 import { noticeLine } from "./messages/notice"
 import { foldParentContext } from "./messages/parent-context"
@@ -207,12 +208,12 @@ function shellPreview(message: Extract<Message, { type: "shell" }>) {
 function assistantPreview(message: Extract<Message, { type: "assistant" }>) {
   const tools = message.content.filter((part) => part.type === "tool")
   const failures = tools.filter(
-    (part) => part.state.status === "error" && part.state.error.message !== TOOL_INTERRUPTED,
+    (part) => part.state.status === "error" && part.state.error.message !== TurnInterruption.TOOL,
   )
   const alerts = [
     ...(message.error
       ? [
-          TURN_INTERRUPTED.test(message.error.message)
+          TurnInterruption.isTurnInterrupted(message.error.message)
             ? "Interrupted: the turn was stopped before it finished."
             : `Error: ${display(providerError(message.error.message), 1000).trim() || "The assistant reported an error."}`,
         ]
@@ -329,14 +330,11 @@ function assistantText(message: Assistant, raw: boolean, rich: boolean, view: Tr
   return [[header, parts[0]].filter(Boolean).join("\n"), ...parts.slice(1)].join("\n\n")
 }
 
-// The server's wording for a turn that was stopped (packages/core/src/session/runner/llm.ts).
-export const TURN_INTERRUPTED =
-  /^(Provider turn interrupted|Provider turn interrupted before it started|Tool execution interrupted during settlement)$/
-
 // The server can interrupt for reasons other than the user, so the wording names no one.
 function errorLine(message: string, raw: boolean, rich: boolean) {
   const bold = rich && !raw
-  if (TURN_INTERRUPTED.test(message)) return styled("INTERRUPTED:", "the turn was stopped before it finished.", bold)
+  if (TurnInterruption.isTurnInterrupted(message))
+    return styled("INTERRUPTED:", "the turn was stopped before it finished.", bold)
   return styled("ERROR:", display(raw ? message : providerError(message)), bold)
 }
 
@@ -345,7 +343,7 @@ const KEY_REFUSED =
   /\bHTTP (?:401|403)\b|\bunauthori[sz]ed\b|\bkey\b.{0,40}\b(?:refused|rejected|invalid|incorrect|revoked|expired)\b/i
 
 function keyHint(message: string) {
-  if (TURN_INTERRUPTED.test(message) || !KEY_REFUSED.test(message.slice(0, 2000))) return ""
+  if (TurnInterruption.isTurnInterrupted(message) || !KEY_REFUSED.test(message.slice(0, 2000))) return ""
   return "Check the provider's key: Models (m), then F2 for provider setup, or Settings › Providers."
 }
 
