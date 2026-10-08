@@ -14,7 +14,7 @@ import {
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
 import { useDialog } from "@turenlabs/ui/context/dialog"
-import { isRemovedProvider, popularProviders } from "@/hooks/use-providers"
+import { isRemovedProvider } from "@/hooks/use-providers"
 import { Button } from "@turenlabs/ui/button"
 import { IconButton } from "@turenlabs/ui/icon-button"
 import { ScrollView } from "@turenlabs/ui/scroll-view"
@@ -30,7 +30,7 @@ import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
 import { handleDocumentSearchKeydown } from "@/utils/search-keydown"
 import { createEventListener } from "@solid-primitives/event-listener"
-import { matchesModelSearch } from "./dialog-select-model-search"
+import { compareProviders, matchesModelSearch, sortModelGroups } from "@turenlabs/client/models"
 import { modelCapabilitySummary } from "./model-selection-display"
 import { useSettingsDialog } from "./settings-dialog"
 
@@ -40,18 +40,6 @@ type ModelPickerState = Pick<ModelState, "current" | "list" | "recent" | "set" |
 
 const modelKey = (model: ModelItem) => `${model.provider.id}:${model.id}`
 const manageKey = "action:manage"
-
-const sortModelGroups = (a: { category: string; items: ModelItem[] }, b: { category: string; items: ModelItem[] }) => {
-  const aIndex = popularProviders.indexOf(a.category)
-  const bIndex = popularProviders.indexOf(b.category)
-  const aPopular = aIndex >= 0
-  const bPopular = bIndex >= 0
-
-  if (aPopular && !bPopular) return -1
-  if (!aPopular && bPopular) return 1
-  if (aPopular && bPopular) return aIndex - bIndex
-  return a.items[0].provider.name.localeCompare(b.items[0].provider.name)
-}
 
 const ModelList: Component<{
   provider?: string
@@ -82,13 +70,7 @@ const ModelList: Component<{
       filterKeys={["provider.name", "name", "id"]}
       sortBy={(a, b) => a.name.localeCompare(b.name)}
       groupBy={(x) => x.provider.name}
-      sortGroupsBy={(a, b) => {
-        const aProvider = a.items[0].provider.id
-        const bProvider = b.items[0].provider.id
-        if (popularProviders.includes(aProvider) && !popularProviders.includes(bProvider)) return -1
-        if (!popularProviders.includes(aProvider) && popularProviders.includes(bProvider)) return 1
-        return popularProviders.indexOf(aProvider) - popularProviders.indexOf(bProvider)
-      }}
+      sortGroupsBy={(a, b) => compareProviders(a.items[0].provider, b.items[0].provider)}
       itemWrapper={(item, node) => (
         <Tooltip
           class="w-full"
@@ -278,8 +260,7 @@ export function ModelSelectorPopoverV2(props: {
     for (const item of models().filter((item) => !recentKeys.has(modelKey(item)))) {
       byProvider.set(item.provider.id, [...(byProvider.get(item.provider.id) ?? []), item])
     }
-    const providers = Array.from(byProvider, ([category, items]) => ({ category, items }))
-      .sort(sortModelGroups)
+    const providers = sortModelGroups(Array.from(byProvider, ([category, items]) => ({ category, items })))
       .map((group) => ({ ...group, label: group.items[0].provider.name }))
     if (recent.length === 0) return providers
     return [{ category: "recent", label: "Recent", items: recent }, ...providers]
