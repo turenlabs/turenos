@@ -65,6 +65,7 @@ const extra = {
   reject: {},
   answer: { choice: { type: "string", multiple: true }, answers: text, reject: flag },
   stop: { tasks: flag },
+  team: { all: flag, limit: text, id: text, timeout: text },
 } as const
 
 export function parseCommand(command: AgentCommand, args: string[]) {
