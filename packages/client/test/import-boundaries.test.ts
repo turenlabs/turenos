@@ -29,6 +29,16 @@ describe("public import boundaries", () => {
     expect(within(network, core)).toEqual([])
     expect(within(network, server)).toEqual([])
   })
+
+  // The terminal client loads these without depending on `effect`.
+  test("keeps the shared client rules free of effect", async () => {
+    for (const rules of ["models", "context", "paths", "provider-url", "session-title", "turn-interruption"]) {
+      const inputs = await bundleInputs(`@turenlabs/client/${rules}`, "bun")
+      expect({ rules, effect: within(inputs, effect) }).toEqual({ rules, effect: [] })
+      expect(within(inputs, protocol)).toEqual([])
+      expect(within(inputs, core)).toEqual([])
+    }
+  })
 })
 
 async function bundleInputs(specifier: string, target: "browser" | "bun") {

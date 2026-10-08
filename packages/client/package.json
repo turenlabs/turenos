@@ -7,7 +7,12 @@
   "exports": {
     ".": "./src/index.ts",
     "./effect": "./src/effect.ts",
-    "./models": "./src/models.ts"
+    "./models": "./src/models.ts",
+    "./context": "./src/context.ts",
+    "./paths": "./src/paths.ts",
+    "./provider-url": "./src/provider-url.ts",
+    "./session-title": "./src/session-title.ts",
+    "./turn-interruption": "./src/turn-interruption.ts"
   },
   "scripts": {
     "generate": "bun run script/build.ts",
