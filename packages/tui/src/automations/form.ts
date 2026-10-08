@@ -67,7 +67,7 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void) {
     identifier(result.id)
     ctx.say("Automation created.")
   }
-  dialog.error.content = `Tab next field · Ctrl+S save · Esc ${back ? "back" : "cancel"}`
+  dialog.error.content = `Tab next field · Ctrl+S save · Esc ${back ? "back" : "close"}`
   name.focus()
 }
 
@@ -90,7 +90,7 @@ export function remove(ctx: AutomationsContext, loop: Loop, back?: () => void) {
     await ctx.connection.client.loops.delete({ loopID: loop.id })
     ctx.say("Automation deleted.")
   }
-  dialog.error.content = "Ctrl+S Delete · Esc cancel"
+  dialog.error.content = `Ctrl+S Delete · Esc ${back ? "back" : "close"}`
   dialog.form.focus()
 }
 

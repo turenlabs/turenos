@@ -14,7 +14,7 @@ export function renameSession(ctx: SessionActionsContext): void {
   const title = ctx.dialogs.input(dialog, "Title (1-200 characters)", shown.slice(0, 200))
   title.maxLength = 200
   dialog.submit = () => updateSession(ctx, dialog, session, { title: title.value })
-  dialog.error.content = `${shown.length > 200 ? "The title was shortened to 200 characters.\n" : ""}Enter / Ctrl+S save · Esc cancel`
+  dialog.error.content = `${shown.length > 200 ? "The title was shortened to 200 characters.\n" : ""}Enter / Ctrl+S save · Esc close`
   dialog.key = (key) => {
     if (!matchesKey(key, "enter")) return false
     void ctx.dialogs.submit()

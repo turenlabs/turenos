@@ -15,7 +15,7 @@ export function compact(ctx: SessionContext) {
       wrapMode: "word",
     }),
   )
-  dialog.error.content = "Ctrl+S confirm server summarization\nEsc cancel"
+  dialog.error.content = "Ctrl+S confirm server summarization\nEsc close"
   dialog.submit = async () => {
     await currentSession(ctx, session)
     if (ctx.state.modal !== dialog) throw new Error("Confirmation is no longer open.")

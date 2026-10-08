@@ -42,7 +42,7 @@ export function create(ctx: Context) {
     if (ctx.state.tab === "terminals") ctx.state.selected = created.id
     void attach(ctx, created)
   }
-  dialog.error.content = "Tab next field · Ctrl+S Open and attach · Esc cancel"
+  dialog.error.content = "Tab next field · Ctrl+S Open and attach · Esc close"
   title.focus()
 }
 
@@ -61,7 +61,7 @@ export function rename(ctx: Context) {
     })
     ctx.say("Terminal renamed.")
   }
-  dialog.error.content = "Ctrl+S Save · Esc cancel"
+  dialog.error.content = "Ctrl+S Save · Esc close"
   title.focus()
 }
 
@@ -81,6 +81,6 @@ export function close(ctx: Context) {
     await ctx.connection.client.ptys.remove({ ptyID: terminal.id, location: where(target(terminal)) })
     ctx.say("Terminal closed.")
   }
-  dialog.error.content = "Ctrl+S Close terminal · Esc cancel"
+  dialog.error.content = "Ctrl+S Close terminal · Esc close"
   dialog.form.focus()
 }

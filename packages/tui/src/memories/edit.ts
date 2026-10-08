@@ -52,7 +52,7 @@ export function edit(ctx: MemoriesContext, place: Place, item: Memory | undefine
   }
   dialog.afterSubmit = () => reopen(done)
   dialog.back = () => reopen()
-  dialog.error.content = "Tab next field · ↑↓ change kind · Ctrl+S save · Esc cancel"
+  dialog.error.content = "Tab next field · ↑↓ change kind · Ctrl+S save · Esc back"
   title.focus()
 }
 

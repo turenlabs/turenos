@@ -83,6 +83,6 @@ export function confirm(
   dialog.submit = action
   dialog.afterSubmit = back
   dialog.back = back
-  dialog.error.content = "Ctrl+S confirm · Esc cancel"
+  dialog.error.content = `Ctrl+S confirm · Esc ${back ? "back" : "close"}`
   dialog.form.focus()
 }

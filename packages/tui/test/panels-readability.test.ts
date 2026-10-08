@@ -202,7 +202,7 @@ test("the new-terminal form names Tab, and a blank title becomes a readable defa
   await screen("No terminals")
   view.mockInput.pressKey("a")
   const frame = await screen("New terminal")
-  expect(frame).toContain("Tab next field · Ctrl+S Open and attach · Esc cancel")
+  expect(frame).toContain("Tab next field · Ctrl+S Open and attach · Esc close")
   expect(frame).toContain("blank names it after the folder")
   view.mockInput.pressKey("s", { ctrl: true })
   await Bun.sleep(200)
