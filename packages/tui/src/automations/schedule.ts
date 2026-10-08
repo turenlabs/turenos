@@ -1,8 +1,12 @@
 import type { Loop } from "./types"
-import { formatInterval, parseInterval, validateCronExpression } from "@turenlabs/client/automation-schedule"
+import {
+  formatInterval,
+  minimumIntervalSeconds,
+  parseInterval,
+  validateCronExpression,
+} from "@turenlabs/client/automation-schedule"
 
 const EVERY = /^(?:every\s+)?(\d+)\s*(s|sec|secs|m|min|mins|h|hr|hrs|hour|hours|d|day|days)$/
-const MINIMUM = 60
 
 /**
  * "every 15m", "every 2h", "30m", or a five-field cron expression such as "0 9 * * 1-5", which runs
@@ -14,7 +18,7 @@ export function parseSchedule(text: string, current?: Loop["schedule"]) {
   const every = EVERY.exec(value)
   if (every) {
     const intervalSeconds = parseInterval(`${Number(every[1])}${every[2]![0]}`)
-    return intervalSeconds !== undefined && intervalSeconds >= MINIMUM ? { intervalSeconds } : undefined
+    return intervalSeconds !== undefined && intervalSeconds >= minimumIntervalSeconds ? { intervalSeconds } : undefined
   }
   // Match the desktop's entry checks; Core validates field ranges when the form is submitted.
   if (validateCronExpression(value)) return undefined
@@ -31,7 +35,7 @@ export function scheduleProblem(text: string) {
   const every = EVERY.exec(value)
   if (every) {
     const seconds = parseInterval(`${Number(every[1])}${every[2]![0]}`)
-    if (Number(every[1]) === 0 || (seconds !== undefined && seconds < MINIMUM))
+    if (Number(every[1]) === 0 || (seconds !== undefined && seconds < minimumIntervalSeconds))
       return "The shortest interval is every 1m."
     return "That interval is too long. Use a shorter interval or a cron expression."
   }

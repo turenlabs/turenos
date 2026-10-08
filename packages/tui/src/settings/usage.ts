@@ -1,3 +1,4 @@
+import { contextTokens } from "@turenlabs/client/context"
 import { array, numeric, object, optional, string } from "../response-validation"
 import { label } from "../state"
 import { color } from "../theme"
@@ -32,7 +33,14 @@ function usageText(result: Record<string, unknown>, names: Map<string, string>) 
   const providers = array(result.providers, 512).map((value) => {
     const item = object(value)
     const tokens = object(item.tokens)
-    const total = ["input", "output", "reasoning"].reduce((sum, key) => sum + numeric(tokens[key]), 0)
+    // Cached prompt tokens count too, as in the desktop's usage page; a report without them counts none.
+    const cache = tokens.cache === undefined ? { read: 0, write: 0 } : object(tokens.cache)
+    const total = contextTokens({
+      input: numeric(tokens.input),
+      output: numeric(tokens.output),
+      reasoning: numeric(tokens.reasoning),
+      cache: { read: numeric(cache.read), write: numeric(cache.write) },
+    })
     return `${named(string(item.providerID, 256))}: ${numeric(item.turns)} turns · ${Math.round(total / 1000)}k tokens · $${numeric(item.cost).toFixed(2)}`
   })
   const quotas = array(result.quotas, 512).flatMap((value) => {

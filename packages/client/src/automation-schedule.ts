@@ -1,5 +1,8 @@
 // Browser-safe form checks shared by desktop and TUI. Core owns cron field parsing and execution.
 
+/** The shortest interval Core schedules (its `MIN_INTERVAL_SECONDS`). */
+export const minimumIntervalSeconds = 60
+
 export const formatInterval = (seconds: number) => {
   if (seconds % 86_400 === 0) return `${seconds / 86_400}d`
   if (seconds % 3_600 === 0) return `${seconds / 3_600}h`
