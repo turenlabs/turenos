@@ -1,6 +1,6 @@
 import { maxMessageLength } from "../requests/context"
 import { mentionReport } from "../prompt-files"
-import { errorText, refused } from "../server"
+import { errorText, httpStatus, refused } from "../server"
 import { emit, quote, type Run } from "./context"
 import { AgentError, usage } from "./errors"
 import { report, settle, type Anchor } from "./wait"
@@ -70,15 +70,30 @@ export async function finish(run: Run, sent: Sent) {
   return report(run, sent.sessionID, outcome, sent.timeout, { messageID: sent.messageID })
 }
 
-/** Turns a failed write into the report the spec asks for: refused means nothing was sent, anything else is unknown. */
-export function writeFailure(error: unknown, ids: { sessionID: string; messageID: string }, retry: string) {
+/** What a failed write names: the thing written, and what did not happen when the server refused it. */
+export type Write = { noun: string; nothing: string; conflict?: boolean }
+
+const message: Write = { noun: "message", nothing: "sent" }
+
+/**
+ * Turns a failed write into the report the spec asks for: refused means nothing was written, anything else is
+ * unknown. A write the server stores by its ID can also count its 409 as refused (`conflict`): it never stored it.
+ */
+export function writeFailure(
+  error: unknown,
+  ids: { sessionID?: string; messageID: string },
+  retry: string,
+  write = message,
+) {
   const reason = errorText(error)
-  if (refused(error))
-    return new AgentError(`The server refused the message (${reason.replace(/\.$/, "")}). Nothing was sent.`)
+  if (refused(error) || (write.conflict && httpStatus(error) === 409))
+    return new AgentError(
+      `The server refused the ${write.noun} (${reason.replace(/\.$/, "")}). Nothing was ${write.nothing}.`,
+    )
   return new AgentError(
-    `Outcome unknown: ${reason.replace(/\.$/, "")}. Retry with the same ID so it cannot be sent twice: ${retry}`,
+    `Outcome unknown: ${reason.replace(/\.$/, "")}. Retry with the same ID so it cannot be ${write.nothing} twice: ${retry}`,
     1,
-    { id: ids.messageID, sessionID: ids.sessionID },
+    { id: ids.messageID, ...(ids.sessionID ? { sessionID: ids.sessionID } : {}) },
   )
 }
 

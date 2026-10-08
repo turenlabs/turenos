@@ -64,6 +64,25 @@ A label outside the options is accepted only when the question allows custom ans
 Interrupt the running session and its unfinished subagent tasks through the server.
 An idle parent is not interrupted unless --tasks is given; that also cancels its unfinished
 subagent tasks. --json with --tasks reports tasks.status as cancelled, without per-task counts.`,
+  team: `Usage: turen-tui team rooms [--all]
+       turen-tui team show [<room>] [--limit N]
+       turen-tui team post <room> [text | -] [--id msg_...]
+       turen-tui team run <room> [request | -] [--id <run-id>]
+       turen-tui team cancel <run-id>
+       turen-tui team wait <run-id> [--timeout S]
+
+Read and write Team rooms. <room> is a room ID (trm_...) or an exact room name in any case; show
+without a room reads the server's default room.
+  rooms    List rooms with their teammate counts (--all includes archived rooms)
+  show     Teammates, the latest N messages (1-100, default 30), active tasks and the factory's latest run
+  post     Post a message; a mention creates a task for that teammate, else the coordinator replies.
+           Prints each task with the command that waits for its session
+  run      Start one factory run (the request is optional, at most 4,000 characters)
+  cancel   Cancel a factory run and print its final status
+  wait     Block until the run leaves running: exit 0 succeeded, 3 needs input (the task sessions and
+           their pending requests are printed), 5 failed, cancelled or stale, 4 timeout (default 600 s,
+           0 for no limit)
+  --id     Message or run ID. After "Outcome unknown", retry with the same ID: the server drops duplicates`,
 }
 
 export function commandHelp(command: AgentCommand) {

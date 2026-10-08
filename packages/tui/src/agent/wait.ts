@@ -78,28 +78,48 @@ export function report(run: Run, sessionID: string, outcome: Outcome, timeout: n
 
 /**
  * Blocks until the session needs input, or is idle and (when anchored) has replied after the anchor.
- * The live event stream only wakes the loop early; the server bounds that stream and may drop events,
- * so every pass re-reads the session's state and the loop never sleeps longer than one second.
+ * The polling rules are `poll`'s.
  */
 export async function settle(
   connection: Connection,
   sessionID: string,
   input: { timeout: number; after?: Anchor },
 ): Promise<Outcome> {
+  const outcome = await poll(
+    connection,
+    input.timeout,
+    () => observe(connection, sessionID, input.after),
+    `Session ${sessionID} was deleted while waiting.`,
+  )
+  return outcome ?? { state: "timeout" }
+}
+
+/**
+ * Calls `observe` until it returns a result, or the timeout passes (0 never gives up), which returns undefined.
+ * The live event stream only wakes the loop early; the server bounds that stream and may drop events,
+ * so every pass re-reads the state and the loop never sleeps longer than one second. A transient failure
+ * is tried again on the schedule of `retryDelay`; a 404 means the watched thing is gone and throws `gone`.
+ */
+export async function poll<Result>(
+  connection: Connection,
+  timeout: number,
+  observe: () => Promise<Result | undefined>,
+  gone: string,
+): Promise<Result | undefined> {
   const controller = new AbortController()
   const wake = wakeups(connection, controller.signal)
-  const deadline = input.timeout ? Date.now() + input.timeout * 1000 : Number.POSITIVE_INFINITY
+  const deadline = timeout ? Date.now() + timeout * 1000 : Number.POSITIVE_INFINITY
   const failed = { passes: 0 }
   try {
     while (true) {
       const started = Date.now()
-      const seen = await observe(connection, sessionID, input.after).then(
+      const seen = await observe().then(
         (outcome) => {
           failed.passes = 0
           return outcome
         },
         (error: unknown) => {
-          if (httpStatus(error) === 404) throw new AgentError(`Session ${sessionID} was deleted while waiting.`)
+          if (httpStatus(error) === 404) throw new AgentError(gone)
           if (!transient(error)) throw error
           failed.passes++
           return undefined
@@ -107,7 +127,7 @@ export async function settle(
       )
       if (seen) return seen
       const remaining = deadline - Date.now()
-      if (remaining <= 0) return { state: "timeout" }
+      if (remaining <= 0) return undefined
       // After a failed pass the next waits longer, up to five seconds, so a restarting server is not hammered.
       await wake(Math.min(failed.passes ? retryDelay(failed.passes) : 1000, remaining))
       // Chatty event streams must not turn the loop into a busy poll.
@@ -128,7 +148,7 @@ function retryDelay(passes: number) {
  * failing, until the timeout (0 never gives up). A definite answer, such as a refused login or an unknown
  * session, and the last failure at the deadline, are thrown as they are.
  */
-async function patiently<Value>(timeout: number, request: () => Promise<Value>) {
+export async function patiently<Value>(timeout: number, request: () => Promise<Value>) {
   const deadline = timeout ? Date.now() + timeout * 1000 : Number.POSITIVE_INFINITY
   for (let passes = 1; ; passes++) {
     const result = await request().then(

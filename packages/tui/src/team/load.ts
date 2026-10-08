@@ -62,7 +62,7 @@ function current(loader: Loader, roomID: string | undefined) {
 }
 
 /** The response validator accepted this answer, so its numbers are finite (the generated type also allows "NaN" strings). */
-function checked(answer: TeamStateOutput) {
+export function checked(answer: TeamStateOutput) {
   return answer as unknown as Answer
 }
 

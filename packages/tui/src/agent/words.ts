@@ -8,6 +8,7 @@ export const agentCommands = [
   "reject",
   "answer",
   "stop",
+  "team",
 ] as const
 
 /** A lowercase word in the command position: not a URL, which has a scheme, a dot, a port or digits. */
@@ -59,10 +60,12 @@ export const agentOverview = `Agent and script commands (no terminal needed; add
   reject <session> <id>    Reject a permission request
   answer <session> <id>    Answer a question: --choice <label>, --answers <json> or --reject
   stop <session>           Interrupt a session (--tasks also cancels its subagent tasks)
+  team <subcommand>        Team rooms: rooms, show, post, run, cancel, wait (factory runs)
 
 Examples:
   turen-tui sessions --json
   turen-tui send --new "fix the failing test" --dir /srv/app --wait
   turen-tui pending
   turen-tui approve ses_abc per_123 && turen-tui wait ses_abc
+  turen-tui team post team "@moss review the diff"
 Exit codes: 0 done, 1 failed, 2 usage, 3 needs input, 4 timeout, 5 turn failed. Each command takes --help.`

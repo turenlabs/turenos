@@ -13,10 +13,11 @@ import { send } from "./send"
 import { sessions } from "./sessions"
 import { show } from "./show"
 import { stop } from "./stop"
+import { team } from "./team"
 import { wait } from "./wait"
 import { isAgentCommand, unknownCommand } from "./words"
 
-const commands = { sessions, show, send, wait, pending, approve, reject, answer, stop }
+const commands = { sessions, show, send, wait, pending, approve, reject, answer, stop, team }
 
 /** Runs one agent command and returns its exit code: 0 done, 1 failed, 2 usage, 3 needs input, 4 timeout, 5 failed turn. */
 export async function runAgent(args: string[], io: Io) {
