@@ -2,6 +2,7 @@ import { label } from "../state"
 import type { DashboardState } from "../state"
 import { headerLeft, headerRight, scheduleText } from "../chrome"
 import { sessionRows, type SidebarRow } from "../session-list"
+import { roomNote, roomRows } from "../team"
 import { folderContains } from "../working-folders"
 import { renderActions } from "./actions"
 import { renderSidebarTitle, renderTabs } from "./status"
@@ -22,6 +23,8 @@ export function renderList(d: DashboardContext) {
     d.c.conversation.rememberPosition()
     d.state.selected = selected
     if (d.state.tab === "sessions") d.c.conversation.loadPosition()
+    // A room chosen by default (or after a toggle) is not loaded yet.
+    if (d.state.tab === "team") void d.c.team.sync()
   }
   d.run.renderingList = true
   d.ui.list.options = filtered
@@ -39,6 +42,7 @@ function listRows(state: DashboardState, snapshot: Snapshot): SidebarRow[] {
       name: `[${label(terminal.status)}] ${label(terminal.title)}`,
       description: `PID ${terminal.pid} · ${label(terminal.cwd, 250)}`,
     }))
+  if (state.tab === "team") return roomRows(state)
   return snapshot.loops.map((loop) => ({
     id: loop.id,
     name: `[${label(loop.status)}] ${label(loop.name)}`,
@@ -112,15 +116,18 @@ function renderEmptyList(d: DashboardContext) {
     rows.some((row) => row.running) ? "* running" : "",
     rows.some((row) => row.needsInput) ? "? needs input" : "",
   ].filter(Boolean)
-  d.ui.emptyList.visible = rows.length === 0 || legend.length > 0
+  const note = d.state.tab === "team" ? roomNote(d.state) : ""
+  d.ui.emptyList.visible = rows.length === 0 || legend.length > 0 || !!note
   // The notes are cut by the sidebar's 28 columns, so they stay under that.
   d.ui.emptyList.content = rows.length
-    ? legend.join(" · ")
+    ? note || legend.join(" · ")
     : d.state.query
       ? "Nothing matches the filter."
       : d.state.tab === "sessions"
         ? "No sessions. n starts one."
         : d.state.tab === "terminals"
           ? "No terminals. a opens one."
-          : "No automations. a adds one."
+          : d.state.tab === "team"
+            ? note || "No rooms."
+            : "No automations. a adds one."
 }

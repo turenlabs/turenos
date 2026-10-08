@@ -15,6 +15,7 @@
     "./working-folders": "./src/working-folders.ts",
     "./provider-url": "./src/provider-url.ts",
     "./session-title": "./src/session-title.ts",
+    "./team": "./src/team.ts",
     "./turn-interruption": "./src/turn-interruption.ts"
   },
   "scripts": {

@@ -29,6 +29,7 @@ import {
   roomDeleteBlocker,
 } from "./team/model"
 import type { Team } from "@turenlabs/schema/team"
+import { factoryConfigProblem } from "@turenlabs/client/team"
 
 const surface = "flex h-full min-h-0 w-full min-w-0 bg-v2-background-bg-base text-v2-text-text-base"
 const button = "rounded-[6px] px-2.5 py-1.5 text-[12px] hover:bg-v2-overlay-simple-overlay-hover"
@@ -360,14 +361,8 @@ export default function TeamPage() {
     const client = serverSDK().client
     const currentGeneration = generation
     const config = { ...state.factoryConfig, parameters: parseFactoryParameters(state.factoryParameters) }
-    if (!config.outcome.trim() || !config.acceptanceCriteria.trim() || !config.directory.trim())
-      throw new Error("Outcome, acceptance criteria, and directory are required")
-    if (!config.coordinatorTeammateID || !config.teammateIDs.includes(config.coordinatorTeammateID))
-      throw new Error("Select a coordinator from the selected teammates")
-    if (config.teammateIDs.length < 1 || config.teammateIDs.length > 10)
-      throw new Error("Select between 1 and 10 teammates")
-    if (config.teammateIDs.some((id) => !state.value?.teammates.some((teammate) => teammate.id === id)))
-      throw new Error("Factory teammates must belong to this room")
+    const problem = factoryConfigProblem(config, state.value?.teammates)
+    if (problem) throw new Error(problem)
     const saved = await teamApi(client).factoryConfigure({ roomID, config })
     if (
       !ownsTeamResponse(

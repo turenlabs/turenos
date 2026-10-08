@@ -24,6 +24,8 @@ async function update(d: DashboardContext) {
     state.snapshot = snapshot
     state.connected = true
     state.connectionError = ""
+    // The room is read after the snapshot succeeded, so a Team failure never reads as a lost connection.
+    if (state.tab === "team") await d.c.team.poll()
     d.ui.status.fg = color.muted
     renderStatus(d)
     renderList(d)

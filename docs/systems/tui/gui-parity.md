@@ -36,6 +36,7 @@ The TurenOS terminal client and TurenOS Desktop are two clients of the same serv
 | Session list, search, archived sessions                 | Sidebar, `Ctrl+K` (Recent, All, Archived)        |
 | Open project folders                                    | Working folders (shared server membership) |
 | Automations: create, edit, pause, run now, runs, delete | Automations tab `3`                              |
+| Team: rooms, room log, posting with @mentions, tasks    | Team tab `4`                                     |
 | Intel: advisories, KEV, news, feeds                     | `I`                                              |
 | Providers: connect, disconnect, remove                  | `,` → Providers; `F2` in the model picker        |
 | Usage and limits                                        | `,` → Usage and limits                           |
@@ -53,6 +54,7 @@ These stay desktop-only, mostly because they depend on a graphical surface or on
 - **Pinned sessions and tabs**, **project names and icons**, and **Git init** for a folder without a repository.
 - **Line comments** from the review panel and file viewer; in the TUI, mention the file with `@` instead.
 - **Attachments from this computer**, such as pasted images. `@` attaches files that are on the server.
+- **Team room, teammate and factory management** (create, edit, archive, restore and delete rooms; teammates, duties, factory runs) and **pixel avatars**; the TUI reads and posts to rooms.
 - **Automation workflows and event triggers**; the TUI edits the name, prompt, and schedule, and shows the rest.
 - **Cross-session trace search and playback**; `/trace` pages one session's events.
 - **MCP runtime backend** (Docker or local) and adding or resetting Intel feeds; the TUI turns feeds on or off.

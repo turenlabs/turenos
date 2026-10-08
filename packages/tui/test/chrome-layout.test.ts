@@ -39,7 +39,7 @@ async function fixture(width: number) {
   ui.renderContent("Conversation stays visible")
   ui.tasks.visible = true
   for (const [index, { button, name }] of ui.tabButtons.entries())
-    button.content = width < 90 ? name : ["1 Sess", "2 Term", "3 Auto"][index]!
+    button.content = width < 90 ? name : ["1 Ses", "2 Ter", "3 Aut", "4 Tea"][index]!
   ui.resize()
   await view.renderOnce()
   return { ...view, ui, state }
@@ -139,7 +139,7 @@ test("desktop tabs share one row and list starts beneath compact controls", asyn
   expect(chat!.y).toBe(automation!.y)
   expect(ui.folders.visible).toBe(true)
   expect(ui.list.y - ui.sidebar.y).toBeLessThanOrEqual(5)
-  for (const text of ["1 Sess", "2 Term", "3 Auto", "+ New session", "/ Find a session"])
+  for (const text of ["1 Ses", "2 Ter", "3 Aut", "4 Tea", "+ New session", "/ Find a session"])
     expect(captureCharFrame()).toContain(text)
 })
 
@@ -189,7 +189,8 @@ test("narrow sidebar keeps full tab labels when explicitly opened", async () => 
   state.sidebarHidden = false
   ui.resize()
   await renderOnce()
-  for (const text of ["1 Sessions", "2 Terminals", "3 Automations"]) expect(captureCharFrame()).toContain(text)
+  for (const text of ["1 Sessions", "2 Terminals", "3 Automations", "4 Team"])
+    expect(captureCharFrame()).toContain(text)
   expect(ui.sidebar.visible).toBe(true)
   expect(ui.sizeNotice.visible).toBe(false)
 })

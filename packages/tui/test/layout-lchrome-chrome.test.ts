@@ -66,9 +66,9 @@ test("the footer does not repeat the transcript line and names the pane that has
 test("the narrow footer explains its tab number and reports the drawer as the focus", () => {
   const state = createDashboardState()
   state.tab = "automations"
-  expect(statusline(state, undefined, 80)).toBe("View 3/3 Automations")
+  expect(statusline(state, undefined, 80)).toBe("View 3/4 Automations")
   state.sidebarHidden = false
-  expect(statusline(state, undefined, 80)).toBe("View 3/3 · Focus: sidebar")
+  expect(statusline(state, undefined, 80)).toBe("View 3/4 · Focus: sidebar")
 })
 
 test("counts are singular for one item and say where the selection is when a sidebar may be hidden", () => {
@@ -104,18 +104,23 @@ test("the top bar keeps the running state and shows less as the terminal narrows
 })
 
 test("the open view is bracketed so the list keeps `>` for its selection, and full names show when they fit", async () => {
-  const wide = await dashboard(160, 48)
+  const wide = await dashboard(180, 48)
   wide.ui.resize()
   renderTabs(wide.d)
   expect(wide.ui.tabButtons.map(({ button }) => button.plainText)).toEqual([
     "[1 Sessions]",
     " 2 Terminals ",
     " 3 Automations ",
+    " 4 Team ",
   ])
   const mid = await dashboard(120, 36)
   mid.ui.resize()
   renderTabs(mid.d)
-  expect(mid.ui.tabButtons.map(({ button }) => button.plainText)).toEqual(["[1 Sess]", " 2 Term ", " 3 Auto "])
+  expect(mid.ui.tabButtons.map(({ button }) => button.plainText)).toEqual(["[1 Sess]", " 2 Term ", " 3 Auto ", " 4 Team "])
+  const compact = await dashboard(100, 36)
+  compact.ui.resize()
+  renderTabs(compact.d)
+  expect(compact.ui.tabButtons.map(({ button }) => button.plainText)).toEqual(["[1 Sess]", " 2 ", " 3 ", " 4 "])
   const narrow = await dashboard(60)
   narrow.ui.resize()
   toggleSidebar(narrow.d)
@@ -124,6 +129,7 @@ test("the open view is bracketed so the list keeps `>` for its selection, and fu
     "[1 Sessions]",
     " 2 Terminals ",
     " 3 Automations ",
+    " 4 Team ",
   ])
 })
 

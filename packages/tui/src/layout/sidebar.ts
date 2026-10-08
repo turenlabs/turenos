@@ -4,10 +4,11 @@ import { SessionListRenderable } from "../session-list"
 
 /** The view-switch buttons are created before the body so renderable ids keep their order. */
 export function createTabButtons(renderer: CliRenderer) {
-  return (["sessions", "terminals", "automations"] as const).map((tab, index) => ({
+  return (["sessions", "terminals", "automations", "team"] as const).map((tab, index) => ({
     tab,
     button: new TextRenderable(renderer, { content: "", fg: color.accent, height: 1 }),
-    name: `${index + 1} ${["Sessions", "Terminals", "Automations"][index]}`,
+    name: `${index + 1} ${["Sessions", "Terminals", "Automations", "Team"][index]}`,
+    short: `${index + 1} ${["Sess", "Term", "Auto", "Team"][index]}`,
   }))
 }
 

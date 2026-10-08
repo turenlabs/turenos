@@ -6,6 +6,11 @@ import { folderContains } from "../working-folders"
 import { sizeFloating } from "../dialogs/size"
 import type { LayoutParts } from "./parts"
 
+/** The side-by-side sidebar's width: 30% of the screen within its minimum and 56 columns. */
+export function sidebarColumns(width: number) {
+  return Math.min(56, Math.max(layout.sidebarWidth, Math.floor(width * 0.3)))
+}
+
 /** Re-applies size- and modal-dependent visibility and dimensions to every part. */
 export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts: LayoutParts, quitArmed = false) {
   const narrow = renderer.width < layout.narrowBreakpoint
@@ -72,7 +77,7 @@ function resizeSidebar(renderer: CliRenderer, state: DashboardState, parts: Layo
     ? "100%"
     : state.modal?.sidebar
       ? Math.min(80, Math.max(48, Math.floor(renderer.width * 0.45)))
-      : Math.min(56, Math.max(layout.sidebarWidth, Math.floor(renderer.width * 0.3)))
+      : sidebarColumns(renderer.width)
   parts.sidebar.height =
     narrow && !state.modal?.sidebar ? Math.max(6, Math.min(10, Math.round((renderer.height - 4) / 3))) : "100%"
   parts.sidebar.flexShrink = 0

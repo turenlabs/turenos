@@ -91,7 +91,7 @@ function serverSlash(d: DashboardContext): Command[] {
 /** A palette row: name, what it does, and the key or slash command that does it without the palette. */
 type Entry = { name: string; description: string; key?: string; run: () => void }
 
-/** Ctrl+P: every dashboard action, grouped Session, Conversation, Requests, Panels, Terminals, Settings, View. */
+/** Ctrl+P: every dashboard action, grouped Session, Conversation, Requests, Panels, Terminals, Team, Settings, View. */
 export function openCommands(d: DashboardContext) {
   const groups = [
     sessionEntries(d),
@@ -99,6 +99,7 @@ export function openCommands(d: DashboardContext) {
     requestEntries(d),
     panelEntries(d),
     terminalEntries(d),
+    teamEntries(d),
     settingsEntries(d),
     viewEntries(d),
   ]
@@ -206,6 +207,18 @@ function terminalEntries(d: DashboardContext): Entry[] {
     { name: "Automations", description: "Show automations", key: "3", run: () => changeTab(d, "automations") },
     { name: "New automation", description: "In the Automations tab", key: "a", run: c.automations.create },
     { name: "Manage automation", description: "Run, pause, edit, runs", key: "Enter", run: c.automations.manage },
+  ]
+}
+
+function teamEntries(d: DashboardContext): Entry[] {
+  return [
+    { name: "Team", description: "Show Team rooms", key: "4", run: () => changeTab(d, "team") },
+    ...d.c.team.actions.map((action) => ({
+      name: action.name,
+      description: action.description,
+      key: action.key,
+      run: action.run,
+    })),
   ]
 }
 

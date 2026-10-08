@@ -18,7 +18,7 @@ export function quit(d: DashboardContext, stop = false) {
     if (!draft) return
     return arm(d, "Draft kept. Ctrl+C again quits and discards unsent drafts.", true)
   }
-  const drafts = d.c.launch.hasDraft || d.c.requests.unsentDrafts() > 0
+  const drafts = d.c.launch.hasDraft || d.c.requests.unsentDrafts() > 0 || d.c.team.unsent() > 0
   const again = `Ctrl+C again quits${drafts ? " and discards unsent drafts" : ""}.`
   if (stop && d.c.requests.stopRunning(again)) return arm(d, `Stopping this turn. ${again}`)
   if (!stop && state.selected && Object.hasOwn(state.snapshot?.active ?? {}, state.selected))

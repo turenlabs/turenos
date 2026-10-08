@@ -42,6 +42,7 @@ export function mountDashboard(
     drafts: () =>
       (d.c.launch.hasDraft ? 1 : 0) +
       d.c.requests.unsentDrafts() +
+      d.c.team.unsent() +
       (!d.state.modal?.composer && d.state.modal?.editor?.plainText.trim() ? 1 : 0),
     focus() {
       const dialog = d.state.modal

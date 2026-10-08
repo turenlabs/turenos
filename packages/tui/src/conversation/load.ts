@@ -8,6 +8,7 @@ import type { Conversation } from "./context"
 import { drawLive } from "./live-cache"
 import { currentView } from "./position"
 import { loadSession } from "./session-load"
+import { showRoom } from "../team"
 
 type Snapshot = NonNullable<DashboardState["snapshot"]>
 
@@ -80,6 +81,7 @@ async function load(c: Conversation, version: number) {
   const snapshot = state.snapshot
   if (!snapshot || state.closed) return
   ui.sessionTitle.fg = color.text
+  if (state.tab === "team") return showRoom(c, id)
   const inventoryError = state.tab === "sessions" ? "" : snapshot.inventoryErrors[state.tab]
   if (inventoryError) return showInventoryError(c, inventoryError)
   if (!id) return showWelcome(c, snapshot)

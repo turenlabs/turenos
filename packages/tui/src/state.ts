@@ -12,8 +12,9 @@ import { display } from "./messages"
 import { stamp } from "./menus/stamp"
 import type { Connection, Detail, Session, Snapshot } from "./server"
 import type { promptPayload } from "./prompt-files"
+import type { TeamView } from "./team/types"
 
-export type Tab = "sessions" | "terminals" | "automations"
+export type Tab = "sessions" | "terminals" | "automations" | "team"
 export type Field = InputRenderable | TextareaRenderable | SelectRenderable
 export type Row = { id: string; name: string; description: string }
 export type LaunchDraft = {
@@ -119,6 +120,8 @@ export type DashboardState = {
   retries: { [sessionID: string]: Retry }
   /** IDs of the messages this client sent, so the transcript follows only its own sends. */
   sentMessages: Set<string>
+  /** The Team tab's rooms and log; created when the tab first opens. */
+  team?: TeamView
 }
 
 export type Retry = { attempt: number; at: number; message: string }

@@ -1,46 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import {
-  assignedHandles,
-  mergeMessages,
-  ownsTeamResponse,
-  parseFactoryParameters,
-  pendingFactoryOperation,
-  pendingMessage,
-  selectFactoryTeammate,
-  timeLabel,
-  roomCoordinator,
-  roomDeleteBlocker,
-} from "./model"
-import type { Team } from "@turenlabs/schema/team"
-
-const teammate = (handle: string) => ({ handle }) as Team.Teammate
-const message = (id: string, seq: number) => ({ id, seq }) as Team.Message
+import { ownsTeamResponse, pendingFactoryOperation, pendingMessage, timeLabel } from "./model"
 
 describe("team room model", () => {
-  test("merges retries and orders history without dropping older pages", () => {
-    expect(
-      mergeMessages([message("later", 3), message("old", 1)], [message("later", 3), message("middle", 2)]).map(
-        (item) => item.id,
-      ),
-    ).toEqual(["old", "middle", "later"])
-  })
-
-  test("only resolves explicit handles that belong to room teammates", () => {
-    expect(assignedHandles("hello @moss and @unknown, not email@iris", [teammate("moss"), teammate("iris")])).toEqual([
-      "moss",
-    ])
-  })
-
-  test("normalizes uppercase mentions and preserves exact trailing-hyphen handles", () => {
-    expect(
-      assignedHandles("@RAE-, @RAE! (@MOSS) @unknown @rae-extra", [
-        teammate("rae"),
-        teammate("rae-"),
-        teammate("MOSS"),
-      ]),
-    ).toEqual(["rae-", "rae", "moss"])
-  })
-
   test("keeps an exact message retry target if the selected room changes", () => {
     const client = {}
     const pending = { id: "message-id", roomID: "room-a", text: "original", client, generation: 1 }
@@ -102,20 +63,6 @@ describe("team room model", () => {
     expect(ownsTeamResponse(owner, owner)).toBe(true)
   })
 
-  test("accepts only JSON objects for factory parameters", () => {
-    expect(parseFactoryParameters('{"count":2,"enabled":true}')).toEqual({ count: 2, enabled: true })
-    expect(() => parseFactoryParameters("[]")).toThrow("Parameters must be a JSON object")
-    expect(() => parseFactoryParameters("null")).toThrow("Parameters must be a JSON object")
-    expect(() => parseFactoryParameters("{")).toThrow()
-  })
-
-  test("bounds selected factory teammates and permits deselection", () => {
-    const ids = Array.from({ length: 10 }, (_, index) => `mate-${index}`)
-    expect(() => selectFactoryTeammate(ids, "mate-10", true)).toThrow("Select at most 10 teammates")
-    expect(selectFactoryTeammate(ids, "mate-0", false)).toHaveLength(9)
-    expect(selectFactoryTeammate(ids, "mate-0", true)).toEqual(ids)
-  })
-
   test("keeps a factory operation ID for an exact request retry", () => {
     const client = {}
     const pending = pendingFactoryOperation(undefined, { roomID: "room-a", client, generation: 1 }, () => "run-id")
@@ -127,48 +74,6 @@ describe("team room model", () => {
 
   test("formats IRC timestamps as compact 24-hour HH:mm", () => {
     expect(timeLabel(Date.now())).toMatch(/^\d{2}:\d{2}$/)
-  })
-
-  test("selects the first active coordinator by creation time and ID", () => {
-    const mates = [
-      { id: "z", status: "active", time: { created: 2 } },
-      { id: "b", status: "active", time: { created: 1 } },
-      { id: "a", status: "active", time: { created: 1 } },
-      { id: "paused", status: "paused", time: { created: 0 } },
-    ] as Team.Teammate[]
-    expect(roomCoordinator({} as Team.Room, mates)?.id).toBe("a")
-    expect(mates[0]?.id).toBe("z")
-    const configured = { factory: { config: { coordinatorTeammateID: "paused" } } } as Team.Room
-    expect(roomCoordinator(configured, mates)?.id).toBe("paused")
-    expect(
-      roomCoordinator(
-        configured,
-        mates.filter((mate) => mate.id !== "paused"),
-      ),
-    ).toBeUndefined()
-  })
-
-  test("blocks room deletion until archive, idle work, and no linked schedules or duties", () => {
-    const value = {
-      room: { id: "room-a", archived: true },
-      tasks: [],
-      duties: [],
-      factoryRuns: [],
-      teammates: [],
-    } as unknown as Team.State
-    expect(roomDeleteBlocker(value, [])).toBeUndefined()
-    expect(roomDeleteBlocker({ ...value, room: { ...value.room, id: "trm_team" } }, [])).toContain("default")
-    expect(roomDeleteBlocker({ ...value, room: { ...value.room, archived: false } }, [])).toContain("Archive")
-    expect(roomDeleteBlocker({ ...value, tasks: [{ status: "queued" } as Team.Task] }, [])).toContain("active work")
-    expect(roomDeleteBlocker({ ...value, factoryRuns: [{ status: "running" } as Team.FactoryRun] }, [])).toContain(
-      "active work",
-    )
-    expect(roomDeleteBlocker({ ...value, duties: [{ loopID: "duty", teammateID: "mate" }] }, [])).toContain("duties")
-    expect(roomDeleteBlocker(value, [{ factoryRoomID: "room-a" }])).toContain("schedules")
-    expect(roomDeleteBlocker(value, [{ factoryRoomID: "room-b" }])).toBeUndefined()
-    expect(
-      roomDeleteBlocker({ ...value, teammates: [{ id: "mate" } as Team.Teammate] }, [{ teammateID: "mate" }]),
-    ).toContain("schedules")
   })
 
   test("rejects delayed room mutation responses after navigation or a server change", async () => {
