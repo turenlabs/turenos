@@ -1,14 +1,20 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Context, Schema } from "effect"
+import { HttpRouter } from "effect/unstable/http"
 import { Team } from "@turenlabs/schema/team"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, tmpdir } from "../fixture/fixture"
 
 const context = Context.empty() as Context.Context<unknown>
+let app: ReturnType<typeof HttpRouter.toWebHandler>
+
+beforeEach(() => {
+  app = HttpRouter.toWebHandler(HttpApiApp.routes, { disableLogger: true })
+})
 
 function request(route: string, directory: string, method = "GET", body?: unknown) {
-  return HttpApiApp.webHandler().handler(
+  return app.handler(
     new Request(`http://localhost${route}`, {
       method,
       headers: { "x-forge-directory": directory, "content-type": "application/json" },
@@ -19,6 +25,7 @@ function request(route: string, directory: string, method = "GET", body?: unknow
 }
 
 afterEach(async () => {
+  await app.dispose()
   await disposeAllInstances()
   await resetDatabase()
 })
