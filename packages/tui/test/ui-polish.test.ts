@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import { footerShortcuts } from "../src/chrome"
-import { cleanup, dashboard, mount, session, turen, type Route } from "./support"
+import { cleanup, dashboard, mount, session, type Route } from "./support"
 
 afterEach(async () => {
   while (cleanup.length) await cleanup.pop()!()

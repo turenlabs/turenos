@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { session, sized, type Route } from "./support"
+import { session, sized } from "./support"
 
 test("New session shows a Settings heading and marks the focused setting once Tab opens them", async () => {
   const { view, screen } = await sized(120, 36)

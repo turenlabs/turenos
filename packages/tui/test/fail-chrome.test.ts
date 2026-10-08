@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { footerShortcuts } from "../src/chrome"
 import { fitContext } from "../src/layout/context-line"
-import { assistant, mount, session, turen } from "./support"
+import { assistant, mount, session } from "./support"
 
 const activeMain = { "GET /api/session/active": () => ({ data: { ses_main: { type: "running" } } }) }
 

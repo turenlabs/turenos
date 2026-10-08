@@ -15,7 +15,7 @@ export function cancelPosition(c: Conversation) {
 
 /** Reveals older cached messages, then fetches an earlier page, keeping the reading position anchored. */
 export async function scrollEarlier(c: Conversation) {
-  const { state, ui, hooks } = c
+  const { state, ui } = c
   const token = currentView(c)
   const id = state.selected
   const cached = c.live.get(id)
