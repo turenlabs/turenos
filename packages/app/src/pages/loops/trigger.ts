@@ -1,5 +1,15 @@
-import { formatInterval, parseInterval, validateCronExpression } from "@turenlabs/client/automation-schedule"
-export { formatInterval, parseInterval, validateCronExpression } from "@turenlabs/client/automation-schedule"
+import {
+  formatInterval,
+  minimumIntervalSeconds,
+  parseInterval,
+  validateCronExpression,
+} from "@turenlabs/client/automation-schedule"
+export {
+  formatInterval,
+  minimumIntervalSeconds,
+  parseInterval,
+  validateCronExpression,
+} from "@turenlabs/client/automation-schedule"
 import type { LoopEventTrigger, LoopInfo } from "./api"
 
 export type TriggerKind = "interval" | "cron" | "file-change" | "session-end"
@@ -122,7 +132,7 @@ export function buildTriggerInput(draft: TriggerDraft): { input?: BuiltTriggerIn
     }
   }
   const intervalSeconds = parseInterval(draft.interval)
-  if (!intervalSeconds || intervalSeconds < 60) return { error: "Enter an interval of at least 60 seconds." }
+  if (!intervalSeconds || intervalSeconds < minimumIntervalSeconds) return { error: "Enter an interval of at least 60 seconds." }
   return { input: { intervalSeconds, timezone } }
 }
 

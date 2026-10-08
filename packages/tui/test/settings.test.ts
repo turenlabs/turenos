@@ -55,7 +55,8 @@ test("usage shows the last seven days and plan quota windows", async () => {
             providerID: "openai",
             turns: 4,
             cost: 1.5,
-            tokens: { input: 3000, output: 1000, reasoning: 0, cache: { read: 0, write: 0 } },
+            // Cached prompt tokens count toward the total, as on the desktop usage page.
+            tokens: { input: 1000, output: 500, reasoning: 0, cache: { read: 9000, write: 0 } },
           },
         ],
         quotas: [
@@ -71,7 +72,7 @@ test("usage shows the last seven days and plan quota windows", async () => {
     },
     1,
   )
-  expect(await screen("openai: 4 turns · 4k tokens · $1.50")).toContain("5 hours: 42% used")
+  expect(await screen("openai: 4 turns · 11k tokens · $1.50")).toContain("5 hours: 42% used")
 })
 
 test("an agent's default model is saved to the global config", async () => {
