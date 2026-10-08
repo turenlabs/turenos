@@ -3,6 +3,7 @@ export * as BuiltInTools from "./builtins"
 import { makeLocationNode } from "../effect/app-node"
 import { Layer } from "effect"
 import { AutomationTool } from "./automation"
+import { TeamWorkspaceTool } from "./team-workspace"
 import { BashTool } from "./bash"
 import { CodeSearchTool } from "./code-search"
 import { ContextTool } from "./context"
@@ -86,6 +87,7 @@ export const node = makeLocationNode({
   deps: [
     ApplyPatchTool.node,
     AutomationTool.node,
+    TeamWorkspaceTool.node,
     BashTool.node,
     CodeSearchTool.node,
     ContextTool.node,

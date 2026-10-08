@@ -39,7 +39,8 @@ const StepInput = Schema.Struct({
       "Skip this step when the condition resolves to a falsy value (false, 0, no, off, empty). Bindings like {{ steps.<id>.output }} and {{ trigger.payload.<field> }} are resolved before evaluation. Omit to always run.",
   }),
   on_failure: Schema.Literals(["stop", "continue"]).pipe(Schema.optional).annotate({
-    description: "What to do when this step fails. Stop fails the run, continue records the error and runs the next step. Omit to stop.",
+    description:
+      "What to do when this step fails. Stop fails the run, continue records the error and runs the next step. Omit to stop.",
   }),
 })
 
@@ -67,9 +68,11 @@ const FileChangeTriggerInput = Schema.Struct({
 
 const SessionEndTriggerInput = Schema.Struct({
   type: Schema.Literal("session-end"),
-  outcomes: Schema.Array(Schema.Literals(["success", "failure"])).pipe(Schema.optional).annotate({
-    description: "Only fire for these session outcomes. Omit for both.",
-  }),
+  outcomes: Schema.Array(Schema.Literals(["success", "failure"]))
+    .pipe(Schema.optional)
+    .annotate({
+      description: "Only fire for these session outcomes. Omit for both.",
+    }),
   sessionID: Schema.String.pipe(Schema.optional).annotate({
     description: "Only fire for this session ID. Omit for any local session in the Automation directory.",
   }),
@@ -127,16 +130,16 @@ const layer = Layer.effectDiscard(
         [listName]: Tool.make({
           deferred: true,
           description:
-            "List this machine's Automations: durable scheduled workflows that run on a repeating interval in their own session. Use this before creating or changing one so you know what already exists.",
+            "List this machine's Team duties, stored as Automations. Each duty runs a durable workflow in its own Session. Read this list before creating or changing a duty.",
           input: Schema.Struct({}),
           output: Schema.Array(Automation),
           execute: () => loops.list().pipe(Effect.map((infos) => infos.map(toAutomation))),
         }),
         [createName]: Tool.make({
           deferred: true,
-          description: `Create one Automation: a repeating interval or cron trigger, or a local file-change or session-end event trigger, plus 1 to 12 ordered steps that run in their own session and deliver back to the user.
-Only create an Automation when the user asked for recurring, scheduled, or event-driven work; a one-off task belongs in this session.
-The interval must be at least ${Loop.MIN_INTERVAL_SECONDS} seconds, cron uses five fields like '*/5 * * * *', an Automation stops running after seven days, and at most ${Loop.MAX_ACTIVE} may be active at once. Report the returned id and expiry to the user.`,
+          description: `Create one Team duty, stored as an Automation. Use an interval, cron, file-change, or session-end trigger with 1 to 12 ordered steps.
+Only create a duty when the user requests recurring, scheduled, or event-driven work. Keep one-off work in the current Session.
+Intervals must be at least ${Loop.MIN_INTERVAL_SECONDS} seconds. Cron uses five fields, such as '*/5 * * * *'. Duties expire after seven days. At most ${Loop.MAX_ACTIVE} duties may be active. Report the returned ID and expiry. The Team surface shows the duty under a teammate.`,
           input: Schema.Struct({
             name: Schema.String.annotate({ description: "Short name identifying the Automation to the user." }),
             interval_seconds: Schema.Int.pipe(Schema.optional).annotate({
@@ -204,9 +207,7 @@ The interval must be at least ${Loop.MIN_INTERVAL_SECONDS} seconds, cron uses fi
                   ...(input.interval_seconds === undefined ? {} : { intervalSeconds: input.interval_seconds }),
                   ...(input.cron_expression === undefined ? {} : { cronExpression: input.cron_expression }),
                   ...(input.timezone === undefined ? {} : { timezone: input.timezone }),
-                  ...(input.event_trigger === undefined
-                    ? {}
-                    : { eventTrigger: toEventTrigger(input.event_trigger) }),
+                  ...(input.event_trigger === undefined ? {} : { eventTrigger: toEventTrigger(input.event_trigger) }),
                   ...(input.paused === undefined ? {} : { paused: input.paused }),
                 })
                 .pipe(Effect.mapError(toolFailure))
@@ -216,7 +217,7 @@ The interval must be at least ${Loop.MIN_INTERVAL_SECONDS} seconds, cron uses fi
         [updateName]: Tool.make({
           deferred: true,
           description:
-            "Change one existing Automation: rename it, change its interval, cron, or event trigger, inherited agent/model, replace its steps, or pause, resume, or delete it. Replacing steps replaces the whole ordered list. Returns null when the Automation was deleted.",
+            "Change an existing Team duty, stored as an Automation. Rename it, change its trigger or execution settings, replace its steps, or pause, resume, or delete it. Replacing steps replaces the whole ordered list. Returns null after deletion.",
           input: Schema.Struct({
             id: Schema.String.annotate({ description: `Automation id, as returned by ${listName}.` }),
             name: Schema.String.pipe(Schema.optional),

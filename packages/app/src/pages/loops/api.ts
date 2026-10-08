@@ -32,6 +32,8 @@ type Response<T> = Promise<{ data?: T | { data: T } }>
 export type LoopApi = {
   list: () => Response<LoopInfo[]>
   create: (input: {
+    teammateID?: string
+    factoryRoomID?: string
     name: string
     prompt: string
     location?: LoopLocation

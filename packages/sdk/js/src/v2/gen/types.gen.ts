@@ -7723,6 +7723,7 @@ export type AutomationSessionEndTrigger = {
 export type AutomationEventTrigger = AutomationFileChangeTrigger | AutomationSessionEndTrigger
 
 export type LoopCreateInput = {
+  teammateID?: string
   name: string
   prompt: string
   location?: {
@@ -7740,6 +7741,7 @@ export type LoopCreateInput = {
   expiresAt?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   paused?: boolean
   eventTrigger?: AutomationEventTrigger
+  factoryRoomID?: string
 }
 
 export type LoopSchedule =
@@ -7772,6 +7774,7 @@ export type LoopInfo = {
   skill?: string
   workflow?: AutomationWorkflow
   eventTrigger?: AutomationEventTrigger
+  factoryRoomID?: string
   overlapPolicy: "skip"
   startsAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   expiresAt: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
@@ -7850,6 +7853,158 @@ export type LoopRun = {
     started?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
     completed?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   }
+}
+
+export type TeamFactoryConfig = {
+  outcome: string
+  parameters: {
+    [key: string]: unknown
+  }
+  constraints: string
+  acceptanceCriteria: string
+  directory: string
+  coordinatorTeammateID: string
+  teammateIDs: Array<string>
+}
+
+export type TeamFactory = {
+  config: TeamFactoryConfig
+  revision: number
+}
+
+export type TeamRoom = {
+  id: string
+  name: string
+  topic: string
+  head: number
+  archived?: boolean
+  factory?: TeamFactory
+}
+
+export type TeamAvatar = [string, string, string, string, string, string, string, string]
+
+export type TeamTeammate = {
+  id: string
+  roomID: string
+  name: string
+  handle: string
+  role: string
+  mission: string
+  status: "active" | "paused"
+  directory: string
+  agent?: string
+  model?: ModelRef
+  avatar?: TeamAvatar
+  time: {
+    created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type TeamMessage = {
+  id: string
+  roomID: string
+  seq: number
+  kind: "human" | "teammate" | "system"
+  author: string
+  teammateID?: string
+  text: string
+  replyTo?: string
+  sessionID?: string
+  sourceMessageIDs?: Array<string>
+  runID?: string
+  loopID?: string
+  time: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type TeamTaskStatus = "queued" | "claimed" | "running" | "succeeded" | "failed" | "cancelled" | "stale"
+
+export type TeamTask = {
+  id: string
+  roomID: string
+  messageID: string
+  teammateID: string
+  sessionID: string
+  status: TeamTaskStatus
+  error?: string
+  factoryRunID?: string
+  time: {
+    created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type TeamDuty = {
+  loopID: string
+  teammateID: string
+}
+
+export type TeamFactoryRunStatus = "running" | "succeeded" | "needs_input" | "failed" | "cancelled" | "stale"
+
+export type TeamFactoryRun = {
+  id: string
+  roomID: string
+  status: TeamFactoryRunStatus
+  phase: "plan" | "work" | "check" | "done"
+  taskIDs: Array<string>
+  result?: string
+  error?: string
+  time: {
+    created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type TeamState = {
+  rooms: Array<TeamRoom>
+  room: TeamRoom
+  teammates: Array<TeamTeammate>
+  messages: Array<TeamMessage>
+  tasks: Array<TeamTask>
+  duties: Array<TeamDuty>
+  factoryRuns?: Array<TeamFactoryRun>
+  hasMore: boolean
+}
+
+export type TeamEditRoom = {
+  name?: string
+  topic?: string
+}
+
+export type TeamCreateTeammate = {
+  roomID?: string
+  name: string
+  handle: string
+  role: string
+  mission: string
+  directory?: string
+  agent?: string
+  model?: ModelRef
+  avatar?: TeamAvatar
+}
+
+export type TeamEditTeammate = {
+  name?: string
+  role?: string
+  mission?: string
+  status?: "active" | "paused"
+  directory?: string
+  agent?: string
+  model?: ModelRef
+  avatar?: TeamAvatar
+  resetAgent?: boolean
+  resetModel?: boolean
+}
+
+export type TeamPostMessage = {
+  id: string
+  roomID?: string
+  text: string
+}
+
+export type TeamPosted = {
+  message: TeamMessage
+  tasks: Array<TeamTask>
 }
 
 export type IntelSeverity = "critical" | "high" | "medium" | "low" | "info"
@@ -17057,6 +17212,571 @@ export type V2LoopRunCancelResponses = {
 }
 
 export type V2LoopRunCancelResponse = V2LoopRunCancelResponses[keyof V2LoopRunCancelResponses]
+
+export type V2TeamStateData = {
+  body?: never
+  path?: never
+  query?: {
+    roomID?: string
+    after?: string
+    before?: string
+    limit?: string
+  }
+  url: "/api/team"
+}
+
+export type V2TeamStateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamStateError = V2TeamStateErrors[keyof V2TeamStateErrors]
+
+export type V2TeamStateResponses = {
+  /**
+   * Team.State
+   */
+  200: TeamState
+}
+
+export type V2TeamStateResponse = V2TeamStateResponses[keyof V2TeamStateResponses]
+
+export type V2TeamRoomCreateData = {
+  body: {
+    name: string
+    topic?: string
+  }
+  path?: never
+  query?: never
+  url: "/api/team/room"
+}
+
+export type V2TeamRoomCreateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamRoomCreateError = V2TeamRoomCreateErrors[keyof V2TeamRoomCreateErrors]
+
+export type V2TeamRoomCreateResponses = {
+  /**
+   * Team.Room
+   */
+  200: TeamRoom
+}
+
+export type V2TeamRoomCreateResponse = V2TeamRoomCreateResponses[keyof V2TeamRoomCreateResponses]
+
+export type V2TeamRoomDeleteData = {
+  body?: never
+  path: {
+    roomID: string
+  }
+  query?: never
+  url: "/api/team/room/{roomID}"
+}
+
+export type V2TeamRoomDeleteErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamRoomDeleteError = V2TeamRoomDeleteErrors[keyof V2TeamRoomDeleteErrors]
+
+export type V2TeamRoomDeleteResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2TeamRoomDeleteResponse = V2TeamRoomDeleteResponses[keyof V2TeamRoomDeleteResponses]
+
+export type V2TeamRoomEditData = {
+  body: TeamEditRoom
+  path: {
+    roomID: string
+  }
+  query?: never
+  url: "/api/team/room/{roomID}"
+}
+
+export type V2TeamRoomEditErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamRoomEditError = V2TeamRoomEditErrors[keyof V2TeamRoomEditErrors]
+
+export type V2TeamRoomEditResponses = {
+  /**
+   * Team.Room
+   */
+  200: TeamRoom
+}
+
+export type V2TeamRoomEditResponse = V2TeamRoomEditResponses[keyof V2TeamRoomEditResponses]
+
+export type V2TeamRoomArchiveData = {
+  body?: never
+  path: {
+    roomID: string
+  }
+  query?: never
+  url: "/api/team/room/{roomID}/archive"
+}
+
+export type V2TeamRoomArchiveErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamRoomArchiveError = V2TeamRoomArchiveErrors[keyof V2TeamRoomArchiveErrors]
+
+export type V2TeamRoomArchiveResponses = {
+  /**
+   * Team.Room
+   */
+  200: TeamRoom
+}
+
+export type V2TeamRoomArchiveResponse = V2TeamRoomArchiveResponses[keyof V2TeamRoomArchiveResponses]
+
+export type V2TeamRoomRestoreData = {
+  body?: never
+  path: {
+    roomID: string
+  }
+  query?: never
+  url: "/api/team/room/{roomID}/restore"
+}
+
+export type V2TeamRoomRestoreErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamRoomRestoreError = V2TeamRoomRestoreErrors[keyof V2TeamRoomRestoreErrors]
+
+export type V2TeamRoomRestoreResponses = {
+  /**
+   * Team.Room
+   */
+  200: TeamRoom
+}
+
+export type V2TeamRoomRestoreResponse = V2TeamRoomRestoreResponses[keyof V2TeamRoomRestoreResponses]
+
+export type V2TeamTeammateCreateData = {
+  body: TeamCreateTeammate
+  path?: never
+  query?: never
+  url: "/api/team/teammate"
+}
+
+export type V2TeamTeammateCreateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamTeammateCreateError = V2TeamTeammateCreateErrors[keyof V2TeamTeammateCreateErrors]
+
+export type V2TeamTeammateCreateResponses = {
+  /**
+   * Team.Teammate
+   */
+  200: TeamTeammate
+}
+
+export type V2TeamTeammateCreateResponse = V2TeamTeammateCreateResponses[keyof V2TeamTeammateCreateResponses]
+
+export type V2TeamTeammateEditData = {
+  body: TeamEditTeammate
+  path: {
+    teammateID: string
+  }
+  query?: never
+  url: "/api/team/teammate/{teammateID}"
+}
+
+export type V2TeamTeammateEditErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamTeammateEditError = V2TeamTeammateEditErrors[keyof V2TeamTeammateEditErrors]
+
+export type V2TeamTeammateEditResponses = {
+  /**
+   * Team.Teammate
+   */
+  200: TeamTeammate
+}
+
+export type V2TeamTeammateEditResponse = V2TeamTeammateEditResponses[keyof V2TeamTeammateEditResponses]
+
+export type V2TeamTeammateStopData = {
+  body?: never
+  path: {
+    teammateID: string
+  }
+  query?: never
+  url: "/api/team/teammate/{teammateID}/stop"
+}
+
+export type V2TeamTeammateStopErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamTeammateStopError = V2TeamTeammateStopErrors[keyof V2TeamTeammateStopErrors]
+
+export type V2TeamTeammateStopResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2TeamTeammateStopResponse = V2TeamTeammateStopResponses[keyof V2TeamTeammateStopResponses]
+
+export type V2TeamMessagePostData = {
+  body: TeamPostMessage
+  path?: never
+  query?: never
+  url: "/api/team/message"
+}
+
+export type V2TeamMessagePostErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamMessagePostError = V2TeamMessagePostErrors[keyof V2TeamMessagePostErrors]
+
+export type V2TeamMessagePostResponses = {
+  /**
+   * Team.Posted
+   */
+  200: TeamPosted
+}
+
+export type V2TeamMessagePostResponse = V2TeamMessagePostResponses[keyof V2TeamMessagePostResponses]
+
+export type V2TeamDutyAttachData = {
+  body: {
+    loopID: string
+  }
+  path: {
+    teammateID: string
+  }
+  query?: never
+  url: "/api/team/teammate/{teammateID}/duty"
+}
+
+export type V2TeamDutyAttachErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamDutyAttachError = V2TeamDutyAttachErrors[keyof V2TeamDutyAttachErrors]
+
+export type V2TeamDutyAttachResponses = {
+  /**
+   * Team.Duty
+   */
+  200: TeamDuty
+}
+
+export type V2TeamDutyAttachResponse = V2TeamDutyAttachResponses[keyof V2TeamDutyAttachResponses]
+
+export type V2TeamTaskCancelData = {
+  body?: never
+  path: {
+    taskID: string
+  }
+  query?: never
+  url: "/api/team/task/{taskID}/cancel"
+}
+
+export type V2TeamTaskCancelErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamTaskCancelError = V2TeamTaskCancelErrors[keyof V2TeamTaskCancelErrors]
+
+export type V2TeamTaskCancelResponses = {
+  /**
+   * Team.Task
+   */
+  200: TeamTask
+}
+
+export type V2TeamTaskCancelResponse = V2TeamTaskCancelResponses[keyof V2TeamTaskCancelResponses]
+
+export type V2TeamFactoryConfigureData = {
+  body: TeamFactoryConfig
+  path: {
+    roomID: string
+  }
+  query?: never
+  url: "/api/team/room/{roomID}/factory"
+}
+
+export type V2TeamFactoryConfigureErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamFactoryConfigureError = V2TeamFactoryConfigureErrors[keyof V2TeamFactoryConfigureErrors]
+
+export type V2TeamFactoryConfigureResponses = {
+  /**
+   * Team.Room
+   */
+  200: TeamRoom
+}
+
+export type V2TeamFactoryConfigureResponse = V2TeamFactoryConfigureResponses[keyof V2TeamFactoryConfigureResponses]
+
+export type V2TeamFactoryRunData = {
+  body: {
+    id: string
+    request?: string
+  }
+  path: {
+    roomID: string
+  }
+  query?: never
+  url: "/api/team/room/{roomID}/factory/run"
+}
+
+export type V2TeamFactoryRunErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamFactoryRunError = V2TeamFactoryRunErrors[keyof V2TeamFactoryRunErrors]
+
+export type V2TeamFactoryRunResponses = {
+  /**
+   * Team.FactoryRun
+   */
+  200: TeamFactoryRun
+}
+
+export type V2TeamFactoryRunResponse = V2TeamFactoryRunResponses[keyof V2TeamFactoryRunResponses]
+
+export type V2TeamFactoryRunGetData = {
+  body?: never
+  path: {
+    runID: string
+  }
+  query?: never
+  url: "/api/team/factory-run/{runID}"
+}
+
+export type V2TeamFactoryRunGetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamFactoryRunGetError = V2TeamFactoryRunGetErrors[keyof V2TeamFactoryRunGetErrors]
+
+export type V2TeamFactoryRunGetResponses = {
+  /**
+   * Team.FactoryRun
+   */
+  200: TeamFactoryRun
+}
+
+export type V2TeamFactoryRunGetResponse = V2TeamFactoryRunGetResponses[keyof V2TeamFactoryRunGetResponses]
+
+export type V2TeamFactoryRunCancelData = {
+  body?: never
+  path: {
+    runID: string
+  }
+  query?: never
+  url: "/api/team/factory-run/{runID}/cancel"
+}
+
+export type V2TeamFactoryRunCancelErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamFactoryRunCancelError = V2TeamFactoryRunCancelErrors[keyof V2TeamFactoryRunCancelErrors]
+
+export type V2TeamFactoryRunCancelResponses = {
+  /**
+   * Team.FactoryRun
+   */
+  200: TeamFactoryRun
+}
+
+export type V2TeamFactoryRunCancelResponse = V2TeamFactoryRunCancelResponses[keyof V2TeamFactoryRunCancelResponses]
 
 export type V2IntelAdvisoriesData = {
   body?: never
