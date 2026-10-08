@@ -125,6 +125,14 @@ The server can reclaim a task that was claimed but never started.
 An expired running task becomes stale when its outcome is uncertain.
 The server does not automatically replay that task or its tool side effects.
 
+## Terminal Client
+
+The terminal client shows Team as view `4`: rooms, the room log, posting with `@handle` completion, room tasks, members, duties and the factory.
+See [TUI usage](./tui/usage.md#team).
+Scripts and coding agents use `turen-tui team` to list rooms, read and post to a room, and start, wait for or cancel factory runs.
+See [TUI agent commands](./tui/agent-commands.md).
+Pixel avatars stay in TurenOS Desktop.
+
 ## Source
 
 - [Team schema](../../packages/schema/src/team.ts)
