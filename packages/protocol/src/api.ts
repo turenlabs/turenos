@@ -17,6 +17,7 @@ import { LocationGroup } from "./groups/location"
 import { ProjectCopyGroup } from "./groups/project-copy"
 import { MemoryGroup } from "./groups/memory"
 import { LoopGroup } from "./groups/loop"
+import { TeamGroup } from "./groups/team"
 import { IntelGroup } from "./groups/intel"
 import { makeWhiteboardGroup } from "./groups/whiteboard"
 
@@ -47,6 +48,7 @@ const makeApiFromGroup = <
     .add(ProjectCopyGroup.middleware(locationMiddleware))
     .add(MemoryGroup)
     .add(LoopGroup)
+    .add(TeamGroup.Group)
     .add(IntelGroup)
     .add(makeWhiteboardGroup(sessionLocationMiddleware))
     .annotateMerge(

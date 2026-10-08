@@ -3,6 +3,7 @@ export * as LoopScheduler from "./scheduler"
 import { makeGlobalNode } from "@turenlabs/core/effect/app-node"
 import { AgentV2 } from "@turenlabs/core/agent"
 import { Loop } from "@turenlabs/core/loop"
+import { TeamWorkspace } from "@turenlabs/core/team/workspace"
 import { EventV2 } from "@turenlabs/core/event"
 import { Location } from "@turenlabs/core/location"
 import { LocationServiceMap } from "@turenlabs/core/location-service-map"
@@ -40,6 +41,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const loops = yield* Loop.Service
+    const team = yield* TeamWorkspace.Service
     const sessions = yield* SessionV2.Service
     const locations = yield* LocationServiceMap.Service
     const events = yield* EventV2.Service
@@ -55,6 +57,14 @@ const layer = Layer.effect(
     )
 
     const execute = Effect.fn("LoopScheduler.execute")(function* (run: Loop.Run) {
+      const teammate = yield* team.recordDutyRun({ runID: run.id, loopID: run.loopID })
+      if (teammate?.status === "paused") {
+        yield* loops.cancelRun({ id: run.id })
+        return
+      }
+      const mission = teammate
+        ? `You are ${teammate.name} (@${teammate.handle}), a security teammate.\nMission: ${teammate.mission}\nComplete this duty and report evidence-backed results.\n\n`
+        : ""
       const heartbeat = Effect.gen(function* () {
         yield* Effect.sleep(RENEW_INTERVAL)
         yield* loops.renewRun({ id: run.id, owner, leaseMs: LEASE_MS })
@@ -78,7 +88,7 @@ const layer = Layer.effect(
         Effect.gen(function* () {
           const loop = yield* loops.get(run.loopID)
 
-          const execution = run.execution ?? {
+          const snapshot = run.execution ?? {
             title: loop.name,
             prompt: loop.prompt,
             location: loop.location,
@@ -86,6 +96,61 @@ const layer = Layer.effect(
             model: loop.model,
             skill: loop.skill,
             workflow: loop.workflow,
+          }
+          if (snapshot.factoryRoomID) {
+            const factoryRunID = `frun_${run.id}`
+            const factoryRun = yield* team.startFactoryRun({
+              id: factoryRunID,
+              roomID: snapshot.factoryRoomID,
+              sourceLoopRunID: run.id,
+              ...(snapshot.prompt.trim() ? { request: snapshot.prompt } : {}),
+            })
+            const planningTaskID = factoryRun.taskIDs[0]
+            if (!planningTaskID) return yield* Effect.fail(new Error("Factory run did not admit a planning task"))
+            const planningTask = yield* team.getTask(planningTaskID)
+            const planningSessionID = SessionV2.ID.make(planningTask.sessionID)
+            yield* loops.recordRunSession({ id: run.id, owner, sessionID: planningSessionID })
+            yield* loops.startRun({ id: run.id, owner, sessionID: planningSessionID })
+            let current = factoryRun
+            while (current.status === "running") {
+              yield* Effect.sleep(POLL_INTERVAL)
+              current = yield* team.getFactoryRun(factoryRunID)
+            }
+            const sourceRun = yield* loops.getRun({ id: run.id })
+            if (current.status !== "cancelled" && sourceRun.status === "running" && sourceRun.currentStep === 0) {
+              yield* loops.completeRunStep({
+                id: run.id,
+                owner,
+                currentStep: 0,
+                stepID: "factory",
+                output: {
+                  text: current.result ?? current.error ?? `Factory run ${current.status}`,
+                  json: { factoryRunID, status: current.status },
+                  artifacts: [],
+                },
+              })
+            }
+            if (current.status === "succeeded") {
+              return
+            }
+            if (current.status === "cancelled") return yield* Effect.fail(new RunCancelledError())
+            const failedTask = current.taskIDs[0] ? yield* team.getTask(current.taskIDs[0]) : undefined
+            const details = failedTask
+              ? `; task ${failedTask.id} status=${failedTask.status} error=${failedTask.error ?? "none"} model=${failedTask.execution.model?.providerID ?? "none"}/${failedTask.execution.model?.id ?? "none"} directory=${failedTask.execution.directory}`
+              : ""
+            return yield* Effect.fail(
+              new Error(
+                current.error ??
+                  failedTask?.error ??
+                  current.result ??
+                  `Factory run ${current.status}${details}; source Loop ${sourceRun.status} session=${sourceRun.sessionID ?? "none"}`,
+              ),
+            )
+          }
+          const execution = {
+            ...snapshot,
+            agent: snapshot.agent ?? teammate?.agent,
+            model: snapshot.model ?? teammate?.model,
           }
           const ref = Location.Ref.make({
             directory: AbsolutePath.make(execution.location.directory),
@@ -169,7 +234,7 @@ const layer = Layer.effect(
                     yield* sessions.prompt({
                       id: messageID,
                       sessionID: session.id,
-                      prompt: { text: rendered },
+                      prompt: { text: mission + rendered },
                       resume: false,
                       owner: "automation",
                       // A step without its own selection inherits the Session's agent and
@@ -214,21 +279,35 @@ const layer = Layer.effect(
                 }),
               { concurrency: 1, discard: true },
             )
-          } else {
+          } else if (run.currentStep === 0) {
             // A stable prompt identity reconciles a crash after admission but before
             // the run crosses the provider-execution boundary below.
             const prompt = execution.skill
               ? `Load and follow the ${JSON.stringify(execution.skill)} skill for this run.${execution.prompt.trim() ? `\n\nAdditional instructions:\n${execution.prompt}` : ""}`
               : execution.prompt
+            const messageID = SessionMessage.ID.make(`msg_loop_${run.id}`)
             yield* sessions.prompt({
-              id: SessionMessage.ID.make(`msg_loop_${run.id}`),
+              id: messageID,
               sessionID: session.id,
-              prompt: { text: prompt },
+              prompt: { text: mission + prompt },
               resume: false,
               owner: "automation",
             })
             yield* loops.startRun({ id: run.id, owner, sessionID: session.id })
             yield* sessions.resumePending(session.id)
+            yield* loops.completeRunStep({
+              id: run.id,
+              owner,
+              currentStep: 0,
+              stepID: "result",
+              output: extractStepOutput(
+                yield* sessions.messages({
+                  sessionID: session.id,
+                  order: "asc",
+                  cursor: { id: messageID, direction: "next" },
+                }),
+              ),
+            })
           }
         }),
         Effect.raceFirst(heartbeat, cancellation),
@@ -242,6 +321,17 @@ const layer = Layer.effect(
       const latest = yield* loops.getRun({ id: run.id })
       const sessionID = SessionV2.ID.make(latest.sessionID ?? `ses_loop_${run.id}`)
       if (latest.status === "cancelled" || Cause.squash(exit.cause) instanceof RunCancelledError) {
+        const factoryRoomID = latest.execution?.factoryRoomID
+        if (factoryRoomID) {
+          yield* team.cancelFactoryRun(`frun_${run.id}`).pipe(Effect.catch(() => Effect.void))
+          const state = yield* team.state({ roomID: factoryRoomID }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+          yield* Effect.forEach(
+            state?.tasks.filter((task) => task.factoryRunID === `frun_${run.id}`) ?? [],
+            (task) => sessions.interrupt(SessionV2.ID.make(task.sessionID)).pipe(Effect.catch(() => Effect.void)),
+            { discard: true },
+          )
+          return
+        }
         const step = latest.execution?.workflow?.steps[latest.currentStep]
         yield* sessions
           .cancelPendingInput({
@@ -255,6 +345,17 @@ const layer = Layer.effect(
       // Interruption or loss of the lease makes the provider outcome
       // unknowable. Stop process-local execution and never replay it.
       if (unknownOutcome(exit.cause)) {
+        const factoryRoomID = latest.execution?.factoryRoomID
+        if (factoryRoomID) {
+          yield* team.cancelFactoryRun(`frun_${run.id}`).pipe(Effect.catch(() => Effect.void))
+          const state = yield* team.state({ roomID: factoryRoomID }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+          yield* Effect.forEach(
+            state?.tasks.filter((task) => task.factoryRunID === `frun_${run.id}`) ?? [],
+            (task) => sessions.interrupt(SessionV2.ID.make(task.sessionID)).pipe(Effect.catch(() => Effect.void)),
+            { discard: true },
+          )
+          return
+        }
         yield* sessions.interrupt(sessionID).pipe(Effect.catch(() => Effect.void))
         return
       }
@@ -283,12 +384,10 @@ const layer = Layer.effect(
       trigger: "file-change" | "session-end",
       payload: Readonly<Record<string, unknown>>,
     ) =>
-      loops
-        .fireEvent({ id: loopID, owner, trigger, payload, leaseMs: LEASE_MS })
-        .pipe(
-          Effect.flatMap((run) => (run.status === "claimed" ? runClaimed(run) : Effect.void)),
-          Effect.catch(() => Effect.void),
-        )
+      loops.fireEvent({ id: loopID, owner, trigger, payload, leaseMs: LEASE_MS }).pipe(
+        Effect.flatMap((run) => (run.status === "claimed" ? runClaimed(run) : Effect.void)),
+        Effect.catch(() => Effect.void),
+      )
 
     const fireAndExecuteDirect = (
       loopID: string,
@@ -355,7 +454,9 @@ const layer = Layer.effect(
             ...(directory === undefined ? {} : { directory }),
           })
         }
-      }).pipe(Effect.catchCause((cause) => Effect.logError("Loop session event failed", { cause: Cause.pretty(cause) })))
+      }).pipe(
+        Effect.catchCause((cause) => Effect.logError("Loop session event failed", { cause: Cause.pretty(cause) })),
+      )
 
     const fileStream = events.subscribe(FileSystemWatcher.Event.Updated).pipe(
       Stream.runForEach((event) => queueFileEvent(event.data.file)),
@@ -547,5 +648,5 @@ export function extractStepOutput(messages: ReadonlyArray<SessionMessage.Message
 export const node = makeGlobalNode({
   service: Service,
   layer,
-  deps: [Loop.node, SessionV2.node, LocationServiceMap.node, EventV2.node],
+  deps: [Loop.node, TeamWorkspace.node, SessionV2.node, LocationServiceMap.node, EventV2.node],
 })

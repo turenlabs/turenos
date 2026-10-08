@@ -37,6 +37,7 @@ export const groupNames = {
   "server.projectCopy": "projectCopies",
   "server.memory": "memories",
   "server.loop": "loops",
+  "server.team": "team",
 } as const
 
 export const endpointNames = {

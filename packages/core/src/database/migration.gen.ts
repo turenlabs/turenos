@@ -102,5 +102,10 @@ export const migrations = (
     import("./migration/20260911134454_swarm-room"),
     import("./migration/20260911161104_swarm-room-indexes"),
     import("./migration/20260924132422_session-task-fleet"),
+    import("./migration/20261006143121_team-workspace"),
+    import("./migration/20261007191655_factory-channels"),
+    import("./migration/20261007193014_factory-revision"),
+    import("./migration/20261008010902_team-rich-content"),
+    import("./migration/20261008124415_team-room-lifecycle"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

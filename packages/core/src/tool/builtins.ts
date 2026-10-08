@@ -3,6 +3,9 @@ export * as BuiltInTools from "./builtins"
 import { makeLocationNode } from "../effect/app-node"
 import { Layer } from "effect"
 import { AutomationTool } from "./automation"
+import { TeamWorkspaceTool } from "./team-workspace"
+import { SafeHtmlTool } from "./safehtml"
+import { VisualizeTool } from "./visualize"
 import { BashTool } from "./bash"
 import { CodeSearchTool } from "./code-search"
 import { ApplyPatchTool } from "./apply-patch"
@@ -80,6 +83,9 @@ export const node = makeLocationNode({
   deps: [
     ApplyPatchTool.node,
     AutomationTool.node,
+    TeamWorkspaceTool.node,
+    SafeHtmlTool.node,
+    VisualizeTool.node,
     BashTool.node,
     CodeSearchTool.node,
     EditTool.node,
@@ -104,9 +110,9 @@ export const node = makeLocationNode({
     BinaryAnalysisTools.node,
     StaticAnalysisTools.node,
     ProtocolInspectTools.node,
-  FollowStream.node,
-  WhiteboardTool.node,
-  SecurityProxyTool.node,
+    FollowStream.node,
+    WhiteboardTool.node,
+    SecurityProxyTool.node,
     ForensicTools.node,
     RosettaExecTool.node,
     WasmInspectTools.node,

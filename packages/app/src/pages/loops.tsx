@@ -8,6 +8,9 @@ import { SelectV2 } from "@turenlabs/ui/v2/select-v2"
 import { TextareaV2 } from "@turenlabs/ui/v2/textarea-v2"
 import { TextInputV2 } from "@turenlabs/ui/v2/text-input-v2"
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { createStore } from "solid-js/store"
+import type { Team } from "@turenlabs/schema/team"
+import { teamApi } from "./team/api"
 import { useNavRail } from "@/components/nav-rail"
 import { useDialog } from "@turenlabs/ui/context/dialog"
 import { PageHeader } from "@/components/page-header"
@@ -117,7 +120,7 @@ const modelRef = (value: string, variant?: string) => {
   return { providerID: value.slice(0, split), id: value.slice(split + 1), ...(variant ? { variant } : {}) }
 }
 
-const automationPath = (id: string) => `/automations/${id}`
+const automationPath = (id: string) => `/team/duties/${id}`
 
 const runDuration = (run: LoopRun) => {
   const started = Number(run.time.started)
@@ -176,7 +179,9 @@ function RunStepCard(props: {
     >
       <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 items-center gap-2">
-          <span class={`shrink-0 rounded-full px-2 py-0.5 text-[10px] [font-weight:550] ${STEP_STATE_TONE[props.state]}`}>
+          <span
+            class={`shrink-0 rounded-full px-2 py-0.5 text-[10px] [font-weight:550] ${STEP_STATE_TONE[props.state]}`}
+          >
             {STEP_STATE_LABEL[props.state]}
           </span>
           <code class="truncate text-[10px] text-v2-text-text-base">
@@ -267,12 +272,12 @@ export default function LoopsPage() {
 function LoopsUnavailable() {
   return (
     <section data-component="loops-page" class={SURFACE}>
-      <PageHeader title="Automations" description="Visual workflows running on the selected server" />
+      <PageHeader title="Team duties" description="Visual workflows running on the selected server" />
       <div class="flex min-h-0 flex-1 items-center justify-center px-5 py-10 text-center">
         <div class="max-w-sm">
           <p class="text-[13px] text-v2-text-text-base [font-weight:600]">No server configured</p>
           <p class="mt-2 text-[13px] leading-5 text-v2-text-text-muted">
-            Configure a TurenOS server to create and manage automations.
+            Configure a TurenOS server to create and manage duties.
           </p>
         </div>
       </div>
@@ -291,7 +296,13 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
   const navRail = useNavRail()
   const dialog = useDialog()
   const params = useParams<{ id?: string }>()
-  const [search] = useSearchParams<{ directory?: string; view?: string }>()
+  const [search] = useSearchParams<{ directory?: string; view?: string; teammate?: string; factoryRoomID?: string }>()
+  const factoryMode = () => !!search.factoryRoomID
+  const [team, setTeam] = createStore<{ teammates: Team.Teammate[]; duties: Team.Duty[]; selected: string }>({
+    teammates: [],
+    duties: [],
+    selected: "",
+  })
   const [loops, setLoops] = createSignal<LoopInfo[]>([])
   const [sort, setSort] = createSignal<AutomationSort>("created-desc")
   const [runHistory, setRunHistory] = createSignal<Record<string, LoopRun[]>>({})
@@ -316,6 +327,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
   const [model, setModel] = createSignal("")
   const [variant, setVariant] = createSignal("")
   const [initialStatus, setInitialStatus] = createSignal<"active" | "paused">("active")
+  const [factoryCoordinatorID, setFactoryCoordinatorID] = createSignal("")
   const [catalog, setCatalog] = createSignal<Awaited<ReturnType<typeof loopCatalog>>>({
     agents: [],
     models: [],
@@ -385,7 +397,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
     withSelected([{ value: "", label: "Default model" }, ...catalogModels()], model()),
   )
   const inheritOptions = (options: Array<{ value: string; label: string }>, selected: string) =>
-    withSelected([{ value: "", label: "Inherit from automation" }, ...options], selected)
+    withSelected([{ value: "", label: "Inherit from duty" }, ...options], selected)
   /** Effort tiers the selected model advertises; only the default when it exposes one. */
   const variantOptions = (key: string, selected: string) =>
     withSelected(
@@ -445,11 +457,16 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
       sessionID: "",
       eventAgent: "",
     })
-    setDirectory(search.directory ?? "")
+    const teammate =
+      team.teammates.find((item) => item.id === search.teammate) ??
+      team.teammates.find((item) => item.id === factoryCoordinatorID()) ??
+      team.teammates[0]
+    setTeam("selected", teammate?.id ?? "")
+    setDirectory(search.directory ?? teammate?.directory ?? "")
     setAgent("")
     setModel("")
     setVariant("")
-    setInitialStatus("active")
+    setInitialStatus(factoryMode() ? "paused" : "active")
     setTab("editor")
     setSelectedNode("trigger")
     setInsertAt()
@@ -479,6 +496,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
     const nextRuns = responseData(await api().runList({ loopID: id }))
     if (version !== undefined && version !== loadVersion) return
     setSelected(item)
+    setTeam("selected", team.duties.find((duty) => duty.loopID === id)?.teammateID ?? "")
     setName(item.name)
     setSteps(
       item.workflow
@@ -544,7 +562,36 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
       setRuns([])
       setTab(search.view === "runs" ? "runs" : "editor")
     }
-    void Promise.all([loadList(version), id && id !== "new" ? loadSelected(id, version) : Promise.resolve(resetForm())])
+    const loadTeam = async () => {
+      const api = teamApi(context.sdk.client)
+      const first = await api.state({ ...(search.factoryRoomID ? { roomID: search.factoryRoomID } : {}), limit: 1 })
+      const rooms = search.factoryRoomID
+        ? [first]
+        : await Promise.all(
+            first.rooms.map((room) =>
+              room.id === first.room.id ? Promise.resolve(first) : api.state({ roomID: room.id, limit: 1 }),
+            ),
+          )
+      if (version !== loadVersion) return
+      setTeam(
+        "teammates",
+        rooms.flatMap((room) => room.teammates),
+      )
+      setTeam(
+        "duties",
+        rooms.flatMap((room) => room.duties),
+      )
+      setFactoryCoordinatorID(
+        search.factoryRoomID && first.room.id === search.factoryRoomID
+          ? (first.room.factory?.config.coordinatorTeammateID ?? "")
+          : "",
+      )
+      await Promise.all([
+        loadList(version),
+        id && id !== "new" ? loadSelected(id, version) : Promise.resolve(resetForm()),
+      ])
+    }
+    void loadTeam()
       .catch((cause) => {
         if (version === loadVersion) setError(cause instanceof Error ? cause.message : "Could not load automations")
       })
@@ -698,24 +745,28 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
 
   const save = async () => {
     if (loading() || (params.id !== undefined && params.id !== "new" && !selected())) return
+    if (!factoryMode() && !team.selected) {
+      setError("Select a teammate for this duty.")
+      return
+    }
     const trigger = buildTriggerInput(triggerDraft())
     if (!name().trim() || trigger.error) {
       setError(trigger.error ?? "Enter a name and an interval of at least 60 seconds.")
       return
     }
     const triggerInput = trigger.input
-    if (!steps().length) {
+    if (!factoryMode() && !steps().length) {
       setError("Add at least one Agent or Skill step.")
       return
     }
-    const invalid = steps().some(
-      (step) => !step.name.trim() || (step.type === "agent" ? !step.prompt.trim() : !step.skill),
-    )
+    const invalid =
+      !factoryMode() &&
+      steps().some((step) => !step.name.trim() || (step.type === "agent" ? !step.prompt.trim() : !step.skill))
     if (invalid) {
       setError("Give every step a name and complete its required prompt or skill.")
       return
     }
-    const invalidBinding = invalidStepBinding(steps())
+    const invalidBinding = factoryMode() ? undefined : invalidStepBinding(steps())
     if (invalidBinding) {
       setError(`${invalidBinding.name || "A step"} references an unavailable or later step.`)
       return
@@ -723,11 +774,15 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
     setBusy(true)
     setError()
     const current = selected()
-    const workflow: Workflow = { version: 1, steps: toWorkflowSteps(steps()), delivery: { type: "turen" } }
-    const legacyPrompt = steps()
-      .map((step) => (step.type === "agent" ? step.prompt : step.instructions))
-      .filter(Boolean)
-      .join("\n\n")
+    const workflow: Workflow | undefined = factoryMode()
+      ? undefined
+      : { version: 1, steps: toWorkflowSteps(steps()), delivery: { type: "turen" } }
+    const legacyPrompt = factoryMode()
+      ? "Run the configured factory"
+      : steps()
+          .map((step) => (step.type === "agent" ? step.prompt : step.instructions))
+          .filter(Boolean)
+          .join("\n\n")
     const editInput = {
       loopID: current?.id ?? "",
       name: name().trim(),
@@ -739,17 +794,24 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
       workflow,
     }
     const createInput = {
+      ...(search.factoryRoomID ? { factoryRoomID: search.factoryRoomID } : { teammateID: team.selected }),
       name: name().trim(),
       prompt: legacyPrompt,
       ...triggerInput,
       ...(directory() ? { location: { directory: directory() } } : {}),
-      ...(agent() ? { agent: agent() } : {}),
-      ...(modelRef(model(), variant()) ? { model: modelRef(model(), variant()) ?? undefined } : {}),
+      ...(!factoryMode() && agent() ? { agent: agent() } : {}),
+      ...(!factoryMode() && modelRef(model(), variant()) ? { model: modelRef(model(), variant()) ?? undefined } : {}),
       paused: initialStatus() === "paused",
       workflow,
     }
     await (current ? api().edit(editInput) : api().create(createInput))
-      .then((result) => navigate(automationPath(responseData(result).id)))
+      .then(async (result) => {
+        const id = responseData(result).id
+        if (current) await teamApi(context.sdk.client).dutyAttach({ teammateID: team.selected, loopID: id })
+        navigate(
+          `${automationPath(id)}${factoryMode() ? `?factoryRoomID=${encodeURIComponent(search.factoryRoomID!)}` : ""}`,
+        )
+      })
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Could not save automation"))
       .finally(() => setBusy(false))
   }
@@ -828,7 +890,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
     <section data-component="loops-page" class={SURFACE}>
       <Show when={params.id !== "new"}>
         <PageHeader
-          title="Automations"
+          title="Team duties"
           description={`Visual workflows running on ${serverLabel}`}
           actions={
             <div class="flex flex-wrap items-center justify-end gap-2">
@@ -853,9 +915,9 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                 size="small"
                 variant="neutral"
                 icon="plus"
-                onClick={() => navigate("/automations/new")}
+                onClick={() => navigate("/team/duties/new")}
               >
-                New automation
+                New duty
               </ButtonV2>
             </div>
           }
@@ -864,15 +926,15 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
 
       <div
         class="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:overflow-hidden"
-        classList={{ "md:grid-cols-[280px_minmax(0,1fr)]": !navRail.collapsed("automations") && !params.id }}
+        classList={{ "md:grid-cols-[280px_minmax(0,1fr)]": !navRail.collapsed("team") && !params.id }}
       >
-        <Show when={!navRail.collapsed("automations") && !params.id}>
+        <Show when={!navRail.collapsed("team") && !params.id}>
           <aside
             data-component="automations-left-nav"
             class="flex flex-col border-b border-v2-border-border-subtle bg-v2-background-bg-layer-01 md:min-h-0 md:border-b-0 md:border-r"
           >
             <div class="flex items-center justify-between px-4 pb-2 pt-4">
-              <span class="text-[11px] uppercase tracking-[0.12em] text-v2-text-text-muted">All Automations</span>
+              <span class="text-[11px] uppercase tracking-[0.12em] text-v2-text-text-muted">All Duties</span>
               <span class="text-[11px] tabular-nums text-v2-text-text-muted">{loops().length}</span>
             </div>
             <div class="flex items-center justify-between gap-2 px-3 pb-2">
@@ -938,9 +1000,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                           </div>
                           <Show when={runHistory()[item.id]?.[0]}>
                             {(run) => (
-                              <span
-                                class={`mt-1 block truncate font-mono text-[10px] ${latestRunTone(run().status)}`}
-                              >
+                              <span class={`mt-1 block truncate font-mono text-[10px] ${latestRunTone(run().status)}`}>
                                 {runStatusLabel(run().status).toLowerCase()} ·{" "}
                                 {new Date(run().scheduledAt).toLocaleDateString()}
                                 <Show when={isActiveRun(run())}>
@@ -975,7 +1035,9 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                     <IconV2 name="branch" size="small" />
                   </span>
                   <h2 class="truncate text-[16px] leading-tight text-v2-text-text-base [font-weight:620]">
-                    {selected() ? selected()!.name : name().trim() || "New automation"}
+                    {selected()
+                      ? selected()!.name
+                      : name().trim() || (factoryMode() ? "New factory trigger" : "New duty")}
                   </h2>
                   <Show when={selected()}>
                     {(item) => (
@@ -988,7 +1050,14 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                   </Show>
                 </div>
                 <p class="mt-1 pl-9 text-[11px] leading-4 text-v2-text-text-muted">
-                  <Show when={selected()} fallback={`Build a scheduled workflow that runs on ${serverLabel}.`}>
+                  <Show
+                    when={selected()}
+                    fallback={
+                      factoryMode()
+                        ? `Create a trigger for this factory on ${serverLabel}.`
+                        : `Build a scheduled workflow that runs on ${serverLabel}.`
+                    }
+                  >
                     {(item) => {
                       const next = nextRunLabel(item())
                       return `${item().workflow?.steps.length ?? 1} steps · Every ${formatInterval(item().schedule.seconds)} · ${serverLabel}${next ? ` · ${next}` : ""}`
@@ -1003,7 +1072,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                   disabled={busy() || loading() || (params.id !== undefined && params.id !== "new" && !selected())}
                   onClick={() => void save()}
                 >
-                  {selected() ? "Save changes" : "Create automation"}
+                  {selected() ? "Save changes" : factoryMode() ? "Create factory trigger" : "Create duty"}
                 </ButtonV2>
                 <Show when={selected()}>
                   {(item) => (
@@ -1042,7 +1111,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                           void api()
                             .delete({ loopID: item().id })
                             .then(() => {
-                              navigate("/automations")
+                              navigate("/team")
                               void loadList()
                             })
                             .catch((cause) =>
@@ -1058,6 +1127,46 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                 </Show>
               </div>
             </header>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <a class="text-[12px] text-v2-text-text-accent underline" href="/team">
+                Back to Team
+              </a>
+              <Show when={search.factoryRoomID}>
+                <span class="text-[11px] text-v2-text-text-muted">Factory trigger · coordinator is bound on save</span>
+              </Show>
+              <Show when={!factoryMode()}>
+                <label class="text-[12px] text-v2-text-text-muted" for="duty-teammate">
+                  Teammate
+                </label>
+                <select
+                  id="duty-teammate"
+                  aria-label="Duty teammate"
+                  class="min-w-0 rounded-md border border-v2-border-border-base bg-v2-background-bg-base px-3 py-2 text-[12px]"
+                  value={team.selected}
+                  disabled={busy() || loading() || !!search.factoryRoomID}
+                  onChange={(event) => {
+                    setTeam("selected", event.currentTarget.value)
+                    if (!selected())
+                      setDirectory(
+                        team.teammates.find((item) => item.id === event.currentTarget.value)?.directory ?? "",
+                      )
+                  }}
+                >
+                  <option value="" selected={!team.selected}>
+                    Select a teammate
+                  </option>
+                  <For each={team.teammates}>
+                    {(teammate) => (
+                      <option value={teammate.id} selected={team.selected === teammate.id}>
+                        @{teammate.handle} · {teammate.role}
+                        {teammate.status === "paused" ? " · paused" : ""}
+                      </option>
+                    )}
+                  </For>
+                </select>
+              </Show>
+            </div>
 
             <Show when={selected()}>
               <div class="flex justify-center">
@@ -1088,7 +1197,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
             </Show>
 
             <Show when={tab() === "editor" || !selected()}>
-              <Show when={!selected()}>
+              <Show when={!selected() && !factoryMode()}>
                 <section aria-label="Starter blueprints">
                   <div class="flex flex-wrap items-center gap-2 border-b border-v2-border-border-base pb-3">
                     <span class="mr-2 font-mono text-[11px] uppercase tracking-[0.14em] text-v2-text-text-muted">
@@ -1118,144 +1227,150 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
 
               <section
                 data-component="loop-editor"
-                class="grid min-h-0 min-w-0 flex-1 items-stretch overflow-hidden rounded-[10px] border border-v2-border-border-base bg-v2-background-bg-base min-[1100px]:grid-cols-[minmax(0,1fr)_340px]"
+                class="grid min-h-0 min-w-0 flex-1 items-stretch overflow-hidden rounded-[10px] border border-v2-border-border-base bg-v2-background-bg-base"
+                classList={{
+                  "min-[1100px]:grid-cols-[minmax(0,1fr)_340px]": !factoryMode(),
+                  "min-[1100px]:grid-cols-1": factoryMode(),
+                }}
               >
-                <div
-                  data-component="loop-canvas"
-                  class="automation-canvas relative min-h-[470px] min-w-0 overflow-auto border-b border-v2-border-border-base lg:border-b-0"
-                >
-                  <div class="pointer-events-none sticky left-0 top-0 z-10 flex h-10 items-center justify-between border-b border-v2-border-border-subtle bg-v2-background-bg-base/90 px-3 backdrop-blur-sm">
-                    <span class="text-[10px] uppercase tracking-[0.12em] text-v2-text-text-muted">Workflow map</span>
-                    <span class="rounded-full bg-v2-background-bg-layer-02 px-2 py-1 text-[10px] text-v2-text-text-muted">
-                      {steps().length + 2} nodes
-                    </span>
-                  </div>
-                  <div class="automation-flow">
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      data-node="trigger"
-                      class={`${nodeClass(selectedNode() === "trigger")} automation-node-trigger`}
-                      onClick={() => setSelectedNode("trigger")}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter" && event.key !== " ") return
-                        event.preventDefault()
-                        setSelectedNode("trigger")
-                      }}
-                    >
-                      <div class="flex min-h-[74px] items-center">
-                        <span class="automation-node-icon">
-                          <IconV2 name="status" size="large" />
-                        </span>
-                        <div class="min-w-0 px-4 py-3">
-                          <p class="automation-node-kicker text-[10px] [font-weight:650]">Trigger</p>
-                          <p class="mt-1 truncate text-[13px] text-v2-text-text-base [font-weight:600]">
-                            {triggerLabel()}
-                          </p>
-                          <p class="mt-0.5 truncate text-[10px] text-v2-text-text-muted">
-                            {directory() || "Default workspace"}
-                          </p>
-                        </div>
-                      </div>
+                <Show when={!factoryMode()}>
+                  <div
+                    data-component="loop-canvas"
+                    class="automation-canvas relative min-h-[470px] min-w-0 overflow-auto border-b border-v2-border-border-base lg:border-b-0"
+                  >
+                    <div class="pointer-events-none sticky left-0 top-0 z-10 flex h-10 items-center justify-between border-b border-v2-border-border-subtle bg-v2-background-bg-base/90 px-3 backdrop-blur-sm">
+                      <span class="text-[10px] uppercase tracking-[0.12em] text-v2-text-text-muted">Workflow map</span>
+                      <span class="rounded-full bg-v2-background-bg-layer-02 px-2 py-1 text-[10px] text-v2-text-text-muted">
+                        {steps().length + 2} nodes
+                      </span>
                     </div>
-
-                    <For each={steps()}>
-                      {(step, index) => (
-                        <>
-                          {connector(index())}
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            data-node={step.id}
-                            class={`${nodeClass(selectedNode() === step.key)} automation-node-${step.type}`}
-                            onClick={() => setSelectedNode(step.key)}
-                            onKeyDown={(event) => {
-                              if (event.key !== "Enter" && event.key !== " ") return
-                              event.preventDefault()
-                              setSelectedNode(step.key)
-                            }}
-                          >
-                            <div class="flex min-h-[74px] min-w-0 items-center">
-                              <span class="automation-node-icon">
-                                <IconV2 name={step.type === "agent" ? "terminal" : "skills"} size="large" />
-                              </span>
-                              <div class="min-w-0 flex-1 px-4 py-3">
-                                <div class="flex items-center gap-2">
-                                  <p class="automation-node-kicker truncate text-[10px] [font-weight:650]">
-                                    {step.type === "agent" ? "Agent" : "Skill"} · Step {index() + 1}
-                                  </p>
-                                </div>
-                                <p class="mt-1 truncate text-[13px] text-v2-text-text-base [font-weight:600]">
-                                  {step.name || "Untitled step"}
-                                </p>
-                                <p class="mt-0.5 truncate text-[10px] text-v2-text-text-muted">{stepSummary(step)}</p>
-                              </div>
-                              <Show when={stepChip(step.id, index())}>
-                                {(chip) => (
-                                  <span
-                                    class={`shrink-0 rounded-full px-2 py-1 text-[10px] [font-weight:550] ${chip().tone}`}
-                                  >
-                                    {chip().label}
-                                  </span>
-                                )}
-                              </Show>
-                              <span class="mr-4 rounded-full bg-v2-background-bg-layer-03 px-2 py-1 text-[10px] tabular-nums text-v2-text-text-muted">
-                                {index() + 1}
-                              </span>
-                            </div>
+                    <div class="automation-flow">
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        data-node="trigger"
+                        class={`${nodeClass(selectedNode() === "trigger")} automation-node-trigger`}
+                        onClick={() => setSelectedNode("trigger")}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return
+                          event.preventDefault()
+                          setSelectedNode("trigger")
+                        }}
+                      >
+                        <div class="flex min-h-[74px] items-center">
+                          <span class="automation-node-icon">
+                            <IconV2 name="status" size="large" />
+                          </span>
+                          <div class="min-w-0 px-4 py-3">
+                            <p class="automation-node-kicker text-[10px] [font-weight:650]">Trigger</p>
+                            <p class="mt-1 truncate text-[13px] text-v2-text-text-base [font-weight:600]">
+                              {triggerLabel()}
+                            </p>
+                            <p class="mt-0.5 truncate text-[10px] text-v2-text-text-muted">
+                              {directory() || "Default workspace"}
+                            </p>
                           </div>
-                        </>
-                      )}
-                    </For>
-
-                    {connector(steps().length)}
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      data-node="delivery"
-                      class={`${nodeClass(selectedNode() === "delivery")} automation-node-delivery`}
-                      onClick={() => setSelectedNode("delivery")}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter" && event.key !== " ") return
-                        event.preventDefault()
-                        setSelectedNode("delivery")
-                      }}
-                    >
-                      <div class="flex min-h-[74px] items-center">
-                        <span class="automation-node-icon">
-                          <IconV2 name="check" size="large" />
-                        </span>
-                        <div class="min-w-0 px-4 py-3">
-                          <p class="automation-node-kicker text-[10px] [font-weight:650]">Delivery</p>
-                          <p class="mt-1 text-[13px] text-v2-text-text-base [font-weight:600]">
-                            Send results to TurenOS
-                          </p>
-                          <p class="mt-0.5 text-[10px] text-v2-text-text-muted">
-                            Outputs and artifacts are saved with the run
-                          </p>
                         </div>
                       </div>
-                    </div>
-                    <div class="flex gap-2 pt-3">
-                      <ButtonV2
-                        size="small"
-                        variant="neutral"
-                        disabled={busy() || steps().length >= MAX_STEPS}
-                        onClick={() => addStep("agent", steps().length)}
+
+                      <For each={steps()}>
+                        {(step, index) => (
+                          <>
+                            {connector(index())}
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              data-node={step.id}
+                              class={`${nodeClass(selectedNode() === step.key)} automation-node-${step.type}`}
+                              onClick={() => setSelectedNode(step.key)}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter" && event.key !== " ") return
+                                event.preventDefault()
+                                setSelectedNode(step.key)
+                              }}
+                            >
+                              <div class="flex min-h-[74px] min-w-0 items-center">
+                                <span class="automation-node-icon">
+                                  <IconV2 name={step.type === "agent" ? "terminal" : "skills"} size="large" />
+                                </span>
+                                <div class="min-w-0 flex-1 px-4 py-3">
+                                  <div class="flex items-center gap-2">
+                                    <p class="automation-node-kicker truncate text-[10px] [font-weight:650]">
+                                      {step.type === "agent" ? "Agent" : "Skill"} · Step {index() + 1}
+                                    </p>
+                                  </div>
+                                  <p class="mt-1 truncate text-[13px] text-v2-text-text-base [font-weight:600]">
+                                    {step.name || "Untitled step"}
+                                  </p>
+                                  <p class="mt-0.5 truncate text-[10px] text-v2-text-text-muted">{stepSummary(step)}</p>
+                                </div>
+                                <Show when={stepChip(step.id, index())}>
+                                  {(chip) => (
+                                    <span
+                                      class={`shrink-0 rounded-full px-2 py-1 text-[10px] [font-weight:550] ${chip().tone}`}
+                                    >
+                                      {chip().label}
+                                    </span>
+                                  )}
+                                </Show>
+                                <span class="mr-4 rounded-full bg-v2-background-bg-layer-03 px-2 py-1 text-[10px] tabular-nums text-v2-text-text-muted">
+                                  {index() + 1}
+                                </span>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </For>
+
+                      {connector(steps().length)}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        data-node="delivery"
+                        class={`${nodeClass(selectedNode() === "delivery")} automation-node-delivery`}
+                        onClick={() => setSelectedNode("delivery")}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return
+                          event.preventDefault()
+                          setSelectedNode("delivery")
+                        }}
                       >
-                        + agent
-                      </ButtonV2>
-                      <ButtonV2
-                        size="small"
-                        variant="neutral"
-                        disabled={busy() || steps().length >= MAX_STEPS}
-                        onClick={() => addStep("skill", steps().length)}
-                      >
-                        + skill
-                      </ButtonV2>
+                        <div class="flex min-h-[74px] items-center">
+                          <span class="automation-node-icon">
+                            <IconV2 name="check" size="large" />
+                          </span>
+                          <div class="min-w-0 px-4 py-3">
+                            <p class="automation-node-kicker text-[10px] [font-weight:650]">Delivery</p>
+                            <p class="mt-1 text-[13px] text-v2-text-text-base [font-weight:600]">
+                              Send results to TurenOS
+                            </p>
+                            <p class="mt-0.5 text-[10px] text-v2-text-text-muted">
+                              Outputs and artifacts are saved with the run
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="flex gap-2 pt-3">
+                        <ButtonV2
+                          size="small"
+                          variant="neutral"
+                          disabled={busy() || steps().length >= MAX_STEPS}
+                          onClick={() => addStep("agent", steps().length)}
+                        >
+                          + agent
+                        </ButtonV2>
+                        <ButtonV2
+                          size="small"
+                          variant="neutral"
+                          disabled={busy() || steps().length >= MAX_STEPS}
+                          onClick={() => addStep("skill", steps().length)}
+                        >
+                          + skill
+                        </ButtonV2>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </Show>
 
                 <aside
                   data-component="loop-inspector"
@@ -1299,7 +1414,9 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                           onSelect={(option) => option && setTriggerKind(option.value)}
                           disabled={busy()}
                         />
-                        <FieldV2.Suffix>Intervals and cron run on a schedule; events fire on server activity.</FieldV2.Suffix>
+                        <FieldV2.Suffix>
+                          Intervals and cron run on a schedule; events fire on server activity.
+                        </FieldV2.Suffix>
                       </FieldV2>
                       <Show when={triggerKind() === "interval"}>
                         <FieldV2
@@ -1331,7 +1448,9 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                             disabled={busy()}
                             onInput={(event) => setCronExpression(event.currentTarget.value)}
                           />
-                          <FieldV2.Suffix>Five fields: minute hour day month weekday. Max 120 characters.</FieldV2.Suffix>
+                          <FieldV2.Suffix>
+                            Five fields: minute hour day month weekday. Max 120 characters.
+                          </FieldV2.Suffix>
                         </FieldV2>
                       </Show>
                       <Show when={triggerKind() === "file-change"}>
@@ -1350,10 +1469,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                           />
                           <FieldV2.Suffix>One relative glob per line, scoped to the project directory.</FieldV2.Suffix>
                         </FieldV2>
-                        <FieldV2
-                          class="min-w-0"
-                          invalid={!!debounceMs().trim() && !!validateDebounceMs(debounceMs())}
-                        >
+                        <FieldV2 class="min-w-0" invalid={!!debounceMs().trim() && !!validateDebounceMs(debounceMs())}>
                           <FieldV2.Label>Debounce (ms)</FieldV2.Label>
                           <TextInputV2
                             class="!w-full !min-w-0"
@@ -1415,57 +1531,59 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                         />
                         <FieldV2.Suffix>IANA timezone for schedule fire times, e.g. America/New_York.</FieldV2.Suffix>
                       </FieldV2>
-                      <FieldV2 class="min-w-0">
-                        <FieldV2.Label>Agent</FieldV2.Label>
-                        <SelectV2
-                          aria-label="Agent"
-                          class="!w-full !min-w-0"
-                          options={agentOptions()}
-                          current={agentOptions().find((option) => option.value === agent())}
-                          value={(option) => option.value}
-                          label={(option) => option.label}
-                          onSelect={(option) => option && setAgent(option.value)}
-                          disabled={busy()}
-                        />
-                        <FieldV2.Suffix>Runs every step in this automation.</FieldV2.Suffix>
-                      </FieldV2>
-                      <FieldV2 class="min-w-0">
-                        <FieldV2.Label>Model</FieldV2.Label>
-                        <SelectV2
-                          aria-label="Model"
-                          class="!w-full !min-w-0"
-                          options={modelOptions()}
-                          current={modelOptions().find((option) => option.value === model())}
-                          value={(option) => option.value}
-                          label={(option) => option.label}
-                          onSelect={(option) => option && setModel(option.value)}
-                          disabled={busy()}
-                        />
-                        <FieldV2.Suffix>
-                          {catalogLoading()
-                            ? "Loading available models..."
-                            : catalogError()
-                              ? "Could not load models. The selected model is still available."
-                              : catalog().models.filter((item) => item.enabled).length === 0
-                                ? "No models available."
-                                : "Select the model used by this automation."}
-                        </FieldV2.Suffix>
-                      </FieldV2>
-                      <Show when={triggerVariantOptions().length > 1}>
+                      <Show when={!factoryMode()}>
                         <FieldV2 class="min-w-0">
-                          <FieldV2.Label>Effort</FieldV2.Label>
+                          <FieldV2.Label>Agent</FieldV2.Label>
                           <SelectV2
-                            aria-label="Effort"
+                            aria-label="Agent"
                             class="!w-full !min-w-0"
-                            options={triggerVariantOptions()}
-                            current={triggerVariantOptions().find((option) => option.value === variant())}
+                            options={agentOptions()}
+                            current={agentOptions().find((option) => option.value === agent())}
                             value={(option) => option.value}
                             label={(option) => option.label}
-                            onSelect={(option) => option && setVariant(option.value)}
+                            onSelect={(option) => option && setAgent(option.value)}
                             disabled={busy()}
                           />
-                          <FieldV2.Suffix>Reasoning effort used by this model.</FieldV2.Suffix>
+                          <FieldV2.Suffix>Runs every step in this automation.</FieldV2.Suffix>
                         </FieldV2>
+                        <FieldV2 class="min-w-0">
+                          <FieldV2.Label>Model</FieldV2.Label>
+                          <SelectV2
+                            aria-label="Model"
+                            class="!w-full !min-w-0"
+                            options={modelOptions()}
+                            current={modelOptions().find((option) => option.value === model())}
+                            value={(option) => option.value}
+                            label={(option) => option.label}
+                            onSelect={(option) => option && setModel(option.value)}
+                            disabled={busy()}
+                          />
+                          <FieldV2.Suffix>
+                            {catalogLoading()
+                              ? "Loading available models..."
+                              : catalogError()
+                                ? "Could not load models. The selected model is still available."
+                                : catalog().models.filter((item) => item.enabled).length === 0
+                                  ? "No models available."
+                                  : "Select the model used by this automation."}
+                          </FieldV2.Suffix>
+                        </FieldV2>
+                        <Show when={triggerVariantOptions().length > 1}>
+                          <FieldV2 class="min-w-0">
+                            <FieldV2.Label>Effort</FieldV2.Label>
+                            <SelectV2
+                              aria-label="Effort"
+                              class="!w-full !min-w-0"
+                              options={triggerVariantOptions()}
+                              current={triggerVariantOptions().find((option) => option.value === variant())}
+                              value={(option) => option.value}
+                              label={(option) => option.label}
+                              onSelect={(option) => option && setVariant(option.value)}
+                              disabled={busy()}
+                            />
+                            <FieldV2.Suffix>Reasoning effort used by this model.</FieldV2.Suffix>
+                          </FieldV2>
+                        </Show>
                       </Show>
                       <Show when={!selected()}>
                         <FieldV2 class="min-w-0">
@@ -1485,7 +1603,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                     </div>
                   </Show>
 
-                  <Show when={selectedStep()}>
+                  <Show when={!factoryMode() && selectedStep()}>
                     {(step) => (
                       <>
                         <div class="mb-4 flex items-center justify-between gap-2">
@@ -1589,9 +1707,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                               <TextareaV2
                                 class="min-h-32 !w-full !min-w-0"
                                 rows={6}
-                                value={
-                                  step().type === "agent" ? (step() as StepDraft & { prompt: string }).prompt : ""
-                                }
+                                value={step().type === "agent" ? (step() as StepDraft & { prompt: string }).prompt : ""}
                                 placeholder="What should the agent accomplish in this step?"
                                 disabled={busy()}
                                 onInput={(event) => updateStep(step().key, { prompt: event.currentTarget.value })}
@@ -1740,7 +1856,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                     )}
                   </Show>
 
-                  <Show when={selectedNode() === "delivery"}>
+                  <Show when={!factoryMode() && selectedNode() === "delivery"}>
                     <h3 class="mb-3 text-[13px] text-v2-text-text-base [font-weight:600]">TurenOS delivery</h3>
                     <p class="text-[12px] leading-5 text-v2-text-text-muted">
                       Each run executes in its own TurenOS Session. The final step's result is the run's outcome, and
@@ -1772,113 +1888,109 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                     const progress = () => runProgressLabel(run, steps())
                     const failed = () => failedCallout(run, steps())
                     return (
-                    <div class="flex items-start gap-4 border-b border-v2-border-border-base px-4 py-3 last:border-b-0">
-                      <span class={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${RUN_TONE[run.status]}`} />
-                      <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                          <span class="text-[12px] capitalize text-v2-text-text-base [font-weight:550]">
-                            {run.status}
-                          </span>
-                          <span class="text-[11px] text-v2-text-text-muted">{run.trigger}</span>
-                          <span class="text-[11px] text-v2-text-text-muted">
-                            {new Date(run.scheduledAt).toLocaleString()}
-                          </span>
-                          <Show when={runDuration(run)}>
-                            {(value) => (
-                              <span class="text-[11px] tabular-nums text-v2-text-text-muted">{value()}</span>
-                            )}
+                      <div class="flex items-start gap-4 border-b border-v2-border-border-base px-4 py-3 last:border-b-0">
+                        <span class={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${RUN_TONE[run.status]}`} />
+                        <div class="min-w-0 flex-1">
+                          <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-[12px] capitalize text-v2-text-text-base [font-weight:550]">
+                              {run.status}
+                            </span>
+                            <span class="text-[11px] text-v2-text-text-muted">{run.trigger}</span>
+                            <span class="text-[11px] text-v2-text-text-muted">
+                              {new Date(run.scheduledAt).toLocaleString()}
+                            </span>
+                            <Show when={runDuration(run)}>
+                              {(value) => (
+                                <span class="text-[11px] tabular-nums text-v2-text-text-muted">{value()}</span>
+                              )}
+                            </Show>
+                          </div>
+                          <Show when={progress()}>
+                            {(label) => <p class="mt-1 text-[11px] text-v2-state-fg-warning">{label()}</p>}
+                          </Show>
+                          <Show when={failed()}>
+                            {(line) => <p class="mt-1 text-[11px] text-v2-state-fg-danger">{line()}</p>}
+                          </Show>
+                          <Show when={run.error && run.status !== "failed"}>
+                            {(message) => <p class="mt-1 truncate text-[11px] text-v2-state-fg-danger">{message()}</p>}
+                          </Show>
+                          <Show when={entries().length}>
+                            <div class="mt-3 grid gap-2">
+                              <For each={entries()}>
+                                {([stepID, output]) => {
+                                  const display = stepDisplay(stepID, steps(), total())
+                                  return (
+                                    <RunStepCard
+                                      stepID={stepID}
+                                      name={display.name}
+                                      index={display.index}
+                                      total={display.total}
+                                      state={stepState(run, stepID, display.index)}
+                                      output={output}
+                                      onOpenArtifact={(target) => {
+                                        if (!run.sessionID) return
+                                        navigate(
+                                          `${sessionHref(serverKey, run.sessionID)}?file=${encodeURIComponent(target)}`,
+                                        )
+                                      }}
+                                    />
+                                  )
+                                }}
+                              </For>
+                            </div>
                           </Show>
                         </div>
-                        <Show when={progress()}>
-                          {(label) => (
-                            <p class="mt-1 text-[11px] text-v2-state-fg-warning">{label()}</p>
+                        <Show
+                          when={
+                            run.sessionID && run.status !== "claimed" && run.status !== "running"
+                              ? run.sessionID
+                              : undefined
+                          }
+                        >
+                          {(sessionID) => (
+                            <div class="flex shrink-0 flex-col gap-2">
+                              <ButtonV2
+                                size="small"
+                                variant="neutral"
+                                onClick={() => {
+                                  const automation = selected()
+                                  if (automation) viewChat(automation, run)
+                                }}
+                              >
+                                View chat
+                              </ButtonV2>
+                              <ButtonV2
+                                size="small"
+                                variant="ghost-muted"
+                                onClick={() => navigate(sessionHref(serverKey, sessionID()))}
+                              >
+                                Open in agent chat
+                              </ButtonV2>
+                            </div>
                           )}
                         </Show>
-                        <Show when={failed()}>
-                          {(line) => (
-                            <p class="mt-1 text-[11px] text-v2-state-fg-danger">
-                              {line()}
-                            </p>
-                          )}
-                        </Show>
-                        <Show when={run.error && run.status !== "failed"}>
-                          {(message) => <p class="mt-1 truncate text-[11px] text-v2-state-fg-danger">{message()}</p>}
-                        </Show>
-                        <Show when={entries().length}>
-                          <div class="mt-3 grid gap-2">
-                            <For each={entries()}>
-                              {([stepID, output]) => {
-                                const display = stepDisplay(stepID, steps(), total())
-                                return (
-                                  <RunStepCard
-                                    stepID={stepID}
-                                    name={display.name}
-                                    index={display.index}
-                                    total={display.total}
-                                    state={stepState(run, stepID, display.index)}
-                                    output={output}
-                                    onOpenArtifact={(target) => {
-                                      if (!run.sessionID) return
-                                      navigate(`${sessionHref(serverKey, run.sessionID)}?file=${encodeURIComponent(target)}`)
-                                    }}
-                                  />
+                        <Show when={run.status === "claimed" || run.status === "running"}>
+                          <ButtonV2
+                            size="small"
+                            variant="neutral"
+                            disabled={busy()}
+                            onClick={() => {
+                              const automation = selected()
+                              if (!automation || busy()) return
+                              setBusy(true)
+                              void api()
+                                .runCancel({ loopID: automation.id, runID: run.id })
+                                .then(refresh)
+                                .catch((cause) =>
+                                  setError(cause instanceof Error ? cause.message : "Could not cancel run"),
                                 )
-                              }}
-                            </For>
-                          </div>
+                                .finally(() => setBusy(false))
+                            }}
+                          >
+                            Cancel
+                          </ButtonV2>
                         </Show>
                       </div>
-                      <Show
-                        when={
-                          run.sessionID && run.status !== "claimed" && run.status !== "running"
-                            ? run.sessionID
-                            : undefined
-                        }
-                      >
-                        {(sessionID) => (
-                          <div class="flex shrink-0 flex-col gap-2">
-                            <ButtonV2
-                              size="small"
-                              variant="neutral"
-                              onClick={() => {
-                                const automation = selected()
-                                if (automation) viewChat(automation, run)
-                              }}
-                            >
-                              View chat
-                            </ButtonV2>
-                            <ButtonV2
-                              size="small"
-                              variant="ghost-muted"
-                              onClick={() => navigate(sessionHref(serverKey, sessionID()))}
-                            >
-                              Open in agent chat
-                            </ButtonV2>
-                          </div>
-                        )}
-                      </Show>
-                      <Show when={run.status === "claimed" || run.status === "running"}>
-                        <ButtonV2
-                          size="small"
-                          variant="neutral"
-                          disabled={busy()}
-                          onClick={() => {
-                            const automation = selected()
-                            if (!automation || busy()) return
-                            setBusy(true)
-                            void api()
-                              .runCancel({ loopID: automation.id, runID: run.id })
-                              .then(refresh)
-                              .catch((cause) =>
-                                setError(cause instanceof Error ? cause.message : "Could not cancel run"),
-                              )
-                              .finally(() => setBusy(false))
-                          }}
-                        >
-                          Cancel
-                        </ButtonV2>
-                      </Show>
-                    </div>
                     )
                   }}
                 </For>

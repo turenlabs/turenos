@@ -270,6 +270,11 @@ import type {
   SyncStartResponses,
   SyncStealErrors,
   SyncStealResponses,
+  TeamCreateTeammate,
+  TeamEditRoom,
+  TeamEditTeammate,
+  TeamFactoryConfig,
+  TeamPostMessage,
   TextPartInput,
   ToolIdsErrors,
   ToolIdsResponses,
@@ -497,6 +502,38 @@ import type {
   V2SessionTerminalShareResponses,
   V2SessionWaitErrors,
   V2SessionWaitResponses,
+  V2TeamDutyAttachErrors,
+  V2TeamDutyAttachResponses,
+  V2TeamFactoryConfigureErrors,
+  V2TeamFactoryConfigureResponses,
+  V2TeamFactoryRunCancelErrors,
+  V2TeamFactoryRunCancelResponses,
+  V2TeamFactoryRunErrors,
+  V2TeamFactoryRunGetErrors,
+  V2TeamFactoryRunGetResponses,
+  V2TeamFactoryRunResponses,
+  V2TeamMessagePostErrors,
+  V2TeamMessagePostResponses,
+  V2TeamRoomArchiveErrors,
+  V2TeamRoomArchiveResponses,
+  V2TeamRoomCreateErrors,
+  V2TeamRoomCreateResponses,
+  V2TeamRoomDeleteErrors,
+  V2TeamRoomDeleteResponses,
+  V2TeamRoomEditErrors,
+  V2TeamRoomEditResponses,
+  V2TeamRoomRestoreErrors,
+  V2TeamRoomRestoreResponses,
+  V2TeamStateErrors,
+  V2TeamStateResponses,
+  V2TeamTaskCancelErrors,
+  V2TeamTaskCancelResponses,
+  V2TeamTeammateCreateErrors,
+  V2TeamTeammateCreateResponses,
+  V2TeamTeammateEditErrors,
+  V2TeamTeammateEditResponses,
+  V2TeamTeammateStopErrors,
+  V2TeamTeammateStopResponses,
   V2WhiteboardEventsErrors,
   V2WhiteboardEventsResponse,
   V2WhiteboardEventsResponses,
@@ -7924,6 +7961,415 @@ export class Loop extends HeyApiClient {
   }
 }
 
+export class Team extends HeyApiClient {
+  /**
+   * Read Team room
+   */
+  public state<ThrowOnError extends boolean = false>(
+    parameters?: {
+      roomID?: string
+      after?: string
+      before?: string
+      limit?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "roomID" },
+            { in: "query", key: "after" },
+            { in: "query", key: "before" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<V2TeamStateResponses, V2TeamStateErrors, ThrowOnError>({
+      url: "/api/team",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create Team room
+   */
+  public roomCreate<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      topic?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "name" },
+            { in: "body", key: "topic" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2TeamRoomCreateResponses, V2TeamRoomCreateErrors, ThrowOnError>({
+      url: "/api/team/room",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete Team room
+   */
+  public roomDelete<ThrowOnError extends boolean = false>(
+    parameters: {
+      roomID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "roomID" }] }])
+    return (options?.client ?? this.client).delete<V2TeamRoomDeleteResponses, V2TeamRoomDeleteErrors, ThrowOnError>({
+      url: "/api/team/room/{roomID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Edit Team room
+   */
+  public roomEdit<ThrowOnError extends boolean = false>(
+    parameters: {
+      roomID: string
+      teamEditRoom: TeamEditRoom
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "roomID" },
+            { key: "teamEditRoom", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<V2TeamRoomEditResponses, V2TeamRoomEditErrors, ThrowOnError>({
+      url: "/api/team/room/{roomID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Archive Team room
+   */
+  public roomArchive<ThrowOnError extends boolean = false>(
+    parameters: {
+      roomID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "roomID" }] }])
+    return (options?.client ?? this.client).post<V2TeamRoomArchiveResponses, V2TeamRoomArchiveErrors, ThrowOnError>({
+      url: "/api/team/room/{roomID}/archive",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Restore Team room
+   */
+  public roomRestore<ThrowOnError extends boolean = false>(
+    parameters: {
+      roomID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "roomID" }] }])
+    return (options?.client ?? this.client).post<V2TeamRoomRestoreResponses, V2TeamRoomRestoreErrors, ThrowOnError>({
+      url: "/api/team/room/{roomID}/restore",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create teammate
+   */
+  public teammateCreate<ThrowOnError extends boolean = false>(
+    parameters: {
+      teamCreateTeammate: TeamCreateTeammate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "teamCreateTeammate", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      V2TeamTeammateCreateResponses,
+      V2TeamTeammateCreateErrors,
+      ThrowOnError
+    >({
+      url: "/api/team/teammate",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Edit teammate
+   */
+  public teammateEdit<ThrowOnError extends boolean = false>(
+    parameters: {
+      teammateID: string
+      teamEditTeammate: TeamEditTeammate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "teammateID" },
+            { key: "teamEditTeammate", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<V2TeamTeammateEditResponses, V2TeamTeammateEditErrors, ThrowOnError>({
+      url: "/api/team/teammate/{teammateID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Stop teammate work
+   */
+  public teammateStop<ThrowOnError extends boolean = false>(
+    parameters: {
+      teammateID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "teammateID" }] }])
+    return (options?.client ?? this.client).post<V2TeamTeammateStopResponses, V2TeamTeammateStopErrors, ThrowOnError>({
+      url: "/api/team/teammate/{teammateID}/stop",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Post Team room message
+   */
+  public messagePost<ThrowOnError extends boolean = false>(
+    parameters: {
+      teamPostMessage: TeamPostMessage
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "teamPostMessage", map: "body" }] }])
+    return (options?.client ?? this.client).post<V2TeamMessagePostResponses, V2TeamMessagePostErrors, ThrowOnError>({
+      url: "/api/team/message",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Assign teammate duty
+   */
+  public dutyAttach<ThrowOnError extends boolean = false>(
+    parameters: {
+      teammateID: string
+      loopID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "teammateID" },
+            { in: "body", key: "loopID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2TeamDutyAttachResponses, V2TeamDutyAttachErrors, ThrowOnError>({
+      url: "/api/team/teammate/{teammateID}/duty",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Cancel teammate task
+   */
+  public taskCancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      taskID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "taskID" }] }])
+    return (options?.client ?? this.client).post<V2TeamTaskCancelResponses, V2TeamTaskCancelErrors, ThrowOnError>({
+      url: "/api/team/task/{taskID}/cancel",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Configure Team factory
+   */
+  public factoryConfigure<ThrowOnError extends boolean = false>(
+    parameters: {
+      roomID: string
+      teamFactoryConfig: TeamFactoryConfig
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "roomID" },
+            { key: "teamFactoryConfig", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      V2TeamFactoryConfigureResponses,
+      V2TeamFactoryConfigureErrors,
+      ThrowOnError
+    >({
+      url: "/api/team/room/{roomID}/factory",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Start Team factory run
+   */
+  public factoryRun<ThrowOnError extends boolean = false>(
+    parameters: {
+      roomID: string
+      id: string
+      request?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "roomID" },
+            { in: "body", key: "id" },
+            { in: "body", key: "request" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2TeamFactoryRunResponses, V2TeamFactoryRunErrors, ThrowOnError>({
+      url: "/api/team/room/{roomID}/factory/run",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get Team factory run
+   */
+  public factoryRunGet<ThrowOnError extends boolean = false>(
+    parameters: {
+      runID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "runID" }] }])
+    return (options?.client ?? this.client).get<V2TeamFactoryRunGetResponses, V2TeamFactoryRunGetErrors, ThrowOnError>({
+      url: "/api/team/factory-run/{runID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Cancel Team factory run
+   */
+  public factoryRunCancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      runID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "runID" }] }])
+    return (options?.client ?? this.client).post<
+      V2TeamFactoryRunCancelResponses,
+      V2TeamFactoryRunCancelErrors,
+      ThrowOnError
+    >({
+      url: "/api/team/factory-run/{runID}/cancel",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Intel extends HeyApiClient {
   /**
    * List security advisories
@@ -8332,6 +8778,11 @@ export class V2 extends HeyApiClient {
   private _loop?: Loop
   get loop(): Loop {
     return (this._loop ??= new Loop({ client: this.client }))
+  }
+
+  private _team?: Team
+  get team(): Team {
+    return (this._team ??= new Team({ client: this.client }))
   }
 
   private _intel?: Intel

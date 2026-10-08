@@ -114,6 +114,7 @@ export const StepOutput = Schema.Struct({
 }).annotate({ identifier: "Automation.StepOutput" })
 
 export const CreateInput = Schema.Struct({
+  teammateID: Schema.optional(Schema.String),
   name: Schema.String,
   prompt: Schema.String,
   /** When omitted, the TurenOS global data directory is used as the durable execution location. */
@@ -129,6 +130,7 @@ export const CreateInput = Schema.Struct({
   expiresAt: Schema.optional(Schema.Number),
   paused: Schema.optional(Schema.Boolean),
   eventTrigger: Schema.optional(EventTrigger),
+  factoryRoomID: Schema.optional(Schema.String),
 }).annotate({ identifier: "Loop.CreateInput" })
 export type CreateInput = typeof CreateInput.Type
 
@@ -162,6 +164,7 @@ export const Info = Schema.Struct({
   skill: Schema.optional(Schema.String),
   workflow: Schema.optional(Workflow),
   eventTrigger: Schema.optional(EventTrigger),
+  factoryRoomID: Schema.optional(Schema.String),
   overlapPolicy: Schema.Literal("skip"),
   startsAt: Schema.Number,
   expiresAt: Schema.Number,

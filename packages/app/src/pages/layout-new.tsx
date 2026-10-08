@@ -1,4 +1,4 @@
-import { createEffect, onMount, type ParentProps } from "solid-js"
+import { createEffect, onMount, Show, type ParentProps } from "solid-js"
 import { useLocation, useNavigate } from "@solidjs/router"
 import { AgentsPanel } from "@/components/agents-panel"
 import { AgentsPanelProvider } from "@/components/agents-panel-state"
@@ -51,7 +51,9 @@ export default function NewLayout(props: ParentProps) {
             {/* Agents panel as shell chrome (Wave 2): renders on every
                 Agents-surface route so session views keep the
                 project/session column; collapse state lives in nav.rail.v1. */}
-            <AgentsPanel />
+            <Show when={!location.pathname.startsWith("/team")}>
+              <AgentsPanel />
+            </Show>
             <main class="flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col items-start contain-strict">
               {/* Route surfaces own their loading boundaries. */}
               {props.children}

@@ -5,6 +5,7 @@ import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Loop } from "@turenlabs/core/loop"
 import { Memory } from "@turenlabs/core/memory"
+import { TeamWorkspace } from "@turenlabs/core/team/workspace"
 import { PermissionSaved } from "@turenlabs/core/permission/saved"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionExecution } from "@turenlabs/core/session/execution"
@@ -120,9 +121,10 @@ function actualServerAPI(directory: string) {
     createRoutes("intel-test").pipe(
       Layer.provide(HttpServer.layerServices),
       Layer.provideMerge(
-        AppNodeBuilder.build(LayerNode.group([Memory.node, Loop.node, PermissionSaved.node, SessionV2.node]), [
-          [SessionExecution.node, SessionExecutionLocal.node],
-        ]),
+        AppNodeBuilder.build(
+          LayerNode.group([Memory.node, Loop.node, TeamWorkspace.node, PermissionSaved.node, SessionV2.node]),
+          [[SessionExecution.node, SessionExecutionLocal.node]],
+        ),
       ),
     ),
     { disableLogger: true },
