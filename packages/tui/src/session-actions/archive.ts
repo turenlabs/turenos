@@ -28,7 +28,7 @@ export function archiveSession(ctx: SessionActionsContext): void {
     await updateSession(ctx, dialog, session, { archived })
   }
   if (!restore) announceOpen(ctx, dialog, session, "Session archived. Running work was not interrupted.")
-  dialog.error.content = `Ctrl+S ${action} · Esc close`
+  dialog.error.content = `Ctrl+S ${action} · Esc cancel`
   requireWord(dialog, confirmation, action, ctx.dialogs.resize)
   confirmation.focus()
 }

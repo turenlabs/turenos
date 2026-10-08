@@ -65,7 +65,7 @@ export function kill(ctx: RequestContext) {
     title: "Kill session",
     height: 20,
     body: "Interrupt this session and cancel its active subagent tasks?\nCancelled tasks cannot resume.",
-    hint: "Ctrl+S kill · Esc close",
+    hint: "Ctrl+S kill · Esc cancel",
     word: "kill",
   })
   if (!confirmation) return
@@ -100,7 +100,7 @@ export function stopAll(ctx: RequestContext) {
     if (result.failed) throw new Error(`${result.failed} session(s) did not stop; ${result.interrupted} stopped.`)
     ctx.say(result.interrupted ? `Stopped ${result.interrupted} session(s).` : "Nothing was running.")
   }
-  dialog.error.content = "Ctrl+S stop all · Esc close"
+  dialog.error.content = "Ctrl+S stop all · Esc cancel"
   requireWord(dialog, confirmation, "stop all", ctx.dialogs.resize)
   confirmation.focus()
 }
