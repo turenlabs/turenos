@@ -77,7 +77,9 @@ for (const size of [
 
   test(`the model picker shows several models above a compact header at ${size.join("x")}`, async () => {
     const app = await opened(size, (app) => app.view.mockInput.pressKey("m"))
-    const frame = await app.screen("Model 4")
+    // Models are alphabetical by name, as in the desktop picker (Model 10 sorts before Model 2).
+    const frame = await app.screen("Model 1")
+    expect((frame.match(/Model \d+/g) ?? []).length).toBeGreaterThanOrEqual(4)
     expect(frame).toContain("Current:")
     expect(frame).not.toContain("ses_main")
   })
