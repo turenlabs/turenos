@@ -1,5 +1,7 @@
 import { current, enqueue, fetchState, migrate, newStore } from "./working-folders/store"
 
+export { maxFolders } from "./working-folders/validate"
+
 /** One revision-guarded folder list on the session server, shared by web, desktop and terminal clients. */
 export function createWorkingFolders(input: {
   url: URL

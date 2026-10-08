@@ -244,14 +244,14 @@ describe("Worktree", () => {
   })
 
   it.instance(
-    "reused legacy names remain creatable but cannot identify one readiness outcome",
+    "reused legacy names remain creatable and the latest attempt owns the readiness outcome",
     () =>
       withCreatedWorktree({ name: "reused" }, () =>
         withCreatedWorktree({ name: "reused" }, ({ info }) =>
           Effect.gen(function* () {
             const svc = yield* Worktree.Service
             expect(info.name).not.toBe("reused")
-            expect(yield* svc.creationStatus("reused")).toEqual({ status: "unknown" })
+            expect(yield* svc.creationStatus("reused")).toEqual({ status: "ready", directory: info.directory })
           }),
         ),
       ),

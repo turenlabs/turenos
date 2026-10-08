@@ -31,10 +31,8 @@ function durable(value: unknown) {
 }
 
 export async function* liveEvents(baseURL: URL, headers: Headers, signal: AbortSignal): AsyncIterable<LiveEvent> {
-  for await (const data of eventStream(baseURL, "/api/event", headers, signal)) {
+  for await (const data of eventStream(baseURL, headers, signal)) {
     const event = envelope(data)
     if (event) yield event
   }
 }
-
-export { eventStream }

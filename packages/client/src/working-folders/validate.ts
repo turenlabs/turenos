@@ -3,6 +3,7 @@ import { pathKey } from "../path-key"
 export const scope = "desktop/store/working-folders"
 export const key = "open"
 export const limit = 1024 * 1024
+export const maxFolders = 256
 
 export type State = { revision: number; directories: string[] }
 
@@ -16,7 +17,7 @@ export function directories(value: unknown): string[] {
     Object.keys(value).length !== 2 ||
     value.version !== 1 ||
     !Array.isArray(value.directories) ||
-    value.directories.length > 256
+    value.directories.length > maxFolders
   )
     invalid()
   for (const directory of value.directories) checkDirectory(directory)
@@ -39,13 +40,16 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-export function checkDirectory(value: unknown): asserts value is string {
-  if (
-    typeof value !== "string" ||
-    !value ||
-    value.length > 4096 ||
-    /[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/.test(value) ||
-    !(value.startsWith("/") || value.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(value))
+export function isDirectory(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    !!value &&
+    value.length <= 4096 &&
+    !/[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/.test(value) &&
+    (value.startsWith("/") || value.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(value))
   )
-    invalid()
+}
+
+export function checkDirectory(value: unknown): asserts value is string {
+  if (!isDirectory(value)) invalid()
 }

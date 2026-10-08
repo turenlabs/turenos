@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { ClientError, type SessionsPromptInput } from "@turenlabs/client"
+import { BoxRenderable, TextRenderable } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { createDialogs } from "../src/dialogs"
 import { createLayout } from "../src/layout"
@@ -7,9 +8,12 @@ import { createMentions } from "../src/mentions"
 import { attachmentSummary } from "../src/mentions/outside"
 import { promptPayload, recordSearch } from "../src/prompt-files"
 import { createRequests } from "../src/requests"
+import type { RequestContext } from "../src/requests/context"
+import type { ReplyEditor } from "../src/requests/reply"
+import { showAttachments } from "../src/requests/attachments"
 import { connect } from "../src/server"
 import { createSlashCommands } from "../src/slash"
-import { createDashboardState } from "../src/state"
+import { createDashboardState, type ModalState } from "../src/state"
 import { cleanup, session } from "./support"
 
 test("missing file searches belong to their connection, directory and workspace", () => {
@@ -129,3 +133,28 @@ for (const kind of ["launch", "reply"] as const) {
     })
   }
 }
+
+test("the attachment line reads missing files for the reply recipient's own workspace", async () => {
+  const view = await createTestRenderer({ width: 90, height: 20 })
+  cleanup.push(() => view.renderer.destroy())
+  const connection = connect({ url: "http://127.0.0.1:4096" })
+  cleanup.push(connection.close)
+  const recipient = { ...session(), location: { directory: "/srv/main", workspaceID: "wrk_a" } }
+  recordSearch(connection.missingFiles, recipient.location, "a.ts", false)
+  const error = new TextRenderable(view.renderer, { content: "" })
+  const frame = new BoxRenderable(view.renderer, {})
+  frame.add(error)
+  view.renderer.root.add(frame)
+  // dialog.recipient is deliberately unset: the line must follow the draft, which names the workspace.
+  const dialog = { frame, error, mentionRows: 0 } as unknown as ModalState
+  const task = { plainText: "read @a.ts", cursorOffset: 0 } as unknown as ReplyEditor
+  const ctx = { renderer: view.renderer, connection, dialogs: { resize() {} } } as unknown as RequestContext
+  showAttachments(ctx, dialog, task, { text: "", id: "msg_a", recipient, delivery: "steer" })
+  const line = frame.getChildren().find((child) => child !== error) as TextRenderable
+  const expected = attachmentSummary("read @a.ts", recipient.location.directory, {
+    missingFiles: connection.missingFiles,
+    workspaceID: "wrk_a",
+  })
+  expect(expected).not.toBe(attachmentSummary("read @a.ts", recipient.location.directory))
+  expect(line.plainText).toBe(expected!)
+})

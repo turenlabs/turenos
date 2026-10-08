@@ -149,13 +149,29 @@ describe("createServerProjects", () => {
       projects.touch("/b")
       projects.move("/a", 0)
       projects.close("/b")
-      projects.remove("/a")
       expect(changes).toEqual([
         ["/a", true],
         ["/b", true],
         ["/b", false],
-        ["/a", false],
       ])
+      dispose()
+    })
+  })
+  test("internal removal edits this GUI's list without closing the shared folder", () => {
+    createRoot((dispose) => {
+      const [store, setStore] = createStore({ projects: {}, lastProject: {}, recentlyClosed: {} })
+      const changes: [string, boolean][] = []
+      const projects = createServerProjects({
+        scope: () => ServerScope.local,
+        store,
+        setStore,
+        changed: (directory, open) => changes.push([directory, open]),
+      })
+      projects.open("/a")
+      projects.remove("/a")
+      expect(projects.list()).toEqual([])
+      expect(projects.recentlyClosed()).toEqual([])
+      expect(changes).toEqual([["/a", true]])
       dispose()
     })
   })

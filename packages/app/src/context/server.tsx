@@ -133,7 +133,6 @@ export function createServerProjects<T extends ServerProjectState>(input: {
       input.scope(),
       current().filter((project) => pathKey(project.worktree) !== key),
     )
-    input.changed?.(directory, false)
   }
   return {
     list: current,
@@ -154,10 +153,12 @@ export function createServerProjects<T extends ServerProjectState>(input: {
       if (indexOf(directory) !== -1) return
       setStore("projects", scope, [{ worktree: directory, expanded: true }, ...current()])
     },
-    // User-initiated close: removes the project and records it in recently closed.
-    // Internal, non-user removals (e.g. sandbox/worktree normalization) should use remove().
+    // User-initiated close: removes the project, records it in recently closed and closes the shared
+    // working folder for every client. remove() only edits this GUI's list: internal, non-user removals
+    // (e.g. sandbox/worktree normalization) use it so they never close a folder another client opened.
     close(directory: string) {
       remove(directory)
+      input.changed?.(directory, false)
       const key = pathKey(directory)
       const closed = [directory, ...currentClosed().filter((worktree) => pathKey(worktree) !== key)].slice(
         0,
@@ -433,6 +434,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       if (!ready()) return
       const folders = folderStores.get(state.active)
       if (!folders) return
+      // The sync reports a failing read once; the poll keeps retrying quietly.
       const refresh = () => void folders.refresh().catch(() => {})
       refresh()
       const timer = setInterval(refresh, 2000)

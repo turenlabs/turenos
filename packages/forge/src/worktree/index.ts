@@ -335,11 +335,11 @@ const layer: Layer.Layer<
         if (!settled) return yield* new CreateFailedError({ message: "Too many worktrees are being prepared" })
         creations.delete(settled[0])
       }
-      // Legacy callers may reuse names; name-only lookup cannot identify their attempt.
-      const entry = { outcome: { status: previous ? "unknown" : "pending" } as CreationStatus }
+      // A settled previous entry is replaced: the name is free again, so this attempt owns the record.
+      const entry = { outcome: { status: "pending" } as CreationStatus }
       if (key !== undefined) creations.set(key, entry)
       const record = (status: CreationStatus) => {
-        if (key !== undefined && !previous && creations.get(key) === entry && entry.outcome.status === "pending")
+        if (key !== undefined && creations.get(key) === entry && entry.outcome.status === "pending")
           entry.outcome = status
       }
       return yield* Effect.gen(function* () {
@@ -445,14 +445,8 @@ const layer: Layer.Layer<
       })
     }
 
-    const remove = Effect.fn("Worktree.remove")(function* (input: RemoveInput) {
-      const ctx = yield* InstanceState.context
-      if (ctx.project.vcs !== "git") {
-        return yield* new NotGitError({ message: "Worktrees are only supported for git projects" })
-      }
-
-      const directory = yield* canonical(input.directory)
-
+    // Only after the checkout is gone: a failed removal leaves the recorded outcome true.
+    const forget = Effect.fnUntraced(function* (directory: string) {
       for (const entry of creations.values()) {
         if (
           "directory" in entry.outcome &&
@@ -461,6 +455,15 @@ const layer: Layer.Layer<
         )
           entry.outcome = { status: "unknown" }
       }
+    })
+
+    const remove = Effect.fn("Worktree.remove")(function* (input: RemoveInput) {
+      const ctx = yield* InstanceState.context
+      if (ctx.project.vcs !== "git") {
+        return yield* new NotGitError({ message: "Worktrees are only supported for git projects" })
+      }
+
+      const directory = yield* canonical(input.directory)
 
       // Preserve the loaded path casing for the store cache; `directory` is lowercased on Windows.
       if (directory !== (yield* canonical(ctx.worktree))) yield* store.disposeDirectory(input.directory)
@@ -479,6 +482,7 @@ const layer: Layer.Layer<
           yield* stopFsmonitor(directory)
           yield* cleanDirectory(directory)
         }
+        yield* forget(directory)
         return true
       }
 
@@ -503,6 +507,7 @@ const layer: Layer.Layer<
       }
 
       yield* cleanDirectory(entry.path)
+      yield* forget(directory)
 
       const branch = entry.branch?.replace(/^refs\/heads\//, "")
       if (branch) {

@@ -22,7 +22,7 @@ export function showAttachments(ctx: RequestContext, dialog: ModalState, task: R
     const summary = attachmentSummary(
       listed ? withoutOpenMention(task.plainText, task.cursorOffset) : task.plainText,
       draft.recipient.location.directory,
-      { missingFiles: ctx.connection.missingFiles, workspaceID: dialog.recipient?.location.workspaceID },
+      { missingFiles: ctx.connection.missingFiles, workspaceID: draft.recipient.location.workspaceID },
       draft.submitted !== undefined ? (draft.prompt?.files ?? []) : undefined,
     )
     line.visible = summary !== undefined

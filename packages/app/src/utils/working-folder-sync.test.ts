@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { createWorkingFolders } from "@turenlabs/client/working-folders"
+import { createWorkingFolders, maxFolders } from "@turenlabs/client/working-folders"
 import { ServerConnection } from "@/context/server"
 import { createServerFolderStores, createWorkingFolderSync, reconcileWorkingFolders } from "./working-folder-sync"
 
@@ -8,7 +8,7 @@ function server() {
     string,
     { scope: string; key: string; value: string; revision: number; timeCreated: number; timeUpdated: number }
   >()
-  const control = { fail: false }
+  const control = { fail: false, failRead: false }
   const requests: { url: string; headers: Headers; signal?: AbortSignal | null; redirect?: RequestRedirect }[] = []
   const transport = async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = new URL(String(input))
@@ -19,6 +19,7 @@ function server() {
       redirect: init?.redirect,
     })
     const record = records.get(url.origin)
+    if (control.failRead && init?.method !== "PUT") return new Response("", { status: 503 })
     if (init?.method !== "PUT") return Response.json({ state: record ?? null })
     if (control.fail) return new Response("", { status: 503 })
     const body = JSON.parse(String(init.body)) as {
@@ -112,6 +113,46 @@ test("a refused GUI edit surfaces its failure and restores confirmed membership"
   await gui.change("/unsaved", true)
   expect(errors).toHaveLength(1)
   expect(projects).toEqual([{ worktree: "/original", expanded: false }])
+})
+
+test("migration seeds only usable folders and keeps the most recent ones within the shared limit", async () => {
+  const remote = server()
+  const recent = Array.from({ length: maxFolders + 40 }, (_, index) => `/project-${index}`)
+  const projects = [{ worktree: "relative/path", expanded: true }, { worktree: "~/home", expanded: true }].concat(
+    recent.slice(0, 5).map((worktree) => ({ worktree, expanded: true })),
+    recent.slice(5).map((worktree) => ({ worktree, expanded: false })),
+  )
+  const errors: unknown[] = []
+  const gui = createWorkingFolderSync({
+    folders: remote.client(),
+    projects: () => projects,
+    apply() {},
+    failed: (error) => errors.push(error),
+  })
+  await gui.refresh()
+  expect(errors).toEqual([])
+  expect(await remote.client().read()).toEqual(recent.slice(0, maxFolders))
+})
+
+test("a persistent read failure is reported once and re-armed by the next success", async () => {
+  const remote = server()
+  const errors: unknown[] = []
+  const gui = createWorkingFolderSync({
+    folders: remote.client(),
+    projects: () => [{ worktree: "/a", expanded: true }],
+    apply() {},
+    failed: (error) => errors.push(error),
+  })
+  await gui.refresh()
+  remote.control.failRead = true
+  await expect(gui.refresh()).rejects.toThrow()
+  await expect(gui.refresh()).rejects.toThrow()
+  expect(errors).toHaveLength(1)
+  remote.control.failRead = false
+  await gui.refresh()
+  remote.control.failRead = true
+  await expect(gui.refresh()).rejects.toThrow()
+  expect(errors).toHaveLength(2)
 })
 
 test("each GUI server uses its own endpoint and credentials and aborts requests on disposal", async () => {

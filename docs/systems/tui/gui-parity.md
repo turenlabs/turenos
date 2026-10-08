@@ -34,7 +34,7 @@ The TurenOS terminal client and TurenOS Desktop are two clients of the same serv
 | Desktop                                                 | TUI                                              |
 | ------------------------------------------------------- | ------------------------------------------------ |
 | Session list, search, archived sessions                 | Sidebar, `Ctrl+K` (Recent, All, Archived)        |
-| Open project folders                                    | Working folders (shared server membership) |
+| Open project folders                                    | Working folders (shared server membership)       |
 | Automations: create, edit, pause, run now, runs, delete | Automations tab `3`                              |
 | Intel: advisories, KEV, news, feeds                     | `I`                                              |
 | Providers: connect, disconnect, remove                  | `,` → Providers; `F2` in the model picker        |

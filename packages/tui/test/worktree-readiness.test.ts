@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import type { Api } from "../src/api"
 import { worktree, WorktreeNotStartedError } from "../src/server/worktree"
 
-function fixture(states: unknown[]) {
+function fixture(states: unknown[], listed: string[] = []) {
   const calls: { path: string; method: string }[] = []
   const controller = new AbortController()
   const api: Api = async (path, options) => {
@@ -13,6 +13,7 @@ function fixture(states: unknown[]) {
       return states.shift()
     }
     if (path === "/experimental/worktree" && options?.method === "POST") return { directory: "/srv/worktree" }
+    if (path === "/experimental/worktree") return listed
     throw new Error(`Unexpected request: ${path}`)
   }
   return { api, controller, calls }
@@ -56,10 +57,25 @@ test("failed checkout or bootstrap stays failed regardless of files left on disk
   expect(f.calls).toHaveLength(1)
 })
 
-test("unknown retry outcomes cannot relaunch or guess readiness", async () => {
-  const f = fixture([{ status: "unknown" }])
-  await expect(worktree(f, "/srv/project", "tui-attempt", true)).rejects.toThrow("no retained worktree outcome")
-  expect(f.calls).toEqual([{ path: "/experimental/worktree/status", method: "GET" }])
+test("a retry the server never recorded re-sends the create under the same name", async () => {
+  const f = fixture([{ status: "unknown" }, { status: "pending" }, { status: "ready", directory: "/srv/worktree" }])
+  const bodies: unknown[] = []
+  const api = f.api
+  f.api = (path, options) => {
+    if (options?.method === "POST") bodies.push(options.body)
+    return api(path, options)
+  }
+  expect(await worktree(f, "/srv/project", "tui-attempt", true)).toEqual({
+    status: "ready",
+    directory: "/srv/worktree",
+  })
+  expect(bodies).toEqual([{ name: "tui-attempt" }])
+})
+
+test("a retry whose worktree exists without a recorded outcome stops instead of orphaning it", async () => {
+  const f = fixture([{ status: "unknown" }], ["/srv/other-attempt", "/srv/worktrees/tui-attempt/"])
+  await expect(worktree(f, "/srv/project", "tui-attempt", true)).rejects.toThrow("lost its setup outcome")
+  expect(f.calls.some((call) => call.method === "POST")).toBe(false)
 })
 
 test("a mismatched creation directory cannot launch a session", async () => {

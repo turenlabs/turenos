@@ -1,13 +1,8 @@
 import { invalid } from "../response-validation"
 import { newFrames, pushByte } from "./frames"
 
-/** The data of each server-sent event on `path`, such as `/global/event`, unparsed. */
-export async function* eventStream(
-  baseURL: URL,
-  path: string,
-  headers: Headers,
-  signal: AbortSignal,
-): AsyncIterable<string> {
+/** The data of each server-sent event on `/api/event`, unparsed. */
+export async function* eventStream(baseURL: URL, headers: Headers, signal: AbortSignal): AsyncIterable<string> {
   const guard = createGuard(signal)
   const controller = guard.controller
   try {
@@ -16,7 +11,7 @@ export async function* eventStream(
     const requestHeaders = new Headers(headers)
     requestHeaders.set("Accept", "text/event-stream")
     guard.deadline(10000)
-    const response = await fetch(new URL(path, baseURL), {
+    const response = await fetch(new URL("/api/event", baseURL), {
       headers: requestHeaders,
       signal: controller.signal,
       redirect: "error",

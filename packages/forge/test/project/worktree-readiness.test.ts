@@ -61,3 +61,52 @@ it.instance("records setup rejection before any worktree directory exists", () =
     expect(yield* svc.creationStatus("not-git")).toMatchObject({ status: "failed" })
   }),
 )
+
+it.instance(
+  "a reused name records a fresh outcome after the previous worktree was removed",
+  () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const git = yield* Git.Service
+      const svc = yield* Worktree.Service
+      yield* Effect.promise(() => Bun.write(`${test.directory}/README.md`, "committed project file"))
+      yield* git.run(["add", "README.md"], { cwd: test.directory })
+      yield* git.run(["commit", "-m", "add file"], { cwd: test.directory })
+      const first = yield* svc.create({ name: "reused" })
+      yield* pollWithTimeout(
+        svc.creationStatus("reused").pipe(Effect.map((state) => (state.status === "failed" ? state : undefined))),
+        "first failure was not recorded",
+      )
+      yield* svc.remove({ directory: first.directory })
+      expect(yield* svc.creationStatus("reused")).toEqual({ status: "unknown" })
+      const second = yield* svc.create({ name: "reused" })
+      const status = yield* pollWithTimeout(
+        svc.creationStatus("reused").pipe(Effect.map((state) => (state.status === "failed" ? state : undefined))),
+        "second attempt was not recorded",
+      )
+      expect(status.directory).toBe(second.directory)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "a failed removal keeps the recorded outcome",
+  () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const git = yield* Git.Service
+      const svc = yield* Worktree.Service
+      yield* Effect.promise(() => Bun.write(`${test.directory}/README.md`, "committed project file"))
+      yield* git.run(["add", "README.md"], { cwd: test.directory })
+      yield* git.run(["commit", "-m", "add file"], { cwd: test.directory })
+      const info = yield* svc.create({ name: "locked" })
+      yield* pollWithTimeout(
+        svc.creationStatus("locked").pipe(Effect.map((state) => (state.status === "failed" ? state : undefined))),
+        "failure was not recorded",
+      )
+      yield* git.run(["worktree", "lock", info.directory], { cwd: test.directory })
+      yield* svc.remove({ directory: info.directory }).pipe(Effect.exit)
+      expect(yield* svc.creationStatus("locked")).toMatchObject({ status: "failed", directory: info.directory })
+    }),
+  { git: true },
+)

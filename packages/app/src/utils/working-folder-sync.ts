@@ -17,7 +17,11 @@ export function reconcileWorkingFolders(projects: Project[], directories: string
   ]
 }
 
-/** Serializes GUI membership changes with first-use migration and leaves cached GUI state intact on failures. */
+/**
+ * Serializes GUI membership changes with first-use migration. A failed change reports the error and
+ * re-applies the last confirmed membership, so the GUI never keeps a folder the server did not accept.
+ * Read or migration failures are reported once per outage; the next success re-arms the report.
+ */
 export function createWorkingFolderSync(input: {
   folders: ReturnType<typeof createWorkingFolders>
   projects: () => Project[]
@@ -27,6 +31,7 @@ export function createWorkingFolderSync(input: {
   let initialized: Promise<string[] | undefined> | undefined
   let pending = 0
   let applied: string | undefined
+  let reported = false
   const initialize = () =>
     (initialized ??= input.folders.migrate(input.projects().map((project) => project.worktree)).catch((error) => {
       initialized = undefined
@@ -42,8 +47,12 @@ export function createWorkingFolderSync(input: {
   }
   return {
     async refresh() {
-      if (!initialized) await initialize()
-      else await input.folders.read()
+      await (initialized ? input.folders.read() : initialize()).catch((error) => {
+        if (!reported) input.failed(error)
+        reported = true
+        throw error
+      })
+      reported = false
       apply()
     },
     change(directory: string, open: boolean) {
@@ -112,7 +121,9 @@ export function createServerFolderStores(input: {
         apply: (directories) => {
           if (!controller.signal.aborted) input.apply(key, directories)
         },
-        failed: input.failed,
+        failed: (error) => {
+          if (!controller.signal.aborted) input.failed(error)
+        },
       })
       stores.set(key, { http: { ...http }, controller, sync })
       return sync

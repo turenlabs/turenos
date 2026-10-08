@@ -1,7 +1,7 @@
 import { ClientError } from "../index"
 import { checkDirectory, isRecord } from "./validate"
 import { pathKey } from "../path-key"
-import { directories, invalid, key, limit, scope, state, type State } from "./validate"
+import { directories, invalid, isDirectory, key, limit, maxFolders, scope, state, type State } from "./validate"
 
 type Transport = (input: URL, init?: RequestInit) => Promise<Response>
 
@@ -160,7 +160,10 @@ export function migrate(s: Store, legacy: string[]) {
   const operation = s.queue.then(async () => {
     const existing = await fetchState(s)
     if (existing) return current(s)
-    const unique = [...new Map(legacy.map((directory) => [pathKey(directory), directory])).values()]
+    // Legacy lists are unvalidated: skip unusable paths and keep the first (most recently used) entries.
+    const unique = [
+      ...new Map(legacy.filter(isDirectory).map((directory) => [pathKey(directory), directory])).values(),
+    ].slice(0, maxFolders)
     directories({ version: 1, directories: unique })
     const value = JSON.stringify({ version: 1, directories: unique })
     if (new TextEncoder().encode(value).byteLength > limit) invalid()
