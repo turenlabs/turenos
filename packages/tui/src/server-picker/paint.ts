@@ -13,14 +13,22 @@ export function say(picker: Picker, text: string, tone: Tone = "muted") {
   picker.view.status.fg = color[tone]
 }
 
+const formHeading: Partial<Record<Picker["mode"], string>> = {
+  add: "Add a server by its address",
+  password: "This server needs a password",
+}
+
 export function paint(picker: Picker) {
   const view = picker.view
   if (!view) return
   const current = picker.hooks.current()
   view.logo.visible = picker.renderer.height >= 30
-  view.heading.content = current
-    ? `Connected to ${label(serverLabel(current.target), 80)}${current.connected ? "" : " (disconnected)"} · choose a server`
-    : "Choose a TurenOS server"
+  // A form has its own line; the picker's "Connected to … · choose a server" belongs to the list.
+  view.heading.content =
+    formHeading[picker.mode] ??
+    (current
+      ? `Connected to ${label(serverLabel(current.target), 80)}${current.connected ? "" : " (disconnected)"} · choose a server`
+      : "Choose a TurenOS server")
   const root = picker.back ? "Settings › Servers" : "Servers"
   view.frame.title =
     picker.mode === "add" ? ` ${root} › Add server ` : picker.mode === "password" ? ` ${root} › Password ` : ` ${root} `

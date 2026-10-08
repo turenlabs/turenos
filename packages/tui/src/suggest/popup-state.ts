@@ -1,4 +1,4 @@
-import { TextRenderable, type CliRenderer, type TextareaRenderable } from "@opentui/core"
+import { TextRenderable, type CliRenderer, type Renderable, type TextareaRenderable } from "@opentui/core"
 import type { DashboardState, ModalState } from "../state"
 import { color } from "../theme"
 
@@ -60,7 +60,10 @@ export function createPopupState<T>(
     fg: color.muted,
     selectable: false,
   })
-  options.dialog.form.add(suggestions, options.dialog.form.getChildren().indexOf(options.editor) + 1)
+  // The list goes right under the editor's row, which may wrap it in a frame.
+  let row: Renderable = options.editor
+  while (row.parent && row.parent !== options.dialog.form) row = row.parent
+  options.dialog.form.add(suggestions, options.dialog.form.getChildren().indexOf(row) + 1)
   return {
     app,
     options,

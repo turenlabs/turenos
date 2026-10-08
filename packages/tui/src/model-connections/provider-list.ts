@@ -25,7 +25,7 @@ export function load(flow: Flow) {
           },
           ...catalog.providers.map((provider) => ({
             name: label(provider.name, 512),
-            description: `${catalog.providers.filter((other) => other.name === provider.name).length > 1 ? `${label(provider.id, 256)} · ` : ""}${provider.connected ? "connected; replace credentials" : "not connected"}`,
+            description: `${catalog.providers.filter((other) => other.name === provider.name).length > 1 ? `${label(provider.id, 256)} · ` : ""}${provider.connected ? "connected · Enter replaces credentials" : "not connected"}`,
             run: () => authMethods(flow, provider),
           })),
         ],

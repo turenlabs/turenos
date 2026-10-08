@@ -247,8 +247,8 @@ test("New session settings do not repeat the directory, keep every row visible a
   expect(frame).toContain("New git worktree")
   // The dialog fits, so its form needs no scrollbar.
   expect(frame).not.toContain("█")
-  expect(lineWith(frame, "TurenOS")).toContain("Sessions Esc Ctrl+K")
-  expect(lineWith(frame, "TurenOS")).toContain("Servers Esc s")
+  expect(lineWith(frame, "TurenOS")).toContain("Sessions (Esc, Ctrl+K)")
+  expect(lineWith(frame, "TurenOS")).toContain("Servers (Esc, s)")
 })
 
 test("Details counts tokens without a double colon, omits a zero it cannot know and dates each fact once", async () => {

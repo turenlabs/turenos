@@ -94,7 +94,15 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
     { node: ui.harness, show: live && !typing, text: "H Harness", rank: 10 },
     { node: ui.meter, show: !!meter, text: meter, short: usage && meterText(usage, limit, true), rank: 80 },
   ]
-  fitActionRow(row, actionWidth(d))
+  const width = actionWidth(d)
+  fitActionRow(row, width)
+  // A row that left entries out says so: the … stands for the rest, which are in Ctrl+P.
+  if (row.some((entry) => entry.show && !entry.node.visible)) {
+    fitActionRow(row, width - 2)
+    // The … follows the last action, not the context meter, which would read as cut.
+    const last = row.findLast((entry) => entry.node.visible && entry.node !== ui.meter)
+    if (last) last.node.content = `${last.node.plainText} …`
+  }
   ui.actions.visible = typing || (!state.modal && ui.composer.visible)
   ui.actions.height = typing ? 1 : 2
   ui.actions.marginTop = typing ? 0 : 1

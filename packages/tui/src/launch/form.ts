@@ -1,5 +1,6 @@
-import { TextAttributes, TextRenderable } from "@opentui/core"
+import { BoxRenderable, TextAttributes, TextRenderable, type CliRenderer, type TextareaRenderable } from "@opentui/core"
 import { markFocus } from "../automations/focus"
+import { fieldFrame } from "../dialogs/fields"
 import { followText } from "../suggest/editor-height"
 import { color } from "../theme"
 import type { LaunchDeps, LaunchForm, LaunchStore } from "./context"
@@ -25,6 +26,7 @@ export function buildForm(
   task.placeholder = "Describe the task… / commands · @ files"
   dialog.editorLocked = () => !!current.start.input()
   followText(task, 3, 8)
+  frameTask(renderer, dialog, task)
   const { directory, agent, model, workspace } = addSettings(deps, dialog, current)
   // Both go above the form, so creating them after its fields keeps the layout.
   const logo = createLogo(renderer, state, dialog, ui)
@@ -56,6 +58,29 @@ export function buildForm(
   }
   wireSummary(form)
   return form
+}
+
+/** Puts a left bar beside the prompt, so an empty prompt reads as a field like the framed single-line inputs. */
+function frameTask(renderer: CliRenderer, dialog: ModalState, task: TextareaRenderable) {
+  // The input frames' id keeps the caption's focus arrow beside the row.
+  const frame = new BoxRenderable(renderer, {
+    id: fieldFrame,
+    border: ["left"],
+    borderColor: color.border,
+    paddingLeft: 1,
+    marginBottom: 1,
+    flexShrink: 0,
+  })
+  const paint = () => {
+    if (!frame.isDestroyed) frame.borderColor = task.focused ? color.accent : color.border
+  }
+  task.on("focused", paint)
+  task.on("blurred", paint)
+  task.marginBottom = 0
+  const index = dialog.form.getChildren().indexOf(task)
+  dialog.form.remove(task)
+  frame.add(task)
+  dialog.form.add(frame, index)
 }
 
 /** The part Tab reveals: directory, agent, model and workspace under one heading. */
