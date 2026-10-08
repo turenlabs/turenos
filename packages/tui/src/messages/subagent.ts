@@ -19,7 +19,7 @@ export function startedAgents(part: ToolPart, view: Collapse) {
   if (!Object.keys(structured).length) return undefined
   const tasks = Array.isArray(structured.results) ? structured.results : [structured]
   const lines = tasks.map((item) => (typeof item === "object" && item !== null ? agentLine(item) : undefined))
-  if (!lines.length || lines.some((line) => !line)) return literal(toolResult(JSON.stringify(structured)), view)
+  if (!lines.length || lines.some((line) => !line)) return literal(toolResult(JSON.stringify(structured)), 16000, view)
   return lines.join("\n")
 }
 
@@ -31,7 +31,8 @@ function agentLine(item: object) {
   const agent = "agent" in task ? field(task.agent, 60) : ""
   const id = "task_id" in task ? field(task.task_id, 80) : ""
   const session = "session_id" in task ? field(task.session_id, 80) : ""
-  const status = "status" in task ? field(task.status, 20) : ""
+  // The status comes from tool output, so only a plain lowercase word is shown.
+  const status = "status" in task ? /^[a-z]{1,20}$/.exec(field(task.status, 20))?.[0] : undefined
   if (!agent || !id || !session) return undefined
-  return `Started ${agent} subagent · task ${codeSpan(id)} · session ${codeSpan(session)}${status ? ` · ${status}` : ""}`
+  return `Started ${codeSpan(agent)} subagent · task ${codeSpan(id)} · session ${codeSpan(session)}${status ? ` · ${status}` : ""}`
 }

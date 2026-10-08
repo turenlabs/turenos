@@ -58,7 +58,7 @@ test("the CLI transcript keeps the reference data as delivered", () => {
 test("spawn_agent shows what it started instead of nothing", () => {
   const task = { task_id: "tsk_1", session_id: "ses_2", agent: "general", description: "d", status: "running" }
   const text = transcript([spawn({ task })], false, true)
-  expect(text).toContain("Started general subagent · task `tsk_1` · session `ses_2` · running")
+  expect(text).toContain("Started `general` subagent · task `tsk_1` · session `ses_2` · running")
   expect(transcript([spawn({ task })])).not.toContain("Started general")
 })
 

@@ -3,8 +3,28 @@ import { CliError, resolveTuiAuth } from "../src/tui-auth"
 
 const url = new URL("http://127.0.0.1:4096/")
 
+const uid = process.getuid!()
+const HEADER = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+
+/** Synthetic /proc/net tables: one LISTEN row per [address, port-hex, owner]; tcp6 is empty. */
+function proc(...rows: [string, string, number][]) {
+  return (path: string) =>
+    path.endsWith("tcp6")
+      ? HEADER
+      : HEADER +
+        rows
+          .map(([address, port, owner]) => `   0: ${address}:${port} 00000000:0000 0A 00000000:00000000 00:00000000 00000000 ${owner} 0 1 1\n`)
+          .join("")
+}
+
+/** Our own listener on 127.0.0.1:4096, and on [::1]:9000 in the tcp6 table. */
+const ours = (path: string) =>
+  path.endsWith("tcp6")
+    ? `${HEADER}   0: 00000000000000000000000001000000:2328 00000000:0000 0A 00000000:00000000 00:00000000 00000000 ${uid} 0 1 1\n`
+    : proc(["0100007F", "1000", uid])(path)
+
 function service(mainPID: () => Promise<string>) {
-  return { platform: "linux" as const, uid: process.getuid?.(), mainPID }
+  return { platform: "linux" as const, uid, mainPID, readProc: ours }
 }
 
 test("CliError retains the message constructor and tag without Effect", () => {

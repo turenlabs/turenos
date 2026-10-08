@@ -16,7 +16,7 @@ export function foldParentContext(text: string, expanded: boolean) {
   const close = open < 0 ? -1 : text.indexOf(CLOSE, open + OPEN.length)
   if (close < 0) return display(text)
   const body = text.slice(open + OPEN.length, close).trim()
-  const shown = expanded ? `Parent session context\n${literal(display(body))}` : summary(body)
+  const shown = expanded ? `Parent session context\n${literal(body)}` : summary(body)
   return [display(text.slice(0, open)).trimEnd(), shown, display(text.slice(close + CLOSE.length)).trim()]
     .filter(Boolean)
     .join("\n\n")

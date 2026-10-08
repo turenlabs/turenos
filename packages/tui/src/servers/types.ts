@@ -59,7 +59,7 @@ export type Options = {
   forge?: string | null
   persistentRecord?: string
   username?: string
-  /** Reads a /proc file as text; undefined when it cannot be read. */
+  /** Reads a /proc file as text; undefined when it cannot be read. An absent tcp6 table (no IPv6) reads as "". */
   readProc?: (path: string) => string | undefined
 }
 

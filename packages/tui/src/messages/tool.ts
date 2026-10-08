@@ -20,12 +20,19 @@ export const TOOL_INTERRUPTED = "Tool execution interrupted"
 export function toolBlock(part: ToolPart, view: ToolView) {
   const state = part.state
   const stopped = state.status === "error" && state.error.message === TOOL_INTERRUPTED
+  // The status is one of the fixed words the response validation allows, and the name has no control characters.
   const status = stopped ? "interrupted" : display(state.status, 32)
   const failure =
     state.status === "error" && !stopped
-      ? `\n${view.rich ? literal(display(state.error.message)) : display(state.error.message)}`
+      ? `\n${view.rich ? literal(state.error.message) : display(state.error.message)}`
       : ""
-  return `  [${status}] ${display(part.name, 200)}${toolSummary(state, view.rich)}\n${toolBody(part, view)}${failure}`
+  return `  [${status}] ${toolName(part.name, view.rich)}${toolSummary(state, view.rich)}\n${toolBody(part, view)}${failure}`
+}
+
+/** The name on one line; any Markdown in it is shown as written. */
+function toolName(name: string, rich: boolean) {
+  const shown = display(name.length > 120 ? `${name.slice(0, 119)}…` : name)
+  return rich ? codeSpan(shown) : shown
 }
 
 function toolBody(part: ToolPart, view: ToolView) {
@@ -45,7 +52,7 @@ function toolBody(part: ToolPart, view: ToolView) {
   const started = view.rich ? startedAgents(part, view) : undefined
   if (started) return started
   const text = state.content.map((item) => (item.type === "text" ? toolResult(item.text) : fileLine(item))).join("\n")
-  return view.rich ? literal(text, view) : text
+  return view.rich ? literal(text, 16000, view) : text
 }
 
 function fileLine(item: { uri: string }) {

@@ -42,7 +42,8 @@ function counting() {
   return { origin: listener.url.origin, seen }
 }
 
-async function setup(files: { tcp?: string; tcp6?: string } | undefined, platform: NodeJS.Platform = "linux") {
+/** An omitted table is an empty one; `undefined` stands for a table that cannot be read. */
+async function setup(files: { tcp?: string; tcp6?: string | undefined } | undefined, platform: NodeJS.Platform = "linux") {
   const home = await mkdtemp(join(tmpdir(), "turen-tui-listener-"))
   cleanup.push(() => rm(home, { recursive: true, force: true }))
   const servers = createServers({
@@ -53,7 +54,11 @@ async function setup(files: { tcp?: string; tcp6?: string } | undefined, platfor
     forge: null,
     config: join(home, "servers.json"),
     persistentRecord: join(home, "missing.json"),
-    readProc: (path) => (files ? (path.endsWith("tcp6") ? files.tcp6 : files.tcp) : undefined),
+    readProc: (path) => {
+      if (!files) return undefined
+      if (path.endsWith("tcp6")) return "tcp6" in files ? files.tcp6 : HEADER
+      return "tcp" in files ? files.tcp : HEADER
+    },
   })
   const [entry] = await servers.scan()
   const server = counting()
@@ -68,6 +73,17 @@ describe("the port-4096 listener's owner", () => {
     const endpoint = await servers.resolve(target)
     expect(endpoint.password).toBe(PASSWORD)
     expect(server.seen).toContain(`Basic ${btoa(`forge:${PASSWORD}`)}`)
+  })
+
+  test("one unreadable socket table leaves the owner unknown and nothing is sent", async () => {
+    for (const files of [
+      { tcp: tcp(row(LOOPBACK, uid)), tcp6: undefined },
+      { tcp: undefined, tcp6: tcp() },
+    ]) {
+      const { servers, target, server } = await setup(files)
+      await expect(servers.resolve(target)).rejects.toThrow("Cannot tell who owns the listener")
+      expect(server.seen).toEqual([])
+    }
   })
 
   test("another user's listener is refused and nothing is sent to it", async () => {

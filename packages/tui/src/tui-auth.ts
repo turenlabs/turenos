@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process"
 import fs from "node:fs/promises"
 import { promisify } from "node:util"
+import { loopbackRefusal, readProc } from "./servers/listener"
 
 export class CliError extends Error {
   readonly _tag = "CliError"
@@ -15,6 +16,8 @@ type LocalService = {
   platform: NodeJS.Platform
   uid: number | undefined
   mainPID: () => Promise<string>
+  /** Reads a /proc file; defaults to the real one. */
+  readProc?: (path: string) => string | undefined
 }
 
 export async function resolveTuiAuth(
@@ -48,6 +51,9 @@ export async function resolveTuiAuth(
       message: "Server credentials require HTTPS, or HTTP on 127.0.0.1 or [::1] for an SSH tunnel.",
     })
   }
+  // An environment password goes to whatever listens on the port, so the kernel must say it is ours.
+  if (configured.password && input.url.protocol === "http:" && loopback)
+    refuseForeign(input.url, service, "FORGE_SERVER_PASSWORD")
   // An explicitly set password, including an empty one, opts out of discovery.
   // Process ownership does not prove listener ownership; discovery requires trust.
   if (
@@ -61,10 +67,22 @@ export async function resolveTuiAuth(
   }
 
   const inherited = await localCredentials(service).catch(() => undefined)
+  if (inherited?.password) refuseForeign(input.url, service, "the discovered password")
   return {
     username: input.username ?? input.env.FORGE_SERVER_USERNAME ?? inherited?.username ?? "forge",
     password: inherited?.password,
   }
+}
+
+/** Fails closed, naming the port and never the password, unless this user owns the loopback listener. */
+function refuseForeign(url: URL, service: LocalService, sent: string) {
+  const refusal = loopbackRefusal(
+    { platform: service.platform, uid: service.uid, readProc: service.readProc ?? readProc },
+    Number(url.port || 80),
+    url.hostname === "[::1]" ? "[::1]" : "127.0.0.1",
+    sent,
+  )
+  if (refusal) throw new CliError({ message: refusal })
 }
 
 async function localCredentials(service: LocalService) {

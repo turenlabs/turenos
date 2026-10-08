@@ -6,6 +6,7 @@ type Shell = Extract<MessagesListOutput["data"][number], { type: "shell" }>
 
 /** "completed", "failed · exit 1": a zero exit stays completed, any other code reads as failed. */
 function shellStatus(message: Shell) {
+  // The status is one of the fixed words the response validation allows.
   const status = display(message.status ?? "running", 32)
   if (message.exitCode === undefined || message.exitCode === 0 || status === "running") return status
   return `${status === "completed" ? "failed" : status} · exit ${message.exitCode}`
@@ -25,9 +26,9 @@ export function shellBlock(message: Shell, rich = false) {
       .filter(Boolean)
       .join("\n")
   return [
-    shellCommand(status, display(message.command)),
-    output.trim() ? literal(output) : finished ? "(no output)" : "",
-    ...(message.error ? [literal(display(message.error, 1000))] : []),
+    shellCommand(status, message.command),
+    output.trim() ? literal(message.output) : finished ? "(no output)" : "",
+    ...(message.error ? [literal(message.error, 1000)] : []),
   ]
     .filter(Boolean)
     .join("\n")
@@ -35,9 +36,9 @@ export function shellBlock(message: Shell, rich = false) {
 
 /** The status and command on one line when the command is one line; a multi-line command sits in a block below it. */
 function shellCommand(status: string, command: string) {
-  const text = command.trim()
+  const text = display(command).trim()
   if (!text) return status
-  if (!text.includes("\n") && command.length <= 16000) return `${status} ${codeSpan(text)}`
+  if (!text.includes("\n")) return `${status} ${codeSpan(text)}`
   return `${status}\n${literal(command)}`
 }
 

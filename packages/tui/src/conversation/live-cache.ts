@@ -1,5 +1,6 @@
 import { richContent } from "../markdown/normalize"
 import { joinBlocks, pendingQuestions, transcriptBlocks } from "../messages"
+import { fenceFor } from "../messages/literal"
 import { continuesTurn } from "../messages/turns"
 import type { DashboardState } from "../state"
 import type { Conversation, LiveMessage, LivePage } from "./context"
@@ -98,7 +99,7 @@ function block(item: LiveMessage, raw: boolean) {
   const text = raw ? item.raw : item.formatted
   if (raw || richContent(text)) return { text, turn: item.turn && !raw }
   // A message past the rich budget degrades alone, as unhighlighted text under plain role labels.
-  const fence = "`".repeat(Math.max(3, ...Array.from(item.raw.matchAll(/`+/g), (run) => run[0].length + 1)))
+  const fence = fenceFor(item.raw)
   return { text: `${fence}text\n${item.raw}\n${fence}`, turn: item.turn }
 }
 

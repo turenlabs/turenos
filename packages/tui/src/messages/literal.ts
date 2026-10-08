@@ -1,9 +1,15 @@
+import { display } from "../messages"
 import { foldLines, hiddenNote, type Collapse } from "./collapse"
 
 const SHORTENED = "[display shortened]"
 
 function longestRun(text: string) {
   return Array.from(text.matchAll(/`+/g)).reduce((longest, run) => Math.max(longest, run[0].length), 0)
+}
+
+/** The backtick fence that holds `text` without any run inside being able to close it. */
+export function fenceFor(text: string) {
+  return "`".repeat(Math.max(3, longestRun(text) + 1))
 }
 
 /** One line of Markdown that shows `text` exactly: a code span whose backtick run no run inside can close. */
@@ -16,13 +22,14 @@ export function codeSpan(text: string) {
 
 /**
  * Text as a fenced block that shows every character: the fence is longer than any backtick run inside.
- * The `display` shortening marker and the fold note stay outside, so they read as notes, not as output.
+ * `raw` is cut to `limit` here, so the shortening note outside the block is known, not read off the text:
+ * output that ends in the marker itself stays inside the block. The fold note stays outside as well.
  */
-export function literal(text: string, view?: Collapse) {
-  const shortened = text.endsWith(`\n${SHORTENED}`)
-  const folded = foldLines(shortened ? text.slice(0, -SHORTENED.length - 1) : text, view)
+export function literal(raw: string, limit = 16000, view?: Collapse) {
+  const shortened = raw.length > limit
+  const folded = foldLines(display(raw.slice(0, limit), limit), view)
   const body = folded.text.trimEnd()
-  const fence = "`".repeat(Math.max(3, longestRun(body) + 1))
+  const fence = fenceFor(body)
   return [
     ...(body ? [`${fence}text\n${body}\n${fence}`] : []),
     ...(folded.hidden ? [hiddenNote(folded.hidden)] : []),
