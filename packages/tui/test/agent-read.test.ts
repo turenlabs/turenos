@@ -42,12 +42,14 @@ test("sessions lists state, and asks for pending input only about running sessio
 })
 
 test("sessions reports a session whose latest turn failed or was stopped, as wait does", async () => {
+  // A step that ended records its finish reason; a message without one is a turn that never finished.
+  const finished = (id: string, text: string) => assistant(id, text, { finish: "stop" })
   const error = (message: string) => ({ ...assistant("e", "partial"), finish: "error", error: { message } })
   const turns: Record<string, unknown[]> = {
     ses_failed: [user("q", "go"), error("Model unavailable")],
     ses_stopped: [user("q", "go"), error("Provider turn interrupted")],
-    ses_fine: [user("q", "go"), assistant("ok", "done")],
-    ses_recovered: [user("q", "go"), error("Model unavailable"), user("r", "again"), assistant("ok", "done")],
+    ses_fine: [user("q", "go"), finished("ok", "done")],
+    ses_recovered: [user("q", "go"), error("Model unavailable"), user("r", "again"), finished("ok", "done")],
   }
   const server = world({
     "GET /api/session": () => ({ data: Object.keys(turns).map((id) => session(id.slice(4))), cursor: {} }),

@@ -1,1 +1,1 @@
-export { turnFailure } from "../messages/failure"
+export { interruptedLine, turnFailure } from "../messages/failure"

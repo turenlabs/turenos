@@ -6,6 +6,7 @@ import { assistant } from "./support"
 const turn = () => {
   const parts = Array.from({ length: 300 }, (_, index) => ({ id: `prt_${index}`, type: "text", text: `step ${index}` }))
   return assistant("long", "", {
+    finish: "stop",
     content: [...parts.slice(0, 299), { id: "prt_final", type: "text", text: "FINAL REPORT" }],
   })
 }

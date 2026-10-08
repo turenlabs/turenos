@@ -37,6 +37,19 @@ export type LivePage = {
   boundary?: string
 }
 
+/**
+ * The part of a History page on screen. A page whose text exceeds the size budget is read in parts, so
+ * every message can be read: `pin` is the edge that stays put (`at` unset: the page's end), and `start`
+ * and `end` are the messages painted.
+ */
+export type HistoryPart = {
+  key: string
+  pin: { edge: "start" | "end"; at?: number }
+  sizes: number[]
+  start: number
+  end: number
+}
+
 /** A logical text location from the last painted frame, kept across reflow. */
 export type TextAnchor = {
   node: TextBufferRenderable
@@ -69,6 +82,7 @@ export type Conversation = {
   generation: number
   viewKey: string
   prepend: { height: number; scroll: number } | undefined
+  part: HistoryPart | undefined
   textAnchor: TextAnchor | undefined
   /** The last painted live content, and whether it changed while the reader was away from the tail. */
   drawn: string
@@ -101,6 +115,7 @@ export function newConversation(
     generation: 0,
     viewKey: "",
     prepend: undefined,
+    part: undefined,
     textAnchor: undefined,
     drawn: "",
     unread: false,

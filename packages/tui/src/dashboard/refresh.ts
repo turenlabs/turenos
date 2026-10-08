@@ -59,6 +59,8 @@ function showDisconnected(d: DashboardContext, error: unknown) {
   d.ui.status.fg = color.error
   renderStatus(d)
   renderActions(d)
+  // The sidebar keeps the last known list; its rows stop claiming live state.
+  if (d.state.snapshot) renderList(d)
   if (!d.state.snapshot)
     d.ui.renderContent(
       errorText(error).includes("Authentication required")

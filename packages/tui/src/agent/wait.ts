@@ -33,7 +33,7 @@ export async function wait(run: Run) {
   if (run.positionals.length !== 1) throw usage("Usage: turen-tui wait <session> [--timeout S]")
   const sessionID = idArgument(run.positionals[0], "ses_", "The session")
   const timeout = whole("timeout", run.values.timeout, defaultTimeout, 0, 31_536_000)
-  await getSession(run.connection, sessionID)
+  await patiently(timeout, () => getSession(run.connection, sessionID))
   return report(run, sessionID, await settle(run.connection, sessionID, { timeout }), timeout)
 }
 
@@ -109,12 +109,36 @@ export async function settle(
       const remaining = deadline - Date.now()
       if (remaining <= 0) return { state: "timeout" }
       // After a failed pass the next waits longer, up to five seconds, so a restarting server is not hammered.
-      await wake(Math.min(failed.passes ? Math.min(1000 * 2 ** failed.passes, 5000) : 1000, remaining))
+      await wake(Math.min(failed.passes ? retryDelay(failed.passes) : 1000, remaining))
       // Chatty event streams must not turn the loop into a busy poll.
       await Bun.sleep(Math.max(0, 250 - (Date.now() - started)))
     }
   } finally {
     controller.abort()
+  }
+}
+
+/** The wait after the `passes`-th consecutive failure: 2, 4, then 5 seconds, so a restarting server is not hammered. */
+function retryDelay(passes: number) {
+  return Math.min(1000 * 2 ** passes, 5000)
+}
+
+/**
+ * Runs `request`, trying again on the same schedule as the wait loop while the server is unreachable or
+ * failing, until the timeout (0 never gives up). A definite answer, such as a refused login or an unknown
+ * session, and the last failure at the deadline, are thrown as they are.
+ */
+async function patiently<Value>(timeout: number, request: () => Promise<Value>) {
+  const deadline = timeout ? Date.now() + timeout * 1000 : Number.POSITIVE_INFINITY
+  for (let passes = 1; ; passes++) {
+    const result = await request().then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    )
+    if ("value" in result) return result.value
+    const remaining = deadline - Date.now()
+    if (!transient(result.error) || remaining <= 0) throw result.error
+    await Bun.sleep(Math.min(retryDelay(passes), remaining))
   }
 }
 

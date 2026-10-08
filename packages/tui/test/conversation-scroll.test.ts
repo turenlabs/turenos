@@ -299,7 +299,9 @@ test("scrollback is bounded and points to explicit History at the cap", async ()
   const count = f.cursors.length
   await f.conversation.scrollEarlier()
   expect(f.cursors.length).toBe(count)
-  expect(f.notices.at(-1)).toContain("Press h, then [")
+  // The transcript carries the limit notice; the status line does not say it a second time.
+  expect(f.notices.filter((text) => text.includes("Live scrollback limit"))).toEqual([])
+  expect(f.content().match(/Live scrollback limit reached/g)).toHaveLength(1)
   expect(f.ui.detail.scrollHeight).toBeLessThan(700)
 })
 

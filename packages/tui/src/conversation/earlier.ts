@@ -35,7 +35,8 @@ export async function scrollEarlier(c: Conversation) {
   // A dialog pages only the local window; the docked reply editor, open by default, still fetches older pages.
   if (state.modal && !state.modal.composer) return
   if (ui.detail.scrollTop > Math.max(10, ui.detail.viewport.height)) return
-  if (cached.capped) return hooks.say("Live scrollback limit reached. Press h, then [ for further history.")
+  // The transcript already carries the scrollback-limit notice (drawLive); saying it again here doubled it.
+  if (cached.capped) return
   const cursor = cached.cursor
   if (!cursor) return
   return fetchEarlier(c, token, id, cursor)

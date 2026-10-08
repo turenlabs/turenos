@@ -1,10 +1,11 @@
-import { pendingQuestions, transcript } from "../messages"
+import { pendingQuestions } from "../messages"
 import { label, sessionTitle, type DashboardState } from "../state"
 import { color } from "../theme"
 import type { Conversation } from "./context"
 import { sentByReader } from "./follow"
-import { drawLive, mergeLive, syncLayout } from "./live-cache"
-import { atBottom, commitPrepend, restorePosition, stagedMessageID } from "./position"
+import { openPart, paintHistory } from "./history-part"
+import { drawLive, mergeLive } from "./live-cache"
+import { atBottom, commitPrepend } from "./position"
 
 type Snapshot = NonNullable<DashboardState["snapshot"]>
 type Session = Snapshot["sessions"][number]
@@ -36,8 +37,11 @@ export async function loadSession(c: Conversation, snapshot: Snapshot, session: 
       return
     }
     state.historyCursor = page.cursor
-    c.position = { sessionID: id, history: true, scroll: 0 }
-    ui.detail.scrollTo(0)
+    // Reading older, the eye continues from the bottom of the older page; reading newer, from its top.
+    const older = page.direction === "next"
+    openPart(c, page.direction)
+    c.position = { sessionID: id, history: true, scroll: older ? Number.MAX_SAFE_INTEGER : 0 }
+    ui.detail.scrollTo(older ? Number.MAX_SAFE_INTEGER : 0)
   }
   if (!state.history && c.hooks.project) result.messages = [...c.hooks.project(id, result.messages)]
   state.detail = result
@@ -91,7 +95,7 @@ function trackPending(c: Conversation, id: string, result: Detail) {
 }
 
 function paintResult(c: Conversation, id: string, result: Detail, questionPreview: string) {
-  const { state, ui } = c
+  const { state } = c
   const follow =
     !state.history &&
     !questionPreview &&
@@ -102,10 +106,5 @@ function paintResult(c: Conversation, id: string, result: Detail, questionPrevie
     drawLive(c)
     return
   }
-  const content =
-    transcript(result.messages, state.rawResponses, true, { expanded: state.expandToolOutput }) || "No messages yet."
-  const staged = stagedMessageID(c) ? "UNDO STAGED - this History view includes later, staged-away messages.\n\n" : ""
-  ui.renderContent(`${questionPreview ? `${questionPreview}\n\n` : ""}${staged}${content}`, !questionPreview)
-  syncLayout(c)
-  restorePosition(c)
+  paintHistory(c, result, questionPreview)
 }

@@ -5,6 +5,7 @@ import { scheduleText, welcomeBody } from "../chrome"
 import { label, type DashboardState } from "../state"
 import { color } from "../theme"
 import type { Conversation } from "./context"
+import { drawLive } from "./live-cache"
 import { currentView } from "./position"
 import { loadSession } from "./session-load"
 
@@ -51,12 +52,26 @@ function once(c: Conversation, version: number) {
     .catch((cause) => {
       if (c.disposed || version !== state.detailVersion || state.closed) return
       c.pageRequest = undefined
-      state.detail = undefined
-      ui.renderContent(`Details unavailable: ${errorText(cause)}\n\nPress r to retry.`)
       c.error = `Details unavailable: ${errorText(cause)}`
+      // What was already read stays on screen (the status line says the data is saved); only a view with
+      // nothing to show carries the error in its own pane.
+      if (!keepTranscript(c)) {
+        state.detail = undefined
+        ui.renderContent(`${c.error}\n\nPress r to retry.`)
+      }
       hooks.say(c.error, true)
       hooks.actions()
     })
+}
+
+/** Repaints the transcript the reader had, when there is one for the selected session. */
+function keepTranscript(c: Conversation) {
+  const { state } = c
+  if (state.tab !== "sessions" || !state.selected) return false
+  if (state.history) return state.detail?.sessionID === state.selected
+  if (!c.live.has(state.selected)) return false
+  drawLive(c)
+  return true
 }
 
 async function load(c: Conversation, version: number) {

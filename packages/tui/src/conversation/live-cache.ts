@@ -1,5 +1,6 @@
 import { richContent } from "../markdown/normalize"
 import { joinBlocks, pendingQuestions, transcriptBlocks } from "../messages"
+import { interruptedLine } from "../messages/failure"
 import { fenceFor } from "../messages/literal"
 import { continuesTurn } from "../messages/turns"
 import type { DashboardState } from "../state"
@@ -79,8 +80,20 @@ export function drawLive(c: Conversation) {
   const point = boundary ? (cached?.messages.findIndex((message) => message.id === boundary) ?? -1) : -1
   const visible = boundary ? cached?.messages.slice(0, Math.max(0, point)) : cached?.messages
   const staged = boundary ? "UNDO STAGED - a new reply commits this point; /redo restores later turns.\n\n" : ""
+  // A turn with no recorded finish that is no longer running ended early, e.g. when the server restarted.
+  const ended =
+    visible && !Object.hasOwn(state.snapshot?.active ?? {}, state.selected)
+      ? interruptedLine(
+          visible.map((item) => item.message),
+          true,
+        )
+      : ""
   const content =
-    (visible && joinBlocks(shown(visible, cached?.expanded === true).map((item) => block(item, state.rawResponses)))) ||
+    (visible &&
+      joinBlocks([
+        ...shown(visible, cached?.expanded === true).map((item) => block(item, state.rawResponses)),
+        ...(ended ? [{ text: ended, turn: false }] : []),
+      ])) ||
     (boundary ? "Earlier history is outside this recent window. Press h to inspect history." : "No messages yet.")
   ui.renderContent(`${question ? `${question}\n\n` : ""}${staged}${notice}${content}`, !question)
   syncLayout(c)

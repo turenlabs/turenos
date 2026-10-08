@@ -137,7 +137,8 @@ const reply = (id: string, text: string) => ({
   type: "assistant",
   agent: "build",
   model: { providerID: "test", id: "model" },
-  time: { created: 2 },
+  time: { created: 2, completed: 3 },
+  finish: "stop",
   content: [{ id: `text_${id}`, type: "text", text }],
 })
 

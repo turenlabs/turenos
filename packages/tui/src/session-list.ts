@@ -11,6 +11,8 @@ export function sessionRows(
   sessions: readonly Session[],
   active: Record<string, unknown>,
   needsInput: readonly string[] = [],
+  /** Disconnected: `active` and `needsInput` are the last known state, so no row claims to be running. */
+  stale = false,
 ): SidebarRow[] {
   const groups = new Map<string, { directory: string; workspace?: string; sessions: Session[] }>()
   for (const session of sessions) {
@@ -50,16 +52,20 @@ export function sessionRows(
       )
       return entry.sessions
         .sort((a, b) => b.time.updated - a.time.updated || b.time.created - a.time.created || compare(a.id, b.id))
-        .map((session) => ({
-          id: session.id,
-          name: `${needsInput.includes(session.id) ? "? " : Object.hasOwn(active, session.id) ? "* " : ""}${sessionTitle(session.title || session.id)}`,
-          // Keep metadata searchable without repeating it in the visible session rows.
-          description: `${Object.hasOwn(active, session.id) ? "running" : "idle"} ${session.time.archived !== undefined ? "archived" : ""} ${label(session.agent ?? "default")} ${label(session.location.directory, 250)}`,
-          group,
-          groupLabel,
-          running: Object.hasOwn(active, session.id),
-          needsInput: needsInput.includes(session.id),
-        }))
+        .map((session) => {
+          const running = !stale && Object.hasOwn(active, session.id)
+          const waiting = !stale && needsInput.includes(session.id)
+          return {
+            id: session.id,
+            name: `${waiting ? "? " : running ? "* " : ""}${sessionTitle(session.title || session.id)}`,
+            // Keep metadata searchable without repeating it in the visible session rows.
+            description: `${stale ? "stale" : running ? "running" : "idle"} ${session.time.archived !== undefined ? "archived" : ""} ${label(session.agent ?? "default")} ${label(session.location.directory, 250)}`,
+            group,
+            groupLabel,
+            running,
+            needsInput: waiting,
+          }
+        })
     })
 }
 

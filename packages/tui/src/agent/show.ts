@@ -1,3 +1,4 @@
+import { interruptedLine } from "./failure"
 import { transcript } from "../server"
 import { clean, emit, indented, type Run } from "./context"
 import { usage } from "./errors"
@@ -27,7 +28,13 @@ export async function show(run: Run) {
       ? `[showing the newest ${maxMessages} messages; older ones are omitted]`
       : "[earlier messages are not shown; use --all]"
     : ""
-  const body = history.messages.length ? indented(transcript(history.messages, run.values.raw)) : "(no messages)"
+  const body = history.messages.length
+    ? indented(
+        [transcript(history.messages, run.values.raw), state === "interrupted" ? interruptedLine(history.messages) : ""]
+          .filter(Boolean)
+          .join("\n\n"),
+      )
+    : "(no messages)"
   const requests = requestsText(waiting, run.flags)
   return emit(
     run,

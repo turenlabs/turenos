@@ -57,6 +57,8 @@ function sessionListRows(state: DashboardState, snapshot: Snapshot): SidebarRow[
     ),
     snapshot.active,
     snapshot.needsInput,
+    // While disconnected the saved snapshot cannot say what is running now.
+    !state.connected,
   ).map((row) => {
     const session = snapshot.sessions.find((session) => session.id === row.id)!
     return snapshot.workingFolders !== undefined &&

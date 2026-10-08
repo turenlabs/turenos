@@ -52,7 +52,7 @@ export type World = {
 export function world(routes: Record<string, Route> = {}, password?: string) {
   const state: World = {
     active: new Set(),
-    messages: [assistant("a", "hello")],
+    messages: [assistant("a", "hello", { finish: "stop" })],
     permissions: [],
     questions: [],
     prompts: [],

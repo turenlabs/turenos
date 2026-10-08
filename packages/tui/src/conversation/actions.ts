@@ -1,6 +1,7 @@
 import type { MessagesListOutput } from "@turenlabs/client"
 import type { Conversation } from "./context"
 import { sentByReader } from "./follow"
+import { movePart } from "./history-part"
 import { drawLive, mergeLive } from "./live-cache"
 import { render } from "./load"
 import { commitPrepend, currentView, rememberPosition, stagedMessageID } from "./position"
@@ -109,6 +110,8 @@ export function page(c: Conversation, direction: "next" | "previous") {
     state.detail?.sessionID !== state.selected
   )
     return
+  // A page too long for one view is read in parts first; its end is not the end of history.
+  if (movePart(c, direction)) return
   const cursor = state.detail.cursor[direction]
   if (!cursor) return c.hooks.say(direction === "next" ? "Start of history reached." : "Newest history page.")
   c.pageRequest = { sessionID: state.selected, cursor, direction }

@@ -60,7 +60,9 @@ export function assistant(id: string, text: string, extra: Record<string, unknow
     type: "assistant",
     agent: "build",
     model: { providerID: "test", id: "model" },
-    time: { created: 1 },
+    // A finished turn, as servers record it; a test of an unfinished one overrides these.
+    time: { created: 1, completed: 2 },
+    finish: "stop",
     content: [{ id: `text_${id}`, type: "text", text }],
     ...extra,
   }
