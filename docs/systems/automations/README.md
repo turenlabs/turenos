@@ -1,7 +1,7 @@
 # Automations
 
 Automations now appear as duties under persistent teammates in **Team**.
-See [Team](./team.md) for room messaging and teammate operation.
+See [Team](../team.md) for room messaging and teammate operation.
 This page remains the workflow and trigger reference.
 
 Automations are durable workflows that run Agent and Skill steps on a schedule and deliver their results inside TurenOS. They run on the currently selected configured TurenOS server and are independent of the conversation that created them.

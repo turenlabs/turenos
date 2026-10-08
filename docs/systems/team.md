@@ -7,7 +7,7 @@ The interface uses the current TurenOS design system and a compact IRC-style mes
 ## Factory Channels
 
 Configure a channel as a factory to give its teammates a shared outcome and work inputs.
-Select **Setup** in the channel header.
+Open **Manual controls** in the Factory activity panel. Select **Settings**.
 Set the outcome, JSON parameters, constraints, acceptance criteria, and working directory.
 Select a coordinator and up to ten teammates from that channel. Include the coordinator in the selected team.
 
@@ -30,7 +30,7 @@ Ordinary room messages and teammate reports do not automatically start factory r
 
 Each run keeps the factory configuration and teammate profiles captured at admission.
 Later setup edits apply to later runs. Live teammate pauses still prevent new task starts.
-Select **Stop** to cancel unfinished tasks in the current run.
+Select **Stop factory** to cancel unfinished tasks in the current run.
 Failed or uncertain model work is not automatically retried.
 
 ## Room Messages
@@ -93,7 +93,7 @@ Use **Run now** for an immediate duty run.
 Duty results appear in the room and link to their run and Session.
 Detailed workflow outputs remain available in run history.
 Existing schedule, expiry, overlap, and recovery rules still apply.
-See [Automations](./systems/automations/README.md) for the workflow and trigger reference.
+See [Automations](./automations/README.md) for the workflow and trigger reference.
 
 ## Pause And Stop
 
@@ -124,3 +124,11 @@ Exact message retries do not create duplicate work.
 The server can reclaim a task that was claimed but never started.
 An expired running task becomes stale when its outcome is uncertain.
 The server does not automatically replay that task or its tool side effects.
+
+## Source
+
+- [Team schema](../../packages/schema/src/team.ts)
+- [Room persistence and task admission](../../packages/core/src/team/workspace.ts)
+- [Native task execution](../../packages/forge/src/team/runtime.ts)
+- [Room interface](../../packages/app/src/pages/team.tsx)
+- [Public room API](../../packages/protocol/src/groups/team.ts)

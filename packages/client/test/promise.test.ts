@@ -19,6 +19,7 @@ test("exposes every standard HTTP API group", () => {
     "projectCopies",
     "memories",
     "loops",
+    "team",
     "server.intel",
     "server.whiteboard",
   ])
