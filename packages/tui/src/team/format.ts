@@ -29,15 +29,18 @@ export function handleOf(teammates: readonly Teammate[], id: string) {
 
 /** The room as plain text, oldest message first, each followed by the state of the tasks it created. */
 export function roomLog(view: TeamView) {
+  const linked = new Set(
+    view.tasks.filter((task) => view.messages.some((message) => message.id === task.messageID)).map((task) => task.sessionID),
+  )
   const lines = [
     ...(view.room?.archived ? ["Archived · read-only. Restore does not resume paused schedules.", ""] : []),
     ...(view.hasMore ? ["↑ Earlier messages: PageUp at the top or [ loads them.", ""] : []),
-    ...(view.messages.length ? view.messages.flatMap((message) => entry(view, message)) : ["No messages yet."]),
+    ...(view.messages.length ? view.messages.flatMap((message) => entry(view, message, linked)) : ["No messages yet."]),
   ]
   return lines.join("\n")
 }
 
-function entry(view: TeamView, message: Message) {
+function entry(view: TeamView, message: Message, linked: ReadonlySet<string>) {
   const [first = "", ...rest] = display(message.text, MESSAGE_VIEW).split("\n")
   const head = `${clock(message.time)} ${author(view, message)}`
   const lines = [
@@ -45,9 +48,13 @@ function entry(view: TeamView, message: Message) {
     ...rest.map((line) => INDENT + line),
   ]
   const tasks = view.tasks.filter((task) => task.messageID === message.id)
-  // The desktop draws tool cards and attachments for a teammate's reply; the session view already does.
+  // The desktop draws tool cards and attachments for a teammate's reply; the session view already does. A session
+  // a task line already names needs no second pointer.
   const output =
-    message.kind === "teammate" && message.sessionID && message.sourceMessageIDs?.length
+    message.kind === "teammate" &&
+    message.sessionID &&
+    message.sourceMessageIDs?.length &&
+    !linked.has(message.sessionID)
       ? [`  ↳ full output in session ${label(message.sessionID, 80)} (t, then Enter)`]
       : []
   return [...lines, ...output, ...tasks.map((task) => taskLine(view, task))]

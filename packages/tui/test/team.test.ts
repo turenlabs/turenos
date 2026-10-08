@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test"
+import { promptBoxText } from "../src/chrome"
 import { validateResponse } from "../src/response-validation"
+import { createDashboardState } from "../src/state"
+import { roomLog } from "../src/team/format"
+import type { TeamView } from "../src/team/types"
 import { until } from "./support"
 import { answer, log, message, mates, old, open, room, server, task } from "./team-fixture"
 
@@ -376,4 +380,32 @@ test("the state answer validates the factory runs and duties it carries", () => 
       rooms: [old, { ...room, factory: { revision: 1, config: { ...factory.config, outcome: "x".repeat(4001) } } }],
     }),
   ).toThrow("Invalid server response")
+})
+
+test("a teammate reply points at its session only when no task line already names it", () => {
+  const reply = { kind: "teammate", author: "Morgan", teammateID: "tm_moss", sourceMessageIDs: ["msg_a"] }
+  const view = {
+    ...answer([
+      message(2, "Please review @moss"),
+      message(3, "Done", { ...reply, sessionID: "ses_main" }),
+      message(4, "Also done", { ...reply, sessionID: "ses_other" }),
+    ]),
+    showArchived: false,
+    pendingRuns: new Map(),
+  } as unknown as TeamView
+  const text = roomLog(view)
+  expect(text).toContain("→ @moss queued · session ses_main")
+  expect(text).not.toContain("full output in session ses_main")
+  expect(text).toContain("full output in session ses_other")
+})
+
+test("the post row names posting and mentions rather than repeating the action row's keys", () => {
+  const state = createDashboardState()
+  state.connected = true
+  state.tab = "team"
+  state.selected = room.id
+  state.team = { room } as unknown as TeamView
+  expect(promptBoxText(state, undefined, { hasDraft: false })).toBe("f Post · @ mentions a teammate")
+  state.team = { room: old } as unknown as TeamView
+  expect(promptBoxText(state, undefined, { hasDraft: false })).toStartWith("Archived · read-only")
 })

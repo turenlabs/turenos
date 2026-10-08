@@ -170,7 +170,12 @@ export function promptBoxText(
   opts: { hasDraft: boolean; agentModel?: string },
 ) {
   if (!state.connected) return "r Retry connection"
-  if (state.tab === "team") return state.selected ? "Enter Post · t Tasks · A Archived" : "r Refresh"
+  if (state.tab === "team")
+    return !state.selected
+      ? "r Refresh"
+      : state.team?.room?.archived
+        ? "Archived · read-only · d Restore or delete"
+        : "f Post · @ mentions a teammate"
   if (state.tab !== "sessions" || !state.selected) return "n New session · / Find · Ctrl+K Switch"
   if (detail?.permissions.length)
     return `p Review permission${detail.permissions.length > 1 ? ` (${detail.permissions.length})` : ""} · needs input`
