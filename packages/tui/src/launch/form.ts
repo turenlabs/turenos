@@ -117,7 +117,11 @@ function wireSummary(form: LaunchForm) {
     if (!form.current.start.input() && form.model.value.trim() !== form.current.model) form.current.variant = undefined
     summary()
   })
-  form.agent.on("selectionChanged", summary)
+  form.agent.on("selectionChanged", () => {
+    // An explicit choice replaces the agent kept for a worktree retry.
+    if (!form.selecting && form.current.worktree) form.current.worktree.agent = undefined
+    summary()
+  })
   form.workspace.on("selectionChanged", summary)
   const reveal = form.dialog.settings
   form.dialog.settings = () => {

@@ -50,9 +50,11 @@ export function teammate(item: Record<string, unknown>, roomID?: unknown) {
   identifier(item.id)
   identifier(item.roomID, "trm_")
   if (roomID !== undefined && item.roomID !== roomID) invalid("teammate identity")
-  name(item.name)
+  // The server's edit route bounds neither name nor role, so they are checked for content and then cut, not rejected.
+  name(item.name, 1024 * 1024)
+  clip(item, "name", 512)
   if (typeof item.handle !== "string" || !teammateHandle.test(item.handle)) invalid("handle")
-  string(item.role, 512)
+  clip(item, "role", 512)
   clip(item, "mission", 100_000)
   choice(item.status, ["active", "paused"])
   checkDirectory(item.directory)

@@ -5,7 +5,6 @@ import { stepSettled, stepStarted } from "./step-events"
 import {
   MAX_EVENTS,
   MAX_PARTS,
-  MAX_TEXT,
   type Assistant,
   type Change,
   type Data,
@@ -21,13 +20,13 @@ export function applyEvent(p: Projection, event: LiveEvent): boolean {
   const d = event.data
   if (d.sessionID !== p.session.id || !id(d.assistantMessageID) || !finite(d.timestamp)) return false
   const data = d as Data
-  if (!json(d)) return forgetOversized(p, event.type, data, true)
+  if (!json(d)) return forgetRejected(p, event.type, data)
   const current = p.active.get(data.assistantMessageID)
   const stored = p.base.find(
     (message): message is Assistant => message.id === data.assistantMessageID && message.type === "assistant",
   )
   const change = changeFor(event.type, data, current, stored)
-  if (!change) return forgetOversized(p, event.type, data, false)
+  if (!change) return forgetRejected(p, event.type, data)
   if (change.next && change.partKey && !current?.parts.has(change.partKey) && p.partCount >= MAX_PARTS) return false
   if (!current) room(p)
   const overlay = current ?? { info: { ...change.info, content: [] }, settled: change.settled, parts: new Map() }
@@ -64,19 +63,15 @@ function changeFor(
 }
 
 /**
- * A progress update too large to hold is rejected, but the overlay's earlier output would keep
+ * A progress update the validator rejects (any size or shape limit) would leave the overlay's earlier output
  * overriding the fallback snapshot that follows. Dropping it lets the snapshot's output show.
  */
-function forgetOversized(p: Projection, type: string, d: Data, anySize: boolean) {
+function forgetRejected(p: Projection, type: string, d: Data) {
   if (type !== "session.next.tool.progress" || !id(d.callID)) return false
-  const big =
-    anySize ||
-    (Array.isArray(d.content) &&
-      d.content.some((item) => record(item) && string(item.text) && item.text.length > MAX_TEXT))
   const overlay = p.active.get(d.assistantMessageID)
   const name = `tool:${d.callID}`
   const live = overlay?.parts.get(name)
-  if (!big || !live || live.ended) return false
+  if (!live || live.ended) return false
   overlay!.parts.delete(name)
   p.partCount--
   return false

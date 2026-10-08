@@ -2,7 +2,7 @@ import { outsideNotice } from "../mentions/outside"
 import { errorText, WorktreeNotStartedError } from "../server"
 import { folderContains } from "../working-folders"
 import type { LaunchForm } from "./context"
-import { loadAgents } from "./agents"
+import { loadAgents, selectAgent } from "./agents"
 import { saveDraft } from "./draft"
 
 /** Sends the draft. A retry skips preparation so its frozen session ID, worktree and recipient stay as they were. */
@@ -60,7 +60,8 @@ async function prepare(form: LaunchForm) {
   await loadAgents(form)
   if (form.loaded !== form.directory.value.trim())
     throw form.loadError ?? new Error("Cannot load this directory's agents. Check Directory and retry.")
-  // Discovery in the worktree resets the selection; the user's choice stands only if the worktree offers it.
+  // Discovery in the worktree resets the selection; the user's choice stands only if the worktree offers it, and
+  // a later choice by the user (see wireSummary) has already dropped it.
   const wanted = form.current.worktree?.agent
   if (wanted) {
     form.current.worktree!.agent = undefined
@@ -69,7 +70,7 @@ async function prepare(form: LaunchForm) {
       throw new Error(
         `The agent ${wanted} is not offered in the new worktree. Pick another agent or Server default, then retry.`,
       )
-    form.agent.setSelectedIndex(index + 1)
+    selectAgent(form, index + 1)
   }
   saveDraft(form)
 }

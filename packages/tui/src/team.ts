@@ -43,6 +43,7 @@ export function createTeam(
     key: () => false,
     atTop: hooks.atTop,
     older: () => void older(loader),
+    reload: () => void sync(loader),
   }
   const actions = teamActions(ctx, {
     post: () => openPost(poster),

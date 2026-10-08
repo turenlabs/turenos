@@ -1,4 +1,4 @@
-import { act } from "../automations/manage"
+import { act, runNow } from "../automations/manage"
 import { form } from "../automations/form"
 import type { Loop } from "../automations/types"
 import { printableKey } from "../keys"
@@ -55,7 +55,7 @@ export function openDuties(ctx: TeamContext, ops: TeamOperations, mate: Teammate
   const again = () => openDuties(ctx, ops, mate, back)
   const owned = rows.map((row) => row.duty.loopID)
   const keys: Record<string, () => void> = {
-    r: () => runNow(ctx, rows[picker.list.getSelectedIndex()]?.loop),
+    r: () => runDuty(ctx, rows[picker.list.getSelectedIndex()]?.loop, again),
     a: () => changing(ctx, writable, () => assign(ctx, ops, mate, owned, again)),
     n: () => changing(ctx, writable, () => create(ctx, mate, again)),
   }
@@ -73,13 +73,11 @@ function changing(ctx: TeamContext, writable: boolean, run: () => void) {
   if (online(ctx, "changing duties")) run()
 }
 
-function runNow(ctx: TeamContext, loop: Loop | undefined) {
+function runDuty(ctx: TeamContext, loop: Loop | undefined, back: () => void) {
   if (!loop) return ctx.say("Select a duty whose automation is listed.", true)
   if (!online(ctx, "running the duty")) return
   ctx.dialogs.close(false)
-  act(ctx, `Automation › ${label(loop.name, 50)}`, "Started a run.", () =>
-    ctx.connection.client.loops.runNow({ loopID: loop.id }),
-  )
+  runNow(ctx, loop, back)
 }
 
 /** Existing automations that are not a duty yet. */

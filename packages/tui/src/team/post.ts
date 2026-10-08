@@ -25,6 +25,8 @@ export type Poster = {
   key: (event: KeyEvent) => boolean
   atTop: () => boolean
   older: () => void
+  /** Loads the room again, repainting. */
+  reload: () => void
   /** The room whose editor is open. */
   editing?: string
 }
@@ -160,20 +162,23 @@ async function submitPost(poster: Poster, editor: TextareaRenderable, roomID: st
       throw new Error(errorText(error))
     })
   poster.drafts.delete(roomID)
-  ctx.say(applyPosted(ctx, posted))
+  ctx.say(applyPosted(poster, posted))
 }
 
 /** Puts the answer in the log at once and returns what to tell the user. */
 function applyPosted(
-  ctx: TeamContext,
+  poster: Poster,
   posted: Awaited<ReturnType<TeamContext["connection"]["client"]["team"]["messagePost"]>>,
 ) {
-  const view = viewOf(ctx.state)
+  const view = viewOf(poster.ctx.state)
   const message = posted.message as TeamView["messages"][number]
   const tasks = posted.tasks as TeamView["tasks"]
-  const last = view.messages.at(-1)?.seq
-  // Appending across a gap would make the next poll skip what others posted meanwhile; the poll adds it instead.
-  if (view.room?.id === message.roomID && (last === undefined || message.seq === last + 1)) {
+  const last = view.messages.at(-1)?.seq ?? 0
+  const here = view.room?.id === message.roomID
+  const contiguous = here && message.seq === last + 1
+  // Appending across a gap would make the next poll skip what others posted meanwhile, so the room loads again.
+  if (here && !contiguous) poster.reload()
+  if (contiguous) {
     const merged = mergeMessages(view.messages, [message])
     view.messages = merged.length > MAX_MESSAGES ? merged.slice(-MAX_MESSAGES) : merged
     view.hasMore = view.hasMore || merged.length > MAX_MESSAGES

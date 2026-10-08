@@ -46,6 +46,8 @@ export type LaunchForm = {
   loaded: string | undefined
   loadError: unknown
   loading: Promise<void> | undefined
+  /** Set while code, not the user, moves the agent selection. */
+  selecting?: boolean
   /** Set while a worktree is being prepared; aborting it stops the wait and keeps the draft. */
   preparing?: AbortController
   /** The escaping mention paths the user already saw and sent past once. */

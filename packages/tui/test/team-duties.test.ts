@@ -52,12 +52,33 @@ test("Enter shows the duty's automation in the Automations tab, selected", async
 })
 
 test("r runs the duty's automation now", async () => {
-  const w = world({ "POST /api/loop/loop_1/run": () => ({ id: "run_1", loopID: "loop_1", status: "running" }) })
+  const w = world({
+    "GET /api/loop/loop_1/run": () => [],
+    "POST /api/loop/loop_1/run": () => ({ id: "run_1", loopID: "loop_1", status: "running" }),
+  })
   const { view, screen } = await duties(w)
   await screen("Nightly check")
   view.mockInput.pressKey("r")
   await until(() => w.sent("POST", "/api/loop/loop_1/run").length === 1)
   await screen("Started a run.")
+})
+
+test("r after a lost answer checks the run history and does not start the duty twice", async () => {
+  const runs: unknown[] = []
+  const w = world({
+    "GET /api/loop/loop_1/run": () => runs,
+    "POST /api/loop/loop_1/run": () => {
+      runs.push({ id: "run_1", loopID: "loop_1", status: "running", trigger: "manual", time: { created: 1 } })
+      return new Response("gateway timeout", { status: 504 })
+    },
+  })
+  const { view, screen } = await duties(w)
+  await screen("Nightly check")
+  view.mockInput.pressKey("r")
+  await screen("HTTP 504")
+  view.mockInput.pressKey("s", { ctrl: true })
+  await screen("1 recent run")
+  expect(w.sent("POST", "/api/loop/loop_1/run")).toHaveLength(1)
 })
 
 test("a assigns an automation that is not a duty yet", async () => {

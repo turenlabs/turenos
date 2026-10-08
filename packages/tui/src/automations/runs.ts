@@ -8,8 +8,8 @@ import type { AutomationsContext, Loop } from "./types"
 
 const keys = "↑↓ choose · Enter open session · Ctrl+D twice cancel a live run · Esc back"
 
-/** Recent runs of one automation; Enter opens a run's session, a double Ctrl+D cancels a live run. */
-export function runs(ctx: AutomationsContext, loop: Loop, back: () => void) {
+/** Recent runs of one automation; Enter opens a run's session, a double Ctrl+D cancels a live run. `note` leads the list. */
+export function runs(ctx: AutomationsContext, loop: Loop, back: () => void, note = "") {
   const { dialogs, state, connection } = ctx
   const dialog = dialogs.open(`Automation › ${label(loop.name, 40)} › Runs`, false, 30)
   if (!dialog) return
@@ -26,7 +26,8 @@ export function runs(ctx: AutomationsContext, loop: Loop, back: () => void) {
     (result) => {
       if (state.modal !== dialog) return
       items = result.slice(0, 50)
-      text.content = items.length ? `${items.length} recent run${items.length === 1 ? "" : "s"}` : "No runs yet."
+      const summary = items.length ? `${items.length} recent run${items.length === 1 ? "" : "s"}` : "No runs yet."
+      text.content = note ? `${note} ${summary}` : summary
       list.options = items.map((run) => ({
         name: `${label(run.status, 20)} · ${typeof run.time?.created === "number" ? stamp(run.time.created) : label(run.id)} · ${label(run.trigger ?? "", 40)}`,
         description: run.error ? label(run.error, 200) : "",

@@ -64,6 +64,29 @@ test("posting sends the draft ID, and a retry after a 503 sends the same ID", as
   await screen("ship @moss now")
 })
 
+test("a post into an empty room does not hide a message another client posted first", async () => {
+  const stored: ReturnType<typeof message>[] = []
+  const { routes } = server()
+  routes["GET /api/team"] = (_, url) => {
+    const after = Number(url.searchParams.get("after") ?? 0)
+    return answer(stored.filter((item) => item.seq > after))
+  }
+  routes["POST /api/team/message"] = async (request) => {
+    const sent = (await request.json()) as { id: string; text: string }
+    // Another client's message took seq 1 before ours, and it is already stored when the answer returns.
+    stored.push(message(1, "Posted by another client"), { ...message(2, sent.text), id: sent.id })
+    return { message: stored[1], tasks: [] }
+  }
+  const { view, screen } = await open(routes)
+  await screen("No messages yet.")
+  view.mockInput.pressKey("f")
+  await view.mockInput.typeText("hello from here")
+  view.mockInput.pressEnter()
+  await screen("Posted.")
+  const frame = await screen("Posted by another client")
+  expect(frame).toContain("hello from here")
+})
+
 test("a 400 keeps the draft editable with the server's message", async () => {
   const { routes } = server()
   const ids: string[] = []
@@ -255,6 +278,40 @@ const finished = {
   result: "ok",
   time: { created: 1, updated: 2 },
 }
+
+type State = ReturnType<typeof valid>
+
+test("a teammate role or name over 512 characters is clipped, not a reason to reject the room", () => {
+  const long = "x".repeat(513)
+  const state = check({ ...valid(), teammates: [{ ...mates[0], role: long, name: long }] }) as State
+  expect(state.teammates[0]!.role).toContain("[truncated")
+  expect(state.teammates[0]!.name).toContain("[truncated")
+  expect(() => check({ ...valid(), teammates: [{ ...mates[0], name: "bad\u202ename" }] })).toThrow(
+    "Invalid server response",
+  )
+})
+
+test("a room with more than 200 teammates is readable, up to the collection bound", () => {
+  const crowd = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({ ...mates[0], id: `tm_${index}`, handle: `mate${index}` }))
+  expect((check({ ...valid(), teammates: crowd(201) }) as State).teammates).toHaveLength(201)
+  expect(() => check({ ...valid(), teammates: crowd(1001) })).toThrow("exceeds")
+})
+
+test("a message author and a task error over their display bounds are clipped", () => {
+  const state = check({
+    ...valid(),
+    messages: [{ ...log[0], author: "x".repeat(513) }],
+    tasks: [task("failed", { error: "e".repeat(8001) })],
+  }) as State
+  expect((state.messages[0] as { author: string }).author).toContain("[truncated")
+  expect((state.tasks[0] as unknown as { error: string }).error).toContain("[truncated")
+})
+
+test("a posted message may create more than 256 tasks", () => {
+  const tasks = Array.from({ length: 300 }, (_, index) => task("queued", { id: `job_${index}` }))
+  expect(write("/message", "POST", { message: log[0], tasks })).toBeDefined()
+})
 
 test("the Team validator checks the answers of the write routes", () => {
   expect(write("/room", "POST", room)).toBeDefined()

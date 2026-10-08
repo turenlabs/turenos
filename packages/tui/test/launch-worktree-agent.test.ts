@@ -10,13 +10,15 @@ const agent = (id: string) => ({
 })
 
 /** Launches from /srv/main with `planner` selected and Workspace set to a new worktree whose agents are `offered`. */
-async function launch(offered: string[]) {
+async function launch(offered: string[], broken = false) {
   const events = globalEvents()
   let name = ""
+  const discovery = { broken }
   const app = await dashboard({
     "GET /global/event": events.route,
     "GET /api/agent": (_, url) => {
       const directory = url.searchParams.get("location[directory]") ?? ""
+      if (discovery.broken && directory.startsWith("/srv/wt/")) return new Response("down", { status: 500 })
       return {
         location: { directory },
         data: (directory.startsWith("/srv/wt/") ? offered : ["build", "planner"]).map(agent),
@@ -55,6 +57,7 @@ async function launch(offered: string[]) {
   view.mockInput.pressKey("s", { ctrl: true })
   return {
     ...app,
+    discovery,
     created: () => app.server.requests.find((item) => item.method === "POST" && item.path === "/api/session"),
   }
 }
@@ -76,3 +79,28 @@ test("a worktree that does not offer the chosen agent refuses to launch instead 
   expect(created()).toBeUndefined()
   expect(server.sent("/experimental/worktree")).toHaveLength(1)
 })
+
+for (const choice of ["reviewer", "Server default"]) {
+  test(`${choice} picked after a failed worktree discovery is not replaced by the agent kept for the retry`, async () => {
+    const { view, screen, discovery, created } = await launch(["planner", "reviewer"], true)
+    await screen("HTTP 500")
+    // Esc keeps the draft and the worktree; discovery works on the next try.
+    view.mockInput.pressKey("ESCAPE")
+    await until(() => !view.captureCharFrame().includes("HTTP 500"))
+    discovery.broken = false
+    await Bun.sleep(150)
+    view.mockInput.pressKey("n")
+    await screen("What would you like to do?")
+    for (let step = 0; step < 2; step++) {
+      view.mockInput.pressTab()
+      await view.renderOnce()
+    }
+    await screen("reviewer")
+    view.mockInput.pressArrow("down")
+    view.mockInput.pressArrow(choice === "reviewer" ? "down" : "up")
+    await view.renderOnce()
+    view.mockInput.pressKey("s", { ctrl: true })
+    await until(() => !!created())
+    expect((created()!.body as { agent?: string }).agent).toBe(choice === "reviewer" ? "reviewer" : undefined)
+  })
+}

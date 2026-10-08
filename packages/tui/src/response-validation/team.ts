@@ -1,7 +1,9 @@
-import { array, choice, clip, identifier, invalid, numeric, object, optional, string, unique } from "./primitives"
+import { array, choice, clip, identifier, invalid, numeric, object, optional, unique } from "./primitives"
 import { duty, factoryRun, integer, room, teammate } from "./team-entities"
 import { teamAnswer } from "./team-answers"
 
+/** Collections the server does not bound (rooms, teammates, duties, and the tasks one message creates). */
+const MAX_UNBOUNDED = 1000
 const taskStatuses = ["queued", "claimed", "running", "succeeded", "failed", "cancelled", "stale"]
 
 /**
@@ -14,7 +16,7 @@ export function team(route: string[], init: RequestInit | undefined, value: unkn
   if (route.length === 2 && route[1] === "message" && init?.method === "POST") {
     const posted = object(value)
     message(object(posted.message))
-    unique(array(posted.tasks, 256), (item) => task(object(item)))
+    unique(array(posted.tasks, MAX_UNBOUNDED), (item) => task(object(item)))
     return posted
   }
   if (route.length === 4 && route[1] === "task" && route[3] === "cancel" && init?.method === "POST") {
@@ -26,12 +28,12 @@ export function team(route: string[], init: RequestInit | undefined, value: unkn
 }
 
 function state(value: Record<string, unknown>) {
-  const rooms = array(value.rooms, 1000)
+  const rooms = array(value.rooms, MAX_UNBOUNDED)
   unique(rooms, (item) => room(object(item)))
   const current = object(value.room)
   room(current)
   if (!rooms.some((item) => object(item).id === current.id)) invalid("room identity")
-  const teammates = array(value.teammates, 200)
+  const teammates = array(value.teammates, MAX_UNBOUNDED)
   unique(teammates, (item) => teammate(object(item), current.id))
   const messages = array(value.messages, 200)
   unique(messages, (item) => {
@@ -42,7 +44,7 @@ function state(value: Record<string, unknown>) {
     task(object(item))
     if (object(item).roomID !== current.id) invalid("task identity")
   })
-  for (const item of array(value.duties, 1000)) duty(object(item))
+  for (const item of array(value.duties, MAX_UNBOUNDED)) duty(object(item))
   optional(value.factoryRuns, (runs) => unique(array(runs, 50), (item) => factoryRun(object(item))))
   if (typeof value.hasMore !== "boolean") invalid("hasMore")
   return value
@@ -53,7 +55,7 @@ function message(item: Record<string, unknown>) {
   identifier(item.roomID, "trm_")
   integer(item.seq)
   choice(item.kind, ["human", "teammate", "system"])
-  string(item.author, 512)
+  clip(item, "author", 512)
   clip(item, "text", 100_000)
   optional(item.teammateID, (id) => identifier(id))
   optional(item.sessionID, (id) => identifier(id, "ses_"))
@@ -69,6 +71,6 @@ function task(item: Record<string, unknown>) {
   // Enter on a task opens its session, so the identity is checked like every other session reference.
   identifier(item.sessionID, "ses_")
   choice(item.status, taskStatuses)
-  optional(item.error, (text) => string(text, 8000))
+  optional(item.error, () => clip(item, "error", 8000))
   numeric(object(item.time).created)
 }

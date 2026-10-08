@@ -58,13 +58,14 @@ test("runs show their stage, tasks and result; needs_input says to answer in the
   const w = world()
   w.state.rooms = [old(), configured]
   w.state.runs = [
-    run("needs_input"),
+    run("needs_input", { result: "Which database should the migration target?" }),
     run("succeeded", { id: "run_0", result: "All done.", time: { created: 1, updated: 2 } }),
   ]
   const { view, screen } = await panel(w)
   const frame = await screen("Needs your answer: open the task session to answer its request.")
   expect(frame).toContain("needs_input · work")
   expect(frame).toContain("Run run_1 · needs_input · phase work")
+  expect(frame).toContain("Which database should the migration target?")
   expect(frame).toContain("@moss queued · session ses_main")
   view.mockInput.pressArrow("down")
   const second = await screen("All done.")

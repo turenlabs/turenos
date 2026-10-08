@@ -36,7 +36,7 @@ export async function waitRun(run: Run) {
   return emit(run, { run: settled }, [runLine("run", settled), ...runDetail(settled)].join("\n"), done ? 0 : 5)
 }
 
-/** The run's task sessions, each with the requests that wait on it and the commands that resolve them. */
+/** The coordinator's question (the run's result), then the run's task sessions, each with the requests that wait on it and the commands that resolve them. */
 async function needsInput(run: Run, settled: TeamFactoryRunGetOutput) {
   const state = await roomState(run, settled.roomID, 1)
   const tasks = state.tasks.filter((task) => task.factoryRunID === settled.id || settled.taskIDs.includes(task.id))
@@ -53,6 +53,7 @@ async function needsInput(run: Run, settled: TeamFactoryRunGetOutput) {
     },
     [
       runLine("run", settled),
+      ...runDetail(settled),
       ...tasks.flatMap((task, index) => [
         taskText(task, state.teammates, run.flags),
         ...[requestsText(pending[index]!, run.flags)].filter(Boolean),

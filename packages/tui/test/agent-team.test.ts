@@ -329,8 +329,9 @@ test("team wait exits 5 and prints the error of a failed, cancelled or stale run
   }
 })
 
-test("team wait exits 3 with the task sessions and the commands that resolve their requests", async () => {
-  const server = waiting(factoryRun("needs_input"), {
+test("team wait exits 3 with the coordinator's question, the task sessions and the commands that resolve their requests", async () => {
+  const question = "Which database should the migration target?"
+  const server = waiting(factoryRun("needs_input", { result: question }), {
     "GET /api/team": () => ({
       ...state("trm_fact"),
       tasks: [task("running", { id: "job_f", roomID: "trm_fact", factoryRunID: "run-1", sessionID: "ses_work" })],
@@ -345,9 +346,12 @@ test("team wait exits 3 with the task sessions and the commands that resolve the
   const result = await agent(["team", "wait", "run-1"], { url: server.url })
   expect(result.code).toBe(3)
   expect(result.stdout).toContain("run run-1 · needs_input · done\n")
+  expect(result.stdout).toContain(question)
+  expect(result.stdout.indexOf(question)).toBeLessThan(result.stdout.indexOf("task job_f"))
   expect(result.stdout).toContain("task job_f · @moss · running · session ses_work")
   expect(result.stdout).toContain("  approve: turen-tui approve ses_work per_1")
   const json = document(await agent(["team", "wait", "run-1", "--json"], { url: server.url }))
+  expect((json.run as { result: string }).result).toBe(question)
   expect((json.tasks as { pending: { permissions: unknown[] } }[])[0]!.pending.permissions).toHaveLength(1)
 })
 

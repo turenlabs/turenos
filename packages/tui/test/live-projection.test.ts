@@ -320,13 +320,6 @@ describe("selected-session live projection", () => {
     expect(parts(projection)[0]).toMatchObject({
       state: { structured: { phase: "two" }, content: [{ type: "text", text: "replaced" }] },
     })
-    const before = projection.messages()
-    expect(
-      projection.apply(
-        event("tool.progress", { callID: "call", structured: {}, content: [{ type: "text", text: 5 }] }),
-      ),
-    ).toBe(false)
-    expect(projection.messages()).toEqual(before)
     projection.apply(
       event("tool.success", {
         callID: "call",
@@ -405,7 +398,7 @@ describe("live tool rows", () => {
     expect(transcript(projection.messages())).toContain("[running] bash · echo live-marker")
   })
 
-  test("an oversized progress update drops the stale live output so the fallback snapshot shows", () => {
+  test("a rejected progress update (too large or too many items) drops the stale live output so the fallback snapshot shows", () => {
     const tool = (value: string): Assistant => ({
       ...assistant(),
       content: [
@@ -418,18 +411,20 @@ describe("live tool rows", () => {
         },
       ],
     })
-    for (const size of [65_537, 300_000]) {
+    const rejected = [
+      [{ type: "text", text: "x".repeat(65_537) }],
+      [{ type: "text", text: "x".repeat(300_000) }],
+      Array.from({ length: 129 }, () => ({ type: "text", text: "y" })),
+      [{ type: "text", text: 5 }],
+    ]
+    for (const content of rejected) {
       const projection = createLiveProjection(session)
       projection.snapshot([tool("first")])
       projection.apply(
         event("tool.progress", { callID: "call", structured: {}, content: [{ type: "text", text: "live" }] }),
       )
       expect(parts(projection)[0]).toMatchObject({ state: { content: [{ type: "text", text: "live" }] } })
-      const big = event("tool.progress", {
-        callID: "call",
-        structured: {},
-        content: [{ type: "text", text: "x".repeat(size) }],
-      })
+      const big = event("tool.progress", { callID: "call", structured: {}, content })
       expect(projection.apply(big)).toBe(false)
       projection.snapshot([tool("fresh snapshot output")])
       expect(parts(projection)[0]).toMatchObject({

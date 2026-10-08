@@ -37,8 +37,8 @@ export function clip(holder: Record<string, unknown>, key: string, maximum = 102
   return holder[key] as string
 }
 
-export function name(value: unknown) {
-  const result = string(value, 512)
+export function name(value: unknown, maximum = 512) {
+  const result = string(value, maximum)
   if (!result || UNSAFE_TEXT.test(result)) invalid("name")
   return result
 }

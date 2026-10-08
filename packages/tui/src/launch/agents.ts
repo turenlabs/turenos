@@ -29,9 +29,7 @@ export function loadAgents(form: LaunchForm): Promise<void> {
       ]
       // Every agent shows up to three rows; more scroll inside the list.
       agent.height = Math.min(3, agent.options.length)
-      agent.setSelectedIndex(
-        requested === current.directory && current.agent ? form.choices.indexOf(current.agent) + 1 : 0,
-      )
+      selectAgent(form, requested === current.directory && current.agent ? form.choices.indexOf(current.agent) + 1 : 0)
       summarize(form)
     })
     .catch((error) => {
@@ -43,4 +41,11 @@ export function loadAgents(form: LaunchForm): Promise<void> {
       form.loading = undefined
     })
   return form.loading
+}
+
+/** Sets the agent selection from code. The select's own change events are the user's choices, which this one is not. */
+export function selectAgent(form: LaunchForm, index: number) {
+  form.selecting = true
+  form.agent.setSelectedIndex(index)
+  form.selecting = false
 }
