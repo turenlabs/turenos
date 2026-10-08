@@ -17,6 +17,7 @@ import { createFiles } from "../files"
 import { createTerminals } from "../terminals"
 import { createSwarmRoom } from "../swarm"
 import { createAutomations } from "../automations"
+import { createTeam } from "../team"
 import { createExtensions } from "../extensions"
 import { createMemories } from "../memories"
 import { createIntel } from "../intel"
@@ -27,6 +28,7 @@ import { createLaunch } from "../launch"
 import { createSessionActions } from "../session-actions"
 import { createMenus } from "../menus"
 import { renderActions } from "./actions"
+import { renderList } from "./list"
 import { slashCommands } from "./commands"
 import { refresh } from "./refresh"
 import { attend, resize } from "./status"
@@ -208,6 +210,13 @@ function createWorkspaceControls(d: DashboardContext) {
   const terminals = createTerminals(renderer, state, connection, dialogs, say, () => refresh(d))
   const room = createSwarmRoom(renderer, state, connection, dialogs, say)
   const automations = createAutomations(renderer, state, connection, dialogs, say, d.openSession)
+  const team = createTeam(renderer, state, connection, dialogs, say, d.openSession, {
+    repaint: () => {
+      renderList(d)
+      void d.c.conversation.render()
+    },
+    atTop: () => d.ui.detail.scrollTop <= 0,
+  })
   const extensions = createExtensions(
     renderer,
     state,
@@ -221,7 +230,7 @@ function createWorkspaceControls(d: DashboardContext) {
   const memories = createMemories(renderer, state, connection, dialogs, say)
   const intel = createIntel(renderer, state, connection, dialogs, say)
   const inspect = createInspect(renderer, state, connection, dialogs, say)
-  return { changes, files, terminals, room, automations, extensions, memories, intel, inspect }
+  return { changes, files, terminals, room, automations, team, extensions, memories, intel, inspect }
 }
 
 /** The settings dialog, which reaches the controllers it opens through `d.c`. */

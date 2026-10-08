@@ -17,7 +17,7 @@ dashboard -> Connection (src/server/) -> HTTP(S) TurenOS server, directly or thr
 
 ## Shared with TurenOS
 
-The client's only TurenOS dependency is `@turenlabs/client`. Rules the desktop app applies too come from it rather than from copies: model ordering and visibility (`./models`), context-window usage (`./context`) and `file://` attachment URLs (`./paths`). Formats the server writes come the same way: placeholder session titles, the interrupted-turn messages and the provider base-URL rule (`./session-title`, `./turn-interruption`, `./provider-url`, re-exported from `@turenlabs/schema`, where core reads them). These modules import nothing heavy, and `packages/client/test/import-boundaries.test.ts` keeps `effect` out of them. Terminal-specific work stays in the client: rendering, the event fold, response validation and the mention grammar. Goal, rewind and model-variant mutations share the captured-session identity check in `src/server/session-identity.ts`; mutable title, model and usage fields are excluded from that identity.
+The client's only TurenOS dependency is `@turenlabs/client`. Rules the desktop app applies too come from it rather than from copies: model ordering and visibility (`./models`), context-window usage (`./context`), `file://` attachment URLs (`./paths`) and the Team rules (`./team`: message merging, handle mentions and completion, the room coordinator, delete and factory checks). Formats the server writes come the same way: placeholder session titles, the interrupted-turn messages and the provider base-URL rule (`./session-title`, `./turn-interruption`, `./provider-url`, re-exported from `@turenlabs/schema`, where core reads them; the mention grammar is `packages/schema/src/team-mention.ts`, import-free, and `packages/client/src/team.ts` re-exports it). These modules import nothing heavy, and `packages/client/test/import-boundaries.test.ts` keeps `effect` out of them. Terminal-specific work stays in the client: rendering, the event fold, response validation and the mention grammar. Goal, rewind and model-variant mutations share the captured-session identity check in `src/server/session-identity.ts`; mutable title, model and usage fields are excluded from that identity.
 
 ## Module map
 
@@ -40,6 +40,7 @@ Every feature folder under `packages/tui/src/` has a façade module beside it (`
 | Servers             | `servers/`, `server-picker/`, `server/`, `working-folders/`                               | Target discovery, saved servers, SSH tunnels and the private server; the picker UI; the `Connection`; working-folder membership shared with the GUI through Client.                                                 |
 | Remote adapters     | `api.ts`, `providers/`, `response-validation/`                                            | Bounded JSON requests for routes the generated client lacks, legacy provider routes, and runtime validation of every displayed field.                                             |
 | Panels              | `changes/`, `files/`, `attach/`, `terminals/`, `automations/`, `swarm/`, `inspect/`       | Review panel, file browser, PTY attach and terminals, automations, swarm room, and tool and trace views.                                                                          |
+| Team                | `team/`, `team.ts`                                                                        | The Team tab: rooms, the polled room log, the docked post editor with its message ID, `@` completion and the task list. Its keys come from one list in `team/actions.ts`.        |
 | Settings and Extend | `settings/`, `extensions/`, `memories/`, `intel/`                                         | Settings sections, the extension catalog, the memory manager and threat intel.                                                                                                    |
 
 ## Transport
@@ -96,7 +97,7 @@ Destinations, users, ports and identity files are validated so they cannot smugg
 
 ## Remote compatibility
 
-The client needs the current `/api/` contracts for location, agents, sessions, messages, tasks, pending input, permissions, questions, loops, terminals (`/api/pty`) and the session harness, plus `GET /global/health` to verify a server. It deliberately keeps these compatibility routes:
+The client needs the current `/api/` contracts for location, agents, sessions, messages, tasks, pending input, permissions, questions, loops, terminals (`/api/pty`), Team rooms (`/api/team`) and the session harness, plus `GET /global/health` to verify a server. It deliberately keeps these compatibility routes:
 
 | Route                                                                                                                                                                              | Use                                                                                      |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
@@ -125,6 +126,7 @@ The code started in the standalone `turen-tui` repository, which derived from th
 
 ## Source
 
+- `packages/schema/src/team-mention.ts`, `packages/client/src/team.ts`
 - `packages/client/src/automation-schedule.ts`, `packages/client/src/path-key.ts`, `packages/client/src/working-folders.ts`
 - `packages/app/src/utils/working-folder-sync.ts`, `packages/app/src/context/server.tsx`
 - `packages/forge/src/worktree/index.ts`, `packages/forge/src/server/routes/instance/httpapi/groups/experimental.ts`

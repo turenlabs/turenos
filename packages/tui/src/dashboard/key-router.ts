@@ -65,6 +65,7 @@ function globalKey(d: DashboardContext, key: KeyEvent) {
   if (d.state.modal?.composer && composerChord(d, key)) return true
   if (d.c.slash.key(key)) return consume(key)
   if (d.c.mentions.key(key)) return consume(key)
+  if (d.c.team.key(key)) return consume(key)
   return false
 }
 
@@ -112,8 +113,11 @@ function cancelReadingPosition(d: DashboardContext, key: KeyEvent) {
     (state.detailFocused && ["up", "down", "home", "end", "j", "k"].some((name) => matchesKey(key, name)))
   )
     d.c.conversation.cancelPosition()
-  if (matchesKey(key, "pageup") || (state.detailFocused && ["up", "home", "k"].some((name) => matchesKey(key, name))))
+  if (matchesKey(key, "pageup") || (state.detailFocused && ["up", "home", "k"].some((name) => matchesKey(key, name)))) {
     void d.c.conversation.scrollEarlier()
+    // Reading Team above its oldest loaded message asks for the page before it.
+    if (state.tab === "team" && d.ui.detail.scrollTop <= 0) void d.c.team.older()
+  }
 }
 
 function capitalKey(d: DashboardContext, key: KeyEvent) {
@@ -132,7 +136,9 @@ function tabKey(d: DashboardContext, key: KeyEvent) {
       ? { a: terminals.create, d: terminals.close, R: terminals.rename }
       : d.state.tab === "automations"
         ? { a: automations.create, d: automations.remove, E: automations.edit }
-        : {}
+        : d.state.tab === "team"
+          ? d.c.team.keys
+          : {}
   const tabAction = tabActions[printableKey(key) ?? ""]
   if (!tabAction) return false
   return run(key, tabAction)
@@ -174,6 +180,7 @@ function characterActions(d: DashboardContext): Record<string, () => void> {
     "1": () => changeTab(d, "sessions"),
     "2": () => changeTab(d, "terminals"),
     "3": () => changeTab(d, "automations"),
+    "4": () => changeTab(d, "team"),
     r: () => void d.refresh(),
     b: () => toggleSidebar(d),
   }

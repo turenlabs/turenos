@@ -30,7 +30,9 @@ export function renderActions(d: DashboardContext) {
   ui.composer.fg =
     !state.connected || pending?.permissions.length || pending?.questions.length ? color.warning : color.text
   // While typing, the reply editor stands in for this prompt line.
-  ui.composer.visible = !state.modal?.composer && (!state.connected || (state.tab === "sessions" && !!state.selected))
+  ui.composer.visible =
+    !state.modal?.composer &&
+    (!state.connected || ((state.tab === "sessions" || state.tab === "team") && !!state.selected))
   renderActionRow(d, pending)
   ui.historyActions.visible = state.tab === "sessions" && state.history && !!state.selected && !state.modal?.inline
   ui.older.fg = pending?.cursor.next ? color.accent : color.muted
@@ -53,11 +55,15 @@ export function renderActions(d: DashboardContext) {
 /** The two sidebar entries; the first is what `n` (sessions) or `a` (terminals, automations) does. */
 function sidebarActions(d: DashboardContext) {
   const state = d.state
-  const noun = { sessions: "a session", terminals: "a terminal", automations: "an automation" }[state.tab]
+  const noun = { sessions: "a session", terminals: "a terminal", automations: "an automation", team: "a room" }[
+    state.tab
+  ]
   const add =
     state.tab === "sessions"
       ? `${d.c.launch.hasDraft ? "Resume draft" : "New session"}    n`
-      : `New ${state.tab === "terminals" ? "terminal" : "automation"}    a`
+      : state.tab === "team"
+        ? "Post to room    f"
+        : `New ${state.tab === "terminals" ? "terminal" : "automation"}    a`
   return ` + ${add}\n / ${state.query && state.query !== state.inspection ? `Find: ${label(state.query, 18)}` : `Find ${noun}`}`
 }
 
@@ -66,6 +72,7 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
   const state = d.state
   const ui = d.ui
   const live = state.tab === "sessions" && !!state.selected
+  const room = state.tab === "team" && !!state.selected
   const running = live && !!state.snapshot && Object.hasOwn(state.snapshot.active, state.selected)
   const session = state.snapshot?.sessions.find((item) => item.id === state.selected)
   const todos = todoProgress(pending?.todos ?? [])
@@ -79,13 +86,23 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
   const key = (letter: string) => (typing ? "" : `${letter} `)
   const row = [
     { node: ui.stop, show: running && !typing, text: "x Stop", rank: 100 },
-    { node: ui.history, show: live && !typing, text: state.history ? "h Live" : "h History", rank: 50 },
+    {
+      node: ui.history,
+      show: (live || room) && !typing,
+      text: room ? "A Archived" : state.history ? "h Live" : "h History",
+      rank: 50,
+    },
     { node: ui.information, show: !typing, text: "i Details", rank: 40 },
     { node: ui.changes, show: live && !typing, text: "d Changes", rank: 30 },
-    { node: ui.files, show: live && !typing, text: "e Files", rank: 20 },
+    {
+      node: ui.files,
+      show: (live || (room && !!state.team?.hasMore)) && !typing,
+      text: room ? "[ Older" : "e Files",
+      rank: 20,
+    },
     {
       node: ui.tasks,
-      show: hasTasks,
+      show: hasTasks || room,
       text: `${key("t")}Tasks${todos ? ` · ${todos}` : ""}`,
       short: `${key("t")}Tasks`,
       rank: 60,
@@ -122,6 +139,7 @@ export function primaryAction(d: DashboardContext) {
   if (!state.connected || d.c.conversation.error) return void d.refresh()
   if (state.tab === "terminals") return state.selected ? d.c.terminals.open() : d.c.terminals.create()
   if (state.tab === "automations") return state.selected ? d.c.automations.manage() : d.c.automations.create()
+  if (state.tab === "team") return d.c.team.post()
   if (state.tab !== "sessions" || !state.selected) return d.c.launch.open()
   // Enter goes back to typing: once a request it opens is answered, the reply editor returns.
   state.navigating = false

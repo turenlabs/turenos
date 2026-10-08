@@ -122,14 +122,18 @@ test("the sidebar says what * and ? mean, and only when a row carries them", asy
   expect(waiting.frame()).toContain("* running · ? needs input")
 })
 
-test("the view names are the same prefixes of Sessions, Terminals and Automations at every width", async () => {
+test("the view names are the same prefixes of Sessions, Terminals, Automations and Team at every width", async () => {
+  const narrowest = await launch({ width: 100 })
+  // Four four-letter names do not fit a 28-column sidebar: only the open view keeps its name.
+  expect(lineWith(narrowest.frame(), "[1 Sess]")).toMatch(/\[1 Sess\] +2 +3 +4 /)
   const mid = await launch({ width: 120 })
   const tabs = lineWith(mid.frame(), "2 Term")
   expect(tabs).toContain("[1 Sess]")
   expect(tabs).toContain("3 Auto")
+  expect(tabs).toContain("4 Team")
   expect(tabs).not.toContain("Chat")
-  const wide = await launch({ width: 160 })
-  expect(lineWith(wide.frame(), "2 Terminals")).toContain("[1 Sessions] 2 Terminals  3 Automations")
+  const wide = await launch({ width: 180 })
+  expect(lineWith(wide.frame(), "2 Terminals")).toContain("[1 Sessions] 2 Terminals  3 Automations  4 Team")
 })
 
 test("the Terminals and Automations tabs offer their own action and heading, not a new session", async () => {

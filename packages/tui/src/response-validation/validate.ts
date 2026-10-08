@@ -4,6 +4,7 @@ import { memories, savedPermissions } from "./memory"
 import { invalid, location } from "./primitives"
 import { isSessionPatch, validateSessionPatch } from "./session-patch"
 import { sessionRoute } from "./session-routes"
+import { team } from "./team"
 
 export function validateResponse(address: URL, init: RequestInit | undefined, value: unknown) {
   if (isSessionPatch(address, init)) return validateSessionPatch(address, init, value)
@@ -13,6 +14,7 @@ export function validateResponse(address: URL, init: RequestInit | undefined, va
   // Routes that skip oversized or unusable items return the sanitized body.
   if (route[0] === "command") return commands(address, value)
   if (route[0] === "session") return sessionRoute(route, init, value)
+  if (route[0] === "team") return team(route, init, value)
   if (route[0] === "pty" && route.length === 1 && get) terminals(address, value)
   else if (route[0] === "location") location(value)
   else if (route[0] === "agent") agents(address, value)

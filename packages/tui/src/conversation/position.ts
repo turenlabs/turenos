@@ -47,7 +47,7 @@ export function restorePosition(c: Conversation) {
   if (
     state.closed ||
     !position ||
-    state.tab !== "sessions" ||
+    (state.tab !== "sessions" && state.tab !== "team") ||
     state.selected !== position.sessionID ||
     state.history !== position.history ||
     (state.detail && state.detail.sessionID !== position.sessionID) ||

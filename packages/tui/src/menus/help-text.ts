@@ -41,6 +41,16 @@ export const helpSections: [string, [string, string][]][] = [
     ],
   ],
   [
+    "TEAM",
+    [
+      ["4", "Team: rooms in the sidebar, the selected room's log, posts go to its teammates"],
+      ["Enter · f", "post to the room: Enter posts, Shift/Alt+Enter adds a line, F4 discards"],
+      ["@", "in a post lists the room's teammates; Tab or Enter completes, Esc closes the list"],
+      ["t", "the room's tasks: Enter opens the session, c cancels, r refreshes"],
+      ["A · [ · r", "show archived rooms · older messages · refresh"],
+    ],
+  ],
+  [
     "SETTINGS AND INTEL",
     [
       [
@@ -86,7 +96,7 @@ export const helpSections: [string, [string, string][]][] = [
       ["Ctrl+K", "switch session · Alt+Left/Right hop"],
       ["/", "commands in the conversation; find or filter in the sidebar"],
       ["Ctrl+X · t", "subagent browser · Tasks"],
-      ["1 · 2 · 3", "Sessions · Terminals · Automations"],
+      ["1 · 2 · 3 · 4", "Sessions · Terminals · Automations · Team"],
       ["Up/Down", "select; Enter focuses the conversation, then replies"],
       ["Tab", "switches panes (Shift+Tab back); b / Ctrl+B sidebar"],
       ["PgUp/PgDn", "scroll a page · r refresh"],

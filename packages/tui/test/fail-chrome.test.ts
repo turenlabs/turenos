@@ -34,7 +34,7 @@ test("the footer keeps ? help beside the status text at 60 columns, and in every
   const { view, screen } = await mount(60, { "GET /api/event": live })
   view.mockInput.pressKey("ESCAPE")
   const footer = (await screen("? help")).trimEnd().split("\n").at(-1)!
-  expect(footer).toBe("  View 1/3 Sessions   Ctrl+P commands · b sidebar · ? help")
+  expect(footer).toBe("  View 1/4 Sessions   Ctrl+P commands · b sidebar · ? help")
 })
 
 test("an armed quit reads q again quits in the shortcuts", () => {

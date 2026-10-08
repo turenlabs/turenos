@@ -5,7 +5,7 @@ import { color } from "../theme"
 import { matchesKey } from "../keys"
 import { outsideNotice } from "../mentions/outside"
 import { promptPayload } from "../prompt-files"
-import { followText } from "../suggest/editor-height"
+import { dockedEditor } from "../dialogs/docked-editor"
 import { showAttachments } from "./attachments"
 import { openBlockedReply } from "./blocked-reply"
 import { maxDrafts, maxMessageLength, newMessageID, replyBlocked, type RequestContext } from "./context"
@@ -152,14 +152,8 @@ function waitingRequest(ctx: RequestContext, sessionID: string) {
   return ""
 }
 
-/** The reply editor, one row for a short message and growing with the text. */
 function createReplyEditor(ctx: RequestContext, dialog: ModalState, draft: MessageDraft) {
-  const task = ctx.dialogs.prompt(dialog, "Your message", draft.text, draft.cursor, true)
-  dialog.editor = task
-  dialog.editorLocked = () => draft.submitted !== undefined
-  task.marginBottom = 0
-  followText(task, 1, 6, ctx.dialogs.resize)
-  return task
+  return dockedEditor(ctx.dialogs, dialog, draft.text, draft.cursor, () => draft.submitted !== undefined)
 }
 
 export type ReplyEditor = ReturnType<typeof createReplyEditor>

@@ -24,6 +24,7 @@ export function changeTab(d: DashboardContext, tab: Tab) {
   if (tab === "sessions") d.c.conversation.loadPosition()
   if (tab !== "sessions") d.c.conversation.cancelPosition()
   void d.c.conversation.render()
+  if (tab === "team") void d.c.team.sync()
 }
 
 /** Selects a session, fetching it first when the snapshot lacks it; `inspect` pins it as an attempted session. */

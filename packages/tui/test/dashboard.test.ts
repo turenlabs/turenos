@@ -962,17 +962,17 @@ test("b, Ctrl+B, and palette sidebar/quit actions work without stealing editor i
   await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
   view.mockInput.pressKey("b")
   await view.renderOnce()
-  expect(view.captureCharFrame()).not.toContain("1 Sess")
+  expect(view.captureCharFrame()).not.toContain("1 Ses")
   view.mockInput.pressKey("b", { ctrl: true })
   await view.renderOnce()
-  expect(view.captureCharFrame()).toContain("1 Sess")
+  expect(view.captureCharFrame()).toContain("1 Ses")
   view.mockInput.pressKey("p", { ctrl: true })
   await view.mockInput.typeText("sidebar")
   await view.renderOnce()
   expect(view.captureCharFrame()).toContain("Toggle sidebar  · Show or hide the list (b or Ctrl+B)")
   view.mockInput.pressEnter()
   await view.renderOnce()
-  expect(view.captureCharFrame()).not.toContain("1 Sess")
+  expect(view.captureCharFrame()).not.toContain("1 Ses")
   // Hiding the sidebar hands focus to the transcript, whose reply editor opens by itself.
   await waitForFrame(view, (frame) => frame.includes("Esc shortcuts"))
   await view.mockInput.typeText("ab")
@@ -2665,9 +2665,9 @@ test("mouse navigation matches the view and composer labels", async () => {
     expect(y).toBeGreaterThanOrEqual(0)
     await view.mockMouse.click(lines[y]!.indexOf(text) + 1, y)
   }
-  await click("2 Term")
+  await click("2 Ter")
   await waitForFrame(view, (frame) => frame.includes("PID 4242"))
-  await click("1 Sess")
+  await click("1 Ses")
   await waitForFrame(view, (frame) => frame.includes("Review the server"))
   const composer = view
     .captureCharFrame()
@@ -2681,9 +2681,9 @@ test("mouse navigation matches the view and composer labels", async () => {
   await click("f Reply")
   await waitForFrame(view, (frame) => frame.includes("Reply to Review the server"))
   await view.mockInput.typeText("Keep while switching tabs")
-  await click("2 Term")
+  await click("2 Ter")
   await waitForFrame(view, (frame) => frame.includes("PID 4242"))
-  await click("1 Sess")
+  await click("1 Ses")
   // Back on the chat the reply editor reopens by itself with its draft; Esc leaves it for the label.
   await waitForFrame(view, (frame) => frame.includes("Keep while switching tabs"))
   await leaveComposer(view)
@@ -3397,7 +3397,7 @@ test("repeated Enter on a busy docked reply sends exactly one POST and blocks ed
   view.mockInput.pressKey("k", { ctrl: true })
   view.mockInput.pressArrow("right", { meta: true })
   view.mockInput.pressKey("n", { ctrl: true })
-  await clickText(view, "2 Term")
+  await clickText(view, "2 Ter")
   await clickText(view, "+ New session")
   const lines = view.captureCharFrame().split("\n")
   const y = lines.findIndex((line) => line.includes("Another session"))
@@ -3444,7 +3444,7 @@ for (const form of ["permission", "question", "kill"] as const) {
     view.mockInput.pressEscape()
     await waitForFrame(view, (frame) => !frame.includes("Permission request"))
     const rows = view.captureCharFrame().split("\n")
-    const targets = ["2 Term", "+ New session", "Find a session", "Sessions Ctrl+K", "Another session"].map((label) => {
+    const targets = ["2 Ter", "+ New session", "Find a session", "Sessions Ctrl+K", "Another session"].map((label) => {
       const y = rows.findIndex((line) => line.includes(label))
       expect(y).toBeGreaterThanOrEqual(0)
       return [rows[y]!.indexOf(label) + 1, y] as const
@@ -3509,7 +3509,7 @@ test("Escape explicitly abandons an unanswered request and permits navigation", 
   await waitForFrame(view, (frame) => frame.includes("Permission request"))
   view.mockInput.pressEscape()
   await waitForFrame(view, (frame) => !frame.includes("Permission request"))
-  await clickText(view, "2 Term")
+  await clickText(view, "2 Ter")
   await waitForFrame(view, (frame) => frame.includes("PID 4242"))
   expect(server.posts).toHaveLength(0)
 })

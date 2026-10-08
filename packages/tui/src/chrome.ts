@@ -5,6 +5,7 @@ import type { Detail, Snapshot } from "./server"
 import { turnFailure } from "./messages/failure"
 import { scheduleInput } from "./automations/schedule"
 import type { Loop } from "./automations/types"
+import { viewOf, visibleRooms } from "./team/types"
 
 export function scheduleText(
   schedule: Snapshot["loops"][number]["schedule"],
@@ -52,13 +53,15 @@ export function headerRight(state: DashboardState, snapshot: Snapshot | undefine
   }
   if (state.tab === "terminals")
     return snapshot.terminalsAvailable ? count(state, snapshot.terminals.length, "terminal") : "Terminals unavailable"
+  if (state.tab === "team")
+    return viewOf(state).error ? "Team unavailable" : count(state, visibleRooms(viewOf(state)).length, "room")
   return snapshot.inventoryErrors.automations
     ? "Automations unavailable"
     : count(state, snapshot.loops.length, "automation")
 }
 
 /** "1 terminal", "3 terminals", or "2 of 3 terminals" when one is selected, so a hidden sidebar still says there are more. */
-function count(state: DashboardState, total: number, noun: string) {
+export function count(state: DashboardState, total: number, noun: string) {
   const position = state.rows.findIndex((row) => row.id === state.selected) + 1
   if (total === 1 || !position) return `${total} ${noun}${total === 1 ? "" : "s"}`
   return `${position} of ${total} ${noun}s`
@@ -66,7 +69,7 @@ function count(state: DashboardState, total: number, noun: string) {
 
 /** The sidebar heading; the narrow drawer adds how to close it. */
 export function sidebarTitle(state: DashboardState, count: number, drawer = false) {
-  const name = state.tab === "sessions" ? "Sessions" : state.tab === "terminals" ? "Terminals" : "Automations"
+  const name = { sessions: "Sessions", terminals: "Terminals", automations: "Automations", team: "Team" }[state.tab]
   return `${name} · ${count}${state.query ? " found" : ""}${drawer ? " · b close" : ""}`
 }
 
@@ -79,7 +82,7 @@ export function statusline(state: DashboardState, snapshot: Snapshot | undefined
   if (armed) return armed
   const narrow = width < layout.narrowBreakpoint
   const hidden = state.sidebarHidden ?? narrow
-  const names = { sessions: "Sessions", terminals: "Terminals", automations: "Automations" }
+  const names = { sessions: "Sessions", terminals: "Terminals", automations: "Automations", team: "Team" }
   // Narrow footers share their row with the shortcuts, so only the unusual stream state is spelled out.
   const live =
     state.tab === "sessions" && !state.history && state.connected && !(narrow && state.streamStatus === "live")
@@ -93,7 +96,7 @@ export function statusline(state: DashboardState, snapshot: Snapshot | undefined
       ? ""
       : `Focus: ${state.detailFocused ? (state.tab === "sessions" ? "transcript" : "detail") : "sidebar"}`
   if (narrow) {
-    const view = `View ${["sessions", "terminals", "automations"].indexOf(state.tab) + 1}/3`
+    const view = `View ${["sessions", "terminals", "automations", "team"].indexOf(state.tab) + 1}/4`
     return [hidden ? `${view} ${names[state.tab]}` : view, hidden ? live : focus].filter(Boolean).join(" · ")
   }
   const base = [state.tab === "sessions" ? "" : names[state.tab], live, focus].filter(Boolean).join(" · ")
@@ -167,6 +170,7 @@ export function promptBoxText(
   opts: { hasDraft: boolean; agentModel?: string },
 ) {
   if (!state.connected) return "r Retry connection"
+  if (state.tab === "team") return state.selected ? "Enter Post · t Tasks · A Archived" : "r Refresh"
   if (state.tab !== "sessions" || !state.selected) return "n New session · / Find · Ctrl+K Switch"
   if (detail?.permissions.length)
     return `p Review permission${detail.permissions.length > 1 ? ` (${detail.permissions.length})` : ""} · needs input`
@@ -179,8 +183,10 @@ export function welcomeBody(
   tab: DashboardState["tab"],
   connection?: Pick<DashboardState, "connected" | "connectionError"> & { serverSwitching?: boolean },
 ) {
+  if (tab === "team")
+    return "No Team rooms found.\n\nPress 1 for sessions · 2 for terminals · 3 for automations · 4 for Team.\nctrl+p lists every command."
   if (tab !== "sessions")
-    return `No ${tab} found.\n\n${tab === "terminals" ? "a opens a terminal on the server." : "a adds an automation."}\nPress 1 for sessions · 2 for terminals · 3 for automations.\nctrl+p lists every command.`
+    return `No ${tab} found.\n\n${tab === "terminals" ? "a opens a terminal on the server." : "a adds an automation."}\nPress 1 for sessions · 2 for terminals · 3 for automations · 4 for Team.\nctrl+p lists every command.`
   const status = connection
     ? connection.connected
       ? "Connected"

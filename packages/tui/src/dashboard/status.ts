@@ -6,6 +6,7 @@ import { label, sessionTitle } from "../state"
 import { activityFrame } from "../activity"
 import { renderActionRow } from "./actions"
 import type { DashboardContext } from "./context"
+import { sidebarColumns } from "../layout/resize"
 
 export function resize(d: DashboardContext) {
   d.run.shortcutsFor = shortcutsKey(d)
@@ -202,13 +203,20 @@ function shortcutsKey(d: DashboardContext) {
 }
 
 export function renderTabs(d: DashboardContext) {
-  // The full names need a 46-column sidebar: the narrow drawer spans the screen, the side-by-side
-  // sidebar is 30% of it from 154 columns. Everywhere else each name is cut to its first four letters.
-  const full = d.renderer.width < layout.narrowBreakpoint || d.renderer.width >= 154
-  for (const [index, { tab, button, name }] of d.ui.tabButtons.entries()) {
-    const text = full ? name : ["1 Sess", "2 Term", "3 Auto"][index]
+  const buttons = d.ui.tabButtons
+  // Inside the sidebar's border and padding; the narrow drawer spans the screen.
+  const room = (d.renderer.width < layout.narrowBreakpoint ? d.renderer.width : sidebarColumns(d.renderer.width)) - 4
+  const open = buttons.findIndex((item) => item.tab === d.state.tab)
+  // The most descriptive set that fits: full names, four-letter names, then only the open view named.
+  const sets = [
+    buttons.map((item) => item.name),
+    buttons.map((item) => item.short),
+    buttons.map((item, index) => (index === open ? item.short : `${index + 1}`)),
+  ]
+  const labels = sets.find((set) => set.reduce((total, text) => total + text.length + 2, 0) <= room) ?? sets[2]!
+  for (const [index, { tab, button }] of buttons.entries()) {
     // Brackets mark the open view, so `>` stays the list's selection marker.
-    button.content = d.state.tab === tab ? `[${text}]` : ` ${text} `
+    button.content = d.state.tab === tab ? `[${labels[index]}]` : ` ${labels[index]} `
     button.fg = d.state.tab === tab ? color.accent : color.muted
     button.attributes = d.state.tab === tab ? TextAttributes.BOLD : TextAttributes.NONE
   }

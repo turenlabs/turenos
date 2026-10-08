@@ -21,6 +21,7 @@ import type { createFiles } from "../files"
 import type { createTerminals } from "../terminals"
 import type { createSwarmRoom } from "../swarm"
 import type { createAutomations } from "../automations"
+import type { createTeam } from "../team"
 import type { createExtensions } from "../extensions"
 import type { createMemories } from "../memories"
 import type { createIntel } from "../intel"
@@ -101,6 +102,7 @@ export type Controls = {
   terminals: ReturnType<typeof createTerminals>
   room: ReturnType<typeof createSwarmRoom>
   automations: ReturnType<typeof createAutomations>
+  team: ReturnType<typeof createTeam>
   extensions: ReturnType<typeof createExtensions>
   memories: ReturnType<typeof createMemories>
   intel: ReturnType<typeof createIntel>

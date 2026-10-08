@@ -74,6 +74,7 @@ function bindButtons(d: DashboardContext) {
 function addAction(d: DashboardContext) {
   if (d.state.tab === "terminals") return d.c.terminals.create()
   if (d.state.tab === "automations") return d.c.automations.create()
+  if (d.state.tab === "team") return d.c.team.post()
   d.c.launch.open()
 }
 
@@ -81,16 +82,18 @@ function bindActionRow(d: DashboardContext) {
   const ui = d.ui
   const unlessModal = (action: () => void) => onPress(d, () => !d.state.modal && action())
   ui.composer.onMouseDown = onPress(d, () => primaryAction(d))
-  ui.history.onMouseDown = unlessModal(() => d.c.conversation.toggleHistory())
+  ui.history.onMouseDown = unlessModal(() =>
+    d.state.tab === "team" ? d.c.team.keys.A!() : d.c.conversation.toggleHistory(),
+  )
   ui.older.onMouseDown = onPress(d, () => d.c.conversation.page("next"))
   ui.newer.onMouseDown = onPress(d, () => d.c.conversation.page("previous"))
   ui.information.onMouseDown = unlessModal(() => d.c.menus.information(d.serverAddress))
   ui.stop.onMouseDown = unlessModal(() => d.c.requests.interrupt())
-  ui.tasks.onMouseDown = unlessModal(() => d.c.sessions.tasks())
+  ui.tasks.onMouseDown = unlessModal(() => (d.state.tab === "team" ? d.c.team.keys.t!() : d.c.sessions.tasks()))
   ui.harness.onMouseDown = unlessModal(() => d.c.harness.open())
   ui.queued.onMouseDown = unlessModal(() => d.c.queue.open())
   ui.changes.onMouseDown = unlessModal(() => d.c.changes.open())
-  ui.files.onMouseDown = unlessModal(() => d.c.files.open())
+  ui.files.onMouseDown = unlessModal(() => (d.state.tab === "team" ? d.c.team.older() : d.c.files.open()))
 }
 
 function bindSearch(d: DashboardContext) {
@@ -128,9 +131,10 @@ function bindList(d: DashboardContext) {
     renderActions(d)
     state.detail = undefined
     if (!d.c.conversation.hasLive(id) || state.tab !== "sessions") {
-      ui.renderContent("Loading session…")
+      ui.renderContent(state.tab === "team" ? "Loading room…" : "Loading session…")
     }
     void d.c.conversation.render()
+    if (state.tab === "team") void d.c.team.sync()
   })
   ui.list.on("itemSelected", () => {
     if (state.modal) return
