@@ -32,8 +32,8 @@ export const sortModelGroups = <T extends { category: string; items: readonly { 
 ) =>
   groups.toSorted((a, b) =>
     compareProviders(
-      { id: a.category, name: a.items[0].provider.name },
-      { id: b.category, name: b.items[0].provider.name },
+      { id: a.category, name: a.items[0]?.provider.name ?? a.category },
+      { id: b.category, name: b.items[0]?.provider.name ?? b.category },
     ),
   )
 
