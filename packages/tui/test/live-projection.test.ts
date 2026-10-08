@@ -404,4 +404,37 @@ describe("live tool rows", () => {
     )
     expect(transcript(projection.messages())).toContain("[running] bash · echo live-marker")
   })
+
+  test("an oversized progress update drops the stale live output so the fallback snapshot shows", () => {
+    const tool = (value: string): Assistant => ({
+      ...assistant(),
+      content: [
+        {
+          type: "tool",
+          id: "call",
+          name: "read",
+          time: { created: 1, ran: 1 },
+          state: { status: "running", input: {}, structured: {}, content: [{ type: "text", text: value }] },
+        },
+      ],
+    })
+    for (const size of [65_537, 300_000]) {
+      const projection = createLiveProjection(session)
+      projection.snapshot([tool("first")])
+      projection.apply(
+        event("tool.progress", { callID: "call", structured: {}, content: [{ type: "text", text: "live" }] }),
+      )
+      expect(parts(projection)[0]).toMatchObject({ state: { content: [{ type: "text", text: "live" }] } })
+      const big = event("tool.progress", {
+        callID: "call",
+        structured: {},
+        content: [{ type: "text", text: "x".repeat(size) }],
+      })
+      expect(projection.apply(big)).toBe(false)
+      projection.snapshot([tool("fresh snapshot output")])
+      expect(parts(projection)[0]).toMatchObject({
+        state: { content: [{ type: "text", text: "fresh snapshot output" }] },
+      })
+    }
+  })
 })

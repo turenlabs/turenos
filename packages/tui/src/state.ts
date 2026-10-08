@@ -25,7 +25,7 @@ export type LaunchDraft = {
   cursor?: number
   /** Wants a new git worktree: `worktree` keeps its name across retries and its folder once ready. */
   isolate?: boolean
-  worktree?: { name: string; attempted: boolean; directory?: string }
+  worktree?: { name: string; attempted: boolean; directory?: string; agent?: string }
   start: ReturnType<Connection["launch"]>
 }
 export type MessageDraft = {

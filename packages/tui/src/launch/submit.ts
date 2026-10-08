@@ -60,6 +60,17 @@ async function prepare(form: LaunchForm) {
   await loadAgents(form)
   if (form.loaded !== form.directory.value.trim())
     throw form.loadError ?? new Error("Cannot load this directory's agents. Check Directory and retry.")
+  // Discovery in the worktree resets the selection; the user's choice stands only if the worktree offers it.
+  const wanted = form.current.worktree?.agent
+  if (wanted) {
+    form.current.worktree!.agent = undefined
+    const index = form.choices.indexOf(wanted)
+    if (index < 0)
+      throw new Error(
+        `The agent ${wanted} is not offered in the new worktree. Pick another agent or Server default, then retry.`,
+      )
+    form.agent.setSelectedIndex(index + 1)
+  }
   saveDraft(form)
 }
 
@@ -67,6 +78,8 @@ async function prepareWorktree(form: LaunchForm) {
   const { current, dialog, directory } = form
   // One name per draft: a retry finds the worktree an uncertain attempt made instead of adding one.
   const worktree = (current.worktree ??= { name: `tui-${crypto.randomUUID().slice(0, 8)}`, attempted: false })
+  saveDraft(form)
+  worktree.agent = current.agent
   const retry = worktree.attempted
   worktree.attempted = true
   dialog.error.content = "Preparing a new git worktree on the server…\nEsc stops waiting and keeps the draft."

@@ -129,6 +129,14 @@ test("malformed mentions are dropped rather than attached, and the count is boun
   for (const text of ["@a.ts#0", "@a.ts#9-2", "@a.ts#99999999999999999999", `@${"x".repeat(5000)}`, "@\u0007bad"]) {
     expect(promptPayload(text, "/srv/p")).toEqual({ text })
   }
+  // A second `#` suffix is never folded into a different range or file; only the quoted form can name such a path.
+  for (const text of ['@"secret.txt"#123#456', '@"secret.txt"#1-', "@secret.txt#123#456", "@secret.txt#1-"]) {
+    expect(promptPayload(text, "/srv/p")).toEqual({ text })
+  }
+  expect(parseMentions('@"secret.txt"#12 @b.ts#12-20', "/srv/p").map((file) => file.uri)).toEqual([
+    "file:///srv/p/secret.txt?start=12&end=12",
+    "file:///srv/p/b.ts?start=12&end=20",
+  ])
   const many = Array.from({ length: 40 }, (_, index) => `@f${index}.ts`).join(" ")
   expect(promptPayload(many, "/srv/p").files).toHaveLength(32)
 })

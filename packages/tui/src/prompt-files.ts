@@ -86,7 +86,7 @@ function decodeMention(match: RegExpExecArray, directory: string, scope?: Mentio
   const query = lineQuery(quoted ? match[3] : split?.[2])
   if (!path || path.length > 4096 || query === undefined) return undefined
   if (/[\u0000-\u001f\u007f-\u009f]/.test(path)) return undefined
-  if (!quoted && !split && malformedRange.test(path)) return undefined
+  if (!quoted && malformedRange.test(path)) return undefined
   const uri = fileURI(absolutePath(directory, path), query)
   if (!uri) return undefined
   const text = quoted ? match[0].slice(match[1]!.length) : `@${token}`

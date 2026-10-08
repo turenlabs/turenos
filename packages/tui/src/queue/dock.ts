@@ -6,7 +6,7 @@ import { stamp } from "../menus/stamp"
 import { errorText, refused, type Connection, type Session } from "../server"
 import { label, sessionTitle, type DashboardState, type ModalState } from "../state"
 import type { Input } from "./inputs"
-import { waiting } from "./inputs"
+import { editable, waiting } from "./inputs"
 
 export type Drafts = {
   /** Why the text cannot become the session's reply draft, if it cannot. */
@@ -32,6 +32,8 @@ export type Dock = {
   text: TextRenderable
   list: SelectRenderable
   inputs: Input[]
+  /** Edits whose cancel got no answer: the message may be gone, so its copy is kept to reopen as the draft. */
+  held: Map<string, Input>
   armed: string
   armedAt: number
   request: number
@@ -65,8 +67,24 @@ export async function refresh(dock: Dock, note = "") {
     const notice =
       note || (left && dock.inputs.length ? "The selected message left the queue; check the one now selected." : "")
     dialog.error.content = `${notice ? `${notice}\n` : ""}${dock.inputs.length ? keys : "Ctrl+R refresh · Esc close"}`
+    const listed = new Set(dock.inputs.map((input) => input.id))
+    dock.held.forEach((_, id) => listed.has(id) && dock.held.delete(id))
+    const gone = dock.held.values().next().value
+    if (
+      gone &&
+      !reopen(dock, gone, "The earlier edit got no answer and the message has left the queue, so this is your copy.")
+    ) {
+      keep(
+        dock,
+        gone,
+        "Removed from the queue, but it could not reopen in the reply editor (send or discard your reply draft, then Ctrl+R).",
+      )
+    }
   } catch (error) {
     if (version !== dock.request || ctx.state.modal !== dialog) return
+    // Nothing is listed, so Enter, Ctrl+E and Ctrl+D must not act on a message that is no longer shown.
+    dock.inputs = []
+    dock.armed = ""
     list.visible = false
     text.content = `Queued messages unavailable: ${errorText(error)}`
     dialog.error.content = "Ctrl+R retry · Esc close"
@@ -84,7 +102,12 @@ export async function act(dock: Dock, kind: "steer" | "edit" | "cancel") {
   const input = dock.inputs[list.getSelectedIndex()]
   if (!input || dock.acting) return
   // Cancelling removes the message from the server, so check it can reopen before cancelling it.
-  const blocked = kind === "edit" ? ctx.drafts.blocker(session.id, input.prompt.text) : undefined
+  const blocked =
+    kind !== "edit"
+      ? undefined
+      : editable(input, session.location.directory)
+        ? ctx.drafts.blocker(session.id, input.prompt.text)
+        : "It has attachments the reply editor cannot carry, so editing would lose them. Ctrl+D twice discards it."
   if (blocked) {
     dialog.error.content = `${blocked} Enter sends it now instead.\n${keys}`
     return
@@ -100,18 +123,38 @@ export async function act(dock: Dock, kind: "steer" | "edit" | "cancel") {
         : await ctx.connection.client.sessions.inputCancel({ sessionID: session.id, messageID })
     dialog.busy = false
     if (ctx.state.modal !== dialog) return
+    if (!done && kind === "edit" && dock.held.has(messageID)) {
+      // An earlier cancel got no answer, so "not found" cannot tell who removed it: reopen the kept copy.
+      if (
+        !reopen(
+          dock,
+          input,
+          "The earlier edit got no answer, so this is your copy. It may already have reached the agent.",
+        )
+      )
+        keep(dock, input)
+      return
+    }
     if (!done) return await refresh(dock, "The agent already received that message.")
-    if (kind === "edit" && !ctx.drafts.restore(session, messageID, input.prompt.text)) return keep(dock, input)
     if (kind === "edit") {
-      ctx.dialogs.close(false)
-      ctx.drafts.reply()
-      return ctx.say("Message taken out of the queue and reopened for editing. Ctrl+T switches Steer and Queue.")
+      if (
+        !reopen(
+          dock,
+          input,
+          "Message taken out of the queue and reopened for editing. Ctrl+T switches Steer and Queue.",
+        )
+      )
+        keep(dock, input)
+      return
     }
     await refresh(dock, kind === "steer" ? "Sent now; the agent reads it at its next step." : "Discarded.")
   } catch (error) {
     if (ctx.state.modal !== dialog) return
     if (refused(error)) dialog.error.content = `! ${errorText(error)}\n${keys}`
-    else await unsure(dock, input, error)
+    else {
+      if (kind === "edit") dock.held.set(input.id, input)
+      await unsure(dock, input, error)
+    }
   } finally {
     dialog.busy = false
     dock.acting = false
@@ -149,7 +192,20 @@ function keep(
   dock.inputs = []
   dock.list.visible = false
   dock.text.content = `${reason} Select it and press Ctrl+Y to copy it before closing.\n\n${display(input.prompt.text, 32000)}`
-  dock.dialog.error.content = "Ctrl+Y copies the selection · Esc close"
+  dock.dialog.error.content = dock.held.has(input.id)
+    ? "Ctrl+Y copies the selection · Ctrl+R reopens it as a draft · Esc close"
+    : "Ctrl+Y copies the selection · Esc close"
+}
+
+/** Puts the message back into the reply draft and closes the dialog; false when the draft cannot take it. */
+function reopen(dock: Dock, input: Input, note: string) {
+  const { ctx, session } = dock
+  if (!ctx.drafts.restore(session, input.id, input.prompt.text)) return false
+  dock.held.delete(input.id)
+  ctx.dialogs.close(false)
+  ctx.drafts.reply()
+  ctx.say(note)
+  return true
 }
 
 export async function discard(dock: Dock) {

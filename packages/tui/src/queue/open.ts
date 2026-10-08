@@ -1,4 +1,4 @@
-import { SelectRenderable, TextRenderable } from "@opentui/core"
+import { SelectRenderable, TextRenderable, type CliRenderer } from "@opentui/core"
 import { matchesKey } from "../keys"
 import { color } from "../theme"
 import { act, discard, preview, refresh, type Dock, type QueueContext } from "./dock"
@@ -18,20 +18,22 @@ export function openQueue(ctx: QueueContext) {
     selectable: true,
   })
   dialog.form.add(text)
-  const list = new SelectRenderable(ctx.renderer, {
-    height: 8,
-    flexShrink: 0,
-    options: [],
-    showSelectionIndicator: true,
-    backgroundColor: color.panel,
-    textColor: color.text,
-    descriptionColor: color.muted,
-    selectedBackgroundColor: color.selected,
-    selectedTextColor: color.accent,
-  })
+  const list = queueList(ctx.renderer)
   dialog.frame.add(list, dialog.frame.getChildren().indexOf(dialog.error))
   dialogs.track(dialog, list)
-  const dock: Dock = { ctx, session, dialog, text, list, inputs: [], armed: "", armedAt: 0, request: 0, acting: false }
+  const dock: Dock = {
+    ctx,
+    session,
+    dialog,
+    text,
+    list,
+    inputs: [],
+    held: new Map(),
+    armed: "",
+    armedAt: 0,
+    request: 0,
+    acting: false,
+  }
   list.on("selectionChanged", () => {
     dock.armed = ""
     const input = dock.inputs[list.getSelectedIndex()]
@@ -54,4 +56,18 @@ export function openQueue(ctx: QueueContext) {
   }
   list.focus()
   void refresh(dock)
+}
+
+function queueList(renderer: CliRenderer) {
+  return new SelectRenderable(renderer, {
+    height: 8,
+    flexShrink: 0,
+    options: [],
+    showSelectionIndicator: true,
+    backgroundColor: color.panel,
+    textColor: color.text,
+    descriptionColor: color.muted,
+    selectedBackgroundColor: color.selected,
+    selectedTextColor: color.accent,
+  })
 }
