@@ -1,6 +1,6 @@
 import { invalid, isRecord } from "../response-validation"
 import type { ProviderRequest } from "./request"
-import { array, defaultModels, id, record, releaseDate, text } from "./validation"
+import { array, defaultModels, id, modelStatus, optionalLabel, record, releaseDate, text } from "./validation"
 
 type CatalogModel = {
   providerID: string
@@ -12,6 +12,10 @@ type CatalogModel = {
   context?: number
   /** The release day as `YYYY-MM-DD`, when the server states a valid one. */
   release?: string
+  /** The model family; the newest release of each family counts as the latest. */
+  family?: string
+  /** Only a known lifecycle status survives; deprecated models are left out of the picker. */
+  status?: "alpha" | "beta" | "active" | "deprecated"
 }
 
 export async function catalog(request: ProviderRequest, selected: string, signal?: AbortSignal) {
@@ -52,6 +56,8 @@ function catalogModel(key: string, value: unknown, provider: { id: string; name:
       : array(Object.keys(record(model.variants)), 128).map((value) => id(value, true))
   const context = isRecord(model.limit) ? model.limit.context : undefined
   const release = releaseDate(model.release_date)
+  const family = optionalLabel(model.family)
+  const status = modelStatus(model.status)
   return {
     providerID: provider.id,
     id: modelID,
@@ -59,6 +65,8 @@ function catalogModel(key: string, value: unknown, provider: { id: string; name:
     providerName: provider.name,
     ...(variants && variants.length > 0 ? { variants } : {}),
     ...(release ? { release } : {}),
+    ...(family ? { family } : {}),
+    ...(status ? { status } : {}),
     ...(typeof context === "number" && Number.isSafeInteger(context) && context > 0 ? { context } : {}),
   }
 }

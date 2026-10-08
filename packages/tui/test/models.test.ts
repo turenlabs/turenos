@@ -177,27 +177,28 @@ for (const variant of ["xhigh", "default", undefined]) {
 }
 
 for (const model of [
-  { providerID: "test", id: "org/other" },
-  { providerID: "other", id: "org/model" },
+  { providerID: "test", id: "org/other", search: "other model" },
+  { providerID: "other", id: "org/model", search: "other provider model" },
 ]) {
   test(`switching to ${model.providerID}/${model.id} resets the variant only for the captured recipient`, async () => {
+    const { search, ...chosen } = model
     const app = await fixture()
     app.state.inspected = app.state.snapshot!.sessions[0]
     app.models.open()
     await app.waitFor((frame) => frame.includes("Catalog Model"))
-    await app.view.mockInput.typeText(`${model.providerID}/${model.id}`)
+    await app.view.mockInput.typeText(search)
     app.state.selected = "ses_elsewhere"
     app.view.mockInput.pressEnter()
     await app.waitFor(() => !app.state.modal)
     expect(app.requests).toEqual([
       { method: "GET", path: "/provider" },
       { method: "GET", path: "/api/session/ses_model" },
-      { method: "POST", path: "/api/session/ses_model/model", body: { model } },
+      { method: "POST", path: "/api/session/ses_model/model", body: { model: chosen } },
     ])
-    expect(app.remote.session.model).toEqual(model)
-    expect(app.state.snapshot?.sessions[0]?.model).toEqual(model)
-    expect(app.state.inspected?.model).toEqual(model)
-    expect(app.saved.recipient.model).toEqual(model)
+    expect(app.remote.session.model).toEqual(chosen)
+    expect(app.state.snapshot?.sessions[0]?.model).toEqual(chosen)
+    expect(app.state.inspected?.model).toEqual(chosen)
+    expect(app.saved.recipient.model).toEqual(chosen)
     expect(app.notices.at(-1)).toContain("Variant reset to model default")
     expect(app.notices.at(-1)).toContain("Applies to subsequent turns")
   })
@@ -223,7 +224,7 @@ for (const options of [{ lookupStatus: 404 }, { lookupID: "ses_wrong" }]) {
     const app = await fixture(options)
     app.models.open()
     await app.waitFor((frame) => frame.includes("Catalog Model"))
-    await app.view.mockInput.typeText("test/org/other")
+    await app.view.mockInput.typeText("other model")
     app.view.mockInput.pressEnter()
     await app.waitFor((frame) => frame.includes("Could not select model"))
     expect(app.requests.filter((request) => request.method !== "GET")).toEqual([])
@@ -246,7 +247,7 @@ test("the minimum-size picker keeps the current variant readable and draft choic
   const choices: string[] = []
   app.models.pick({ directory: "/srv/project", current: "test/org/model", choose: (model) => void choices.push(model) })
   await app.waitFor((frame) => frame.includes("Server default") && frame.includes("Catalog Model"))
-  await app.view.mockInput.typeText("test/org/other")
+  await app.view.mockInput.typeText("other model")
   app.view.mockInput.pressEnter()
   await app.waitFor(() => !app.state.modal)
   expect(choices).toEqual(["test/org/other"])

@@ -6,6 +6,7 @@ import { errorText } from "../server"
 import { label, sessionTitle } from "../state"
 import type { ModalState } from "../state"
 import { color } from "../theme"
+import { pushRecent } from "@turenlabs/client/models"
 import { currentText, modelRows, ROW_LIMIT, type Row } from "./rows"
 import type { ModelsContext, ModelTarget } from "./types"
 
@@ -18,6 +19,8 @@ type View = {
   select: SelectRenderable
   catalog?: Awaited<ReturnType<Connection["providers"]["list"]>>
   matches: Row[]
+  /** Rows before the cap, for the hint. */
+  total: number
   loading: boolean
   /** Whether the filter holds text; its field is already destroyed when Esc runs `back`. */
   filtered: boolean
@@ -54,7 +57,7 @@ export function pick(ctx: ModelsContext, target: ModelTarget) {
   dialog.form.flexShrink = 0
   dialog.frame.add(select, dialog.frame.getChildren().indexOf(dialog.error))
   ctx.dialogs.track(dialog, select)
-  const view: View = { ctx, target, dialog, query, select, matches: [], loading: false, filtered: false }
+  const view: View = { ctx, target, dialog, query, select, matches: [], total: 0, loading: false, filtered: false }
   query.on("input", () => {
     view.filtered = !!query.value
     update(view)
@@ -114,8 +117,9 @@ function update(view: View) {
   const { catalog, query, select, target, dialog } = view
   if (!catalog) return
   const selected = view.matches[select.getSelectedIndex()]?.ref ?? target.current
-  const rows = modelRows(view.ctx, target, catalog, query.value.toLowerCase().trim().split(/\s+/).filter(Boolean))
-  view.matches = rows.slice(0, ROW_LIMIT)
+  const result = modelRows(view.ctx, target, catalog, query.value)
+  view.matches = result.rows
+  view.total = result.total
   // The marker column is shared: OpenTUI draws the name after a 2-column indicator, so the second line is indented to the name.
   select.options = view.matches.map((model) => ({
     name: `${model.ref === target.current ? "* " : "  "}${label(model.name, 150)}`,
@@ -128,15 +132,15 @@ function update(view: View) {
       view.matches.findIndex((model) => model.ref === selected),
     ),
   )
-  dialog.error.content = hint(view, catalog.models.length, rows.length)
+  dialog.error.content = hint(view, catalog.models.length)
 }
 
-function hint(view: View, models: number, rows: number) {
+function hint(view: View, models: number) {
   if (!models) return "No connected models. F2 connects a provider.\nCtrl+R refresh catalog · Esc back"
   const esc = view.query.value ? "Esc clear search · Esc again back" : "Esc back"
   if (!view.matches.length)
     return `No matching models. Change the search or F2 to connect.\nCtrl+R refresh catalog · ${esc}`
-  return `${view.query.value ? "" : "Up/Down choose · "}Enter select · ${esc}\nF2 connect · Ctrl+R refresh${rows > ROW_LIMIT ? ` · Newest ${ROW_LIMIT} of ${rows}; narrow search` : ""}`
+  return `${view.query.value ? "" : "Up/Down choose · "}Enter select · ${esc}\nF2 connect · Ctrl+R refresh${view.total > ROW_LIMIT ? ` · First ${ROW_LIMIT} of ${view.total}; narrow search` : ""}`
 }
 
 async function load(view: View) {
@@ -145,6 +149,7 @@ async function load(view: View) {
   view.loading = true
   view.catalog = undefined
   view.matches = []
+  view.total = 0
   view.select.options = []
   dialog.error.content = "Loading models... Esc back"
   try {
@@ -165,6 +170,10 @@ async function choose(view: View) {
   const { ctx, dialog, target } = view
   const model = view.matches[view.select.getSelectedIndex()]
   if (!model || dialog.busy) return
+  if (model.toggle) {
+    ctx.memory.showAll = !ctx.memory.showAll
+    return update(view)
+  }
   dialog.busy = true
   dialog.error.content = "Selecting model..."
   try {
@@ -172,6 +181,7 @@ async function choose(view: View) {
     if (target.recipient) await target.choose(model.ref)
     if (ctx.state.closed || ctx.state.modal !== dialog) return
     dialog.busy = false
+    if (model.model) ctx.memory.recent = pushRecent(ctx.memory.recent, model.model)
     ctx.dialogs.close(false)
     if (!target.recipient) await target.choose(model.ref)
   } catch (error) {

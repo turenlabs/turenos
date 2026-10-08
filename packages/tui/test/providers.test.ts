@@ -828,3 +828,31 @@ test("catalog keeps valid release dates and defaults and drops malformed ones wi
   ])
   expect(result.defaults).toEqual({ openai: "good" })
 })
+
+test("catalog keeps a valid family and status and drops bad ones without rejecting the catalog", async () => {
+  const { providers } = fixture(() =>
+    Response.json({
+      all: [
+        {
+          id: "openai",
+          name: "OpenAI",
+          models: {
+            good: { id: "good", providerID: "openai", name: "good", family: "gpt", status: "deprecated" },
+            odd: { id: "odd", providerID: "openai", name: "odd", family: "gp\u001bt", status: "retired" },
+            number: { id: "number", providerID: "openai", name: "number", family: 5, status: 5 },
+            long: { id: "long", providerID: "openai", name: "long", family: "x".repeat(129) },
+          },
+        },
+      ],
+      connected: ["openai"],
+      default: {},
+    }),
+  )
+  const result = await providers.list("/srv")
+  expect(result.models.map((item) => [item.family, item.status])).toEqual([
+    ["gpt", "deprecated"],
+    [undefined, undefined],
+    [undefined, undefined],
+    [undefined, undefined],
+  ])
+})

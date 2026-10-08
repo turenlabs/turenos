@@ -52,6 +52,18 @@ export function releaseDate(value: unknown) {
   return Number.isNaN(time) || new Date(time).toISOString().slice(0, 10) !== day ? undefined : day
 }
 
+/** An optional short label such as a model family. A bad value is dropped; it never rejects the catalog. */
+export function optionalLabel(value: unknown, limit = 128) {
+  return typeof value === "string" && value.length <= limit && value.trim() && !UNSAFE_TEXT.test(value)
+    ? value
+    : undefined
+}
+
+/** A model's lifecycle status, when the server states a known one. */
+export function modelStatus(value: unknown) {
+  return value === "alpha" || value === "beta" || value === "active" || value === "deprecated" ? value : undefined
+}
+
 /** The server's per-provider default models. One bad entry is skipped; it never rejects the catalog. */
 export function defaultModels(value: unknown) {
   if (!isRecord(value)) return {}

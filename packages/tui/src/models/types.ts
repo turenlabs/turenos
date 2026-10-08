@@ -11,6 +11,16 @@ export type ModelTarget = {
   cancel?: () => void
 }
 
+export type ModelRef = { providerID: string; modelID: string }
+
+/** What the picker remembers for the life of this process; nothing here is stored. */
+export type ModelMemory = {
+  /** Most recently chosen first. */
+  recent: ModelRef[]
+  /** Whether the picker also lists models outside the latest set. */
+  showAll: boolean
+}
+
 /** What the model picker and its session actions share. */
 export type ModelsContext = {
   renderer: CliRenderer
@@ -20,6 +30,7 @@ export type ModelsContext = {
   say: (message: string, error?: boolean) => void
   onUpdate: (session: Session) => void
   blocked: (sessionID: string) => boolean
+  memory: ModelMemory
   /** Opens provider setup for a directory, returning to `back` when it closes. */
   connectProvider: (directory: string, back: () => void) => void
 }

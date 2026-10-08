@@ -25,6 +25,7 @@ export function createModels(
     say,
     onUpdate,
     blocked,
+    memory: { recent: [], showAll: false },
     connectProvider: connections.open,
   }
 
