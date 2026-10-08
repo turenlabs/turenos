@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { absolutePath, encodeFilePath } from "../src/paths"
+import { absolutePath, encodeFilePath, isAbsolutePath } from "../src/paths"
 
 describe("absolutePath", () => {
   test("keeps POSIX, UNC and Windows drive paths", () => {
@@ -12,6 +12,11 @@ describe("absolutePath", () => {
       "//host/share/a.ts",
     ])
       expect(absolutePath("/repo", path)).toBe(path)
+  })
+
+  test("names relative paths as such", () => {
+    for (const path of ["src/a.ts", "./a.ts", "../a.ts", "~/a.ts", "C", "C:a.ts"])
+      expect(isAbsolutePath(path)).toBe(false)
   })
 
   test("joins a relative path to the directory once", () => {

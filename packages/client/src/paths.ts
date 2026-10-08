@@ -1,11 +1,17 @@
 // File paths as the server reads them in `file://` attachment URLs, shared by the desktop app and
 // the terminal client. Keep this file framework-free.
 
-/** A path resolved against `directory` unless it is already a POSIX, UNC or Windows drive path. */
+/** True for a POSIX, UNC or Windows drive path. */
+export const isAbsolutePath = (path: string) =>
+  path.startsWith("/") ||
+  /^[A-Za-z]:[\\/]/.test(path) ||
+  /^[A-Za-z]:$/.test(path) ||
+  path.startsWith("\\\\") ||
+  path.startsWith("//")
+
+/** `path` resolved against `directory` unless it is already absolute. */
 export function absolutePath(directory: string, path: string) {
-  if (path.startsWith("/")) return path
-  if (/^[A-Za-z]:[\\/]/.test(path) || /^[A-Za-z]:$/.test(path)) return path
-  if (path.startsWith("\\\\") || path.startsWith("//")) return path
+  if (isAbsolutePath(path)) return path
   return `${directory.replace(/[\\/]+$/, "")}/${path}`
 }
 

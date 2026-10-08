@@ -1,8 +1,10 @@
 // How full a model's context window is, measured the same way in the desktop app and the terminal
 // client. Occupancy belongs to one provider request: every assistant message records the usage of
-// one request, so the newest one describes the window as it stands now. Summing messages would
-// count cached tokens once per round trip and could never fall after compaction. Keep this file
-// framework-free; inputs are typed structurally so the SDK and client message types both fit.
+// one request (transports that run their own loop, like the Claude Code CLI, report their final
+// request there and their run total separately), so the newest one describes the window as it
+// stands now. Summing messages would count cached tokens once per round trip and could never fall
+// after compaction. Keep this file framework-free; inputs are typed structurally so the SDK and
+// client message types both fit.
 
 type Tokens = { input: number; output: number; reasoning: number; cache: { read: number; write: number } }
 
