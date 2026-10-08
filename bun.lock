@@ -30,7 +30,7 @@
     },
     "packages/app": {
       "name": "@turenlabs/app",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "@dnd-kit/abstract": "0.5.0",
         "@dnd-kit/dom": "0.5.0",
@@ -153,7 +153,7 @@
     },
     "packages/codemode": {
       "name": "@turenlabs/codemode",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "acorn": "8.15.0",
         "effect": "catalog:",
@@ -168,7 +168,7 @@
     },
     "packages/core": {
       "name": "@turenlabs/core",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "@ai-sdk/alibaba": "1.0.17",
         "@ai-sdk/amazon-bedrock": "4.0.112",
@@ -319,7 +319,7 @@
     },
     "packages/desktop": {
       "name": "@turenlabs/desktop",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "@turenlabs/binwalk-scan-wasm": "workspace:*",
         "@turenlabs/debug-symbols-wasm": "workspace:*",
@@ -396,7 +396,7 @@
     },
     "packages/effect-drizzle-sqlite": {
       "name": "@turenlabs/effect-drizzle-sqlite",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
@@ -410,7 +410,7 @@
     },
     "packages/effect-sqlite-node": {
       "name": "@turenlabs/effect-sqlite-node",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "effect": "catalog:",
       },
@@ -446,7 +446,7 @@
     },
     "packages/forge": {
       "name": "@turenlabs/forge",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "bin": {
         "forge": "./bin/forge",
       },
@@ -589,7 +589,7 @@
     },
     "packages/http-recorder": {
       "name": "@turenlabs/http-recorder",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "@effect/platform-node": "4.0.0-beta.83",
         "@effect/platform-node-shared": "4.0.0-beta.83",
@@ -644,7 +644,7 @@
     },
     "packages/llm": {
       "name": "@turenlabs/llm",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "@smithy/eventstream-codec": "4.2.14",
         "@smithy/util-utf8": "4.2.2",
@@ -679,7 +679,7 @@
     },
     "packages/plugin": {
       "name": "@turenlabs/plugin",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "@ai-sdk/provider": "3.0.14",
         "@turenlabs/sdk": "workspace:*",
@@ -734,7 +734,7 @@
     },
     "packages/script": {
       "name": "@turenlabs/script",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "semver": "^7.6.3",
       },
@@ -766,7 +766,7 @@
     },
     "packages/sdk/js": {
       "name": "@turenlabs/sdk",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "cross-spawn": "catalog:",
       },
@@ -781,7 +781,7 @@
     },
     "packages/server": {
       "name": "@turenlabs/server",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "@turenlabs/core": "workspace:*",
         "@turenlabs/protocol": "workspace:*",
@@ -797,7 +797,7 @@
     },
     "packages/session-ui": {
       "name": "@turenlabs/session-ui",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "@kobalte/core": "catalog:",
         "@pierre/diffs": "catalog:",
@@ -877,7 +877,7 @@
     },
     "packages/ui": {
       "name": "@turenlabs/ui",
-      "version": "1.0.42",
+      "version": "1.0.43",
       "dependencies": {
         "@hugeicons/core-free-icons": "4.2.3",
         "@kobalte/core": "catalog:",
