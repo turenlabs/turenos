@@ -1,5 +1,5 @@
 import type { KeyEvent } from "@opentui/core"
-import { fitHeading, fitHints, panelWidth } from "../changes/heading"
+import { fitHeading, panelWidth } from "../changes/heading"
 import { matchesKey, printableKey } from "../keys"
 import { openPanel } from "../panel"
 import { errorText } from "../server"
@@ -130,9 +130,10 @@ function hints(view: View) {
     () =>
       (panel.dialog.error.content = view.typing
         ? "Type to filter · Backspace edit · Enter keep · Esc clear"
-        : view.note
-          ? `${view.note}\n${fitHints(panel.width() - 2, [], ["Enter on/off", "/ filter", "Esc back"])}`
-          : fitHints(panel.width() - 2, optional, ["Enter on/off", "Esc back"])),
+        : panel.hintText(optional, ["Enter on/off", "Esc back"], {
+            text: view.note,
+            essential: ["Enter on/off", "/ filter", "Esc back"],
+          })),
   )
 }
 

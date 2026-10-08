@@ -1,21 +1,13 @@
 import { SelectRenderable } from "@opentui/core"
 import { afterEach, expect, test } from "bun:test"
-import { cleanup, dashboard } from "./support"
+import { cleanup, dashboard, descendants } from "./support"
 
 afterEach(async () => {
   while (cleanup.length) await cleanup.pop()!()
 })
 
-const selects = (app: Awaited<ReturnType<typeof dashboard>>) => {
-  const found: SelectRenderable[] = []
-  const walk = (node: { getChildren(): unknown[] }) =>
-    node.getChildren().forEach((child) => {
-      if (child instanceof SelectRenderable) found.push(child)
-      walk(child as { getChildren(): unknown[] })
-    })
-  walk(app.view.renderer.root)
-  return found
-}
+const selects = (app: Awaited<ReturnType<typeof dashboard>>) =>
+  descendants(app.view.renderer.root).filter((node) => node instanceof SelectRenderable)
 
 test("every Appearance description fits the dialog at 80 columns", async () => {
   const app = await dashboard({})
@@ -148,5 +140,6 @@ test("a feed description cut by the server ends in an ellipsis", async () => {
     "GET /api/intel/advisories": () => ({ items: [advisory], total: 1, page: 1, pageSize: 50 }),
   })
   app.view.mockInput.pressKey("I")
-  await app.screen("al…")
+  // The server cut the 500-character summary mid-word ("…alpha al"); the pane marks it with its own ellipsis.
+  await app.screen(`${summary.slice(-14)}…`)
 })

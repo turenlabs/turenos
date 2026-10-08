@@ -5,7 +5,6 @@ import { openPanel } from "../panel"
 import { errorText } from "../server"
 import { label } from "../state"
 import { color } from "../theme"
-import { fitHints } from "../changes/heading"
 import { fillRows } from "../settings/column"
 import { fetchPage, PAGE, TITLES, type Item, type Mode } from "./data"
 import { feeds, type IntelContext } from "./feeds"
@@ -31,13 +30,7 @@ const OPTIONAL = ["↑↓ choose", "[ ] page", "f feeds", "p poll now", "Ctrl+R 
 /** The hint fits two lines at any width; a note takes the first line and leaves one of hints. */
 function paintHints(view: View) {
   const { panel } = view
-  panel.fit(
-    "hints",
-    () =>
-      (panel.dialog.error.content = view.note
-        ? `${view.note}\n${fitHints(panel.width() - 2, [], ["m list", "f feeds", "p poll", "Esc close"])}`
-        : fitHints(panel.width() - 2, OPTIONAL, ["Esc close"])),
-  )
+  panel.hints(OPTIONAL, ["Esc close"], () => ({ text: view.note, essential: ["m list", "f feeds", "p poll", "Esc close"] }))
 }
 
 function say(view: View, note: string) {

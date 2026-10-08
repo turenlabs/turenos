@@ -3,7 +3,6 @@ import { errorText, type Session } from "../server"
 import { matchesKey } from "../keys"
 import type { DashboardState } from "../state"
 import { color } from "../theme"
-import { folderContains } from "../working-folders"
 import type { MenuContext } from "./context"
 import { fitHints } from "../changes/heading"
 import { openByID } from "./open-by-id"
@@ -11,11 +10,11 @@ import { describe, inFolders, innerWidth, paint, rank, rebuildRows, reveal } fro
 import type { Scope, Switcher } from "./switcher-state"
 import { buildSwitcherView } from "./switcher-view"
 
-export function openSwitcher(ctx: MenuContext, initialScope: Scope = "recent", sidebar = false, search = "") {
+export function openSwitcher(ctx: MenuContext, initialScope: Scope = "recent", search = "") {
   const { state, dialogs } = ctx
   if (!dialogs.navigate()) return
-  const sessions = loadedSessions(state, sidebar)
-  const dialog = dialogs.open("Switch session", false, 32, false, sidebar)
+  const sessions = loadedSessions(state)
+  const dialog = dialogs.open("Switch session", false, 32)
   if (!dialog) return
   dialog.frame.maxWidth = 160
   dialog.frame.maxHeight = undefined
@@ -26,7 +25,6 @@ export function openSwitcher(ctx: MenuContext, initialScope: Scope = "recent", s
   const s: Switcher = {
     ctx,
     dialog,
-    sidebar,
     sessions,
     ...view,
     scope: initialScope,
@@ -90,14 +88,8 @@ function previousIndex(state: DashboardState, sessions: Session[]) {
   )
 }
 
-function loadedSessions(state: DashboardState, sidebar: boolean) {
+function loadedSessions(state: DashboardState) {
   return [...(state.snapshot?.sessions ?? [])]
-    .filter(
-      (session) =>
-        !sidebar ||
-        state.snapshot?.workingFolders === undefined ||
-        state.snapshot.workingFolders.some((folder) => folderContains(folder, session.location.directory)),
-    )
     .sort(
       (a, b) =>
         Number(b.id === state.selected) - Number(a.id === state.selected) ||
@@ -146,7 +138,7 @@ function hint(s: Switcher) {
   return `${empty(s)}\nF2 ${nextScope[s.scope]} · Ctrl+O ID · Esc close`
 }
 
-/** The sidebar counts child sessions; the recent list leaves them out until a search asks for them. */
+/** The recent list leaves them out until a search asks for them. */
 function hiddenChildren(s: Switcher) {
   return s.scope === "recent" && !s.query.value.trim() && s.sessions.some((session) => session.parentID)
 }
@@ -279,7 +271,7 @@ function onKey(s: Switcher, key: KeyEvent) {
     const id = typed.trim()
     const scope = s.scope
     s.ctx.dialogs.close(false)
-    openByID(s.ctx, id.startsWith("ses_") ? id : "", () => openSwitcher(s.ctx, scope, s.sidebar, typed))
+    openByID(s.ctx, id.startsWith("ses_") ? id : "", () => openSwitcher(s.ctx, scope, typed))
     return true
   }
   if (matchesKey(key, "n", { ctrl: true })) {

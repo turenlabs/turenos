@@ -2,6 +2,7 @@ import { fitHeading, panelWidth } from "../changes/heading"
 import { display } from "../messages"
 import type { Panel } from "../panel"
 import { array, identifier, numeric, object, string } from "../response-validation"
+import { listChars } from "../settings/column"
 import { errorText, type Connection, type Session } from "../server"
 import { label, type DashboardState } from "../state"
 
@@ -76,7 +77,7 @@ function heading(events: TraceEvent[]) {
 
 /** Event names fitted to the list column with an ellipsis, so a long name never ends mid-word unmarked. */
 function paintRows(t: TraceView) {
-  const width = Math.max(24, Math.floor(panelWidth(t.panel) * 0.34)) - 4
+  const width = listChars(panelWidth(t.panel))
   // One source: its seq is unique on the page. Several sources repeat seqs, so rows are numbered by position.
   const bySeq = new Set(t.events.map((event) => event.aggregate)).size < 2
   const names = t.events.map((event, index) =>

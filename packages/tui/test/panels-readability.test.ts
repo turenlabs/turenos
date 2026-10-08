@@ -1,26 +1,11 @@
 import { expect, test } from "bun:test"
-import { mountDashboard } from "../src/index"
-import { connect } from "../src/server"
-import { cleanup, session, terminal, turen, type Route } from "./support"
+import { frameLines, session, sized, type Route } from "./support"
 
-async function sized(width: number, height: number, routes: Record<string, Route>) {
-  const server = turen({ routes })
-  const { view, screen } = await terminal(width, height)
-  const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url)
-  cleanup.push(app.dispose)
-  await app.ready
-  await screen("main task")
-  /** Runs a Ctrl+P palette action by name. */
-  async function palette(name: string) {
-    view.mockInput.pressKey("p", { ctrl: true })
-    await view.mockInput.typeText(name)
-    view.mockInput.pressEnter()
-  }
-  return { server, view, screen, palette }
+async function opened(width: number, height: number, routes: Record<string, Route>) {
+  const app = await sized(width, height, routes)
+  await app.screen("main task")
+  return app
 }
-
-const lines = (frame: string) =>
-  frame.split("\n").map((row) => row.replace(/^\s*│ ?/, "").replace(/\s*(?:[█▀▄])?\s*│\s*$/, ""))
 
 const task = {
   id: "tsk_117ea59ec001K9z4YaV2PEoNOY",
@@ -36,7 +21,7 @@ const task = {
 }
 
 test("to-dos spell their state, and the list says why it cannot be edited", async () => {
-  const { view, screen } = await sized(100, 36, {
+  const { view, screen } = await opened(100, 36, {
     "GET /session/ses_main/todo": () => [
       { content: "Read the sandbox README", status: "completed", priority: "high" },
       { content: "Write the notes file", status: "in_progress", priority: "high" },
@@ -45,21 +30,21 @@ test("to-dos spell their state, and the list says why it cannot be edited", asyn
   })
   view.mockInput.pressKey("t")
   const frame = await screen("TO-DOS · 1/3 done")
-  expect(frame).toContain("[done]       ● Read the sandbox README")
+  expect(frame).toContain("[done]        ● Read the sandbox README")
   expect(frame).toContain("[in progress] ◐ Write the notes file")
-  expect(frame).toContain("[to do]      ○ Review the changes")
+  expect(frame).toContain("[to do]       ○ Review the changes")
   expect(frame).toContain("read-only (the agent keeps this list)")
 })
 
 test("task rows lead with the description and agent, ids last, and the hint wraps between entries", async () => {
-  const { view, screen } = await sized(80, 24, {
+  const { view, screen } = await opened(80, 24, {
     "GET /api/session/ses_main/task": () => ({ data: [task], active: [], cursor: {} }),
   })
   view.mockInput.pressEscape()
   await screen("t Tasks")
   view.mockInput.pressKey("t")
   const frame = await screen("Summarise the readme")
-  const rows = lines(frame)
+  const rows = frameLines(frame)
   const at = rows.findIndex((row) => row.includes("Summarise the readme"))
   expect(rows[at + 1]).toContain("general agent")
   expect(rows[at + 1]).not.toContain("ses_")
@@ -71,7 +56,7 @@ test("task rows lead with the description and agent, ids last, and the hint wrap
 })
 
 test("Changes marks the active mode in its hint and spells out the status letters", async () => {
-  const { view, screen } = await sized(120, 36, {
+  const { view, screen } = await opened(120, 36, {
     "GET /vcs/diff": () => [
       { file: "answer.ts", status: "modified", additions: 1, deletions: 1, patch: "@@ -1 +1 @@\n-a\n+b" },
       { file: "notes.md", status: "added", additions: 3, deletions: 0, patch: "@@ -0,0 +1 @@\n+n" },
@@ -94,13 +79,13 @@ const entry = (name: string, type: "file" | "directory") => ({
 })
 
 test("Files sinks .git, says what Enter does for the selected row and names the previewed file", async () => {
-  const { view, screen } = await sized(100, 36, {
+  const { view, screen } = await opened(100, 36, {
     "GET /file": () => [entry(".git", "directory"), entry("src", "directory"), entry("notes.md", "file")],
     "GET /file/content": () => ({ type: "text", content: "# Notes" }),
   })
   view.mockInput.pressKey("e")
   const folder = await screen("▶ src/")
-  const rows = lines(folder)
+  const rows = frameLines(folder)
   expect(rows.findIndex((row) => row.includes("notes.md"))).toBeLessThan(rows.findIndex((row) => row.includes(".git/")))
   expect(folder).toContain("Enter open folder")
   view.mockInput.pressArrow("down")
@@ -111,7 +96,7 @@ test("Files sinks .git, says what Enter does for the selected row and names the 
 })
 
 test("an empty swarm room explains itself across the dialog, not in a narrow column", async () => {
-  const { view, screen } = await sized(100, 36, {
+  const { view, screen } = await opened(100, 36, {
     "GET /api/session/ses_main/room": () =>
       Response.json({ _tag: "SwarmRoomNotFoundError", resource: "ses_main" }, { status: 404 }),
     "GET /api/session/ses_main/room/entries": () => ({ data: { entries: [], head: 0 } }),
@@ -129,7 +114,7 @@ test("an empty swarm room explains itself across the dialog, not in a narrow col
 test("Tools hangs wrapped descriptions under the row and lists each group alphabetically", async () => {
   const description =
     "Apply one patch containing add, update, delete, and move file operations. Use this instead of bash"
-  const { screen, palette } = await sized(80, 24, {
+  const { screen, palette } = await opened(80, 24, {
     "GET /api/session": () => ({ data: [{ ...session(), model: { providerID: "openai", id: "gpt" } }], cursor: {} }),
     "GET /experimental/tool": () => ({
       agent: "build",
@@ -147,7 +132,7 @@ test("Tools hangs wrapped descriptions under the row and lists each group alphab
   })
   await palette("Session tools")
   const frame = await screen("apply_patch · builtin")
-  const rows = lines(frame)
+  const rows = frameLines(frame)
   const first = rows.findIndex((row) => row.includes("apply_patch · builtin"))
   expect(rows[first + 1]).toMatch(/^ {6}\S/)
   const order = ["apply_patch ·", "edit ·", "session_context ·", "bash ·"].map((name) => frame.indexOf(name))
@@ -162,7 +147,7 @@ test("Trace numbers rows by position when sources repeat a seq, and keeps the di
     durable: { aggregateID, seq, version: 1 },
     data: {},
   })
-  const { view, screen, palette } = await sized(80, 24, {
+  const { view, screen, palette } = await opened(80, 24, {
     "GET /api/session/ses_main/replay": () => ({
       data: [
         event("evt_1", "session.next.prompted", "ses_main", 0),
@@ -191,7 +176,7 @@ test("Trace with one source keeps its seq numbers and cuts the shared prefix of 
     durable: { aggregateID: "ses_main", seq, version: 1 },
     data: {},
   })
-  const { screen, palette } = await sized(80, 24, {
+  const { screen, palette } = await opened(80, 24, {
     "GET /api/session/ses_main/replay": () => ({
       data: [
         event("evt_1", "session.next.prompted", 5),
@@ -209,7 +194,7 @@ test("Trace with one source keeps its seq numbers and cuts the shared prefix of 
 })
 
 test("the new-terminal form names Tab, and a blank title becomes a readable default", async () => {
-  const { server, view, screen } = await sized(100, 36, {
+  const { server, view, screen } = await opened(100, 36, {
     // Refused, so the test never hands its screen to an attached terminal.
     "POST /api/pty": () => new Response(null, { status: 500 }),
   })
@@ -226,7 +211,7 @@ test("the new-terminal form names Tab, and a blank title becomes a readable defa
 })
 
 test("the automation form lines values up under captions and its example matches the default", async () => {
-  const { view, screen } = await sized(100, 36, {})
+  const { view, screen } = await opened(100, 36, {})
   view.mockInput.pressKey("3")
   await screen("Automations")
   view.mockInput.pressKey("a")
@@ -238,7 +223,7 @@ test("the automation form lines values up under captions and its example matches
 })
 
 test("the harness says what a snapshot is", async () => {
-  const { screen, palette } = await sized(100, 36, {
+  const { screen, palette } = await opened(100, 36, {
     "GET /api/session/ses_main/harness": () => ({
       data: {
         snapshot: {
@@ -272,7 +257,7 @@ function clearOfBar(frame: string) {
 const long = "x".repeat(2000)
 
 test("a long wrapped line in Files stays clear of the scroll bar at 100x36", async () => {
-  const { view, screen } = await sized(100, 36, {
+  const { view, screen } = await opened(100, 36, {
     "GET /file": () => [entry("long.txt", "file")],
     "GET /file/content": () => ({ type: "text", content: long }),
   })
@@ -292,7 +277,7 @@ test("a long wrapped line in the swarm room stays clear of the scroll bar at 100
     timeCreated: 1,
     timeUpdated: 1,
   }
-  const { view, screen } = await sized(100, 36, {
+  const { view, screen } = await opened(100, 36, {
     "GET /api/session/ses_main/room": () => ({ data: { room, members: [], lanes: [] } }),
     "GET /api/session/ses_main/room/entries": () => ({
       data: {
@@ -321,7 +306,7 @@ test("a long wrapped line in the swarm room stays clear of the scroll bar at 100
 })
 
 test("a long wrapped line in Trace stays clear of the scroll bar at 100x36", async () => {
-  const { screen, palette } = await sized(100, 36, {
+  const { screen, palette } = await opened(100, 36, {
     "GET /api/session/ses_main/replay": () => ({
       data: [
         { id: "evt_1", type: "session.created", durable: { aggregateID: "ses_main", seq: 0, version: 1 }, data: long },

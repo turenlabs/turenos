@@ -1,4 +1,5 @@
 import type { Panel } from "../panel"
+import { listChars } from "../settings/column"
 
 /** Columns the panel's heading line may use. */
 export function panelWidth(panel: Panel) {
@@ -34,7 +35,7 @@ export function fitHeading(width: number, lead: string, middle: string, trail: s
 
 /** A chooser row in the list column: the path loses its start so the status and counts stay visible. */
 export function fitRow(width: number, lead: string, path: string, trail: string) {
-  const space = Math.max(24, Math.floor(width * 0.34)) - 4 - lead.length - trail.length
+  const space = listChars(width) - lead.length - trail.length
   return space < 2
     ? `${lead}${path}${trail}`
     : fitHeading(space + lead.length + trail.length, lead, path, trail, "start")

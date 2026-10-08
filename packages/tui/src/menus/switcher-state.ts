@@ -11,7 +11,6 @@ export type ScopeButton = { value: Scope; button: TextRenderable }
 export type Switcher = {
   ctx: MenuContext
   dialog: ModalState
-  sidebar: boolean
   /** Loaded sessions the recent scope searches locally. */
   sessions: Session[]
   query: InputRenderable

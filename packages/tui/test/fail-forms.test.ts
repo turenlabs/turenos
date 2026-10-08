@@ -1,25 +1,7 @@
 import { expect, test } from "bun:test"
-import { mountDashboard } from "../src/index"
-import { connect } from "../src/server"
-import { cleanup, terminal, turen, type Route } from "./support"
+import { frameLines, sized, type Route } from "./support"
 
-async function sized(width: number, height: number, routes: Record<string, Route> = {}) {
-  const server = turen({ routes })
-  const { view, screen } = await terminal(width, height)
-  const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url)
-  cleanup.push(app.dispose)
-  await app.ready
-  /** Runs a Ctrl+P palette action by name. */
-  async function palette(name: string) {
-    view.mockInput.pressKey("p", { ctrl: true })
-    await view.mockInput.typeText(name)
-    view.mockInput.pressEnter()
-  }
-  return { view, screen, palette }
-}
-
-const rows = (frame: string) => frame.split("\n").map((line) => line.replace(/^\s*│\s?/, "").replace(/\s*│\s*$/, "").trimEnd())
-const after = (frame: string, text: string) => rows(frame)[rows(frame).findIndex((line) => line.includes(text)) + 1]!
+const after = (frame: string, text: string) => frameLines(frame)[frameLines(frame).findIndex((line) => line.includes(text)) + 1]!
 
 const message = (id: string, text: string, created: number) => ({ id, type: "user", text, time: { created } })
 const history = {
@@ -84,7 +66,7 @@ test("undo marks only the focused field with an arrow, and the chosen file mode 
   await screen("main task")
   await palette("Undo conversation turn")
   const frame = await screen("Confirmation (type undo)")
-  const arrows = (text: string) => rows(text).filter((line) => line.includes("▶"))
+  const arrows = (text: string) => frameLines(text).filter((line) => line.includes("▶"))
   expect(arrows(frame)).toEqual(["▶ Confirmation (type undo)"])
   expect(frame).toContain("(•) Conversation only")
   view.mockInput.pressTab()
@@ -146,7 +128,7 @@ test("stop all asks for its word once, as kill does", async () => {
   await palette("Stop all agents")
   const frame = await screen("Confirmation (type stop all)")
   expect(frame).not.toContain("Type stop all, then")
-  expect(rows(frame).filter((line) => line.includes("(type stop all)"))).toHaveLength(1)
+  expect(frameLines(frame).filter((line) => line.includes("(type stop all)"))).toHaveLength(1)
 })
 
 test("New session settings all fit at 80x24 and Tab walks them in view", async () => {

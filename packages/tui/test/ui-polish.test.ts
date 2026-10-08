@@ -1,8 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import { footerShortcuts } from "../src/chrome"
-import { mountDashboard } from "../src/index"
-import { connect } from "../src/server"
-import { cleanup, dashboard, session, terminal, turen, type Route } from "./support"
+import { cleanup, dashboard, mount, session, turen, type Route } from "./support"
 
 afterEach(async () => {
   while (cleanup.length) await cleanup.pop()!()
@@ -17,14 +15,7 @@ test("the typing footer says Ctrl+C stops while a turn runs and quits otherwise,
   expect(footerShortcuts(60, true, true, true)).not.toContain("Ctrl+C")
 })
 
-async function mounted(routes: Record<string, Route>) {
-  const server = turen({ routes })
-  const { view, screen } = await terminal(120, 36, true)
-  const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url, () => {})
-  cleanup.push(app.dispose)
-  await app.ready
-  return { view, screen }
-}
+const mounted = (routes: Record<string, Route>) => mount(120, routes, 36, "", "", () => {})
 
 test("the dashboard footer switches Ctrl+C between stop and quit as the session starts and stops", async () => {
   const state = { active: true }

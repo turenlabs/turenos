@@ -1,16 +1,5 @@
 import { expect, test } from "bun:test"
-import { mountDashboard } from "../src/index"
-import { connect } from "../src/server"
-import { cleanup, session, terminal, turen, until, type Route } from "./support"
-
-async function sized(width: number, height: number, routes: Record<string, Route>) {
-  const server = turen({ routes })
-  const { view, screen } = await terminal(width, height)
-  const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url)
-  cleanup.push(app.dispose)
-  await app.ready
-  return { server, view, screen }
-}
+import { session, sized, until, type Route } from "./support"
 
 const loop = {
   id: "loop_1",

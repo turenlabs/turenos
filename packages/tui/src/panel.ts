@@ -85,10 +85,15 @@ function fitting(renderer: CliRenderer, row: BoxRenderable, dialog: ModalState) 
       fits.set(name, paint)
       paint()
     },
-    /** Key hints that drop their trailing optional parts, never "Esc close", to fit two whole lines. */
-    hints(optional: string[], essential: string[]) {
+    /** Key hints that drop their trailing optional parts, never "Esc close", to fit two whole lines. A live `note` takes the first line and leaves one line of its own `essential` hints. */
+    hintText(optional: string[], essential: string[], note?: { text: string; essential: string[] }) {
       // The error line keeps a two-column margin beside the frame's edge.
-      panel.fit("hints", () => (dialog.error.content = fitHints(panel.width() - 2, optional, essential)))
+      const width = panel.width() - 2
+      return note?.text ? `${note.text}\n${fitHints(width, [], note.essential)}` : fitHints(width, optional, essential)
+    },
+    /** Paints `hintText` now and whenever the width changes; `note` is read at each paint. */
+    hints(optional: string[], essential: string[], note?: () => { text: string; essential: string[] }) {
+      panel.fit("hints", () => (dialog.error.content = panel.hintText(optional, essential, note?.())))
     },
   }
   return panel

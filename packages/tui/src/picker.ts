@@ -2,7 +2,7 @@ import { SelectRenderable, TextRenderable, type CliRenderer, type ScrollBoxRende
 import type { Dialogs } from "./dialogs"
 import { setRows } from "./dialogs/size"
 import { matchesKey } from "./keys"
-import { rowChars } from "./settings/column"
+import { selectChars } from "./settings/column"
 import { errorText } from "./server"
 import { label, type DashboardState } from "./state"
 import { color } from "./theme"
@@ -77,7 +77,7 @@ export function openPicker(
 
 /** Names and descriptions cut with an ellipsis to the list's laid-out width. */
 function paintChoices(list: SelectRenderable, choices: Choice[]) {
-  const chars = list.width > 4 ? rowChars(list.width) : 150
+  const chars = selectChars(list)
   list.options = choices.map((choice) => ({
     name: label(choice.name, chars),
     description: label(choice.description ?? "", chars),

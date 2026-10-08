@@ -1,4 +1,5 @@
 import { afterEach } from "bun:test"
+import type { Renderable } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { mountDashboard } from "../src/index"
 import { connect } from "../src/server"
@@ -136,10 +137,10 @@ export async function terminal(width = 120, height = 36, ctrlC = false) {
   return { view, screen }
 }
 
-/** A dashboard on a `turen()` server, with helpers for palette actions and typed confirmations. */
-export async function dashboard(routes: Record<string, Route>) {
+/** A dashboard of the given size on a `turen()` server, with a helper for Ctrl+P palette actions. */
+export async function sized(width: number, height: number, routes: Record<string, Route> = {}) {
   const server = turen({ routes })
-  const { view, screen } = await terminal()
+  const { view, screen } = await terminal(width, height)
   const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url)
   cleanup.push(app.dispose)
   await app.ready
@@ -149,10 +150,48 @@ export async function dashboard(routes: Record<string, Route>) {
     await view.mockInput.typeText(name)
     view.mockInput.pressEnter()
   }
+  return { server, view, screen, palette }
+}
+
+/** A `sized` dashboard at the default 120x36, with a helper for typed confirmations. */
+export async function dashboard(routes: Record<string, Route>) {
+  const app = await sized(120, 36, routes)
   /** Types text and submits the dialog with Ctrl+S. */
   async function confirm(text: string) {
-    await view.mockInput.typeText(text)
-    view.mockInput.pressKey("s", { ctrl: true })
+    await app.view.mockInput.typeText(text)
+    app.view.mockInput.pressKey("s", { ctrl: true })
   }
-  return { server, view, screen, palette, confirm }
+  return { ...app, confirm }
+}
+
+/** A dashboard whose Ctrl+C is left to it (as the client's renderer does), waiting for `ready` to show. */
+export async function mount(
+  width: number,
+  routes: Record<string, Route> = {},
+  height = 24,
+  address = "",
+  ready = "says hello",
+  quit?: () => void,
+) {
+  const server = turen({ routes })
+  const { view, screen } = await terminal(width, height, true)
+  const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url, quit, {
+    server: address || server.url.replace("http://", ""),
+  })
+  cleanup.push(app.dispose)
+  await app.ready
+  await screen(ready)
+  return { view, screen, server }
+}
+
+/** A frame's lines without the dialog border, its scroll bar and the padding beside them. */
+export function frameLines(frame: string) {
+  return frame
+    .split("\n")
+    .map((line) => line.replace(/^\s*│\s?/, "").replace(/\s*(?:[█▀▄])?\s*│\s*$/, "").trimEnd())
+}
+
+/** Every renderable below `node`, parents before their children. */
+export function descendants(node: Renderable): Renderable[] {
+  return node.getChildren().flatMap((child) => [child, ...descendants(child)])
 }

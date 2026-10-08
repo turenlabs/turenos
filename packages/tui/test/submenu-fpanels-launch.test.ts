@@ -1,16 +1,5 @@
 import { expect, test } from "bun:test"
-import { mountDashboard } from "../src/index"
-import { connect } from "../src/server"
-import { cleanup, session, terminal, turen, type Route } from "./support"
-
-async function sized(width: number, height: number, routes: Record<string, Route> = {}) {
-  const server = turen({ routes })
-  const { view, screen } = await terminal(width, height)
-  const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url)
-  cleanup.push(app.dispose)
-  await app.ready
-  return { server, view, screen }
-}
+import { session, sized, type Route } from "./support"
 
 test("New session shows a Settings heading and marks the focused setting once Tab opens them", async () => {
   const { view, screen } = await sized(120, 36)

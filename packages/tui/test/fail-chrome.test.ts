@@ -1,23 +1,9 @@
 import { expect, test } from "bun:test"
 import { footerShortcuts } from "../src/chrome"
-import { mountDashboard } from "../src/index"
 import { fitContext } from "../src/layout/context-line"
-import { connect } from "../src/server"
-import { assistant, cleanup, session, terminal, turen } from "./support"
+import { assistant, mount, session, turen } from "./support"
 
 const activeMain = { "GET /api/session/active": () => ({ data: { ses_main: { type: "running" } } }) }
-
-async function mount(width: number, routes = {}, height = 24, address = "", ready = "says hello") {
-  const server = turen({ routes })
-  const { view, screen } = await terminal(width, height, true)
-  const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url, undefined, {
-    server: address || server.url.replace("http://", ""),
-  })
-  cleanup.push(app.dispose)
-  await app.ready
-  await screen(ready)
-  return { view, screen, server }
-}
 
 test("the header keeps the port when only the port fits, with the busiest running text", async () => {
   const waiting = {

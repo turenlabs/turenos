@@ -22,7 +22,6 @@ export function innerWidth(s: Switcher) {
 export function describe(s: Switcher) {
   const { state } = s.ctx
   if (state.closed || state.modal !== s.dialog || s.details.isDestroyed) return
-  s.details.visible = !s.sidebar
   const session = s.matches[s.selected]
   // The title is already the selected row; the rest of the session's identity sits under the list at every size.
   s.details.content = session

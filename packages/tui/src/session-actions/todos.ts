@@ -1,11 +1,12 @@
 import { label } from "../state"
 import type { Todo } from "../server"
 
+// The labels pad to the longest ("[in progress]") so every glyph and every text start in the same column.
 const MARK = {
-  pending: "[to do]      ○",
+  pending: "[to do]       ○",
   in_progress: "[in progress] ◐",
-  completed: "[done]       ●",
-  cancelled: "[cancelled]  ×",
+  completed: "[done]        ●",
+  cancelled: "[cancelled]   ×",
 } as const
 
 const settled = (todos: readonly Todo[]) =>

@@ -1,14 +1,8 @@
 import { expect, test } from "bun:test"
-import { mountDashboard } from "../src/index"
-import { connect } from "../src/server"
-import { cleanup, terminal, turen, until, type Route } from "./support"
+import { sized, until, type Route } from "./support"
 
-async function sized(width: number, height: number, routes: Record<string, Route>) {
-  const server = turen({ routes })
-  const { view, screen } = await terminal(width, height)
-  const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url)
-  cleanup.push(app.dispose)
-  await app.ready
+async function opened(width: number, height: number, routes: Record<string, Route>) {
+  const { view, screen } = await sized(width, height, routes)
   if (width < 90) {
     // Below 90 columns the transcript has focus, so the reply editor is open until Esc.
     await screen("Reply to main task")
@@ -34,7 +28,7 @@ for (const [width, height] of [
   [60, 24],
 ] as const)
   test(`Files shows one selection marker and whole key hints at ${width}x${height}`, async () => {
-    const { view, screen } = await sized(width, height, files)
+    const { view, screen } = await opened(width, height, files)
     view.mockInput.pressKey("e")
     const frame = await screen("README.md")
     expect(frame).not.toContain("▶ ▸")
@@ -50,7 +44,7 @@ for (const [width, height] of [
   [60, 24],
 ] as const)
   test(`the session picker keeps whole hints, ▶ and ·, no lone heading, and the session's details at ${width}x${height}`, async () => {
-    const { view, screen } = await sized(width, height, {})
+    const { view, screen } = await opened(width, height, {})
     view.mockInput.pressKey("k", { ctrl: true })
     const frame = await screen("Switch session")
     const text = lines(frame)
@@ -64,7 +58,7 @@ for (const [width, height] of [
   })
 
 test("details list each fact once under SESSION, PROJECT and SERVER headers at 60x24", async () => {
-  const { view, screen } = await sized(60, 24, {})
+  const { view, screen } = await opened(60, 24, {})
   view.mockInput.pressKey("i")
   const frame = await screen("SERVER")
   for (const heading of ["SESSION", "PROJECT", "SERVER"]) expect(frame).toContain(heading)
@@ -87,7 +81,7 @@ test("terminal and automation cards name their keys, label the id and drop repea
     schedule: { type: "interval", seconds: 3600, timezone: "UTC" },
     nextRunAt: Date.UTC(2026, 9, 4, 13, 56),
   }
-  const { view, screen } = await sized(100, 30, {
+  const { view, screen } = await opened(100, 30, {
     "GET /api/pty": (_, url) => ({
       location: { directory: url.searchParams.get("location[directory]") },
       data: [shell],
@@ -111,7 +105,7 @@ test("terminal and automation cards name their keys, label the id and drop repea
 })
 
 test("the automation form marks the focused field in plain text", async () => {
-  const { view, screen } = await sized(80, 24, {})
+  const { view, screen } = await opened(80, 24, {})
   view.mockInput.pressKey("3")
   await screen("No automations yet")
   view.mockInput.pressKey("a")
@@ -122,7 +116,7 @@ test("the automation form marks the focused field in plain text", async () => {
 })
 
 test("the session picker refits its hint when the terminal shrinks while open", async () => {
-  const { view, screen } = await sized(120, 36, {})
+  const { view, screen } = await opened(120, 36, {})
   view.mockInput.pressKey("k", { ctrl: true })
   await screen("Switch session")
   view.resize(80, 24)

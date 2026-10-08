@@ -19,8 +19,7 @@ export function createMenus(
 ) {
   const ctx = { renderer, state, dialogs, connection, actions }
   return {
-    switcher: (initialScope?: "recent" | "all" | "archived", sidebar?: boolean) =>
-      openSwitcher(ctx, initialScope, sidebar),
+    switcher: (initialScope?: "recent" | "all" | "archived") => openSwitcher(ctx, initialScope),
     workingFolders: () => workingFolders(ctx),
     openByID: (value?: string) => openByID(ctx, value),
     commands: (list: { name: string; description: string; key?: string; run: () => void }[]) => commands(ctx, list),

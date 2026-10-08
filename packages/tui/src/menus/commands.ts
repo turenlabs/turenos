@@ -4,7 +4,7 @@ import { matchesKey } from "../keys"
 import { listRows, setRows } from "../dialogs/size"
 import { ResizingSelect } from "../picker"
 import { fuzzyRank } from "../suggest/fuzzy"
-import { rowChars } from "../settings/column"
+import { selectChars } from "../settings/column"
 import { label } from "../state"
 import type { MenuContext } from "./context"
 
@@ -85,7 +85,7 @@ function choice(action: Action) {
 }
 
 function paintRows(select: SelectRenderable, matches: ReturnType<typeof choice>[]) {
-  const chars = select.width > 4 ? rowChars(select.width) : 150
+  const chars = selectChars(select)
   select.options = matches.map((match) => ({
     name: label(match.row, chars - match.suffix.length) + match.suffix,
     description: "",

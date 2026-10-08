@@ -1,7 +1,6 @@
 import { StyledText, fg } from "@opentui/core"
 import { matchesKey } from "../keys"
 import { display } from "../messages"
-import { fitHints } from "../changes/heading"
 import { openPanel } from "../panel"
 import { errorText } from "../server"
 import { fillRows } from "../settings/column"
@@ -33,17 +32,10 @@ function hints(view: View, note = "") {
   view.note = note
   // `a` adds only inside a room; the All rooms list offers edit and delete but no add.
   const add = view.place.roomID ? ["a add"] : []
-  panel.fit(
-    "hints",
-    () =>
-      (panel.dialog.error.content = view.note
-        ? `${view.note}\n${fitHints(panel.width() - 2, [], [...add, "E edit", "Ctrl+D delete", "Esc back"])}`
-        : fitHints(
-            panel.width() - 2,
-            ["↑↓ choose", ...add, "E edit", "Ctrl+R refresh"],
-            ["Ctrl+D delete", "Esc back"],
-          )),
-  )
+  panel.hints(["↑↓ choose", ...add, "E edit", "Ctrl+R refresh"], ["Ctrl+D delete", "Esc back"], () => ({
+    text: view.note,
+    essential: [...add, "E edit", "Ctrl+D delete", "Esc back"],
+  }))
 }
 
 /** `note` reports what the form or action that reopened the list just did. */
