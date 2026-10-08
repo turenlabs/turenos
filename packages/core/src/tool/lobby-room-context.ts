@@ -141,6 +141,8 @@ function makeURL(baseURL: string, path: string) {
   })
 }
 
+const decodeJson = Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)
+
 function fetchJSON<A, I>(http: HttpClient.HttpClient, url: URL, schema: Schema.Codec<A, I>) {
   return http.execute(HttpClientRequest.get(url.toString())).pipe(
     Effect.flatMap(HttpClientResponse.filterStatusOk),
@@ -152,7 +154,7 @@ function fetchJSON<A, I>(http: HttpClient.HttpClient, url: URL, schema: Schema.C
       ),
     ),
     Effect.map((body) => new TextDecoder().decode(body)),
-    Effect.flatMap(Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)),
+    Effect.flatMap(decodeJson),
     Effect.flatMap(Schema.decodeUnknownEffect(schema)),
   )
 }

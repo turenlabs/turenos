@@ -23,6 +23,46 @@ const SUBSCRIBE_TIMEOUT_MS = 10_000
 
 export const Event = FileSystemWatcher.Event
 
+export interface Update {
+  readonly file: string
+  readonly event: "add" | "change" | "unlink"
+}
+
+// Native backends deliver updates in bursts — a checkout or build can produce
+// thousands per second, and each publish fans out to every EventV2 listener on
+// the main thread, which has starved the HTTP event loop under concurrent agent
+// work. Coalesce to one event per path per flush window; consumers rescan file
+// state, so last-write-wins per path preserves semantics.
+const FLUSH_MS = 50
+const PENDING_LIMIT = 8192
+
+export function coalescedCallback(
+  publish: (updates: Update[]) => void,
+  schedule: (flush: () => void) => void = (flush) => {
+    setTimeout(flush, FLUSH_MS)
+  },
+): ParcelWatcher.SubscribeCallback {
+  const pending = new Map<string, Update["event"]>()
+  let scheduled = false
+  const flush = () => {
+    scheduled = false
+    if (!pending.size) return
+    const updates = [...pending].map(([file, event]) => ({ file, event }))
+    pending.clear()
+    publish(updates)
+  }
+  return (_error, updates) => {
+    for (const update of updates) {
+      const event = update.type === "create" ? "add" : update.type === "update" ? "change" : "unlink"
+      pending.set(update.path, event)
+    }
+    if (pending.size >= PENDING_LIMIT) return flush()
+    if (scheduled) return
+    scheduled = true
+    schedule(flush)
+  }
+}
+
 const watcher = lazy((): typeof import("@parcel/watcher") | undefined => {
   try {
     const libc = typeof FORGE_LIBC === "undefined" ? undefined : FORGE_LIBC
@@ -83,13 +123,11 @@ const layer = Layer.effect(
       Effect.promise(() => Promise.allSettled(subscriptions.map((subscription) => subscription.unsubscribe()))),
     )
 
-    const callback: ParcelWatcher.SubscribeCallback = (_error, updates) => {
-      for (const update of updates) {
-        if (update.type === "create") runFork(events.publish(Event.Updated, { file: update.path, event: "add" }))
-        if (update.type === "update") runFork(events.publish(Event.Updated, { file: update.path, event: "change" }))
-        if (update.type === "delete") runFork(events.publish(Event.Updated, { file: update.path, event: "unlink" }))
-      }
-    }
+    const callback = coalescedCallback((updates) =>
+      runFork(
+        Effect.forEach(updates, (update) => events.publish(Event.Updated, update), { discard: true }),
+      ),
+    )
 
     const subscribe = (directory: string, ignore: string[]) => {
       const pending = w.subscribe(directory, callback, { ignore, backend })

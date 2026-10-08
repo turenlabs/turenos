@@ -23,6 +23,8 @@ const ready = (): SshConnection => ({
 })
 
 const deps = {
+  // Fail closed if a cleanup path bypasses the injected connection: never run real SSH.
+  binary: process.execPath,
   controlDir: "/tmp/forge-ssh-test",
   credentialVault: { keyID: "v1", key: new Uint8Array(32) },
   appVersion: "1.16.2",
@@ -82,8 +84,28 @@ test("rejects a forge version that did not update on the remote", () => {
 test("clears cached host probes when removing an SSH server", () => {
   expect(
     clearSshHostState(
-      { "ssh:a@x": { host: "ssh:a@x", sshAvailable: true, batchAuth: true, platform: null, hasBash: false, forgePath: null, forgeVersion: null, error: null } },
-      { "ssh:a@x": { host: "ssh:a@x", resolvedPath: "/u/.forge/bin/forge", version: "1", expectedVersion: "1", matchesDesktop: true, error: null } },
+      {
+        "ssh:a@x": {
+          host: "ssh:a@x",
+          sshAvailable: true,
+          batchAuth: true,
+          platform: null,
+          hasBash: false,
+          forgePath: null,
+          forgeVersion: null,
+          error: null,
+        },
+      },
+      {
+        "ssh:a@x": {
+          host: "ssh:a@x",
+          resolvedPath: "/u/.forge/bin/forge",
+          version: "1",
+          expectedVersion: "1",
+          matchesDesktop: true,
+          error: null,
+        },
+      },
       "ssh:a@x",
     ),
   ).toEqual({ probes: {}, forgeChecks: {} })
@@ -479,9 +501,7 @@ test("sequential prompts each surface and resolve (ssh password retries)", async
   await waitFor(() => controller.getState().prompt?.kind === "password")
   const firstId = controller.getState().prompt!.requestId
   controller.respondPrompt(firstId, "wrong")
-  await waitFor(
-    () => controller.getState().prompt !== null && controller.getState().prompt!.requestId !== firstId,
-  )
+  await waitFor(() => controller.getState().prompt !== null && controller.getState().prompt!.requestId !== firstId)
   controller.respondPrompt(controller.getState().prompt!.requestId, "right")
   await waitFor(() => responses.length === 2)
   expect(responses).toEqual(["wrong", "right"])

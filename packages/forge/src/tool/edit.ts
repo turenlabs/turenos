@@ -715,7 +715,8 @@ export function replace(content: string, oldString: string, newString: string, r
         )
       }
       if (replaceAll) {
-        return content.replaceAll(search, newString)
+        // A function replacement keeps newString literal: as a string, `$$` and `$&` are substitution patterns.
+        return content.replaceAll(search, () => newString)
       }
       const lastIndex = content.lastIndexOf(search)
       if (index !== lastIndex) continue

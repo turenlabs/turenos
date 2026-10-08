@@ -53,9 +53,10 @@ import { DialogSelectModelUnpaid } from "@/components/dialog-select-model-unpaid
 import { DialogSelectModelUnpaidV2 } from "@/components/dialog-select-model-unpaid-v2"
 import { ModelEffortControl } from "@/components/model-effort-control"
 import { modelEffortDefaultIndex, modelEffortDisplay } from "@/components/model-selection-display"
-import { useCommand } from "@/context/command"
+import { formatKeybind, formatKeybindParts, useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
 import { useLanguage } from "@/context/language"
+import { useSettings } from "@/context/settings"
 import { getFastMode } from "@/context/model-fast-mode"
 import { usePlatform } from "@/context/platform"
 import { createSessionTabs } from "@/pages/session/helpers"
@@ -96,7 +97,7 @@ export type PromptInputHistory = {
 export type PromptInputSubmission = {
   abort: () => Promise<void> | void
   interrupting?: () => boolean
-  handleSubmit: (event: Event, steer?: boolean) => Promise<void> | void
+  handleSubmit: (event: Event, delivery?: "steer" | "queue") => Promise<void> | void
 }
 
 export type PromptInputControls = {
@@ -223,6 +224,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const dialog = useDialog()
   const command = useCommand()
   const language = useLanguage()
+  const settings = useSettings()
   const platform = usePlatform()
   const tabs = () => props.controls.session.tabs
   let editorRef!: HTMLDivElement
@@ -392,7 +394,29 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
   const questionTakeover = () => props.controls.newLayoutDesigns && store.mode === "normal" && question.active()
   const stopping = createMemo(() => working() && blank())
+  // While a turn runs, a non-empty draft is a follow-up: Enter (and the primary button)
+  // sends the preferred delivery, Mod+Enter (and the secondary button) the other one.
+  const followup = createMemo(() => {
+    if (!working() || blank() || store.mode !== "normal" || questionTakeover() || !props.shouldQueue?.()) return
+    const preferred = settings.general.followup()
+    return { preferred, alternate: preferred === "queue" ? ("steer" as const) : ("queue" as const) }
+  })
+  const followupLabel = (delivery: "steer" | "queue") =>
+    language.t(delivery === "queue" ? "prompt.action.queue" : "prompt.action.steer")
+  const followupDescription = (delivery: "steer" | "queue") =>
+    language.t(delivery === "queue" ? "prompt.action.queue.description" : "prompt.action.steer.description")
+  const followupTip = (delivery: "steer" | "queue", keys: string) => (
+    <div class="flex max-w-64 flex-col gap-0.5">
+      <div class="flex items-center gap-2">
+        <span>{followupLabel(delivery)}</span>
+        <KeybindV2 keys={formatKeybindParts(keys, language.t)} variant="neutral" />
+      </div>
+      <span class="text-v2-text-text-muted">{followupDescription(delivery)}</span>
+    </div>
+  )
   const tip = () => {
+    const current = followup()
+    if (current) return followupTip(current.preferred, "enter")
     if (stopping()) {
       return (
         <div class="flex items-center gap-2">
@@ -430,6 +454,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const placeholder = createMemo(() => {
     if (store.mode === "normal" && props.goal?.mode()) return language.t("session.goal.placeholder")
+    if (store.mode === "normal" && working() && props.shouldQueue?.())
+      return language.t(
+        settings.general.followup() === "queue" ? "prompt.placeholder.followup.queue" : "prompt.placeholder.followup.steer",
+        { keybind: formatKeybind("mod+enter", language.t) },
+      )
     return promptPlaceholder({
       mode: store.mode,
       commentCount: commentCount(),
@@ -1394,19 +1423,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       goal: props.goal,
     })
 
-  const submitOrAnswer = (event: Event, steer?: boolean) => {
+  const submitOrAnswer = (event: Event, delivery?: "steer" | "queue") => {
     if (questionTakeover()) {
       event.preventDefault()
       question.commit()
       return
     }
-    return handleSubmit(event, steer)
+    return handleSubmit(event, delivery)
   }
 
-  const steer = (event: MouseEvent) => {
+  const sendAlternate = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    void submitOrAnswer(event, true)
+    void submitOrAnswer(event, followup()?.alternate)
   }
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -1581,7 +1610,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       ) {
         return
       }
-      void handleSubmit(event)
+      void handleSubmit(event, (event.metaKey || event.ctrlKey) && followup() ? followup()?.alternate : undefined)
     }
   }
 
@@ -1616,6 +1645,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const designPlaceholder = () => {
     if (store.mode === "shell") return placeholder()
     if (props.goal?.mode()) return language.t("session.goal.placeholder")
+    if (working() && props.shouldQueue?.()) return placeholder()
     return "Ask anything, / for commands, @ for context..."
   }
 
@@ -1710,25 +1740,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       <Switch>
         <Match when={props.controls.newLayoutDesigns}>
           <div class="flex w-full flex-col gap-2">
-            <div data-component="prompt-toolbar" class="w-full">
-              <div data-slot="prompt-toolbar-row">
-                <Show when={props.sessionDock}>{props.sessionDock}</Show>
-                <Show when={!providersLoading()}>
-                  <div data-component="prompt-mode-dock" class="flex min-w-0 items-center">
-                    <ComposerModelControl state={modelControlState()} />
-                    {variantControl()}
-                    {fastControl()}
-                  </div>
-                </Show>
-              </div>
-            </div>
             <DockShellForm
               data-component={newSession() ? "session-new-composer" : "session-composer"}
               data-rule="muted"
               data-rule-focus
               onSubmit={submitOrAnswer}
               classList={{
-                "group/prompt-input min-h-[96px] w-full !rounded-[18px] bg-v2-background-bg-base": true,
+                "group/prompt-input min-h-[76px] w-full bg-v2-background-bg-base": true,
                 "border-icon-info-active border-dashed": store.draggingType !== null,
                 [props.class ?? ""]: !!props.class,
               }}
@@ -1823,8 +1841,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </div>
                 </div>
               </div>
-              <div class="flex h-11 items-center px-2">
-                <div class="flex min-w-0 flex-1 items-center gap-1">
+              <div data-slot="prompt-composer-controls" class="flex min-h-[38px] items-end gap-1 px-2 py-1">
+                <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1">
                   {fileAttachmentInput()}
                   <TooltipV2
                     placement="top"
@@ -1870,20 +1888,35 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Show when={showAgentControl()}>
                     <ComposerAgentControl state={agentControlState()} />
                   </Show>
+                  <Show when={!providersLoading()}>
+                    <div data-component="prompt-mode-dock" class="flex min-w-0 flex-wrap items-center">
+                      <ComposerModelControl state={modelControlState()} />
+                      {variantControl()}
+                      {fastControl()}
+                    </div>
+                  </Show>
+                  <Show when={props.sessionDock}>
+                    <div data-slot="prompt-workspace-controls">{props.sessionDock}</div>
+                  </Show>
                   {props.toolbar}
                 </div>
-                <Show when={working() && !blank()}>
-                  <TooltipV2 placement="top" value={language.t("session.followupDock.sendNow")}>
-                    <IconButton
-                      data-action="prompt-steer"
-                      type="button"
-                      icon="chevron-double-right"
-                      variant="secondary"
-                      class="size-7 rounded-md p-[6px]"
-                      aria-label={language.t("session.followupDock.sendNow")}
-                      onClick={steer}
-                    />
-                  </TooltipV2>
+                <Show when={followup()}>
+                  {(current) => (
+                    <TooltipV2 placement="top" value={followupTip(current().alternate, "mod+enter")}>
+                      <ButtonV2
+                        data-action="prompt-followup-alternate"
+                        data-delivery={current().alternate}
+                        type="button"
+                        variant="ghost"
+                        size="small"
+                        class="h-7"
+                        aria-keyshortcuts="Meta+Enter Control+Enter"
+                        onClick={sendAlternate}
+                      >
+                        {followupLabel(current().alternate)}
+                      </ButtonV2>
+                    </TooltipV2>
+                  )}
                 </Show>
                 <TooltipV2 placement="top" inactive={!working() && blank()} value={tip()}>
                   <IconButton
@@ -1892,20 +1925,35 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     disabled={interrupting?.() || (!working() && blank())}
                     aria-busy={interrupting?.()}
                     tabIndex={store.mode === "normal" ? undefined : -1}
-                    icon={stopping() ? "stop" : store.mode === "shell" ? "arrow-undo-down" : "arrow-up"}
+                    icon={
+                      stopping()
+                        ? "stop"
+                        : store.mode === "shell"
+                          ? "arrow-undo-down"
+                          : followup()?.preferred === "queue"
+                            ? "bullet-list"
+                            : followup()
+                              ? "chevron-double-right"
+                              : "arrow-up"
+                    }
+                    data-delivery={followup()?.preferred}
                     variant="primary"
                     class="size-7 rounded-md p-[6px] text-v2-icon-icon-muted shadow-[var(--v2-elevation-button-contrast)] disabled:opacity-50"
                     style={{
                       "background-image":
                         "linear-gradient(180deg,var(--v2-alpha-light-20) 0%,var(--v2-alpha-light-0) 100%),linear-gradient(90deg,var(--v2-background-bg-contrast) 0%,var(--v2-background-bg-contrast) 100%)",
                     }}
-                    aria-label={language.t(
-                      interrupting?.()
-                        ? "prompt.action.stopping"
-                        : stopping()
-                          ? "prompt.action.stop"
-                          : "prompt.action.send",
-                    )}
+                    aria-label={
+                      followup()
+                        ? followupLabel(followup()!.preferred)
+                        : language.t(
+                            interrupting?.()
+                              ? "prompt.action.stopping"
+                              : stopping()
+                                ? "prompt.action.stop"
+                                : "prompt.action.send",
+                          )
+                    }
                   />
                 </TooltipV2>
               </div>
@@ -2032,18 +2080,22 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 />
 
                 <div class="flex items-center gap-1 pointer-events-auto">
-                  <Show when={working() && !blank()}>
-                    <Tooltip placement="top" value={language.t("session.followupDock.sendNow")}>
-                      <IconButton
-                        data-action="prompt-steer"
-                        type="button"
-                        icon="chevron-double-right"
-                        variant="secondary"
-                        class="size-8"
-                        aria-label={language.t("session.followupDock.sendNow")}
-                        onClick={steer}
-                      />
-                    </Tooltip>
+                  <Show when={followup()}>
+                    {(current) => (
+                      <Tooltip placement="top" value={followupTip(current().alternate, "mod+enter")}>
+                        <Button
+                          data-action="prompt-followup-alternate"
+                          data-delivery={current().alternate}
+                          type="button"
+                          variant="ghost"
+                          size="small"
+                          aria-keyshortcuts="Meta+Enter Control+Enter"
+                          onClick={sendAlternate}
+                        >
+                          {followupLabel(current().alternate)}
+                        </Button>
+                      </Tooltip>
+                    )}
                   </Show>
                   <Tooltip placement="top" inactive={!working() && blank()} value={tip()}>
                     <IconButton
@@ -2052,16 +2104,31 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       disabled={interrupting?.() || (!working() && blank())}
                       aria-busy={interrupting?.()}
                       tabIndex={store.mode === "normal" ? undefined : -1}
-                      icon={stopping() ? "stop" : store.mode === "shell" ? "arrow-undo-down" : "arrow-up"}
+                      icon={
+                        stopping()
+                          ? "stop"
+                          : store.mode === "shell"
+                            ? "arrow-undo-down"
+                            : followup()?.preferred === "queue"
+                              ? "bullet-list"
+                              : followup()
+                                ? "chevron-double-right"
+                                : "arrow-up"
+                      }
+                      data-delivery={followup()?.preferred}
                       variant="primary"
                       class="size-8"
-                      aria-label={language.t(
-                        interrupting?.()
-                          ? "prompt.action.stopping"
-                          : stopping()
-                            ? "prompt.action.stop"
-                            : "prompt.action.send",
-                      )}
+                      aria-label={
+                        followup()
+                          ? followupLabel(followup()!.preferred)
+                          : language.t(
+                              interrupting?.()
+                                ? "prompt.action.stopping"
+                                : stopping()
+                                  ? "prompt.action.stop"
+                                  : "prompt.action.send",
+                            )
+                      }
                     />
                   </Tooltip>
                 </div>

@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test"
 import { visualizationTreemap } from "./visualization-layout"
 
 describe("visualizationTreemap", () => {
+  test("uses deterministic D3 squarified tiles instead of count splits", () => {
+    const rectangles = visualizationTreemap([1, 1, 1, 1], 100, 100)
+    expect(rectangles).toEqual(visualizationTreemap([1, 1, 1, 1], 100, 100))
+    expect(rectangles[0]!.height).not.toBe(50)
+    expect(rectangles[0]!.width * rectangles[0]!.height).toBeCloseTo(2500, 8)
+  })
   test("assigns proportional areas without overlap", () => {
     const values = [1, 2, 3, 4, 5]
     const rectangles = visualizationTreemap(values, 100, 80)

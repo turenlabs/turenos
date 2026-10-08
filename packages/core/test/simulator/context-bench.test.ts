@@ -22,6 +22,13 @@
  *   realistic sizes (the gate never fired below its budget), and when it would fire, a
  *   compaction is a full cache invalidation, so firing earlier than pressure demands costs
  *   billed tokens rather than saving them (same economics that killed soft-elide).
+ *   Automatic target moved from 75% of the window to 40%. This benchmark cannot judge that: its scripted
+ *   sessions are 10-14 turns and the early-ckpt verdict above was measured on them. The case for 40% is long
+ *   sessions on 1M-token windows, where the whole window is re-sent every turn: on real sessions median time to
+ *   first frame grew from 2.8s to 9.1s as context went from 100-200k to 600k+ with a warm cache, and cost per
+ *   turn grew roughly in proportion. A compaction is still a full cache invalidation, so it pays only when many
+ *   turns remain; the agent can checkpoint earlier on its own judgment with `session_checkpoint`. If long-session
+ *   billed cost does not fall, revisit this number, not the benchmark.
  *   dedup (older byte-identical results cleared): ADOPTED as default — −53% wire, −23%
  *   billed, −33% peak on re-read-heavy; exactly neutral elsewhere.
  *   input-prune (stale write/edit/patch bodies cleared, exemption-only): ADOPTED as default —
@@ -217,7 +224,10 @@ describe("context-efficiency benchmark", () => {
             }
             measure(scenario.name, variant.name, ctx, `BENCH-${scenario.name}-${scenario.turns}`)
           }),
-        { compaction: variant.override },
+        // The benchmark compares pruning and dedup techniques, not the compaction trigger. A 400k window puts the
+        // 40% target at 160k, about where the 75% target of the old 200k window sat, so these scripted sessions
+        // keep measuring what they were calibrated to measure instead of compacting mid-script.
+        { compaction: variant.override, modelContextLimit: { context: 400_000 } },
       )
 
   afterAll(() => {

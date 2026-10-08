@@ -1755,7 +1755,7 @@ export type GlobalEvent = {
         id: string
         type: "server.connected"
         properties: {
-          [key: string]: unknown
+          resume?: "initial" | "ok" | "gap"
         }
       }
     | {
@@ -7573,7 +7573,7 @@ export type ServerConnected = {
   }
   location?: LocationRef
   data: {
-    [key: string]: unknown
+    resume?: "initial" | "ok" | "gap"
   }
 }
 
@@ -7833,6 +7833,18 @@ export type LoopRun = {
   sessionID?: string
   outputs: {
     [key: string]: AutomationStepOutput
+  }
+  execution?: {
+    title: string
+    prompt: string
+    location: {
+      directory: string
+      workspaceID?: string
+    }
+    agent?: string
+    model?: ModelRef
+    skill?: string
+    workflow?: AutomationWorkflow
   }
   error?: string
   time: {
@@ -9272,7 +9284,7 @@ export type EventServerConnected = {
   id: string
   type: "server.connected"
   properties: {
-    [key: string]: unknown
+    resume?: "initial" | "ok" | "gap"
   }
 }
 
@@ -13086,6 +13098,7 @@ export type SyncHistoryListData = {
   query?: {
     directory?: string
     workspace?: string
+    limit?: string
   }
   url: "/sync/history"
 }

@@ -35,6 +35,7 @@ import { Bandit } from "./integrations/bandit"
 import { NativeAudit } from "./integrations/native-audit"
 import { Opengrep } from "./integrations/opengrep"
 import { Batou } from "./integrations/batou"
+import { Zizmor } from "./integrations/zizmor"
 import { Linear } from "./integrations/linear"
 
 /**
@@ -51,7 +52,7 @@ export type IntegrationGroup =
   | "iac" // infrastructure-as-code misconfiguration scanning
 
 /**
- * The contract every module in `integrations/` implements. See CONVENTIONS.md
+ * The contract every module in `integrations/` implements. See docs/development/security-integrations.md
  * for the full rules (output shape, caching, secrets, error handling).
  */
 export interface Integration {
@@ -116,6 +117,7 @@ const implementations: readonly Integration[] = [
   NativeAudit,
   Opengrep,
   Batou,
+  Zizmor,
 ]
 
 /** Runtime implementations projected through the Extension v1 catalog. */

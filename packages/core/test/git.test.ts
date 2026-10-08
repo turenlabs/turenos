@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { Effect, Exit } from "effect"
@@ -204,9 +204,229 @@ describe("Git trees", () => {
       expect(yield* read(path.join(root.path, "outside.txt"))).toBe("changed outside\n")
     }),
   )
+
+  // The oracle is plain `git diff` for one file, which is what this code ran for every file before it was batched.
+  it.live("batches tree diffs and still matches git file by file, across more files than one batch", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      // The shadow git directory lives beside the project, not inside it, so a scope of "." never captures it.
+      const project = path.join(root.path, "project")
+      const bulk = Array.from({ length: 205 }, (_, index) => `bulk/file-${String(index).padStart(3, "0")}.txt`)
+      yield* Effect.promise(async () => {
+        await fs.mkdir(project)
+        await initRepo(project)
+        await fs.mkdir(path.join(project, "bulk"))
+        await Promise.all([
+          ...bulk.map((file) => fs.writeFile(path.join(project, file), "one\ntwo\nthree\n")),
+          fs.writeFile(path.join(project, "gone.txt"), "bye\nbye\n"),
+          fs.writeFile(path.join(project, "blob.bin"), Buffer.from([0, 1, 2, 3, 0, 255])),
+          fs.writeFile(path.join(project, "no-newline.txt"), "no newline"),
+        ])
+      })
+      const git = yield* Git.Service
+      const source = yield* git.repo.discover(AbsolutePath.make(project))
+      if (!source) throw new Error("Repository not found")
+      const repository = yield* git.repo.create({
+        worktree: source.worktree,
+        gitDirectory: AbsolutePath.make(path.join(root.path, "shadow")),
+        seed: source,
+      })
+      yield* git.index.refresh({ repository, scope: RelativePath.make(".") })
+      const before = yield* git.tree.write(repository)
+
+      yield* Effect.promise(async () => {
+        await Promise.all([
+          ...bulk.map((file) => fs.writeFile(path.join(project, file), "one\nTWO\nthree\nfour\n")),
+          fs.rm(path.join(project, "gone.txt")),
+          fs.writeFile(path.join(project, "blob.bin"), Buffer.from([0, 9, 9, 3, 0, 255, 7])),
+          fs.writeFile(path.join(project, "no-newline.txt"), "no newline either"),
+          // A literal name that is also a glob: it must select only itself.
+          fs.writeFile(path.join(project, "*.txt"), "star\n"),
+          fs.writeFile(path.join(project, "tab\tname.txt"), "tab\n"),
+        ])
+      })
+      yield* git.index.refresh({ repository, scope: RelativePath.make(".") })
+      const after = yield* git.tree.write(repository)
+
+      const diffs = yield* git.tree.diff({ repository, from: before, to: after, context: 3 })
+      const byPath = new Map(diffs.map((item) => [String(item.path), item]))
+      const changed = yield* git.tree.files({ repository, from: before, to: after })
+      expect(diffs.map((item) => item.path)).toEqual([...changed])
+      expect(diffs).toHaveLength(bulk.length + 5)
+
+      expect(byPath.get("gone.txt")).toMatchObject({ status: "deleted", additions: 0, deletions: 2 })
+      expect(byPath.get("*.txt")).toMatchObject({ status: "added", additions: 1, deletions: 0 })
+      expect(byPath.get("tab\tname.txt")).toMatchObject({ status: "added", additions: 1, deletions: 0 })
+      expect(byPath.get("blob.bin")).toMatchObject({ status: "modified", additions: 0, deletions: 0, patch: "" })
+      expect(byPath.get(bulk[204]!)).toMatchObject({ status: "modified", additions: 2, deletions: 1 })
+
+      // Every file's patch is byte-for-byte what git prints for that file alone, in both batches.
+      for (const item of diffs.filter((entry) => entry.path !== "blob.bin")) {
+        const reference = yield* Effect.promise(() =>
+          runGit(
+            project,
+            "--git-dir",
+            repository.gitDirectory,
+            "--literal-pathspecs",
+            "diff",
+            "--unified=3",
+            "--no-renames",
+            before,
+            after,
+            "--",
+            item.path,
+          ),
+        )
+        expect(item.patch).toBe(reference.stdout)
+      }
+    }),
+  )
+})
+
+describe("Git diff output parsing", () => {
+  test("reads status and counts from raw plus numstat records", () => {
+    const summary = Git.parseDiffSummary(
+      [
+        ":100644 100644 aaa bbb M",
+        "a.txt",
+        ":000000 100644 0000000 ccc A",
+        "new.txt",
+        ":100644 000000 ddd 0000000 D",
+        "old.txt",
+        ":100644 100644 eee fff M",
+        "image.png",
+        "3\t1\ta.txt",
+        "5\t0\tnew.txt",
+        "0\t4\told.txt",
+        "-\t-\timage.png",
+        "",
+      ].join("\0"),
+    )
+
+    expect(summary.get("a.txt")).toEqual({ status: "modified", additions: 3, deletions: 1, binary: false })
+    expect(summary.get("new.txt")).toEqual({ status: "added", additions: 5, deletions: 0, binary: false })
+    expect(summary.get("old.txt")).toEqual({ status: "deleted", additions: 0, deletions: 4, binary: false })
+    expect(summary.get("image.png")).toEqual({ status: "modified", additions: 0, deletions: 0, binary: true })
+  })
+
+  test("a filename that looks like a record is read as a path", () => {
+    const tricky = ":100644 100644 aaa bbb M"
+    const summary = Git.parseDiffSummary([":100644 100644 aaa bbb M", tricky, `2\t2\t${tricky}`, ""].join("\0"))
+
+    expect(summary.get(tricky)).toEqual({ status: "modified", additions: 2, deletions: 2, binary: false })
+    expect(summary.size).toBe(1)
+  })
+
+  test("splits one git diff into one patch per file without breaking bodies", () => {
+    const first = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-x\n+diff --git is only text here\n"
+    const second = "diff --git a/b b/b\nnew file mode 100644\n"
+
+    expect(Git.splitPatches(first + second)).toEqual([first, second])
+    expect(Git.splitPatches("")).toEqual([])
+  })
 })
 
 describe("Git index", () => {
+  for (const checkIgnores of [false, true]) {
+    it.live(`stages magic, wildcard, and newline filenames literally (ignore check: ${checkIgnores})`, () =>
+      Effect.gen(function* () {
+        const root = yield* Effect.acquireRelease(
+          Effect.promise(() => tmpdir()),
+          (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+        )
+        const project = path.join(root.path, "project")
+        const names = [":(literal)missing", ":(glob)**", ":(exclude)*", "*.txt", "[abc]", "line\nbreak"]
+        yield* Effect.promise(async () => {
+          await fs.mkdir(project)
+          await initRepo(project)
+          await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
+          const ignoreRules = "ignored*\n:(glob)ignored\\*\n"
+          await fs.writeFile(path.join(project, ".gitignore"), checkIgnores ? "build/\n" : ignoreRules)
+          await runGit(project, "add", ".")
+          await runGit(project, "commit", "-qm", "tracked")
+          if (checkIgnores) await fs.writeFile(path.join(project, ".git", "info", "exclude"), ignoreRules)
+          await fs.writeFile(path.join(project, "ignored.txt"), "ignored")
+          await fs.writeFile(path.join(project, ":(glob)ignored*"), "ignored")
+          await fs.writeFile(path.join(project, "oversized.txt"), "oversized")
+          await Promise.all(names.map((file) => fs.writeFile(path.join(project, file), "ok")))
+        })
+        const git = yield* Git.Service
+        const source = yield* git.repo.discover(AbsolutePath.make(project))
+        if (!source) throw new Error("Repository not found")
+        const repository = yield* git.repo.create({
+          worktree: source.worktree,
+          gitDirectory: AbsolutePath.make(path.join(root.path, "shadow")),
+          seed: source,
+        })
+        const originalIndex = yield* Effect.promise(() => fs.readFile(path.join(source.gitDirectory, "index")))
+        const result = yield* git.index.refresh({
+          repository,
+          scope: RelativePath.make("."),
+          ignores: checkIgnores ? source : undefined,
+          maximumUntrackedFileBytes: 4,
+        })
+        expect(result.skipped).toEqual([RelativePath.make("oversized.txt")])
+        const { stdout: files } = yield* Effect.promise(() =>
+          runGit(project, "--git-dir", repository.gitDirectory, "ls-files", "-z"),
+        )
+        expect(files.split("\0").filter(Boolean).sort()).toEqual([".gitignore", "tracked.txt", ...names].sort())
+        expect(yield* Effect.promise(() => fs.readFile(path.join(source.gitDirectory, "index")))).toEqual(originalIndex)
+      }),
+    )
+  }
+
+  for (const oversizedCount of [1, Git.BULK_REBUILD_THRESHOLD, Git.BULK_REBUILD_THRESHOLD + 1]) {
+    it.live(`removes oversized literal paths without dropping tracked siblings (${oversizedCount})`, () =>
+      Effect.gen(function* () {
+        const root = yield* Effect.acquireRelease(
+          Effect.promise(() => tmpdir()),
+          (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+        )
+        const project = path.join(root.path, "project")
+        const skipped = [":(glob)**", ...Array.from({ length: oversizedCount - 1 }, (_, index) => `large-${index}`)]
+        yield* Effect.promise(async () => {
+          await fs.mkdir(project)
+          await initRepo(project)
+          await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
+          await fs.writeFile(path.join(project, ".gitignore"), "ignored*\n")
+          await runGit(project, "add", ".")
+          await runGit(project, "commit", "-qm", "tracked")
+          await fs.writeFile(path.join(project, "ignored.txt"), "ignored")
+          await Promise.all(skipped.map((file) => fs.writeFile(path.join(project, file), "oversized")))
+        })
+        const git = yield* Git.Service
+        const source = yield* git.repo.discover(AbsolutePath.make(project))
+        if (!source) throw new Error("Repository not found")
+        const repository = yield* git.repo.create({
+          worktree: source.worktree,
+          gitDirectory: AbsolutePath.make(path.join(root.path, "shadow")),
+          seed: source,
+        })
+        const originalIndex = yield* Effect.promise(() => fs.readFile(path.join(source.gitDirectory, "index")))
+
+        const result = yield* git.index.refresh({
+          repository,
+          scope: RelativePath.make("."),
+          maximumUntrackedFileBytes: 4,
+        })
+
+        expect([...result.skipped].sort()).toEqual(skipped.map((file) => RelativePath.make(file)).sort())
+        const { stdout: files } = yield* Effect.promise(() =>
+          runGit(project, "--git-dir", repository.gitDirectory, "ls-files", "-z"),
+        )
+        expect(files.split("\0").filter(Boolean)).toEqual([".gitignore", "tracked.txt"])
+        expect(yield* Effect.promise(() => fs.readFile(path.join(source.gitDirectory, "index")))).toEqual(originalIndex)
+        const lines = yield* TestConsole.logLines
+        expect(lines.some((line) => String(line).includes("refresh bulk rebuild"))).toBe(
+          oversizedCount > Git.BULK_REBUILD_THRESHOLD,
+        )
+      }),
+    )
+  }
+
   it.live("rebuilds a poisoned index wholesale when stale entries exceed the bulk threshold", () =>
     Effect.gen(function* () {
       const root = yield* Effect.acquireRelease(

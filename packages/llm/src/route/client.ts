@@ -164,19 +164,29 @@ export interface GenerateMethod {
 
 export class Service extends Context.Service<Service, Interface>()("@forge/LLMClient") {}
 
+// Merging only happens for options the route or model actually default. Otherwise the request's own
+// value is already the merge result, and rebuilding the request would re-validate every message.
 const resolveRequestOptions = (request: LLMRequest) => {
   const routeDefaults = request.model.route.defaults
   const modelDefaults = request.model.defaults
-  const generation = mergeGenerationOptions(routeDefaults.generation, modelDefaults?.generation, request.generation)
-  return LLMRequest.update(request, {
-    generation: generation ?? new GenerationOptions({}),
-    providerOptions: mergeProviderOptions(
-      routeDefaults.providerOptions,
-      modelDefaults?.providerOptions,
-      request.providerOptions,
-    ),
-    http: mergeHttpOptions(routeDefaults.http, modelDefaults?.http, request.http),
-  })
+  const patch = {
+    ...(routeDefaults.generation || modelDefaults?.generation
+      ? { generation: mergeGenerationOptions(routeDefaults.generation, modelDefaults?.generation, request.generation) }
+      : {}),
+    ...(routeDefaults.providerOptions || modelDefaults?.providerOptions
+      ? {
+          providerOptions: mergeProviderOptions(
+            routeDefaults.providerOptions,
+            modelDefaults?.providerOptions,
+            request.providerOptions,
+          ),
+        }
+      : {}),
+    ...(routeDefaults.http || modelDefaults?.http
+      ? { http: mergeHttpOptions(routeDefaults.http, modelDefaults?.http, request.http) }
+      : {}),
+  }
+  return LLMRequest.update(request, patch)
 }
 
 export interface MakeInput<Body, Frame, Event, State> {

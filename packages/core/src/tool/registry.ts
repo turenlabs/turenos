@@ -1,6 +1,6 @@
 export * as ToolRegistry from "./registry"
 
-import { ToolOutput, type ToolCall, type ToolDefinition, type ToolResultValue } from "@turenlabs/llm"
+import { ToolOutput, type ToolResultValue, type ToolCall, type ToolDefinition } from "@turenlabs/llm"
 import { Context, Effect, Layer, Scope } from "effect"
 import { AgentV2 } from "../agent"
 import { PermissionV2 } from "../permission"
@@ -25,6 +25,8 @@ import { Tools } from "./tools"
 import { makeLocationNode } from "../effect/app-node"
 import { ToolVisibleError } from "./visible-error"
 import { ToolExecution } from "./execution"
+import { SecretRedaction } from "../secret-redaction"
+import { SecretOutput } from "../secret-output"
 
 export type ExecuteInput = {
   readonly sessionID: SessionSchema.ID
@@ -39,6 +41,8 @@ export type MaterializeInput = {
   readonly permissions?: PermissionV2.Ruleset
   /** Separate authority ceilings. A whole-tool deny in any set hides the tool. */
   readonly permissionSets?: ReadonlyArray<PermissionV2.Ruleset>
+  /** Tool-name availability, independent of shared leaf permission actions such as edit. */
+  readonly toolPermissions?: PermissionV2.Ruleset
   /** Canonical tools visible only to this provider turn. */
   readonly session?: Readonly<Record<string, AnyTool>>
   /**
@@ -95,6 +99,36 @@ export interface Settlement {
 
 export class Service extends Context.Service<Service, Interface>()("@forge/v2/ToolRegistry") {}
 
+// Only sanitized settlements reach the durable execution ledger. Re-check after
+// advisory notes and on replay, which can return output written by older versions.
+const redactSettlement = (settlement: Settlement, protection: SecretOutput.Snapshot): Effect.Effect<Settlement> =>
+  Effect.try({
+    try: (): Settlement => {
+      if (settlement.result.type === "error")
+        return { result: { type: "error", value: protection.json(settlement.result.value) } }
+      const output = redactOutput(settlement.output ?? ToolOutput.fromResultValue(settlement.result)!, protection)
+      return { ...settlement, result: ToolOutput.toResultValue(output), ...(settlement.output ? { output } : {}) }
+    },
+    catch: () => "Tool output withheld because secret redaction failed",
+  }).pipe(Effect.catch((value) => Effect.succeed({ result: { type: "error" as const, value } })))
+
+function redactOutput(output: ToolOutput, protection: SecretOutput.Snapshot): ToolOutput {
+  return {
+    structured: protection.json(output.structured),
+    content: output.content.map((item) =>
+      item.type === "text"
+        ? { type: "text", text: protection.text(item.text) }
+        : {
+            type: "file",
+            // Encoded attachment bytes are opaque, not textual tool output.
+            uri: item.uri,
+            mime: item.mime,
+            ...(item.name === undefined ? {} : { name: protection.text(item.name) }),
+          },
+    ),
+  }
+}
+
 const registryLayer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -102,6 +136,7 @@ const registryLayer = Layer.effect(
     const interceptors = yield* ToolInterceptor.Service
     const resources = yield* ToolOutputStore.Service
     const executions = yield* ToolExecution.Service
+    const secretOutput = yield* SecretOutput.Service
     type Registration = { readonly identity: object; readonly tool: AnyTool }
     const local = new Map<string, Array<{ readonly token: object; readonly registration: Registration }>>()
     const provisions = new Set<Effect.Effect<void>>()
@@ -110,6 +145,7 @@ const registryLayer = Layer.effect(
       input: ExecuteInput,
       registration: Registration,
       call: ToolCall,
+      protection: SecretOutput.Snapshot,
       subagentContext?: Tool.SubagentPromptContext,
     ) {
       const pending = yield* settle(registration.tool, call, {
@@ -120,13 +156,31 @@ const registryLayer = Layer.effect(
         ...(subagentContext && Tool.requiresSubagentContext(registration.tool) ? { subagentContext } : {}),
       }).pipe(
         Effect.map((output) => ({ output })),
+        // Protect the whole message before the formatter rewrites or caps any part of it.
         Effect.catchTag("LLM.ToolFailure", (failure) =>
-          Effect.succeed({ result: { type: "error" as const, value: ToolVisibleError.make(failure) } }),
+          Effect.try({
+            try: () => ToolVisibleError.make(failure, protection.text),
+            catch: () => "Tool output withheld because secret redaction failed",
+          }).pipe(
+            Effect.catch((withheld) => Effect.succeed(withheld)),
+            Effect.map((value) => ({ result: { type: "error" as const, value } })),
+          ),
         ),
       )
       if ("result" in pending) return pending
-      const output = pending.output
-      const bounded = yield* resources.bound({ sessionID: input.sessionID, toolCallID: input.call.id, output })
+      // Redact before bounding: the overflow writer otherwise retains the original.
+      const safe = yield* Effect.try({
+        try: () => redactOutput(pending.output, protection),
+        catch: () => "Tool output withheld because secret redaction failed",
+      }).pipe(Effect.result)
+      if (safe._tag === "Failure") return { result: { type: "error" as const, value: safe.failure } }
+      const output = safe.success
+      const bounded = yield* resources.bound({
+        sessionID: input.sessionID,
+        toolCallID: input.call.id,
+        output,
+        protection,
+      })
       const result = ToolOutput.toResultValue(bounded.output)
       if (result.type === "error")
         return bounded.outputPaths.length > 0 ? { result, outputPaths: bounded.outputPaths } : { result }
@@ -152,6 +206,14 @@ const registryLayer = Layer.effect(
       registration: Registration,
       subagentContext?: Tool.SubagentPromptContext,
     ) {
+      const protection = yield* secretOutput.snapshot().pipe(Effect.result)
+      if (protection._tag === "Failure")
+        return {
+          result: {
+            type: "error" as const,
+            value: "Tool execution withheld because secret output protection is unavailable",
+          },
+        }
       const identity = {
         sessionID: input.sessionID,
         agent: input.agent,
@@ -159,47 +221,70 @@ const registryLayer = Layer.effect(
         callID: input.call.id,
         tool: input.call.name,
       }
-      return yield* executions.execute(
-        {
-          sessionID: input.sessionID,
-          assistantMessageID: input.assistantMessageID,
-          callID: input.call.id,
-          tool: input.call.name,
-          input: input.call.input,
-          retryableError: retryableError(registration.tool),
-        },
-        Effect.gen(function* () {
-          const decision = yield* interceptors.runBefore({ ...identity, input: input.call.input })
-          if (decision.type === "deny") {
-            const result = { type: "error" as const, value: decision.reason }
+      return yield* executions
+        .execute(
+          {
+            sessionID: input.sessionID,
+            assistantMessageID: input.assistantMessageID,
+            callID: input.call.id,
+            tool: input.call.name,
+            input: input.call.input,
+            retryableError: retryableError(registration.tool),
+          },
+          Effect.gen(function* () {
+            const decision = yield* interceptors.runBefore({ ...identity, input: input.call.input })
+            if (decision.type === "deny") {
+              const result = { type: "error" as const, value: decision.reason }
+              if (input.inline) yield* interceptors.runTurnComplete(identity)
+              yield* interceptors.awaitTurnComplete(identity)
+              // Observers still see the denial rather than a call that silently vanished, but notes on
+              // a call that never ran have nothing to annotate.
+              yield* interceptors.runAfter({ ...identity, input: input.call.input, result, denied: true })
+              return { result }
+            }
+            const call = decision.input === input.call.input ? input.call : { ...input.call, input: decision.input }
+            // Input that cannot be inspected (too deep, too large, not plain data) is refused the
+            // same way as a masked reference: fail closed, with a tool error rather than a defect.
+            const placeholder =
+              permission(registration.tool, call.name) === "edit" ||
+              ["edit", "write", "apply_patch", "bash"].includes(call.name)
+                ? yield* Effect.try({
+                    try: () => (SecretRedaction.containsPlaceholder(call.input) ? "masked" : "clear"),
+                    catch: () => "uninspectable" as const,
+                  }).pipe(Effect.catch((unchecked) => Effect.succeed(unchecked)))
+                : "clear"
+            if (placeholder !== "clear")
+              return {
+                result: {
+                  type: "error" as const,
+                  value:
+                    placeholder === "masked"
+                      ? "Masked secret references are not source text. Re-read a narrower range and edit without copying placeholders."
+                      : "Mutation input could not be checked for masked secret references, so nothing was executed. Send plain, smaller input.",
+                },
+              }
+            const execution = executeRegistration(input, registration, call, protection.success, subagentContext)
+            const settlement = yield* input.executeWithPermit ? input.executeWithPermit(execution) : execution
             if (input.inline) yield* interceptors.runTurnComplete(identity)
             yield* interceptors.awaitTurnComplete(identity)
-            // Observers still see the denial rather than a call that silently vanished, but notes on
-            // a call that never ran have nothing to annotate.
-            yield* interceptors.runAfter({ ...identity, input: input.call.input, result, denied: true })
-            return { result }
-          }
-          const call = decision.input === input.call.input ? input.call : { ...input.call, input: decision.input }
-          const execution = executeRegistration(input, registration, call, subagentContext)
-          const settlement = yield* input.executeWithPermit ? input.executeWithPermit(execution) : execution
-          if (input.inline) yield* interceptors.runTurnComplete(identity)
-          yield* interceptors.awaitTurnComplete(identity)
-          const notes = yield* interceptors.runAfter({
-            ...identity,
-            input: call.input,
-            result: settlement.result,
-            denied: false,
-          })
-          return notes.length === 0 ? settlement : annotate(settlement, notes)
-        }).pipe(
-          Effect.ensuring(
-            Effect.gen(function* () {
-              if (input.inline) yield* interceptors.runTurnComplete(identity)
-              yield* interceptors.runFinally(identity)
-            }),
+            const notes = yield* interceptors.runAfter({
+              ...identity,
+              input: call.input,
+              result: settlement.result,
+              denied: false,
+            })
+            return notes.length === 0 ? settlement : annotate(settlement, notes)
+          }).pipe(
+            Effect.flatMap((settlement) => redactSettlement(settlement, protection.success)),
+            Effect.ensuring(
+              Effect.gen(function* () {
+                if (input.inline) yield* interceptors.runTurnComplete(identity)
+                yield* interceptors.runFinally(identity)
+              }),
+            ),
           ),
-        ),
-      )
+        )
+        .pipe(Effect.flatMap((settlement) => redactSettlement(settlement, protection.success)))
     })
 
     const settleWith = Effect.fn("ToolRegistry.settle")(function* (
@@ -261,7 +346,10 @@ const registryLayer = Layer.effect(
           session.add(name)
         }
         for (const [name, registration] of registrations)
-          if (permissionSets.some((rules) => whollyDisabled(permission(registration.tool, name), rules)))
+          if (
+            whollyDisabled(name, options.toolPermissions ?? []) ||
+            permissionSets.some((rules) => whollyDisabled(permission(registration.tool, name), rules))
+          )
             registrations.delete(name)
         const deferred: Materialization["deferred"][number][] = []
         const definitions: ToolDefinition[] = []
@@ -361,11 +449,11 @@ function whollyDisabled(action: string, rules: PermissionV2.Ruleset) {
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [ApplicationTools.node, ToolInterceptor.node, ToolOutputStore.node, ToolExecution.node],
+  deps: [ApplicationTools.node, ToolInterceptor.node, ToolOutputStore.node, ToolExecution.node, SecretOutput.node],
 })
 
 export const toolsNode = makeLocationNode({
   service: Tools.Service,
   layer,
-  deps: [ApplicationTools.node, ToolInterceptor.node, ToolOutputStore.node, ToolExecution.node],
+  deps: [ApplicationTools.node, ToolInterceptor.node, ToolOutputStore.node, ToolExecution.node, SecretOutput.node],
 })

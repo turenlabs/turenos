@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { ExtensionCatalog } from "@turenlabs/extensions"
 import { Extension } from "@turenlabs/schema"
+import { Schema } from "effect"
 import { Vigil } from "../../src/skill/vigil"
 import type { Process } from "../../src/util/process"
 
@@ -52,6 +54,61 @@ describe("Vigil skill scanner", () => {
     expect(Vigil.skillDigest(new Extension.Manifest({ ...manifest, description: "Changed description" }))).not.toBe(
       Vigil.skillDigest(manifest),
     )
+  })
+
+  test("admits the reviewed OAuth/OIDC catalog skill digest", async () => {
+    const manifest = ExtensionCatalog.get("turenlabs/oauth-security-review")
+    if (!manifest) throw new Error("OAuth/OIDC Security Review manifest is missing")
+    const result = await Vigil.scanManifest(manifest, {
+      ensure: async () => config,
+      run: (async () => ({
+        code: 0,
+        stdout: score("malicious", 0.9, 0.1),
+        stderr: Buffer.alloc(0),
+      })) as typeof Process.run,
+    })
+    expect(result?.reviewed).toBe(true)
+    expect(Vigil.blockReason(result)).toBeUndefined()
+  })
+
+  test("binds GitHub Actions review admission to the reviewed catalog content", async () => {
+    const manifest = ExtensionCatalog.get("turenlabs/github-actions-security-review")
+    if (!manifest) throw new Error("GitHub Actions Security Review manifest is missing")
+    const dependencies = {
+      ensure: async () => config,
+      run: (async () => ({
+        code: 0,
+        stdout: score("malicious", 0.9, 0.1),
+        stderr: Buffer.alloc(0),
+      })) as typeof Process.run,
+    }
+    const result = await Vigil.scanManifest(manifest, dependencies)
+    expect(result?.reviewed).toBe(true)
+    expect(Vigil.blockReason(result)).toBeUndefined()
+
+    const modified = await Vigil.scanManifest(
+      Schema.decodeUnknownSync(Extension.Manifest)({
+        ...Schema.encodeSync(Extension.Manifest)(manifest),
+        description: "Changed review instructions",
+      }),
+      dependencies,
+    )
+    expect(modified?.reviewed).toBe(false)
+    expect(Vigil.blockReason(modified)).toContain("Vigil blocked")
+  })
+
+  test("marks the tenant-isolation catalog skill as reviewed", async () => {
+    const manifest = ExtensionCatalog.get("turenlabs/tenant-isolation-review")
+    if (!manifest) throw new Error("Tenant Isolation Review manifest is missing")
+    const result = await Vigil.scanManifest(manifest, {
+      ensure: async () => config,
+      run: (async () => ({
+        code: 0,
+        stdout: score("benign", -0.2, 0.0000019818544387817383),
+        stderr: Buffer.alloc(0),
+      })) as typeof Process.run,
+    })
+    expect(result?.reviewed).toBe(true)
   })
 
   test("stages the complete prompt package and removes it after a scan", async () => {

@@ -2,6 +2,7 @@ import type { Event, Session, SessionV2Info, V2SessionListResponse } from "@ture
 import type { QueryClient } from "@tanstack/solid-query"
 import { INACTIVE_AFTER_MS, Session as SessionSchema } from "@turenlabs/schema/session"
 import { trimSessions } from "./session-trim"
+import { eventNeedsResync } from "./event-reducer"
 import { pathKey } from "@/utils/path-key"
 
 // The Home index is a recent summary cache, not the session history. Older
@@ -71,8 +72,8 @@ export function homeSessionIndexSessions(
     .filter((session) => !isSessionInactive(session, now))
 }
 
-export function homeSessionIndexRefresh(event: Event["type"], connected: boolean) {
-  if (event === "server.connected") return { connected: true, refetch: connected }
+export function homeSessionIndexRefresh(event: { type: Event["type"]; properties?: unknown }, connected: boolean) {
+  if (event.type === "server.connected") return { connected: true, refetch: connected && eventNeedsResync(event) }
   return {
     connected,
     // The home index folds only the three V1 whole-session events, so a V2 rename cannot be
@@ -80,9 +81,9 @@ export function homeSessionIndexRefresh(event: Event["type"], connected: boolean
     // The cast is the one concession: `session.next.title.updated` is not in the generated SDK
     // event union yet, and regenerating it means booting the CLI. Drop the cast with that regen.
     refetch:
-      event === "global.disposed" ||
-      event === "session.next.moved" ||
-      (event as string) === "session.next.title.updated",
+      event.type === "global.disposed" ||
+      event.type === "session.next.moved" ||
+      (event.type as string) === "session.next.title.updated",
   }
 }
 
@@ -142,7 +143,7 @@ export function createHomeSessionIndexCache(queryClient: QueryClient, server: st
       }
       queryClient.setQueryData<HomeSessionEvents>(eventsKey, { sequence: next.sequence, entries: [] })
     },
-    refresh(event: Event["type"]) {
+    refresh(event: { type: Event["type"]; properties?: unknown }) {
       const result = homeSessionIndexRefresh(event, connected)
       connected = result.connected
       if (!result.refetch) return

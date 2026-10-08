@@ -198,7 +198,7 @@ body[data-new-layout] [data-timeline-virtual-content] {
   /* Density: preserve a quiet gap at structural boundaries. --v2-cell-y sets both spacing rules at
      once — the TurnGap row (2 cells) and the data-separate blank line (1 cell)
      both read it, so spacing stays consistent as text wraps. */
-  --v2-cell-y: 12px;
+  --v2-cell-y: 8px;
 
   /* The gutter widens from 10px to 18px so it can carry glyph prefixes (❯, #)
      as well as the 2px hung rules; the container below pads the text column
@@ -319,9 +319,53 @@ body[data-new-layout] [data-timeline-virtual-content] {
     color: var(--v2-text-text-muted);
   }
 
-  /* Density: the 24px web-app part margins halve with the cell rhythm. */
+  /* Row boundaries own spacing; timestamps provide the text message header. */
   [data-component="text-part"] {
-    margin-top: 12px;
+    margin-top: 0;
+  }
+
+  [data-slot="text-message-time"] {
+    display: block;
+    width: fit-content;
+    margin-bottom: 4px;
+    font-size: 10px;
+    line-height: 20px;
+    color: var(--v2-text-text-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  [data-component="user-message"]:has([data-slot="text-message-time"]),
+  [data-component="text-part"]:has([data-slot="text-message-time"]) {
+    position: relative;
+
+    /* Keep hover/focus actions inside the measured row, not in a hidden footer. */
+    [data-slot="user-message-copy-wrapper"],
+    [data-slot="text-part-copy-wrapper"] {
+      position: absolute;
+      top: 0;
+      inset-inline-end: 0;
+      width: auto;
+      max-width: calc(100% - 100px);
+      min-height: 20px;
+      margin-top: 0;
+      gap: 6px;
+    }
+
+    [data-slot="user-message-meta-tail"],
+    [data-slot="user-message-meta-sep"] {
+      display: none;
+    }
+
+    [data-slot="text-part-meta"] {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  [data-component="user-message"]:has([data-slot="text-message-time"])::before {
+    top: 24px;
   }
 
   [data-component="tool-output"] {
@@ -330,21 +374,6 @@ body[data-new-layout] [data-timeline-virtual-content] {
 
   [data-component="todos"] {
     padding: 6px 0 12px;
-  }
-
-  /* The queued-status line under a user turn: a dim bracketed annotation on
-     the left-aligned stream, [queued — runs after this turn]. */
-  [data-slot="session-turn-pending-delivery"] {
-    text-align: start;
-    color: var(--v2-text-text-faint);
-
-    &::before {
-      content: "[";
-    }
-
-    &::after {
-      content: "]";
-    }
   }
 }
 

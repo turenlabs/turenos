@@ -14,9 +14,15 @@ import { SessionV2 } from "@turenlabs/core/session"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { WorkspaceV2 } from "@turenlabs/core/workspace"
 import path from "path"
-import { Cause, Context, Duration, Effect, Exit, Layer, Option, Schema, Stream } from "effect"
+import { Cause, Clock, Context, Duration, Effect, Exit, Layer, Option, Schema, Stream } from "effect"
 
-const POLL_INTERVAL = Duration.seconds(5)
+// Longest sleep with nothing known to be due. Changes from this process wake the scheduler at once; this only
+// bounds how late a loop written by another process sharing the database is noticed, which includes a new
+// interval loop's first run because interval loops are born due.
+const IDLE_CAP = Duration.seconds(60)
+// Shortest gap between checks, so a due time that claimDue does not act on cannot spin the database.
+const MIN_DELAY = Duration.millis(250)
+const ERROR_DELAY = Duration.seconds(1)
 const LEASE_MS = Duration.toMillis(Duration.minutes(5))
 const RENEW_INTERVAL = Duration.minutes(1)
 const CANCELLATION_INTERVAL = Duration.seconds(1)
@@ -76,8 +82,12 @@ const layer = Layer.effect(
 
       const cancellation = Effect.gen(function* () {
         yield* Effect.sleep(CANCELLATION_INTERVAL)
-        if ((yield* loops.getRun({ id: run.id })).status === "cancelled")
-          return yield* Effect.fail(new RunCancelledError())
+        const status = (yield* loops.getRun({ id: run.id })).status
+        if (status === "cancelled") return yield* Effect.fail(new RunCancelledError())
+        // Another owner's claimDue can mark this run stale when our lease lapses
+        // during a stall; waiting for the next heartbeat (~1m) would leave the
+        // Session draining turns against a run that no longer exists.
+        if (status === "stale") return yield* Effect.fail(new LeaseLostError(status))
       }).pipe(
         Effect.mapError((error) => (error instanceof RunCancelledError ? error : new LeaseLostError(error))),
         Effect.catchDefect((defect) => Effect.fail(new LeaseLostError(defect))),
@@ -113,7 +123,7 @@ const layer = Layer.effect(
             yield* loops.startRun({ id: run.id, owner, sessionID: planningSessionID })
             let current = factoryRun
             while (current.status === "running") {
-              yield* Effect.sleep(POLL_INTERVAL)
+              yield* Effect.sleep(Duration.seconds(2))
               current = yield* team.getFactoryRun(factoryRunID)
             }
             const sourceRun = yield* loops.getRun({ id: run.id })
@@ -377,7 +387,8 @@ const layer = Layer.effect(
         (run) => runClaimed(run),
         { discard: true },
       )
-    }).pipe(Effect.catchCause((cause) => Effect.logError("Loop scheduler scan failed", { cause: Cause.pretty(cause) })))
+      return due.length
+    })
 
     const fireAndRun = (
       loopID: string,
@@ -409,7 +420,7 @@ const layer = Layer.effect(
 
     const queueFileEvent = (file: string) =>
       Effect.gen(function* () {
-        const actives = yield* loops.list()
+        const actives = yield* loops.listFileChange()
         for (const info of actives) {
           if (info.status !== "active") continue
           if (info.eventTrigger?.type !== "file-change") continue
@@ -430,28 +441,27 @@ const layer = Layer.effect(
         }
       }).pipe(Effect.catchCause((cause) => Effect.logError("Loop file event failed", { cause: Cause.pretty(cause) })))
 
-    const handleSessionEnd = (
-      sessionID: string,
-      outcome: "success" | "failure",
-      agent: string | undefined,
-      directory: string | undefined,
-    ) =>
+    const handleSessionEnd = (sessionID: string, outcome: "success" | "failure") =>
       Effect.gen(function* () {
         if (sessionID.startsWith("ses_loop_")) return
+        // Resolve once: missing source metadata must never widen the event's scope.
+        const session = yield* sessions.get(SessionV2.ID.make(sessionID))
+        const directory = session.location.directory
+        const agent = session.agent
         const actives = yield* loops.list()
         for (const info of actives) {
           if (info.status !== "active") continue
           if (info.eventTrigger?.type !== "session-end") continue
-          if (directory !== undefined && directory !== info.location.directory) continue
+          if (directory !== info.location.directory) continue
           const config = info.eventTrigger
           if (config.outcomes !== undefined && !config.outcomes.includes(outcome)) continue
           if (config.sessionID !== undefined && config.sessionID !== sessionID) continue
-          if (config.agent !== undefined && agent !== undefined && config.agent !== agent) continue
+          if (config.agent !== undefined && config.agent !== agent) continue
           yield* fireAndRun(info.id, "session-end", {
             sessionID,
             outcome,
             ...(agent === undefined ? {} : { agent }),
-            ...(directory === undefined ? {} : { directory }),
+            directory,
           })
         }
       }).pipe(
@@ -466,40 +476,62 @@ const layer = Layer.effect(
     )
 
     const sessionSuccess = events.subscribe(SessionEvent.Step.Ended).pipe(
-      Stream.runForEach((event) =>
-        Effect.gen(function* () {
-          const sessionID = event.data.sessionID as string
-          const directory = yield* sessionDirectory(sessions, sessionID)
-          const agent = yield* sessionAgent(sessions, sessionID)
-          yield* handleSessionEnd(sessionID, "success", agent, directory)
-        }),
-      ),
+      Stream.runForEach((event) => handleSessionEnd(event.data.sessionID, "success")),
       Effect.catchCause((cause) => Effect.logError("Loop session watcher failed", { cause: Cause.pretty(cause) })),
       Effect.forever,
       Effect.forkScoped,
     )
 
     const sessionFailure = events.subscribe(SessionEvent.Step.Failed).pipe(
-      Stream.runForEach((event) =>
-        Effect.gen(function* () {
-          const sessionID = event.data.sessionID as string
-          const directory = yield* sessionDirectory(sessions, sessionID)
-          const agent = yield* sessionAgent(sessions, sessionID)
-          yield* handleSessionEnd(sessionID, "failure", agent, directory)
-        }),
-      ),
+      Stream.runForEach((event) => handleSessionEnd(event.data.sessionID, "failure")),
       Effect.catchCause((cause) => Effect.logError("Loop session watcher failed", { cause: Cause.pretty(cause) })),
       Effect.forever,
       Effect.forkScoped,
     )
 
-    yield* scan.pipe(Effect.andThen(Effect.sleep(POLL_INTERVAL)), Effect.forever, Effect.forkScoped)
+    yield* pollDue(loops, scan).pipe(Effect.forkScoped)
     yield* fileStream
     yield* sessionSuccess
     yield* sessionFailure
     return Service.of({})
   }),
 )
+
+/**
+ * Claims due runs when `nextWakeAt` says there is work and otherwise sleeps until it, a local change or the idle
+ * cap. The first pass scans unconditionally so a crashed process's stale leases are recovered at startup.
+ * Exported with a minimal Loop surface so tests can drive it without a database. `scan` returns how many rows
+ * `claimDue` returned.
+ */
+export function pollDue<E, R>(
+  loops: Pick<Loop.Interface, "nextWakeAt" | "awaitChange">,
+  scan: Effect.Effect<number, E, R>,
+) {
+  const pass = (startup: boolean) =>
+    Effect.gen(function* () {
+      // Capture before reading so a change between the read and the sleep still wakes this pass.
+      const changed = yield* loops.awaitChange()
+      const now = yield* Clock.currentTimeMillis
+      const next = startup ? now : yield* loops.nextWakeAt(now)
+      const due = next !== undefined && next <= now
+      if (!due) {
+        const delay =
+          next === undefined ? IDLE_CAP : Duration.min(IDLE_CAP, Duration.max(MIN_DELAY, Duration.millis(next - now)))
+        yield* Effect.race(Effect.sleep(delay), changed)
+      }
+      if (due) {
+        const claimed = yield* scan
+        if (claimed === 0 && !startup) yield* Effect.race(Effect.sleep(MIN_DELAY), changed)
+      }
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logError("Loop scheduler scan failed", { cause: Cause.pretty(cause) }).pipe(
+          Effect.andThen(Effect.sleep(ERROR_DELAY)),
+        ),
+      ),
+    )
+  return pass(true).pipe(Effect.andThen(pass(false).pipe(Effect.forever)))
+}
 
 function recordSkippedStep(
   loops: Loop.Interface,
@@ -553,20 +585,6 @@ export function toLoopRelativePath(loopDirectory: string, file: string) {
   const relative = path.relative(loopDirectory, file)
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return undefined
   return relative.split(path.sep).join("/")
-}
-
-function sessionDirectory(sessions: SessionV2.Interface, sessionID: string) {
-  return sessions.get(SessionV2.ID.make(sessionID)).pipe(
-    Effect.map((session) => (session.location?.directory as string | undefined) ?? undefined),
-    Effect.catch(() => Effect.succeed(undefined as string | undefined)),
-  )
-}
-
-function sessionAgent(sessions: SessionV2.Interface, sessionID: string) {
-  return sessions.get(SessionV2.ID.make(sessionID)).pipe(
-    Effect.map((session) => (session.agent as string | undefined) ?? undefined),
-    Effect.catch(() => Effect.succeed(undefined as string | undefined)),
-  )
 }
 
 function formatCause(cause: Cause.Cause<unknown>) {

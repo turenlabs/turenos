@@ -1,7 +1,9 @@
 import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js"
 import { Visualization } from "@turenlabs/schema/visualization"
+import { line, scaleBand, scaleLinear } from "d3"
 import { visualizationSpec } from "./visualization-data"
 import { visualizationTreemap } from "./visualization-layout"
+import { VisualizationLicenses } from "./visualization-licenses"
 
 export default function VisualizationViewer(props: { metadata: unknown }) {
   const spec = createMemo(() => visualizationSpec(props.metadata))
@@ -33,8 +35,26 @@ function VisualizationChart(props: { spec: Visualization.Spec }) {
   const maximum = createMemo(() => Math.max(0, ...items().map((item) => item.value)) || 1)
   const rectangles = createMemo(() => visualizationTreemap(items().map((item) => item.value)))
   const format = (value: number) => `${value.toLocaleString()}${props.spec.unit ? ` ${props.spec.unit}` : ""}`
-  const x = (index: number) => (items().length === 1 ? 400 : 48 + (index * 728) / (items().length - 1))
-  const y = (value: number) => 320 - (value / maximum()) * 280
+  const xScale = createMemo(() =>
+    scaleLinear()
+      .domain([0, Math.max(1, items().length - 1)])
+      .range([48, 776]),
+  )
+  const barScale = createMemo(() =>
+    scaleBand<number>()
+      .domain(items().map((_, index) => index))
+      .range([48, 776])
+      .paddingInner(0.15),
+  )
+  const yScale = createMemo(() => scaleLinear().domain([0, maximum()]).range([320, 40]))
+  const x = (index: number) => (items().length === 1 ? 400 : xScale()(index))
+  const y = (value: number) => yScale()(value)
+  const linePath = createMemo(
+    () =>
+      line<Item>()
+        .x((_, index) => x(index))
+        .y((item) => y(item.value))(items()) ?? "",
+  )
   const palette = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#0369a1"]
   const color = (value: string | undefined) =>
     palette[(value === undefined ? 0 : groups().indexOf(value) + 1) % palette.length]!
@@ -160,9 +180,9 @@ function VisualizationChart(props: { spec: Visualization.Spec }) {
                     {(item, index) => (
                       <rect
                         {...marks(item)}
-                        x={48 + (index() * 728) / items().length}
+                        x={barScale()(index())}
                         y={y(item.value)}
-                        width={(728 / items().length) * 0.85}
+                        width={barScale().bandwidth()}
                         height={Math.max(1, 320 - y(item.value))}
                       >
                         <title>{summary(item)}</title>
@@ -171,12 +191,7 @@ function VisualizationChart(props: { spec: Visualization.Spec }) {
                   </For>
                 </Match>
                 <Match when={props.spec.kind === "line"}>
-                  <polyline
-                    data-slot="visualization-line"
-                    points={items()
-                      .map((item, index) => `${x(index)},${y(item.value)}`)
-                      .join(" ")}
-                  />
+                  <path data-slot="visualization-line" d={linePath()} />
                   <For each={items()}>
                     {(item, index) => (
                       <circle {...marks(item)} cx={x(index())} cy={y(item.value)} r="4">
@@ -256,6 +271,7 @@ function VisualizationChart(props: { spec: Visualization.Spec }) {
           </aside>
         )}
       </Show>
+      <VisualizationLicenses />
     </section>
   )
 }

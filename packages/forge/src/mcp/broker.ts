@@ -7,6 +7,7 @@ import { McpIntegration } from "./integration"
 
 export const GLOBAL_MAX_LOADED_TOOLS = 12
 export const DEFAULT_MAX_LOADED_TOOLS = 4
+/** The budget a capability asks for. The core broker raises anything below `ToolBroker.MIN_UNLOAD_AFTER_IDLE_TURNS`. */
 export const DEFAULT_UNLOAD_AFTER_IDLE_TURNS = 3
 
 /**

@@ -84,6 +84,22 @@ export const Flow = Schema.Struct({
 }).annotate({ identifier: "SecurityProxy.Flow" })
 export interface Flow extends Schema.Schema.Type<typeof Flow> {}
 
+export const FlowCursor = Schema.Struct({ key: text(4096), timeCreated: Schema.Number }).annotate({
+  identifier: "SecurityProxy.FlowCursor",
+})
+export interface FlowCursor extends Schema.Schema.Type<typeof FlowCursor> {}
+
+export const FlowFilter = Schema.Struct({
+  query: optional(text(4096)),
+  method: optional(text(64)),
+  status: optional(text(4096)),
+  mime: optional(text(4096)),
+  host: optional(text(4096)),
+  source: optional(Schema.Literals(["browser", "replay"])),
+  content: optional(Schema.Boolean),
+}).annotate({ identifier: "SecurityProxy.FlowFilter" })
+export interface FlowFilter extends Schema.Schema.Type<typeof FlowFilter> {}
+
 export const Pause = Schema.Struct({
   id,
   generation: id,
@@ -125,12 +141,19 @@ const list = Schema.Struct({ type: Schema.Literal("list"), owner: Owner })
 const create = Schema.Struct({ type: Schema.Literal("create"), owner: Owner, input: Create })
 const note = Schema.Struct({ type: Schema.Literal("note"), ...owned, flowID: id, note: text(4096) })
 const rules = Schema.Struct({ type: Schema.Literal("rules"), ...owned, revision: Schema.Number, rules: Rules })
+const flows = Schema.Struct({
+  type: Schema.Literal("flows"),
+  ...owned,
+  cursor: optional(FlowCursor),
+  filter: optional(FlowFilter),
+  view: optional(Schema.Literals(["summary", "masked", "revealed"])),
+})
 export const Command = Schema.Union([
   list,
   create,
   simple("get"),
   simple("delete"),
-  simple("flows"),
+  flows,
   simple("open"),
   simple("close"),
   simple("snapshot"),
@@ -170,7 +193,7 @@ export const StoreCommand = Schema.Union([
   create,
   simple("get"),
   simple("delete"),
-  simple("flows"),
+  flows,
   selectedFlow("flow"),
   selectedFlow("reveal"),
   note,
@@ -184,6 +207,8 @@ export const Result = Schema.Struct({
   cases: optional(Schema.Array(Case)),
   case: optional(Case),
   flows: optional(Schema.Array(Flow)),
+  nextCursor: optional(FlowCursor),
+  total: optional(Schema.Number),
   flow: optional(Flow),
   pause: optional(Pause),
   snapshot: optional(Snapshot),

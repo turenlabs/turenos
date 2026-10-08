@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { ToolBroker } from "@turenlabs/core/tool/broker"
 import { McpBroker } from "@/mcp/broker"
 
 const capability = (key: string, server = "alpha", maxLoadedTools = 4, unloadAfterIdleTurns = 3) => ({
@@ -132,8 +133,9 @@ describe("McpBroker", () => {
 
     McpBroker.beginTurn("one", tools)
     McpBroker.touch("one", "alpha_read")
-    McpBroker.beginTurn("one", tools)
-    McpBroker.beginTurn("one", tools)
+    // The capability asks for two idle turns, but the core broker never unloads sooner than its floor:
+    // every unload rewrites the cached prefix. Touching resets the count, so it survives a full floor.
+    for (let turn = 0; turn < ToolBroker.MIN_UNLOAD_AFTER_IDLE_TURNS; turn++) McpBroker.beginTurn("one", tools)
     expect(McpBroker.search("one", tools).selected).toEqual(["alpha_read"])
     McpBroker.beginTurn("one", tools)
     expect(McpBroker.search("one", tools).selected).toEqual([])

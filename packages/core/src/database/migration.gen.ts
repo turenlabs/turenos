@@ -102,6 +102,8 @@ export const migrations = (
     import("./migration/20260911134454_swarm-room"),
     import("./migration/20260911161104_swarm-room-indexes"),
     import("./migration/20260924132422_session-task-fleet"),
+    import("./migration/20260929123020_prior-work"),
+    import("./migration/20261002133019_session-context-blob"),
     import("./migration/20261006143121_team-workspace"),
     import("./migration/20261007191655_factory-channels"),
     import("./migration/20261007193014_factory-revision"),

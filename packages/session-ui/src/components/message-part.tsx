@@ -1162,6 +1162,30 @@ function UserMessageComments(props: { comments: UserMessageComment[]; bounded: b
   )
 }
 
+function TextMessageTime(props: { created: number | undefined; stamp?: string }) {
+  const i18n = useI18n()
+  const timestamp = createMemo(() => {
+    if (typeof props.created !== "number") return
+    const date = new Date(props.created)
+    if (!Number.isFinite(date.getTime())) return
+    return {
+      iso: date.toISOString(),
+      short: props.stamp ?? new Intl.DateTimeFormat(i18n.locale(), { timeStyle: "short" }).format(date),
+      full: new Intl.DateTimeFormat(i18n.locale(), { dateStyle: "full", timeStyle: "long" }).format(date),
+    }
+  })
+
+  return (
+    <Show when={timestamp()}>
+      {(value) => (
+        <time data-slot="text-message-time" dateTime={value().iso} title={value().full} aria-label={value().full}>
+          {value().short}
+        </time>
+      )}
+    </Show>
+  )
+}
+
 export function UserMessageDisplay(props: {
   message: UserMessage
   parts: PartType[]
@@ -1207,6 +1231,7 @@ export function UserMessageDisplay(props: {
   const stamp = createMemo(() => {
     const created = props.message.time?.created
     if (typeof created !== "number") return ""
+    if (!Number.isFinite(new Date(created).getTime())) return ""
     return timefmt().format(created)
   })
 
@@ -1318,6 +1343,9 @@ export function UserMessageDisplay(props: {
       >
         <div data-slot="user-message-body">
           <div data-slot="user-message-text" data-comments={messageComments().length > 0 ? "true" : undefined}>
+            <Show when={props.useV2Actions && text().trim()}>
+              <TextMessageTime created={props.message.time?.created} stamp={stamp()} />
+            </Show>
             <HighlightedText text={text()} references={inlineFiles()} agents={agents()} />
             <Show when={messageComments().length > 0}>
               <UserMessageComments comments={messageComments()} bounded />
@@ -1770,6 +1798,9 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   return (
     <Show when={text()}>
       <div data-component="text-part" data-timeline-part-id={part().id}>
+        <Show when={props.useV2Actions && props.message.role === "assistant" && !part().synthetic && text().trim()}>
+          <TextMessageTime created={props.message.time?.created} />
+        </Show>
         <div data-slot="text-part-body">
           <PacedMarkdown
             text={text()}
@@ -1826,6 +1857,11 @@ ToolRegistry.register({
 
 ToolRegistry.register({
   name: "safehtml",
+  render: InlineVisualizationTool,
+})
+
+ToolRegistry.register({
+  name: "animate",
   render: InlineVisualizationTool,
 })
 
@@ -2802,8 +2838,7 @@ function boardNoteViews(output: string | undefined) {
   if (!output) return
   try {
     const parsed: unknown = JSON.parse(output)
-    if (!parsed || typeof parsed !== "object" || !("notes" in parsed) || !Array.isArray(parsed.notes))
-      return
+    if (!parsed || typeof parsed !== "object" || !("notes" in parsed) || !Array.isArray(parsed.notes)) return
     return parsed.notes.filter(
       (note): note is BoardNoteView =>
         !!note && typeof note === "object" && "title" in note && "body" in note && "kind" in note,
@@ -2852,11 +2887,7 @@ ToolRegistry.register({
       })
     })
     return (
-      <BasicTool
-        {...props}
-        icon="subagent"
-        trigger={{ title: i18n.t("ui.tool.boardRead"), subtitle: subtitle() }}
-      >
+      <BasicTool {...props} icon="subagent" trigger={{ title: i18n.t("ui.tool.boardRead"), subtitle: subtitle() }}>
         <Show when={notes()} fallback={<ToolDetails input={props.input} output={props.output} />}>
           {(list) => (
             <div data-component="board-note-list">

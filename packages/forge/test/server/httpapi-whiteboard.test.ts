@@ -1,16 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { Layer, Schema } from "effect"
-import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
-import { LayerNode } from "@turenlabs/core/effect/layer-node"
-import { Memory } from "@turenlabs/core/memory"
-import { Loop } from "@turenlabs/core/loop"
-import { TeamWorkspace } from "@turenlabs/core/team/workspace"
-import { PermissionSaved } from "@turenlabs/core/permission/saved"
-import { SessionV2 } from "@turenlabs/core/session"
-import { SessionExecution } from "@turenlabs/core/session/execution"
-import { SessionExecutionLocal } from "@turenlabs/core/session/execution/local"
-import { HttpRouter, HttpServer } from "effect/unstable/http"
-import { createRoutes } from "@turenlabs/server/routes"
+import { Schema } from "effect"
+import { createTestHttpApi } from "../fixture/httpapi"
 import { Whiteboard } from "@turenlabs/schema/whiteboard"
 import { tmpdir } from "../fixture/fixture"
 
@@ -32,36 +22,11 @@ const shape = (id: string, version = 1): Whiteboard.Element => ({
 const isolatedTmpDir = () => tmpdir({ config: { formatter: false, lsp: false } })
 
 function actualServerAPI(directory: string) {
-  const app = HttpRouter.toWebHandler(
-    createRoutes("whiteboard-test").pipe(
-      Layer.provide(HttpServer.layerServices),
-      // These globals are looked up by handlers at request time, not registration time.
-      Layer.provideMerge(
-        AppNodeBuilder.build(
-          LayerNode.group([Memory.node, Loop.node, TeamWorkspace.node, PermissionSaved.node, SessionV2.node]),
-          [[SessionExecution.node, SessionExecutionLocal.node]],
-        ),
-      ),
-    ),
-    { disableLogger: true },
-  )
-  const request = (path: string, init: RequestInit = {}, authenticated = true) => {
-    const headers = new Headers(init.headers)
-    headers.set("x-forge-directory", directory)
-    if (authenticated) headers.set("authorization", authorization)
-    return app.handler(new Request(new URL(path, "http://localhost"), { ...init, headers }))
-  }
-  const json = (path: string, method: string, body: unknown, authenticated = true) =>
-    request(
-      path,
-      { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
-      authenticated,
-    )
+  const api = createTestHttpApi({ name: "whiteboard-test", directory, authorization })
   return {
-    request,
-    json,
+    ...api,
     async create() {
-      const response = await json("/api/session", "POST", {
+      const response = await api.json("/api/session", "POST", {
         agent: "build",
         model: { providerID: "test", id: "test" },
         location: { directory },
@@ -74,13 +39,12 @@ function actualServerAPI(directory: string) {
     },
     client(clientID: string, username: string) {
       return {
-        get: (path: string) => request(path),
-        update: (path: string, patch: Whiteboard.Patch) => json(path, "PATCH", { clientID, username, patch }),
+        get: (path: string) => api.request(path),
+        update: (path: string, patch: Whiteboard.Patch) => api.json(path, "PATCH", { clientID, username, patch }),
         presence: (path: string, pointer = { x: 3, y: 4 }) =>
-          json(`${path}/presence`, "POST", { clientID, username, pointer }),
+          api.json(`${path}/presence`, "POST", { clientID, username, pointer }),
       }
     },
-    [Symbol.asyncDispose]: () => app.dispose(),
   }
 }
 

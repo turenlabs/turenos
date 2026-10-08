@@ -1,32 +1,61 @@
-[data-component="session-live-dock"] [data-slot="dock-secondary"] {
+[data-component="session-live-dock"] {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
+  min-width: 0;
+  max-width: 100%;
 }
 
-[data-component="session-live-dock"] [data-slot="dock-more"] {
-  display: none;
+[data-component="session-live-dock"] button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--v2-radius-control);
+  color: var(--v2-text-text-faint);
+  outline: none;
 }
 
-/* Standalone placement (child-session strip, pending surface) has no toolbar
-   container — fall back to a viewport query there. */
-@media (max-width: 640px) {
-  [data-component="session-live-dock"] [data-slot="dock-secondary"] {
-    display: none;
-  }
-  [data-component="session-live-dock"] [data-slot="dock-more"] {
-    display: flex;
-  }
+[data-component="session-live-dock"] button:hover,
+[data-component="session-live-dock"] button[data-selected="true"] {
+  background: var(--v2-overlay-simple-overlay-hover);
+  color: var(--v2-text-text-base);
 }
 
-/* Inside the prompt toolbar the model cluster (~300px) shares the row, so the
-   secondary views collapse into More until there is room for all of them. */
-@container prompt-toolbar (max-width: 920px) {
-  [data-component="session-live-dock"] [data-slot="dock-secondary"] {
-    display: none;
-  }
-  [data-component="session-live-dock"] [data-slot="dock-more"] {
-    display: flex;
-  }
+[data-component="session-live-dock"] button:focus-visible {
+  outline: 1px solid var(--v2-border-border-focus);
+  outline-offset: 2px;
 }
 
+[data-component="session-live-dock"] [data-slot="dock-status"] {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: var(--v2-radius-pill);
+}
+
+[data-component="session-live-dock"] [data-slot="dock-metric-separator"] {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 3px;
+  color: var(--v2-text-text-faint);
+  user-select: none;
+}
+
+[data-component="session-live-dock"] [data-slot="dock-metric"] {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--v2-text-text-faint);
+  white-space: nowrap;
+  cursor: default;
+}

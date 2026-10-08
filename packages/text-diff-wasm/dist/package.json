@@ -1,0 +1,21 @@
+{
+  "name": "turen-text-diff-wasm",
+  "type": "module",
+  "description": "Bounded line differencing and unified patches WebAssembly wrapper for Turen",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/turenlabs/turenos"
+  },
+  "files": [
+    "turen_text_diff_wasm_bg.wasm",
+    "turen_text_diff_wasm.js",
+    "turen_text_diff_wasm.d.ts"
+  ],
+  "main": "turen_text_diff_wasm.js",
+  "types": "turen_text_diff_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

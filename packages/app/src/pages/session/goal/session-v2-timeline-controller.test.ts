@@ -478,6 +478,63 @@ describe("V2 timeline pagination", () => {
     expect(index).toBe(2)
     expect(window.messages.map((message) => message.id)).toEqual(["msg_anchor", "msg_new"])
   })
+
+  test("preserves refresh continuity when growth pushes the anchor past the page cap", async () => {
+    const messages = Array.from(
+      { length: SESSION_V2_MESSAGE_PAGE_LIMIT * (SESSION_V2_WINDOW_PAGE_LIMIT + 2) },
+      (_, index) => user(`msg_${index + 1}`),
+    ).reverse()
+    let requests = 0
+    const window = await loadSessionV2Window({
+      sessionID: "ses_grown",
+      signal: new AbortController().signal,
+      request: async (payload) => {
+        requests += 1
+        const offset = Number(payload.cursor ?? 0)
+        const next = offset + payload.limit
+        return {
+          data: {
+            data: messages.slice(offset, next),
+            cursor: next < messages.length ? { next: String(next) } : {},
+          },
+        }
+      },
+      minimum: SESSION_V2_MESSAGE_PAGE_LIMIT,
+      until: "msg_1",
+    })
+
+    expect(requests).toBe(SESSION_V2_WINDOW_PAGE_LIMIT + 2)
+    expect(window.messages).toEqual([...messages].reverse())
+    expect(
+      sessionV2MessageWindowHasContinuity({
+        ...window,
+        current: { oldest: "msg_1", count: SESSION_V2_MESSAGE_PAGE_LIMIT },
+      }),
+    ).toBe(true)
+  })
+
+  test("stops at the end of history when a refresh anchor is absent", async () => {
+    let requests = 0
+    const window = await loadSessionV2Window({
+      sessionID: "ses_missing_anchor",
+      signal: new AbortController().signal,
+      request: async () => {
+        requests += 1
+        return {
+          data: {
+            data: [user(`msg_${requests}`)],
+            cursor: requests <= SESSION_V2_WINDOW_PAGE_LIMIT ? { next: String(requests) } : {},
+          },
+        }
+      },
+      minimum: 1,
+      until: "msg_missing",
+    })
+
+    expect(requests).toBe(SESSION_V2_WINDOW_PAGE_LIMIT + 1)
+    expect(window.complete).toBe(true)
+    expect(window.older).toBeUndefined()
+  })
 })
 
 describe("V2 timeline live reconciliation", () => {

@@ -1,9 +1,8 @@
-# Turen WASM Tools
+# TurenOS WASM tools
 
-Reproducible WebAssembly builds used by Turen agent tools. This directory is
-the former `turenio/wasm-tools` repository, imported into the Forge monorepo.
-Each target builds into its checked-in workspace package at
-`packages/<target>-wasm`.
+Reproducible WebAssembly builds used by TurenOS agent tools. Each target builds
+into its checked-in workspace package at `packages/<target>-wasm`. The list
+below is the complete inventory of `tools/` targets.
 
 Each target owns its source, build scripts, tests, licenses, and provenance:
 
@@ -13,6 +12,9 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   patched with pre-serialization aggregate result limits for agent use.
 - [`tools/goblin`](goblin): bounded PE, ELF, Mach-O, TE, COFF, and Unix
   archive metadata inspection built from Goblin.
+- [`tools/debug-symbols`](debug-symbols): bounded object symbols,
+  debug-section inventory, and PDB public symbols with optional Rust, Itanium
+  C++, and MSVC demangling; never resolves source paths or loads a debugger.
 - [`tools/stng-core`](stng-core): portable bounded raw, wide, decoded,
   classified, and XOR string extraction derived from stng.
 - [`tools/libpcap`](libpcap): official tcpdump-group libpcap configured
@@ -22,6 +24,9 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
 - [`tools/email-security`](email-security): bounded RFC 5322/MIME
   parsing, attachment metadata and bounded byte extraction, IOC extraction, and advertised authentication
   failure signals.
+- [`tools/email-authenticate`](email-authenticate): offline DKIM, SPF, and
+  DMARC verification from the vendored `mail-auth` crate against a supplied
+  DNS snapshot; never performs DNS or network lookups.
 - [`tools/wasm-inspect`](wasm-inspect): static validation and section
   inspection for WebAssembly modules and components; inspected bytes are never
   instantiated.
@@ -49,6 +54,9 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   validation.
 - [`tools/json-query`](json-query): bounded jq-style queries via jaq
   plus JSON validation, shape stats, and path discovery.
+- [`tools/jwt-audit`](jwt-audit): offline JWT inspection and pinned RS256/ES256
+  verification with a supplied public JWK and issuer/audience/time policy.
+  Never fetches key URLs or grants authorization.
 - [`tools/pdf-inspect`](pdf-inspect): bounded PDF structure, object,
   stream-decode, and text inspection with exploit-document findings.
 - [`tools/minidump`](minidump): Windows minidump and Breakpad/Crashpad
@@ -73,6 +81,9 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   packfile/delta, pack-index, DIRC index, and bundle inspection.
 - [`tools/sourcemap`](sourcemap): source-map decode, lookup,
   reverse-lookup, embedded-source extraction, and index-map flattening.
+- [`tools/script-deobfuscate`](script-deobfuscate): bounded static JavaScript
+  constant recovery, optional intrinsic decoding, readable printing, and
+  non-executing payload evidence extraction, with a positional `js` CLI.
 - [`tools/wasm-toolkit`](wasm-toolkit): deeper WASM analysis on the
   Bytecode Alliance crates — wat printing/compile, feature detection, and
   producers/component metadata.
@@ -82,13 +93,17 @@ Each target owns its source, build scripts, tests, licenses, and provenance:
   and u-boot environment, Intel HEX/S-Record, and Android sparse images.
 - [`tools/binary-diff`](binary-diff): bounded binary compare/regions,
   bipatch-format diff production, patch application, and patch introspection.
+- [`tools/text-diff`](text-diff): bounded line diff built on `similar`: added and
+  removed line counts plus a unified patch compatible with the `diff` package's
+  `createTwoFilesPatch`, with a deterministic work budget instead of a deadline.
 - [`tools/browser-artifacts`](browser-artifacts): Chromium LevelDB
   log/table, Simple Cache, and Safari binarycookies forensic parsing.
 - [`tools/sqlite-inspect`](sqlite-inspect): read-only SQLite 3 database
   forensics — header, schema, b-tree stats, rows, freelist, and heuristic
-  deleted-record carving.
+  deleted-record carving, plus WAL checksum and commit-boundary inspection
+  without replay.
 - [`tools/capa-match`](capa-match): static-subset capa capability
-  matcher — 1,054 embedded Mandiant rules, string/byte/import/section/format
+  matcher — about 1,050 embedded Mandiant rules, string/byte/import/section/format
   features; non-file-scope rules report unsupported, never fabricate.
 - [`tools/rtf-inspect`](rtf-inspect): RTF structure, embedded-object
   (\objdata/OLE) extraction metadata, exploit-document audit flags, and
@@ -111,9 +126,9 @@ Emscripten 6.0.8 on PATH for the Emscripten targets.
 
 The self-hosted GitHub Actions workflows build each target from its pinned
 toolchain and open a PR updating `packages/<target>-wasm`. They run only for
-trusted pushes to `dev` or explicit dispatches, never pull-request code.
+trusted pushes to `main` or explicit dispatches, never pull-request code.
 
 See each tool's README and provenance files for source and toolchain details.
 
-See `docs/targets.md` for the reviewed WASM, native-sidecar, and service
+See `docs/systems/offline-security-tools/targets.md` for the reviewed WASM, native-sidecar, and service
 boundaries for future security tools.

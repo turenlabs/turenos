@@ -8,6 +8,7 @@ import { makeGlobalNode } from "./effect/app-node"
 import { KeyedMutex } from "./effect/keyed-mutex"
 import { AppProcess } from "./process"
 import { Storage } from "./storage"
+import { SecretOutput } from "./secret-output"
 
 export const MAX_ACTIVE = 32
 export const MAX_OWNER_ACTIVE = 4
@@ -63,6 +64,8 @@ export interface Interface {
   detach: (sessionID: string, id: string) => Effect.Effect<Info, ToolFailure>
   cancel: (sessionID: string, id: string) => Effect.Effect<Info, ToolFailure>
   deliver: (sessionID: string, notify: Notify) => Effect.Effect<void>
+  /** Cancels this process's live jobs for the session and drops their pending completion notices. */
+  cancelSession: (sessionID: string) => Effect.Effect<void>
 }
 export class Service extends Context.Service<Service, Interface>()("@forge/ShellJob") {}
 export const recordScope = Storage.Scope.make("internal/shell-jobs/records")
@@ -97,6 +100,7 @@ const ownerGone = (record: Record) => {
 /** Global runner: admission is durable before fork; no persisted command is ever replayed. */
 export const make = Effect.gen(function* () {
   const storage = yield* Storage.Service
+  const secretOutput = yield* SecretOutput.Service
   const serviceScope = yield* Scope.Scope
   const owner = randomUUID()
   runtimes.add(owner)
@@ -169,7 +173,8 @@ export const make = Effect.gen(function* () {
         }),
       )
       .pipe(Effect.catchCause(Effect.logError))
-  const stop = (id: string) =>
+  // quiet also stamps the notice as sent: settlement spreads the latest record, so deliverOne skips it.
+  const stop = (id: string, quiet = false) =>
     lock.withLock(id)(
       Effect.gen(function* () {
         const current = active.get(id)
@@ -177,7 +182,12 @@ export const make = Effect.gen(function* () {
         const record = yield* read(current.sessionID, id)
         if (!live(record)) return
         current.cancelled = true
-        yield* save({ ...record, status: "stopping", output: "Cancellation requested; process teardown is pending." })
+        yield* save({
+          ...record,
+          status: "stopping",
+          output: "Cancellation requested; process teardown is pending.",
+          ...(quiet ? { delivery: "sent" as const } : {}),
+        })
         // Waiting on interruption can hang on inherited stdio; never await it here.
         yield* Fiber.interrupt(current.fiber).pipe(Effect.forkDetach({ startImmediately: true }))
       }),
@@ -223,7 +233,9 @@ export const make = Effect.gen(function* () {
             return yield* new ToolFailure({
               message: `Shell job limit reached (${active.size}/${MAX_ACTIVE} active across all sessions). Retry after running jobs complete.`,
             })
-          const ownerJobs = [...active.entries()].flatMap(([id, job]) => (job.sessionID === input.sessionID ? [id] : []))
+          const ownerJobs = [...active.entries()].flatMap(([id, job]) =>
+            job.sessionID === input.sessionID ? [id] : [],
+          )
           if (ownerJobs.length >= MAX_OWNER_ACTIVE) {
             // The bare rejection invited blind retries: name the occupants and the remedy so the
             // next action is shell_job wait/status/cancel on a listed job, not another bash call.
@@ -311,7 +323,20 @@ export const make = Effect.gen(function* () {
                     : timedOut
                       ? `Command exceeded timeout of ${input.timeout} ms. Retry with a larger timeout if the command is expected to take longer.`
                       : "Shell execution failed."
-                const captured = new TextDecoder().decode(Buffer.from(output).subarray(0, MAX_OUTPUT_BYTES), {
+                // Redact the complete available capture before our cap can split a credential.
+                // AppProcess may already have capped its capture: a credential cut there cannot
+                // reliably be recognized here. This boundary cannot recover discarded bytes.
+                const sanitized = yield* secretOutput.snapshot().pipe(
+                  Effect.flatMap((protection) =>
+                    Effect.try({
+                      try: () => protection.text(output),
+                      // Do not log the thrown value: sanitizer errors may contain the raw capture.
+                      catch: () => "Shell output withheld because secret sanitization failed.",
+                    }),
+                  ),
+                  Effect.catch(() => Effect.succeed("Shell output withheld because secret sanitization failed.")),
+                )
+                const captured = new TextDecoder().decode(Buffer.from(sanitized).subarray(0, MAX_OUTPUT_BYTES), {
                   stream: true,
                 })
                 yield* storage.set({ scope: outputScope, key: Storage.Key.make(id), value: captured })
@@ -326,7 +351,7 @@ export const make = Effect.gen(function* () {
                         : "failed",
                   output: "",
                   truncated:
-                    Buffer.byteLength(output) > MAX_OUTPUT_BYTES ||
+                    Buffer.byteLength(sanitized) > MAX_OUTPUT_BYTES ||
                     (Exit.isSuccess(exit) && exit.value.outputTruncated === true),
                   ...(Exit.isSuccess(exit) ? { exit: exit.value.exitCode } : {}),
                 })
@@ -399,6 +424,41 @@ export const make = Effect.gen(function* () {
           cursor = { key: last.key, timeCreated: last.timeCreated }
         }
       }),
+    cancelSession: (sessionID) =>
+      Effect.gen(function* () {
+        let cursor: Storage.QueryInput["cursor"]
+        while (true) {
+          const rows = yield* storage.query({
+            scope: recordScope,
+            prefix: prefix(sessionID),
+            limit: MAX_LIST,
+            order: "time-created-desc",
+            cursor,
+          })
+          for (const row of rows) {
+            const record = decode(row.value)
+            // Jobs owned by another process are never signalled and keep their notice.
+            if (live(record) && active.has(record.id)) yield* stop(record.id, true)
+            if (!live(record) && record.delivery !== "pending") continue
+            // The query is a snapshot: a job may have settled since, and its notice may be in flight.
+            // Deciding under the job lock waits for that delivery and stamps what remains as sent.
+            yield* lock.withLock(record.id)(
+              read(sessionID, record.id).pipe(
+                Effect.flatMap((latest) =>
+                  !live(latest) && latest.delivery === "pending" ? save({ ...latest, delivery: "sent" }) : Effect.void,
+                ),
+              ),
+            )
+          }
+          const last = rows.at(-1)
+          if (rows.length < MAX_LIST || !last) break
+          cursor = { key: last.key, timeCreated: last.timeCreated }
+        }
+      }).pipe(Effect.catchCause(Effect.logError)),
   })
 })
-export const node = makeGlobalNode({ service: Service, layer: Layer.effect(Service, make), deps: [Storage.node] })
+export const node = makeGlobalNode({
+  service: Service,
+  layer: Layer.effect(Service, make),
+  deps: [Storage.node, SecretOutput.node],
+})

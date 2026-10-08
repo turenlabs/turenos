@@ -87,7 +87,9 @@ export async function loadSessionV2MessageWindow<T extends SessionMessage>(input
   let reachedUntil = input.until === undefined
   let pages = 0
 
-  while (pages < pageLimit) {
+  // A saved anchor can move past the cold-open page cap as new messages arrive.
+  // Keep reading to the anchor; otherwise every refresh rejects the same window.
+  while (pages < pageLimit || !reachedUntil) {
     const page = await input.load(cursor)
     pages += 1
     collected.push(...page.data)

@@ -5,6 +5,15 @@ import { Flag } from "@turenlabs/core/flag/flag"
 import { SyncPaths } from "../../src/server/routes/instance/httpapi/groups/sync"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
 import { Session } from "@/session/session"
+import { Database } from "@turenlabs/core/database/database"
+import { EventSequenceTable, EventTable } from "@turenlabs/core/event/sql"
+import { EventV2 } from "@turenlabs/core/event"
+import { AgentV2 } from "@turenlabs/core/agent"
+import { SessionMessage } from "@turenlabs/core/session/message"
+import { Prompt } from "@turenlabs/core/session/prompt"
+import { SessionTaskTable } from "@turenlabs/core/session/task.sql"
+import { SessionTask } from "@turenlabs/schema/session-task"
+import { SessionEvent } from "@turenlabs/core/session/event"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
@@ -12,7 +21,9 @@ import { httpApiLayer, requestInDirectory } from "./httpapi-layer"
 
 const originalWorkspaces = Flag.FORGE_EXPERIMENTAL_WORKSPACES
 const context = Context.empty() as Context.Context<unknown>
-const it = testEffect(Layer.mergeAll(LayerNode.compile(Session.node), httpApiLayer))
+const it = testEffect(
+  Layer.mergeAll(LayerNode.compile(LayerNode.group([Session.node, Database.node])), httpApiLayer),
+)
 
 afterEach(async () => {
   mock.restore()
@@ -122,6 +133,204 @@ describe("sync HttpApi", () => {
     { git: true, config: { formatter: false, lsp: false } },
   )
 
+  it.instance(
+    "pages history and excludes durable types and task-protected aggregates",
+    () =>
+      Effect.gen(function* () {
+        Flag.FORGE_EXPERIMENTAL_WORKSPACES = true
+        const tmp = yield* TestInstance
+        const headers = { "x-forge-directory": tmp.directory, "content-type": "application/json" }
+        const { db } = yield* Database.Service
+        const session = yield* Session.use.create({ title: "paged" })
+        const child = yield* Session.use.create({ title: "protected child" })
+
+        const seed = Effect.fnUntraced(function* (aggregateID: string, seqs: number[], type: string) {
+          yield* db
+            .insert(EventSequenceTable)
+            .values({ aggregate_id: aggregateID, seq: Math.max(...seqs) })
+            .run()
+            .pipe(Effect.orDie)
+          yield* db
+            .insert(EventTable)
+            .values(
+              seqs.map((seq) => ({
+                id: EventV2.ID.make(`evt_${aggregateID}_${seq}`),
+                aggregate_id: aggregateID,
+                seq,
+                type,
+                data: { seq },
+              })),
+            )
+            .run()
+            .pipe(Effect.orDie)
+        })
+
+        yield* seed("agg_page_a", [0, 1, 2, 3, 4], "session.test.event.1")
+        yield* seed("agg_page_b", [0, 1, 2], "session.test.event.1")
+        yield* seed("agg_durable", [0, 1], EventV2.versionedType(SessionEvent.Task.Updated.type, 1))
+
+        // A session_task row protects its id plus root/parent/child aggregates:
+        // both the session's own events and the child's must stay server-side.
+        const now = Date.now()
+        yield* db
+          .insert(SessionTaskTable)
+          .values({
+            id: SessionTask.ID.make("tsk_sync_protected"),
+            root_session_id: session.id,
+            parent_session_id: session.id,
+            child_session_id: child.id,
+            actor_session_id: session.id,
+            actor_assistant_message_id: SessionMessage.ID.make("msg_sync_actor"),
+            actor_tool_call_id: "call_sync_actor",
+            agent: AgentV2.ID.make("explore"),
+            prompt: Prompt.make({ text: "protected" }),
+            description: "protected aggregate fixture",
+            depth: 1,
+            status: "running",
+            revision: 0,
+            parent_permissions: [],
+            ancestor_permission_sets: [],
+            child_permissions: [],
+            hard_permissions: [],
+            write_roots: [],
+            commands: [],
+            time_created: now,
+            time_updated: now,
+          })
+          .run()
+          .pipe(Effect.orDie)
+
+        // Page exactly like Workspace.syncHistory: advance per-aggregate state
+        // after each page and re-request until the server reports nothing new.
+        const state: Record<string, number> = {}
+        const sizes: number[] = []
+        const seen: Array<{ aggregate_id: string; seq: number; type: string }> = []
+        for (let page = 0; page < 10; page++) {
+          const response = yield* requestInDirectory(`${SyncPaths.history}?limit=3`, tmp.directory, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(state),
+          })
+          expect(response.status).toBe(200)
+          const rows = (yield* response.json) as Array<{
+            aggregate_id: string
+            seq: number
+            type: string
+          }>
+          sizes.push(rows.length)
+          for (const row of rows) {
+            seen.push(row)
+            if (row.seq > (state[row.aggregate_id] ?? -1)) state[row.aggregate_id] = row.seq
+          }
+          if (rows.length === 0) break
+        }
+
+        expect(sizes.at(-1)).toBe(0)
+        expect(sizes.every((size) => size <= 3)).toBe(true)
+        expect(seen.some((row) => row.aggregate_id === session.id)).toBe(false)
+        expect(seen.some((row) => row.aggregate_id === child.id)).toBe(false)
+        expect(seen.some((row) => row.aggregate_id === "agg_durable")).toBe(false)
+        expect(
+          seen
+            .filter((row) => row.aggregate_id.startsWith("agg_"))
+            .map((row) => ({ aggregate_id: row.aggregate_id, seq: row.seq, type: row.type })),
+        ).toEqual([
+          ...[0, 1, 2, 3, 4].map((seq) => ({ aggregate_id: "agg_page_a", seq, type: "session.test.event.1" })),
+          ...[0, 1, 2].map((seq) => ({ aggregate_id: "agg_page_b", seq, type: "session.test.event.1" })),
+        ])
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
+    "bounds a limit-less history request to one page",
+    () =>
+      Effect.gen(function* () {
+        Flag.FORGE_EXPERIMENTAL_WORKSPACES = true
+        const tmp = yield* TestInstance
+        const headers = { "x-forge-directory": tmp.directory, "content-type": "application/json" }
+        const { db } = yield* Database.Service
+
+        // 1200 events > the 500-row default: a bare request must not materialize
+        // them all (that scan was the packaged-sidecar OOM).
+        const aggregate = "agg_unbounded"
+        yield* db
+          .insert(EventSequenceTable)
+          .values({ aggregate_id: aggregate, seq: 1199 })
+          .run()
+          .pipe(Effect.orDie)
+        for (let batch = 0; batch < 12; batch++) {
+          yield* db
+            .insert(EventTable)
+            .values(
+              Array.from({ length: 100 }, (_, i) => {
+                const seq = batch * 100 + i
+                return {
+                  id: EventV2.ID.make(`evt_${aggregate}_${seq}`),
+                  aggregate_id: aggregate,
+                  seq,
+                  type: "session.test.event.1",
+                  data: { seq },
+                }
+              }),
+            )
+            .run()
+            .pipe(Effect.orDie)
+        }
+
+        const first = yield* requestInDirectory(SyncPaths.history, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({}),
+        })
+        expect(first.status).toBe(200)
+        const firstRows = (yield* first.json) as Array<{ aggregate_id: string; seq: number }>
+        expect(firstRows.length).toBeLessThanOrEqual(500)
+        expect(firstRows.length).toBeGreaterThan(0)
+
+        // The state-map paging contract still converges: resubmit what came back
+        // and keep going until the server reports nothing new.
+        const state: Record<string, number> = {}
+        const seen = new Set<number>()
+        for (let page = 0; page < 20; page++) {
+          const response = yield* requestInDirectory(SyncPaths.history, tmp.directory, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(state),
+          })
+          expect(response.status).toBe(200)
+          const rows = (yield* response.json) as Array<{ aggregate_id: string; seq: number }>
+          if (rows.length === 0) break
+          for (const row of rows) {
+            if (row.aggregate_id !== aggregate) continue
+            seen.add(row.seq)
+            if (row.seq > (state[row.aggregate_id] ?? -1)) state[row.aggregate_id] = row.seq
+          }
+        }
+        expect(seen.size).toBe(1200)
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
+    "rejects invalid history limit values",
+    () =>
+      Effect.gen(function* () {
+        Flag.FORGE_EXPERIMENTAL_WORKSPACES = true
+        const tmp = yield* TestInstance
+        const headers = { "x-forge-directory": tmp.directory, "content-type": "application/json" }
+        for (const limit of ["0", "-1", "abc", "10001"]) {
+          const response = yield* requestInDirectory(`${SyncPaths.history}?limit=${limit}`, tmp.directory, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({}),
+          })
+          expect(response.status).toBe(400)
+        }
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
   it.instance.skip(
     "returns structured validation errors",
     () =>
@@ -140,7 +349,7 @@ describe("sync HttpApi", () => {
 
         expect(response.status).toBe(400)
         expect(response.headers.get("content-type") ?? "").toContain("application/json")
-        const body = (yield* Effect.promise(() => response.json())) as Record<string, unknown>
+        const body = (yield* Effect.promise((): Promise<unknown> => response.json())) as Record<string, unknown>
         expect(body.success).toBe(false)
         expect(Array.isArray(body.error) || Array.isArray(body.errors)).toBe(true)
       }),

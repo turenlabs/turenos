@@ -46,6 +46,7 @@ export const INDEPENDENTLY_VERSIONED_PACKAGE_FILES = [
   "packages/installer-inspect-wasm/package.json",
   "packages/java-inspect-wasm/package.json",
   "packages/json-query-wasm/package.json",
+  "packages/jwt-audit-wasm/package.json",
   "packages/libpcap-wasm/package.json",
   "packages/macos-artifacts-wasm/package.json",
   "packages/minidump-wasm/package.json",
@@ -55,11 +56,13 @@ export const INDEPENDENTLY_VERSIONED_PACKAGE_FILES = [
   "packages/ripgrep-wasm/package.json",
   "packages/rtf-inspect-wasm/package.json",
   "packages/sourcemap-wasm/package.json",
+  "packages/script-deobfuscate-wasm/package.json",
   "packages/sqlite-inspect-wasm/package.json",
   "packages/squashfs-wasm/package.json",
   "packages/static-analysis-wasm/package.json",
   "packages/static-unpack-wasm/package.json",
   "packages/stng-core-wasm/package.json",
+  "packages/text-diff-wasm/package.json",
   "packages/unicode-audit-wasm/package.json",
   "packages/vigil-runtime/package.json",
   "packages/wasm-inspect-wasm/package.json",
@@ -114,6 +117,7 @@ export async function discoverVersionedPackageFiles() {
     "services",
     "target",
     "tools",
+    "vendor",
   ])
 
   async function scan(directory: string, relative: string): Promise<string[]> {

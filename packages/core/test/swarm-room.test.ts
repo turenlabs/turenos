@@ -162,6 +162,28 @@ const postPlan = (roomID: Contract.ID, actor: SwarmRoom.ActorRef, head: number) 
   })
 
 describe("SwarmRoom", () => {
+  it.effect("opens and posts to one room concurrently for a long root session ID", () =>
+    Effect.gen(function* () {
+      const root = yield* setup("a".repeat(60))
+      expect(root.length).toBeLessThanOrEqual(80)
+      expect(`root_${root}`.length).toBeGreaterThan(80)
+      const rooms = yield* SwarmRoom.Service
+      const opened = yield* Effect.all([rooms.open(root), rooms.open(root)], { concurrency: "unbounded" })
+      expect(opened[0].id).toBe(opened[1].id)
+      const posted = yield* rooms.post({
+        roomID: opened[0].id,
+        actor: { sessionID: root },
+        kind: "message",
+        text: "long session ID",
+      })
+      expect(posted.entry.seq).toBe(1)
+      expect((yield* rooms.read(opened[0].id)).entries).toEqual([posted.entry])
+      expect((yield* rooms.state(opened[0].id)).members).toContainEqual(
+        expect.objectContaining({ type: "leader", sessionID: root }),
+      )
+    }),
+  )
+
   it.effect("opens one room per root session and derives the leader member", () =>
     Effect.gen(function* () {
       const root = yield* setup("open")

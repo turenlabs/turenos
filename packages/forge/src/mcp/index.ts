@@ -17,6 +17,7 @@ import {
 import { Config } from "@/config/config"
 import { McpConfig } from "./config"
 import { NamedError } from "@turenlabs/core/util/error"
+import { checksum } from "@turenlabs/core/util/encode"
 import { InstallationVersion } from "@turenlabs/core/installation/version"
 import { withTimeout } from "@/util/timeout"
 import { FSUtil } from "@turenlabs/core/fs-util"
@@ -38,7 +39,7 @@ import { McpBroker } from "./broker"
 import { SERVER_KEY } from "@/security/settings"
 import { SecurityStorage } from "@/security/storage"
 import { Scanner } from "@/security/util/scanner"
-import { FORGE_CLI_COMMAND, resolvePtyCommand } from "@/server/pty-command"
+import { FORGE_CLI_COMMAND, resolveForgeCommand } from "@/server/pty-command"
 import { McpIntegration } from "./integration"
 import { McpCaBundle } from "./ca-bundle"
 import { McpRuntime } from "./runtime"
@@ -246,8 +247,8 @@ export function isolatedStdioEnvironment(environment: Readonly<Record<string, st
   }
 }
 
-export const resolveSecurityMcpCommand = Effect.fnUntraced(function* () {
-  const resolved = resolvePtyCommand(FORGE_CLI_COMMAND, ["security-mcp"])
+export const resolveSecurityMcpCommand = Effect.fnUntraced(function* (directory: string) {
+  const resolved = resolveForgeCommand(["security-mcp"], directory)
   const command =
     resolved.command === FORGE_CLI_COMMAND
       ? yield* Effect.promise(() => Scanner.which(FORGE_CLI_COMMAND))
@@ -297,6 +298,8 @@ interface State {
   /** Bounded recent stderr/log lines per server — survives process exit so failures stay diagnosable. */
   output: Record<string, string[]>
   managedRetry: Record<string, number>
+  /** Credential fingerprint already attempted for a server parked on needs_auth. */
+  managedAuthRetry: Record<string, string>
   jobs: FiberMap.FiberMap<string, void, never>
 }
 
@@ -381,7 +384,7 @@ export const use = serviceUse(Service)
  */
 let sweptStrandedChildren = false
 
-const layer = (allowUnmanaged: boolean) =>
+const layer = (allowUnmanaged: boolean, managedRetryMs = MANAGED_RETRY_MS) =>
   Layer.effect(
     Service,
     Effect.gen(function* () {
@@ -878,7 +881,8 @@ const layer = (allowUnmanaged: boolean) =>
         Effect.fn("MCP.state")(function* () {
           const cfg = yield* cfgSvc.get()
           const securityEnabled = yield* enabledSecurity()
-          const command = securityEnabled.size > 0 ? yield* resolveSecurityMcpCommand() : undefined
+          const command =
+            securityEnabled.size > 0 ? yield* resolveSecurityMcpCommand(yield* InstanceState.directory) : undefined
           if (securityEnabled.size > 0 && !command) {
             return yield* Effect.die(new Error("cannot locate the forge binary to spawn the security MCP server"))
           }
@@ -920,6 +924,7 @@ const layer = (allowUnmanaged: boolean) =>
             instructions: {},
             output: {},
             managedRetry: {},
+            managedAuthRetry: {},
             jobs: yield* FiberMap.make<string, void, never>(),
           }
           // Runtime lookups must retain the private marker too. Otherwise a later
@@ -1108,6 +1113,9 @@ const layer = (allowUnmanaged: boolean) =>
         s.status[name] = { status: "connected" }
         s.clients[name] = client
         s.defs[name] = listed
+        // Credentials that once connected are retried again if a later auth
+        // rejection (expiry, server blip) parks the server on needs_auth.
+        delete s.managedAuthRetry[name]
         if (instructions) s.instructions[name] = instructions
         else delete s.instructions[name]
         if (previous) yield* Effect.tryPromise(() => previous.close()).pipe(Effect.ignore)
@@ -1140,10 +1148,20 @@ const layer = (allowUnmanaged: boolean) =>
                 if (current === "needs_auth") {
                   const stored = yield* auth.get(definition.id)
                   if (!stored?.tokens) return
+                  // Identical credentials already drove this server to needs_auth;
+                  // retrying them every cooldown just flaps the status and
+                  // republishes a tools change for nothing. A re-authorization or
+                  // silent refresh stores different material, which retries
+                  // immediately rather than waiting out the cooldown.
+                  const fingerprint =
+                    checksum(`${stored.tokens.accessToken}:${stored.tokens.refreshToken ?? ""}`) ?? "empty"
+                  if (s.managedAuthRetry[definition.id] === fingerprint) return
+                  s.managedAuthRetry[definition.id] = fingerprint
+                } else {
+                  const gate = `${definition.id}:${current ?? "unknown"}`
+                  if (Date.now() - (s.managedRetry[gate] ?? 0) < managedRetryMs) return
+                  s.managedRetry[gate] = Date.now()
                 }
-                const gate = `${definition.id}:${current ?? "unknown"}`
-                if (Date.now() - (s.managedRetry[gate] ?? 0) < MANAGED_RETRY_MS) return
-                s.managedRetry[gate] = Date.now()
               }
               const configuration = yield* extensions.configuration(manifest.id)
               const declaredSecrets = manifest.contributions.flatMap((contribution) => contribution.secrets)
@@ -1679,9 +1697,23 @@ const layer = (allowUnmanaged: boolean) =>
           Effect.andThen(auth.clearOAuthState(mcpName)),
           Effect.andThen(auth.clearCodeVerifier(mcpName)),
         )
+        // The server's metadata chose this URL, and `open` hands any scheme to the OS: a hosted MCP
+        // must not get to launch a local protocol handler or a file: target.
+        const authorization = yield* Effect.try({
+          try: () => new URL(result.authorizationUrl),
+          catch: () => undefined,
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (
+          authorization === undefined ||
+          (authorization.protocol !== "https:" && authorization.protocol !== "http:")
+        ) {
+          yield* cleanup
+          yield* Effect.logError("MCP OAuth authorization URL rejected", { mcpName })
+          return { status: "failed", error: "Authorization URL must be http(s)" } satisfies Status
+        }
         onAuthorization?.(result.authorizationUrl)
 
-        const authorizationOrigin = new URL(result.authorizationUrl).origin
+        const authorizationOrigin = authorization.origin
         yield* Effect.logInfo("MCP OAuth browser launch started", { mcpName, authorizationOrigin })
         const opened = yield* browser.open(result.authorizationUrl).pipe(
           Effect.tap(() => Effect.logInfo("MCP OAuth browser launch completed", { mcpName, authorizationOrigin })),
@@ -1890,5 +1922,13 @@ export const testNode = LayerNode.make({
   layer: layer(true),
   deps: dependencies,
 })
+
+/** Test-only variant with a configurable managed-server retry cooldown. */
+export const testNodeWith = (managedRetryMs: number) =>
+  LayerNode.make({
+    service: Service,
+    layer: layer(true, managedRetryMs),
+    deps: dependencies,
+  })
 
 export * as MCP from "."

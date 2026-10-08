@@ -626,6 +626,233 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
+  describe("native tool search", () => {
+    const options = { openai: { toolSearch: "client" } }
+    const searchTool = {
+      name: "tool_search",
+      description: "Search for tools to load.",
+      inputSchema: { type: "object", properties: { query: { type: "string" } } },
+    }
+    const lookupTool = { name: "lookup", description: "Lookup data", inputSchema: { type: "object" } }
+    const loaded = {
+      tools: [
+        {
+          name: "notion_search",
+          description: "Search Notion",
+          inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+        },
+      ],
+    }
+
+    it.effect("declares tool_search as the native tool and leaves other tools as functions", () =>
+      Effect.gen(function* () {
+        const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+          LLM.request({ model, prompt: "hi", providerOptions: options, tools: [lookupTool, searchTool] }),
+        )
+
+        expect(prepared.body.tools).toEqual([
+          {
+            type: "function",
+            name: "lookup",
+            description: "Lookup data",
+            parameters: { type: "object", properties: {}, additionalProperties: true },
+            strict: false,
+          },
+          {
+            type: "tool_search",
+            execution: "client",
+            description: "Search for tools to load.",
+            parameters: { type: "object", properties: { query: { type: "string" } } },
+          },
+        ])
+      }),
+    )
+
+    it.effect("keeps tool_search an ordinary function unless the caller opts in", () =>
+      Effect.gen(function* () {
+        const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+          LLM.request({ model, prompt: "hi", tools: [searchTool] }),
+        )
+
+        expect(prepared.body.tools).toMatchObject([{ type: "function", name: "tool_search" }])
+      }),
+    )
+
+    it.effect("does nothing when the caller opts in but offers no tool_search", () =>
+      Effect.gen(function* () {
+        const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+          LLM.request({ model, prompt: "hi", providerOptions: options, tools: [lookupTool] }),
+        )
+
+        expect(prepared.body.tools).toMatchObject([{ type: "function", name: "lookup" }])
+      }),
+    )
+
+    it.effect("replays a search as tool_search_call and tool_search_output carrying the loaded definitions", () =>
+      Effect.gen(function* () {
+        const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+          LLM.request({
+            model,
+            providerOptions: options,
+            tools: [searchTool],
+            messages: [
+              Message.user("find notion"),
+              Message.assistant([ToolCallPart.make({ id: "call_s", name: "tool_search", input: { query: "notion" } })]),
+              Message.tool({ id: "call_s", name: "tool_search", result: loaded }),
+              Message.assistant([
+                ToolCallPart.make({ id: "call_n", name: "notion_search", input: { query: "plans" } }),
+              ]),
+              Message.tool({ id: "call_n", name: "notion_search", result: { hits: 2 } }),
+            ],
+          }),
+        )
+
+        expect(prepared.body.input).toEqual([
+          { role: "user", content: [{ type: "input_text", text: "find notion" }] },
+          { type: "tool_search_call", call_id: "call_s", execution: "client", arguments: { query: "notion" } },
+          {
+            type: "tool_search_output",
+            call_id: "call_s",
+            status: "completed",
+            execution: "client",
+            tools: [
+              {
+                type: "function",
+                name: "notion_search",
+                description: "Search Notion",
+                defer_loading: true,
+                parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+                strict: false,
+              },
+            ],
+          },
+          { type: "function_call", call_id: "call_n", name: "notion_search", arguments: '{"query":"plans"}' },
+          { type: "function_call_output", call_id: "call_n", output: '{"hits":2}' },
+        ])
+      }),
+    )
+
+    it.effect("answers with an empty tool list when a search result has no definitions", () =>
+      Effect.gen(function* () {
+        const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+          LLM.request({
+            model,
+            providerOptions: options,
+            tools: [searchTool],
+            messages: [
+              Message.user("find"),
+              Message.assistant([ToolCallPart.make({ id: "call_s", name: "tool_search", input: {} })]),
+              Message.tool({ id: "call_s", name: "tool_search", result: "no matches" }),
+            ],
+          }),
+        )
+
+        expect(prepared.body.input.at(-1)).toEqual({
+          type: "tool_search_output",
+          call_id: "call_s",
+          status: "completed",
+          execution: "client",
+          tools: [],
+        })
+      }),
+    )
+
+    it.effect("replays a search as plain function items when the caller has not opted in", () =>
+      Effect.gen(function* () {
+        const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
+          LLM.request({
+            model,
+            tools: [searchTool],
+            messages: [
+              Message.user("find"),
+              Message.assistant([ToolCallPart.make({ id: "call_s", name: "tool_search", input: { query: "x" } })]),
+              Message.tool({ id: "call_s", name: "tool_search", result: loaded }),
+            ],
+          }),
+        )
+
+        expect(prepared.body.input.slice(1).map((item) => ("type" in item ? item.type : item.role))).toEqual([
+          "function_call",
+          "function_call_output",
+        ])
+      }),
+    )
+
+    it.effect("surfaces a client tool_search_call as an ordinary tool call and ends the turn for its result", () =>
+      Effect.gen(function* () {
+        const body = sseEvents(
+          {
+            type: "response.output_item.done",
+            item: {
+              type: "tool_search_call",
+              id: "ts_1",
+              call_id: "call_s",
+              execution: "client",
+              status: "completed",
+              arguments: { query: "notion", limit: 3 },
+            },
+          },
+          { type: "response.completed", response: { usage: { input_tokens: 5, output_tokens: 1 } } },
+        )
+        const response = yield* LLMClient.generate(
+          LLM.request({ model, prompt: "hi", providerOptions: options, tools: [searchTool] }),
+        ).pipe(Effect.provide(fixedResponse(body)))
+
+        expect(response.events.filter((event) => event.type === "tool-call")).toMatchObject([
+          {
+            type: "tool-call",
+            id: "call_s",
+            name: "tool_search",
+            input: { query: "notion", limit: 3 },
+            providerMetadata: { openai: { itemId: "ts_1" } },
+          },
+        ])
+        expect(response.events.find((event) => event.type === "finish")).toMatchObject({ reason: "tool-calls" })
+      }),
+    )
+
+    it.effect("ignores a server-executed tool_search_call, which needs no reply", () =>
+      Effect.gen(function* () {
+        const body = sseEvents(
+          {
+            type: "response.output_item.done",
+            item: { type: "tool_search_call", id: "ts_2", execution: "server", arguments: { query: "x" } },
+          },
+          { type: "response.completed", response: { usage: { input_tokens: 5, output_tokens: 1 } } },
+        )
+        const response = yield* LLMClient.generate(
+          LLM.request({ model, prompt: "hi", providerOptions: options, tools: [searchTool] }),
+        ).pipe(Effect.provide(fixedResponse(body)))
+
+        expect(response.events.some((event) => event.type === "tool-call")).toBe(false)
+      }),
+    )
+
+    it.effect("still decodes a function_call whose arguments are a string alongside tool search items", () =>
+      Effect.gen(function* () {
+        const body = sseEvents(
+          {
+            type: "response.output_item.done",
+            item: { type: "tool_search_call", id: "ts_3", call_id: "call_s", execution: "client", arguments: {} },
+          },
+          {
+            type: "response.output_item.done",
+            item: { type: "function_call", id: "fc_1", call_id: "call_n", name: "notion_search", arguments: '{"q":1}' },
+          },
+          { type: "response.completed", response: { usage: { input_tokens: 5, output_tokens: 1 } } },
+        )
+        const response = yield* LLMClient.generate(
+          LLM.request({ model, prompt: "hi", providerOptions: options, tools: [searchTool] }),
+        ).pipe(Effect.provide(fixedResponse(body)))
+
+        expect(response.events.filter((event) => event.type === "tool-call").map((event) => event.name)).toEqual([
+          "tool_search",
+          "notion_search",
+        ])
+      }),
+    )
+  })
+
   it.effect("prepares the composed native continuation request", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(
@@ -762,7 +989,7 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
-  for (const id of ["gpt-5.2", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]) {
+  for (const id of ["gpt-5.2", "gpt-6-astra", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-luna"]) {
     it.effect(`requests encrypted reasoning by default for ${id}`, () =>
       Effect.gen(function* () {
         // The native OpenAI facade configures reasoning models stateless (store: false) with

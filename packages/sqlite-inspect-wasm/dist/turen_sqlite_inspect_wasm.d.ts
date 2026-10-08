@@ -44,6 +44,12 @@ export function sqlite_schema(bytes: Uint8Array, options_json: string): string;
  */
 export function sqlite_table_stats(bytes: Uint8Array, options_json: string): string;
 
+/**
+ * Inspect one WAL file's header, validated frame prefix, and commit markers.
+ * Never replay pages or infer association with a database file.
+ */
+export function sqlite_wal_inspect(bytes: Uint8Array, options_json: string): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -54,6 +60,7 @@ export interface InitOutput {
     readonly sqlite_rows: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly sqlite_schema: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly sqlite_table_stats: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly sqlite_wal_inspect: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;

@@ -6,6 +6,7 @@ import { PermissionV2 } from "@turenlabs/core/permission"
 import { SessionV2 } from "@turenlabs/core/session"
 import { VisualizeTool } from "@turenlabs/core/tool/visualize"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
+import { VisualizationGuidance } from "@turenlabs/core/tool/visualization-guidance"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
 import { Effect, Layer, Schema } from "effect"
 import { testEffect } from "./lib/effect"
@@ -20,6 +21,12 @@ const spec = {
 }
 
 describe("visualization validation", () => {
+  test("unified tool schema accepts HTML and prefers HTML when both shapes are present", () => {
+    const html = { version: 1 as const, title: "Diagram", html: '<svg><circle r="4"/></svg>' }
+    expect(Schema.decodeUnknownSync(VisualizeTool.Spec)(html)).toEqual(html)
+    expect(Schema.decodeUnknownSync(VisualizeTool.Spec)({ ...spec, ...html })).toEqual(html)
+    expect(Schema.is(VisualizeTool.Spec)(spec)).toBe(true)
+  })
   test("accepts each chart kind and zero values", () => {
     ;["bar", "line", "treemap"].forEach((kind) => {
       expect(Schema.is(Visualization.Spec)({ ...spec, kind, items: [{ label: "Empty", value: 0 }] })).toBe(true)
@@ -66,7 +73,9 @@ const it = testEffect(visualizationLayer(() => Effect.void))
 it.effect("registers and preserves structured chart data with a compact model result", () =>
   Effect.gen(function* () {
     const registry = yield* ToolRegistry.Service
-    expect((yield* toolDefinitions(registry)).map((tool) => tool.name)).toEqual(["visualize"])
+    const definitions = yield* toolDefinitions(registry)
+    expect(definitions.map((tool) => tool.name)).toEqual(["visualize"])
+    expect(definitions[0]?.description).toContain(VisualizationGuidance.TOOL)
     const result = yield* settleTool(registry, {
       sessionID: SessionV2.ID.make("ses_visualize_test"),
       ...toolIdentity,

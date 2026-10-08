@@ -89,11 +89,6 @@ body[data-new-layout] [data-component="session-composer"] {
     line-height: 20px;
   }
 
-  /* The control strip under the line tightens with the rest of the rhythm. */
-  > .h-11 {
-    height: 38px;
-  }
-
   /* Send: a flat square key, not a gradient lozenge. !important because the
      call site paints the gradient inline; the fill keeps the same contrast
      token the gradient resolved to. */

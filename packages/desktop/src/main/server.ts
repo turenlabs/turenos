@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { app, utilityProcess } from "electron"
-import type { Details } from "electron"
+import { app } from "electron"
+import { fork } from "node:child_process"
 import { resolveForgeCliEnv } from "./forge-cli"
 import { getLogger } from "./logging"
 import { withoutIpcSecrets } from "./sidecar-env"
@@ -46,7 +46,6 @@ export type SidecarListener = {
   securityProxy: (command: SecurityProxy.StoreCommand) => Promise<SecurityProxy.Result>
 }
 
-const SIDECAR_SERVICE_NAME = "forge server"
 const SIDECAR_START_STALL_TIMEOUT = 60_000
 const SIDECAR_STOP_TIMEOUT = 6_000
 /**
@@ -82,29 +81,35 @@ export async function spawnLocalServer(
   password: string,
   options: SpawnLocalServerOptions,
 ) {
-  const sidecar = join(dirname(fileURLToPath(import.meta.url)), "sidecar.js")
-  const child = utilityProcess.fork(sidecar, [], {
-    cwd: process.cwd(),
-    env: createSidecarEnv(),
-    serviceName: SIDECAR_SERVICE_NAME,
-    stdio: "pipe",
+  const sidecar = app.isPackaged
+    ? join(process.resourcesPath, "server", "sidecar.js")
+    : join(dirname(fileURLToPath(import.meta.url)), "server", "sidecar.js")
+  const bun = app.isPackaged
+    ? join(process.resourcesPath, process.platform === "win32" ? "bun.exe" : "bun")
+    : join(app.getAppPath(), "resources", process.platform === "win32" ? "bun.exe" : "bun")
+  const child = fork(sidecar, [], {
+    execPath: bun,
+    execArgv: ["--no-env-file", "--no-install", "--use-system-ca"],
+    cwd: dirname(sidecar),
+    env: {
+      ...createSidecarEnv(),
+      FORGE_RESOURCES_PATH: app.isPackaged ? process.resourcesPath : join(app.getAppPath(), "resources"),
+    },
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
   })
   let exited = false
+  let disconnected = false
   const exit = defer<number>()
 
-  const onProcessGone = (_event: unknown, details: Details) => {
-    if (details.type !== "Utility" || details.name !== SIDECAR_SERVICE_NAME) return
-    options.onStderr?.(`utility process gone reason=${details.reason} exitCode=${details.exitCode}`)
-  }
-
-  app.on("child-process-gone", onProcessGone)
   child.once("exit", (code) => {
     exited = true
-    app.off("child-process-gone", onProcessGone)
-    options.onExit?.(code)
-    exit.resolve(code)
+    options.onExit?.(code ?? 1)
+    exit.resolve(code ?? 1)
   })
-  child.on("error", (error) => options.onStderr?.(`utility process error: ${serializeError(error).message}`))
+  child.once("disconnect", () => {
+    disconnected = true
+  })
+  child.on("error", (error) => options.onStderr?.(`sidecar process error: ${serializeError(error).message}`))
 
   child.stdout?.on("data", (chunk: Buffer) => options.onStdout?.(chunk.toString("utf8").trimEnd()))
   child.stderr?.on("data", (chunk: Buffer) => options.onStderr?.(chunk.toString("utf8").trimEnd()))
@@ -131,8 +136,8 @@ export async function spawnLocalServer(
       const proxy = parseProxyCommand(message)
       if (proxy) {
         void options.securityProxyCommand?.(proxy.command).then(
-          (result) => child.postMessage({ type: "security-proxy-result", id: proxy.id, result }),
-          (error) => child.postMessage({ type: "security-proxy-result", id: proxy.id, error: String(error).slice(0, 1024) }),
+          (result) => child.send({ type: "security-proxy-result", id: proxy.id, result }),
+          (error) => child.send({ type: "security-proxy-result", id: proxy.id, error: String(error).slice(0, 1024) }),
         )
         return
       }
@@ -150,25 +155,31 @@ export async function spawnLocalServer(
     const onExit = (code: number) => {
       fail(new Error(`Sidecar exited before ready with code ${code}`))
     }
+    const onDisconnect = () => fail(new Error("Sidecar IPC disconnected before ready"))
+    const onError = (error: Error) => fail(error)
     const cleanup = () => {
       clearTimeout(timeout)
       child.off("message", onMessage)
       child.off("exit", onExit)
+      child.off("disconnect", onDisconnect)
+      child.off("error", onError)
     }
 
     child.on("message", onMessage)
     child.on("exit", onExit)
+    child.on("disconnect", onDisconnect)
+    child.on("error", onError)
     refreshTimeout()
-    child.postMessage({
+    child.send({
       type: "start",
       hostname,
       port,
       password,
       userDataPath: options.userDataPath,
-      credentialVault: options.credentialVault,
+      credentialVault: { ...options.credentialVault, key: Buffer.from(options.credentialVault.key).toString("base64") },
     })
   }).catch((error) => {
-    if (!exited) child.kill()
+    if (!exited) child.kill("SIGKILL")
     throw error
   })
 
@@ -176,8 +187,8 @@ export async function spawnLocalServer(
     const proxy = parseProxyCommand(value)
     if (!proxy) return
     void options.securityProxyCommand?.(proxy.command).then(
-      (result) => child.postMessage({ type: "security-proxy-result", id: proxy.id, result }),
-      (error) => child.postMessage({ type: "security-proxy-result", id: proxy.id, error: String(error).slice(0, 1024) }),
+      (result) => child.send({ type: "security-proxy-result", id: proxy.id, result }),
+      (error) => child.send({ type: "security-proxy-result", id: proxy.id, error: String(error).slice(0, 1024) }),
     )
   }
   child.on("message", onSecurityProxyCommand)
@@ -192,13 +203,14 @@ export async function spawnLocalServer(
     })
 
     const ready = async () => {
-      while (true) {
+      while (!exited) {
         await new Promise((resolve) => setTimeout(resolve, 100))
         if (await checkHealth(url, password)) {
           healthy = true
           return
         }
       }
+      throw new Error("Sidecar exited before health check passed")
     }
 
     await Promise.race([ready(), gone])
@@ -239,13 +251,13 @@ export async function spawnLocalServer(
   const devProfiler = (): SidecarProfiler => ({
     start: async (sampleIntervalUs: number) => {
       const reply = awaitProfileReply("profile-started")
-      child.postMessage({ type: "profile-start", sampleIntervalUs })
+      child.send({ type: "profile-start", sampleIntervalUs })
       const result = await reply
       if (!result.ok) throw new Error(result.error ?? "Sidecar failed to start profiling")
     },
     stop: async (path: string) => {
       const reply = awaitProfileReply("profile-stopped")
-      child.postMessage({ type: "profile-stop", path })
+      child.send({ type: "profile-stop", path })
       const result = await reply
       if (!result.ok) throw new Error(result.error ?? "Sidecar failed to stop profiling")
       return {
@@ -257,7 +269,7 @@ export async function spawnLocalServer(
     abort: () => {
       if (exited) return
       try {
-        child.postMessage({ type: "profile-abort" })
+        child.send({ type: "profile-abort" })
       } catch {
         // Teardown is allowed to race with the sidecar going away.
       }
@@ -287,6 +299,7 @@ export async function spawnLocalServer(
     proxyPending.clear()
   }
   child.once("exit", rejectProxy)
+  child.once("disconnect", rejectProxy)
   child.on("message", (value: unknown) => {
     const reply = parseProxyReply(value)
     if (!reply) return
@@ -303,7 +316,7 @@ export async function spawnLocalServer(
       profile,
       securityProxy: (command: SecurityProxy.StoreCommand) =>
         new Promise<SecurityProxy.Result>((resolve, reject) => {
-          if (exited || stopping) return reject(new Error("Sidecar is not running"))
+          if (exited || disconnected || stopping) return reject(new Error("Sidecar is not running"))
           if (proxyPending.size >= 32 || JSON.stringify(command).length > 8 * 1024 * 1024)
             return reject(new Error("Proxy bridge capacity exceeded"))
           const id = randomUUID()
@@ -312,17 +325,23 @@ export async function spawnLocalServer(
             reject(new Error("Proxy operation timed out; do not automatically repeat a send"))
           }, 15_000)
           proxyPending.set(id, { resolve, reject, timer })
-          child.postMessage({ type: "security-proxy", id, command })
+          child.send({ type: "security-proxy", id, command })
         }),
       stop: () => {
         if (stopping) return stopping
         if (exited) return Promise.resolve()
         rejectProxy()
-        child.postMessage({ type: "stop" })
+        if (disconnected) {
+          child.kill("SIGKILL")
+          stopping = exit.promise.then(() => undefined)
+          return stopping
+        }
+        child.send({ type: "stop" })
         stopping = Promise.race([
           exit.promise.then(() => undefined),
-          delay(SIDECAR_STOP_TIMEOUT).then(() => {
-            if (!exited) child.kill()
+          delay(SIDECAR_STOP_TIMEOUT).then(async () => {
+            if (!exited) child.kill("SIGKILL")
+            await exit.promise
           }),
         ])
         return stopping
@@ -366,6 +385,8 @@ function createSidecarEnv(): Record<string, string> {
   )
   delete env.DEBUG
   if (process.platform === "linux") delete env.LD_PRELOAD
+  delete env.ELECTRON_RUN_AS_NODE
+  env.FORGE_RESOURCES_PATH = process.resourcesPath
   Object.assign(
     env,
     resolveForgeCliEnv({

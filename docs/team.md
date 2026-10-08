@@ -93,7 +93,7 @@ Use **Run now** for an immediate duty run.
 Duty results appear in the room and link to their run and Session.
 Detailed workflow outputs remain available in run history.
 Existing schedule, expiry, overlap, and recovery rules still apply.
-See [Automations](./automations.md) for the workflow and trigger reference.
+See [Automations](./systems/automations/README.md) for the workflow and trigger reference.
 
 ## Pause And Stop
 

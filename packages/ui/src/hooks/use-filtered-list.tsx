@@ -37,8 +37,15 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
         (x) => {
           if (!needle) return x
           const skipFilter = props.skipFilter
-          const filterable = skipFilter ? x.filter((item) => !skipFilter(item)) : x
-          const skipped = skipFilter ? x.filter(skipFilter) : []
+          const [filterable, skipped] = skipFilter
+            ? x.reduce<[T[], T[]]>(
+                (result, item) => {
+                  result[skipFilter(item) ? 1 : 0].push(item)
+                  return result
+                },
+                [[], []],
+              )
+            : [x, []]
           const filtered =
             !props.filterKeys && Array.isArray(filterable) && filterable.every((e) => typeof e === "string")
               ? (fuzzysort.go(needle, filterable).map((x) => x.target) as T[])
