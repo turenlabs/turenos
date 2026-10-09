@@ -83,11 +83,13 @@ test("sessions passes its filters and rejects bad values without echoing them", 
   })
   const empty = await agent(["sessions", "--limit", "5", "--dir", "/srv/main", "--all"], { url: server.url })
   expect(empty.stdout).toBe("folder /srv/main · --everywhere lists every folder\nNo sessions in this folder.\n")
-  // The folder is read by exact folder and by project, for the project's worktrees.
-  expect(seen[0]!.searchParams.get("limit")).toBe("5")
-  expect(seen[0]!.searchParams.get("directory")).toBe("/srv/main")
-  expect(seen[0]!.searchParams.has("archived")).toBe(false)
-  expect(seen[1]!.searchParams.get("project")).toBe("project")
+  // The folder is read by exact folder and by project, for the project's worktrees, in parallel.
+  const byFolder = seen.find((url) => url.searchParams.has("directory"))!
+  expect(byFolder.searchParams.get("limit")).toBe("5")
+  expect(byFolder.searchParams.get("directory")).toBe("/srv/main")
+  expect(byFolder.searchParams.has("archived")).toBe(false)
+  expect(seen.find((url) => url.searchParams.has("project"))!.searchParams.get("limit")).toBe("5")
+  expect(seen).toHaveLength(2)
   await agent(["sessions"], { url: server.url })
   expect(seen[2]!.searchParams.get("limit")).toBe("30")
   expect(seen[2]!.searchParams.get("archived")).toBe("false")
