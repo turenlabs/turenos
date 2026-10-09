@@ -137,17 +137,26 @@ function wireChoice(ctx: RequestContext, dialog: ModalState, choice: SelectRende
     const index = ["1", "2", "3"].indexOf(printableKey(key))
     if (index < 0 || index >= choice.options.length) return false
     choice.setSelectedIndex(index)
-    if (Date.now() >= sendAfter) void ctx.dialogs.submit()
+    if (Date.now() >= sendAfter) {
+      // A Ctrl+S that follows the digit meant to confirm it; by then the reply editor is back and empty.
+      ctx.answeredUntil = Date.now() + 1500
+      void ctx.dialogs.submit()
+    }
     return true
   }
   hint(ctx, dialog, choice)
 }
 
-/** Names the digits and what Ctrl+S does with the chosen row; Enter does not confirm. Entries are kept whole. */
+/** Names the digits (they answer at once) and what Ctrl+S does with the chosen row; Enter does not confirm. Entries are kept whole. */
 function hint(ctx: RequestContext, dialog: ModalState, choice: SelectRenderable) {
   const chosen = choice.options[choice.getSelectedIndex()]?.name.replace(/^\d /, "").split(" · ")[0] ?? "Reject"
-  const keys = [`1-${choice.options.length} answer`, `↑↓ then Ctrl+S ${chosen}`, "PgUp/PgDn scroll", "Esc close"]
-  const width = () => (dialog.frame.width > 1 ? dialog.frame.width : ctx.renderer.width) - 4
+  const keys = [
+    `1-${choice.options.length} answer now`,
+    `↑↓ then Ctrl+S confirms ${chosen}`,
+    "PgUp/PgDn scroll",
+    "Esc close",
+  ]
+  const width = () => (dialog.frame.width > 1 ? dialog.frame.width : ctx.renderer.width) - 8
   const paint = () => (dialog.error.content = fitHints(width(), [], keys))
   dialog.frame.onSizeChange = paint
   paint()

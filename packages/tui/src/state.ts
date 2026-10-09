@@ -61,6 +61,8 @@ export type ModalState = {
   editor?: TextareaRenderable
   suggestionRows?: number
   mentionRows?: number
+  /** Rows of the reply's attachment line (0 or 1), which the docked box must leave to the editor. */
+  attachmentRows?: number
   editorLocked?: () => boolean
   send?: TextRenderable
   error: TextRenderable

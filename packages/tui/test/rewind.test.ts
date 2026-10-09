@@ -529,12 +529,12 @@ test("choosing the second-newest prompt opens the undo confirmation and stages t
   app.view.mockInput.pressEnter()
   await app.waitFor(() => app.state.modal?.fields.some((field) => field instanceof InputRenderable) === true)
   const frame = await app.waitFor(
-    (frame) => frame.includes("Earlier real prompt") && frame.includes("Confirmation (type undo)"),
+    (frame) => frame.includes("Earlier real prompt") && frame.includes("Confirmation (type rewind)"),
   )
   expect(frame).toContain("Rewind conversation?")
   expect(frame).not.toContain("Undo conversation?")
   expect(app.posts()).toEqual([])
-  await app.confirm()
+  await app.confirm("rewind")
   await app.waitFor(() => !app.state.modal)
   expect(app.posts().map((request) => [request.path, request.body])).toEqual([
     ["/api/session/ses_rewind/interrupt", ""],

@@ -1095,7 +1095,7 @@ test("permission submission defaults to Reject and extra modifiers cannot confir
     await view.mockInput.pressKeys([enter])
     await view.renderOnce()
     expect(view.renderer.currentFocusedRenderable).toBe(choice)
-    expect(view.captureCharFrame()).toContain("Ctrl+S Reject")
+    expect(view.captureCharFrame()).toContain("Ctrl+S confirms Reject")
     expect(server.posts).toHaveLength(0)
   }
   for (const modifier of ["shift", "meta", "super", "hyper"] as const) {
@@ -2335,6 +2335,26 @@ test("failed agent discovery cannot launch using a blank directory", async () =>
   expect(server.posts).toHaveLength(0)
 })
 
+test("failed agent discovery reads as one sentence, replaces the loading row, and names a typed folder", async () => {
+  const server = fixture({ agentStatus: 500 })
+  const view = await createTestRenderer({ width: 110, height: 38 })
+  cleanup.push(() => view.renderer.destroy())
+  await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
+  view.mockInput.pressKey("n")
+  const frame = await waitForFrame(view, (text) => text.includes("Cannot load agents"))
+  expect(frame.replace(/\s*│\s*\n\s*│\s*/g, " ")).toContain("check the server logs. Ctrl+S retries.")
+  expect(frame).not.toContain("..")
+  view.mockInput.pressTab()
+  await waitForFrame(view, (text) => text.includes("Agents unavailable"))
+  expect(view.captureCharFrame()).not.toContain("Loading agents")
+  view.mockInput.pressKey("a", { ctrl: true })
+  for (let index = 0; index < 12; index++) view.mockInput.pressKey("DELETE")
+  await view.mockInput.typeText("/srv/nope")
+  view.mockInput.pressTab()
+  const typed = await waitForFrame(view, (text) => text.includes("/srv/nope may not be a folder on the server"))
+  expect(typed.replace(/\s*│\s*\n\s*│\s*/g, " ")).toContain("Fix Directory, or Ctrl+S retries.")
+})
+
 test("Escape keeps a launch draft, successful launch remembers settings, and discard starts empty", async () => {
   const server = fixture()
   const view = await createTestRenderer({ width: 120, height: 38 })
@@ -2800,7 +2820,7 @@ test("the primary action exposes the blocker before reply and still opens the co
   view.mockInput.pressEscape()
   await waitForFrame(view, (frame) => !frame.includes("Permission request") && frame.includes("Needs input"))
   // Closing the prompt leaves the reply editor open, saying the permission waits; Esc leaves it for shortcuts.
-  await waitForFrame(view, (frame) => frame.includes("Permission waiting · Esc then Enter to answer"))
+  await waitForFrame(view, (frame) => frame.includes("Enter reviews the permission"))
   await leaveComposer(view)
   expect(view.captureCharFrame()).not.toContain("f Reply")
   const lines = view.captureCharFrame().split("\n")
@@ -3454,7 +3474,7 @@ for (const form of ["permission", "question", "kill"] as const) {
       await view.mockInput.typeText("kill")
       view.mockInput.pressEnter()
     } else view.mockInput.pressKey(form === "permission" ? "p" : "o")
-    const send = form === "permission" ? "Ctrl+S Reject" : "Ctrl+S kill"
+    const send = form === "permission" ? "Ctrl+S confirms Reject" : "Ctrl+S kill"
     await waitForFrame(view, (frame) => frame.includes(form === "question" ? "Question 1 of 1" : send))
     if (form === "question") {
       view.mockInput.pressEnter()

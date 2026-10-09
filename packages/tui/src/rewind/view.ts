@@ -75,6 +75,8 @@ function consequences(flow: RewindFlow) {
 export function addConfirmation(flow: RewindFlow) {
   const { renderer, dialog, dialogs, action } = flow
   const notes = consequences(flow)
+  // The title, the typed word and the key hint all say what was asked for: /rewind rewinds, /undo undoes.
+  const word = flow.picked ? "rewind" : action
   const controls = new BoxRenderable(renderer, {
     height: (action === "undo" ? 5 : 2) + notes.length,
     flexShrink: 0,
@@ -102,7 +104,7 @@ export function addConfirmation(flow: RewindFlow) {
     focusedBackgroundColor: color.selected,
     textColor: color.text,
   })
-  captions.push(caption(flow.confirmation, `Confirmation (type ${action})`))
+  captions.push(caption(flow.confirmation, `Confirmation (type ${word})`))
   controls.add(frameField(renderer, flow.confirmation))
   dialogs.track(dialog, flow.confirmation)
   // Focus has no other plain-text cue between the mode list and the typed word, so only the focused field's caption has ▶.
@@ -114,8 +116,8 @@ export function addConfirmation(flow: RewindFlow) {
     item.field.on("focused", paintFocus)
     item.field.on("blurred", paintFocus)
   })
-  requireWord(dialog, flow.confirmation, action, dialogs.resize)
-  dialog.error.content = `Ctrl+S ${flow.picked ? "rewind" : action} · Enter does not confirm\n${action === "undo" ? "Tab chooses file mode / confirmation. " : ""}${flow.summary ? "Ctrl+D shows the staged patch · PgUp/PgDn scroll · " : ""}Esc close`
+  requireWord(dialog, flow.confirmation, word, dialogs.resize)
+  dialog.error.content = `Ctrl+S ${word} · Enter does not confirm\n${action === "undo" ? "Tab chooses file mode / confirmation. " : ""}${flow.summary ? "Ctrl+D shows the staged patch · PgUp/PgDn scroll · " : ""}Esc close`
   flow.ready = true
   flow.confirmation.focus()
   paintFocus()

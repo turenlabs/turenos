@@ -26,6 +26,7 @@ export function showAttachments(ctx: RequestContext, dialog: ModalState, task: R
       draft.submitted !== undefined ? (draft.prompt?.files ?? []) : undefined,
     )
     line.visible = summary !== undefined
+    dialog.attachmentRows = summary === undefined ? 0 : 1
     line.content = summary ?? ""
     line.fg = summary?.includes("OUTSIDE") ? color.warning : color.muted
     ctx.dialogs.resize()

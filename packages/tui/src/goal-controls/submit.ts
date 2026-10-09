@@ -1,4 +1,5 @@
 import type { SessionsGoalSetInput } from "@turenlabs/client"
+import { clause } from "../messages"
 import { errorText, refused } from "../server"
 import type { GoalSubmission } from "./confirm"
 import { current, fresh, sameGoal, type Goal } from "./context"
@@ -112,10 +113,10 @@ async function write(flow: GoalSubmission, intent: SessionsGoalSetInput) {
     if (refused(error)) {
       flow.attempted = false
       flow.intent = undefined
-      throw new Error(`Rejected by the server: ${errorText(error)}. Nothing changed; edit and retry.`)
+      throw new Error(`Rejected by the server: ${clause(errorText(error))}. Nothing changed; edit and retry.`)
     }
     throw new Error(
-      `Outcome unconfirmed: ${errorText(error)}. ${action === "Set" ? "Retry preserves the original goal/message IDs and objective." : "Retry checks GET only; no write repeated."}`,
+      `Outcome unconfirmed: ${clause(errorText(error))}. ${action === "Set" ? "Retry preserves the original goal/message IDs and objective." : "Retry checks GET only; no write repeated."}`,
     )
   }
 }

@@ -1,4 +1,5 @@
 import { TextRenderable } from "@opentui/core"
+import { clause } from "../messages"
 import { matchesKey } from "../keys"
 import { errorText, refused, type Session } from "../server"
 import { sessionTitle } from "../state"
@@ -54,9 +55,9 @@ export function confirm(ctx: HarnessContext, session: Session, action: Action, b
       // A definite 4xx changed nothing at that step; an approved proposal resumes with apply only.
       if (refused(error)) {
         attempted = false
-        throw new Error(`Rejected by the server: ${errorText(error)}. Retry resends only what is still pending.`)
+        throw new Error(`Rejected by the server: ${clause(errorText(error))}. Retry resends only what is still pending.`)
       }
-      throw new Error(`Outcome unconfirmed: ${errorText(error)}. Retry rechecks without resending.`)
+      throw new Error(`Outcome unconfirmed: ${clause(errorText(error))}. Retry rechecks without resending.`)
     }
     ctx.say(completed(action))
   }

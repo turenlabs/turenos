@@ -1,3 +1,4 @@
+import { clause } from "../messages"
 import { errorText } from "../server"
 import type { Conversation, LivePage } from "./context"
 import { drawLive, mergeLive } from "./live-cache"
@@ -94,7 +95,7 @@ function fetchEarlier(c: Conversation, token: number, id: string, cursor: string
       drawLive(c)
       if (!result.data.length) hooks.say("Start of history reached.")
     } catch (cause) {
-      if (valid()) hooks.say(`Earlier messages unavailable: ${errorText(cause)}. Scroll up to retry.`, true)
+      if (valid()) hooks.say(`Earlier messages unavailable: ${clause(errorText(cause))}. Scroll up to retry.`, true)
     } finally {
       c.earlier = undefined
     }

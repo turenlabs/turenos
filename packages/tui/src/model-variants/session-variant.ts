@@ -1,4 +1,5 @@
 import { label } from "../state"
+import { clause } from "../messages"
 import { errorText, refused, sameSession, type Session } from "../server"
 import { show } from "./show"
 import type { VariantsContext } from "./types"
@@ -64,7 +65,7 @@ async function chooseVariant(
     } catch (error) {
       if (refused(error)) {
         attempt.attempted = false
-        throw new Error(`Rejected by the server: ${errorText(error)}. Nothing changed; choose again or retry.`)
+        throw new Error(`Rejected by the server: ${clause(errorText(error))}. Nothing changed; choose again or retry.`)
       }
       throw new Error("Variant outcome unknown. Choice frozen; retry checks only. Esc to close and inspect.")
     }

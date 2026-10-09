@@ -210,7 +210,7 @@ test("a rewound prompt picked from /rewind is titled rewind", async () => {
   view.mockInput.pressArrow("down")
   await screen("▶ First prompt")
   view.mockInput.pressEnter()
-  const frame = await screen("Confirmation (type undo)")
+  const frame = await screen("Confirmation (type rewind)")
   expect(frame).toContain("Rewind conversation?")
   expect(frame).not.toContain("Undo conversation?")
 })

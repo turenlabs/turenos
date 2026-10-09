@@ -23,8 +23,11 @@ const globe = Array.from({ length: 24 }, (_, frame) => {
   return cells.map((cell) => String.fromCharCode(0x2800 + cell)).join("")
 })
 
-// The quickest stop, not `x`: Esc Esc works from the reply editor and the dashboard alike.
-const stopHint = "Esc Esc to stop"
+/** Esc Esc works from the reply editor and the dashboard alike; `x` only where letters are shortcuts, not text. */
+const stopHint = (state: DashboardState) => (state.modal ? "Esc Esc to stop" : "Esc Esc or x to stop")
+
+/** Columns the activity line is cut to when the caller does not know the pane width: the main pane at 80 columns. */
+const defaultRoom = 72
 
 export type ActivityFrame = {
   content: string
@@ -32,7 +35,12 @@ export type ActivityFrame = {
   animate: boolean
 }
 
-export function activityFrame(state: DashboardState, frame: number, reducedMotion: boolean): ActivityFrame | undefined {
+export function activityFrame(
+  state: DashboardState,
+  frame: number,
+  reducedMotion: boolean,
+  room = defaultRoom,
+): ActivityFrame | undefined {
   if (!state.modal?.busy && !state.connected && state.connectionError)
     return { content: "! Disconnected", tone: "error", animate: false }
 
@@ -57,7 +65,7 @@ export function activityFrame(state: DashboardState, frame: number, reducedMotio
     : !state.connected
       ? "Connecting"
       : retry
-        ? retrying(retry)
+        ? retrying(retry, room - globe[0]!.length - 1)
         : working(state, detail)
 
   const phase =
@@ -69,7 +77,7 @@ export function activityFrame(state: DashboardState, frame: number, reducedMotio
   }
 }
 
-/** "Working (12s · Esc Esc to stop)", or "Running bash (4s · Esc Esc to stop)" while a tool runs. */
+/** "Working (12s · Esc Esc or x to stop)", or "Running bash (4s · …)" while a tool runs. */
 function working(state: DashboardState, detail: DashboardState["detail"]) {
   // History pages and older messages cannot identify the currently running tool or turn.
   const messages = state.history && state.historyCursor ? [] : (detail?.messages ?? [])
@@ -83,13 +91,16 @@ function working(state: DashboardState, detail: DashboardState["detail"]) {
   const elapsed =
     started && Date.now() >= started && Date.now() - started < 86_400_000 ? `${duration(Date.now() - started)} · ` : ""
   const action = tool?.type === "tool" ? `Running ${label(tool.name, 80).trim() || "tool"}` : "Working"
-  return `${action} (${elapsed}${stopHint})`
+  return `${action} (${elapsed}${stopHint(state)})`
 }
 
-function retrying(retry: Retry) {
+/** The stop hint comes before the reason, and only the end of the reason is cut to fit `room`. */
+function retrying(retry: Retry, room: number) {
   const wait = retry.at - Date.now()
   const when = wait > 500 ? `in ${duration(wait)}` : "now"
-  return `Retrying ${when} (attempt ${retry.attempt} · ${stopHint})${retry.message ? `: ${label(retry.message, 72)}` : ""}`
+  const head = `Retrying ${when} · attempt ${retry.attempt} · Esc Esc stops`
+  if (!retry.message) return head
+  return `${head} · ${label(retry.message, Math.max(16, Math.min(72, room - head.length - 3)))}`
 }
 
 function duration(milliseconds: number) {

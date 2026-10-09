@@ -58,7 +58,7 @@ test("Esc twice within two seconds stops a running turn; one Esc only warns", as
   await screen("Press Esc again to stop this turn")
   expect(server.sent("/api/session/ses_main/interrupt")).toHaveLength(0)
   view.mockInput.pressEscape()
-  await screen("Stopped. 1 queued message is held: u to send or discard")
+  await screen("Stopped. 1 queued message held · u sends or discards")
   expect(server.sent("/api/session/ses_main/interrupt")).toHaveLength(1)
 })
 

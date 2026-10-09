@@ -35,6 +35,8 @@ export type RequestContext = {
   shownPermissions: Set<string>
   /** Recorded by the first Esc; a second Esc before `until` interrupts a running session or opens undo for an idle one. */
   stopArmed?: { sessionID: string; until: number; action: "stop" | "rewind" }
+  /** Set when a digit answers a permission: a Ctrl+S before this time is the user confirming it, not sending a reply. */
+  answeredUntil?: number
   /** The last Steer/Queue choice per session, kept while the process lives. */
   deliveries: Map<string, MessageDraft["delivery"]>
   questionDrafts: Map<string, QuestionDraft>
@@ -52,6 +54,14 @@ export function owner(ctx: RequestContext, sessionID: string) {
   return [...(detail?.tasks.data ?? []), ...(detail?.tasks.active ?? [])].find(
     (task) => task.childSessionID === sessionID,
   )
+}
+
+/** The permission or question the session is waiting on, permissions first, as the dashboard opens them. */
+export function waitingRequest(ctx: RequestContext, sessionID: string) {
+  const detail = ctx.state.detail?.sessionID === sessionID ? ctx.state.detail : undefined
+  if (detail?.permissions.length) return "permission"
+  if (detail?.questions.length) return "question"
+  return undefined
 }
 
 export function replyBlocked(ctx: RequestContext, sessionID: string) {

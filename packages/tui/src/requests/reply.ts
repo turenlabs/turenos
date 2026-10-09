@@ -6,9 +6,12 @@ import { matchesKey } from "../keys"
 import { outsideNotice } from "../mentions/outside"
 import { promptPayload } from "../prompt-files"
 import { dockedEditor } from "../dialogs/docked-editor"
+import { armStop, stopPrompt } from "./stop"
 import { showAttachments } from "./attachments"
 import { openBlockedReply } from "./blocked-reply"
-import { maxDrafts, maxMessageLength, newMessageID, replyBlocked, type RequestContext } from "./context"
+import { permission } from "./permission"
+import { question } from "./question"
+import { maxDrafts, maxMessageLength, newMessageID, replyBlocked, waitingRequest, type RequestContext } from "./context"
 
 export function followup(ctx: RequestContext) {
   if (ctx.state.tab !== "sessions" || !ctx.state.selected) return ctx.say("Select a session first.")
@@ -44,8 +47,7 @@ export function offerComposer(ctx: RequestContext) {
 function leaveComposer(ctx: RequestContext, sessionID: string) {
   ctx.state.navigating = true
   if (!Object.hasOwn(ctx.state.snapshot?.active ?? {}, sessionID)) return
-  ctx.stopArmed = { sessionID, until: Date.now() + 2000, action: "stop" }
-  ctx.say("Press Esc again to stop this turn")
+  armStop(ctx, sessionID, "stop", stopPrompt(ctx, sessionID))
 }
 
 function openReply(ctx: RequestContext, session: Session, keepNotice = false) {
@@ -78,6 +80,16 @@ function openReply(ctx: RequestContext, session: Session, keepNotice = false) {
     ctx.messages.delete(sessionID)
   }
   const attached: { acknowledged?: string } = {}
+  dialog.beforeSubmit = () => reviewRequest(ctx, session.id, task, draft)
+  // Whether Enter reviews the waiting request or sends text changes with the first and last character.
+  const typed = task.onContentChange
+  let empty = !task.plainText.trim()
+  task.onContentChange = (event) => {
+    typed?.(event)
+    if (empty === !task.plainText.trim()) return
+    empty = !empty
+    if (waitingRequest(ctx, session.id)) dialog.refresh?.()
+  }
   dialog.submit = () => submitReply(ctx, session, draft, task, attached)
   delivery()
   ctx.slash.attach(
@@ -113,16 +125,20 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
     const title = ctx.state.snapshot?.sessions.find((item) => item.id === session.id)?.title ?? session.title
     const mode = !live ? "Send" : draft.delivery === "queue" ? "Queue" : "Steer"
     const waiting = waitingRequest(ctx, session.id)
+    // An empty editor's Enter opens the request; with text typed, Enter sends it, so the heading points at Esc.
+    const review = !!waiting && !dialog.editor?.plainText.trim() && draft.submitted === undefined
     heading.content = waiting
-      ? `${mode} · ${waiting} · Esc then Enter to answer`
+      ? `${mode} · ${waiting === "permission" ? "Permission" : "Question"} waiting${review ? "" : " · Esc then Enter to answer"}`
       : `${mode} · Reply to ${sessionTitle(title, 100)}${session.revert ? " · undo staged" : ""}`
     heading.fg = waiting || session.revert ? color.warning : color.muted
     const listed = (dialog.suggestionRows ?? 0) + (dialog.mentionRows ?? 0) > 0
     const hint = listed
       ? `Up/Down choose · Tab complete\nEnter pick · Esc close list · F4 discard`
-      : session.revert
-        ? `Enter Send + commit undo · Alt+Enter newline\nEsc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
-        : `Enter Send · Shift/Alt+Enter newline\nEsc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
+      : review
+        ? `Enter ${waiting === "permission" ? "reviews the permission" : "answers the question"} · ${live ? "Esc Esc stops the turn" : "Esc shortcuts"}\nF4 discard${live ? " · Ctrl+T mode" : ""}`
+        : session.revert
+          ? `Enter Send + commit undo · Alt+Enter newline\nEsc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
+          : `Enter Send · Shift/Alt+Enter newline\nEsc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
     // A refresh may repaint the hint, but never over a message that replaced it.
     if (!shown.content || dialog.error.content === shown.content) dialog.error.content = hint
     shown.content = dialog.error.content
@@ -139,17 +155,25 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
     draft.delivery = draft.delivery === "steer" ? "queue" : "steer"
     ctx.deliveries.set(session.id, draft.delivery)
     delivery()
+    ctx.say(draft.delivery === "queue" ? "Queue: sent when the agent is idle" : "Steer: read at the next step")
     return true
   }
   return delivery
 }
 
-/** A permission or question the open reply would otherwise hide: the editor stays, so it says what waits. */
-function waitingRequest(ctx: RequestContext, sessionID: string) {
-  const detail = ctx.state.detail?.sessionID === sessionID ? ctx.state.detail : undefined
-  if (detail?.permissions.length) return "Permission waiting"
-  if (detail?.questions.length) return "Question waiting"
-  return ""
+/**
+ * Enter in an empty editor goes to what the session waits on instead of failing to send nothing; a Ctrl+S that
+ * follows a digit answer is swallowed, because the digit already confirmed it.
+ */
+function reviewRequest(ctx: RequestContext, sessionID: string, task: ReplyEditor, draft: MessageDraft) {
+  if (task.plainText.trim() || draft.submitted !== undefined) return false
+  if (Date.now() < (ctx.answeredUntil ?? 0)) return true
+  const waiting = waitingRequest(ctx, sessionID)
+  if (!waiting) return false
+  ctx.dialogs.close()
+  if (waiting === "permission") permission(ctx)
+  else question(ctx)
+  return true
 }
 
 function createReplyEditor(ctx: RequestContext, dialog: ModalState, draft: MessageDraft) {

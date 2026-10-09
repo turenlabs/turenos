@@ -120,7 +120,8 @@ function resizeDockedModal(renderer: CliRenderer, state: DashboardState) {
       requestedHeight(modal.error) +
       (modal.composer ? 1 : 3) +
       (modal.suggestionRows ?? 0) +
-      (modal.mentionRows ?? 0),
+      (modal.mentionRows ?? 0) +
+      (modal.attachmentRows ?? 0),
   )
 }
 

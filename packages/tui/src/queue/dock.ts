@@ -43,12 +43,13 @@ export type Dock = {
 // Two lines that break between entries, so no key is split from its verb.
 export const keys = "Enter send now · Ctrl+E edit · Ctrl+D twice discard\nCtrl+R refresh · Esc close"
 
+/** Re-reads the queue; false when the dialog moved on or the queue could not be read. */
 export async function refresh(dock: Dock, note = "") {
   const { ctx, session, dialog, text, list } = dock
   const version = ++dock.request
   try {
     const result = waiting(await ctx.connection.client.sessions.pendingInputs({ sessionID: session.id }))
-    if (version !== dock.request || ctx.state.modal !== dialog) return
+    if (version !== dock.request || ctx.state.modal !== dialog) return false
     const previous = dock.inputs[list.getSelectedIndex()]?.id
     dock.inputs = result.toSorted((a, b) => a.admittedSeq - b.admittedSeq)
     list.options = dock.inputs.map((input) => ({
@@ -80,14 +81,16 @@ export async function refresh(dock: Dock, note = "") {
         "Removed from the queue, but it could not reopen in the reply editor (send or discard your reply draft, then Ctrl+R).",
       )
     }
+    return true
   } catch (error) {
-    if (version !== dock.request || ctx.state.modal !== dialog) return
+    if (version !== dock.request || ctx.state.modal !== dialog) return false
     // Nothing is listed, so Enter, Ctrl+E and Ctrl+D must not act on a message that is no longer shown.
     dock.inputs = []
     dock.armed = ""
     list.visible = false
     text.content = `Queued messages unavailable: ${errorText(error)}`
     dialog.error.content = "Ctrl+R retry · Esc close"
+    return false
   }
 }
 
@@ -147,7 +150,7 @@ export async function act(dock: Dock, kind: "steer" | "edit" | "cancel") {
         keep(dock, input)
       return
     }
-    await refresh(dock, kind === "steer" ? "Sent now; the agent reads it at its next step." : "Discarded.")
+    await (kind === "steer" ? sentNow(dock) : refresh(dock, "Discarded."))
   } catch (error) {
     if (ctx.state.modal !== dialog) return
     if (refused(error)) dialog.error.content = `! ${errorText(error)}\n${keys}`
@@ -159,6 +162,14 @@ export async function act(dock: Dock, kind: "steer" | "edit" | "cancel") {
     dialog.busy = false
     dock.acting = false
   }
+}
+
+/** The last waiting message is gone, so there is nothing left to do here: close the dialog and say so. */
+async function sentNow(dock: Dock) {
+  const read = await refresh(dock, "Sent now; the agent reads it at its next step.")
+  if (!read || dock.inputs.length || dock.ctx.state.modal !== dock.dialog) return
+  dock.ctx.dialogs.close(false)
+  dock.ctx.say("Sent now.")
 }
 
 /** The server's answer was lost, so the message may or may not have left the queue: show its text, then re-read. */
