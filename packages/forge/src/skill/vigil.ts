@@ -76,6 +76,8 @@ const reviewedSkillDigests = new Set([
   "8eb66198359530817494f97f5b552d6d29d16fd0c470510ec96bb694a7f3fbda",
   // turenlabs/detection-engineering-review
   "a5cc17171c5a7cb8de62e84d6ac903ad1bcda2ab43b38a451d52474dc6bcac3b",
+  // turenlabs/github-actions-security-review
+  "d9b409c7ea8a6b61805de989dd8e111eb8cbaee94aa5a8fd005afda728d60f4d",
   // turenlabs/iac-config-review
   "9a2b0ee0b3b04c486022045245f005335526f962759c1c2981dc494004535bb0",
   // turenlabs/mcp-security-review

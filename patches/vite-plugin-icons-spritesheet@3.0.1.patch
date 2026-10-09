@@ -1,0 +1,108 @@
+diff --git a/dist/index.js b/dist/index.js
+index 62c91490b3b8d6e7f10c5f5351e5079d6df47b4f..5882c9d00c49cfae6eeb727bd7e69cde39da6526 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -58,7 +58,7 @@ var generateIcons = async ({
+   const outputDirRelative = import_node_path.default.relative(cwdToUse, outputDir);
+   const files = import_glob.glob.sync("**/*.svg", {
+     cwd: inputDir
+-  });
++  }).sort();
+   if (files.length === 0) {
+     console.log(`\u26A0\uFE0F  No SVG files found in ${import_chalk.default.red(inputDirRelative)}`);
+     return;
+@@ -212,15 +212,31 @@ var iconsSpritesheet = (maybeConfigs) => {
+   const allSpriteSheetNames = configs.map((config) => config.fileName ?? "sprite.svg");
+   return configs.map((config, i) => {
+     const { withTypes, inputDir, outputDir, typesOutputFile, fileName, cwd, iconNameTransformer, formatter } = config;
+-    const iconGenerator = async () => generateIcons({
+-      withTypes,
+-      inputDir,
+-      outputDir,
+-      typesOutputFile,
+-      fileName,
+-      iconNameTransformer,
+-      formatter
+-    });
++    let running = null;
++    let again = false;
++    const iconGenerator = () => {
++      if (running) {
++        again = true;
++        return running;
++      }
++      running = (async () => {
++        do {
++          again = false;
++          await generateIcons({
++            withTypes,
++            inputDir,
++            outputDir,
++            typesOutputFile,
++            fileName,
++            iconNameTransformer,
++            formatter
++          });
++        } while (again);
++      })().finally(() => {
++        running = null;
++      });
++      return running;
++    };
+     const workDir = cwd ?? process.cwd();
+     return {
+       name: `icon-spritesheet-generator${i > 0 ? i.toString() : ""}`,
+diff --git a/dist/index.mjs b/dist/index.mjs
+index eb662b2296261101cd610bda69866bf842caa281..5367444187481f986aa9848fcbcd93388791118c 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -24,7 +24,7 @@ var generateIcons = async ({
+   const outputDirRelative = path.relative(cwdToUse, outputDir);
+   const files = glob.sync("**/*.svg", {
+     cwd: inputDir
+-  });
++  }).sort();
+   if (files.length === 0) {
+     console.log(`\u26A0\uFE0F  No SVG files found in ${chalk.red(inputDirRelative)}`);
+     return;
+@@ -178,15 +178,31 @@ var iconsSpritesheet = (maybeConfigs) => {
+   const allSpriteSheetNames = configs.map((config) => config.fileName ?? "sprite.svg");
+   return configs.map((config, i) => {
+     const { withTypes, inputDir, outputDir, typesOutputFile, fileName, cwd, iconNameTransformer, formatter } = config;
+-    const iconGenerator = async () => generateIcons({
+-      withTypes,
+-      inputDir,
+-      outputDir,
+-      typesOutputFile,
+-      fileName,
+-      iconNameTransformer,
+-      formatter
+-    });
++    let running = null;
++    let again = false;
++    const iconGenerator = () => {
++      if (running) {
++        again = true;
++        return running;
++      }
++      running = (async () => {
++        do {
++          again = false;
++          await generateIcons({
++            withTypes,
++            inputDir,
++            outputDir,
++            typesOutputFile,
++            fileName,
++            iconNameTransformer,
++            formatter
++          });
++        } while (again);
++      })().finally(() => {
++        running = null;
++      });
++      return running;
++    };
+     const workDir = cwd ?? process.cwd();
+     return {
+       name: `icon-spritesheet-generator${i > 0 ? i.toString() : ""}`,

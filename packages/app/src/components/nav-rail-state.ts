@@ -5,17 +5,16 @@
 // what a rail click should do, and the collapse-state shape that gets
 // persisted. It deliberately imports nothing from either feature.
 
-export type Surface = "home" | "agents" | "lobby" | "replay" | "automations" | "extend"
+export type Surface = "home" | "agents" | "lobby" | "replay" | "team" | "automations" | "extend"
 
-export function surfaceEnabled(surface: Surface, lobbyBetaEnabled: boolean, automationsEnabled = false) {
+export function surfaceEnabled(surface: Surface, lobbyBetaEnabled: boolean, _automationsEnabled = false) {
   if (surface === "lobby") return lobbyBetaEnabled
-  if (surface === "automations") return automationsEnabled
   return true
 }
 
-export function navRailSurfaces(automationsEnabled: boolean, lobbyBetaEnabled: boolean): Surface[] {
+export function navRailSurfaces(_automationsEnabled: boolean, lobbyBetaEnabled: boolean): Surface[] {
   const surfaces: Surface[] = ["home", "agents"]
-  if (automationsEnabled) surfaces.push("automations")
+  surfaces.push("team")
   surfaces.push("extend", "replay")
   if (lobbyBetaEnabled) surfaces.push("lobby")
   return surfaces
@@ -25,7 +24,7 @@ export function navRailKeybind(surface: Surface, automationsEnabled: boolean, lo
   const index = navRailSurfaces(automationsEnabled, lobbyBetaEnabled).indexOf(surface)
   return index < 0 ? undefined : `mod+${index + 1}`
 }
-export type PanelSurface = Extract<Surface, "agents" | "automations">
+export type PanelSurface = Extract<Surface, "agents" | "team" | "automations">
 
 export type RailLocation = {
   pathname: string
@@ -52,11 +51,12 @@ export function migrateNavRailState(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value
   const collapsed = (value as { collapsed?: unknown }).collapsed
   if (!collapsed || typeof collapsed !== "object" || Array.isArray(collapsed)) return {}
+  const team = (collapsed as { team?: unknown; automations?: unknown }).team
   const automations = (collapsed as { automations?: unknown }).automations
   return {
     collapsed: {
       agents: (collapsed as { agents?: unknown }).agents === true,
-      ...(typeof automations === "boolean" ? { automations } : {}),
+      ...(typeof team === "boolean" ? { team } : typeof automations === "boolean" ? { team: automations } : {}),
     },
   }
 }
@@ -69,7 +69,8 @@ export type PanelState = {
 export function surfaceHref(surface: Surface): string {
   if (surface === "lobby") return "/lobby"
   if (surface === "replay") return "/replay"
-  if (surface === "automations") return "/automations"
+  if (surface === "team") return "/team"
+  if (surface === "automations") return "/team"
   if (surface === "home") return "/home"
   if (surface === "extend") return "/extend/catalog"
   return "/"
@@ -81,12 +82,14 @@ export function surfaceFromLocation(location: RailLocation): Surface {
   if (location.pathname === "/lobby" || location.pathname.startsWith("/lobby/")) return "lobby"
   if (location.pathname === "/replay" || location.pathname.startsWith("/replay/")) return "replay"
   if (
+    location.pathname === "/team" ||
+    location.pathname.startsWith("/team/") ||
     location.pathname === "/automations" ||
     location.pathname.startsWith("/automations/") ||
     location.pathname === "/loops" ||
     location.pathname.startsWith("/loops/")
   )
-    return "automations"
+    return "team"
   return "agents"
 }
 
@@ -94,7 +97,7 @@ export function surfaceFromLocation(location: RailLocation): Surface {
 // Agents panel is shell chrome: it renders on every Agents-surface route
 // (home, session, and draft), not just home.
 export function panelAvailable(surface: Surface, location: RailLocation): boolean {
-  if (surface !== "agents" && surface !== "automations") return false
+  if (surface !== "agents" && surface !== "team" && surface !== "automations") return false
   return surfaceFromLocation(location) === surface
 }
 

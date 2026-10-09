@@ -372,6 +372,12 @@ const SettingsGeneralContent: Component<{
     { value: "dark", label: language.t("theme.scheme.dark") },
   ])
 
+  const followupOptions = createMemo(() =>
+    (["queue", "steer"] as const).map((value) => ({
+      value,
+      label: language.t(`settings.general.row.followup.option.${value}`),
+    })),
+  )
   const languageOptions = createMemo(() =>
     language.locales.map((locale) => ({
       value: locale,
@@ -655,6 +661,25 @@ const SettingsGeneralContent: Component<{
                 if (option.value === currentShell()) return
                 serverSync().updateConfig({ shell: option.value })
               }}
+            />
+          </SettingsRowV2>
+        </Show>
+
+        <Show when={props.page === "app"}>
+          <SettingsRowV2
+            title={language.t("settings.general.row.followup.title")}
+            description={language.t("settings.general.row.followup.description")}
+          >
+            <SelectV2
+              appearance="inline"
+              data-action="settings-followup"
+              options={followupOptions()}
+              placement="bottom-end"
+              gutter={6}
+              current={followupOptions().find((o) => o.value === settings.general.followup())}
+              value={(o) => o.value}
+              label={(o) => o.label}
+              onSelect={(option) => option && settings.general.setFollowup(option.value)}
             />
           </SettingsRowV2>
         </Show>
