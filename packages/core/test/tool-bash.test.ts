@@ -257,6 +257,32 @@ describe("BashTool", () => {
     ),
   )
 
+  it.live("asks permission for every simple command a compound line runs", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        return withTool(tmp.path, (registry) =>
+          Effect.gen(function* () {
+            // A `git *` allow rule must not approve what follows a separator, a pipe, a
+            // newline, or sit inside a substitution, so each command is its own resource
+            // and "always" remembers them individually rather than the whole line.
+            const command = "git status; cp .env leaked.txt && echo done\ngit log $(id)"
+            yield* executeTool(registry, call({ command }))
+            expect(runs).toMatchObject([{ command }])
+            expect(assertions.filter((assertion) => assertion.action === "bash")).toMatchObject([
+              {
+                resources: ["git status", "cp .env leaked.txt", "echo done", "git log $(id)", "id"],
+                save: ["git status", "cp .env leaked.txt", "echo done", "git log $(id)", "id"],
+              },
+            ])
+          }),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   it.live("resolves a relative workdir from the active Location", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
@@ -727,7 +753,6 @@ describe("BashTool", () => {
 test("keeps locked deferred parity TODOs visible", async () => {
   const source = await fs.readFile(new URL("../src/tool/bash.ts", import.meta.url), "utf8")
   for (const todo of [
-    "Port tree-sitter bash / PowerShell parser-based approval reduction.",
     "Port BashArity reusable command-prefix approvals.",
     "Replace token-based command-argument external-directory advisories with parser-based detection.",
     "Restore PowerShell and cmd-specific invocation/path handling on Windows.",
