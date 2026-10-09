@@ -1,5 +1,4 @@
 import { BoxRenderable, ScrollBoxRenderable, TextAttributes, TextRenderable, type CliRenderer } from "@opentui/core"
-import { welcomeMark } from "../logo"
 import { createMarkdown } from "../markdown"
 import { color } from "../theme"
 import { ContextLine } from "./context-line"
@@ -72,17 +71,6 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
     contentOptions: { flexDirection: "column", paddingRight: 2 },
   })
   main.add(detail)
-  // Keep the welcome mark secondary to the text, with two clear rows beneath it.
-  const mark = new TextRenderable(renderer, {
-    ...welcomeMark(0),
-    visible: false,
-    flexShrink: 0,
-    marginBottom: 2,
-    wrapMode: "none",
-  })
-  detail.add(mark)
-  /** The welcome text's rows while the welcome shows, which the anvil leaves room for. */
-  let welcomeRows: number | undefined
   const content = new TextRenderable(renderer, {
     content: "Connecting to the server…",
     fg: color.text,
@@ -94,18 +82,7 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
   markdown.visible = false
   detail.add(markdown)
 
-  // The pane's height is known after its first layout, which fires `resize`; until then the anvil waits for it.
-  function fitMark() {
-    const height = detail.viewport.height
-    const rows = welcomeRows === undefined ? 0 : Math.min(9, Math.floor(height / 3), height - welcomeRows - 2)
-    mark.visible = rows >= 4
-    if (mark.visible) Object.assign(mark, welcomeMark(rows))
-  }
-  detail.viewport.on("resize", fitMark)
-
-  function renderContent(value: string, rich = false, welcome = false) {
-    welcomeRows = welcome ? value.split("\n").length : undefined
-    fitMark()
+  function renderContent(value: string, rich = false) {
     content.visible = !rich
     markdown.visible = rich
     if (rich) markdown.content = value

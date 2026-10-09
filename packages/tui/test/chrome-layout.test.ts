@@ -8,16 +8,6 @@ import { connect } from "../src/server"
 import { turen, terminal, cleanup as supportCleanup } from "./support"
 import { createDashboardState } from "../src/state"
 import { color } from "../src/theme"
-import { welcomeMark } from "../src/logo"
-
-/** The first row of each welcome anvil, as plain text; the pane's height picks one. */
-const markLines = [20, 16, 9, 4].map(
-  (rows) =>
-    welcomeMark(rows)
-      .content.chunks.map((chunk) => chunk.text)
-      .join("")
-      .split("\n")[0]!,
-)
 
 const cleanup: (() => void)[] = []
 afterEach(() => {
@@ -116,7 +106,7 @@ for (const width of [60]) {
     view.state.connectionError = connection.connectionError
     view.ui.context.visible = false
     const body = welcomeBody("sessions", view.state)
-    view.ui.renderContent(body, false, true)
+    view.ui.renderContent(body)
     await view.renderOnce()
     await view.renderOnce()
     const frame = view.captureCharFrame()
@@ -126,8 +116,6 @@ for (const width of [60]) {
       expect(line.length).toBeLessThanOrEqual(54)
       expect(frame).toContain(line)
     }
-    // The desktop's anvil heads the welcome, as the logo.
-    expect(markLines.some((line) => frame.includes(line))).toBe(true)
     expect(frame).toContain(`${connection.status} · No session selected.`)
     for (const shortcut of [
       "n or Enter start a session",

@@ -6,7 +6,6 @@ import { label } from "../state"
 import { color } from "../theme"
 import { fitDetail } from "./detail"
 import type { Picker, Tone, View } from "./types"
-import { turenLogo } from "../logo"
 
 export function say(picker: Picker, text: string, tone: Tone = "muted") {
   if (!picker.view) return
@@ -24,7 +23,6 @@ export function paint(picker: Picker) {
   if (!view) return
   const current = picker.hooks.current()
   view.logo.visible = picker.renderer.height >= 30
-  Object.assign(view.logo, turenLogo(false, picker.renderer.width))
   // A form has its own line; the picker's "Connected to … · choose a server" belongs to the list.
   view.heading.content =
     formHeading[picker.mode] ??

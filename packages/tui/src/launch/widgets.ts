@@ -4,7 +4,7 @@ import type { ModalState, DashboardState } from "../state"
 import { color } from "../theme"
 import { label } from "../state"
 
-/** The Turen mark above the form; it shrinks while settings, a reference or a tall error occupy the dialog. */
+/** The wordmark above the form; it steps aside while open settings need a short terminal's rows. */
 export function createLogo(
   renderer: CliRenderer,
   state: DashboardState,
@@ -13,7 +13,7 @@ export function createLogo(
 ) {
   const logo = new TextRenderable(renderer, {
     id: "turen-logo",
-    ...turenLogo(renderer.width >= 100 && renderer.height >= 32, renderer.width, renderer.height),
+    ...turenLogo(),
     alignSelf: "center",
     flexShrink: 0,
     wrapMode: "none",
@@ -24,25 +24,9 @@ export function createLogo(
     const tight = ui.settingsOpen && renderer.height < 32
     logo.visible = !tight
     dialog.frame.paddingTop = dialog.frame.paddingBottom = tight ? 0 : 1
-    Object.assign(
-      logo,
-      turenLogo(
-        renderer.width >= 100 &&
-          renderer.height >= 32 &&
-          !ui.settingsOpen &&
-          !dialog.reference &&
-          dialog.error.height <= 2,
-        renderer.width,
-        renderer.height,
-      ),
-    )
   }
   renderer.on("resize", resize)
-  dialog.error.on("resize", resize)
-  logo.once(RenderableEvents.DESTROYED, () => {
-    renderer.off("resize", resize)
-    dialog.error.off("resize", resize)
-  })
+  logo.once(RenderableEvents.DESTROYED, () => renderer.off("resize", resize))
   return { logo, resize }
 }
 

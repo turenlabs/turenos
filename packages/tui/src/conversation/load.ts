@@ -116,8 +116,6 @@ function showWelcome(c: Conversation, snapshot: Snapshot) {
           : state.tab === "terminals"
             ? `No terminals yet. Press Enter or a to open one.${folderNote(snapshot)}`
             : "No automations yet. Press a to add one.",
-    false,
-    !state.query && state.tab === "sessions",
   )
   ui.sessionTitle.content =
     state.tab === "sessions" ? "Welcome to TurenOS" : state.tab === "terminals" ? "Terminals" : "Automations"

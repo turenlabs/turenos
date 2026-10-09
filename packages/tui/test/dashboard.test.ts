@@ -831,7 +831,7 @@ for (const [width, height] of [
   [120, 24],
   [180, 50],
 ] as const) {
-  test(`Ctrl+N shows the anvil and wordmark and immediately focuses the task at ${width}×${height} without POST`, async () => {
+  test(`Ctrl+N shows the wordmark and immediately focuses the task at ${width}×${height} without POST`, async () => {
     const server = fixture()
     const view = await createTestRenderer({ width, height, kittyKeyboard: true })
     cleanup.push(() => view.renderer.destroy())
@@ -840,14 +840,14 @@ for (const [width, height] of [
     const frame = await waitForFrame(view, (frame) => frame.includes("What would you like to do?"))
     const logo = descendants(view.renderer.root).find((node) => node.id === "turen-logo") as TextRenderable
     expect(logo).toBeDefined()
-    expect(logo.height).toBe(height >= 44 ? 16 : height >= 32 ? 9 : 4)
+    expect([logo.width, logo.height]).toEqual([41, 4])
     const spans = view
       .captureSpans()
       .lines.slice(logo.y, logo.y + logo.height)
       .flatMap((line) => line.spans)
-    // The desktop mark's colors: the cream and blue wordmark beside the anvil's cream face and blue water.
+    // The desktop's colors: "Turen" in cream, "OS" in blue.
     const colors = spans.flatMap((span) => [span.fg, span.bg])
-    for (const hex of ["#fbf8f0", "#c8daf7", "#f7f6f3", "#2665ac"]) expect(colors).toContainEqual(RGBA.fromHex(hex))
+    for (const hex of ["#fbf8f0", "#c8daf7"]) expect(colors).toContainEqual(RGBA.fromHex(hex))
     expect(frame).toContain("Directory: /srv/project")
     expect(frame).toContain("Tab: folder")
     expect(frame).toContain("[ Send (Enter) ]")
@@ -867,7 +867,6 @@ for (const [width, height] of [
       view.resize(nextWidth, nextHeight)
       await view.renderOnce()
       const resized = view.captureCharFrame()
-      expect(logo.height).toBe(nextHeight >= 44 ? 16 : nextHeight >= 32 ? 9 : 4)
       expect(
         resized
           .split("\n")

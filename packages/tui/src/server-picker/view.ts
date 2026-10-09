@@ -8,7 +8,7 @@ export function buildView(renderer: CliRenderer): View {
   const frame = frameBox(renderer)
   overlay.add(frame)
   const logo = new TextRenderable(renderer, {
-    ...turenLogo(false),
+    ...turenLogo(),
     alignSelf: "center",
     flexShrink: 0,
     wrapMode: "none",
