@@ -14,8 +14,8 @@ import { MAX_MESSAGES, viewOf, type TeamContext, type TeamView } from "./types"
 export type PostDraft = { text: string; id: string; submitted?: string; cursor?: number }
 
 const MAX_TEXT = 20_000
-const HINT = "Enter post · Shift/Alt+Enter newline · @ mentions a teammate · Esc shortcuts · F4 discard"
-const LIST_HINT = "Up/Down choose · Tab complete · Enter pick · Esc close list · F4 discard"
+const HINT = "Enter post · Shift+Enter newline · @ mention · Esc · F4 discard"
+const LIST_HINT = "↑↓ choose · Tab complete · Enter pick · Esc close list"
 
 export type Poster = {
   ctx: TeamContext
@@ -53,7 +53,7 @@ export function openPost(poster: Poster) {
     draft.text,
     draft.cursor,
     () => draft.submitted !== undefined,
-    "Message the room · @ mentions a teammate",
+    "Message the room · @ mention",
   )
   wire(poster, dialog, editor, room.id, draft)
   ctx.dialogs.resize()

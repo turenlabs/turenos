@@ -91,19 +91,23 @@ function serverSlash(d: DashboardContext): Command[] {
 /** A palette row: name, what it does, and the key or slash command that does it without the palette. */
 type Entry = { name: string; description: string; key?: string; run: () => void }
 
-/** Ctrl+P: every dashboard action, grouped Session, Conversation, Requests, Panels, Terminals, Team, Settings, View. */
+/** Ctrl+P: every dashboard action, grouped Session, Conversation, Requests, Panels, Terminals, Team, Settings, View; Team first on its tab. */
 export function openCommands(d: DashboardContext) {
+  const team = teamEntries(d)
   const groups = [
     sessionEntries(d),
     conversationEntries(d),
     requestEntries(d),
     panelEntries(d),
     terminalEntries(d),
-    teamEntries(d),
+    team,
     settingsEntries(d),
     viewEntries(d),
   ]
-  d.c.menus.commands(groups.flat())
+  // On the Team tab its own commands lead; the rest keep their order.
+  d.c.menus.commands(
+    d.state.tab === "team" ? [...team, ...groups.filter((group) => group !== team).flat()] : groups.flat(),
+  )
 }
 
 function sessionEntries(d: DashboardContext): Entry[] {

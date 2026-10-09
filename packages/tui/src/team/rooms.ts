@@ -1,3 +1,4 @@
+import { plural } from "./format"
 import { label, type DashboardState, type Row } from "../state"
 import { viewOf, visibleRooms } from "./types"
 
@@ -10,8 +11,8 @@ export function roomRows(state: DashboardState): Row[] {
     description: room.topic
       ? label(room.topic, 250)
       : view.room?.id === room.id
-        ? `${view.teammates.length} teammates`
-        : `${room.head} messages`,
+        ? plural(view.teammates.length, "teammate")
+        : plural(room.head, "message"),
   }))
 }
 

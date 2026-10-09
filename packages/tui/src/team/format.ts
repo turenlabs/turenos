@@ -19,6 +19,19 @@ const MESSAGE_VIEW = 4000
 /** "HH:MM " is six columns, so continuation lines line up under the author. */
 const INDENT = "      "
 
+/** A path cut to `max` columns from the left, at a slash, so its last folders stay: `…/data/forge`. */
+export function pathTail(path: string, max: number) {
+  if (path.length <= max) return path
+  const tail = path.slice(1 - max)
+  const slash = tail.indexOf("/")
+  return `…${slash >= 0 ? tail.slice(slash) : tail}`
+}
+
+/** `1 duty`, `2 duties`; `many` is for nouns that do not take an s. */
+export function plural(count: number, one: string, many = `${one}s`) {
+  return `${count} ${count === 1 ? one : many}`
+}
+
 export function statusWord(status: Task["status"]) {
   return statusWords[status]
 }
@@ -31,7 +44,9 @@ export function handleOf(teammates: readonly Teammate[], id: string) {
 /** The room as plain text, oldest message first, each followed by the state of the tasks it created. */
 export function roomLog(view: TeamView) {
   const linked = new Set(
-    view.tasks.filter((task) => view.messages.some((message) => message.id === task.messageID)).map((task) => task.sessionID),
+    view.tasks
+      .filter((task) => view.messages.some((message) => message.id === task.messageID))
+      .map((task) => task.sessionID),
   )
   const closing = closingRuns(view)
   const lines = [
@@ -40,7 +55,12 @@ export function roomLog(view: TeamView) {
       ? []
       : ["No teammates yet. Press M, then a, to add one; teammates answer posts and take tasks.", ""]),
     ...(view.hasMore ? ["↑ Earlier messages: PageUp at the top or [ loads them.", ""] : []),
-    ...(view.messages.length ? view.messages.flatMap((message) => [...entry(view, message, linked), ...(closing.get(message.id) ?? []).map(closingLine)]) : ["No messages yet."]),
+    ...(view.messages.length
+      ? view.messages.flatMap((message) => [
+          ...entry(view, message, linked),
+          ...(closing.get(message.id) ?? []).map(closingLine),
+        ])
+      : ["No messages yet."]),
   ]
   return lines.join("\n")
 }
@@ -82,7 +102,7 @@ export function roomContext(view: TeamView) {
   const stage = { plan: "planning", work: "working", check: "checking", done: "finishing" }
   return [
     view.room?.topic ? label(view.room.topic, 150) : "",
-    `${view.teammates.length} teammates`,
+    plural(view.teammates.length, "teammate"),
     run ? `factory: ${stage[run.phase]} (run ${shortID(run.id)})` : "",
   ]
     .filter(Boolean)
@@ -102,7 +122,8 @@ const checkWords = { accepted: "accepted", rejected: "rejected", needs_input: "n
  * one line. System lines that name a factory run carry the short run ID. Stored text is not changed.
  */
 export function logText(view: TeamView, message: Message) {
-  if (message.kind === "system") return message.text.replace(/(Factory run )(\S{9,})/g, (_, lead, id) => lead + shortID(id))
+  if (message.kind === "system")
+    return message.text.replace(/(Factory run )(\S{9,})/g, (_, lead, id) => lead + shortID(id))
   if (message.kind !== "teammate") return message.text
   const output = factoryOutput(message.text)
   if (output?.kind === "plan")

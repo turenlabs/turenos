@@ -1,4 +1,5 @@
 import type { MouseEvent } from "@opentui/core"
+import { extraActions } from "../layout/actions"
 import { primaryAction, renderActions } from "./actions"
 import { changeTab, filter } from "./navigation"
 import { renderList } from "./list"
@@ -93,6 +94,10 @@ function bindActionRow(d: DashboardContext) {
   ui.harness.onMouseDown = unlessModal(() => (d.state.tab === "team" ? d.c.team.keys.F!() : d.c.harness.open()))
   ui.queued.onMouseDown = unlessModal(() => d.c.queue.open())
   ui.changes.onMouseDown = unlessModal(() => (d.state.tab === "team" ? d.c.team.keys.M!() : d.c.changes.open()))
+  const extra = extraActions(ui.actions)
+  extra.team.onMouseDown = unlessModal(() => changeTab(d, "team"))
+  extra.room.onMouseDown = unlessModal(() => d.c.team.keys.d!())
+  extra.newRoom.onMouseDown = unlessModal(() => d.c.team.keys.a!())
   ui.files.onMouseDown = unlessModal(() => (d.state.tab === "team" ? d.c.team.older() : d.c.files.open()))
 }
 

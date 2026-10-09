@@ -35,7 +35,7 @@ async function dashboard(width: number, height = 24) {
     ui,
     renderer: view.renderer,
     run: { activityStep: 0 },
-    c: {},
+    c: { team: { openedSession: () => "" } },
     options: { server: "http://127.0.0.1:43623", servers: () => {} },
   }
   return { ...view, state, ui, d: d as unknown as DashboardContext }

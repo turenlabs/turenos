@@ -104,7 +104,11 @@ function roomMenu(ctx: TeamContext, ops: TeamOperations) {
         },
       ]
     : [
-        { name: "Edit name and topic", description: "E", run: () => editRoom(ctx, ops, back) },
+        {
+          name: "Edit name and topic",
+          description: "Rename the room or change its topic",
+          run: () => editRoom(ctx, ops, back),
+        },
         { name: "Archive", description: "Read-only, schedules pause", run: () => archive(ctx, ops, room, back) },
         {
           name: "Delete (archive first)",

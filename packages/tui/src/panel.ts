@@ -13,7 +13,13 @@ export type Drafts = { mention: (session: Session, text: string) => boolean; rep
  * right, like the desktop's review and file panels. The content pane is the dialog's own scroll
  * form, so Page Up/Down scroll it while arrows move the chooser.
  */
-export function openPanel(renderer: CliRenderer, dialogs: Dialogs, title: string) {
+export function openPanel(
+  renderer: CliRenderer,
+  dialogs: Dialogs,
+  title: string,
+  /** The chooser's share of the width; a panel whose rows are short gives the rest to its content. */
+  listWidth: number | `${number}%` = "34%",
+) {
   const dialog = dialogs.open(title, false, 999)
   if (!dialog) return undefined
   dialog.frame.maxWidth = 220
@@ -34,7 +40,7 @@ export function openPanel(renderer: CliRenderer, dialogs: Dialogs, title: string
   })
   const row = new BoxRenderable(renderer, { flexDirection: "row", flexGrow: 1, minHeight: 1, gap: 2 })
   const list = new SelectRenderable(renderer, {
-    width: "34%",
+    width: listWidth,
     minWidth: 24,
     flexShrink: 0,
     options: [],

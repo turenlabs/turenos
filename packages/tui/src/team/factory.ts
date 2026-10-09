@@ -37,7 +37,9 @@ type Live = { room: () => Room | undefined; run: () => FactoryRun | undefined; b
 export function openFactory(ctx: TeamContext, ops: TeamOperations) {
   const room = loadedRoom(ctx)
   if (!room || !ctx.dialogs.navigate()) return
-  const panel = openPanel(ctx.renderer, ctx.dialogs, `Factory › # ${label(room.name, 40)}`)
+  // A wide screen gives the run list a fixed, compact column that leads with the run ID; the detail takes the rest.
+  const wide = ctx.renderer.width >= 120
+  const panel = openPanel(ctx.renderer, ctx.dialogs, `Factory › # ${label(room.name, 40)}`, wide ? 34 : undefined)
   if (!panel) return
   let runs: FactoryRun[] = []
   const live: Live = {
@@ -53,7 +55,14 @@ export function openFactory(ctx: TeamContext, ops: TeamOperations) {
     panel.heading.content = now?.archived ? "Archived · read-only" : "Factory"
     panel.show(
       now
-        ? panelText(view, now, run, ctx.renderer.height <= 30)
+        ? panelText(
+            view,
+            now,
+            run,
+            ctx.renderer.height <= 30,
+            // The row's width less the run list (a column, or its 34% of the row) and the gap before the detail.
+            panel.width() - (wide ? 34 : Math.max(24, Math.floor(panel.width() * 0.34))) - 4,
+          )
         : "This room is no longer loaded. Esc closes.",
     )
     const edits = ["s settings", "Ctrl+R run", "x stop", "t trigger"]
@@ -63,7 +72,7 @@ export function openFactory(ctx: TeamContext, ops: TeamOperations) {
     const previous = live.run()?.id
     runs = latestRuns(viewOf(ctx.state))
     panel.list.options = runs.map((run) => ({
-      name: `${run.status}${run.status === "running" ? ` ${run.phase}` : ""} ${clock(run.time.created)}`,
+      name: `${wide ? `${shortID(run.id)} ` : ""}${run.status}${run.status === "running" ? ` ${run.phase}` : ""} ${clock(run.time.created)}`,
       description: "",
     }))
     panel.list.setSelectedIndex(
@@ -74,6 +83,7 @@ export function openFactory(ctx: TeamContext, ops: TeamOperations) {
     )
     describe()
   }
+  panel.fit("detail", describe)
   panel.dialog.refresh = paint
   panel.list.on("selectionChanged", describe)
   panel.dialog.key = (key) => factoryKey(ctx, ops, live, key)
