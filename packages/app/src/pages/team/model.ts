@@ -6,6 +6,14 @@ export function mergeMessages(existing: readonly Team.Message[], incoming: reado
   return [...messages.values()].sort((a, b) => a.seq - b.seq)
 }
 
+export function replyContext(message: Team.Message, messages: readonly Team.Message[]) {
+  if (!message.replyTo) return
+  const source = messages.find((item) => item.id === message.replyTo)
+  if (!source) return
+  const text = source.text.replace(/\s+/g, " ").trim()
+  return { author: source.author, excerpt: text.length > 160 ? `${text.slice(0, 159)}…` : text }
+}
+
 export function assignedHandles(text: string, teammates: readonly Team.Teammate[]) {
   const handles = new Set(teammates.map((teammate) => teammate.handle.toLowerCase()))
   return Team.mentionedHandles(text).filter((handle) => handles.has(handle))

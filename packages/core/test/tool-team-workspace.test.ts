@@ -105,7 +105,7 @@ const configure = (
 ) => executeTool(registry, call(TeamWorkspaceTool.configureFactoryName, input, id))
 
 describe("TeamWorkspaceTool", () => {
-  it.effect("registers nine deferred discoverable tools", () =>
+  it.effect("registers eleven deferred discoverable tools", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service
       const definitions = yield* toolDefinitions(registry)
@@ -114,11 +114,13 @@ describe("TeamWorkspaceTool", () => {
         "team_configure_factory",
         "team_create_room",
         "team_create_teammate",
+        "team_inbox",
         "team_post",
         "team_read",
         "team_run_factory",
         "team_stop_factory",
         "team_update_teammate",
+        "team_wait",
       ])
       const deferred = yield* registry.materialize({ deferred: { selected: new Set<string>() } })
       expect(deferred.definitions).toEqual([])
@@ -166,7 +168,11 @@ describe("TeamWorkspaceTool", () => {
       yield* team.claimTasks({ owner: "tool-sender" })
       const running = yield* team.startTask({ id, owner: "tool-sender" })
       const post = {
-        ...call(TeamWorkspaceTool.postName, { text: "Progress update" }, "call-team-post"),
+        ...call(
+          TeamWorkspaceTool.postName,
+          { text: "Progress update", replyTo: "msg_tool_sender_task" },
+          "call-team-post",
+        ),
         sessionID: SessionV2.ID.make(running.sessionID),
       }
       expect(yield* executeTool(registry, post)).toMatchObject({
@@ -176,15 +182,97 @@ describe("TeamWorkspaceTool", () => {
       const collaborate = {
         ...call(
           TeamWorkspaceTool.collaborateName,
-          { targetHandle: "sam", text: "Check this item" },
+          { targetHandle: "sam", text: "Check this item", replyTo: "msg_tool_sender_task" },
           "call-team-collaborate",
         ),
         sessionID: SessionV2.ID.make(running.sessionID),
       }
       expect(yield* executeTool(registry, collaborate)).toMatchObject({
         type: "json",
-        value: { message: { author: "rae" }, tasks: [{ status: "queued" }] },
+        value: { message: { author: "rae", replyTo: "msg_tool_sender_task" }, tasks: [{ status: "queued" }] },
       })
+      const parentSession = SessionV2.ID.make(running.sessionID)
+      expect(
+        yield* executeTool(registry, { ...call(TeamWorkspaceTool.inboxName, {}), sessionID: parentSession }),
+      ).toMatchObject({
+        type: "json",
+        value: { teammates: [{ handle: "rae" }, { handle: "sam" }], head: expect.any(Number), hasMore: false },
+      })
+      const roomHead = (yield* team.state({ roomID: input.roomID })).room.head
+      expect(
+        yield* executeTool(registry, {
+          ...call(TeamWorkspaceTool.waitName, { after: roomHead, timeoutMs: 1 }, "call-wait-timeout"),
+          sessionID: parentSession,
+        }),
+      ).toMatchObject({ type: "json", value: { messages: [], tasks: [], head: roomHead, timedOut: true } })
+      const childID = (yield* team.state({ roomID: input.roomID })).tasks.find((task) => task.id !== id)!.id
+      yield* team.claimTasks({ owner: "tool-child" })
+      const child = yield* team.startTask({ id: childID, owner: "tool-child" })
+      for (let index = 0; index < 101; index++)
+        yield* team.postTeammateMessage({
+          sessionID: running.sessionID,
+          assistantMessageID: `msg_wait_page_assistant_${index}`,
+          id: `msg_wait_page_${index}`,
+          text: "Room activity",
+        })
+      yield* team.finishTask({ id: childID, owner: "tool-child", status: "succeeded", text: "Completed" })
+      const waited = yield* executeTool(registry, {
+        ...call(TeamWorkspaceTool.waitName, { taskIDs: [childID], after: 0, timeoutMs: 1000 }, "call-wait-terminal"),
+        sessionID: parentSession,
+      })
+      expect(waited).toMatchObject({
+        type: "json",
+        value: { tasks: [{ id: childID, status: "succeeded" }], hasMore: true, timedOut: false },
+      })
+      if (waited.type === "json") {
+        const waitValue = waited.value as {
+          messages: ReadonlyArray<Team.Message>
+          results: ReadonlyArray<Team.Message>
+        }
+        expect(waitValue.messages).toHaveLength(100)
+        expect(waitValue.results).toHaveLength(1)
+        expect(waitValue.results[0]!.text).toBe("Completed")
+        expect(waitValue.results[0]!.seq).toBeGreaterThan(waitValue.messages.at(-1)!.seq)
+      }
+      expect(child.sessionID).toBeTruthy()
+      yield* team.createRoom({ name: "Other room" })
+      const foreign = yield* team.postMessage({
+        roomID: (yield* team.state()).rooms.find((room) => room.name === "Other room")!.id,
+        id: "msg_foreign_reply_target",
+        text: "Not in this room",
+      })
+      expect(foreign.message.roomID).not.toBe(input.roomID)
+      const ownInbox = yield* executeTool(registry, {
+        ...call(TeamWorkspaceTool.inboxName, {}, "call-own-room-inbox"),
+        sessionID: parentSession,
+      })
+      expect(ownInbox).toMatchObject({
+        type: "json",
+        value: { messages: expect.not.arrayContaining([expect.objectContaining({ id: "msg_foreign_reply_target" })]) },
+      })
+      const page = yield* team.conversation({ sessionID: parentSession })
+      expect(page.inbox.hasMore).toBe(true)
+      expect(page.inbox.messages[0]!.seq).toBe(1)
+      expect(page.inbox.messages.at(-1)!.seq).toBe(100)
+      const next = yield* team.conversation({ sessionID: parentSession, after: 100 })
+      expect(next.inbox.hasMore).toBe(false)
+      expect(next.inbox.messages[0]!.seq).toBe(101)
+      expect(
+        yield* executeTool(registry, {
+          ...call(TeamWorkspaceTool.waitName, { taskIDs: ["job_not_delegated"], timeoutMs: 1 }, "call-not-child"),
+          sessionID: parentSession,
+        }),
+      ).toMatchObject({ type: "error" })
+      expect(
+        yield* executeTool(registry, {
+          ...call(
+            TeamWorkspaceTool.postName,
+            { text: "Invalid cross-room reply", replyTo: "msg_foreign_reply_target" },
+            "call-cross-room-reply",
+          ),
+          sessionID: parentSession,
+        }),
+      ).toMatchObject({ type: "error" })
       expect(assertions).toContainEqual(
         expect.objectContaining({ action: TeamWorkspaceTool.collaborateName, resources: ["sam", directory] }),
       )

@@ -637,6 +637,15 @@ describe("TeamWorkspace", () => {
       }
       const posted = yield* team.postTeammateMessage(post)
       expect(yield* team.postTeammateMessage(post)).toEqual(posted)
+      const replyTarget = yield* team.postTeammateMessage({
+        ...post,
+        id: "msg_teammate_reply_target",
+        assistantMessageID: "msg_assistant_reply_target",
+        text: "Question",
+      })
+      expect(yield* team.postTeammateMessage({ ...post, replyTo: replyTarget.id }).pipe(Effect.flip)).toBeInstanceOf(
+        TeamWorkspace.ConflictError,
+      )
       expect(posted).toMatchObject({
         author: mate.name,
         teammateID: mate.id,
@@ -786,6 +795,28 @@ describe("TeamWorkspace", () => {
       ).toBeInstanceOf(TeamWorkspace.ConflictError)
       expect((yield* team.state()).tasks).toHaveLength(1)
       expect(sender.id).toBeDefined()
+    }),
+  )
+
+  it.effect("scopes conversation reads to a live lease and room lifecycle", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const mate = yield* team.createTeammate({ name: "Reader", handle: "reader", role: "Worker", mission: "Work" })
+      const [{ id }] = (yield* team.postMessage({ id: "msg_conversation_owner", text: "@reader begin" })).tasks
+      yield* team.claimTasks({ owner: "conversation-owner" })
+      const task = yield* team.startTask({ id, owner: "conversation-owner" })
+      yield* team.editTeammate({ id: mate.id, status: "paused" })
+      expect((yield* team.conversation({ sessionID: task.sessionID })).inbox.room.id).toBe(mate.roomID)
+      expect(
+        yield* team.conversation({ sessionID: task.sessionID, taskIDs: ["job_not_delegated"] }).pipe(Effect.flip),
+      ).toBeInstanceOf(TeamWorkspace.ConflictError)
+      const room = (yield* team.state()).room
+      yield* Database.Service.use(({ db }) =>
+        db.update(TeamRoomTable).set({ archived: true }).where(eq(TeamRoomTable.id, room.id)).run().pipe(Effect.orDie),
+      )
+      expect(yield* team.conversation({ sessionID: task.sessionID }).pipe(Effect.flip)).toBeInstanceOf(
+        TeamWorkspace.ConflictError,
+      )
     }),
   )
 

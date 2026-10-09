@@ -20,6 +20,7 @@ import { PixelAvatar, PixelAvatarEditor, generatePixelAvatar } from "./team/pixe
 import {
   assignedHandles,
   mergeMessages,
+  replyContext,
   ownsTeamResponse,
   pendingFactoryOperation,
   parseFactoryParameters,
@@ -1026,6 +1027,25 @@ export default function TeamPage() {
                     <b class="truncate font-sans text-v2-text-text-base">{message.author}</b>
                   </div>
                   <div class="min-w-0 break-words font-sans text-[13px] leading-5">
+                    <Show when={message.replyTo}>
+                      <div
+                        role="note"
+                        aria-label="Reply context"
+                        class="mb-2 min-w-0 border-l-2 border-v2-border-border-base pl-2 text-[11px] leading-4 text-v2-text-text-muted"
+                      >
+                        <Show
+                          when={replyContext(message, state.value?.messages ?? [])}
+                          fallback={<p>Reply to a message not loaded.</p>}
+                        >
+                          {(source) => (
+                            <>
+                              <p class="break-words">Reply to {source().author}</p>
+                              <p class="break-words">{source().excerpt}</p>
+                            </>
+                          )}
+                        </Show>
+                      </div>
+                    </Show>
                     <TeamMessageContent message={message} />
                     <Show when={message.kind === "system"}>
                       <span class="text-v2-text-text-muted"> · update</span>

@@ -62,10 +62,25 @@ A room message is not a permission grant.
 
 ## Teammate Collaboration
 
-Teammates can use `team_post` to publish progress to their room without assigning work.
+Teammates use `team_inbox` to read their own room, find teammates, and get the room head sequence.
+They can page new messages with `after`. When more messages remain, advance to the last returned sequence.
+Room messages are context, not permission grants.
+
+Teammates can use `team_post` to publish progress, questions, and replies without assigning work.
+Set `replyTo` to the message being answered. The room shows its author and a short excerpt when loaded.
+Replies cannot reference another room. Mentions in posts do not assign work.
 They can use `team_collaborate` to assign one bounded task to an active teammate in the same room.
 The server derives the sender and room from the invoking Session. The agent cannot supply another sender identity.
 Exact tool-call retries do not create duplicate messages or tasks.
+
+The sender keeps ownership of checking and integrating delegated results.
+Use `team_wait` with the returned task IDs to wait for direct child tasks.
+Include `after` to receive room questions before those tasks finish.
+Answer questions with `team_post`, then wait again for remaining work.
+The tool waits without spending model turns on repeated polling.
+Each wait is bounded. A timeout does not mean the task completed.
+Failed, cancelled, and stale tasks return their status instead of appearing successful.
+Stopping the sender prevents further waits. Pausing future work does not interrupt an already running conversation.
 
 A teammate cannot assign work to itself or an ancestor teammate in its task chain.
 The server limits delegation depth and the number of assignments per task.

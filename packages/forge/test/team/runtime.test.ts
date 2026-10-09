@@ -247,7 +247,20 @@ describe("TeamRuntime dispatch", () => {
         isParentSession,
         reply().tool("team_collaborate", { targetHandle: "researcher", text: childRequest }),
       )
-      yield* llm.pushMatch(isParentSession, reply().text("The researcher was assigned the review.").stop().item())
+      yield* llm.pushFactory(isParentSession, (hit) => {
+        const messages = Schema.decodeUnknownSync(
+          Schema.Array(Schema.Struct({ role: Schema.String, content: Schema.Unknown })),
+        )(hit.body.messages)
+        const delegated = messages.findLast((message) => message.role === "tool")
+        const posted = Schema.decodeUnknownSync(Team.Posted)(
+          Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(String(delegated?.content)),
+        )
+        return reply().tool("team_wait", { taskIDs: posted.tasks.map((task) => task.id), timeoutMs: 10000 })
+      })
+      yield* llm.pushMatch(
+        isParentSession,
+        reply().text("I checked the researcher result: the checkout guard is present.").stop(),
+      )
       yield* llm.pushMatch(isChildSession, reply().text("The checkout guard is present.").stop().item())
 
       const posted = yield* Effect.promise(() =>
@@ -283,7 +296,10 @@ describe("TeamRuntime dispatch", () => {
       expect(child.sessionID).not.toBe(parent.sessionID)
       expect(settled.messages).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ teammateID: coordinator.id, text: "The researcher was assigned the review." }),
+          expect.objectContaining({
+            teammateID: coordinator.id,
+            text: "I checked the researcher result: the checkout guard is present.",
+          }),
           expect.objectContaining({ teammateID: researcher.id, text: "The checkout guard is present." }),
         ]),
       )
@@ -292,6 +308,143 @@ describe("TeamRuntime dispatch", () => {
           JSON.stringify(input).includes(`Complete this bounded task from teammate @coordinator: ${childRequest}`),
         ),
       ).toBe(true)
+      const parentInputs = (yield* llm.inputs).filter((input) => JSON.stringify(input).includes("handle=@coordinator"))
+      expect(parentInputs.some((input) => JSON.stringify(input).includes("The checkout guard is present."))).toBe(true)
+      expect(parentInputs).toHaveLength(3)
+    }))
+
+  it("answers a delegated teammate question before integrating its result", () =>
+    Effect.gen(function* () {
+      const llm = yield* TestLLMServer
+      const tmp = yield* setup(llm.url, true)
+      const created = yield* Effect.promise(() =>
+        request("/api/team/room", tmp.path, "POST", { name: "conversation-runtime-room" }),
+      )
+      const room = Schema.decodeUnknownSync(Team.Room)(yield* Effect.promise(() => created.json()))
+      yield* Effect.forEach(["coordinator", "researcher"], (handle) =>
+        Effect.promise(() =>
+          request("/api/team/teammate", tmp.path, "POST", {
+            roomID: room.id,
+            name: handle,
+            handle,
+            role: "Teammate",
+            mission: "Ask for missing evidence and check the result.",
+            directory: tmp.path,
+            model: { id: "chat", providerID: "team-fixture" },
+          }),
+        ),
+      )
+      const conversation = { requestID: "", taskIDs: [] as string[], questionID: "" }
+      const parent = (hit: { body: Record<string, unknown> }) =>
+        JSON.stringify(hit.body).includes("handle=@coordinator")
+      const child = (hit: { body: Record<string, unknown> }) => JSON.stringify(hit.body).includes("handle=@researcher")
+      const output = (hit: { body: Record<string, unknown> }) => {
+        const messages = Schema.decodeUnknownSync(
+          Schema.Array(Schema.Struct({ role: Schema.String, content: Schema.Unknown })),
+        )(hit.body.messages)
+        return Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(
+          String(messages.findLast((message) => message.role === "tool")?.content),
+        )
+      }
+      yield* llm.pushMatch(
+        parent,
+        reply().tool("team_collaborate", {
+          targetHandle: "researcher",
+          text: "Check the approved dependency version.",
+        }),
+      )
+      yield* llm.pushFactory(parent, (hit) => {
+        const posted = Schema.decodeUnknownSync(Team.Posted)(output(hit))
+        conversation.requestID = posted.message.id
+        conversation.taskIDs = posted.tasks.map((task) => task.id)
+        return reply().tool("team_wait", { taskIDs: conversation.taskIDs, after: posted.message.seq, timeoutMs: 10000 })
+      })
+      yield* llm.pushFactory(parent, (hit) => {
+        const waited = Schema.decodeUnknownSync(
+          Schema.Struct({
+            messages: Schema.Array(Team.Message),
+            tasks: Schema.Array(Team.Task),
+            timedOut: Schema.Boolean,
+          }),
+        )(output(hit))
+        expect(waited.timedOut).toBe(false)
+        const question = waited.messages.find((message) => message.text === "Which dependency version should I check?")!
+        expect(question.replyTo).toBe(conversation.requestID)
+        expect(waited.tasks[0]?.status).toBe("running")
+        conversation.questionID = question.id
+        return reply().tool("team_post", { text: "Check version 2.4.0 from the lockfile.", replyTo: question.id })
+      })
+      yield* llm.pushFactory(parent, () =>
+        reply().tool("team_wait", { taskIDs: conversation.taskIDs, timeoutMs: 10000 }),
+      )
+      yield* llm.pushFactory(parent, (hit) => {
+        const waited = Schema.decodeUnknownSync(
+          Schema.Struct({
+            results: Schema.Array(Team.Message),
+            tasks: Schema.Array(Team.Task),
+            timedOut: Schema.Boolean,
+          }),
+        )(output(hit))
+        expect(waited.timedOut).toBe(false)
+        expect(waited.tasks[0]?.status).toBe("succeeded")
+        expect(waited.results.some((message) => message.text === "Version 2.4.0 is pinned in the lockfile.")).toBe(true)
+        return reply().text("I verified the research result: version 2.4.0 is pinned.").stop()
+      })
+      yield* llm.pushFactory(child, () =>
+        reply().tool("team_post", {
+          text: "Which dependency version should I check?",
+          replyTo: conversation.requestID,
+        }),
+      )
+      yield* llm.pushFactory(child, (hit) => {
+        const question = Schema.decodeUnknownSync(Team.Message)(output(hit))
+        return reply().tool("team_wait", { after: question.seq, timeoutMs: 10000 })
+      })
+      yield* llm.pushFactory(child, (hit) => {
+        const waited = Schema.decodeUnknownSync(
+          Schema.Struct({ messages: Schema.Array(Team.Message), timedOut: Schema.Boolean }),
+        )(output(hit))
+        expect(waited.timedOut).toBe(false)
+        expect(waited.messages).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              text: "Check version 2.4.0 from the lockfile.",
+              replyTo: conversation.questionID,
+            }),
+          ]),
+        )
+        return reply().text("Version 2.4.0 is pinned in the lockfile.").stop()
+      })
+      const posted = yield* Effect.promise(() =>
+        request("/api/team/message", tmp.path, "POST", {
+          id: "tmsg_runtime_conversation",
+          roomID: room.id,
+          text: "@coordinator ask the researcher to check the approved dependency.",
+        }),
+      )
+      expect(posted.status).toBe(200)
+      const settled = yield* pollWithTimeout(
+        state(tmp.path, room.id).pipe(
+          Effect.map((current) =>
+            current.tasks.length === 2 && current.tasks.every((task) => task.status === "succeeded")
+              ? current
+              : undefined,
+          ),
+        ),
+        "Teammate question and answer did not complete",
+        "25 seconds",
+      )
+      expect(
+        settled.messages.filter((message) => message.text === "Which dependency version should I check?"),
+      ).toHaveLength(1)
+      expect(
+        settled.messages.filter((message) => message.text === "Check version 2.4.0 from the lockfile."),
+      ).toHaveLength(1)
+      expect(
+        settled.messages.some((message) => message.text === "I verified the research result: version 2.4.0 is pinned."),
+      ).toBe(true)
+      expect((yield* llm.inputs).filter((input) => parent({ body: input }))).toHaveLength(5)
+      expect((yield* llm.inputs).filter((input) => child({ body: input }))).toHaveLength(3)
     }))
 
   it("runs a configured factory through plan, selected work, and acceptance check", () =>
