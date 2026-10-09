@@ -1,13 +1,10 @@
-import { afterEach } from "bun:test"
 import type { Renderable } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { mountDashboard } from "../src/index"
 import { connect } from "../src/server"
+import { cleanup } from "./preload"
 
-export const cleanup: (() => unknown)[] = []
-afterEach(async () => {
-  for (const close of cleanup.splice(0).reverse()) await close()
-})
+export { cleanup }
 
 export type Route = (request: Request, url: URL) => unknown
 

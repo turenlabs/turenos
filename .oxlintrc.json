@@ -46,6 +46,13 @@
         "max-lines": ["error", { "max": 400, "skipBlankLines": true, "skipComments": true }],
         "max-lines-per-function": ["error", { "max": 60, "skipBlankLines": true, "skipComments": true }]
       }
+    },
+    {
+      // Test, e2e and script files stay split by feature too; test bodies may be long
+      "files": ["packages/tui/test/**/*.ts", "packages/tui/e2e/**/*.ts", "packages/tui/script/**/*.ts"],
+      "rules": {
+        "max-lines": ["error", { "max": 400, "skipBlankLines": true, "skipComments": true }]
+      }
     }
   ],
   "ignorePatterns": ["**/node_modules", "**/dist", "**/.build", "**/.sst", "**/*.d.ts", "**/sdk.gen.ts"]
