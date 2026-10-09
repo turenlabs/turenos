@@ -705,6 +705,14 @@ describe("managed MCP integrations", () => {
     expect(McpIntegration.allowsTool("notion", "notion-update-page")).toBe(false)
   })
 
+  test("treats GitHub secret scanning as a write tool because it uploads content", () => {
+    expect(McpIntegration.contribution("github-security").item.tools.write).toEqual(["run_secret_scanning"])
+    expect(McpIntegration.allowsTool("github-security", "list_secret_scanning_alerts")).toBe(true)
+    expect(McpIntegration.allowsTool("github-security", "run_secret_scanning")).toBe(false)
+    expect(McpIntegration.allowsTool("github-security", "run_secret_scanning", { writeTools: "enabled" })).toBe(true)
+    expect(ExtensionCatalog.writeToolActions).toContain("github-security_run_secret_scanning")
+  })
+
   test("tells the agent whether write tools are available and how the user enables them", () => {
     const hidden = McpIntegration.writeToolsInstructions("datadog-security", {})
     expect(hidden).toContain("execute_datadog_workflow")

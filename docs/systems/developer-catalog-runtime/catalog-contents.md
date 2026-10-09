@@ -100,7 +100,7 @@ tools` counts the manifest's `tools.write` allowlist; the rest are read-only.
 | CrowdStrike Falcon                          | `turenlabs/crowdstrike-falcon`         | `managed`      | 0           |
 | Datadog Security & Incident Response        | `turenlabs/datadog-security`           | `customer-url` | 7           |
 | Elastic Security / Agent Builder            | `turenlabs/elastic-security`           | `customer-url` | 0           |
-| GitHub Security                             | `turenlabs/github-security`            | `hosted`       | 0           |
+| GitHub Security                             | `turenlabs/github-security`            | `hosted`       | 1           |
 | GitLab DevSecOps                            | `turenlabs/gitlab-devsecops`           | `hosted`       | 0           |
 | Grafana Cloud Security Operations           | `turenlabs/grafana-cloud-security`     | `hosted`       | 0           |
 | incident.io                                 | `turenlabs/incident-io`                | `hosted`       | 0           |
