@@ -55,6 +55,7 @@ These stay desktop-only, mostly because they depend on a graphical surface or on
 - **Line comments** from the review panel and file viewer; in the TUI, mention the file with `@` instead.
 - **Attachments from this computer**, such as pasted images. `@` attaches files that are on the server.
 - **Pixel avatars** for teammates. The TUI manages rooms, teammates, duties and factories (Team tab) but draws and edits no avatar.
+- **Hanging indent in the Team log.** The TUI paints the log as one text with OpenTUI's own wrapping, so a long line wraps back to the left edge; a coordinator's plan and verdict still read as one line each (`plan: …`, `check: …`), as the desktop shows them.
 - **Automation workflows and event triggers**; the TUI edits the name, prompt, and schedule, and shows the rest.
 - **Cross-session trace search and playback**; `/trace` pages one session's events.
 - **MCP runtime backend** (Docker or local) and adding or resetting Intel feeds; the TUI turns feeds on or off.

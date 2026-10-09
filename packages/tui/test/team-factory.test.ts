@@ -23,8 +23,8 @@ const run = (status: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 })
 
-async function panel(w: World, key = "F") {
-  const app = await open(w.routes, 120, 44)
+async function panel(w: World, key = "F", width = 120, height = 44) {
+  const app = await open(w.routes, width, height)
   await app.screen("Done")
   app.view.mockInput.pressKey(key, { shift: true })
   return app
@@ -63,10 +63,10 @@ test("runs show their stage, tasks and result; needs_input says to answer in the
   ]
   const { view, screen } = await panel(w)
   const frame = await screen("Needs your answer: open the task session to answer its request.")
-  expect(frame).toContain("needs_input · work")
+  expect(frame).toMatch(/needs_input \d\d:\d\d/)
   expect(frame).toContain("Run run_1 · needs_input · phase work")
   expect(frame).toContain("Which database should the migration target?")
-  expect(frame).toContain("@moss queued · session ses_main")
+  expect(frame).toContain("@moss · queued · session ses_main · Enter opens")
   view.mockInput.pressArrow("down")
   const second = await screen("All done.")
   expect(second).toContain("Result:")
@@ -102,11 +102,8 @@ async function fill(app: Awaited<ReturnType<typeof panel>>, parameters?: string)
   await screen("Outcome (required")
   await view.mockInput.typeText("Ship the report")
   view.mockInput.pressKey("TAB")
-  if (parameters) {
-    view.mockInput.pressKey("BACKSPACE")
-    view.mockInput.pressKey("BACKSPACE")
-    await view.mockInput.typeText(parameters)
-  }
+  // The field starts empty (placeholder {}), so typing replaces nothing.
+  if (parameters) await view.mockInput.typeText(parameters)
   view.mockInput.pressKey("TAB")
   view.mockInput.pressKey("TAB")
   await view.mockInput.typeText("One line each")
@@ -149,7 +146,7 @@ test("without a selected teammate the desktop's coordinator message refuses the 
   const app = await panel(w)
   await fill(app)
   app.view.mockInput.pressKey("s", { ctrl: true })
-  await app.screen("Select a coordinator from the selected teammates")
+  await app.screen("Mark at least one teammate (Space), then choose a coordinator.")
   expect(w.sent("PUT", "/api/team/room/trm_team/factory")).toHaveLength(0)
 })
 
@@ -169,7 +166,7 @@ test("bad parameters show an inline error and block the save", async () => {
 test("parameters must be an object", async () => {
   const app = await panel(world())
   await fill(app, "[1]")
-  await app.screen("Parameters must be a JSON object")
+  await app.screen('Parameters must be a JSON object, e.g. {"scope":"docs"}')
 })
 
 test("an eleventh teammate cannot be selected", async () => {
@@ -258,7 +255,8 @@ test("x stops the running run after the typed word", async () => {
   await view.mockInput.typeText("stop")
   view.mockInput.pressKey("s", { ctrl: true })
   await until(() => w.sent("POST", "/api/team/factory-run/run_1/cancel").length === 1)
-  await screen("cancelled · work")
+  const stopped = await screen("Run run_1 · cancelled")
+  expect(stopped).not.toContain("cancelled · phase")
 })
 
 test("t adds a trigger through the automation form with the room and directory set", async () => {
@@ -296,4 +294,124 @@ test("an archived room's factory is read-only", async () => {
   expect(frame).not.toContain("Ctrl+R run")
   view.mockInput.pressKey("s")
   await screen("Archived rooms are read-only.")
+})
+
+/** The tasks of a finished run, with the messages the server made for each phase. */
+function finishedRun(w: World) {
+  const phases = [
+    ["job_p", "msg_p", "tm_rae", "Factory run run_1 planning task"],
+    ["job_w", "msg_w", "tm_moss", "Factory assignment for @moss"],
+    ["job_c", "msg_c", "tm_rae", "Factory run run_1 result check"],
+  ] as const
+  w.state.rooms = [old(), configured]
+  w.state.tasks = phases.map(([id, messageID, teammateID], index) => ({
+    id,
+    roomID: "trm_team",
+    messageID,
+    teammateID,
+    sessionID: `ses_long_session_${index}abcd1234`,
+    status: "succeeded",
+    time: { created: 2, updated: 2 },
+  }))
+  w.state.runs = [
+    run("succeeded", { phase: "done", taskIDs: ["job_p", "job_w", "job_c"], result: "Checked: everything matches." }),
+  ]
+  return phases
+}
+
+test("a short screen leads with the run's result, collapses the setup, and keeps the key hints", async () => {
+  const w = world()
+  finishedRun(w)
+  w.state.runs = [
+    run("failed", { phase: "done", id: "run_20261008_abcdef0123456789", error: "Coordinator returned an invalid FactoryPlan" }),
+    run("cancelled", { phase: "done", id: "run_other", time: { created: 1, updated: 2 } }),
+  ]
+  const { view, screen } = await panel(w, "F", 80, 24)
+  const frame = await screen("Error:")
+  const lines = frame.split("\n")
+  const at = (text: string) => lines.findIndex((line) => line.includes(text))
+  expect(at("Run …23456789")).toBeGreaterThan(-1)
+  expect(at("failed")).toBeLessThan(at("Error:"))
+  expect(at("Error:")).toBeLessThan(at("Outcome Ship the report · coordinator @moss"))
+  expect(frame).not.toContain("phase done")
+  expect(frame).toContain("s settings")
+  expect(frame).toContain("Ctrl+R run")
+  expect(frame).toContain("x stop")
+  expect(frame).toContain("t trigger")
+  // The list column keeps the whole time, and a cancelled run names no phase.
+  expect(frame).toMatch(/failed \d\d:\d\d/)
+  view.mockInput.pressKey("x")
+  const refused = await screen("No factory run is running.")
+  expect(refused).toContain("s settings")
+  expect(refused).toContain("t trigger")
+})
+
+test("a finished run labels each task with its phase and shortens the session ID", async () => {
+  const w = world()
+  finishedRun(w)
+  const { view, screen } = await panel(w)
+  const frame = await screen("plan · @rae · done")
+  expect(frame).toContain("work · @moss · done")
+  expect(frame).toContain("check · @rae · done")
+  expect(frame).toContain("session …abcd1234 · Enter opens")
+  expect(frame).not.toContain("ses_long_session_0abcd1234")
+  view.mockInput.pressEnter()
+  const picker = await screen("Enter opens a task's session.")
+  expect(picker).toContain("check · @rae · done")
+})
+
+test("a refused save puts the cursor in the field it names, and the message goes with the next keystroke", async () => {
+  const w = world()
+  const app = await panel(w)
+  await fill(app, '{"a":')
+  const { view, screen } = app
+  view.mockInput.pressKey("s", { ctrl: true })
+  await screen("Ctrl+S retry")
+  expect(w.sent("PUT", "/api/team/room/trm_team/factory")).toHaveLength(0)
+  // Focus is back in Parameters, so the rest of the JSON lands there and the failure message clears.
+  await view.mockInput.typeText("1}")
+  const frame = await screen("Tab next field")
+  expect(frame).not.toContain("Ctrl+S retry")
+  expect(frame).not.toContain("Parameters must be")
+  expect(frame).toContain('{"a":1}')
+})
+
+test("a save with nothing marked names the fix and focuses the teammate list", async () => {
+  const w = world({ "PUT /api/team/room/trm_team/factory": () => configured })
+  const app = await panel(w)
+  await fill(app)
+  const { view, screen } = app
+  view.mockInput.pressKey("s", { ctrl: true })
+  await screen("Mark at least one teammate (Space), then choose a coordinator.")
+  view.mockInput.pressKey(" ")
+  const marked = await screen("[x] @moss")
+  expect(marked).not.toContain("Mark at least one teammate (Space)")
+})
+
+test("an empty required field is refused with the cursor in that field", async () => {
+  const w = world()
+  const app = await panel(w)
+  const { view, screen } = app
+  await screen("Not configured")
+  view.mockInput.pressKey("s")
+  await screen("Outcome (required")
+  view.mockInput.pressKey("TAB")
+  view.mockInput.pressKey("TAB")
+  view.mockInput.pressKey("TAB")
+  view.mockInput.pressKey("s", { ctrl: true })
+  await screen("Outcome, acceptance criteria, and directory are required")
+  await view.mockInput.typeText("Ship it")
+  const frame = await screen("Ship it")
+  expect(frame).toContain("▶ Outcome")
+})
+
+test("the settings form shows one ▶ marker at a time, also on the teammate lists", async () => {
+  const w = world()
+  const app = await panel(w)
+  await fill(app)
+  const frame = await app.screen("Teammates (Space marks")
+  expect(frame.split("▶").length - 1).toBe(1)
+  app.view.mockInput.pressKey("TAB")
+  const second = await app.screen("Coordinator (Space chooses")
+  expect(second.split("▶").length - 1).toBe(1)
 })

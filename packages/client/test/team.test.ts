@@ -3,6 +3,7 @@ import type { Team } from "@turenlabs/schema/team"
 import {
   assignedHandles,
   factoryConfigProblem,
+  factoryOutput,
   insertMention,
   mentionMatches,
   mentionToken,
@@ -11,6 +12,7 @@ import {
   parseFactoryParameters,
   roomCoordinator,
   roomDeleteBlocker,
+  roomSchedules,
   selectFactoryTeammate,
   teammateDraft,
 } from "@turenlabs/client/team"
@@ -45,9 +47,10 @@ describe("team room rules", () => {
 
   test("accepts only JSON objects for factory parameters", () => {
     expect(parseFactoryParameters('{"count":2,"enabled":true}')).toEqual({ count: 2, enabled: true })
-    expect(() => parseFactoryParameters("[]")).toThrow("Parameters must be a JSON object")
-    expect(() => parseFactoryParameters("null")).toThrow("Parameters must be a JSON object")
-    expect(() => parseFactoryParameters("{")).toThrow()
+    const message = 'Parameters must be a JSON object, e.g. {"scope":"docs"}'
+    expect(() => parseFactoryParameters("[]")).toThrow(message)
+    expect(() => parseFactoryParameters("null")).toThrow(message)
+    expect(() => parseFactoryParameters("{")).toThrow(message)
   })
 
   test("bounds selected factory teammates and permits deselection", () => {
@@ -184,5 +187,25 @@ describe("team room rules", () => {
 
   test("reads complete handles once, lower-cased", () => {
     expect(mentionedHandles("@Moss hi @moss, @rae- and a@b.c")).toEqual(["moss", "rae-"])
+  })
+})
+
+describe("factory output", () => {
+  test("recognises a plan and a check, and nothing else", () => {
+    const plan = JSON.stringify({ assignments: [{ teammateID: "tm_moss", prompt: "Reply with ok" }] })
+    expect(factoryOutput(plan)).toEqual({ kind: "plan", assignments: [{ teammateID: "tm_moss", prompt: "Reply with ok" }] })
+    expect(factoryOutput('{"status":"accepted","summary":"All good"}')).toEqual({
+      kind: "check",
+      status: "accepted",
+      summary: "All good",
+    })
+    expect(factoryOutput('{"status":"maybe","summary":"x"}')).toBeUndefined()
+    expect(factoryOutput("Done, see @rae")).toBeUndefined()
+  })
+
+  test("room schedules are those of the room or its teammates", () => {
+    const value = { room: { id: "trm_a" }, teammates: [{ id: "tm_1" }] }
+    const loops = [{ id: "a", factoryRoomID: "trm_a" }, { id: "b", teammateID: "tm_1" }, { id: "c", teammateID: "tm_9" }]
+    expect(roomSchedules(value, loops).map((loop) => loop.id)).toEqual(["a", "b"])
   })
 })

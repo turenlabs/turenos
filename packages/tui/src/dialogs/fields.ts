@@ -3,10 +3,12 @@ import {
   InputRenderable,
   TextareaRenderable,
   TextRenderable,
+  InputRenderableEvents,
   TextAttributes,
   fg,
   t,
   type CliRenderer,
+  type ContentChangeEvent,
 } from "@opentui/core"
 import { color } from "../theme"
 import type { Field, ModalState } from "../state"
@@ -74,21 +76,59 @@ function failed(text: TextRenderable) {
   return plain(text).includes("Ctrl+S retry")
 }
 
+function clearFailure(ctx: DialogContext, dialog: ModalState) {
+  const hint = hints.get(dialog)
+  if (!hint || !failed(dialog.error)) return
+  dialog.error.content = hint.content
+  dialog.error.height = hint.height
+  dialog.error.fg = color.muted
+  ctx.ui.resize()
+}
+
+/** A change in a field that has no text edit of its own (a list) drops a failure message, like typing does. */
+export function clearFailureOf(dialog: ModalState) {
+  const ctx = contexts.get(dialog)
+  if (ctx) clearFailure(ctx, dialog)
+}
+
 /** Editing a field drops a failure message and brings back the hint the dialog started with. */
-function clearStaleError(ctx: DialogContext, dialog: ModalState, field: InputRenderable) {
+function clearStaleError(ctx: DialogContext, dialog: ModalState, field: InputRenderable | TextareaRenderable) {
   const remember = () => {
     if (!hints.has(dialog) && !failed(dialog.error))
       hints.set(dialog, { content: plain(dialog.error), height: dialog.error.height })
   }
   field.on("focused", remember)
-  field.on("input", () => {
+  const edited = () => {
     remember()
-    const hint = hints.get(dialog)
-    if (!hint || !failed(dialog.error)) return
-    dialog.error.content = hint.content
-    dialog.error.height = hint.height
-    dialog.error.fg = color.muted
-    ctx.ui.resize()
+    clearFailure(ctx, dialog)
+  }
+  if (field instanceof InputRenderable) return void field.on("input", edited)
+  const changed = field.onContentChange
+  field.onContentChange = (event: ContentChangeEvent) => {
+    changed?.(event)
+    edited()
+  }
+}
+
+/** Dialogs by the context that opened them, so a field can submit its dialog. */
+const contexts = new WeakMap<ModalState, DialogContext>()
+
+/** A multi-line form field that drops a failure message on its next edit, like `input`. It chains the `onContentChange` the field has, so set its own handler first. */
+export function clearOnEdit(dialog: ModalState, field: TextareaRenderable) {
+  const ctx = contexts.get(dialog)
+  if (ctx) clearStaleError(ctx, dialog, field)
+}
+
+/** Enter in a single-line field: on to the next field of the form, and from the last one, submit. */
+export function enterAdvances(dialog: ModalState) {
+  dialog.fields.forEach((field) => {
+    if (!(field instanceof InputRenderable)) return
+    field.on(InputRenderableEvents.ENTER, () => {
+      const next = dialog.fields[dialog.fields.indexOf(field) + 1]
+      const ctx = contexts.get(dialog)
+      if (next) return next.focus()
+      if (ctx?.state.modal === dialog) void submit(ctx)
+    })
   })
 }
 
@@ -103,6 +143,11 @@ export function requireWord(dialog: ModalState, field: InputRenderable, word: st
     if (!plain(dialog.error).startsWith(mismatch)) return
     dialog.error.content = hint
     resize()
+  })
+  // Enter sends once the word is typed, like Ctrl+S. With another word it shows the mismatch.
+  field.on(InputRenderableEvents.ENTER, () => {
+    const ctx = contexts.get(dialog)
+    if (ctx?.state.modal === dialog) void submit(ctx)
   })
   const previous = dialog.beforeSubmit
   dialog.beforeSubmit = () => {
@@ -176,6 +221,7 @@ function addSendButton(ctx: DialogContext, dialog: ModalState) {
 }
 
 export function track(ctx: DialogContext, dialog: ModalState, field: Field) {
+  contexts.set(dialog, ctx)
   dialog.fields.push(field)
   field.on("focused", () => {
     if (ctx.state.modal !== dialog) return

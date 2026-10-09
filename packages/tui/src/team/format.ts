@@ -1,7 +1,8 @@
+import { factoryOutput } from "@turenlabs/client/team"
 import { display } from "../messages"
 import { clock } from "../menus/stamp"
 import { label } from "../state"
-import type { Message, Task, TeamView, Teammate } from "./types"
+import type { FactoryRun, Message, Task, TeamView, Teammate } from "./types"
 
 const statusWords: Record<Task["status"], string> = {
   queued: "queued",
@@ -32,16 +33,20 @@ export function roomLog(view: TeamView) {
   const linked = new Set(
     view.tasks.filter((task) => view.messages.some((message) => message.id === task.messageID)).map((task) => task.sessionID),
   )
+  const closing = closingRuns(view)
   const lines = [
     ...(view.room?.archived ? ["Archived · read-only. Restore does not resume paused schedules.", ""] : []),
+    ...(view.teammates.length || view.room?.archived
+      ? []
+      : ["No teammates yet. Press M, then a, to add one; teammates answer posts and take tasks.", ""]),
     ...(view.hasMore ? ["↑ Earlier messages: PageUp at the top or [ loads them.", ""] : []),
-    ...(view.messages.length ? view.messages.flatMap((message) => entry(view, message, linked)) : ["No messages yet."]),
+    ...(view.messages.length ? view.messages.flatMap((message) => [...entry(view, message, linked), ...(closing.get(message.id) ?? []).map(closingLine)]) : ["No messages yet."]),
   ]
   return lines.join("\n")
 }
 
 function entry(view: TeamView, message: Message, linked: ReadonlySet<string>) {
-  const [first = "", ...rest] = display(message.text, MESSAGE_VIEW).split("\n")
+  const [first = "", ...rest] = display(logText(view, message), MESSAGE_VIEW).split("\n")
   const head = `${clock(message.time)} ${author(view, message)}`
   const lines = [
     message.kind === "system" ? `${head} ${first}` : `${head}  ${first}`,
@@ -78,8 +83,52 @@ export function roomContext(view: TeamView) {
   return [
     view.room?.topic ? label(view.room.topic, 150) : "",
     `${view.teammates.length} teammates`,
-    run ? `factory: ${stage[run.phase]} (run ${label(run.id, 40)})` : "",
+    run ? `factory: ${stage[run.phase]} (run ${shortID(run.id)})` : "",
   ]
     .filter(Boolean)
     .join(" · ")
+}
+
+/** Run IDs are long; the last eight characters tell runs apart. */
+export function shortID(id: string) {
+  return id.length > 8 ? `…${id.slice(-8)}` : id
+}
+
+const SETTLED: FactoryRun["status"][] = ["succeeded", "failed", "cancelled", "stale"]
+const checkWords = { accepted: "accepted", rejected: "rejected", needs_input: "needs input" }
+
+/**
+ * A message as the log prints it. The coordinator's plan and verdict are JSON for the server; people read them as
+ * one line. System lines that name a factory run carry the short run ID. Stored text is not changed.
+ */
+export function logText(view: TeamView, message: Message) {
+  if (message.kind === "system") return message.text.replace(/(Factory run )(\S{9,})/g, (_, lead, id) => lead + shortID(id))
+  if (message.kind !== "teammate") return message.text
+  const output = factoryOutput(message.text)
+  if (output?.kind === "plan")
+    return `plan: ${output.assignments.map((item) => `${handleOf(view.teammates, item.teammateID)} "${label(item.prompt, 32)}"`).join(", ")}`
+  if (output?.kind === "check") return `check: ${checkWords[output.status]} — ${output.summary}`
+  return message.text
+}
+
+/** For each message that ends a settled run's part of the log: the run, which then gets a closing line. */
+export function closingRuns(view: TeamView) {
+  const closing = new Map<string, FactoryRun[]>()
+  view.factoryRuns
+    .filter((run) => SETTLED.includes(run.status))
+    .forEach((run) => {
+      const requests = new Set(view.tasks.filter((task) => run.taskIDs.includes(task.id)).map((task) => task.messageID))
+      const last = view.messages.findLast(
+        (message) =>
+          message.text.includes(run.id) ||
+          requests.has(message.id) ||
+          message.sourceMessageIDs?.some((id) => requests.has(id)),
+      )
+      if (last) closing.set(last.id, [...(closing.get(last.id) ?? []), run])
+    })
+  return closing
+}
+
+export function closingLine(run: FactoryRun) {
+  return `${clock(run.time.updated)} · Factory run ${shortID(run.id)} ${run.status}`
 }

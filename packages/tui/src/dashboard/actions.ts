@@ -83,6 +83,8 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
   const meter = session && usage ? meterText(usage, limit) : ""
   // While typing, letters go into the reply, so the row keeps only its status, without the keys.
   const typing = !!state.modal?.composer
+  // A room nobody answers in leads with the way to add the first teammate.
+  const empty = room && state.team?.room?.id === state.selected && !state.team.room.archived && !state.team.teammates.length
   const key = (letter: string) => (typing ? "" : `${letter} `)
   const row = [
     { node: ui.stop, show: running && !typing, text: "x Stop", rank: 100 },
@@ -93,7 +95,7 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
       rank: 50,
     },
     { node: ui.information, show: !typing, text: "i Details", rank: 40 },
-    { node: ui.changes, show: (live || room) && !typing, text: room ? "M Members" : "d Changes", rank: 30 },
+    changesEntry(ui, live, room, typing, empty),
     {
       node: ui.files,
       show: (live || (room && !!state.team?.hasMore)) && !typing,
@@ -109,7 +111,7 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
     },
     { node: ui.queued, show: queued > 0, text: `${key("u")}${queued} queued`, short: `${key("u")}${queued}`, rank: 90 },
     { node: ui.harness, show: (live || room) && !typing, text: room ? "F Factory" : "H Harness", rank: 10 },
-    { node: ui.meter, show: !!meter, text: meter, short: usage && meterText(usage, limit, true), rank: 80 },
+    meterEntry(ui, room, typing, meter, usage && meterText(usage, limit, true)),
   ]
   const width = actionWidth(d)
   fitActionRow(row, width)
@@ -147,4 +149,28 @@ export function primaryAction(d: DashboardContext) {
   if (pending?.permissions.length) return d.c.requests.permission()
   if (pending?.questions.length) return d.c.requests.question()
   d.c.requests.followup()
+}
+
+type Ui = DashboardContext["ui"]
+
+/** `d Changes` for a session; in Team `M Members`, which leads as `M Add teammate` while the room has none. */
+function changesEntry(ui: Ui, live: boolean, room: boolean, typing: boolean, empty: boolean) {
+  return {
+    node: ui.changes,
+    show: (live || room) && !typing,
+    text: room ? (empty ? "M Add teammate" : "M Members") : "d Changes",
+    short: empty ? "M Add" : undefined,
+    rank: empty ? 95 : 30,
+  }
+}
+
+/** The context meter has no use in Team, so its place holds the two room keys, the first entries to go. */
+function meterEntry(ui: Ui, room: boolean, typing: boolean, meter: string, short: string | undefined) {
+  return {
+    node: ui.meter,
+    show: room ? !typing : !!meter,
+    text: room ? "a New room · d Room" : meter,
+    short: room ? "a New room" : short,
+    rank: room ? 5 : 80,
+  }
 }

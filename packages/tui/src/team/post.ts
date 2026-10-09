@@ -118,7 +118,6 @@ function paintHint(ctx: TeamContext, dialog: ModalState, editor: TextareaRendera
 
 function mentionLines(view: TeamView, text: string) {
   const handles = mentionedHandles(text)
-  const known = assignedHandles(text, view.teammates)
   if (!handles.length) {
     const coordinator = view.room ? roomCoordinator(view.room, view.teammates) : undefined
     return [
@@ -130,13 +129,27 @@ function mentionLines(view: TeamView, text: string) {
       },
     ]
   }
+  const skipped = skippedMentions(view.teammates, text)
+  const tasked = assignedHandles(text, view.teammates).filter(
+    (handle) => !skipped.some((item) => item.handle === handle),
+  )
   return [
-    ...(known.length ? [{ text: `Tasks for: ${known.map((handle) => `@${handle}`).join(", ")}`, warn: false }] : []),
-    ...handles
-      .filter((handle) => !known.includes(handle))
-      .slice(0, 2)
-      .map((handle) => ({ text: `@${label(handle, 32)} is not in this room`, warn: true })),
+    ...(tasked.length ? [{ text: `Tasks for: ${tasked.map((handle) => `@${handle}`).join(", ")}`, warn: false }] : []),
+    ...skipped.slice(0, 2).map((item) => ({
+      text: item.paused
+        ? `@${label(item.handle, 32)} is paused: no task. M, then Enter on @${label(item.handle, 32)}, then Resume.`
+        : `@${label(item.handle, 32)} is not in this room: ${tasked.length ? "no task for it" : "nobody is tasked"}. Remove it, or press @ to pick a teammate.`,
+      warn: true,
+    })),
   ]
+}
+
+/** The mentions that cannot task anyone: handles nobody in the room has, and teammates who are paused. */
+function skippedMentions(teammates: TeamView["teammates"], text: string) {
+  return mentionedHandles(text).flatMap((handle) => {
+    const mate = teammates.find((item) => item.handle.toLowerCase() === handle)
+    return !mate || mate.status === "paused" ? [{ handle, paused: !!mate, id: mate?.id }] : []
+  })
 }
 
 async function submitPost(poster: Poster, editor: TextareaRenderable, roomID: string, draft: PostDraft) {
@@ -186,9 +199,15 @@ function applyPosted(
     view.follow = true
   }
   const handles = [...new Set(tasks.map((task) => handleOf(view.teammates, task.teammateID)))]
-  if (!handles.length) return "Posted."
+  const skipped = skippedMentions(view.teammates, message.text).filter(
+    (item) => !tasks.some((task) => task.teammateID === item.id),
+  )
   const names = handles.length > 1 ? `${handles.slice(0, -1).join(", ")} and ${handles.at(-1)}` : handles[0]
-  return `Posted. ${names} got ${handles.length > 1 ? "tasks" : "a task"}.`
+  const got = handles.length ? ` ${names} got ${handles.length > 1 ? "tasks" : "a task"}.` : ""
+  const none = skipped.length
+    ? ` No task: ${skipped.map((item) => `@${label(item.handle, 32)} is ${item.paused ? "paused" : "not in this room"}`).join(", ")}.`
+    : ""
+  return `Posted.${got}${none}`
 }
 
 /** Post drafts that would be lost on quit, counting the text in the open editor. */

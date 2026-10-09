@@ -7,8 +7,8 @@ import { label } from "../state"
 import type { TeamAction, TeamOperations } from "./actions"
 import { addTrigger, startRun, stopRun } from "./factory-run"
 import { openSettings } from "./factory-settings"
-import { latestRuns, runText, summaryText } from "./factory-text"
-import { handleOf, statusWord } from "./format"
+import { latestRuns, panelText, runOwnTasks, taskName } from "./factory-text"
+import { shortID } from "./format"
 import { loadedRoom, panelNote } from "./selection"
 import { viewOf, type FactoryRun, type Room, type TeamContext } from "./types"
 
@@ -53,20 +53,17 @@ export function openFactory(ctx: TeamContext, ops: TeamOperations) {
     panel.heading.content = now?.archived ? "Archived · read-only" : "Factory"
     panel.show(
       now
-        ? `${summaryText(now, view.teammates)}\n\n${run ? runText(view, run) : "No runs yet."}`
+        ? panelText(view, now, run, ctx.renderer.height <= 30)
         : "This room is no longer loaded. Esc closes.",
     )
     const edits = ["s settings", "Ctrl+R run", "x stop", "t trigger"]
-    panel.hints(["↑↓ runs", "Enter tasks", ...(now?.archived ? [] : edits)], ["Esc close"], () => ({
-      text: view.panelNote ?? "",
-      essential: ["Enter tasks", "Esc close"],
-    }))
+    panel.hints(["↑↓ runs", "Enter tasks", ...(now?.archived ? [] : edits)], ["Esc close"])
   }
   const paint = () => {
     const previous = live.run()?.id
     runs = latestRuns(viewOf(ctx.state))
     panel.list.options = runs.map((run) => ({
-      name: `${run.status} · ${run.phase} · ${clock(run.time.created)}`,
+      name: `${run.status}${run.status === "running" ? ` ${run.phase}` : ""} ${clock(run.time.created)}`,
       description: "",
     }))
     panel.list.setSelectedIndex(
@@ -124,13 +121,13 @@ function runTasks(ctx: TeamContext, live: Live) {
     return true
   }
   const view = viewOf(ctx.state)
-  const tasks = view.tasks.filter((task) => run.taskIDs.includes(task.id))
+  const tasks = runOwnTasks(view, run)
   ctx.dialogs.close(false)
   openPicker(ctx.renderer, ctx.dialogs, {
-    title: `Factory › run ${label(run.id, 24)}`,
+    title: `Factory › run ${shortID(run.id)}`,
     text: tasks.length ? "Enter opens a task's session." : "No tasks yet.",
     choices: tasks.map((task) => ({
-      name: `${handleOf(view.teammates, task.teammateID)} ${statusWord(task.status)} · session ${label(task.sessionID, 60)}`,
+      name: `${taskName(view, run, task)} · session ${shortID(task.sessionID)}`,
       description: task.error ? label(task.error, 150) : "",
       run: () => ctx.openSession(task.sessionID),
     })),
