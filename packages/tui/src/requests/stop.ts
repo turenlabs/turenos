@@ -44,6 +44,8 @@ export function escapeStop(ctx: RequestContext, rewind: () => void) {
   if (ctx.state.tab !== "sessions" || !id || !ctx.state.snapshot) return false
   const action = Object.hasOwn(ctx.state.snapshot.active, id) ? "stop" : "rewind"
   if (action === "rewind" && !ctx.state.connected) return false
+  // The server refuses to rewind a subagent session, so Esc Esc does not offer it there.
+  if (action === "rewind" && ctx.state.snapshot.sessions.find((item) => item.id === id)?.parentID) return false
   if (ctx.stopArmed?.sessionID !== id || ctx.stopArmed.action !== action || ctx.stopArmed.until < Date.now()) {
     if (action === "rewind" && ctx.state.detail?.sessionID === id && !ctx.state.detail.messages.length) {
       ctx.say("Nothing to undo in this session.")
@@ -101,7 +103,7 @@ export function kill(ctx: RequestContext) {
     title: "Kill session",
     height: 20,
     body: "Interrupt this session and cancel its unfinished subagent tasks?\nCancelled tasks cannot resume.",
-    hint: "Ctrl+S kill · Esc close",
+    hint: "Enter or Ctrl+S kill · Esc close",
     word: "kill",
   })
   if (!confirmation) return
@@ -130,7 +132,7 @@ export function stopAll(ctx: RequestContext) {
     if (result.failed) throw new Error(`${result.failed} session(s) did not stop; ${result.interrupted} stopped.`)
     ctx.say(result.interrupted ? `Stopped ${result.interrupted} session(s).` : "Nothing was running.")
   }
-  dialog.error.content = "Ctrl+S stop all · Esc close"
+  dialog.error.content = "Enter or Ctrl+S stop all · Esc close"
   requireWord(dialog, confirmation, "stop all", ctx.dialogs.resize)
   confirmation.focus()
 }

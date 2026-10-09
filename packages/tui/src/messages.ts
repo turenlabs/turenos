@@ -1,6 +1,6 @@
 import type { MessagesListOutput, QuestionsListOutput } from "@turenlabs/client"
 import { TurnInterruption } from "@turenlabs/client/turn-interruption"
-import { assistantHeader, chip } from "./messages/header"
+import { assistantHeader, chip, modelText } from "./messages/header"
 import { toolBlock, type ToolView } from "./messages/tool"
 import { continuesTurn, startsTurn, turnTime } from "./messages/turns"
 import { noticeLine } from "./messages/notice"
@@ -167,7 +167,7 @@ function previewOf(message: Message) {
   }
   if (message.type === "model-switched") {
     return preview(
-      `Model switched to ${display(message.model.providerID)}/${display(message.model.id)}${message.model.variant ? ` (${display(message.model.variant)})` : ""}`,
+      `Model switched to ${modelText(message.model)}`,
     )
   }
   if (message.type === "compaction") {
@@ -294,10 +294,10 @@ function messageText(message: Message, raw: boolean, rich: boolean, view: Transc
   if (message.type === "assistant") return assistantText(message, raw, rich, view, at)
   if (message.type === "agent-switched") return `AGENT SWITCHED\nSwitched agent to ${display(message.agent)}`
   if (message.type === "model-switched")
-    return `MODEL SWITCHED\nSwitched model to ${display(message.model.providerID)}/${display(message.model.id)}${message.model.variant ? ` (${display(message.model.variant)})` : ""}`
+    return `MODEL SWITCHED\nSwitched model to ${modelText(message.model)}`
   if (message.type === "compaction")
     return `COMPACTION (${display(message.reason)})\n${display(message.summary || "Conversation history compacted.")}`
-  if (message.type === "shell") return shellBlock(message, chips)
+  if (message.type === "shell") return shellBlock(message, chips, view.expanded === true)
   if (message.type === "user" && message.source === "subagent_board")
     return `AGENT UPDATE\n${raw ? display(message.text) : boardMessage(message.text)}`
   if (message.type === "user" && message.source && message.source !== "user")

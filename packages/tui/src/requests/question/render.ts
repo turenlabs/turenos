@@ -34,7 +34,7 @@ export function render(flow: QuestionFlow) {
 
 function renderReject(flow: QuestionFlow) {
   text(flow, "No answers will be sent. Ctrl+S confirms rejection; Ctrl+R returns to your answers.")
-  flow.dialog.error.content = "Ctrl+S Confirm rejection\nCtrl+R Answer instead\nCtrl+K Sessions · Esc back"
+  flow.dialog.error.content = "Ctrl+S confirm rejection\nCtrl+R answer instead\nCtrl+K sessions · Esc back"
   flow.dialog.form.focus()
 }
 
@@ -47,8 +47,8 @@ function renderReview(flow: QuestionFlow) {
     event.preventDefault()
     if (event.button === 0 && !flow.dialog.busy) void flow.ctx.dialogs.submit()
   }
-  hints(flow, ["← Edit", "PgUp/PgDn Scroll", ...(flow.ctx.renderer.height < compactRows ? [] : ["Ctrl+K Sessions"])], [
-    "Ctrl+R Reject request",
+  hints(flow, ["← edit", "PgUp/PgDn scroll", ...(flow.ctx.renderer.height < compactRows ? [] : ["Ctrl+K sessions"])], [
+    "Ctrl+R reject request",
     "Esc close",
   ])
   flow.dialog.form.focus()
@@ -56,6 +56,6 @@ function renderReview(flow: QuestionFlow) {
 
 function renderEmpty(flow: QuestionFlow) {
   text(flow, "This request has no questions. Close or reject it.")
-  flow.dialog.error.content = "Ctrl+R Reject request · Esc close"
+  flow.dialog.error.content = "Ctrl+R reject request · Esc close"
   flow.dialog.form.focus()
 }

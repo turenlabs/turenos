@@ -19,6 +19,7 @@ export function loadPosition(c: Conversation) {
   const saved = c.positions.get(state.selected)
   state.history = saved?.history ?? false
   state.historyCursor = saved?.cursor
+  state.historyPage = saved?.page ?? 1
   c.position = {
     sessionID: state.selected,
     history: state.history,
@@ -47,6 +48,7 @@ export function toggleHistory(c: Conversation) {
     scroll: c.positions.get(state.selected)?.[state.history ? "transcript" : "latest"] ?? 0,
   }
   state.historyCursor = state.history ? c.positions.get(state.selected)?.cursor : undefined
+  state.historyPage = state.history ? (c.positions.get(state.selected)?.page ?? 1) : 1
   ui.detail.scrollTo(0)
   c.hooks.actions()
   void render(c)
@@ -86,6 +88,7 @@ export function invalidateSession(c: Conversation, sessionID: string) {
   c.textAnchor = undefined
   state.detail = undefined
   state.historyCursor = undefined
+  state.historyPage = 1
   c.pageRequest = undefined
   c.position = undefined
   c.prepend = undefined

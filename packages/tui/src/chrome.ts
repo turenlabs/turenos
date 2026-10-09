@@ -3,6 +3,7 @@ import { layout } from "./theme"
 import type { DashboardState } from "./state"
 import type { Detail, Snapshot } from "./server"
 import { turnFailure } from "./messages/failure"
+import { modelText } from "./messages/header"
 import { scheduleInput } from "./automations/schedule"
 import type { Loop } from "./automations/types"
 import { viewOf, visibleRooms } from "./team/types"
@@ -34,7 +35,7 @@ export function headerLeft(_snapshot: Snapshot | undefined) {
 }
 
 export function headerRight(state: DashboardState, snapshot: Snapshot | undefined) {
-  if (!state.connected) return state.connectionError ? "Disconnected" : "Connecting…"
+  if (!state.connected) return state.connectionError ? "! Disconnected" : "Connecting…"
   if (!snapshot) return ""
   const running = Object.keys(snapshot.active).length
   // The active map is cut at 128 entries; a plus sign beats a count that is too small.
@@ -52,11 +53,11 @@ export function headerRight(state: DashboardState, snapshot: Snapshot | undefine
     ].join(" · ")
   }
   if (state.tab === "terminals")
-    return snapshot.terminalsAvailable ? count(state, snapshot.terminals.length, "terminal") : "Terminals unavailable"
+    return snapshot.terminalsAvailable ? count(state, snapshot.terminals.length, "terminal") : "! Terminals unavailable"
   if (state.tab === "team")
-    return viewOf(state).error ? "Team unavailable" : count(state, visibleRooms(viewOf(state)).length, "room")
+    return viewOf(state).error ? "! Team unavailable" : count(state, visibleRooms(viewOf(state)).length, "room")
   return snapshot.inventoryErrors.automations
-    ? "Automations unavailable"
+    ? "! Automations unavailable"
     : count(state, snapshot.loops.length, "automation")
 }
 
@@ -77,9 +78,8 @@ export function sidebarTitle(state: DashboardState, count: number, drawer = fals
  * The footer's left side. It never repeats the line above the transcript (view, Working, Needs input);
  * it names the stream, the pane that has the keys, and the agent and model.
  */
-export function statusline(state: DashboardState, snapshot: Snapshot | undefined, width: number, armed = "") {
-  // While a quit is armed the footer says what the next press does; everything else can wait three seconds.
-  if (armed) return armed
+export function statusline(state: DashboardState, snapshot: Snapshot | undefined, width: number, _armed = "") {
+  // `_armed` stays for the dashboard's call: an armed quit is said once, by the status line's notice, not here.
   const narrow = width < layout.narrowBreakpoint
   const hidden = state.sidebarHidden ?? narrow
   const names = { sessions: "Sessions", terminals: "Terminals", automations: "Automations", team: "Team" }
@@ -123,13 +123,12 @@ function agentModel(state: DashboardState, snapshot: Snapshot | undefined) {
   const model =
     session.model ??
     (reply && (reply.model.providerID !== "unknown" || reply.model.id !== "unknown") ? reply.model : undefined)
-  const agent = sessionAgent(state, session)
-  return `${label(agent ?? "server default", 40)} · ${model ? label(`${model.providerID}/${model.id}${model.variant ? ` (${model.variant})` : ""}`, 80) : "server default"}`
+  const agent = sessionAgent(state, session) ?? state.defaultAgent
+  return `${label(agent ?? "server default", 40)} · ${model ? label(modelText(model), 80) : "server default"}`
 }
 
 /**
- * The footer's right side, whole entries only. `armed` is a quit waiting for its second press: the quit entry
- * then says what the press does. Narrow widths share the row with the status text on the left, `left` columns
+ * The footer's right side, whole entries only. Narrow widths share the row with the status text on the left, `left` columns
  * (about 26 at most); `? help` outlasts every entry but the two the narrow footer was built around.
  */
 export function footerShortcuts(
@@ -137,15 +136,14 @@ export function footerShortcuts(
   sidebarVisible: boolean,
   typing = false,
   running = false,
-  armed = false,
   left = 26,
 ) {
   const sidebar = sidebarVisible ? "Tab pane" : "b sidebar"
-  const quit = armed ? "q again quits" : "q quit"
+  const quit = "q quit"
   // While typing, letters go into the reply, so only the keys that work from the editor are named.
   const sets = typing
     ? [
-        ["Esc shortcuts", "Ctrl+P commands", armed ? "Ctrl+C again quits" : running ? "Ctrl+C stop" : "Ctrl+C quit"],
+        ["Esc shortcuts", "Ctrl+P commands", running ? "Ctrl+C stop" : "Ctrl+C quit"],
         ["Esc shortcuts", "Ctrl+P commands"],
         ["Esc shortcuts", "Ctrl+P"],
         ["Esc shortcuts"],
@@ -186,7 +184,8 @@ export function promptBoxText(
 
 export function welcomeBody(
   tab: DashboardState["tab"],
-  connection?: Pick<DashboardState, "connected" | "connectionError"> & { serverSwitching?: boolean },
+  connection?: Pick<DashboardState, "connected" | "connectionError"> &
+    Partial<Pick<DashboardState, "serverSwitching" | "sidebarHidden" | "columns">>,
 ) {
   if (tab === "team")
     return "No Team rooms found.\n\nPress 1 for sessions · 2 for terminals · 3 for automations · 4 for Team.\nctrl+p lists every command."
@@ -203,11 +202,12 @@ export function welcomeBody(
     "[ Turen ]",
     `${status ? `${status} · ` : ""}No session selected.`,
     "",
-    "n New session",
-    "Ctrl+K Session picker",
-    ...(connection?.serverSwitching ? ["s Switch server"] : []),
-    ", Settings · I Intel",
-    "? Help",
+    "Press n or Enter to start a session.",
+    "? help · Ctrl+P commands · m model · Ctrl+K sessions",
+    ...((connection?.sidebarHidden ?? (connection?.columns ?? 0) < layout.narrowBreakpoint)
+      ? ["b shows the session list"]
+      : []),
+    `, settings · I intel${connection?.serverSwitching ? " · s servers" : ""}`,
   ].join("\n")
 }
 

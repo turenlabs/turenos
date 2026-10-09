@@ -21,12 +21,19 @@ export function loadAgents(form: LaunchForm): Promise<void> {
     .then((result) => {
       if (state.closed || state.modal !== dialog || requested !== directory.value.trim()) return
       form.choices = result.map((item) => item.id)
+      // A session that picks no agent runs `build`, else the first one listed.
+      state.defaultAgent = (result.find((item) => item.id === "build") ?? result[0])?.id
       if (requested === current.directory && current.agent && !form.choices.includes(current.agent))
         form.choices.unshift(current.agent)
       form.loaded = requested
+      // The select draws one row per agent, so a description joins its name on that row.
+      const described = new Map(result.flatMap((item) => (item.description ? [[item.id, item.description]] : [])))
       agent.options = [
         { name: "Server default", description: "" },
-        ...form.choices.map((id) => ({ name: label(id), description: "" })),
+        ...form.choices.map((id) => ({
+          name: described.has(id) ? label(`${id} · ${described.get(id)}`, 64) : label(id),
+          description: "",
+        })),
       ]
       // Every agent shows up to three rows; more scroll inside the list.
       agent.height = Math.min(3, agent.options.length)

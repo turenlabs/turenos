@@ -12,8 +12,11 @@ export function sidebarColumns(width: number) {
 }
 
 /** Re-applies size- and modal-dependent visibility and dimensions to every part. */
-export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts: LayoutParts, quitArmed = false) {
+export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts: LayoutParts, _quitArmed = false) {
   const narrow = renderer.width < layout.narrowBreakpoint
+  state.columns = renderer.width
+  // The activity line grows a second row while messages are queued.
+  parts.activity.height = "auto"
   resizeSizeNotice(renderer, state, parts)
   resizeTopbar(state, parts)
   resizeBody(parts, narrow)
@@ -31,7 +34,6 @@ export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts
     parts.sidebar.visible,
     !!state.modal?.composer,
     running,
-    quitArmed,
     left,
   )
 }

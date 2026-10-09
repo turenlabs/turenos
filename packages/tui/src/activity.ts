@@ -1,3 +1,4 @@
+import { waiting } from "./queue/inputs"
 import { label, type DashboardState, type Retry } from "./state"
 
 // Each Braille cell is a 2x4 dot grid. Project three tilted particle orbits
@@ -71,10 +72,18 @@ export function activityFrame(
   const phase =
     reducedMotion || !Number.isFinite(frame) ? 0 : ((Math.trunc(frame) % globe.length) + globe.length) % globe.length
   return {
-    content: `${content} ${globe[phase]}`,
+    content: `${content} ${globe[phase]}${state.modal?.busy || !state.connected ? "" : queuedLine(detail, room)}`,
     tone: retry ? "warning" : state.modal?.busy || state.connected ? "accent" : "muted",
     animate: !reducedMotion,
   }
+}
+
+/** A second line while messages wait: the first line of the next one, and how many more follow. */
+function queuedLine(detail: DashboardState["detail"], room: number) {
+  const queue = waiting(detail?.pending).toSorted((a, b) => a.admittedSeq - b.admittedSeq)
+  if (!queue.length) return ""
+  const more = queue.length > 1 ? ` · ${queue.length - 1} more` : ""
+  return `\n${label(`queued: ${queue[0]!.prompt.text.split("\n")[0]}`, Math.max(16, room - more.length))}${more}`
 }
 
 /** "Working (12s · Esc Esc or x to stop)", or "Running bash (4s · …)" while a tool runs. */

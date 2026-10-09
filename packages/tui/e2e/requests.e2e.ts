@@ -33,7 +33,7 @@ test("a rejected permission leaves the tool unrun", async () => {
 test("a question is answered from the picker", async () => {
   await tui.reply("ask me a colour")
   await tui.waitFor("Question 1 of 1", 20_000)
-  await tui.waitFor("Enter Choose, then review answers")
+  await tui.waitFor("Enter choose, then review answers")
   await tui.keys("Down", "Enter")
   const review = await tui.waitFor("Review answers")
   expect(review).toContain("Blue")

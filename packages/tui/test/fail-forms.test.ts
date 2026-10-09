@@ -48,7 +48,7 @@ test("the custom answer is a boxed field whose placeholder is not its label", as
   await screen("Which colour?")
   view.mockInput.pressKey("3")
   view.mockInput.pressEnter()
-  const frame = await screen("Save custom answer")
+  const frame = await screen("save custom answer")
   expect(after(frame, "Your answer").trim()).toMatch(/^\[ Type your answer +\]$/)
 })
 
@@ -94,14 +94,14 @@ test("a rewound prompt's footer says Ctrl+S rewind, and an undo's says Ctrl+S un
   const frame = await screen("Confirmation (type rewind)")
   expect(frame).not.toContain("type undo")
   expect(frame).toContain("Rewind conversation?")
-  expect(frame).toContain("Ctrl+S rewind · Enter does not confirm")
+  expect(frame).toContain("Enter or Ctrl+S rewind")
 })
 
 test("an undo's footer says Ctrl+S undo", async () => {
   const { screen, palette } = await sized(100, 36, history)
   await screen("main task")
   await palette("Undo conversation turn")
-  expect(await screen("Ctrl+S undo · Enter does not confirm")).not.toContain("Ctrl+S rewind")
+  expect(await screen("Enter or Ctrl+S undo")).not.toContain("Ctrl+S rewind")
 })
 
 function commands() {
@@ -117,9 +117,9 @@ for (const height of [24, 36]) {
   test(`a question's key hints keep every entry whole at 60x${height}`, async () => {
     const { screen } = await sized(60, height, question)
     const frame = await screen("Which colour?")
-    expect(frame).toContain("Ctrl+R Reject request")
+    expect(frame).toContain("Ctrl+R reject request")
     expect(frame).toContain("Esc close")
-    expect(frame).toContain("Enter Choose, then review answers")
+    expect(frame).toContain("Enter choose, then review answers")
   })
 }
 

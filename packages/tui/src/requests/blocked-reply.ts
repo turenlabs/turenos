@@ -26,7 +26,7 @@ export function openBlockedReply(ctx: RequestContext, session: Session, reopen: 
   )
   if (redirect) dialog.form.add(openButton(ctx, rootID ? "main" : "parent"))
   dialog.error.content = redirect
-    ? `Enter Open ${rootID ? "main" : "parent"} + reply · Esc close${draft ? "\nChild draft stays here; Ctrl+Y copies selected text." : ""}`
+    ? `Enter open ${rootID ? "main" : "parent"} + reply · Esc close${draft ? "\nChild draft stays here; Ctrl+Y copies selected text." : ""}`
     : "Esc close · t Tasks"
   if (redirect) {
     dialog.submit = async () => {

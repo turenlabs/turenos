@@ -101,8 +101,12 @@ export type DashboardState = {
   navigating: boolean
   history: boolean
   historyCursor: string | undefined
+  /** Which History page is shown, 1 for the newest; the server gives cursors, not a page count. */
+  historyPage: number
   connectionError: string
   sidebarHidden: boolean | undefined
+  /** The terminal width at the last layout, for text that depends on whether the sidebar shows. */
+  columns: number
   previousSession: string
   searching: { query: string; selected: string } | undefined
   modal: ModalState | undefined
@@ -111,6 +115,8 @@ export type DashboardState = {
   attention: boolean
   /** The title last written to the terminal, so only changes are written; empty when none is set. */
   terminalTitle: string
+  /** The agent a session without one runs (the server's default), once the New session form has read the catalog. */
+  defaultAgent?: string
   /** The selected session while its turn runs, so the end of that turn rings once. */
   workingSession: string
   rawResponses: boolean
@@ -146,8 +152,10 @@ export function createDashboardState(): DashboardState {
     navigating: false,
     history: false,
     historyCursor: undefined,
+    historyPage: 1,
     connectionError: "",
     sidebarHidden: undefined,
+    columns: 0,
     previousSession: "",
     searching: undefined,
     modal: undefined,

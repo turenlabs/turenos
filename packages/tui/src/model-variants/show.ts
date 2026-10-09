@@ -19,6 +19,11 @@ type View = {
   unadvertised?: string
 }
 
+/** Esc returns to the dialog that opened this one (back), or leaves to the dashboard (close). */
+function leave(target: Target) {
+  return target.cancel ? "back" : "close"
+}
+
 export function show(ctx: VariantsContext, target: Target, recipient?: Session) {
   const { state, dialogs } = ctx
   if (state.closed || !dialogs.navigate()) return
@@ -101,7 +106,7 @@ async function load(view: View) {
   view.ready = false
   view.rows = []
   select.options = []
-  dialog.error.content = "Loading variants (read-only)... Esc back"
+  dialog.error.content = `Loading variants (read-only)... Esc ${leave(target)}`
   try {
     const catalog = await ctx.connection.providers.list(target.directory)
     if (ctx.state.closed || ctx.state.modal !== dialog) return
@@ -118,19 +123,19 @@ async function load(view: View) {
     }))
     select.setSelectedIndex(Math.max(0, view.rows.indexOf(target.current)))
     view.ready = true
-    dialog.error.content = "Up/Down choose · Enter / Ctrl+S select\nEsc back · Ctrl+R reload"
+    dialog.error.content = `Up/Down choose · Enter / Ctrl+S select\nEsc ${leave(target)} · Ctrl+R reload`
     select.focus()
   } catch (error) {
     if (ctx.state.closed || ctx.state.modal !== dialog) return
     dialog.error.height = 3
-    dialog.error.content = `Cannot load variants: ${errorText(error)}\nCtrl+R retry · Esc back`
+    dialog.error.content = `Cannot load variants: ${errorText(error)}\nCtrl+R retry · Esc ${leave(target)}`
   } finally {
     view.loading = false
   }
 }
 
 async function submit(view: View) {
-  if (!view.ready) throw new Error("Variants are not loaded. Ctrl+R retry or Esc back.")
+  if (!view.ready) throw new Error(`Variants are not loaded. Ctrl+R retry or Esc ${leave(view.target)}.`)
   if (!view.intent) {
     const variant = view.rows[view.select.getSelectedIndex()]
     view.intent = { variant, currentOnly: variant !== undefined && variant === view.unadvertised }

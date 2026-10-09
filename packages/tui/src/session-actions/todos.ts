@@ -5,7 +5,7 @@ import type { Todo } from "../server"
 const MARK = {
   pending: "[to do]       ○",
   in_progress: "[in progress] ◐",
-  completed: "[done]        ●",
+  completed: "[completed]   ●",
   cancelled: "[cancelled]   ×",
 } as const
 

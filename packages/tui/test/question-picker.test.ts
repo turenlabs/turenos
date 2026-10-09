@@ -349,11 +349,11 @@ for (const [width, height] of [
 
 test("a single-choice footer says where Enter goes, and a page shows its choice when revisited", async () => {
   const f = await fixture([single, { ...single, header: "Second", question: "And the second choice?" }])
-  expect(await f.settle()).toContain("Enter Choose, then next question")
+  expect(await f.settle()).toContain("Enter choose, then next question")
   await f.arrow("down")
   const second = await f.enter()
   expect(second).toContain("Question 2 of 2")
-  expect(second).toContain("Enter Choose, then review answers")
+  expect(second).toContain("Enter choose, then review answers")
   expect(f.posts).toEqual([])
   await f.arrow("left")
   const revisited = await f.settle()
@@ -364,7 +364,7 @@ test("a single-choice footer says where Enter goes, and a page shows its choice 
 
 test("one Enter on the only question chooses it and opens the review; nothing is sent until submit", async () => {
   const f = await fixture([single])
-  expect(await f.settle()).toContain("Enter Choose, then review answers")
+  expect(await f.settle()).toContain("Enter choose, then review answers")
   const review = await f.enter()
   expect(review).toContain("Review answers")
   expect(review).toContain("Small change")

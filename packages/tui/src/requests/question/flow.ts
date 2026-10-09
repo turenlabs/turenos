@@ -77,14 +77,14 @@ export function editCustom(flow: QuestionFlow, restore = false) {
   const input = flow.ctx.dialogs.input(flow.dialog, "Your answer", flow.draft.custom[flow.page], "Type your answer")
   flow.input = input
   if (restore) input.cursorOffset = Math.min(flow.draft.cursor, input.plainText.length)
-  hints(flow, [], ["Enter Save custom answer", "Ctrl+B Back to choices", "Ctrl+K Sessions", "Esc close"])
+  hints(flow, [], ["Enter save custom answer", "Ctrl+B back to choices", "Ctrl+K sessions", "Esc close"])
   flow.ctx.dialogs.resize()
   input.focus()
 }
 
 export function advance(flow: QuestionFlow) {
   if (!answers(flow)[flow.page]?.length) {
-    flow.dialog.error.content = "Choose an answer before continuing.\nEsc close · Ctrl+R Reject request"
+    flow.dialog.error.content = "Choose an answer before continuing.\nEsc close · Ctrl+R reject request"
     return
   }
   if (flow.page < flow.questions.length - 1) flow.page++

@@ -12,8 +12,11 @@ function shellStatus(message: Shell) {
   return `${status === "completed" ? "failed" : status} · exit ${message.exitCode}`
 }
 
-/** `rich` is the dashboard's Markdown view: the command and output are shown literally there, and untouched otherwise. */
-export function shellBlock(message: Shell, rich = false) {
+/**
+ * `rich` is the dashboard's Markdown view: the command and output are shown literally there, and untouched otherwise.
+ * A long output is folded there like a tool result until `expanded` (Ctrl+O).
+ */
+export function shellBlock(message: Shell, rich = false, expanded = false) {
   const output = display(message.output)
   const finished = message.status !== undefined && message.status !== "running"
   const status = `[${shellStatus(message)}] $`
@@ -27,7 +30,7 @@ export function shellBlock(message: Shell, rich = false) {
       .join("\n")
   return [
     shellCommand(status, message.command),
-    output.trim() ? literal(message.output) : finished ? "(no output)" : "",
+    output.trim() ? literal(message.output, 16000, { rich, expanded }) : finished ? "(no output)" : "",
     ...(message.error ? [literal(message.error, 1000)] : []),
   ]
     .filter(Boolean)

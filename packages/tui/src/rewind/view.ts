@@ -117,7 +117,7 @@ export function addConfirmation(flow: RewindFlow) {
     item.field.on("blurred", paintFocus)
   })
   requireWord(dialog, flow.confirmation, word, dialogs.resize)
-  dialog.error.content = `Ctrl+S ${word} · Enter does not confirm\n${action === "undo" ? "Tab chooses file mode / confirmation. " : ""}${flow.summary ? "Ctrl+D shows the staged patch · PgUp/PgDn scroll · " : ""}Esc close`
+  dialog.error.content = `Enter or Ctrl+S ${word}\n${action === "undo" ? "Tab chooses file mode / confirmation. " : ""}${flow.summary ? "Ctrl+D shows the staged patch · PgUp/PgDn scroll · " : ""}Esc close`
   flow.ready = true
   flow.confirmation.focus()
   paintFocus()

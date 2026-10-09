@@ -131,16 +131,24 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
       ? `${mode} · ${waiting === "permission" ? "Permission" : "Question"} waiting${review ? "" : " · Esc then Enter to answer"}`
       : `${mode} · Reply to ${sessionTitle(title, 100)}${session.revert ? " · undo staged" : ""}`
     heading.fg = waiting || session.revert ? color.warning : color.muted
+    // The key hints are for the first message; once the session has one, the rows go to the transcript.
+    const started =
+      ctx.state.detail?.sessionID === session.id && ctx.state.detail.messages.some((message) => message.type === "user")
     const listed = (dialog.suggestionRows ?? 0) + (dialog.mentionRows ?? 0) > 0
     const hint = listed
       ? `Up/Down choose · Tab complete\nEnter pick · Esc close list · F4 discard`
       : review
         ? `Enter ${waiting === "permission" ? "reviews the permission" : "answers the question"} · ${live ? "Esc Esc stops the turn" : "Esc shortcuts"}\nF4 discard${live ? " · Ctrl+T mode" : ""}`
         : session.revert
-          ? `Enter Send + commit undo · Alt+Enter newline\nEsc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
-          : `Enter Send · Shift/Alt+Enter newline\nEsc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
+          ? `Enter send + commit undo · Alt+Enter newline\nEsc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
+          : `${started ? "" : "Enter send · Shift/Alt+Enter newline\n"}Esc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
     // A refresh may repaint the hint, but never over a message that replaced it.
-    if (!shown.content || dialog.error.content === shown.content) dialog.error.content = hint
+    if (!shown.content || dialog.error.content === shown.content) {
+      dialog.error.content = hint
+      // A one-line hint gives its second row back to the transcript.
+      dialog.error.height = hint.split("\n").length
+      ctx.dialogs.resize()
+    }
     shown.content = dialog.error.content
   }
   // The mode only means something while the agent runs, so the dashboard refresh repaints it.
