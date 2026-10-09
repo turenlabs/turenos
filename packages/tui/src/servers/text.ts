@@ -1,3 +1,5 @@
+import { UNSAFE_TEXT } from "@turenlabs/client/unsafe-text"
+
 export function parseJSON(text: string): unknown {
   try {
     return JSON.parse(text)
@@ -7,7 +9,7 @@ export function parseJSON(text: string): unknown {
 }
 
 export function validUsername(value: string) {
-  return !!value && value.length <= 512 && !value.includes(":") && !/[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/.test(value)
+  return !!value && value.length <= 512 && !value.includes(":") && !UNSAFE_TEXT.test(value)
 }
 
 export function summarize(text: string) {

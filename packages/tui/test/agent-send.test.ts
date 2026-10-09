@@ -500,7 +500,7 @@ test("the bin refuses stdin that is not UTF-8 and ignores a byte-order mark", as
   expect(invalid.exitCode).toBe(2)
   expect(invalid.stderr).toContain("UTF-8")
   expect(server.state.prompts).toEqual([])
-  const marked = await run(new TextEncoder().encode("﻿hi\n"))
+  const marked = await run(new TextEncoder().encode("\uFEFFhi\n"))
   expect(marked.exitCode).toBe(0)
   expect(server.state.prompts.map((item) => item.prompt)).toEqual([{ text: "hi" }])
 })

@@ -1,6 +1,6 @@
+import { UNSAFE_TEXT } from "@turenlabs/client/unsafe-text"
 // Control characters and bidirectional overrides never belong in a name, path, or credential.
-// oxlint-disable-next-line no-control-regex -- the control range is the point of this check
-export const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/
+export { UNSAFE_TEXT }
 
 export function invalid(field = "data"): never {
   throw new Error(`Invalid server response (${field}).`)

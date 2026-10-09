@@ -401,7 +401,7 @@ describe("CLI --session", () => {
     expect(parseCli([], {})).toMatchObject({ session: undefined })
   })
 
-  for (const value of ["", "abc", "ses_ secret", "msg_abc", "ses_‮abc"]) {
+  for (const value of ["", "abc", "ses_ secret", "msg_abc", "ses_\u202Eabc"]) {
     test(`rejects ${JSON.stringify(value)} without echoing it`, () => {
       expect(() => parseCli(["--session", value], {})).toThrow("--session must be a session ID such as ses_….")
     })

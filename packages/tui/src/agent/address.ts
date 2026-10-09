@@ -1,3 +1,4 @@
+import { UNSAFE_TEXT } from "@turenlabs/client/unsafe-text"
 import { CliError } from "../tui-auth"
 
 /** A server origin: http(s), no credentials, path prefix, query or fragment. */
@@ -30,7 +31,7 @@ export function checkUsername(username: string | undefined) {
     !username ||
     username.length > 512 ||
     username.includes(":") ||
-    /[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/.test(username)
+    UNSAFE_TEXT.test(username)
   ) {
     throw new CliError({ message: "Use a valid username without ':' or control characters (at most 512 characters)." })
   }

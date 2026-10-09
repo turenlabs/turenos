@@ -1,3 +1,4 @@
+import { UNSAFE_TEXT } from "@turenlabs/client/unsafe-text"
 import {
   CodeRenderable,
   StyledText,
@@ -47,7 +48,7 @@ function safeLinks(chunks: TextChunk[]): TextChunk[] {
     // Match the terminal-control stripping in server display() plus URL
     // whitespace: any C0/C1 control, bidi isolates/overrides, and embeddings.
     const control =
-      /[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/.test(target) ||
+      UNSAFE_TEXT.test(target) ||
       Array.from(target).some((char) => char.codePointAt(0)! > 0x10ffff)
     const url = !control && URL.canParse(target) ? new URL(target) : undefined
     if (url && (url.protocol === "http:" || url.protocol === "https:"))

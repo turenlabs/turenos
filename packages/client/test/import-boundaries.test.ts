@@ -42,6 +42,7 @@ describe("public import boundaries", () => {
       "provider-url",
       "session-title",
       "team",
+      "unsafe-text",
       "turn-interruption",
     ]) {
       const inputs = await bundleInputs(`@turenlabs/client/${rules}`, "browser")

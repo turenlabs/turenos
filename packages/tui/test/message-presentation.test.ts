@@ -346,10 +346,10 @@ test("tool rows say what ran, from the input fields the UI reads", () => {
 })
 
 test("a tool summary is one sanitized line of at most 120 characters", () => {
-  const command = `echo \u001b[31mred\u001b[0m‮\nsecond\n${"y".repeat(300)}`
+  const command = `echo \u001b[31mred\u001b[0m\u202E\nsecond\n${"y".repeat(300)}`
   const row = transcript([turn([tool("bash", { status: "completed", input: { command } })])])
   const line = row.split("\n").find((line) => line.includes("[completed] bash"))!
-  expect(line).not.toMatch(/[\u001b‮]/)
+  expect(line).not.toMatch(/[\u001b\u202E]/)
   expect(line).toContain("echo [31mred[0m second yyy")
   expect(line.endsWith("…")).toBe(true)
   expect(line.slice(line.indexOf(" · ") + 3).length).toBe(120)

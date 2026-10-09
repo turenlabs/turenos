@@ -1,3 +1,4 @@
+import { UNSAFE_TEXT } from "../unsafe-text"
 import { pathKey } from "../path-key"
 
 export const scope = "desktop/store/working-folders"
@@ -45,7 +46,7 @@ export function isDirectory(value: unknown): value is string {
     typeof value === "string" &&
     !!value &&
     value.length <= 4096 &&
-    !/[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/.test(value) &&
+    !UNSAFE_TEXT.test(value) &&
     (value.startsWith("/") || value.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(value))
   )
 }

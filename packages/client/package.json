@@ -12,6 +12,7 @@
     "./context": "./src/context.ts",
     "./paths": "./src/paths.ts",
     "./path-key": "./src/path-key.ts",
+    "./unsafe-text": "./src/unsafe-text.ts",
     "./working-folders": "./src/working-folders.ts",
     "./provider-url": "./src/provider-url.ts",
     "./session-title": "./src/session-title.ts",
