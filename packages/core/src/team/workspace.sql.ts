@@ -16,6 +16,14 @@ export type TeamTaskSnapshot = {
   readonly parentTaskID?: string
   readonly delegationDepth?: number
   readonly delegatedTaskIDs?: ReadonlyArray<string>
+  readonly factoryDependencies?: ReadonlyArray<{ readonly taskID: string; readonly teammateID: string }>
+  readonly predecessorEvidence?: ReadonlyArray<{
+    readonly taskID: string
+    readonly teammateID: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly result: string
+  }>
 }
 
 export const TeamRoomTable = sqliteTable(
