@@ -121,3 +121,14 @@ test("a held queued message is described as held while the session is idle", asy
   view.mockInput.pressKey("u")
   await screen("Held · agent is idle")
 })
+
+test("H opens the selected session's harness and T its shared terminal", async () => {
+  const { server, view, screen } = await dashboard({})
+  await screen("main says hello")
+  view.mockInput.pressKey("T")
+  await screen("Session terminal unavailable")
+  expect(server.sent("/api/session/ses_main/terminal").map((request) => request.method)).toEqual(["POST"])
+  view.mockInput.pressKey("H")
+  // The action row already reads "H Harness"; the dialog's frame is its own. This server has no harness.
+  expect(await screen("Harness unavailable")).toMatch(/─ Harness ─/)
+})

@@ -44,6 +44,11 @@ test("the screensaver keeps the editor's draft and focus, and Esc brings the scr
   view.mockInput.pressEscape()
   const back = await waitFor(view, "What would you like to do?")
   expect(back).not.toContain(HINT)
+  // Ctrl+C brings the screen back too, and does not close the form or quit.
+  view.mockInput.pressKey("h", { ctrl: true })
+  await waitFor(view, HINT)
+  view.mockInput.pressKey("c", { ctrl: true })
+  expect(await waitFor(view, "What would you like to do?")).not.toContain(HINT)
   expect(view.renderer.currentFocusedEditor).toBe(editor)
   expect(editor.plainText).toBe("draft")
 })

@@ -167,7 +167,7 @@ Dashboard shortcuts apply when no form or search is open and the reply editor do
 | `/`                         | Command entry in the conversation; finder/filter in the sidebar or other tabs.                                                                                                 |
 | `Ctrl+X` / `t`              | Subagent browser: root-wide recent and active tasks; Enter opens a child.                                                                                                      |
 | `Alt+Left` / `Alt+Right`    | Previous / next loaded session in history.                                                                                                                                     |
-| `1` / `2` / `3`             | Sessions / terminals / automations; `a` adds and `d` removes on the last two.                                                                                                  |
+| `1` / `2` / `3` / `4`       | Sessions / terminals / automations / Team; `a` adds and `d` removes on terminals and automations.                                                                              |
 | `Up` / `Down`, `Enter`      | Select an item; Enter opens a session with its reply editor, attaches to a terminal or opens an automation's manage menu.                                                      |
 | `Tab` / `Shift+Tab`         | Switch panes (or navigate fields in dialog modals).                                                                                                                            |
 | `b` / `Ctrl+B`              | Toggle sidebar. With tmux's default prefix, send `Ctrl+B` twice.                                                                                                               |
