@@ -661,6 +661,18 @@ const SettingsGeneralContent: Component<{
 
         <Show when={props.page === "app"}>
           <SettingsRowV2
+            title="Composer predictions"
+            description="Suggest your next message from this conversation and your writing style. Uses your session model and may incur provider costs."
+          >
+            <Switch
+              checked={settings.general.composerPredictions()}
+              onChange={settings.general.setComposerPredictions}
+            />
+          </SettingsRowV2>
+        </Show>
+
+        <Show when={props.page === "app"}>
+          <SettingsRowV2
             title={language.t("settings.general.row.reasoningSummaries.title")}
             description={language.t("settings.general.row.reasoningSummaries.description")}
           >

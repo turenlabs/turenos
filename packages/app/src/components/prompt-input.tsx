@@ -56,6 +56,7 @@ import { modelEffortDefaultIndex, modelEffortDisplay } from "@/components/model-
 import { useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
 import { useLanguage } from "@/context/language"
+import { useSettings } from "@/context/settings"
 import { getFastMode } from "@/context/model-fast-mode"
 import { usePlatform } from "@/context/platform"
 import { createSessionTabs } from "@/pages/session/helpers"
@@ -382,6 +383,58 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const blank = createMemo(() => {
     return draftText().trim().length === 0 && imageAttachments().length === 0 && commentCount() === 0
   })
+
+  const settings = useSettings()
+  const [prediction, setPrediction] = createSignal("")
+  const [dismissedPrediction, setDismissedPrediction] = createSignal<string>()
+  let attemptedPrediction: string | undefined
+  const predictionKey = createMemo(() => {
+    const id = props.controls.session.id
+    if (
+      !settings.general.composerPredictions() ||
+      !id ||
+      working() ||
+      !blank() ||
+      store.mode !== "normal" ||
+      props.question?.request() ||
+      props.goal?.mode() ||
+      prompt.context.items().length
+    )
+      return
+    const last = sync().data.message[id]?.at(-1)
+    if (last?.role !== "assistant" || !last.time.completed || last.error) return
+    return `${sdk().url}:${sdk().directory}:${id}:${last.id}`
+  })
+  createEffect(() => {
+    const key = predictionKey()
+    setPrediction("")
+    if (!key || dismissedPrediction() === key || attemptedPrediction === key) return
+    const id = props.controls.session.id!
+    const abort = new AbortController()
+    const timer = setTimeout(() => {
+      attemptedPrediction = key
+      void sdk()
+        .client.predictMessage(id, abort.signal)
+        .then((result) => {
+          if (!abort.signal.aborted && predictionKey() === key) setPrediction(result.data.text)
+        })
+        .catch(() => {})
+    }, 800)
+    onCleanup(() => {
+      clearTimeout(timer)
+      abort.abort()
+    })
+  })
+  const acceptPrediction = () => {
+    const text = prediction()
+    if (!text || !predictionKey()) return
+    setDismissedPrediction(predictionKey())
+    prompt.set([{ type: "text", content: text, start: 0, end: text.length }], text.length)
+    requestAnimationFrame(() => {
+      editorRef?.focus()
+      setCursorPosition(editorRef, text.length)
+    })
+  }
 
   const question = createComposerQuestion({
     request: () => props.question?.request(),
@@ -1410,6 +1463,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    if (prediction() && !event.isComposing && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+      if (event.key === "Tab" && !store.popover) {
+        event.preventDefault()
+        acceptPrediction()
+        return
+      }
+      if (event.key === "Escape") {
+        event.preventDefault()
+        setDismissedPrediction(predictionKey())
+        return
+      }
+    }
     if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "u") {
       event.preventDefault()
       if (store.mode !== "normal") return
@@ -1683,6 +1748,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }))
   return (
     <div class="relative size-full flex flex-col gap-0">
+      <Show when={prediction()}>
+        <div
+          data-component="composer-prediction"
+          class="flex min-w-0 items-center gap-2 border-t border-border-weak-base py-2 text-12-regular text-text-weak"
+        >
+          <button
+            type="button"
+            class="min-w-0 flex-1 truncate text-left hover:text-text-base"
+            onClick={acceptPrediction}
+            title={prediction()}
+          >
+            {prediction()}
+          </button>
+          <span class="shrink-0">Tab to use</span>
+          <button type="button" aria-label="Dismiss prediction" onClick={() => setDismissedPrediction(predictionKey())}>
+            Dismiss
+          </button>
+        </div>
+      </Show>
       <PromptPopover
         popover={store.popover}
         setSlashPopoverRef={(el) => (slashPopoverRef = el)}
