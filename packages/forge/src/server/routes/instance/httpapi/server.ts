@@ -306,7 +306,13 @@ export function createRoutes(
 ): Layer.Layer<never, EffectConfig.ConfigError, RouteRequirements> {
   const secretVaultReplacement = [[SecretVault.node, secretVault]] as const
   const securityProxyReplacement = [
-    [SecurityProxyRuntime.node, SecurityProxyRuntime.layer(securityProxy?.execute ?? (() => Effect.fail(new SecurityProxyRuntime.Error("The desktop Security Browser is unavailable"))))],
+    [
+      SecurityProxyRuntime.node,
+      SecurityProxyRuntime.layer(
+        securityProxy?.execute ??
+          (() => Effect.fail(new SecurityProxyRuntime.Error("The desktop Security Browser is unavailable"))),
+      ),
+    ],
   ] as const
   // Reaching `MCP.Service` costs a full V1 `InstanceBootstrap.run` for the Location's
   // directory, so this may only be wired because registration is demand-driven: the
@@ -336,7 +342,7 @@ export function createRoutes(
       corsVaryFix,
       fenceLayer,
       cors(corsOptions),
-        traceStartupLayer(
+      traceStartupLayer(
         "move-session-graph",
         AppNodeBuilderV1.build(MoveSession.node, [[LocationServiceMap.node, locationServiceMapV2]]),
       ),

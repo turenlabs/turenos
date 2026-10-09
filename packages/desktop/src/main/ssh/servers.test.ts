@@ -43,6 +43,92 @@ async function waitFor(fn: () => boolean, timeout = 2_000) {
   throw new Error("timed out waiting for condition")
 }
 
+test("closes a persistent attach whose server record cannot be saved", async () => {
+  let stops = 0
+  const controller = createSshServersController(deps, {
+    readServers: () => [config("ssh:me@host")],
+    writeServers: () => {
+      throw new Error("storage unavailable")
+    },
+    reconnectDelays: () => [],
+    connect: async () => ({
+      ...ready(),
+      listener: { stop: () => void stops++, onExit: () => undefined },
+      persistent: { serverID: "srv_1" },
+    }),
+  })
+  await controller.initialize()
+  await waitFor(() => controller.getState().servers[0]?.runtime.kind === "failed")
+  expect(stops).toBe(1)
+})
+
+test("concurrent persistent attaches keep every saved binding", async () => {
+  let servers = [config("ssh:me@a"), config("ssh:me@b")]
+  const controller = createSshServersController(deps, {
+    readServers: () => servers,
+    writeServers: async (next) => {
+      await Bun.sleep(10)
+      servers = next
+    },
+    connect: async (cfg) => ({ ...ready(), persistent: { serverID: `srv_${cfg.host}` } }),
+  })
+  await controller.initialize()
+  await waitFor(() => controller.getState().servers.every((item) => item.runtime.kind === "ready"))
+  await waitFor(() => servers.every((item) => item.persistent))
+  expect(servers.map((item) => item.persistent)).toEqual([{ serverID: "srv_me@a" }, { serverID: "srv_me@b" }])
+})
+
+test("a superseded persistent attach never records its server onto the re-added target", async () => {
+  let servers: SshServerConfig[] = [config("ssh:me@a")]
+  const releases: (() => void)[] = []
+  let attaches = 0
+  const controller = createSshServersController(deps, {
+    readServers: () => servers,
+    writeServers: (next) => {
+      servers = next
+    },
+    resolve: async (target) => ({ hostname: target.host, user: "me", port: 22, identityFile: null }),
+    connect: async () => {
+      const id = ++attaches
+      await new Promise<void>((resolve) => releases.push(resolve))
+      // The first attach reached the host before it was replaced; the second reaches its replacement.
+      return { ...ready(), persistent: { serverID: id === 1 ? "srv_old" : "srv_new" } }
+    },
+  })
+  const init = controller.initialize()
+  await waitFor(() => releases.length === 1)
+  await controller.removeServer("ssh:me@a")
+  await controller.addServer({ host: "a" })
+  await waitFor(() => releases.length === 2)
+  releases[1]()
+  await waitFor(() => servers[0]?.persistent?.serverID === "srv_new")
+  releases[0]()
+  await init
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  expect(servers.map((item) => item.persistent)).toEqual([{ serverID: "srv_new" }])
+  expect(controller.getState().servers[0]?.config.persistent).toEqual({ serverID: "srv_new" })
+})
+
+test("concurrent adds of the same SSH host save one target", async () => {
+  let servers: SshServerConfig[] = []
+  const controller = createSshServersController(deps, {
+    readServers: () => servers,
+    writeServers: async (next) => {
+      await Bun.sleep(10)
+      servers = next
+    },
+    resolve: async (target) => ({ hostname: target.host, user: "me", port: 22, identityFile: null }),
+    connect: async () => ready(),
+  })
+  await controller.initialize()
+
+  const results = await Promise.allSettled([controller.addServer({ host: "a" }), controller.addServer({ host: "a" })])
+  expect(results.map((result) => result.status)).toEqual(["fulfilled", "rejected"])
+  expect(servers).toHaveLength(1)
+  expect(controller.getState().servers).toHaveLength(1)
+})
+
 test("health polling stops when the tunnel startup settles", async () => {
   const abort = new AbortController()
   let checks = 0
@@ -317,8 +403,12 @@ test("probeHost records a successful probe and a failure", async () => {
 test("stopRemote disconnects the tunnel and marks the server stopped", async () => {
   const persisted: SshServerConfig[] = [config("ssh:me@a")]
   let stopped = 0
+  const remoteStops: string[] = []
   const controller = createSshServersController(deps, {
     readServers: () => persisted,
+    stopRemote: async (cfg) => {
+      remoteStops.push(cfg.id)
+    },
     connect: async () => ({
       listener: { stop: () => stopped++, onExit: () => undefined },
       url: "http://127.0.0.1:4096",
@@ -331,6 +421,7 @@ test("stopRemote disconnects the tunnel and marks the server stopped", async () 
 
   await controller.stopRemote("ssh:me@a")
   expect(stopped).toBe(1)
+  expect(remoteStops).toEqual(["ssh:me@a"])
   expect(controller.getState().servers[0]?.runtime).toEqual({ kind: "stopped" })
   // Server stays in the list - it can be reconnected.
   expect(controller.getState().servers).toHaveLength(1)
