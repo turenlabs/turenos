@@ -13,10 +13,14 @@ const rows = (logo: { content: { chunks: { text: string }[] } }) =>
 test("the logo carries the anvil wherever a dialog has room, and never outgrows it", () => {
   const wide = turenLogo(true)
   expect([wide.width, wide.height]).toEqual([66, 9])
+  // A tall terminal has room for the desktop's mark itself beside the wordmark.
+  const tall = turenLogo(true, 160, 44)
+  expect([tall.width, tall.height]).toEqual([75, 16])
+  expect(turenLogo(true, 160, 43).height).toBe(9)
   // A 58-column phone leaves a dialog 52 inner columns: the small anvil and the wordmark fill them exactly.
   expect(turenLogo(false, 58).width).toBe(52)
   expect(turenLogo(false, 57).width).toBe(41)
-  for (const logo of [wide, turenLogo(false, 58), turenLogo(false, 40)]) {
+  for (const logo of [wide, tall, turenLogo(false, 58), turenLogo(false, 40)]) {
     const lines = rows(logo)
     expect(lines).toHaveLength(logo.height)
     for (const line of lines) expect(line.length).toBe(logo.width)

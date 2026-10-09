@@ -24,19 +24,35 @@ const shadow = palette.n!
 const COMPACT_WITH_MARK = 52
 /** A dialog's frame and borders take six of the terminal's columns. */
 const DIALOG_CHROME = 6
+/** Terminal rows from which the wide logo carries the large anvil, the desktop's mark itself. */
+const TALL = 44
 
 /**
- * The New session and server picker logo: the anvil beside the wordmark. The wide form has the medium anvil; the
- * compact one has the small anvil when `columns` leaves room for it, else the wordmark alone.
+ * The New session and server picker logo: the anvil beside the wordmark. The wide form has the medium anvil, or the
+ * large one on a terminal of `rows` from `TALL`; the compact one has the small anvil when `columns` leaves room for
+ * it, else the wordmark alone.
  */
-export function turenLogo(wide: boolean, columns = Number.POSITIVE_INFINITY) {
-  const anvil = wide ? medium : columns - DIALOG_CHROME >= COMPACT_WITH_MARK ? small : undefined
-  const width = wide ? 66 : anvil ? COMPACT_WITH_MARK : 41
-  const height = wide ? 9 : 4
-  const pixels: Pixels = Array.from({ length: height * 2 }, () => Array(width))
-  if (anvil) draw(pixels, anvil)
-  drawWordmark(pixels, wide ? 25 : anvil ? 11 : 0, wide ? 5 : 0, wide)
-  return { width, height, content: halfBlocks(pixels, width, height, color.panel) }
+export function turenLogo(wide: boolean, columns = Number.POSITIVE_INFINITY, rows = 0) {
+  if (wide && rows >= TALL) return composed({ anvil: large, left: 34, top: 12, width: 75, height: 16, shaded: true })
+  if (wide) return composed({ anvil: medium, left: 25, top: 5, width: 66, height: 9, shaded: true })
+  const anvil = columns - DIALOG_CHROME >= COMPACT_WITH_MARK ? small : undefined
+  const width = anvil ? COMPACT_WITH_MARK : 41
+  return composed({ anvil, left: anvil ? 11 : 0, top: 0, width, height: 4, shaded: false })
+}
+
+/** The anvil at the left, and the wordmark at `left` and `top` in pixels; `shaded` gives the letters their shadow. */
+function composed(logo: {
+  anvil: string[] | undefined
+  left: number
+  top: number
+  width: number
+  height: number
+  shaded: boolean
+}) {
+  const pixels: Pixels = Array.from({ length: logo.height * 2 }, () => Array(logo.width))
+  if (logo.anvil) draw(pixels, logo.anvil)
+  drawWordmark(pixels, logo.left, logo.top, logo.shaded)
+  return { width: logo.width, height: logo.height, content: halfBlocks(pixels, logo.width, logo.height, color.panel) }
 }
 
 /** The largest anvil that fits in `rows` terminal rows, for the welcome screen on the main pane's background. */
@@ -57,12 +73,12 @@ function draw(pixels: Pixels, art: string[]) {
   )
 }
 
-function drawWordmark(pixels: Pixels, left: number, top: number, wide: boolean) {
+function drawWordmark(pixels: Pixels, left: number, top: number, shaded: boolean) {
   for (const [index, letter] of letters.entries()) {
     for (const [y, row] of letter.entries()) {
       for (const [x, bit] of [...row].entries()) {
         if (bit !== "1") continue
-        if (wide) pixels[top + y + 1]![left + index * 6 + x + 1] ??= shadow
+        if (shaded) pixels[top + y + 1]![left + index * 6 + x + 1] ??= shadow
         pixels[top + y]![left + index * 6 + x] = (index < 5 ? cream : blue)[y]
       }
     }

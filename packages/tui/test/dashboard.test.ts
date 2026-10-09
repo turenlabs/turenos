@@ -840,7 +840,7 @@ for (const [width, height] of [
     const frame = await waitForFrame(view, (frame) => frame.includes("What would you like to do?"))
     const logo = descendants(view.renderer.root).find((node) => node.id === "turen-logo") as TextRenderable
     expect(logo).toBeDefined()
-    expect(logo.height).toBe(height >= 32 ? 9 : 4)
+    expect(logo.height).toBe(height >= 44 ? 16 : height >= 32 ? 9 : 4)
     const spans = view
       .captureSpans()
       .lines.slice(logo.y, logo.y + logo.height)
@@ -867,7 +867,7 @@ for (const [width, height] of [
       view.resize(nextWidth, nextHeight)
       await view.renderOnce()
       const resized = view.captureCharFrame()
-      expect(logo.height).toBe(nextHeight >= 32 ? 9 : 4)
+      expect(logo.height).toBe(nextHeight >= 44 ? 16 : nextHeight >= 32 ? 9 : 4)
       expect(
         resized
           .split("\n")
