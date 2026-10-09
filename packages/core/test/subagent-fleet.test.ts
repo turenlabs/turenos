@@ -125,7 +125,7 @@ describe("subagent fleet", () => {
           sessionID: orchestrator.task.childSessionID,
           action: "bash",
           resources: [command],
-          metadata: { workdir: "." },
+          metadata: { workdir: ".", command },
         })
       expect(yield* bash("bun test")).toMatchObject({ effect: "allow" })
       expect(yield* bash("git push")).toMatchObject({ effect: "deny" })
