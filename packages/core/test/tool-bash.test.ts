@@ -25,6 +25,7 @@ import { location } from "./fixture/location"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 import { toolIdentity, executeTool, settleTool, toolDefinitions } from "./lib/tool"
+import { ShellToolRouting } from "@turenlabs/core/shell-tool-routing"
 
 const sessionID = SessionV2.ID.make("ses_bash_tool_test")
 const assertions: PermissionV2.AssertInput[] = []
@@ -432,6 +433,41 @@ describe("BashTool", () => {
               expect(runs).toEqual([])
             }),
           ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("runs a workspace search under bash permissions while the grep tool is failing", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        ShellToolRouting.reportSearch(sessionID, "grep", false)
+        return withTool(tmp.path, (registry) => settleTool(registry, call({ command: "rg SessionRunner src" }))).pipe(
+          Effect.andThen((settled) =>
+            Effect.sync(() => {
+              expect(JSON.stringify(settled.result)).not.toContain("Use the grep tool instead")
+              expect(assertions).toMatchObject([{ sessionID, action: "bash" }])
+              expect(runs).toHaveLength(1)
+            }),
+          ),
+          Effect.andThen(() => {
+            reset()
+            ShellToolRouting.reportSearch(sessionID, "grep", true)
+            return withTool(tmp.path, (registry) => settleTool(registry, call({ command: "rg SessionRunner src" })))
+          }),
+          Effect.andThen((settled) =>
+            Effect.sync(() => {
+              expect(settled.result).toMatchObject({
+                type: "error",
+                value: expect.stringContaining("Use the grep tool instead"),
+              })
+              expect(runs).toEqual([])
+            }),
+          ),
+          Effect.ensuring(Effect.sync(() => ShellToolRouting.reportSearch(sessionID, "grep", true))),
         )
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),

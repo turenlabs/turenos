@@ -32,18 +32,17 @@ describe("surfaceFromLocation", () => {
     expect(surfaceEnabled("agents", false)).toBe(true)
   })
 
-  test("gates Automations behind its opt-in setting", () => {
-    expect(surfaceEnabled("automations", false)).toBe(false)
-    expect(surfaceEnabled("automations", false, false)).toBe(false)
-    expect(surfaceEnabled("automations", false, true)).toBe(true)
+  test("Team is visible without a feature opt-in", () => {
+    expect(surfaceEnabled("team", false)).toBe(true)
+    expect(surfaceEnabled("team", false, false)).toBe(true)
   })
 
   test("keeps visible rail shortcuts contiguous as optional surfaces change", () => {
-    expect(navRailSurfaces(false, false)).toEqual(["home", "agents", "extend", "replay"])
-    expect(navRailSurfaces(true, false)).toEqual(["home", "agents", "automations", "extend", "replay"])
-    expect(navRailKeybind("extend", false, false)).toBe("mod+3")
-    expect(navRailKeybind("replay", false, false)).toBe("mod+4")
-    expect(navRailKeybind("replay", true, false)).toBe("mod+5")
+    expect(navRailSurfaces(false, false)).toEqual(["home", "agents", "team", "extend", "replay"])
+    expect(navRailSurfaces(true, false)).toEqual(["home", "agents", "team", "extend", "replay"])
+    expect(navRailKeybind("team", false, false)).toBe("mod+3")
+    expect(navRailKeybind("extend", false, false)).toBe("mod+4")
+    expect(navRailKeybind("replay", false, false)).toBe("mod+5")
     expect(navRailKeybind("lobby", false, false)).toBeUndefined()
   })
 
@@ -68,10 +67,11 @@ describe("surfaceFromLocation", () => {
     expect(surfaceFromLocation({ pathname: `/${["rever", "sing"].join("")}` })).toBe("agents")
   })
 
-  test("automation routes and legacy Loop links belong to Automations", () => {
-    expect(surfaceFromLocation({ pathname: "/automations" })).toBe("automations")
-    expect(surfaceFromLocation({ pathname: "/automations/auto_1" })).toBe("automations")
-    expect(surfaceFromLocation({ pathname: "/loops/lop_1" })).toBe("automations")
+  test("Team and legacy automation links belong to Team", () => {
+    expect(surfaceFromLocation({ pathname: "/team" })).toBe("team")
+    expect(surfaceFromLocation({ pathname: "/team/room_1" })).toBe("team")
+    expect(surfaceFromLocation({ pathname: "/automations" })).toBe("team")
+    expect(surfaceFromLocation({ pathname: "/loops/lop_1" })).toBe("team")
   })
 })
 
@@ -81,7 +81,7 @@ describe("surfaceHref", () => {
     expect(surfaceHref("agents")).toBe("/")
     expect(surfaceHref("lobby")).toBe("/lobby")
     expect(surfaceHref("replay")).toBe("/replay")
-    expect(surfaceHref("automations")).toBe("/automations")
+    expect(surfaceHref("team")).toBe("/team")
     expect(surfaceHref("extend")).toBe("/extend/catalog")
   })
 })
@@ -94,9 +94,10 @@ describe("panelAvailable", () => {
     expect(panelAvailable("agents", { pathname: "/new-session" })).toBe(true)
   })
 
-  test("Automations has a left panel on every automation route", () => {
-    expect(panelAvailable("automations", { pathname: "/automations" })).toBe(true)
-    expect(panelAvailable("automations", { pathname: "/automations/auto_1" })).toBe(true)
+  test("Team owns its channel panel; legacy automation routes do not own shell chrome", () => {
+    expect(panelAvailable("team", { pathname: "/team" })).toBe(true)
+    expect(panelAvailable("team", { pathname: "/team/room_1" })).toBe(true)
+    expect(panelAvailable("automations", { pathname: "/automations" })).toBe(false)
   })
 
   test("Replay is a panel-free product workspace", () => {
@@ -132,19 +133,19 @@ describe("railClick", () => {
 
   test("clicking an inactive surface navigates to it", () => {
     expect(railClick("lobby", { pathname: "/" })).toEqual({ type: "navigate", href: "/lobby" })
-    expect(railClick("automations", { pathname: "/" })).toEqual({ type: "navigate", href: "/automations" })
+    expect(railClick("team", { pathname: "/" })).toEqual({ type: "navigate", href: "/team" })
     expect(railClick("replay", { pathname: "/" })).toEqual({ type: "navigate", href: "/replay" })
   })
 
-  test("clicking active Automations toggles its left panel", () => {
-    expect(railClick("automations", { pathname: "/automations" })).toEqual({ type: "toggle" })
-    expect(railClick("automations", { pathname: "/automations/auto_1" })).toEqual({ type: "toggle" })
+  test("legacy automation rail requests enter Team", () => {
+    expect(railClick("automations", { pathname: "/automations" })).toEqual({ type: "navigate", href: "/team" })
+    expect(railClick("automations", { pathname: "/automations/auto_1" })).toEqual({ type: "navigate", href: "/team" })
   })
 
-  test("an unpresented Automations panel opens through its surface route", () => {
+  test("an unpresented legacy Automations route opens Team", () => {
     expect(railClick("automations", { pathname: "/automations/auto_1" }, () => false)).toEqual({
       type: "navigate",
-      href: "/automations",
+      href: "/team",
     })
   })
 

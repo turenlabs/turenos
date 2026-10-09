@@ -1,15 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { Effect, Layer } from "effect"
-import { HttpRouter, HttpServer } from "effect/unstable/http"
-import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
-import { LayerNode } from "@turenlabs/core/effect/layer-node"
-import { Loop } from "@turenlabs/core/loop"
-import { Memory } from "@turenlabs/core/memory"
-import { PermissionSaved } from "@turenlabs/core/permission/saved"
-import { SessionV2 } from "@turenlabs/core/session"
-import { SessionExecution } from "@turenlabs/core/session/execution"
-import { SessionExecutionLocal } from "@turenlabs/core/session/execution/local"
-import { createRoutes } from "@turenlabs/server/routes"
+import { Effect } from "effect"
+import { createTestHttpApi } from "../fixture/httpapi"
 import { pollOnce, readCache } from "@turenlabs/server/intel/ingest"
 import { isStale, ensureFreshOnBoot, pollNow } from "@turenlabs/server/intel/scheduler"
 import { DEFAULT_FEEDS, FETCH_TIMEOUT_MS, fetchRss, parseRss, POLL_INTERVAL_MS } from "@turenlabs/server/intel/sources"
@@ -116,24 +107,7 @@ const stubFetch = async (url: string, _init?: RequestInit): Promise<Response> =>
 const failingFetch = async (): Promise<Response> => new Response("boom", { status: 500 })
 
 function actualServerAPI(directory: string) {
-  const app = HttpRouter.toWebHandler(
-    createRoutes("intel-test").pipe(
-      Layer.provide(HttpServer.layerServices),
-      Layer.provideMerge(
-        AppNodeBuilder.build(LayerNode.group([Memory.node, Loop.node, PermissionSaved.node, SessionV2.node]), [
-          [SessionExecution.node, SessionExecutionLocal.node],
-        ]),
-      ),
-    ),
-    { disableLogger: true },
-  )
-  const request = (path: string, init: RequestInit = {}) => {
-    const headers = new Headers(init.headers)
-    headers.set("x-forge-directory", directory)
-    headers.set("authorization", authorization)
-    return app.handler(new Request(new URL(path, "http://localhost"), { ...init, headers }))
-  }
-  return { request, [Symbol.asyncDispose]: () => app.dispose() }
+  return createTestHttpApi({ name: "intel-test", directory, authorization })
 }
 
 const isolatedTmpDir = () => tmpdir({ config: { formatter: false, lsp: false } })

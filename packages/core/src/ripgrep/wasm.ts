@@ -18,6 +18,11 @@ import { startPool, WASM_FLAGS, type Pool } from "./wasm/runtime"
 
 const failure = (message: string, cause?: unknown) => new RipgrepError({ message, cause })
 
+// Name the underlying cause: "ripgrep wasm grep failed" alone hid a worker trap from
+// the agent, which then had nothing to report or act on.
+const jobFailure = (operation: string, cause: unknown) =>
+  failure(`ripgrep wasm ${operation} failed: ${cause instanceof Error ? cause.message : String(cause)}`, cause)
+
 const abortError = (signal: AbortSignal) => {
   const reason = (signal as AbortSignal & { reason?: unknown }).reason
   if (reason instanceof Error) return reason
@@ -63,7 +68,7 @@ const makeInterface = (pool: Pool): Interface => {
       (input.hidden ? WASM_FLAGS.hidden : 0) | (input.follow ? WASM_FLAGS.follow : 0)
     return Effect.tryPromise({
       try: () => pool.collect(input.cwd, globs, flags, input.limit, input.signal),
-      catch: (cause) => failure("ripgrep wasm collect failed", cause),
+      catch: (cause) => jobFailure("collect", cause),
     }).pipe(
       Effect.flatMap((result) => {
         if (result.cancelled && input.signal) return Effect.fail(failure("aborted", abortError(input.signal)))
@@ -95,7 +100,7 @@ const makeInterface = (pool: Pool): Interface => {
             input.files.map((f) => (f.startsWith("/") || /^[A-Za-z]:[\\/]/.test(f) ? f : `${input.cwd}/${f}`)),
             input.signal,
           ),
-        catch: (cause) => failure("ripgrep wasm line count failed", cause),
+        catch: (cause) => jobFailure("line count", cause),
       }).pipe(
         Effect.flatMap((result) => {
           if (result.cancelled && input.signal) return Effect.fail(failure("aborted", abortError(input.signal)))
@@ -127,7 +132,7 @@ const makeInterface = (pool: Pool): Interface => {
       ]
       return Effect.tryPromise({
         try: () => pool.grep(input.pattern, root, globs, WASM_FLAGS.hidden, input.limit, input.signal),
-        catch: (cause) => failure("ripgrep wasm grep failed", cause),
+        catch: (cause) => jobFailure("grep", cause),
       }).pipe(
         Effect.flatMap(
           (result): Effect.Effect<readonly Match[], RipgrepError | InvalidPatternError> => {

@@ -68,7 +68,7 @@ export const Plugin = define({
           })
         }).pipe(Effect.map((documents) => documents.flat()))
         const permissions = expandPermissions(
-          documents.flatMap((document) => document.info.permissions ?? []),
+          documents.flatMap((document) => withoutRepositoryAllow(document, global.config, document.info.permissions)),
           global.home,
         )
         const configuredDefault = Config.latest(documents, "default_agent")
@@ -102,7 +102,9 @@ export const Plugin = define({
               if (item.color !== undefined) agent.color = item.color
               if (item.steps !== undefined) agent.steps = item.steps
               if (item.permissions !== undefined) {
-                agent.permissions.push(...expandPermissions(item.permissions, global.home))
+                agent.permissions.push(
+                  ...expandPermissions(withoutRepositoryAllow(document, global.config, item.permissions), global.home),
+                )
               }
             })
           }
@@ -111,6 +113,21 @@ export const Plugin = define({
     )
   }),
 })
+
+/**
+ * Permission rules are concatenated lowest priority first and evaluated last-match-wins, so a
+ * document loaded after the user's global config would override it. Documents discovered in the
+ * repository (`forge.json`, `.forge/`, agent markdown) are untrusted: they may add `ask` or `deny`
+ * rules but never `allow`, otherwise a cloned repository could silently remove the user's prompts
+ * and denies. Only documents under the global config directory keep their `allow` rules.
+ */
+function withoutRepositoryAllow(document: Config.Document, configDirectory: string, rules?: PermissionV2.Ruleset) {
+  if (!rules) return []
+  if (document.path === undefined) return rules
+  const relative = path.relative(configDirectory, document.path)
+  if (relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)) return rules
+  return rules.filter((rule) => rule.effect !== "allow")
+}
 
 function expandPermissions(rules: PermissionV2.Ruleset, home: string): PermissionV2.Ruleset {
   // Expand only resources tools resolve as filesystem paths. Bash resources are raw shell text:

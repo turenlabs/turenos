@@ -147,22 +147,22 @@ export const { use: useNavRail, provider: NavRailProvider } = createSimpleContex
         tabs.toggleHome({ home: true })
         return
       }
-      // Entering Automations always presents its left navigation. A collapsed
+      // Entering Team always presents its channel navigation. A collapsed
       // panel remains collapsed while staying on the surface, but an inactive
       // rail click is an explicit request to enter and show it.
-      if (target === "automations" && store.collapsed.automations) setStore("collapsed", "automations", false)
+      if (target === "team" && store.collapsed.team) setStore("collapsed", "team", false)
       navigate(surfaceHref(target))
     }
 
     // Whether the target panel is actually presented at the current size,
     // read from the live DOM at click time rather than duplicating its CSS
-    // breakpoint. Only consulted inside the click handler. Automations uses
-    // its list panel selector because its narrow layout keeps that panel in
+    // breakpoint. Only consulted inside the click handler. Team uses
+    // its channel panel selector because its narrow layout keeps that panel in
     // the document as a stacked column.
     const panelPresented = (target: Surface): boolean => {
       if (typeof document === "undefined") return true
       const selector =
-        target === "agents" ? '[data-component="home-left-nav"]' : '[data-component="automations-left-nav"]'
+        target === "agents" ? '[data-component="home-left-nav"]' : '[data-component="team-channel-panel"]'
       const panel = document.querySelector(selector)
       return !!panel && getComputedStyle(panel).display !== "none"
     }
@@ -170,7 +170,7 @@ export const { use: useNavRail, provider: NavRailProvider } = createSimpleContex
     const click = (target: Surface) => {
       const result = railClick(target, loc(), panelPresented)
       if (result.type === "toggle") {
-        if (target === "agents" || target === "automations") toggle(target)
+        if (target === "agents" || target === "team" || target === "automations") toggle(target)
         return
       }
       // On narrow Agents layouts the panel is hidden, so the active-surface
@@ -184,9 +184,8 @@ export const { use: useNavRail, provider: NavRailProvider } = createSimpleContex
     }
 
     command.register("nav.rail", () => {
-      const automationsEnabled = settings.general.automationsEnabled()
       const lobbyBetaEnabled = settings.general.lobbyBetaEnabled()
-      const keybind = (target: Surface) => navRailKeybind(target, automationsEnabled, lobbyBetaEnabled)
+      const keybind = (target: Surface) => navRailKeybind(target, false, lobbyBetaEnabled)
       const category = language.t("command.category.view")
 
       return [
@@ -208,18 +207,14 @@ export const { use: useNavRail, provider: NavRailProvider } = createSimpleContex
           when: () => true,
           onSelect: () => open("agents"),
         },
-        ...(automationsEnabled
-          ? [
-              {
-                id: "nav.surface.automations",
-                title: "Go to Automations",
-                category,
-                keybind: keybind("automations"),
-                when: () => true,
-                onSelect: () => open("automations"),
-              },
-            ]
-          : []),
+        {
+          id: "nav.surface.team",
+          title: "Go to Team",
+          category,
+          keybind: keybind("team"),
+          when: () => true,
+          onSelect: () => open("team"),
+        },
         {
           id: "nav.surface.extend",
           title: "Go to Extend",
@@ -259,7 +254,7 @@ export const { use: useNavRail, provider: NavRailProvider } = createSimpleContex
           disabled: !panelShortcutAvailable(surface(), loc()),
           onSelect: () => {
             const current = surface()
-            if (current === "agents" || current === "automations") toggle(current)
+            if (current === "agents" || current === "team") toggle(current)
           },
         },
       ]
@@ -357,26 +352,22 @@ export function NavRail() {
             </Show>
           </button>
         </TooltipV2>
-        <Show when={settings.general.automationsEnabled()}>
-          <TooltipV2 placement="right" value={tooltip("Automations", "nav.surface.automations")}>
-            <button
-              type="button"
-              data-action="nav-rail-automations"
-              class={RAIL_ITEM}
-              classList={{ [RAIL_ITEM_ACTIVE]: nav.surface() === "automations" }}
-              aria-current={nav.surface() === "automations" ? "page" : undefined}
-              aria-label={
-                nav.surface() === "automations"
-                  ? `Automations — ${nav.collapsed("automations") ? "show panel" : "hide panel"}`
-                  : "Automations"
-              }
-              aria-expanded={nav.surface() === "automations" ? !nav.collapsed("automations") : undefined}
-              onClick={() => nav.click("automations")}
-            >
-              <IconV2 name="branch" />
-            </button>
-          </TooltipV2>
-        </Show>
+        <TooltipV2 placement="right" value={tooltip("Team", "nav.surface.team")}>
+          <button
+            type="button"
+            data-action="nav-rail-team"
+            class={RAIL_ITEM}
+            classList={{ [RAIL_ITEM_ACTIVE]: nav.surface() === "team" }}
+            aria-current={nav.surface() === "team" ? "page" : undefined}
+            aria-label={
+              nav.surface() === "team" ? `Team — ${nav.collapsed("team") ? "show channels" : "hide channels"}` : "Team"
+            }
+            aria-expanded={nav.surface() === "team" ? !nav.collapsed("team") : undefined}
+            onClick={() => nav.click("team")}
+          >
+            <IconV2 name="team" />
+          </button>
+        </TooltipV2>
         <TooltipV2 placement="right" value={tooltip("Extend", "nav.surface.extend")}>
           <button
             type="button"

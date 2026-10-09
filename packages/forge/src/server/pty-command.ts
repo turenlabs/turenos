@@ -15,13 +15,34 @@ export function resolvePtyCommand(
   runtime: Runtime = { env: process.env, execPath: process.execPath, argv: process.argv },
 ) {
   if (command !== FORGE_CLI_COMMAND) return { command, args }
+  return resolveCommand(args, runtime, (source) => sourceArgs(source, args, cwd))
+}
 
+/** Resolve a non-PTY CLI child without replacing its authorized working directory. */
+export function resolveForgeCommand(
+  args: string[],
+  cwd: string,
+  runtime: Runtime = { env: process.env, execPath: process.execPath, argv: process.argv },
+) {
+  return resolveCommand(args, runtime, (source) => [
+    "run",
+    "--cwd",
+    path.dirname(path.dirname(source)),
+    "--conditions=browser",
+    path.join(path.dirname(source), "cli", "source.ts"),
+    cwd,
+    source,
+    ...args,
+  ])
+}
+
+function resolveCommand(args: string[] | undefined, runtime: Runtime, sourceArgs: (source: string) => string[]) {
   const configured = runtime.env.FORGE_CLI_COMMAND?.trim()
   const entry = runtime.env.FORGE_CLI_ENTRY?.trim()
   if (configured) {
     return {
       command: configured,
-      args: entry && isBunRuntime(configured) ? sourceArgs(entry, args, cwd) : args,
+      args: entry && isBunRuntime(configured) ? sourceArgs(entry) : args,
     }
   }
 
@@ -29,7 +50,7 @@ export function resolvePtyCommand(
   if (isBunRuntime(runtime.execPath) && source && !source.startsWith("-") && isSourceEntrypoint(source)) {
     return {
       command: runtime.execPath,
-      args: sourceArgs(source, args, cwd),
+      args: sourceArgs(source),
     }
   }
 
