@@ -50,4 +50,3 @@ export const custom = {
   modelID: "org/model:v1",
   modelName: "My Model",
 }
-

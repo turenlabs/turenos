@@ -153,4 +153,3 @@ export async function fixture(initial: SessionsGoalGetOutput = goal(), width = 1
   const submit = () => view.mockInput.pressKey("s", { ctrl: true })
   return { remote, requests, writes, state, view, dialogs, controls, notices, waitFor, open, choose, submit, selector }
 }
-

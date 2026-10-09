@@ -57,4 +57,3 @@ export async function healthy(endpoint: Endpoint) {
   })
   return response.status
 }
-

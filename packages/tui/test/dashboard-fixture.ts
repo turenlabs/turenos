@@ -374,4 +374,3 @@ export function fixture(
   cleanup.push(connection.close)
   return { server, connection, posts, pending, sessions, historical, reads, messageCursors }
 }
-

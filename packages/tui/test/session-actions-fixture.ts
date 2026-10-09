@@ -184,4 +184,3 @@ export async function fixture(
   calls.length = 0
   return { actions, view, state, ui, dialogs, calls, notices, opened, sessions, input, wait, screen }
 }
-

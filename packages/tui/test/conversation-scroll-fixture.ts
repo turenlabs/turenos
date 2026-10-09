@@ -116,4 +116,3 @@ export async function fixture(latest?: MessagesListOutput["data"]) {
   }
   return { data, state, ui, view, conversation, cursors, notices, top, content: () => rendered }
 }
-

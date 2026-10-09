@@ -182,4 +182,3 @@ export async function fixture(revert?: Session["revert"], width = 100) {
     posts,
   }
 }
-

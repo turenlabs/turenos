@@ -108,4 +108,3 @@ export async function fixture(questions: Detail["questions"][number]["questions"
   await settle()
   return { view, state, dialogs, requests, posts, settle, sent, picker, input, enter, arrow, ctrlS, space }
 }
-
