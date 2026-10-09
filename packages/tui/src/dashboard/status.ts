@@ -54,7 +54,7 @@ export function renderStatus(d: DashboardContext) {
   d.ui.status.visible = !d.state.connected
   if (d.state.connected) return
   if (d.state.snapshot && d.state.tab === "sessions" && !d.state.selected && !d.state.query && !d.state.modal?.inline)
-    d.ui.renderContent(welcomeBody("sessions", d.state))
+    d.ui.renderContent(welcomeBody("sessions", d.state), false, true)
   d.ui.status.content = d.state.connectionError
     ? `Disconnected${d.state.snapshot ? " · showing saved data" : ""} · retrying · i Details`
     : "Connecting…"

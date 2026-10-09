@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test"
 import { KeyEvent, RGBA } from "@opentui/core"
 import { diffLines } from "../src/diff"
 import { color } from "../src/theme"
-import { cleanup, dashboard, session, until } from "./support"
+import { backspace, cleanup, dashboard, session, until } from "./support"
 
 afterEach(async () => {
   while (cleanup.length) await cleanup.pop()!()
@@ -60,7 +60,7 @@ test("a name-only edit leaves the schedule alone and a changed schedule is sent"
   const changed = await editLoop(loop)
   changed.view.mockInput.pressTab()
   changed.view.mockInput.pressTab()
-  for (let step = 0; step < 8; step++) changed.view.mockInput.pressBackspace()
+  for (let step = 0; step < 8; step++) backspace(changed.view)
   await changed.confirm("every 2h")
   await changed.screen("Automation saved.")
   expect(patched(changed)).toMatchObject({ intervalSeconds: 7200 })
@@ -70,7 +70,7 @@ test("an interval too long to count in seconds is refused with a reason", async 
   const app = await editLoop(loop)
   app.view.mockInput.pressTab()
   app.view.mockInput.pressTab()
-  for (let step = 0; step < 8; step++) app.view.mockInput.pressBackspace()
+  for (let step = 0; step < 8; step++) backspace(app.view)
   await app.confirm("every 999999999999999999d")
   await app.screen("That interval is too long.")
   expect(patched(app)).toBeUndefined()

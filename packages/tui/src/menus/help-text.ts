@@ -16,6 +16,7 @@ export const helpSections: [string, [string, string][]][] = [
       ["/ · @ · !", "in a message: slash commands · file mentions · a shell command"],
       ["Ctrl+C", "closes a form or stops a running session and its tasks; repeat to quit"],
       ["q", "quits the dashboard; repeat if drafts are unsent or a turn runs"],
+      ["Ctrl+H", "hides the screen behind an anvil until a click, Esc or Ctrl+H"],
     ],
   ],
   [

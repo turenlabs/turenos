@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { session, sized, until, type Route } from "./support"
+import { backspace, session, sized, until, type Route } from "./support"
 
 const loop = {
   id: "loop_1",
@@ -103,7 +103,7 @@ test("Files goes up with Backspace and refreshes with Ctrl+R, and its hint says 
   const before = listings
   view.mockInput.pressKey("r", { ctrl: true })
   await until(() => listings > before)
-  view.mockInput.pressKey("BACKSPACE")
+  backspace(view)
   await screen("▶ src/")
   expect(server.sent("/file").length).toBeGreaterThan(2)
 })

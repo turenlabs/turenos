@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
-import { cleanup, dashboard } from "./support"
+import { backspace, cleanup, dashboard } from "./support"
 
 afterEach(async () => {
   while (cleanup.length) await cleanup.pop()!()
@@ -86,7 +86,7 @@ test("a new personal wing asks for its name before anything is created", async (
   app.view.mockInput.pressEnter()
   await app.screen("Name")
   expect(app.server.sent("/api/memory/wing").some((item) => item.method === "POST")).toBe(false)
-  for (let key = 0; key < "Personal".length; key++) app.view.mockInput.pressBackspace()
+  for (let key = 0; key < "Personal".length; key++) backspace(app.view)
   await app.view.mockInput.typeText("Home")
   app.view.mockInput.pressKey("s", { ctrl: true })
   await app.screen("Created wing Home")

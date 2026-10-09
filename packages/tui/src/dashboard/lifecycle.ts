@@ -61,6 +61,8 @@ export function attach(d: DashboardContext) {
   const listeners = {
     keypress: (key: KeyEvent) => routeKey(d, key),
     paste: (event: PasteEvent) => {
+      // A paste would type into the screen the screensaver hides, and the focused editor takes it unless prevented.
+      if (d.c.screensaver.visible) return event.preventDefault()
       if (!d.options.blocked?.()) d.c.dialogs.paste(event)
     },
     resize: () => resize(d),

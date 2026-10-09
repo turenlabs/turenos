@@ -137,6 +137,11 @@ export async function terminal(width = 120, height = 36, ctrlC = false) {
   return { view, screen }
 }
 
+/** Backspace as terminals send it, DEL. The mock sends 0x08, which is Ctrl+H outside the kitty keyboard protocol. */
+export function backspace(view: Awaited<ReturnType<typeof createTestRenderer>>) {
+  view.renderer.stdin.emit("data", Buffer.from("\x7f"))
+}
+
 /** A dashboard of the given size on a `turen()` server, with a helper for Ctrl+P palette actions. */
 export async function sized(width: number, height: number, routes: Record<string, Route> = {}) {
   const server = turen({ routes })

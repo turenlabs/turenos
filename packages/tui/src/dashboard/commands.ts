@@ -264,6 +264,7 @@ function viewEntries(d: DashboardContext): Entry[] {
     { name: "Older history page", description: "In History", key: "[", run: () => c.conversation.page("next") },
     { name: "Newer history page", description: "In History", key: "]", run: () => c.conversation.page("previous") },
     { name: "Toggle sidebar", description: "Show or hide the list", key: "b or Ctrl+B", run: () => toggleSidebar(d) },
+    { name: "Hide screen", description: "An anvil until a click or Esc", key: "Ctrl+H", run: c.screensaver.show },
     {
       name: "Toggle reduced motion",
       description: d.state.reducedMotion ? "Now on, animation off" : "Now off, animation on",

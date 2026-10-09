@@ -19,8 +19,8 @@ const blue = ["#c8daf7", "#a9c4ef", "#8aaee6", "#6c98dd", "#4f82d3", "#3a6fc4", 
 const WIDTH = 41
 const HEIGHT = 4
 
-/** The TurenOS wordmark, for New session and the server picker. */
-export function turenLogo() {
+/** The TurenOS wordmark, on New session's panel unless given the background it sits on. */
+export function turenLogo(background = color.panel) {
   const pixels = Array.from({ length: HEIGHT * 2 }, () => Array<string | undefined>(WIDTH))
   for (const [index, letter] of letters.entries()) {
     for (const [y, row] of letter.entries()) {
@@ -29,17 +29,17 @@ export function turenLogo() {
       }
     }
   }
-  return { width: WIDTH, height: HEIGHT, content: halfBlocks(pixels) }
+  return { width: WIDTH, height: HEIGHT, content: halfBlocks(pixels, background) }
 }
 
 // Half blocks make square pixels, with independent colors above and below.
-function halfBlocks(pixels: (string | undefined)[][]) {
+function halfBlocks(pixels: (string | undefined)[][], background: string) {
   return new StyledText(
     Array.from({ length: HEIGHT }, (_, row) =>
       Array.from({ length: WIDTH }, (_, x) => {
         const upper = pixels[row * 2]![x]
         const lower = pixels[row * 2 + 1]![x]
-        const pixel = upper ? bg(lower ?? color.panel)(fg(upper)("▀")) : fg(lower ?? color.panel)(lower ? "▄" : " ")
+        const pixel = upper ? bg(lower ?? background)(fg(upper)("▀")) : fg(lower ?? background)(lower ? "▄" : " ")
         return x === WIDTH - 1 && row < HEIGHT - 1 ? [pixel, fg(color.text)("\n")] : [pixel]
       }).flat(),
     ).flat(),

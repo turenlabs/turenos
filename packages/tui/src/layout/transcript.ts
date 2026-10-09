@@ -1,4 +1,5 @@
 import { BoxRenderable, ScrollBoxRenderable, TextAttributes, TextRenderable, type CliRenderer } from "@opentui/core"
+import { ANVIL_ASPECT, WORDMARK_ROWS, createAnvil } from "../anvil"
 import { createMarkdown } from "../markdown"
 import { color } from "../theme"
 import { ContextLine } from "./context-line"
@@ -55,8 +56,14 @@ export function createHistoryActions(renderer: CliRenderer, main: BoxRenderable)
   return { historyActions, older, newer, historyCount }
 }
 
-/** Builds the scrolling transcript, with plain text and markdown bodies and the function that switches between them. */
-export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
+/** The welcome anvil's rows at most, and the fewest it shows at. */
+const ANVIL_ROWS = { most: 14, fewest: 6 }
+
+/**
+ * Builds the scrolling transcript, with plain text and markdown bodies and the function that switches between them.
+ * The welcome screen opens under the wordmark and the turning anvil, which `still` keeps still.
+ */
+export function createTranscript(renderer: CliRenderer, main: BoxRenderable, still: () => boolean) {
   const detail = new ScrollBoxRenderable(renderer, {
     flexGrow: 1,
     width: "100%",
@@ -71,6 +78,11 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
     contentOptions: { flexDirection: "column", paddingRight: 2 },
   })
   main.add(detail)
+  const anvil = createAnvil(renderer, { background: color.bg, still })
+  Object.assign(anvil.view, { visible: false, marginBottom: 1, alignSelf: "flex-start" })
+  detail.add(anvil.view)
+  /** The welcome text's rows while the welcome shows, which the logo leaves room for. */
+  let welcomeRows: number | undefined
   const content = new TextRenderable(renderer, {
     content: "Connecting to the server…",
     fg: color.text,
@@ -82,7 +94,21 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
   markdown.visible = false
   detail.add(markdown)
 
-  function renderContent(value: string, rich = false) {
+  // The pane's size is known after its first layout, which fires `resize`; until then the logo waits for it, and it
+  // turns only while it shows.
+  function fitAnvil() {
+    const room = detail.viewport.height - (welcomeRows ?? detail.viewport.height) - 2 - WORDMARK_ROWS
+    const rows = Math.min(ANVIL_ROWS.most, room, Math.floor((detail.viewport.width - 2) / ANVIL_ASPECT))
+    anvil.view.visible = rows >= ANVIL_ROWS.fewest
+    if (!anvil.view.visible) return anvil.stop()
+    anvil.size(rows)
+    anvil.play()
+  }
+  detail.viewport.on("resize", fitAnvil)
+
+  function renderContent(value: string, rich = false, welcome = false) {
+    welcomeRows = welcome ? value.split("\n").length : undefined
+    fitAnvil()
     content.visible = !rich
     markdown.visible = rich
     if (rich) markdown.content = value

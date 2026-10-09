@@ -23,6 +23,7 @@ import { createMemories } from "../memories"
 import { createIntel } from "../intel"
 import { createInspect } from "../inspect"
 import { createSettings } from "../settings"
+import { createScreensaver } from "../screensaver"
 import { createModels } from "../models"
 import { createLaunch } from "../launch"
 import { createSessionActions } from "../session-actions"
@@ -269,7 +270,8 @@ function createSettingsControls(d: DashboardContext) {
       },
     ],
   })
-  return { settings }
+  const screensaver = createScreensaver(renderer, d.ui.root, () => state.reducedMotion)
+  return { settings, screensaver }
 }
 
 /** Models, new-session launch, session actions and the session switcher menus. */

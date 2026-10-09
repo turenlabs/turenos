@@ -25,7 +25,7 @@ export function createLayout(renderer: CliRenderer, state: DashboardState) {
   const body = new BoxRenderable(renderer, { flexDirection: "row", flexGrow: 1, minHeight: 1, gap: 2 })
   root.add(body)
   const sidebar = createSidebar(renderer, tabButtons)
-  const main = createMain(renderer, body)
+  const main = createMain(renderer, body, () => state.reducedMotion)
   body.add(sidebar.sidebar)
   const footer = createFooter(renderer, root)
   const size = createSizeNotice(renderer, root)

@@ -24,6 +24,8 @@ export function routeKey(d: DashboardContext, key: KeyEvent) {
 }
 
 function route(d: DashboardContext, key: KeyEvent) {
+  // While the screensaver shows, every key is its own.
+  if (d.c.screensaver.key(key)) return key.preventDefault()
   if (globalKey(d, key)) return
   if (d.c.dialogs.keypress(key)) return
   if (d.state.searching) return searchKey(d, key)

@@ -27,6 +27,7 @@ import type { createMemories } from "../memories"
 import type { createIntel } from "../intel"
 import type { createInspect } from "../inspect"
 import type { createSettings } from "../settings"
+import type { createScreensaver } from "../screensaver"
 import type { createModels } from "../models"
 import type { createLaunch } from "../launch"
 import type { createSessionActions } from "../session-actions"
@@ -110,6 +111,7 @@ export type Controls = {
   intel: ReturnType<typeof createIntel>
   inspect: ReturnType<typeof createInspect>
   settings: ReturnType<typeof createSettings>
+  screensaver: ReturnType<typeof createScreensaver>
   models: ReturnType<typeof createModels>
   launch: ReturnType<typeof createLaunch>
   sessions: ReturnType<typeof createSessionActions>
