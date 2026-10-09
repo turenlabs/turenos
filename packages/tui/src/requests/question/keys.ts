@@ -40,7 +40,7 @@ function handleCustomKey(flow: QuestionFlow, key: KeyEvent) {
   if (!matchesKey(key, "enter")) return false
   keepCustom(flow)
   if (!custom[flow.page]!.trim()) {
-    flow.dialog.error.content = "Enter a non-empty answer.\nCtrl+B Back to choices · Esc close"
+    flow.dialog.error.content = "Enter a non-empty answer.\nCtrl+B back to choices · Esc close"
     return true
   }
   customOn[flow.page] = true

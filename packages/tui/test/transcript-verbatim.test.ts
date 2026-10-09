@@ -72,6 +72,7 @@ test("a shell command and its output show every character in the dashboard", asy
     [shell({ command, status: "completed", exitCode: 0, output: hostile.join("\n") })],
     false,
     true,
+    { expanded: true },
   )
   const shown = await frame(text)
   expect(shown).toContain(`$ ${command}`)

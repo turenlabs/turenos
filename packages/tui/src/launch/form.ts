@@ -20,6 +20,8 @@ export function buildForm(
   // Keep the prompt usable alongside the compact mark on small terminals.
   dialog.frame.gap = 0
   hugContent(dialog)
+  // Wide terminals get a wider form; the shared dialog frame stops at 88 columns.
+  dialog.frame.maxWidth = 120
   const ui = { settingsOpen: false }
   const task = dialogs.prompt(dialog, "What would you like to do?", current.prompt, current.cursor)
   // The launch has no shell handling, so it must not advertise `! shell`.

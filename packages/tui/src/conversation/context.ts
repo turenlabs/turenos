@@ -12,7 +12,7 @@ export type ConversationHooks = {
   questionsInPanel?: boolean
 }
 
-export type SavedPosition = { history: boolean; latest: number; transcript: number; cursor?: string }
+export type SavedPosition = { history: boolean; latest: number; transcript: number; cursor?: string; page?: number }
 
 /** Where the conversation is scrolled: `MAX_SAFE_INTEGER` follows the tail. */
 export type ReadingPosition = { sessionID: string; history: boolean; scroll: number }

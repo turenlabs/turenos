@@ -201,7 +201,28 @@ describe("activity frames", () => {
     ]
     expect(activityFrame(state, 0, false)).toBeUndefined()
     state.snapshot!.active = { ses_test: { type: "running" } }
-    expect(activityFrame(state, 0, false)?.content).toBe("Working (Esc Esc or x to stop) \u2828\u2869\u2824")
+    // The queue shows as its own line under the working line, not as part of what the agent is doing.
+    expect(activityFrame(state, 0, false)?.content).toBe(
+      "Working (Esc Esc or x to stop) \u2828\u2869\u2824\nqueued: Queued input",
+    )
+  })
+
+  test("the queued line names the next message by its first line and counts the rest", () => {
+    const state = dashboard()
+    state.snapshot!.active = { ses_test: { type: "running" } }
+    const input = (id: string, seq: number, text: string) => ({
+      admittedSeq: seq,
+      id,
+      sessionID: "ses_test",
+      prompt: { text },
+      delivery: "queue" as const,
+      timeCreated: 1,
+    })
+    state.detail!.pending = [input("b", 2, "second\nmore"), input("a", 1, "first line\nsecond line"), input("c", 3, "third")]
+    expect(activityFrame(state, 0, false)?.content.split("\n")[1]).toBe("queued: first line · 2 more")
+    expect(activityFrame(state, 0, false, 30)?.content.split("\n")[1]!.length).toBeLessThanOrEqual(30)
+    state.detail!.pending = []
+    expect(activityFrame(state, 0, false)?.content).not.toContain("queued")
   })
 
   test("only a running tool in the actual latest message supplies a specific label", () => {

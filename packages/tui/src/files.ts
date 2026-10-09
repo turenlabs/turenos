@@ -41,7 +41,7 @@ export function createFiles(
     panel.list.on("selectionChanged", () => void preview(browser))
     panel.dialog.key = (key) => {
       const bindings: [boolean, () => unknown][] = [
-        [matchesKey(key, "enter"), () => enter(browser)],
+        [matchesKey(key, "enter") || matchesKey(key, "right"), () => enter(browser)],
         [matchesKey(key, "r", { ctrl: true }), () => refresh(browser)],
         [matchesKey(key, "left") || matchesKey(key, "backspace"), () => up(browser)],
         [

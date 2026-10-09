@@ -11,7 +11,7 @@ const MAX_LINES = 5000
 /** Hint parts by priority: the trailing ones drop first when the panel is narrow. Enter acts only on a folder. */
 const hints = (entry: Entry | undefined) => [
   "↑↓ choose",
-  ...(entry?.type === "directory" ? ["Enter open folder"] : []),
+  ...(entry?.type === "directory" ? ["→/Enter open folder"] : []),
   "←/Backspace up",
   "@ mention in reply",
   "PgUp/PgDn scroll",
@@ -78,7 +78,7 @@ export async function preview(b: FileBrowser) {
   const entry = b.entries[b.panel.list.getSelectedIndex()]
   b.panel.hints(hints(entry), ["Esc close"])
   if (!entry) return b.panel.show(b.folder ? "Empty folder." : "No files.")
-  if (entry.type === "directory") return b.panel.show(`${label(entry.path, 300)}/\n\nEnter opens this folder.`)
+  if (entry.type === "directory") return b.panel.show(`${label(entry.path, 300)}/\n\n→ or Enter opens this folder.`)
   const title = label(entry.path, 300)
   b.panel.show(`Loading ${title}…`)
   try {

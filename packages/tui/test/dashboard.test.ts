@@ -632,7 +632,7 @@ for (const shortcut of ["n", "f"] as const) {
       expect(editor).toBeInstanceOf(TextareaRenderable)
       expect(editor.cursorOffset).toBe(editor.plainText.length)
       await view.renderOnce()
-      expect(view.captureCharFrame()).toContain("Enter Send")
+      expect(view.captureCharFrame()).toContain("Enter send")
       expect(view.captureCharFrame()).not.toContain("Ctrl+S Send")
       await view.mockInput.pressKeys([enter])
       await waitForFrame(view, (frame) => frame.includes(shortcut === "n" ? "Task sent." : "Reply sent."))
@@ -846,7 +846,7 @@ for (const [width, height] of [
     expect(spans.map((span) => span.fg)).toContainEqual(RGBA.fromHex("#fff3cd"))
     expect(spans.map((span) => span.fg)).toContainEqual(RGBA.fromHex("#eee5ff"))
     expect(frame).toContain("Directory: /srv/project")
-    expect(frame).toContain("Tab settings")
+    expect(frame).toContain("Tab: folder")
     expect(frame).toContain("[ Send (Enter) ]")
     const editor = view.renderer.currentFocusedEditor!
     expect(editor).toBeDefined()
@@ -1913,7 +1913,7 @@ test.each([60])("wrapped reply text retains space and visible controls at %s col
   for (const columns of [60, 120, width]) {
     view.resize(columns, 24)
     const frame = await waitForFrame(view, (frame) => frame.includes("DRAFTEND") && frame.includes("F4 discard"))
-    expect(frame).toContain("Enter Send")
+    expect(frame).toContain("Enter send")
     expect(editor.plainText).toBe(text)
     expect(editor.y + editor.height).toBeLessThanOrEqual(24)
     expect(view.renderer.currentFocusedRenderable?.id).toBe(editor.id)
@@ -2201,7 +2201,7 @@ test("empty session welcome is branded and does not block New session", async ()
   await app.ready
   const frame = await waitForFrame(view, (frame) => frame.includes("[ Turen ]"))
   expect(frame).toContain("Connected")
-  expect(frame).toContain("Ctrl+K Session picker")
+  expect(frame).toContain("Ctrl+K sessions")
   options.authenticated = false
   await app.refresh()
   await waitForFrame(view, (frame) => frame.includes("Disconnected · No session selected."))
@@ -2570,7 +2570,7 @@ test("a narrow launch keeps the selected session's target and settings visible",
   await view.mockInput.typeText("Inspect this directory")
   await view.renderOnce()
   expect(view.captureCharFrame()).toContain("Directory: /srv/tools")
-  expect(view.captureCharFrame()).toContain("Tab settings")
+  expect(view.captureCharFrame()).toContain("Tab: folder")
   expect(view.captureCharFrame()).not.toContain("Server default")
   expect(view.captureCharFrame()).not.toContain("Model · optional")
   expect(view.captureCharFrame()).toContain("Inspect this directory")
@@ -2865,8 +2865,8 @@ test("clicking Settings reveals launch controls and preserves custom choices in 
   expect(view.captureCharFrame()).not.toContain("Directory on the server")
   expect(view.captureCharFrame()).not.toContain("Model · optional")
   const lines = view.captureCharFrame().split("\n")
-  const y = lines.findIndex((line) => line.includes("Tab settings"))
-  await view.mockMouse.click(lines[y]!.indexOf("Tab settings") + 1, y)
+  const y = lines.findIndex((line) => line.includes("Tab: folder"))
+  await view.mockMouse.click(lines[y]!.indexOf("Tab: folder") + 1, y)
   view.mockInput.pressTab()
   await waitForFrame(view, (frame) => frame.includes("Server default") && !frame.includes("Loading agents"))
   view.mockInput.pressArrow("down")
@@ -2877,7 +2877,7 @@ test("clicking Settings reveals launch controls and preserves custom choices in 
   view.mockInput.pressKey("n")
   // The settings stay open, so they show the choices and the summary above them is gone.
   await waitForFrame(view, (frame) => frame.includes("test/local") && frame.includes("▶ build"))
-  expect(view.captureCharFrame()).not.toContain("Tab settings")
+  expect(view.captureCharFrame()).not.toContain("Tab: folder")
   expect(view.captureCharFrame()).not.toContain("Model · optional")
   expect(view.captureCharFrame()).toContain("A short task")
   expect(server.posts).toHaveLength(0)
@@ -3345,7 +3345,7 @@ test("reply stays beside fresh conversation output and retains its recipient dur
   await waitForFrame(
     view,
     (frame) =>
-      frame.includes("Original message to answer.") && frame.includes("Reply to") && frame.includes("Enter Send"),
+      frame.includes("Original message to answer.") && frame.includes("Reply to") && frame.includes("Enter send"),
   )
   options.text = "A fresh update arrived while composing."
   server.historical.set(original.id, original)
@@ -3786,11 +3786,11 @@ test("question rejection is explicit, reversible before submission, and session-
   view.mockInput.pressEnter()
   await waitForFrame(view, (frame) => frame.includes("Review answers"))
   view.mockInput.pressKey("r", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("Confirm rejection"))
+  await waitForFrame(view, (frame) => frame.includes("confirm rejection"))
   for (const enter of ["\r", "\n", "\x1b[57414u"]) {
     await view.mockInput.pressKeys([enter])
     await view.renderOnce()
-    expect(view.captureCharFrame()).toContain("Ctrl+S Confirm rejection")
+    expect(view.captureCharFrame()).toContain("Ctrl+S confirm rejection")
     expect(server.posts).toHaveLength(0)
   }
   view.mockInput.pressKey("r", { ctrl: true })

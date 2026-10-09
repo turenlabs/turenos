@@ -216,11 +216,11 @@ test("Files browses folders and shows file contents read-only", async () => {
     }),
   })
   view.mockInput.pressKey("e")
-  expect(await screen("Enter opens this folder")).not.toContain("src//")
+  expect(await screen("or Enter opens this folder")).not.toContain("src//")
   view.mockInput.pressEnter()
   await screen("1  export const main = 1")
   view.mockInput.pressArrow("left")
-  await screen("Enter opens this folder")
+  await screen("or Enter opens this folder")
   view.mockInput.pressArrow("down")
   await screen("1  # Readme")
 })

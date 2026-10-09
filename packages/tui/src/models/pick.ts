@@ -135,9 +135,14 @@ function update(view: View) {
   dialog.error.content = hint(view, catalog.models.length)
 }
 
+/** Esc returns to the dialog that opened the picker (back), or leaves to the dashboard (close). */
+function leave(view: View) {
+  return view.target.cancel ? "back" : "close"
+}
+
 function hint(view: View, models: number) {
-  if (!models) return "No connected models. F2 connects a provider.\nCtrl+R refresh catalog · Esc back"
-  const esc = view.query.value ? "Esc clear search · Esc again back" : "Esc back"
+  if (!models) return `No connected models. F2 connects a provider.\nCtrl+R refresh catalog · Esc ${leave(view)}`
+  const esc = view.query.value ? `Esc clear search · Esc again ${leave(view)}` : `Esc ${leave(view)}`
   if (!view.matches.length)
     return `No matching models. Change the search or F2 to connect.\nCtrl+R refresh catalog · ${esc}`
   return `${view.query.value ? "" : "Up/Down choose · "}Enter select · ${esc}\nF2 connect · Ctrl+R refresh${view.total > ROW_LIMIT ? ` · First ${ROW_LIMIT} of ${view.total}; narrow search` : ""}`
@@ -151,7 +156,7 @@ async function load(view: View) {
   view.matches = []
   view.total = 0
   view.select.options = []
-  dialog.error.content = "Loading models... Esc back"
+  dialog.error.content = `Loading models... Esc ${leave(view)}`
   try {
     const result = await ctx.connection.providers.list(view.target.directory)
     if (ctx.state.closed || ctx.state.modal !== dialog) return
@@ -160,7 +165,7 @@ async function load(view: View) {
   } catch (error) {
     if (ctx.state.closed || ctx.state.modal !== dialog) return
     dialog.error.height = 3
-    dialog.error.content = `Cannot load models: ${errorText(error)}\nCtrl+R retry · F2 provider setup · Esc back`
+    dialog.error.content = `Cannot load models: ${errorText(error)}\nCtrl+R retry · F2 provider setup · Esc ${leave(view)}`
   } finally {
     view.loading = false
   }
@@ -188,6 +193,6 @@ async function choose(view: View) {
     if (ctx.state.closed || ctx.state.modal !== dialog) return
     dialog.busy = false
     dialog.error.height = 3
-    dialog.error.content = `Could not select model: ${errorText(error)}\nEnter retry · Esc back`
+    dialog.error.content = `Could not select model: ${errorText(error)}\nEnter retry · Esc ${leave(view)}`
   }
 }

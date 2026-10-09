@@ -94,7 +94,7 @@ test("the custom answer box does not repeat its label as a placeholder", async (
   await screen("Which colour?")
   view.mockInput.pressKey("3")
   view.mockInput.pressEnter()
-  const frame = await screen("Save custom answer")
+  const frame = await screen("save custom answer")
   expect(frame).toContain("Your answer")
   // The empty field is boxed and its placeholder differs from the label, so neither reads as typed text.
   expect(frame).toContain("[ Type your answer")

@@ -24,7 +24,7 @@ export async function loadSession(c: Conversation, snapshot: Snapshot, session: 
   ui.sessionTitle.content = `${sessionTitle(session.title || "Untitled session", 150)}${session.time.archived !== undefined ? " · Archived" : ""}`
   ui.context.visible = !state.modal?.inline
   ui.context.fg = color.muted
-  ui.context.content = `${state.history ? "History" : "Transcript"}${Object.hasOwn(snapshot.active, id) ? " · Working" : ""} · ${label(session.location.directory, 250)}`
+  ui.context.content = `${viewName(state)}${Object.hasOwn(snapshot.active, id) ? " · Working" : ""}${subagentOf(snapshot, session)} · ${label(session.location.directory, 250)}`
   const page = state.history && c.pageRequest?.sessionID === id ? c.pageRequest : undefined
   const result = await c.connection.detail(id, state.history ? (page?.cursor ?? state.historyCursor) : undefined)
   if (version !== state.detailVersion || state.closed) return
@@ -39,6 +39,7 @@ export async function loadSession(c: Conversation, snapshot: Snapshot, session: 
     state.historyCursor = page.cursor
     // Reading older, the eye continues from the bottom of the older page; reading newer, from its top.
     const older = page.direction === "next"
+    state.historyPage = Math.max(1, state.historyPage + (older ? 1 : -1))
     openPart(c, page.direction)
     c.position = { sessionID: id, history: true, scroll: older ? Number.MAX_SAFE_INTEGER : 0 }
     ui.detail.scrollTo(older ? Number.MAX_SAFE_INTEGER : 0)
@@ -52,6 +53,18 @@ export async function loadSession(c: Conversation, snapshot: Snapshot, session: 
   paintResult(c, id, result, questionPreview)
 }
 
+/** The view and, in History, where the reader is and the keys that move; the server counts no pages, so there is no total. */
+function viewName(state: DashboardState) {
+  return state.history ? `History · page ${state.historyPage} · [ older · ] newer · h back to live` : "Transcript"
+}
+
+/** A child session names the one it came from and the key that goes back; f opens the owning session. */
+function subagentOf(snapshot: Snapshot | undefined, session: Session) {
+  if (!session.parentID) return ""
+  const parent = snapshot?.sessions.find((item) => item.id === session.parentID)
+  return ` · Subagent of ${parent ? sessionTitle(parent.title || "Untitled session", 40) : "its parent session"} · f returns`
+}
+
 function describeResult(c: Conversation, session: Session, result: Detail) {
   const { state, ui } = c
   const tasks = [...new Map([...result.tasks.data, ...result.tasks.active].map((task) => [task.id, task])).values()]
@@ -63,7 +76,7 @@ function describeResult(c: Conversation, session: Session, result: Detail) {
       ...(active ? [`${active} active`] : []),
       ...(failed ? [`${failed} failed`] : []),
     ]
-    ui.context.content = `${state.history ? "History" : "Transcript"} · ${counts.join(", ")} · ${label(session.location.directory, 150)}`
+    ui.context.content = `${viewName(state)} · ${counts.join(", ")}${subagentOf(state.snapshot, session)} · ${label(session.location.directory, 150)}`
   }
   if (result.permissions.length || result.questions.length) {
     ui.context.content = `Needs input · ${label(session.location.directory, 250)}`

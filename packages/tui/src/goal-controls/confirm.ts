@@ -2,6 +2,7 @@ import { InputRenderable, TextareaRenderable, TextRenderable } from "@opentui/co
 import type { SessionsGoalSetInput } from "@turenlabs/client"
 import { matchesKey } from "../keys"
 import { display } from "../messages"
+import { modelText } from "../messages/header"
 import type { Session } from "../server"
 import { label, sessionTitle, type ModalState } from "../state"
 import { color } from "../theme"
@@ -34,7 +35,7 @@ export function confirm(env: GoalEnv, session: Session, base: Goal, action: Acti
   const input = addInput(env, dialog, base, action, session.id)
   dialog.error.content =
     action === "Clear"
-      ? "Ctrl+S clear · Esc back\nEnter does not confirm."
+      ? "Enter or Ctrl+S clear · Esc back\nNothing changed yet."
       : `Ctrl+S ${action.toLowerCase()}${starts ? " and start" : ""} · Esc back\n${input.editor ? "Enter newline · " : ""}Nothing changed yet.`
   if (input.typed) requireWord(dialog, input.typed, "clear", env.dialogs.resize)
   dialog.back = () => {
@@ -81,7 +82,7 @@ function addSummary(env: GoalEnv, dialog: ModalState, session: Session, base: Go
   )
   dialog.form.add(
     new TextRenderable(env.renderer, {
-      content: `For: ${sessionTitle(session.title || session.id, 100)}\n${base ? `Goal: ${base.id}\nRevision: ${base.revision} | ${base.status}\n${display(base.objective, 4000)}` : "Create a new active goal."}${action === "Set" ? `\nAgent: ${label(session.agent ?? "server default")}\nModel: ${session.model ? label(`${session.model.providerID}/${session.model.id} (${session.model.variant ?? "default"})`, 200) : "server default"}` : ""}`,
+      content: `For: ${sessionTitle(session.title || session.id, 100)}\n${base ? `Goal: ${base.id}\nRevision: ${base.revision} | ${base.status}\n${display(base.objective, 4000)}` : "Create a new active goal."}${action === "Set" ? `\nAgent: ${label(session.agent ?? "server default")}\nModel: ${session.model ? label(modelText(session.model), 200) : "server default"}` : ""}`,
       fg: color.text,
     }),
   )

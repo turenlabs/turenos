@@ -242,12 +242,12 @@ test("New session settings do not repeat the directory, keep every row visible a
   await app.leave()
   await app.press("n")
   await app.screen("What would you like to do?")
-  expect(app.frame()).toContain("Tab settings")
+  expect(app.frame()).toContain("Tab: folder")
   expect(app.frame()).toContain("Esc keep draft")
   app.view.mockInput.pressTab()
   const frame = await app.screen("Directory on the server")
   expect(frame).not.toContain("Directory: ")
-  expect(frame).not.toContain("Tab settings")
+  expect(frame).not.toContain("Tab: folder")
   expect(frame).toContain("New git worktree")
   // The dialog fits, so its form needs no scrollbar.
   expect(frame).not.toContain("█")
@@ -300,7 +300,7 @@ test("the Esc-again prompt goes when the turn it offered to stop has ended", asy
   expect(app.frame()).not.toContain("Press Esc again to stop this turn")
 })
 
-test("while a quit with a draft is armed the footer says what the next press does, and stops when it lapses", async () => {
+test("while a quit with a draft is armed the status line says what the next press does, once, and the footer keeps q quit", async () => {
   let quit = 0
   const app = await launch({ onQuit: () => quit++ })
   await app.leave()
@@ -311,11 +311,9 @@ test("while a quit with a draft is armed the footer says what the next press doe
   await app.settle()
   expect(app.frame()).toContain("q quit")
   await app.press("q")
-  const footer = app.frame().split("\n").at(-2)!
-  expect(footer).toContain("q again quits and discards")
+  const armed = app.frame()
+  expect(armed.split("\n").at(-2)).toContain("q quit")
+  expect(armed.match(/again to quit and discard/g)).toHaveLength(1)
+  expect(armed).not.toContain("q again quits")
   expect(quit).toBe(0)
-  await Bun.sleep(3300)
-  await app.view.renderOnce()
-  expect(app.frame()).not.toContain("q again quits")
-  expect(app.frame()).toContain("q quit")
 })

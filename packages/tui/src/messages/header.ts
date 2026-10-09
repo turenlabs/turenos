@@ -3,6 +3,12 @@ import { display } from "../messages"
 
 type Assistant = Extract<MessagesListOutput["data"][number], { type: "assistant" }>
 
+/** "provider/model (variant)". A variant named "default" is the model's own setting, so it is left out rather than read as a default model. */
+export function modelText(model: { providerID: string; id: string; variant?: string }) {
+  const variant = model.variant && model.variant !== "default" ? ` (${display(model.variant, 256)})` : ""
+  return `${display(model.providerID, 256)}/${display(model.id, 512)}${variant}`
+}
+
 /** "build · sandbox/scripted (fast) · 12s": the agent, the model when known, and how long the turn took. */
 export function assistantHeader(message: Assistant, rich = false, time = message.time) {
   const model = message.model
@@ -11,9 +17,7 @@ export function assistantHeader(message: Assistant, rich = false, time = message
   return [
     rich ? chip(agent) : agent,
     ...(known
-      ? [
-          `${display(model.providerID, 256)}/${display(model.id, 512)}${model.variant ? ` (${display(model.variant, 256)})` : ""}`,
-        ]
+      ? [modelText(model)]
       : []),
     ...duration(time),
   ].join(" · ")

@@ -33,7 +33,10 @@ export function rememberPosition(c: Conversation) {
   if (state.detail?.sessionID !== state.selected) return
   const saved = c.positions.get(state.selected) ?? { history: state.history, latest: 0, transcript: 0 }
   saved.history = state.history
-  if (state.history) saved.cursor = state.historyCursor
+  if (state.history) {
+    saved.cursor = state.historyCursor
+    saved.page = state.historyPage
+  }
   saved[state.history ? "transcript" : "latest"] = c.prepend
     ? ui.detail.scrollTop
     : (c.position?.scroll ?? ui.detail.scrollTop)

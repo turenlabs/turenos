@@ -20,9 +20,9 @@ test("the header keeps the port when only the port fits, with the busiest runnin
 
 test("the footer keeps ? help beside the status text at 60 columns, and in every set that has room", async () => {
   for (const width of [60, 70, 80, 120])
-    for (const sidebar of [true, false]) expect(footerShortcuts(width, sidebar, false, false, false, 17)).toContain("? help")
-  expect(footerShortcuts(60, false, false, false, false, 17)).toBe("Ctrl+P commands · b sidebar · ? help")
-  expect(footerShortcuts(60, false, false, false, false, 40)).toBe("? help")
+    for (const sidebar of [true, false]) expect(footerShortcuts(width, sidebar, false, false, 17)).toContain("? help")
+  expect(footerShortcuts(60, false, false, false, 17)).toBe("Ctrl+P commands · b sidebar · ? help")
+  expect(footerShortcuts(60, false, false, false, 40)).toBe("? help")
   const live = () =>
     new Response(
       new ReadableStream<Uint8Array>({
@@ -37,11 +37,10 @@ test("the footer keeps ? help beside the status text at 60 columns, and in every
   expect(footer).toBe("  View 1/4 Sessions   Ctrl+P commands · b sidebar · ? help")
 })
 
-test("an armed quit reads q again quits in the shortcuts", () => {
-  expect(footerShortcuts(120, false, false, false, true)).toContain("q again quits")
+test("the shortcuts keep their quit entries; an armed quit is said once, by the status line", () => {
   expect(footerShortcuts(120, false)).toContain("q quit")
-  expect(footerShortcuts(120, false, true, false, true)).toContain("Ctrl+C again quits")
-  expect(footerShortcuts(120, false, true, true, true)).not.toContain("Ctrl+C stop")
+  expect(footerShortcuts(120, false, true, false)).toContain("Ctrl+C quit")
+  expect(footerShortcuts(120, false, true, true)).toContain("Ctrl+C stop")
 })
 
 test("the context line cuts the folder from its start and keeps the state words and cue whole", () => {
@@ -103,16 +102,12 @@ test("the drawer scrollbar thumb keeps its own column, clear of every row's text
   for (const line of drawer) expect(line.slice(column - 1).trim().replace("▀", "")).toBe("")
 })
 
-test("an armed quit says q again quits in the shortcuts, and q quit returns when it lapses", async () => {
+test("an armed quit is said once, in the status line, and the footer keeps q quit", async () => {
   const { view, screen } = await mount(120, activeMain, 30)
   await screen("Focus: sidebar")
   view.mockInput.pressKey("q")
   const armed = await screen("The agent is still working")
-  const footer = armed.split("\n").at(-2)!
-  expect(footer).toContain("q again quits")
-  expect(footer).toContain("? help · q again quits")
-  expect(footer).not.toContain("q quit")
-  await Bun.sleep(3300)
-  const lapsed = await screen("? help · q quit")
-  expect(lapsed.split("\n").at(-2)).not.toContain("q again quits")
+  expect(armed.match(/again quits/g) ?? []).toHaveLength(0)
+  expect(armed.split("\n").at(-2)).toContain("? help · q quit")
+  expect(armed.match(/Press q again to quit/g)).toHaveLength(1)
 })

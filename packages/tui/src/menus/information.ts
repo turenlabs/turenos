@@ -1,5 +1,6 @@
 import { TextRenderable } from "@opentui/core"
 import { display } from "../messages"
+import { modelText } from "../messages/header"
 import { label, sessionTitle, type DashboardState } from "../state"
 import { color } from "../theme"
 import { stamp } from "./stamp"
@@ -20,7 +21,7 @@ export function information(ctx: MenuContext, address: string) {
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
       content: [
-        session ? `SESSION\n${display(sessionLines(session, result).join("\n"), 6000)}` : "",
+        session ? `SESSION\n${display(sessionLines(session, result, state.defaultAgent).join("\n"), 6000)}` : "",
         tasks.size ? taskLines(tasks.values()) : "",
         snapshot ? snapshotLines(snapshot, state.connected, session?.location.directory) : "",
         `SERVER\n${label(serverAddress(address), 1000)}\n${state.connected ? "Connected" : state.connectionError || "Connecting…"}`,
@@ -41,22 +42,20 @@ function serverAddress(address: string) {
   return url?.includes(host!) ? url : address
 }
 
-function sessionLines(session: Session, result: Detail | undefined) {
+function sessionLines(session: Session, result: Detail | undefined, defaultAgent: string | undefined) {
   // The footer shows the same fallback: what the latest reply actually ran with.
   const reply = result?.messages.findLast((message) => message.type === "assistant")
   const model =
     session.model ??
     (reply && (reply.model.providerID !== "unknown" || reply.model.id !== "unknown") ? reply.model : undefined)
-  const modelStr = model
-    ? `${model.providerID}/${model.id}${model.variant ? ` (${model.variant})` : ""}`
-    : "server default"
+  const modelStr = model ? modelText(model) : "server default"
   return [
     sessionTitle(session.title || "Untitled session", 200),
     ...(session.time.archived !== undefined ? ["Archived · Ctrl+P restore brings it back to the lists"] : []),
     `Session ID: ${session.id}`,
     ...(session.parentID ? [`Parent ID: ${session.parentID}`] : []),
     `Directory: ${session.location.directory}`,
-    `Agent: ${session.agent ?? reply?.agent ?? "server default"} · Model: ${modelStr}`,
+    `Agent: ${session.agent ?? reply?.agent ?? (defaultAgent ? `${defaultAgent} (server default)` : "server default")} · Model: ${modelStr}`,
     `Created: ${stamp(session.time.created)}`,
     ...(session.time.updated ? [`Last activity: ${stamp(session.time.updated)}`] : []),
     ...(session.tokens ? tokenLine(session) : []),

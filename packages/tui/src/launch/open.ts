@@ -23,7 +23,7 @@ export function openLaunch(deps: LaunchDeps, store: LaunchStore, reopen: () => v
   dialog.reference = submitted ? current.start.sessionID : undefined
   const hint = submitted
     ? `Session: ${current.start.sessionID}\nCtrl+O inspect · Enter retry · Esc keep submission · F4 discard`
-    : "Enter Send · Shift/Alt+Enter newline\nEsc keep draft · F4 discard"
+    : "Enter send · Shift/Alt+Enter newline\nEsc keep draft · F4 discard"
   dialog.error.height = submitted ? 4 : 2
   dialog.error.content = hint
   clearErrorOnEdit(form, hint, dialog.error.height)

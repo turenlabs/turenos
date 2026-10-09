@@ -26,7 +26,7 @@ export function deleteSession(ctx: SessionActionsContext): void {
     ctx.say("Session deleted.")
   }
   announceOpen(ctx, dialog, session, "Session deleted.")
-  dialog.error.content = "Ctrl+S delete · Esc close"
+  dialog.error.content = "Enter or Ctrl+S delete · Esc close"
   requireWord(dialog, confirmation, "delete", ctx.dialogs.resize)
   confirmation.focus()
 }

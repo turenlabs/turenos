@@ -117,9 +117,13 @@ for (const width of [60]) {
     }
     expect(frame).toContain("[ Turen ]")
     expect(frame).toContain(`${connection.status} · No session selected.`)
-    for (const shortcut of ["n New session", "Ctrl+K Session picker", ", Settings · I Intel", "? Help"])
+    for (const shortcut of [
+      "Press n or Enter to start a session.",
+      "? help · Ctrl+P commands · m model · Ctrl+K sessions",
+      "b shows the session list",
+      ", settings · I intel",
+    ])
       expect(frame).toContain(shortcut)
-    expect(body).not.toContain("Enter")
     expect(body).not.toContain("No agent sessions yet")
     expect(view.ui.detail.scrollHeight).toBeLessThanOrEqual(view.ui.detail.viewport.height)
     expect(view.ui.sizeNotice.visible).toBe(false)

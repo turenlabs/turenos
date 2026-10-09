@@ -843,7 +843,7 @@ def main():
             with scenario("welcome", width, height):
                 start = len(result["requests"])
                 plain = capture("welcome")
-                check("Connected" in plain and "Ctrl+K Session picker" in plain and "? Help" in plain, "welcome shows connection and direct shortcuts")
+                check("Connected" in plain and "Ctrl+K sessions" in plain and "? help" in plain, "welcome shows connection and direct shortcuts")
                 shortcuts()
                 key("C-k")
                 wait(FINDER)
@@ -1140,7 +1140,7 @@ def main():
                     tmux("resize-window", "-t", "audit:0", "-x", str(columns), "-y", str(height))
                     wait("DRAFTEND")
                     plain = capture(f"wrapped-reply-{columns}")
-                    check("Enter Send" in plain and "F4 discard" in plain, "wrapped draft keeps its tail and controls visible")
+                    check("Enter send" in plain and "F4 discard" in plain, "wrapped draft keeps its tail and controls visible")
                 check(not writes_since(start), "wrapping and resizing never submits the draft")
                 key("F4")
 
@@ -1617,7 +1617,7 @@ def main():
                         check(not writes_since(start) and "Esc close" in frame(), "permission Allow once plus Enter still requires explicit confirmation")
                     if shortcut == "o":
                         key("C-r", "Enter")
-                        check(not writes_since(start) and "Ctrl+S Confirm rejection" in frame(), "question rejection plus Enter still requires explicit confirmation")
+                        check(not writes_since(start) and "Ctrl+S confirm rejection" in frame(), "question rejection plus Enter still requires explicit confirmation")
                     capture(f"{shortcut}-enter-not-confirmed")
                     key("Escape")
                     if shortcut == "o":
