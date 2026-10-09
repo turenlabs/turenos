@@ -1283,6 +1283,15 @@
       ]
     },
     {
+      "name": "@modelcontextprotocol/sdk",
+      "version": "1.31.0",
+      "license": "MIT",
+      "source": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "@msgpackr-extract/msgpackr-extract-linux-x64",
       "version": "3.0.4",
       "license": "MIT",
@@ -2815,9 +2824,9 @@
       "license": "MIT",
       "source": "https://github.com/turenlabs/turenos",
       "licenseFiles": [
-        "LICENSE",
         "LICENSE.dependencies.txt",
-        "NOTICE"
+        "LICENSE.txt",
+        "NOTICE.txt"
       ]
     },
     {

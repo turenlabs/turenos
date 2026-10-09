@@ -584,6 +584,42 @@ describe("applyDirectoryEvent", () => {
     expect(store.question[sessionID]?.map((x) => x.id)).toEqual(["q_1", "q_3"])
   })
 
+  test("tracks Session Core permission requests alongside legacy ones", () => {
+    const sessionID = "ses_1"
+    const [store, setStore] = createStore(
+      baseState({ permission: { [sessionID]: [permissionRequest("per_1", sessionID)] } }),
+    )
+    const apply = (event: { type: string; properties: unknown }) =>
+      applyDirectoryEvent({ event, store, setStore, push() {}, directory: "/tmp", loadLsp() {} })
+
+    apply({
+      type: "permission.v2.asked",
+      properties: {
+        id: "per_2",
+        sessionID,
+        action: "external_directory",
+        resources: ["/private/etc/*"],
+        save: ["/private/etc/*"],
+        source: { type: "tool", messageID: "msg_1", callID: "call_1" },
+      },
+    })
+    expect(store.permission[sessionID]?.map((x) => x.id)).toEqual(["per_1", "per_2"])
+    expect(store.permission[sessionID]?.[1]).toEqual({
+      id: "per_2",
+      sessionID,
+      permission: "external_directory",
+      patterns: ["/private/etc/*"],
+      metadata: {},
+      always: ["/private/etc/*"],
+      tool: { messageID: "msg_1", callID: "call_1" },
+      runtime: "v2",
+    })
+    expect(store.permission[sessionID]?.[0]?.runtime).toBeUndefined()
+
+    apply({ type: "permission.v2.replied", properties: { sessionID, requestID: "per_2", reply: "once" } })
+    expect(store.permission[sessionID]?.map((x) => x.id)).toEqual(["per_1"])
+  })
+
   test("updates vcs branch in store and cache", () => {
     const [store, setStore] = createStore(baseState({ vcs: { branch: "main", default_branch: "main" } }))
     const [cacheStore, setCacheStore] = createStore({

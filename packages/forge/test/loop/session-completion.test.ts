@@ -1,5 +1,6 @@
-import { expect } from "bun:test"
-import { Deferred, Effect, Layer, LayerMap, Stream } from "effect"
+import { expect, test } from "bun:test"
+import { Deferred, Effect, Layer, LayerMap, Schema, Stream } from "effect"
+import { ForgeEvent } from "@turenlabs/protocol/groups/event"
 import { Loop } from "@turenlabs/core/loop"
 import { TeamWorkspace } from "@turenlabs/core/team/workspace"
 import { Database } from "@turenlabs/core/database/database"
@@ -16,77 +17,49 @@ import { awaitWithTimeout, testEffect } from "../lib/effect"
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Loop.node, TeamWorkspace.node])))
 const unexpected = () => Effect.die("Unexpected probe service call")
 
+test("execution settlement encodes on the public SSE event surface", () => {
+  const encoded = Schema.encodeSync(ForgeEvent)({
+    id: EventV2.ID.create(),
+    type: SessionEvent.ExecutionSettled.type,
+    data: { sessionID: SessionV2.ID.make("ses_completed"), outcome: "success" },
+  })
+  expect(encoded.type).toBe(SessionEvent.ExecutionSettled.type)
+})
+
 for (const scenario of [
   {
-    name: "missing source fails closed on success",
-    missing: true,
-    other: true,
-    failure: false,
-    agent: undefined,
-    sourceAgent: "build",
+    name: "intermediate tool-call turn is not completion",
+    type: SessionEvent.Step.Ended.type,
+    outcome: "success",
+    finish: "tool-calls",
     expected: 0,
   },
   {
-    name: "missing source fails closed on failure",
-    missing: true,
-    other: true,
-    failure: true,
-    agent: undefined,
-    sourceAgent: "build",
+    name: "intermediate stop turn is not completion",
+    type: SessionEvent.Step.Ended.type,
+    outcome: "success",
+    finish: "stop",
     expected: 0,
   },
   {
-    name: "matching directory dispatches",
-    missing: false,
-    other: false,
-    failure: false,
-    agent: undefined,
-    sourceAgent: "build",
+    name: "intermediate failure is not completion",
+    type: SessionEvent.Step.Failed.type,
+    outcome: "failure",
+    finish: "error",
+    expected: 0,
+  },
+  {
+    name: "settled success dispatches",
+    type: SessionEvent.ExecutionSettled.type,
+    outcome: "success",
+    finish: "stop",
     expected: 1,
   },
   {
-    name: "other directory is ignored",
-    missing: false,
-    other: true,
-    failure: false,
-    agent: undefined,
-    sourceAgent: "build",
-    expected: 0,
-  },
-  {
-    name: "matching agent dispatches failure",
-    missing: false,
-    other: false,
-    failure: true,
-    agent: "build",
-    sourceAgent: "build",
-    expected: 1,
-  },
-  {
-    name: "different agent is ignored",
-    missing: false,
-    other: false,
-    failure: false,
-    agent: "plan",
-    sourceAgent: "build",
-    expected: 0,
-  },
-  {
-    name: "unknown agent cannot satisfy filter",
-    missing: false,
-    other: false,
-    failure: false,
-    agent: "build",
-    sourceAgent: undefined,
-    expected: 0,
-  },
-  {
-    name: "unfiltered loop accepts known session without agent",
-    missing: false,
-    other: false,
-    failure: false,
-    agent: undefined,
-    sourceAgent: undefined,
+    name: "settled failure dispatches",
+    type: SessionEvent.ExecutionSettled.type,
+    outcome: "failure",
+    finish: "error",
     expected: 1,
   },
 ]) {
@@ -98,12 +71,12 @@ for (const scenario of [
       const info = yield* loops.create({
         name: "session-end probe",
         prompt: "Only when session ends",
-        location: { directory: scenario.other ? "/work/probe-other" : directory },
-        eventTrigger: { type: "session-end", agent: scenario.agent },
+        location: { directory: directory },
+        eventTrigger: { type: "session-end" },
       })
       const processed = yield* Deferred.make<void>()
       const sessionID = SessionV2.ID.make("ses_probe_source")
-      const event = { data: { sessionID, outcome: scenario.failure ? "failure" : "success" } }
+      const event = { data: { sessionID, finish: scenario.finish, outcome: scenario.outcome } }
       const dependencies = Layer.mergeAll(
         Layer.succeed(Loop.Service, loops),
         Layer.succeed(TeamWorkspace.Service, team),
@@ -111,10 +84,9 @@ for (const scenario of [
           goal: { get: unexpected, set: unexpected, edit: unexpected, status: unexpected, clear: unexpected },
           revert: { stage: unexpected, clear: unexpected, commit: unexpected },
           get: (id) =>
-            Effect.gen(function* () {
-              if (scenario.missing || id !== sessionID) return yield* new SessionV2.NotFoundError({ sessionID: id })
-              return { id: sessionID, location: { directory }, agent: scenario.sourceAgent } as SessionV2.Info
-            }),
+            id !== sessionID
+              ? Effect.fail(new SessionV2.NotFoundError({ sessionID: id }))
+              : Effect.succeed({ id: sessionID, location: { directory }, agent: "build" } as SessionV2.Info),
           create: () => Effect.never,
           interrupt: () => Effect.void,
         }),
@@ -126,9 +98,11 @@ for (const scenario of [
         ),
         Layer.mock(EventV2.Service, {
           subscribe: ((definition: { type: string }) =>
-            definition.type === SessionEvent.ExecutionSettled.type
+            definition.type === SessionEvent.ExecutionSettled.type ||
+            definition.type === SessionEvent.Step.Ended.type ||
+            definition.type === SessionEvent.Step.Failed.type
               ? Stream.concat(
-                  Stream.make(event),
+                  definition.type === scenario.type ? Stream.make(event) : Stream.empty,
                   Stream.fromEffect(Deferred.succeed(processed, undefined)).pipe(Stream.drain),
                 ).pipe(Stream.concat(Stream.never))
               : Stream.never) as EventV2.Interface["subscribe"],
@@ -146,6 +120,7 @@ for (const scenario of [
       yield* awaitWithTimeout(Deferred.await(processed), "event not processed")
       const runs = yield* loops.listRuns(info.id)
       expect(runs).toHaveLength(scenario.expected)
+      if (scenario.expected) expect(runs[0]?.triggerPayload?.outcome).toBe(scenario.outcome)
     }),
   )
 }

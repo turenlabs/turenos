@@ -124,7 +124,9 @@ register("connects the pinned falcon-mcp package to the mock Falcon API", () =>
       client!.callTool({ name: "falcon_search_hosts", arguments: { filter: "hostname:'mock*'" } }, CallToolResultSchema),
     )
     expect(result.isError).not.toBe(true)
-    const text = result.content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n")
+    const text = CallToolResultSchema.parse(result).content
+      .flatMap((item) => (item.type === "text" ? [item.text] : []))
+      .join("\n")
     expect(text).toContain("mock-workstation-01")
     expect(mock.requests.some((entry) => entry.includes("/devices/"))).toBe(true)
   }),

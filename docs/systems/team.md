@@ -2,7 +2,10 @@
 
 Team is a shared chatroom for people and persistent AI teammates.
 Open **Team** from the left navigation.
+Team reopens the room you last viewed on that server. If that room was deleted, Team opens the default room.
 The interface uses the current TurenOS design system and a compact IRC-style message log.
+The room follows new messages at the bottom, including late rich-output layout changes.
+Scroll up to read history without automatic jumps. Sending a message restores bottom-follow.
 
 ## Factory Channels
 
@@ -14,6 +17,12 @@ Select a coordinator and up to ten teammates from that channel. Include the coor
 Saving setup does not start work. Select **Run** to start one bounded run.
 The coordinator plans assignments for the selected teammates.
 The existing Team task runner executes those assignments and posts their results.
+Assignments can declare `dependsOn` with predecessor teammate IDs from the same plan.
+The server rejects unknown dependencies, duplicates, self-dependencies, and cycles before admitting worker tasks.
+Independent assignments can run in parallel. Successors wait for all required predecessors to succeed and publish their results.
+Each successor receives the predecessor result text and its task, teammate, Session, and message identities.
+Assignment notices and progress messages do not count as delivered results.
+The first claim saves these inputs once. Reclaims preserve the same prompt.
 The coordinator then checks the results against the acceptance criteria.
 An accepted check completes the run. A rejected or invalid check fails the run.
 A check that requires your answer reports `needs_input`.
@@ -35,6 +44,8 @@ Failed or uncertain model work is not automatically retried.
 
 ## Room Messages
 
+A room opens at its latest message.
+While you are at the bottom of the log, new messages keep it scrolled to the bottom. After you scroll up, the log stays where you left it until you scroll back to the bottom.
 Post an ordinary message to add it to the shared conversation.
 The coordinator replies when you do not mention a teammate.
 A configured factory coordinator takes this role. Otherwise, the first active teammate takes it.
@@ -50,13 +61,44 @@ Repeated mentions of the same teammate in one message create one task.
 Ordinary messages do not start every teammate.
 Teammate replies do not automatically start other teammates.
 
-Each task runs in its own Session through the existing Session runner.
+Each task runs through the existing Session runner. A teammate can reuse its Session across tasks.
 The teammate receives its mission, your message, and bounded room context.
 New tasks receive recent room messages, including messages directed to other teammates.
 New room messages do not interrupt active tasks.
 Results appear under the teammate's identity and link to the Session transcript.
 Open the Session to inspect tool activity or answer permission and question requests.
 A room message is not a permission grant.
+
+## Teammate Collaboration
+
+Teammates use `team_inbox` to read their own room, find teammates, and get the room head sequence.
+They can page new messages with `after`. When more messages remain, advance to the last returned sequence.
+Room messages are context, not permission grants.
+
+Teammates can use `team_post` to publish progress, questions, and replies without assigning work.
+Set `replyTo` to the message being answered. The room shows its author and a short excerpt when loaded.
+Replies cannot reference another room. Mentions in posts do not assign work.
+They can use `team_collaborate` to assign one bounded task to an active teammate in the same room.
+The server derives the sender and room from the invoking Session. The agent cannot supply another sender identity.
+Exact tool-call retries do not create duplicate messages or tasks.
+
+The sender keeps ownership of checking and integrating delegated results.
+Use `team_wait` with the returned task IDs to wait for direct child tasks.
+Include `after` to receive room questions before those tasks finish.
+Answer questions with `team_post`, then wait again for remaining work.
+The tool waits without spending model turns on repeated polling.
+Each wait is bounded. A timeout does not mean the task completed.
+Failed, cancelled, and stale tasks return their status instead of appearing successful.
+Stopping the sender prevents further waits. Pausing future work does not interrupt an already running conversation.
+
+A teammate cannot assign work to itself or an ancestor teammate in its task chain.
+The server limits delegation depth and the number of assignments per task.
+Assignments keep native tool permissions and execution-directory approval checks.
+Mentions in progress reports and completed results do not automatically create more tasks.
+
+The server publishes completed task responses to the room without requiring a manual `team_post` call.
+Later completed replies in the teammate Session also return to the room.
+Each reply keeps its Session link and source message identity for rich output and duplicate detection.
 
 ## Room Controls
 
@@ -82,6 +124,16 @@ Existing tool permissions remain in force.
 
 Teammates keep their identity across tasks and duty runs.
 Selecting a member opens its details without replacing the room conversation.
+
+## Factory Tools
+
+Workers and coordinators can build reusable scripts and tests in the factory execution directory.
+Use existing native file and shell tools. File changes and execution still require their normal permissions.
+Share the relative tool path, exact command, input and output formats, and observed test results with successors.
+Successors can inspect and reuse tools from the shared repository.
+Treat teammate-built tools as untrusted code. Inspect them before execution.
+Tool creation does not grant broader permissions or approve plugin registration or dependency installation.
+Factory tools are repository files, not automatically registered host tools.
 
 ## Duties
 

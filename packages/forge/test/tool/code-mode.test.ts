@@ -568,7 +568,7 @@ describe("code mode execute", () => {
   test("omits unsupported MCP attachment types before they enter code mode", async () => {
     const tool = await build({
       media_audio: mcpTool("audio", () => ({
-        content: [{ type: "audio", data: "AUDIODATA", mimeType: "audio/wav" }],
+        content: [{ type: "audio", data: "QVVESU9EQVRB", mimeType: "audio/wav" }],
       })),
     })
     const out = await Effect.runPromise(tool.execute({ code: "return await tools.media.audio({})" }, ctx))

@@ -512,8 +512,16 @@ const layer = Layer.effect(
                     : schedule.scheduleType === "interval"
                       ? Math.max(current.starts_at, now + schedule.seconds * 1_000)
                       : computeCronNext(schedule.expression, schedule.timezone, Math.max(now, current.starts_at - 1))
-              if (nextForSchedule instanceof InvalidInputError)
-                return { type: "invalid", message: nextForSchedule.message } as const
+              const next =
+                current.status === "active" &&
+                schedule.kind === "none" &&
+                input.timezone !== undefined &&
+                input.timezone !== current.timezone &&
+                current.schedule_type === "cron" &&
+                current.cron_expression
+                  ? computeCronNext(current.cron_expression, input.timezone, Math.max(now, current.starts_at - 1))
+                  : nextForSchedule
+              if (next instanceof InvalidInputError) return { type: "invalid", message: next.message } as const
               const nextSkill = input.resetSkill ? undefined : (input.skill ?? current.skill ?? undefined)
               if (!(input.prompt ?? current.prompt).trim() && !nextSkill && !(input.workflow ?? current.workflow))
                 return { type: "task" } as const
@@ -559,7 +567,7 @@ const layer = Layer.effect(
                   skill: input.resetSkill ? null : input.skill,
                   workflow: input.workflow,
                   expires_at: input.expiresAt,
-                  next_run_at: current.status === "active" && schedule.kind !== "none" ? nextForSchedule : undefined,
+                  next_run_at: current.status === "active" ? next : undefined,
                   time_updated: now,
                 })
                 .where(eq(LoopTable.id, input.id))

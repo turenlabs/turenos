@@ -70,6 +70,7 @@ describe("bootstrapDirectory", () => {
         permission: { list: async () => ({ data: [] }) },
         v2: {
           question: { request: { list: async () => ({ data: { data: [] } }) } },
+          permission: { request: { list: async () => ({ data: { data: [] } }) } },
         },
         provider: { list: async () => ({ data: { all: [], connected: [], default: {} } }) },
       } as unknown as ForgeClient,
@@ -115,6 +116,7 @@ describe("bootstrapDirectory", () => {
         permission: { list: async () => ({ data: [] }) },
         v2: {
           question: { request: { list: async () => ({ data: { data: [] } }) } },
+          permission: { request: { list: async () => ({ data: { data: [] } }) } },
         },
         provider: { list: async () => ({ data: { all: [], connected: [], default: {} } }) },
       } as unknown as ForgeClient,
@@ -153,6 +155,7 @@ describe("bootstrapDirectory", () => {
       permission: { list: async () => ({ data: [] }) },
       v2: {
         question: { request: { list: async () => ({ data: { data: [] } }) } },
+        permission: { request: { list: async () => ({ data: { data: [] } }) } },
       },
       provider: { list: async () => ({ data: { all: [], connected: [], default: {} } }) },
     } as unknown as ForgeClient
@@ -230,6 +233,7 @@ describe("bootstrapDirectory", () => {
       permission: { list: async () => ({ data: [] }) },
       v2: {
         question: { request: { list: async () => ({ data: { data: [] } }) } },
+        permission: { request: { list: async () => ({ data: { data: [] } }) } },
       },
       provider: { list: async () => ({ data: { all: [], connected: [], default: {} } }) },
     } as unknown as ForgeClient
@@ -284,10 +288,28 @@ describe("bootstrapDirectory", () => {
       command: { list: async () => ({ data: [] }) },
       permission: {
         list: async () => ({
-          data: [{ id: "per_1", sessionID: "ses_permission", action: "read", resources: ["file"] }],
+          data: [
+            {
+              id: "per_1",
+              sessionID: "ses_permission",
+              permission: "bash",
+              patterns: ["ls"],
+              metadata: {},
+              always: ["ls"],
+            },
+          ],
         }),
       },
       v2: {
+        permission: {
+          request: {
+            list: async () => ({
+              data: {
+                data: [{ id: "per_2", sessionID: "ses_permission", action: "read", resources: [".env"] }],
+              },
+            }),
+          },
+        },
         question: {
           request: {
             list: async () => ({
@@ -326,7 +348,10 @@ describe("bootstrapDirectory", () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
 
-    expect(session.data.permission.ses_permission).toHaveLength(1)
+    expect(session.data.permission.ses_permission?.map((perm) => [perm.id, perm.permission, perm.runtime])).toEqual([
+      ["per_1", "bash", undefined],
+      ["per_2", "read", "v2"],
+    ])
     expect(session.data.question.ses_question).toHaveLength(1)
     expect(sessionGets).toBe(0)
   })
@@ -351,6 +376,7 @@ describe("bootstrapDirectory", () => {
       permission: { list: async () => ({ data: [] }) },
       v2: {
         question: { request: { list: async () => ({ data: { data: [] } }) } },
+        permission: { request: { list: async () => ({ data: { data: [] } }) } },
       },
       provider: { list: async () => ({ data: { all: [], connected: [], default: {} } }) },
     } as unknown as ForgeClient
@@ -426,6 +452,7 @@ describe("bootstrapDirectory", () => {
       permission: { list: async () => ({ data: [] }) },
       v2: {
         question: { request: { list: async () => ({ data: { data: [] } }) } },
+        permission: { request: { list: async () => ({ data: { data: [] } }) } },
       },
       provider: { list: async () => ({ data: { all: [], connected: [], default: {} } }) },
     } as unknown as ForgeClient
