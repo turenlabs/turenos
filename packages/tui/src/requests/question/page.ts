@@ -3,7 +3,7 @@ import { display } from "../../messages"
 import { color } from "../../theme"
 import { compactRows } from "../../dialogs/size"
 import { matchesKey, printableKey } from "../../keys"
-import { advance, answers, editCustom, hints, text, type QuestionFlow, type Questions } from "./flow"
+import { advance, editCustom, hints, text, type QuestionFlow, type Questions } from "./flow"
 
 /** Longest description that still fits under its option on the narrowest terminal. */
 const underLimit = 44
@@ -144,13 +144,10 @@ function selectOption(
 
 /** The key hints, which say where Enter goes so choosing and moving on is never a surprise. */
 function footer(flow: QuestionFlow, question: Questions[number]) {
-  const last = answers(flow).every((answer, index) => index === flow.page || answer.length > 0)
   hints(
     flow,
     [
-      ...(question.multiple
-        ? ["↑↓ move", "Space or 1-9 toggle", "Enter next"]
-        : ["↑↓ or 1-9 move", `Enter choose, then ${last ? "review answers" : "next question"}`]),
+      ...(question.multiple ? ["↑↓ move", "Space or 1-9 toggle", "Enter next"] : ["↑↓ or 1-9 move", "Enter select"]),
       ...(flow.ctx.renderer.height < compactRows ? [] : ["PgUp/PgDn scroll", "Ctrl+K sessions"]),
     ],
     ["←/→ question", "Ctrl+R reject request", "Esc close"],

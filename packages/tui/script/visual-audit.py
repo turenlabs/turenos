@@ -1475,7 +1475,7 @@ def main():
                 check("Queue" in frame(), "Ctrl+T makes reply delivery mode visible")
                 start = len(result["requests"])
                 key("Enter")
-                wait("Reply queued. The agent reads it when it is idle.")
+                wait("Reply queued.")
                 capture("reply-sent")
                 writes = [r for r in result["requests"][start:] if r["method"] != "GET"]
                 check(len(writes) == 1 and writes[0]["path"] == "/api/session/ses_review/prompt" and writes[0]["body"]["prompt"]["text"] == draft and writes[0]["body"].get("delivery") == "queue", "Enter sends exact edited reply once to original fixture recipient", writes)

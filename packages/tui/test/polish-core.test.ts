@@ -83,13 +83,13 @@ test("queued messages show their first line under the working line", async () =>
 
 test("the first-launch welcome leads with how to start and names the session list where the sidebar is hidden", () => {
   const narrow = welcomeBody("sessions", { connected: true, connectionError: "", columns: 80 })
-  expect(narrow).toContain("Press n or Enter to start a session.")
-  expect(narrow).toContain("? help · Ctrl+P commands · m model · Ctrl+K sessions")
-  expect(narrow).toContain("b shows the session list")
+  expect(narrow).toContain("n or Enter start a session")
+  expect(narrow).toContain("1-4 tabs · 4 Team · ? help · Ctrl+P commands")
+  expect(narrow).toContain("Ctrl+K sessions · b session list")
   const wide = welcomeBody("sessions", { connected: true, connectionError: "", columns: 160 })
-  expect(wide).not.toContain("b shows the session list")
+  expect(wide).not.toContain("b session list")
   expect(welcomeBody("sessions", { connected: true, connectionError: "", columns: 160, sidebarHidden: true })).toContain(
-    "b shows the session list",
+    "b session list",
   )
 })
 

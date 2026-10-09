@@ -15,7 +15,7 @@ export type PostDraft = { text: string; id: string; submitted?: string; cursor?:
 
 const MAX_TEXT = 20_000
 const HINT = "Enter post · Esc shortcuts"
-const LIST_HINT = "↑↓ choose · Tab complete · Enter pick · Esc close list"
+const LIST_HINT = "↑↓ choose · Tab complete · Esc close"
 
 export type Poster = {
   ctx: TeamContext
@@ -107,8 +107,10 @@ function wire(poster: Poster, dialog: ModalState, editor: TextareaRenderable, ro
 /** The lines under the editor: who the message tasks, then the keys. A failure message stays until the text changes. */
 function paintHint(ctx: TeamContext, dialog: ModalState, editor: TextareaRenderable, edited: boolean) {
   if (!edited && dialog.error.plainText.includes("Ctrl+S retry")) return
-  const lines = mentionLines(viewOf(ctx.state), editor.plainText)
-  const hint = (dialog.suggestionRows ?? 0) > 0 ? LIST_HINT : HINT
+  const listed = (dialog.suggestionRows ?? 0) > 0
+  // While the list offers @ann, "@a is not in this room" is about a handle still being typed.
+  const lines = mentionLines(viewOf(ctx.state), editor.plainText).filter((line) => !(listed && line.warn))
+  const hint = listed ? LIST_HINT : HINT
   const wanted = lines.length + 1
   dialog.error.content = new StyledText([
     ...lines.map((line) => fg(line.warn ? color.warning : color.muted)(`${line.text}\n`)),

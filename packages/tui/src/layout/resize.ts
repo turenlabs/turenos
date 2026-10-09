@@ -1,7 +1,7 @@
 import type { CliRenderer, Renderable } from "@opentui/core"
 import { color, layout } from "../theme"
 import type { DashboardState } from "../state"
-import { canType, footerShortcuts, statusline } from "../chrome"
+import { canType, footerShortcuts, requestPanel, statusline } from "../chrome"
 import { folderContains } from "../working-folders"
 import { sizeFloating } from "../dialogs/size"
 import type { LayoutParts } from "./parts"
@@ -23,16 +23,20 @@ export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts
   resizeSidebar(renderer, state, parts, narrow)
   resizeMain(state, parts, narrow)
   resizeDockedModal(renderer, state)
-  // The reply editor stays open while typing, so the footer stays with it.
-  parts.footerRow.visible = !state.modal || !!state.modal.composer
+  // The reply editor and a docked request panel sit beside the footer, which keeps naming the mode.
+  parts.footerRow.visible = !state.modal || !!state.modal.composer || requestPanel(state)
   // Narrow footers share the row: the shortcuts take what the status text on the left leaves.
-  const left = statusline(state, state.snapshot, renderer.width).length
+  const status = statusline(state, state.snapshot, renderer.width)
+  // A dialog opening or closing changes the mode the footer names (Typing, Panel), so the layout pass repaints it.
+  parts.footer.content = status
+  const left = status.length
   parts.shortcuts.content = footerShortcuts(
     renderer.width,
     parts.sidebar.visible,
     !!state.modal?.composer,
     left,
     canType(state),
+    requestPanel(state),
   )
 }
 

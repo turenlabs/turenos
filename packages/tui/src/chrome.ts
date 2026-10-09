@@ -96,18 +96,28 @@ export function statusline(state: DashboardState, snapshot: Snapshot | undefined
   const typing = !!state.modal?.composer
   const focus = typing
     ? "Typing"
-    : hidden
-      ? ""
-      : `Focus: ${state.detailFocused ? (state.tab === "sessions" ? "transcript" : "detail") : "sidebar"}`
+    : requestPanel(state)
+      ? "Panel"
+      : hidden
+        ? ""
+        : `Focus: ${state.detailFocused ? (state.tab === "sessions" ? "transcript" : "detail") : "sidebar"}`
   if (narrow) {
     const view = `${["sessions", "terminals", "automations", "team"].indexOf(state.tab) + 1}/4`
-    return [hidden ? `${view} ${names[state.tab]}` : view, typing ? focus : hidden ? live : focus].filter(Boolean).join(" · ")
+    const mode = typing || requestPanel(state) ? focus : hidden ? live : focus
+    // Nothing else on a phone-width screen names the other tabs.
+    const tabs = hidden && !typing && !requestPanel(state) ? "1-4 tabs" : ""
+    return [hidden ? `${view} ${names[state.tab]}` : view, tabs, mode].filter(Boolean).join(" · ")
   }
   const base = [state.tab === "sessions" ? "" : names[state.tab], live, focus].filter(Boolean).join(" · ")
   const extra = agentModel(state, snapshot)
   // The shortcuts keep their row; the agent and model go first when the two would not fit together.
-  const room = width - 4 - footerShortcuts(width, !hidden, typing, 26, canType(state)).length - 2
+  const room = width - 4 - footerShortcuts(width, !hidden, typing, 26, canType(state), requestPanel(state)).length - 2
   return extra && base.length + 3 + extra.length <= room ? [base, extra].filter(Boolean).join(" · ") : base
+}
+
+/** A permission or question panel docked under the transcript: it owns the keys, and the footer stays beside it. */
+export function requestPanel(state: DashboardState) {
+  return !!state.modal?.docked && !state.modal.editor
 }
 
 /** Whether Enter returns to typing: a session is in view, which the reply editor opens on. */
@@ -146,29 +156,32 @@ export function footerShortcuts(
   typing = false,
   left = 26,
   canType = false,
+  panel = false,
 ) {
   const sidebar = sidebarVisible ? "Tab pane" : "b sidebar"
   const quit = "q quit"
   // The editor row names Esc and the send key, so while typing the footer adds only the palette.
-  const sets = typing
-    ? [["Ctrl+P commands"], ["Ctrl+P"]]
-    : canType
-      ? [
-          // Narrow footers keep to the next likely action; the palette and the rest are in help.
-          ...(width < layout.narrowBreakpoint ? [] : [["Enter type", "Ctrl+P commands", "? help"]]),
-          ["Enter type", "? help"],
-          ["? help"],
-        ]
-      : [
-          ["Ctrl+P commands", sidebar, "? help", quit],
-          ["Ctrl+P commands", sidebar, "? help"],
-          ["Ctrl+P commands", "? help", quit],
-          ["Ctrl+P commands", sidebar],
-          [sidebar, "? help", quit],
-          ["Ctrl+P commands", "? help"],
-          [sidebar, "? help"],
-          ["? help"],
-        ]
+  const sets = panel
+    ? [["Esc, then ? help"], ["? help"]]
+    : typing
+      ? [["Ctrl+P commands"], ["Ctrl+P"]]
+      : canType
+        ? [
+            // Narrow footers keep to the next likely action; the palette and the rest are in help.
+            ...(width < layout.narrowBreakpoint ? [] : [["Enter type", "Ctrl+P commands", "? help"]]),
+            ["Enter type", "? help"],
+            ["? help"],
+          ]
+        : [
+            ["Ctrl+P commands", sidebar, "? help", quit],
+            ["Ctrl+P commands", sidebar, "? help"],
+            ["Ctrl+P commands", "? help", quit],
+            ["Ctrl+P commands", sidebar],
+            [sidebar, "? help", quit],
+            ["Ctrl+P commands", "? help"],
+            [sidebar, "? help"],
+            ["? help"],
+          ]
   const budget = width - 4 - (width < layout.narrowBreakpoint ? left + 2 : 0)
   return (sets.find((set) => set.join(" · ").length <= budget) ?? sets.at(-1)!).join(" · ")
 }
@@ -210,17 +223,16 @@ export function welcomeBody(
         ? "Disconnected"
         : "Connecting…"
     : ""
+  const hidden = connection?.sidebarHidden ?? (connection?.columns ?? 0) < layout.narrowBreakpoint
   return [
     "[ Turen ]",
     `${status ? `${status} · ` : ""}No session selected.`,
     "",
-    "Press n or Enter to start a session.",
+    "n or Enter start a session",
     "In a message: / commands · @ files · ! shell",
-    "? help · Ctrl+P commands · m model · Ctrl+K sessions",
-    ...((connection?.sidebarHidden ?? (connection?.columns ?? 0) < layout.narrowBreakpoint)
-      ? ["b shows the session list"]
-      : []),
-    `, settings · I intel${connection?.serverSwitching ? " · s servers" : ""}`,
+    `Ctrl+K sessions${hidden ? " · b session list" : ""}`,
+    "1-4 tabs · 4 Team · ? help · Ctrl+P commands",
+    `m model · , settings · I intel${connection?.serverSwitching ? " · s servers" : ""}`,
   ].join("\n")
 }
 

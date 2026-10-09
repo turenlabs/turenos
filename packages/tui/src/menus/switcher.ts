@@ -114,6 +114,7 @@ function choose(s: Switcher, index: number) {
 }
 
 function hint(s: Switcher) {
+  const find = hiddenChildren(s) ? "Type to include subagents" : "Type to filter"
   if (s.loading) return "Searching server...\nEsc close"
   if (s.failure) return `${s.failure}\nF3 Retry · Esc close`
   if (s.matches.length)
@@ -123,7 +124,7 @@ function hint(s: Switcher) {
         `${s.selected + 1}/${s.matches.length}${hiddenChildren(s) ? " main sessions" : ""}`,
         "↑/↓ choose",
         "Enter open",
-        ...(s.scope === "recent" ? ["Type to find children"] : ["F3 Older", "Shift+F3 Newer"]),
+        ...(s.scope === "recent" ? [find] : ["F3 Older", "Shift+F3 Newer"]),
         `F2 ${nextScope[s.scope]}`,
         "Ctrl+O ID",
         "PgUp/Dn page",
@@ -134,7 +135,7 @@ function hint(s: Switcher) {
   if (s.scope === "recent")
     return s.query.value.trim()
       ? `${empty(s)}\nF2 Search server · Ctrl+O Open older session by ID`
-      : `${empty(s)}\nType to find children · F2 All · Ctrl+O ID`
+      : `${empty(s)}\n${fitHints(innerWidth(s), [], [find, "F2 All", "Ctrl+O ID", "Esc close"])}`
   return `${empty(s)}\nF2 ${nextScope[s.scope]} · Ctrl+O ID · Esc close`
 }
 

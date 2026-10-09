@@ -80,7 +80,7 @@ function entry(view: TeamView, message: Message, linked: ReadonlySet<string>) {
     message.sessionID &&
     message.sourceMessageIDs?.length &&
     !linked.has(message.sessionID)
-      ? [`  ↳ full output in session ${label(message.sessionID, 80)} (t, then Enter)`]
+      ? [`  ↳ full output in session ${shortID(message.sessionID)} (t, then Enter)`]
       : []
   return [...lines, ...output, ...tasks.map((task) => taskLine(view, task))]
 }
@@ -93,7 +93,7 @@ function author(view: TeamView, message: Message) {
 
 function taskLine(view: TeamView, task: Task) {
   const failure = task.error && task.status === "failed" ? ` · ${label(task.error, 100)}` : ""
-  return `  → ${handleOf(view.teammates, task.teammateID)} ${statusWord(task.status)}${failure} · session ${label(task.sessionID, 80)}`
+  return `  → ${handleOf(view.teammates, task.teammateID)} ${statusWord(task.status)}${failure} · session ${shortID(task.sessionID)}`
 }
 
 /** The line under the room title: topic, teammate count and the factory stage while a run is active. */

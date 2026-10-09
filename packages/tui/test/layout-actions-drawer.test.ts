@@ -20,6 +20,6 @@ test.each([60, 80])("the action row keeps its entries while the narrow drawer is
   view.resize(width, 25)
   await view.renderOnce()
   const frame = await screen("x Stop")
-  expect(frame).toContain("h History")
-  expect(frame).toContain("i Details")
+  expect(frame).toContain("d Changes")
+  expect(frame).toContain("e Files")
 })

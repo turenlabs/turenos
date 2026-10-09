@@ -166,7 +166,7 @@ test("Recent starts with mains, searches loaded children by metadata, and keeps 
   app.menus.switcher()
   const recent = await app.screen("Main conversation")
   expect(recent).not.toContain(child.title)
-  expect(recent).toContain("Type to find children")
+  expect(recent).toContain("Type to include subagents")
   expect(recent).toContain("1/1")
   for (const value of ["rendering", "/srv/child-project", "auditor", "ses_child"]) {
     app.query(value)
@@ -217,7 +217,7 @@ test("Recent with no loaded mains offers child discovery and preserves open by I
   app.state.snapshot!.sessions = [child]
   app.menus.switcher()
   const frame = await app.screen("No loaded main sessions")
-  expect(frame).toContain("Type to find children")
+  expect(frame).toContain("Type to include subagents")
   expect(frame).toContain("F2 All")
   expect(frame).toContain("Ctrl+O ID")
   app.view.mockInput.pressEnter()
