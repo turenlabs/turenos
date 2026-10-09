@@ -1,4 +1,5 @@
 import { pathKey } from "@turenlabs/client/path-key"
+import type { Connection } from "../server"
 import type { Target } from "../servers/types"
 
 /**
@@ -23,6 +24,15 @@ export function inFolder(folder: Folder, session: { projectID: string; location:
   return !!project && session.projectID === project.id && pathKey(project.directory) === pathKey(folder.directory)
 }
 
+/** The folder the process was started in; undefined when it was deleted after the shell entered it. */
+export function currentFolder() {
+  try {
+    return process.cwd()
+  } catch {
+    return undefined
+  }
+}
+
 /** The folder the client was started in, unless that is the home folder, which shows every folder. */
 export function startFolder(cwd: string | undefined, home: string) {
   if (!cwd || pathKey(cwd) === pathKey(home)) return
@@ -40,4 +50,26 @@ export function onThisComputer(target: Target) {
 /** The last segment of a folder, for the narrow places that name it. */
 export function folderName(directory: string) {
   return directory.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || directory
+}
+
+/**
+ * A folder's sessions, newest first: by exact folder, and by project for the project's worktrees, so sessions in
+ * busier folders cannot crowd them out of one recent page.
+ */
+export async function folderSessionList(
+  client: Connection["client"],
+  folder: Folder,
+  query: { limit: number; archived?: boolean },
+  request?: { signal: AbortSignal },
+) {
+  const input = { ...query, order: "desc" } as const
+  const pages = await Promise.all([
+    client.sessions.list({ ...input, directory: folder.directory }, request),
+    ...(folder.project ? [client.sessions.list({ ...input, project: folder.project.id }, request)] : []),
+  ])
+  const sessions = new Map(pages.flatMap((page) => page.data).map((session) => [session.id, session]))
+  return [...sessions.values()]
+    .filter((session) => inFolder(folder, session))
+    .sort((a, b) => b.time.created - a.time.created)
+    .slice(0, query.limit)
 }

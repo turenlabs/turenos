@@ -5,7 +5,7 @@ import { closedLine, settleTerminalInput } from "./terminal-exit"
 import { createServers } from "./servers"
 import { CliError } from "./tui-auth"
 import { mountApp } from "./dashboard/app"
-import { startFolder } from "./working-folders"
+import { currentFolder, startFolder } from "./working-folders"
 import { homedir } from "node:os"
 
 /**
@@ -58,15 +58,6 @@ export async function runTui(
   }
   // Reached only after a normal quit; a failure above throws and reports itself.
   process.stdout.write(closedLine(discarded))
-}
-
-/** The folder the client was started in; undefined when it was deleted after the shell entered it. */
-function currentFolder() {
-  try {
-    return process.cwd()
-  } catch {
-    return undefined
-  }
 }
 
 export { mountApp } from "./dashboard/app"

@@ -1,6 +1,8 @@
 export { createWorkingFolders } from "@turenlabs/client/working-folders"
 export {
+  currentFolder,
   folderContains,
+  folderSessionList,
   folderName,
   inFolder,
   onThisComputer,

@@ -4,7 +4,7 @@ import { runAgent } from "../src/agent"
 import { assistant, session, turen, type Route } from "./support"
 
 // Never created: no saved servers, and nothing of the operator's is read.
-const home = join(tmpdir(), "turen-agent-test-home")
+export const home = join(tmpdir(), "turen-agent-test-home")
 
 export function user(id: string, text: string) {
   return { id: `msg_${id}`, type: "user", time: { created: 1 }, text }
@@ -86,8 +86,14 @@ export function world(routes: Record<string, Route> = {}, password?: string) {
   return { ...server, state, session: session("main") }
 }
 
-/** Runs the agent CLI in-process against a server, with no terminal, capturing what it prints. */
-export async function agent(args: string[], options: { url?: string; env?: NodeJS.ProcessEnv; stdin?: string } = {}) {
+/**
+ * Runs the agent CLI in-process against a server, with no terminal, capturing what it prints. `cwd` is the folder it
+ * runs in; without it no folder applies, as for a command run in the home folder.
+ */
+export async function agent(
+  args: string[],
+  options: { url?: string; env?: NodeJS.ProcessEnv; stdin?: string; cwd?: string } = {},
+) {
   const stdout: string[] = []
   const stderr: string[] = []
   const code = await runAgent(args, {
@@ -97,6 +103,7 @@ export async function agent(args: string[], options: { url?: string; env?: NodeJ
       ...(options.url ? { TURENOS_SERVER_URL: options.url } : {}),
       ...options.env,
     },
+    cwd: options.cwd,
     stdout: (text) => stdout.push(text),
     stderr: (text) => stderr.push(text),
     stdin: { tty: options.stdin === undefined, read: async () => options.stdin ?? "" },

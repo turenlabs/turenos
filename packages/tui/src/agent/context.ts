@@ -11,6 +11,11 @@ export type Run = {
   positionals: string[]
   /** The target options the user passed, for the follow-up commands this run suggests. */
   flags: string
+  /**
+   * The folder listings and new sessions default to: `--dir`, else the folder the command runs in on a server on
+   * this computer, unless that is the home folder. `explicit` marks `--dir`, which must be readable.
+   */
+  folder?: { directory: string; explicit: boolean }
 }
 
 /** One line of server text with controls removed, safe to print into a terminal. */

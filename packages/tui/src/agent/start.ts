@@ -4,7 +4,7 @@ import { checkOutside, finish, messageText, retryCommand, writeFailure } from ".
 import { takes } from "./options"
 import { checkLaunch, refused } from "../server"
 import { idArgument } from "./state"
-import { validDirectory } from "./sessions"
+import { validDirectory } from "./folder"
 
 /** The launch's own field checks as usage errors: an invalid field is the caller's mistake, and nothing was sent. */
 function checkFields(input: Parameters<typeof checkLaunch>[0]) {
@@ -25,7 +25,7 @@ export async function startSession(run: Run, timeout: number) {
       values["session-id"] !== undefined ? idArgument(values["session-id"], "ses_", "--session-id") : undefined,
     messageID: values.id !== undefined ? idArgument(values.id, "msg_", "--id") : undefined,
   }
-  const directory = values.dir ?? (await run.connection.client.location.get({})).directory
+  const directory = run.folder?.directory ?? (await run.connection.client.location.get({})).directory
   validDirectory(directory)
   const input = { directory, agent: values.agent, model: values.model, variant: values.variant, prompt: text }
   checkFields(input)

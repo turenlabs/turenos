@@ -6,6 +6,7 @@ import {
   alive,
   createDirs,
   loadRecord,
+  packageDir,
   paths,
   readPassword,
   remove,
@@ -204,6 +205,23 @@ export function sandboxEnv(p: Paths) {
     TMPDIR: p.tmp,
     NO_PROXY: "127.0.0.1,localhost",
     no_proxy: "127.0.0.1,localhost",
+  }
+}
+
+/**
+ * What `exec` and the e2e agent commands run with: the sandbox's environment, its URL and password, and `turen-tui` on
+ * PATH for this checkout. They run in the sandbox project, as an agent runs in its own, so a new session starts there.
+ */
+export function agentEnv(p: Paths, url: string) {
+  const bin = join(p.dir, "bin")
+  mkdirSync(bin, { recursive: true, mode: 0o700 })
+  const cli = join(packageDir, "src/cli.ts").replaceAll("'", "'\\''")
+  writeFileSync(join(bin, "turen-tui"), `#!/bin/sh\nexec bun '${cli}' "$@"\n`, { mode: 0o700 })
+  return {
+    ...sandboxEnv(p),
+    PATH: `${bin}:${process.env.PATH ?? ""}`,
+    TURENOS_SERVER_URL: url,
+    FORGE_SERVER_PASSWORD: readPassword(p),
   }
 }
 

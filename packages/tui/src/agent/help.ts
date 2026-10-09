@@ -10,12 +10,15 @@ The password comes only from FORGE_SERVER_PASSWORD. Exit codes: 0 done, 1 failed
 3 needs input, 4 timeout, 5 the turn failed or was interrupted.`
 
 const commands: Record<AgentCommand, string> = {
-  sessions: `Usage: turen-tui sessions [--dir <path>] [--limit N] [--all]
+  sessions: `Usage: turen-tui sessions [--dir <path> | --everywhere] [--limit N] [--all]
 
-List recent sessions: id, state, updated time, directory, parent and title.
+List recent sessions: id, state, updated time, directory, parent and title. On a server on this
+computer they are the sessions of the folder you run it in, unless that is your home folder; a first
+line names the folder. A project's root folder includes the project's worktrees.
 State is running, needs-input (a pending permission or question), failed or interrupted (the
 latest turn ended in error or was stopped) or idle.
-  --dir <path>   Only sessions in this server directory
+  --dir <path>   Only sessions in this server folder instead
+  --everywhere   Sessions in every folder
   --limit N      How many to list (1-100, default 30)
   --all          Include archived sessions`,
   show: `Usage: turen-tui show <session> [--limit N] [--all] [--raw]
@@ -35,6 +38,8 @@ neither supports --queue. Delivery is steer unless --queue.
   --timeout S   Seconds to wait, default 600, 0 for no limit
   --id          Message ID. After "Outcome unknown", retry with the same ID: the server drops duplicates
   --allow-outside   Attach @file mentions that leave the session directory
+--new starts in --dir, else in the folder you run it in on a server on this computer (unless that is
+your home folder), else in the server's own directory.
 Text that starts with "-" goes after "--" (turen-tui send ses_x -- "- a list item") or on stdin.
 With --wait, input a subagent of the session is waiting for also ends the wait (exit 3).`,
   wait: `Usage: turen-tui wait <session> [--timeout S]
@@ -43,9 +48,12 @@ Block until the session is idle (prints its last reply) or needs input (prints t
 Input a subagent of the session is waiting for counts too. Exit 4 on timeout (default 600 s, 0 for no
 limit), 5 when the turn failed or was interrupted. A server that stops answering is polled again, more
 slowly, until the timeout.`,
-  pending: `Usage: turen-tui pending [<session>]
+  pending: `Usage: turen-tui pending [<session>] [--dir <path> | --everywhere]
 
-List pending permissions and questions for one session, or for every running session.`,
+List pending permissions and questions for one session, or for every running session in the folder
+you run it in, as sessions lists them.
+  --dir <path>   Running sessions in this server folder instead
+  --everywhere   Running sessions in every folder`,
   approve: `Usage: turen-tui approve <session> <permission-id> [--always]
 
 Allow a permission request once. --always also saves the rule the request offers.`,

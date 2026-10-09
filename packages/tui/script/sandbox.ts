@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process"
 import { parseArgs } from "node:util"
 import { join, resolve } from "node:path"
 import { alive, checkName, loadRecord, names, packageDir, paths, readPassword } from "./sandbox/run"
-import { request, sandboxEnv, start, stop } from "./sandbox/server"
+import { agentEnv, request, sandboxEnv, start, stop } from "./sandbox/server"
 import { menu } from "./sandbox/scenarios"
 import { attachCommand, close, exited, keys, open, resize, screen, settle, type, waitFor } from "./sandbox/terminal"
 
@@ -127,8 +127,8 @@ const commands: { [command: string]: () => Promise<unknown> | unknown } = {
     if (split < 0 || split === argv.length - 1) throw new Error("Usage: bun run sandbox exec <name> -- <command>...")
     const result = spawnSync(argv[split + 1]!, argv.slice(split + 2), {
       stdio: "inherit",
-      cwd: process.cwd(),
-      env: { ...sandboxEnv(p), TURENOS_SERVER_URL: record.url, FORGE_SERVER_PASSWORD: readPassword(p) },
+      cwd: p.project,
+      env: agentEnv(p, record.url),
     })
     process.exitCode = result.status ?? 1
   },

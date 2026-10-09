@@ -51,7 +51,9 @@ export function sandbox(file: string, size: Size = { cols: 120, rows: 36 }) {
     /** Runs the non-interactive CLI (`turen-tui <args>`) against the sandbox, as an agent would. */
     cli: async (args: string[], stdin?: string) => {
       const p = paths(name)
+      // From the sandbox project, as an agent runs in its own: listings and new sessions use that folder.
       const child = Bun.spawn(["bun", join(packageDir, "src/cli.ts"), ...args], {
+        cwd: p.project,
         env: { ...sandboxEnv(p), TURENOS_SERVER_URL: state.record!.url, FORGE_SERVER_PASSWORD: readPassword(p) },
         stdin: stdin === undefined ? "ignore" : new Blob([stdin]),
         stdout: "pipe",

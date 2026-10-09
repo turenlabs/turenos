@@ -1,6 +1,7 @@
 import { connect } from "../server"
 import { createServers, PasswordRequired, type Target } from "../servers"
 import { resolveTuiAuth } from "../tui-auth"
+import { onThisComputer } from "../working-folders"
 import { checkUsername, origin } from "./address"
 import { AgentError, usage } from "./errors"
 import type { Io } from "./io"
@@ -20,6 +21,8 @@ export async function openServer(values: Values, io: Io) {
   const connection = connect({ url: endpoint.url, username: endpoint.username, password: endpoint.password })
   return {
     connection,
+    /** Whether the server shares this computer's folders, so the folder the command runs in means the same there. */
+    here: endpoint.here,
     /** Why a 401 happened, when the caller had no password to blame. */
     unauthorized: endpoint.password ? undefined : endpoint.unauthorized,
     close: () => {
@@ -50,6 +53,7 @@ async function explicit(address: string, values: Values, io: Io) {
       : undefined
   if (published) return published
   return {
+    here: onThisComputer(cliTarget(url)),
     url: url.href,
     username: checkUsername(auth.username),
     password: auth.password || undefined,
@@ -61,19 +65,24 @@ async function explicit(address: string, values: Values, io: Io) {
 async function recorded(url: URL, values: Values, io: Io) {
   const servers = createServers({ env: io.env, username: values.username })
   if (!(await servers.trusts(url.origin))) return undefined
-  const target = { kind: "url", id: "cli", name: url.host, url: url.origin, saved: false } as const
+  const target = cliTarget(url)
   const endpoint = await servers.resolve(target).catch((error: unknown) => {
     throw error instanceof PasswordRequired
       ? new AgentError(`The server at ${url.origin} rejected its published credentials. Restart it, then try again.`)
       : error
   })
   return {
+    here: onThisComputer(target),
     url: endpoint.url,
     username: checkUsername(endpoint.username),
     password: endpoint.password,
     unauthorized: undefined,
     close: endpoint.close,
   }
+}
+
+function cliTarget(url: URL) {
+  return { kind: "url", id: "cli", name: url.host, url: url.origin, saved: false } as const
 }
 
 async function local(values: Values, io: Io) {
@@ -90,6 +99,7 @@ async function local(values: Values, io: Io) {
     throw error instanceof PasswordRequired ? new AgentError(passwordMessage(target, servers.configPath)) : error
   })
   return {
+    here: onThisComputer(target),
     url: endpoint.url,
     username: checkUsername(endpoint.username),
     password: endpoint.password,

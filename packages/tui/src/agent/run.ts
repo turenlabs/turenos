@@ -6,7 +6,7 @@ import { openServer } from "./endpoint"
 import { AgentError, usage } from "./errors"
 import { commandHelp } from "./help"
 import type { Io } from "./io"
-import { parseCommand } from "./options"
+import { parseCommand, type Values } from "./options"
 import { approve, reject } from "./permissions"
 import { pending } from "./pending"
 import { send } from "./send"
@@ -16,6 +16,8 @@ import { stop } from "./stop"
 import { team } from "./team"
 import { wait } from "./wait"
 import { agentOverview, isAgentCommand, unknownCommand } from "./words"
+import { startFolder } from "../working-folders"
+import { homedir } from "node:os"
 
 const commands = { sessions, show, send, wait, pending, approve, reject, answer, stop, team }
 
@@ -45,12 +47,21 @@ async function dispatch(args: string[], io: Io) {
       values: parsed.values,
       positionals: parsed.positionals,
       flags: targetFlags(parsed.values),
+      folder: runFolder(parsed.values, io, server.here),
     })
   } catch (error) {
     throw server.unauthorized && httpStatus(error) === 401 ? new AgentError(server.unauthorized) : error
   } finally {
     server.close()
   }
+}
+
+/** `--dir`, else the folder the command runs in when the server shares this computer's folders. */
+function runFolder(values: Values, io: Io, here: boolean) {
+  if (values.dir !== undefined && values.everywhere) throw usage("Use --dir or --everywhere, not both.")
+  if (values.dir !== undefined) return { directory: values.dir, explicit: true }
+  const directory = here && !values.everywhere ? startFolder(io.cwd, io.env.HOME ?? homedir()) : undefined
+  return directory ? { directory, explicit: false } : undefined
 }
 
 /** `help` behaves as `--help`: the overview, or the help of the command named after it. */

@@ -1,9 +1,12 @@
 import { isUtf8 } from "node:buffer"
+import { currentFolder } from "../working-folders"
 import { usage } from "./errors"
 
 /** Everything a command touches outside the server, so tests can run it in-process. */
 export type Io = {
   env: NodeJS.ProcessEnv
+  /** The folder the command was run in; listings and new sessions default to it on a server on this computer. */
+  cwd?: string
   stdout: (text: string) => unknown
   stderr: (text: string) => unknown
   stdin: { tty: boolean; read: () => Promise<string> }
@@ -19,6 +22,7 @@ export function processIo(): Io {
   })
   return {
     env: process.env,
+    cwd: currentFolder(),
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),
     stdin: { tty: !!process.stdin.isTTY, read: readStdin },

@@ -11,6 +11,7 @@ export type Values = {
   json?: boolean
   help?: boolean
   dir?: string
+  everywhere?: boolean
   limit?: string
   all?: boolean
   raw?: boolean
@@ -45,7 +46,7 @@ const common = {
 } as const
 
 const extra = {
-  sessions: { dir: text, limit: text, all: flag },
+  sessions: { dir: text, everywhere: flag, limit: text, all: flag },
   show: { limit: text, all: flag, raw: flag },
   send: {
     new: flag,
@@ -61,7 +62,7 @@ const extra = {
     "allow-outside": flag,
   },
   wait: { timeout: text },
-  pending: {},
+  pending: { dir: text, everywhere: flag },
   approve: { always: flag },
   reject: {},
   answer: { choice: { type: "string", multiple: true }, answers: text, reject: flag, custom: flag },

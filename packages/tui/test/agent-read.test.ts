@@ -79,15 +79,22 @@ test("sessions passes its filters and rejects bad values without echoing them", 
       seen.push(url)
       return { data: [], cursor: {} }
     },
+    "GET /api/fs/list": (_, url) => ({ location: { directory: url.searchParams.get("location[directory]") }, data: [] }),
   })
   const empty = await agent(["sessions", "--limit", "5", "--dir", "/srv/main", "--all"], { url: server.url })
-  expect(empty.stdout).toBe("No sessions.\n")
+  expect(empty.stdout).toBe("folder /srv/main · --everywhere lists every folder\nNo sessions in this folder.\n")
+  // The folder is read by exact folder and by project, for the project's worktrees.
   expect(seen[0]!.searchParams.get("limit")).toBe("5")
   expect(seen[0]!.searchParams.get("directory")).toBe("/srv/main")
   expect(seen[0]!.searchParams.has("archived")).toBe(false)
+  expect(seen[1]!.searchParams.get("project")).toBe("project")
   await agent(["sessions"], { url: server.url })
-  expect(seen[1]!.searchParams.get("limit")).toBe("30")
-  expect(seen[1]!.searchParams.get("archived")).toBe("false")
+  expect(seen[2]!.searchParams.get("limit")).toBe("30")
+  expect(seen[2]!.searchParams.get("archived")).toBe("false")
+  expect(seen[2]!.searchParams.has("directory")).toBe(false)
+  const both = await agent(["sessions", "--dir", "/srv/main", "--everywhere"], { url: server.url })
+  expect(both.code).toBe(2)
+  expect(both.stderr).toContain("Use --dir or --everywhere, not both.")
 
   for (const args of [
     ["--limit", "101"],

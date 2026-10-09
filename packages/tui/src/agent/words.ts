@@ -57,7 +57,7 @@ export function isAgentCommand(word: string | undefined): word is AgentCommand {
 
 /** The block `turen-tui --help` shows after the dashboard options. */
 export const agentOverview = `Agent and script commands (no terminal needed; add --json for one JSON document):
-  sessions                 Recent sessions and their state (running, needs-input, failed, interrupted, idle)
+  sessions                 Recent sessions in this folder and their state (--everywhere for every folder)
   show <session>           A session's transcript and pending requests
   send <session> [text]    Reply to a session; "-" reads stdin; --new starts a session
   wait <session>           Block until the session is idle or needs input
@@ -74,4 +74,6 @@ Examples:
   turen-tui pending
   turen-tui approve ses_abc per_123 && turen-tui wait ses_abc
   turen-tui team post team "@moss review the diff"
+On a server on this computer, sessions, pending and send --new use the folder you run them in,
+unless that is your home folder; commands that name a session work on any session.
 Exit codes: 0 done, 1 failed, 2 usage, 3 needs input, 4 timeout, 5 turn failed. Each command takes --help.`

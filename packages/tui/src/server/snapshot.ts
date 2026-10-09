@@ -4,7 +4,7 @@ import { identifier, isRecord } from "../response-validation"
 import { ACTIVE_OMITTED } from "../response-validation/session-routes"
 import type { Client, Context } from "./context"
 import { errorText, httpStatus } from "./errors"
-import { inFolder, type Folder } from "../working-folders/folder"
+import { folderSessionList, type Folder } from "../working-folders/folder"
 
 type InventoryErrors = { terminals: string; automations: string }
 
@@ -126,15 +126,10 @@ async function recentAndActive(
  */
 async function folderSessions(client: Client, folder: Folder | undefined, request: () => { signal: AbortSignal }) {
   if (!folder) return []
-  const query = { archived: false, order: "desc", limit: 100 } as const
-  const pages = await Promise.all([
-    client.sessions.list({ ...query, directory: folder.directory }, request()),
-    ...(folder.project ? [client.sessions.list({ ...query, project: folder.project.id }, request())] : []),
-  ]).catch((error: unknown) => {
+  return folderSessionList(client, folder, { limit: 100, archived: false }, request()).catch((error: unknown) => {
     rethrowUnauthorized(error)
     return []
   })
-  return pages.flatMap((page) => page.data).filter((session) => inFolder(folder, session))
 }
 
 /** At most four sessions at a time, so no more than eight requests are in flight; a failed read means no mark. */
