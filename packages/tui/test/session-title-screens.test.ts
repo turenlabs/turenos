@@ -19,9 +19,9 @@ test("the header, sidebar and reply editor show the placeholder title as a local
   const { view, screen } = await dashboard(routes)
   readable(await screen("New session · "))
   view.mockInput.pressKey("f")
-  const frame = await screen("Reply to New session · ")
+  const frame = await screen("Typing")
   readable(frame)
-  expect(frame).toContain("Reply to New session · ")
+  expect(frame).toContain("Typing")
 })
 
 test("the session switcher shows the placeholder title as a local time", async () => {

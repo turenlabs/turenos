@@ -29,7 +29,7 @@ The tests (`packages/tui/test/`) drive the real client against synthetic HTTP fi
 - OpenTUI's test renderer destroys itself on `Ctrl+C` unless it is created with `exitOnCtrlC: false`, as the client's own renderer is; `terminal(width, height, true)` in `test/support.ts` does that.
 - A Bun run that only prints usage or package scripts is not a passing test run, even with exit status zero.
 
-Input and layout changes need both renderer tests and a real PTY. Preserve exact shortcut modifiers, captured request recipients, retry identifiers, transport limits, secret handling and focus when dialogs close or asynchronous responses arrive. Test reading positions during prepend-plus-stream updates, width reflow and docked replies, not only while following the tail. Exercise controls at 60x24 as well as larger sizes.
+Input and layout changes need both renderer tests and a real PTY. Preserve exact shortcut modifiers, captured request recipients, retry identifiers, transport limits, secret handling and focus when dialogs close or asynchronous responses arrive. Test reading positions during prepend-plus-stream updates, width reflow and docked replies, not only while following the tail. Exercise controls at the 58-column minimum (58x31 is a phone over SSH) and at 80x24, as well as larger sizes.
 
 ## Testing a feature
 
@@ -127,7 +127,7 @@ python3 script/visual-audit.py /run/user/1000/tva --built --sizes 60x24 120x36
 ```
 
 - The output directory must be outside the repository and short: the runner places its tmux socket there and refuses a path of 104 bytes or more. It uses its own socket (`tmux -S`), never the default tmux server.
-- The default run covers 160x48, 120x36, 90x28, 80x24 and 60x24 plus a 59x23 resize-shield case. `--exit-only` and `--lifecycle-only` run the exit-restoration and close/reopen/resize subsets.
+- The default run covers 160x48, 120x36, 90x28, 80x24, 60x24 and 58x31 (a phone over SSH) plus a 59x23 resize-shield case. `--exit-only` and `--lifecycle-only` run the exit-restoration and close/reopen/resize subsets.
 - The fixture server answers `GET /global/health` as a server the client verifies, and every request lands in `evidence.json`. A request outside the allowed set fails the `safety` check.
 - Its keystrokes follow the docked reply editor, as a person's do: a shortcut scenario presses `Escape` first, an editor action opens the editor with `f`, and the exit scenarios cover an unsent draft and a running turn (`Ctrl+C` stops the turn first, `q` warns). The fixture answers `404` for a session it does not serve.
 - Exit status 1 means a check failed; `summary.md` and `evidence.json` at the output root describe the latest run. The runner hashes `src/**/*.ts` at the start and end and fails if source changed during capture.

@@ -48,7 +48,10 @@ export function headerRight(state: DashboardState, snapshot: Snapshot | undefine
         ? turnFailure(state.detail.messages)
         : undefined
     return [
-      running ? `● ${shown} running${waiting ? ` · ? ${waiting} need input` : ""}` : "idle",
+      // The context line no longer repeats this, so a waiting request shows here whether or not a turn runs.
+      [running ? `● ${shown} running` : waiting ? "" : "idle", waiting ? `? ${waiting} need input` : ""]
+        .filter(Boolean)
+        .join(" · "),
       ...(failure ? [`! last turn ${failure.state}`] : []),
     ].join(" · ")
   }
@@ -90,20 +93,26 @@ export function statusline(state: DashboardState, snapshot: Snapshot | undefined
         ? "Live"
         : "Polling"
       : ""
-  const focus = state.modal?.composer
+  const typing = !!state.modal?.composer
+  const focus = typing
     ? "Typing"
     : hidden
       ? ""
       : `Focus: ${state.detailFocused ? (state.tab === "sessions" ? "transcript" : "detail") : "sidebar"}`
   if (narrow) {
-    const view = `View ${["sessions", "terminals", "automations", "team"].indexOf(state.tab) + 1}/4`
-    return [hidden ? `${view} ${names[state.tab]}` : view, hidden ? live : focus].filter(Boolean).join(" · ")
+    const view = `${["sessions", "terminals", "automations", "team"].indexOf(state.tab) + 1}/4`
+    return [hidden ? `${view} ${names[state.tab]}` : view, typing ? focus : hidden ? live : focus].filter(Boolean).join(" · ")
   }
   const base = [state.tab === "sessions" ? "" : names[state.tab], live, focus].filter(Boolean).join(" · ")
   const extra = agentModel(state, snapshot)
   // The shortcuts keep their row; the agent and model go first when the two would not fit together.
-  const room = width - 4 - footerShortcuts(width, !hidden, !!state.modal?.composer).length - 2
+  const room = width - 4 - footerShortcuts(width, !hidden, typing, 26, canType(state)).length - 2
   return extra && base.length + 3 + extra.length <= room ? [base, extra].filter(Boolean).join(" · ") : base
+}
+
+/** Whether Enter returns to typing: a session is in view, which the reply editor opens on. */
+export function canType(state: DashboardState) {
+  return state.tab === "sessions" && !!state.selected && !state.history
 }
 
 /** The agent a session ran: its own setting, else the latest reply's when that reply is loaded. */
@@ -135,29 +144,31 @@ export function footerShortcuts(
   width: number,
   sidebarVisible: boolean,
   typing = false,
-  running = false,
   left = 26,
+  canType = false,
 ) {
   const sidebar = sidebarVisible ? "Tab pane" : "b sidebar"
   const quit = "q quit"
-  // While typing, letters go into the reply, so only the keys that work from the editor are named.
+  // The editor row names Esc and the send key, so while typing the footer adds only the palette.
   const sets = typing
-    ? [
-        ["Esc shortcuts", "Ctrl+P commands", running ? "Ctrl+C stop" : "Ctrl+C quit"],
-        ["Esc shortcuts", "Ctrl+P commands"],
-        ["Esc shortcuts", "Ctrl+P"],
-        ["Esc shortcuts"],
-      ]
-    : [
-        ["Ctrl+P commands", sidebar, "? help", quit],
-        ["Ctrl+P commands", sidebar, "? help"],
-        ["Ctrl+P commands", "? help", quit],
-        ["Ctrl+P commands", sidebar],
-        [sidebar, "? help", quit],
-        ["Ctrl+P commands", "? help"],
-        [sidebar, "? help"],
-        ["? help"],
-      ]
+    ? [["Ctrl+P commands"], ["Ctrl+P"]]
+    : canType
+      ? [
+          // Narrow footers keep to the next likely action; the palette and the rest are in help.
+          ...(width < layout.narrowBreakpoint ? [] : [["Enter type", "Ctrl+P commands", "? help"]]),
+          ["Enter type", "? help"],
+          ["? help"],
+        ]
+      : [
+          ["Ctrl+P commands", sidebar, "? help", quit],
+          ["Ctrl+P commands", sidebar, "? help"],
+          ["Ctrl+P commands", "? help", quit],
+          ["Ctrl+P commands", sidebar],
+          [sidebar, "? help", quit],
+          ["Ctrl+P commands", "? help"],
+          [sidebar, "? help"],
+          ["? help"],
+        ]
   const budget = width - 4 - (width < layout.narrowBreakpoint ? left + 2 : 0)
   return (sets.find((set) => set.join(" · ").length <= budget) ?? sets.at(-1)!).join(" · ")
 }
@@ -173,13 +184,14 @@ export function promptBoxText(
       ? "r Refresh"
       : state.team?.room?.archived
         ? "Archived · read-only · d Restore or delete"
-        : "f Post · @ mentions a teammate"
+        : "f Post"
   if (state.tab !== "sessions" || !state.selected) return "n New session · / Find · Ctrl+K Switch"
   if (detail?.permissions.length)
     return `p Review permission${detail.permissions.length > 1 ? ` (${detail.permissions.length})` : ""} · needs input`
   if (detail?.questions.length)
     return `o Answer question${detail.questions.length > 1 ? ` (${detail.questions.length})` : ""} · needs input`
-  return `f ${opts.hasDraft ? "Resume reply" : "Reply"} · / Commands`
+  // The footer names the key that returns to typing, so this line only says what a click here does.
+  return opts.hasDraft ? "Draft kept" : "Message…"
 }
 
 export function welcomeBody(
@@ -203,6 +215,7 @@ export function welcomeBody(
     `${status ? `${status} · ` : ""}No session selected.`,
     "",
     "Press n or Enter to start a session.",
+    "In a message: / commands · @ files · ! shell",
     "? help · Ctrl+P commands · m model · Ctrl+K sessions",
     ...((connection?.sidebarHidden ?? (connection?.columns ?? 0) < layout.narrowBreakpoint)
       ? ["b shows the session list"]

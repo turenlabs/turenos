@@ -27,7 +27,7 @@ test("a permission request stops the wait with exit 3 and the exact follow-up co
   // Anchored at two spaces: transcript text is set in by four, so a message cannot supply this line.
   const approve = sent.stdout.match(/^  approve: (turen-tui approve \S+ \S+)/m)
   expect(approve).not.toBeNull()
-  await tui.waitFor("Needs input")
+  await tui.waitFor("need input")
   const id = approve![1]!.split(" ").at(-1)!
   expect((await tui.cli(["approve", state.session!, id])).status).toBe(0)
   const waited = await tui.cli(["wait", state.session!, "--timeout", "60"])

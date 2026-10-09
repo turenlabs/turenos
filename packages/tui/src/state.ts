@@ -63,6 +63,11 @@ export type ModalState = {
   mentionRows?: number
   /** Rows of the reply's attachment line (0 or 1), which the docked box must leave to the editor. */
   attachmentRows?: number
+  /** Rows of the reply's heading (0 or 1): it shows only when it carries news. */
+  headingRows?: number
+  /** The context meter and the queued count the dashboard computes; the docked editor shows them on its hint row. */
+  meter?: string
+  queued?: number
   editorLocked?: () => boolean
   send?: TextRenderable
   error: TextRenderable

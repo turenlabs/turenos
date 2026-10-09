@@ -36,7 +36,7 @@ import PIL
 from PIL import Image, ImageDraw, ImageFont
 
 
-SIZES = [(160, 48), (120, 36), (90, 28), (80, 24), (60, 24)]
+SIZES = [(160, 48), (120, 36), (90, 28), (80, 24), (60, 24), (58, 31)]
 DIRECTORY = "/srv/projects/terminal-workbench/packages/runtime"
 TITLE = "Review terminal workbench runtime navigation and preserve every unfinished investigation draft"
 LAUNCH = "What would you like to do?"
@@ -51,7 +51,7 @@ UPDATE = (
     + "\n\n".join(f"Read marker {i:02d}: synthetic review notes." for i in range(1, 41))
     + "\n\n## Live transcript end"
 )
-TYPING = re.compile(r"\bTyping\b|\u2502\s+(?:Send|Steer|Queue) \u00b7 ")
+TYPING = re.compile(r"\bTyping\b")
 ANSI = re.compile(r"\x1b\[[0-9;:]*m|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 BASIC = [
     "#000000", "#cd0000", "#00cd00", "#cdcd00", "#0000ee", "#cd00cd", "#00cdcd", "#e5e5e5",
@@ -551,7 +551,7 @@ def main():
         raise AssertionError(f"{'Unexpected remaining' if absent else 'Missing'} terminal text: {text!r}")
 
     def typing(plain=None):
-        """True while the reply editor holds the keyboard. The footer says Typing, but it truncates at 60 columns, so the docked editor's heading counts too."""
+        """True while the reply editor holds the keyboard. The footer says Typing at every width."""
         return bool(TYPING.search(frame() if plain is None else plain))
 
     def wait_typing(absent=False, seconds=6):
@@ -683,7 +683,7 @@ def main():
                 )
             tmux("send-keys", "-t", "audit:0.0", "-l", launch)
             tmux("send-keys", "-t", "audit:0.0", "Enter")
-            wait("[ Turen ]" if name == "welcome" else "Question 1 of 2" if name == "question-picker" else "Needs input" if name == "request-enter-guards" else "Live transcript end", seconds=15)
+            wait("[ Turen ]" if name == "welcome" else "Question 1 of 2" if name == "question-picker" else "need input" if name == "request-enter-guards" else "Live transcript end", seconds=15)
             yield
         except Exception as error:
             try:
@@ -774,7 +774,7 @@ def main():
                     wait("RETURNED-TO-SHELL")
                     plain = capture(f"exit-restored-{exit_kind}")
                     check(plain.splitlines()[0].strip() == "PREVIOUS-SHELL-SCREEN", "exit restores the previous shell screen")
-                    check("Live transcript end" not in plain and "Type a message" not in plain, "exit leaves no TUI transcript or reply artifacts")
+                    check("Live transcript end" not in plain and "Message\u2026" not in plain, "exit leaves no TUI transcript or reply artifacts")
                     check("4;480;800t" not in plain and "rgb:1111/2222/3333" not in plain and "^[" not in plain, "late terminal replies do not leak into the shell")
                     drift = stty_changes(stty_before, stty_after)
                     check("APP_EXIT:0" in plain and not drift, "exit succeeds and restores original stty modes", drift or None)
@@ -1117,7 +1117,7 @@ def main():
                 check(not typing(plain), "owned child offers navigation instead of an invalid reply editor")
                 key("Enter")
                 wait_typing()
-                check("Reply to" in frame(), "owning-session navigation opens its reply editor")
+                check(TYPING.search(frame()) is not None, "owning-session navigation opens its reply editor")
                 check(not writes_since(start), "opening the owning main session sends no prompt")
                 key("F4")
 
@@ -1140,7 +1140,7 @@ def main():
                     tmux("resize-window", "-t", "audit:0", "-x", str(columns), "-y", str(height))
                     wait("DRAFTEND")
                     plain = capture(f"wrapped-reply-{columns}")
-                    check("Enter send" in plain and "F4 discard" in plain, "wrapped draft keeps its tail and controls visible")
+                    check("Enter send" in plain and "Esc shortcuts" in plain, "wrapped draft keeps its tail and controls visible")
                 check(not writes_since(start), "wrapping and resizing never submits the draft")
                 key("F4")
 
@@ -1440,7 +1440,7 @@ def main():
                 compose()
                 key("Keep this reply draft.", literal=True)
                 plain = capture("reply")
-                check("Live transcript end" in plain and "Reply to" in plain and "Keep this reply draft." in plain, "docked reply keeps conversation, recipient, and draft visible")
+                check("Live transcript end" in plain and "Typing" in plain and "Keep this reply draft." in plain, "docked reply keeps conversation, recipient, and draft visible")
                 if width < 90:
                     key("Escape", "b", "f")
                     capture("reply-sidebar-requested")
@@ -1599,7 +1599,7 @@ def main():
                 check(len(writes) == 1 and writes[0]["path"] == "/api/session/ses_review/question/que_picker/reply" and writes[0]["body"] == {"answers": [["New design"], ["Source", "Alpha, beta"]]}, "confirmed question sends captured labels exactly once", writes)
 
             with scenario("request-enter-guards", width, height):
-                wait("Needs input")
+                wait("need input")
                 for shortcut, title, control in (("p", "Permission request", "Reject"), ("o", "Answer agent", "Question 1 of 1")):
                     shortcuts()
                     key(shortcut)

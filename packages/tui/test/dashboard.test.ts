@@ -45,9 +45,9 @@ async function waitForFrame(
 
 /** Esc leaves an open reply editor for the dashboard shortcuts, keeping its draft. */
 async function leaveComposer(view: Awaited<ReturnType<typeof createTestRenderer>>) {
-  await waitForFrame(view, (frame) => frame.includes("Esc shortcuts"))
+  await waitForFrame(view, (frame) => frame.includes("Typing"))
   view.mockInput.pressEscape()
-  await waitForFrame(view, (frame) => !frame.includes("Esc shortcuts"))
+  await waitForFrame(view, (frame) => !frame.includes("Typing"))
 }
 
 async function clickText(view: Awaited<ReturnType<typeof createTestRenderer>>, text: string) {
@@ -490,13 +490,13 @@ for (const shortcut of ["n", "f"] as const) {
     expect(view.renderer.currentFocusedEditor).toBe(editor)
     await view.renderOnce()
     expect(view.captureCharFrame()).toContain("F4 discard")
-    if (shortcut === "f") expect(view.captureCharFrame()).toContain("Steer · Reply to")
+    if (shortcut === "f") expect(view.captureCharFrame()).toContain("Steer · agent is working")
     expect(server.posts).toHaveLength(0)
     view.mockInput.pressArrow("left")
     expect(editor.cursorOffset).toBe(1)
     view.mockInput.pressEscape()
     view.mockInput.pressArrow("right", { meta: true })
-    await waitForFrame(view, (frame) => frame.includes("Second session") && frame.includes("Transcript"))
+    await waitForFrame(view, (frame) => frame.includes("Second session"))
     view.mockInput.pressArrow("left", { meta: true })
     view.mockInput.pressKey(shortcut)
     expect(view.renderer.currentFocusedEditor?.plainText).toBe("lp")
@@ -819,7 +819,7 @@ test("Enter aliases focus list activity, accept inline search, and open exact ID
     view.mockInput.pressKey("o", { ctrl: true })
     await view.mockInput.typeText("ses_running")
     await view.mockInput.pressKeys([enter])
-    await waitForFrame(view, (frame) => !frame.includes("Open session by ID") && frame.includes("Transcript"))
+    await waitForFrame(view, (frame) => !frame.includes("Open session by ID"))
     await leaveComposer(view)
     view.mockInput.pressTab()
   }
@@ -1074,7 +1074,7 @@ test("stopping a session is discoverable from help, the palette and the slash li
   view.mockInput.pressEscape()
   await waitForFrame(view, (frame) => !frame.includes("Confirmation (type stop all)"))
   view.mockInput.pressKey("f")
-  await waitForFrame(view, (frame) => frame.includes("Reply to"))
+  await waitForFrame(view, (frame) => frame.includes("Typing"))
   await view.mockInput.typeText("/stop")
   const stop = await waitForFrame(view, (frame) => frame.includes("/stop - "))
   expect(stop).toMatch(/\/stop - Stop this session/)
@@ -1234,7 +1234,7 @@ test("catalog failure is isolated from session readiness and can be retried", as
   view.mockInput.pressEscape()
   await waitForFrame(view, (frame) => !frame.includes("Choose model"))
   view.mockInput.pressKey("f")
-  await waitForFrame(view, (frame) => frame.includes("Reply to"))
+  await waitForFrame(view, (frame) => frame.includes("Typing"))
   expect(server.posts).toHaveLength(0)
 })
 
@@ -1388,7 +1388,7 @@ test("a narrow terminal starts a reply, empty Up recalls the user prompt, and Ct
   const view = await createTestRenderer({ width: 70, height: 24, exitOnCtrlC: false })
   cleanup.push(() => view.renderer.destroy())
   await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
-  await waitForFrame(view, (frame) => frame.includes("Reply to"))
+  await waitForFrame(view, (frame) => frame.includes("Typing"))
   view.mockInput.pressArrow("up")
   expect(view.renderer.currentFocusedEditor?.plainText).toBe("Earlier task that belongs in history.")
   view.mockInput.pressKey("c", { ctrl: true })
@@ -1494,7 +1494,7 @@ test.each([false, true])(
     ])
     expect(server.posts[1]?.body).toEqual({ messageID: "msg_earlier", files: false })
     view.mockInput.pressKey("f")
-    await waitForFrame(view, (frame) => frame.includes("Reply to"))
+    await waitForFrame(view, (frame) => frame.includes("Typing"))
     expect(view.renderer.currentFocusedEditor?.plainText).toBe(
       existing ? "Existing draft" : "Earlier task that belongs in history.",
     )
@@ -1512,7 +1512,7 @@ test.each([false, true])(
     )
     expect(view.captureCharFrame()).not.toContain("UNDO STAGED")
     view.mockInput.pressKey("f")
-    await waitForFrame(view, (frame) => frame.includes("Reply to"))
+    await waitForFrame(view, (frame) => frame.includes("Typing"))
     expect(view.renderer.currentFocusedEditor?.plainText).toBe(existing ? "Existing draft" : "")
     expect(server.posts.some((post) => post.path.endsWith("/prompt"))).toBe(false)
   },
@@ -1756,7 +1756,7 @@ test("startup loads a main session outside a child-only recent page", async () =
   expect(server.reads).toContain("/api/session/ses_root/message")
   expect(server.reads).not.toContain("/api/session/ses_running/message")
   view.mockInput.pressKey("f")
-  await waitForFrame(view, (frame) => frame.includes("Reply to Older main thread"))
+  await waitForFrame(view, (frame) => frame.includes("Typing"))
   await view.mockInput.typeText("Reply to the main thread")
   view.mockInput.pressEnter()
   await waitForFrame(view, (frame) => frame.includes("Reply sent."))
@@ -1889,7 +1889,7 @@ test.each([60, 120])("known task-owned child replies offer main-session navigati
   view.mockInput.pressKey("f")
   if (width === 60) await clickText(view, "Open main session and reply")
   else view.mockInput.pressEnter()
-  await waitForFrame(view, (frame) => frame.includes("Reply to Main conversation"))
+  await waitForFrame(view, (frame) => frame.includes("Typing"))
   expect(server.reads).toContain("/api/session/ses_root")
   expect(server.posts).toHaveLength(0)
   await view.mockInput.typeText("Instructions for the main agent")
@@ -1962,7 +1962,7 @@ test("late ownership rejection preserves the draft, blocks repeat POSTs, and nev
   expect(server.posts).toHaveLength(1)
   view.mockInput.pressEnter()
   await waitForFrame(view, (frame) => frame.includes("Main conversation") && !frame.includes("Task-owned subagent"))
-  await waitForFrame(view, (frame) => frame.includes("Reply to Main conversation"))
+  await waitForFrame(view, (frame) => frame.includes("Typing"))
   expect(view.renderer.currentFocusedEditor?.plainText).toBe("")
   expect(server.posts).toHaveLength(1)
   expect(server.posts[0]?.path).toBe("/api/session/ses_running/prompt")
@@ -1994,7 +1994,7 @@ test("pending permissions and questions send the selected session's explicit res
   const app = mountDashboard(view.renderer, server.connection, server.server.url.href)
   await app.ready
   await view.renderOnce()
-  expect(view.captureCharFrame()).toContain("Needs input")
+  expect(view.captureCharFrame()).toContain("need input")
   expect(view.captureCharFrame()).not.toContain("QUESTION PENDING")
   expect(server.posts).toHaveLength(0)
   await waitForFrame(view, (frame) => frame.includes("Permission request"))
@@ -2074,7 +2074,7 @@ test("new questions open automatically once and defer to an active reply draft",
   await app.refresh()
   await waitForFrame(view, (frame) => !frame.includes("Question 1 of 1"))
   view.mockInput.pressKey("f")
-  await waitForFrame(view, (frame) => frame.includes("Reply to"))
+  await waitForFrame(view, (frame) => frame.includes("Typing"))
   expect(view.renderer.currentFocusedEditor?.plainText).toBe("Keep this draft")
   expect(server.posts).toHaveLength(0)
 })
@@ -2456,7 +2456,7 @@ test("follow-up drafts retain recipient context and ambiguous message identities
   // The session runs, so Esc also arms the stop and that notice replaces the draft-kept one.
   await waitForFrame(
     view,
-    (frame) => frame.includes("Press Esc again to stop this turn") && frame.includes("f Resume reply"),
+    (frame) => frame.includes("Press Esc again to stop this turn") && frame.includes("Draft kept"),
   )
   view.mockInput.pressKey("f")
   await waitForFrame(view, (frame) => frame.includes("Continue carefully"))
@@ -2496,7 +2496,7 @@ test("slash and Ctrl+K share session matching and cancellation without leaving a
   view.mockInput.pressKey("2")
   await waitForFrame(view, (frame) => frame.includes("PID 4242"))
   view.mockInput.pressKey("1")
-  await waitForFrame(view, (frame) => frame.includes("Transcript") && frame.includes("Second task"))
+  await waitForFrame(view, (frame) => frame.includes("Second task"))
   expect(view.captureCharFrame()).not.toContain("Find: Second")
 })
 
@@ -2589,7 +2589,7 @@ test("resizing below the minimum protects the draft and restores it on return", 
   await view.mockInput.typeText("Keep this while resizing")
   view.resize(45, 18)
   await view.renderOnce()
-  expect(view.captureCharFrame().replace(/\s+/g, " ")).toContain("60 columns × 24 rows")
+  expect(view.captureCharFrame().replace(/\s+/g, " ")).toContain("58 columns × 24 rows")
   await view.mockInput.typeText("unexpected")
   await view.mockInput.pasteBracketedText("paste must be blocked")
   view.mockInput.pressKey("s", { ctrl: true })
@@ -2694,14 +2694,14 @@ test("mouse navigation matches the view and composer labels", async () => {
   const composer = view
     .captureCharFrame()
     .split("\n")
-    .find((line) => line.includes("f Reply"))!
+    .find((line) => line.includes("Message…"))!
   expect(composer).not.toContain("New session")
   const action = descendants(view.renderer.root).find(
-    (node) => node instanceof TextRenderable && node.plainText.startsWith("f Reply"),
+    (node) => node instanceof TextRenderable && node.plainText.startsWith("Message…"),
   ) as TextRenderable
-  expect(action.plainText).toBe("f Reply · / Commands")
-  await click("f Reply")
-  await waitForFrame(view, (frame) => frame.includes("Reply to Review the server"))
+  expect(action.plainText).toBe("Message…")
+  await click("Message…")
+  await waitForFrame(view, (frame) => frame.includes("Typing"))
   await view.mockInput.typeText("Keep while switching tabs")
   await click("2 Ter")
   await waitForFrame(view, (frame) => frame.includes("PID 4242"))
@@ -2709,8 +2709,8 @@ test("mouse navigation matches the view and composer labels", async () => {
   // Back on the chat the reply editor reopens by itself with its draft; Esc leaves it for the label.
   await waitForFrame(view, (frame) => frame.includes("Keep while switching tabs"))
   await leaveComposer(view)
-  await waitForFrame(view, (frame) => frame.includes("f Resume reply"))
-  await click("f Resume reply")
+  await waitForFrame(view, (frame) => frame.includes("Draft kept"))
+  await click("Draft kept")
   await waitForFrame(view, (frame) => frame.includes("Keep while switching tabs"))
   expect(server.posts).toHaveLength(0)
 })
@@ -2749,7 +2749,7 @@ test("the default view shows the full live transcript and keeps technical detail
   await waitForFrame(view, (frame) => frame.includes("Earlier task"))
   expect(view.captureCharFrame()).toContain("test/local")
   view.mockInput.pressKey("h")
-  await waitForFrame(view, (frame) => frame.includes("Transcript"))
+  await waitForFrame(view, (frame) => !frame.includes("History ·"))
   view.mockInput.pressKey("i")
   await waitForFrame(view, (frame) => frame.includes("SERVER"))
   expect(view.captureCharFrame()).toContain("ses_running")
@@ -2820,11 +2820,11 @@ test("the primary action exposes the blocker before reply and still opens the co
   await app.ready
   await waitForFrame(view, (frame) => frame.includes("Permission request"))
   view.mockInput.pressEscape()
-  await waitForFrame(view, (frame) => !frame.includes("Permission request") && frame.includes("Needs input"))
+  await waitForFrame(view, (frame) => !frame.includes("Permission request") && frame.includes("need input"))
   // Closing the prompt leaves the reply editor open, saying the permission waits; Esc leaves it for shortcuts.
   await waitForFrame(view, (frame) => frame.includes("Enter reviews the permission"))
   await leaveComposer(view)
-  expect(view.captureCharFrame()).not.toContain("f Reply")
+  expect(view.captureCharFrame()).not.toContain("Message…")
   const lines = view.captureCharFrame().split("\n")
   const y = lines.findIndex((line) => line.includes("p Review permission"))
   await view.mockMouse.click(lines[y]!.indexOf("p Review permission") + 1, y)
@@ -2843,7 +2843,7 @@ test("the primary action exposes the blocker before reply and still opens the co
   await view.renderOnce()
   expect(view.captureCharFrame()).toContain("showing saved data")
   expect(view.captureCharFrame()).toContain("r Retry connection")
-  expect(view.captureCharFrame()).not.toContain("f Reply")
+  expect(view.captureCharFrame()).not.toContain("Message…")
   options.authenticated = true
   const disconnected = view.captureCharFrame().split("\n")
   const retryRow = disconnected.findIndex((line) => line.includes("r Retry connection"))
@@ -2852,7 +2852,7 @@ test("the primary action exposes the blocker before reply and still opens the co
   server.pending.questions = []
   await app.refresh()
   await view.renderOnce()
-  expect(view.captureCharFrame()).toContain("f Reply")
+  expect(view.captureCharFrame()).toContain("Message…")
   expect(server.posts).toHaveLength(0)
 })
 
@@ -3143,13 +3143,13 @@ test("Escape then Alt arrows or Ctrl+K switches sessions with the saved reply's 
   view.mockInput.pressArrow("right", { meta: true })
   await waitForFrame(view, (frame) => frame.includes("/srv/second"))
   view.mockInput.pressArrow("left", { meta: true })
-  await waitForFrame(view, (frame) => frame.includes("Transcript") && frame.includes("/srv/project"))
+  await waitForFrame(view, (frame) => frame.includes("/srv/project"))
   // Hopping keeps the reply editor closed, so f opens it.
   view.mockInput.pressKey("f")
   await view.mockInput.typeText("Keep this reply here")
   await leaveComposer(view)
   // The session is running, so Esc's notice arms the stop; the prompt line shows the draft was kept.
-  await waitForFrame(view, (frame) => frame.includes("f Resume reply"))
+  await waitForFrame(view, (frame) => frame.includes("Draft kept"))
   view.mockInput.pressKey("k", { ctrl: true })
   await waitForFrame(view, (frame) => frame.includes("Switch session"))
   await view.mockInput.typeText("Another")
@@ -3158,7 +3158,7 @@ test("Escape then Alt arrows or Ctrl+K switches sessions with the saved reply's 
   // A session picked in Ctrl+K opens its reply editor, where Alt+Left moves by word; Esc first to hop.
   await leaveComposer(view)
   view.mockInput.pressArrow("left", { meta: true })
-  await waitForFrame(view, (frame) => frame.includes("f Resume reply"))
+  await waitForFrame(view, (frame) => frame.includes("Draft kept"))
   view.mockInput.pressKey("f")
   await waitForFrame(view, (frame) => frame.includes("Keep this reply here"))
   view.mockInput.pressKey("s", { ctrl: true })
@@ -3199,7 +3199,7 @@ test("session shortcuts retain the departing terminal filter and hop first from 
   await view.mockInput.typeText("Build")
   view.mockInput.pressEnter()
   view.mockInput.pressArrow("right", { meta: true })
-  await waitForFrame(view, (frame) => frame.includes("Transcript") && frame.includes("Inspecting the server"))
+  await waitForFrame(view, (frame) => frame.includes("Inspecting the server"))
   view.mockInput.pressKey("i")
   await waitForFrame(view, (frame) => frame.includes("ses_running"))
   view.mockInput.pressEscape()
@@ -3209,7 +3209,7 @@ test("session shortcuts retain the departing terminal filter and hop first from 
   view.mockInput.pressKey("k", { ctrl: true })
   await view.mockInput.typeText("Another")
   view.mockInput.pressEnter()
-  await waitForFrame(view, (frame) => frame.includes("Transcript") && !frame.includes("Switch session"))
+  await waitForFrame(view, (frame) => !frame.includes("Switch session"))
   await leaveComposer(view)
   view.mockInput.pressKey("2")
   await waitForFrame(view, (frame) => frame.includes("PID 4242") && frame.includes("Find: Build"))
@@ -3260,7 +3260,7 @@ test("session visits restore reading position and history without undoing user s
   const history = await waitForFrame(view, (frame) => frame.includes("Paragraph ") && !frame.includes("Paragraph 0:"))
   const previous = history.match(/Paragraph \d+:/)![0]
   view.mockInput.pressArrow("right", { meta: true })
-  await waitForFrame(view, (frame) => frame.includes("Another session") && frame.includes("Transcript"))
+  await waitForFrame(view, (frame) => frame.includes("Another session"))
   view.mockInput.pressArrow("left", { meta: true })
   await waitForFrame(view, (frame) => frame.includes("History ·") && frame.match(/Paragraph \d+:/)?.[0] === previous)
   expect(server.posts).toHaveLength(0)
@@ -3342,12 +3342,12 @@ test("reply stays beside fresh conversation output and retains its recipient dur
   cleanup.push(() => view.renderer.destroy())
   const app = mountDashboard(view.renderer, server.connection, server.server.url.href)
   await app.ready
-  await waitForFrame(view, (frame) => frame.includes("Esc shortcuts"))
+  await waitForFrame(view, (frame) => frame.includes("Typing"))
   await view.mockInput.typeText("Reply to the original session")
   await waitForFrame(
     view,
     (frame) =>
-      frame.includes("Original message to answer.") && frame.includes("Reply to") && frame.includes("Enter send"),
+      frame.includes("Original message to answer.") && frame.includes("Typing") && frame.includes("Enter send"),
   )
   options.text = "A fresh update arrived while composing."
   server.historical.set(original.id, original)
@@ -3357,7 +3357,8 @@ test("reply stays beside fresh conversation output and retains its recipient dur
     view,
     (frame) => frame.includes("A fresh update arrived") && frame.includes("Reply to the original session"),
   )
-  expect(view.captureCharFrame()).toContain("Reply to Review the server")
+  // The reply goes to the session in view, which the title already names, so the editor has no heading repeating it.
+  expect(view.captureCharFrame()).not.toContain("Reply to Review the server")
   view.mockInput.pressKey("s", { ctrl: true })
   await waitForFrame(view, (frame) => frame.includes("Reply sent."))
   expect(server.posts).toHaveLength(1)
@@ -3701,11 +3702,11 @@ test("history paging preserves pages at boundaries, on refresh, and on session s
   await waitForFrame(view, (frame) => frame.includes("Start of history reached."))
   expect(view.captureCharFrame()).toContain("original task on the older page")
   view.mockInput.pressArrow("right", { meta: true })
-  await waitForFrame(view, (frame) => frame.includes("Other work") && frame.includes("Transcript"))
+  await waitForFrame(view, (frame) => frame.includes("Other work"))
   view.mockInput.pressArrow("left", { meta: true })
   await waitForFrame(view, (frame) => frame.includes("original task on the older page") && frame.includes("History"))
   view.mockInput.pressKey("h")
-  await waitForFrame(view, (frame) => frame.includes("Transcript") && frame.includes("Inspecting the server"))
+  await waitForFrame(view, (frame) => frame.includes("Inspecting the server"))
   view.mockInput.pressKey("h")
   await waitForFrame(view, (frame) => frame.includes("original task on the older page"))
   view.mockInput.pressKey("]")
@@ -3729,7 +3730,7 @@ test("history paging waits for the restored page instead of using Latest cursors
   view.mockInput.pressKey("[")
   await waitForFrame(view, (frame) => frame.includes("original task on the older page"))
   view.mockInput.pressKey("h")
-  await waitForFrame(view, (frame) => frame.includes("Transcript") && frame.includes("Inspecting the server"))
+  await waitForFrame(view, (frame) => frame.includes("Inspecting the server"))
   const before = server.messageCursors.length
   view.mockInput.pressKey("h")
   view.mockInput.pressKey("[")
@@ -3750,14 +3751,14 @@ test("queued reply keeps its visible delivery mode and identity after an uncerta
   await waitForFrame(view, (frame) => frame.includes("Esc shortcuts"))
   await view.mockInput.typeText("Follow this after pending steers")
   view.mockInput.pressKey("t", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("Queue · Reply to"))
+  await waitForFrame(view, (frame) => frame.includes("Queue · sent when"))
   view.mockInput.pressKey("s", { ctrl: true })
   await waitForFrame(view, (frame) => frame.includes("Ctrl+S retry"))
   view.mockInput.pressKey("t", { ctrl: true })
   await waitForFrame(view, (frame) => frame.includes("original delivery mode"))
   view.mockInput.pressEscape()
   view.mockInput.pressKey("f")
-  await waitForFrame(view, (frame) => frame.includes("Queue · Reply to"))
+  await waitForFrame(view, (frame) => frame.includes("Queue · sent when"))
   view.mockInput.pressKey("s", { ctrl: true })
   await waitForFrame(view, (frame) => frame.includes("Reply queued."))
   expect(server.posts).toHaveLength(2)
@@ -3882,9 +3883,10 @@ test("clicking draft labels and non-field space leaves its editor ready for typi
   await leaveComposer(view)
   for (const [key, caption] of [
     ["n", "What would you like to do?"],
-    ["f", "Reply to"],
+    ["f", "Message…"],
   ]) {
     view.mockInput.pressKey(key!)
+    if (key === "f") await waitForFrame(view, (frame) => frame.includes(caption!))
     await clickText(view, caption!)
     const editor = descendants(view.renderer.root).find((node) => node instanceof TextareaRenderable)!
     expect(editor.focused).toBe(true)
@@ -3892,7 +3894,7 @@ test("clicking draft labels and non-field space leaves its editor ready for typi
     expect(editor.plainText).toBe("Still typing in the draft")
     await view.renderOnce()
     if (key === "n") await view.mockMouse.click(editor.x + 2, editor.y + editor.height)
-    if (key === "f") await clickText(view, "Steer")
+    if (key === "f") await clickText(view, "Enter send")
     expect(editor.focused).toBe(true)
     await view.mockInput.typeText(" after clicking")
     expect(editor.plainText).toBe("Still typing in the draft after clicking")
@@ -3913,16 +3915,16 @@ test("long paths cannot displace header actions or footer shortcuts at supported
     view.resize(width!, height!)
     await view.renderOnce()
     const frame = view.captureCharFrame()
-    expect(frame).toContain("Sessions Ctrl+K")
-    expect(frame).toContain("Models m")
-    // Ctrl+P stays in the footer at every width; the narrow set keeps the hidden sidebar's hint instead of help.
-    expect(frame).toContain("Ctrl+P commands")
-    expect(frame).toContain(width! < 90 ? "b sidebar" : "? help · q quit")
+    // Below 70 columns the buttons give way to the run state; their keys stay in help and the palette.
+    expect(frame.includes("Sessions Ctrl+K")).toBe(width! >= 70)
+    expect(frame.includes("Models m")).toBe(width! >= 70)
+    // The palette stays in the footer on wide screens; a narrow footer keeps to the next action and help.
+    expect(frame).toContain(width! < 90 ? "? help" : "Ctrl+P commands")
   }
   view.mockInput.pressKey("n")
   await view.renderOnce()
-  expect(view.captureCharFrame()).toContain("Models Ctrl+L")
-  expect(view.captureCharFrame()).not.toContain("Models m")
+  // At 60 columns the buttons are gone whichever dialog is open.
+  expect(view.captureCharFrame()).not.toContain("Models")
   expect(view.captureCharFrame()).not.toContain("Sessions Ctrl+K")
 })
 

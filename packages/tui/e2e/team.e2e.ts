@@ -54,7 +54,7 @@ test("a factory is configured and run until its check is accepted", async () => 
   await tui.waitFor("Request (optional")
   await tui.keys("C-s")
   await tui.waitFor("Factory run started.")
-  const finished = await tui.waitFor(/succeeded · done/, 90_000)
+  const finished = await tui.waitFor(/Run \S+ · succeeded/, 90_000)
   expect(finished).toContain("Sandbox check accepted the outputs.")
   const answer = (await tui.api("GET", "/api/team")) as Answer
   expect(answer.factoryRuns?.[0]?.status).toBe("succeeded")

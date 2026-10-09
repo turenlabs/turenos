@@ -19,8 +19,8 @@ export function sandbox(file: string, size: Size = { cols: 120, rows: 36 }) {
   afterAll(() => stop(name), 30_000)
   /** Leaves the selected session's reply editor open: it already is after a launch or a send. */
   async function compose() {
-    if (!(await settle(name)).includes("Shift/Alt+Enter newline")) await keys(name, "f")
-    await waitFor(name, "Shift/Alt+Enter newline")
+    if (!(await settle(name)).includes("Typing")) await keys(name, "f")
+    await waitFor(name, "Typing")
   }
   return {
     name,

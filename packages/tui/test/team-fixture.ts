@@ -73,7 +73,7 @@ export function server(more: ReturnType<typeof message>[] = []) {
 export async function open(routes: Record<string, Route>, width = 120, height = 24) {
   const app = await mount(width, routes, height)
   app.view.mockInput.pressKey("ESCAPE")
-  await app.screen("f Reply")
+  await app.screen("h History")
   // A key right after Escape would read as Alt+key.
   await Bun.sleep(150)
   app.view.mockInput.pressKey("4")

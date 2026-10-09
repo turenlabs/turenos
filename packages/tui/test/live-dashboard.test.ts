@@ -378,7 +378,7 @@ test("a burst of ended events cannot starve the transcript refresh", async () =>
 test("the Working marker clears at the final step end without waiting for the poll", async () => {
   const f = await fixture()
   await f.wait(() => f.reads() >= 2)
-  await f.screen("· Working")
+  await f.screen("Working")
   const seen = f.reads()
   await f.wait(() => f.reads() > seen)
   f.emit("session.next.step.ended", {

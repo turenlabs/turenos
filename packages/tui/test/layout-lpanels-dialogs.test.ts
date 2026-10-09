@@ -5,9 +5,9 @@ async function opened(width: number, height: number, routes: Record<string, Rout
   const { view, screen } = await sized(width, height, routes)
   if (width < 90) {
     // Below 90 columns the transcript has focus, so the reply editor is open until Esc.
-    await screen("Reply to main task")
+    await screen("Typing")
     view.mockInput.pressEscape()
-    await until(() => !view.captureCharFrame().includes("Reply to main task"))
+    await until(() => !view.captureCharFrame().includes("Typing"))
   }
   return { view, screen }
 }

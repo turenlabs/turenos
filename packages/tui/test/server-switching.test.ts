@@ -98,7 +98,7 @@ test("switching away from unsent drafts asks for a second Enter", async () => {
   await view.mockInput.typeText("unsent reply")
   view.mockInput.pressKey("ESCAPE")
   // Escape is only final once the terminal knows it did not start an Alt+key sequence.
-  await screen("Resume reply")
+  await screen("Draft kept")
   view.mockInput.pressKey("s")
   await screen("THIS COMPUTER")
   view.mockInput.pressArrow("down")

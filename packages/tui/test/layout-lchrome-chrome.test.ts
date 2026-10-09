@@ -66,9 +66,9 @@ test("the footer does not repeat the transcript line and names the pane that has
 test("the narrow footer explains its tab number and reports the drawer as the focus", () => {
   const state = createDashboardState()
   state.tab = "automations"
-  expect(statusline(state, undefined, 80)).toBe("View 3/4 Automations")
+  expect(statusline(state, undefined, 80)).toBe("3/4 Automations")
   state.sidebarHidden = false
-  expect(statusline(state, undefined, 80)).toBe("View 3/4 · Focus: sidebar")
+  expect(statusline(state, undefined, 80)).toBe("3/4 · Focus: sidebar")
 })
 
 test("counts are singular for one item and say where the selection is when a sidebar may be hidden", () => {
@@ -92,13 +92,15 @@ test("fitPath drops whole leading folders", () => {
 
 test("the top bar keeps the running state and shows less as the terminal narrows", async () => {
   const [wide, mid, narrow] = [await header(120), await header(80), await header(60)]
+  const items = (row: string) =>
+    ["Models m", "Sessions Ctrl+K", "Servers s"].filter((item) => row.includes(item)).length
   for (const row of [wide, mid, narrow]) expect(row).toContain("● 1 running")
   expect(wide).toContain("127.0.0.1:43623")
   // The host:port stays ahead of the Servers and Sessions buttons; only the port is left when even that does not fit.
   expect(mid).toContain("127.0.0.1:43623")
-  expect(narrow).toContain("127.0.0.1:43623")
-  const items = (row: string) =>
-    ["Models m", "Sessions Ctrl+K", "Servers s"].filter((item) => row.includes(item)).length
+  // Below 70 columns a local server is named by its port and the buttons go.
+  expect(narrow).toContain("● 43623")
+  expect(items(narrow)).toBe(0)
   expect(items(mid)).toBeGreaterThanOrEqual(items(narrow))
   expect(items(wide)).toBeGreaterThanOrEqual(items(mid))
 })

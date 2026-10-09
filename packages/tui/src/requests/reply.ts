@@ -1,4 +1,4 @@
-import { TextRenderable } from "@opentui/core"
+import { BoxRenderable, TextRenderable } from "@opentui/core"
 import { refused, type Session } from "../server"
 import { sessionTitle, type MessageDraft, type ModalState } from "../state"
 import { color } from "../theme"
@@ -7,6 +7,7 @@ import { outsideNotice } from "../mentions/outside"
 import { promptPayload } from "../prompt-files"
 import { dockedEditor } from "../dialogs/docked-editor"
 import { armStop, stopPrompt } from "./stop"
+import { replyHeading, replyHint, replyPlaceholder, type ReplyFacts } from "./reply-hint"
 import { showAttachments } from "./attachments"
 import { openBlockedReply } from "./blocked-reply"
 import { permission } from "./permission"
@@ -88,7 +89,7 @@ function openReply(ctx: RequestContext, session: Session, keepNotice = false) {
     typed?.(event)
     if (empty === !task.plainText.trim()) return
     empty = !empty
-    if (waitingRequest(ctx, session.id)) dialog.refresh?.()
+    dialog.refresh?.()
   }
   dialog.submit = () => submitReply(ctx, session, draft, task, attached)
   delivery()
@@ -108,48 +109,75 @@ function openReply(ctx: RequestContext, session: Session, keepNotice = false) {
   task.focus()
 }
 
-/** Adds the delivery heading and the Ctrl+T mode switch; the returned function repaints both. */
+/** The hint and the context meter share one row: the hint gives way, the meter keeps its width. Returns the meter. */
+function shareHintRow(ctx: RequestContext, dialog: ModalState) {
+  const tail = new TextRenderable(ctx.renderer, { content: "", fg: color.muted, height: 1, flexShrink: 0 })
+  const row = new BoxRenderable(ctx.renderer, { flexDirection: "row", flexShrink: 0, gap: 2 })
+  dialog.frame.remove(dialog.error)
+  dialog.error.flexGrow = 1
+  dialog.error.minWidth = 0
+  row.add(dialog.error)
+  row.add(tail)
+  dialog.frame.add(row)
+  return tail
+}
+
+function replyFacts(ctx: RequestContext, dialog: ModalState, session: Session, draft: MessageDraft): ReplyFacts {
+  // The server may retitle the session while the editor is open.
+  const title = ctx.state.snapshot?.sessions.find((item) => item.id === session.id)?.title ?? session.title
+  const waiting = waitingRequest(ctx, session.id)
+  return {
+    live: running(ctx, session.id),
+    queue: draft.delivery === "queue",
+    waiting,
+    // An empty editor's Enter opens the request; with text typed, Enter sends it, so the heading points at Esc.
+    review: !!waiting && !dialog.editor?.plainText.trim() && draft.submitted === undefined,
+    revert: !!session.revert,
+    queued: dialog.queued ?? 0,
+    elsewhere: ctx.state.selected === session.id ? undefined : sessionTitle(title, 60),
+    draft: !!dialog.editor?.plainText.trim(),
+    listed: (dialog.suggestionRows ?? 0) + (dialog.mentionRows ?? 0) > 0,
+  }
+}
+
+/** Adds the heading (only when it has news), the hint row with its right-hand meter, and the Ctrl+T mode switch; the returned function repaints them. */
 function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session, draft: MessageDraft) {
   const heading = new TextRenderable(ctx.renderer, {
     content: "",
     fg: color.muted,
     height: 1,
+    visible: false,
     truncate: true,
     wrapMode: "none",
   })
   dialog.form.add(heading)
-  const shown: { content?: typeof dialog.error.content } = {}
+  dialog.headingRows = 0
+  const tail = shareHintRow(ctx, dialog)
+  const shown: { content?: typeof dialog.error.content; meter?: string } = {}
   const delivery = () => {
-    const live = running(ctx, session.id)
-    // The server may retitle the session while the editor is open.
-    const title = ctx.state.snapshot?.sessions.find((item) => item.id === session.id)?.title ?? session.title
-    const mode = !live ? "Send" : draft.delivery === "queue" ? "Queue" : "Steer"
-    const waiting = waitingRequest(ctx, session.id)
-    // An empty editor's Enter opens the request; with text typed, Enter sends it, so the heading points at Esc.
-    const review = !!waiting && !dialog.editor?.plainText.trim() && draft.submitted === undefined
-    heading.content = waiting
-      ? `${mode} · ${waiting === "permission" ? "Permission" : "Question"} waiting${review ? "" : " · Esc then Enter to answer"}`
-      : `${mode} · Reply to ${sessionTitle(title, 100)}${session.revert ? " · undo staged" : ""}`
+    const facts = replyFacts(ctx, dialog, session, draft)
+    const waiting = facts.waiting
+    const text = replyHeading(facts)
+    heading.content = text
+    heading.visible = text.length > 0
     heading.fg = waiting || session.revert ? color.warning : color.muted
-    // The key hints are for the first message; once the session has one, the rows go to the transcript.
-    const started =
-      ctx.state.detail?.sessionID === session.id && ctx.state.detail.messages.some((message) => message.type === "user")
-    const listed = (dialog.suggestionRows ?? 0) + (dialog.mentionRows ?? 0) > 0
-    const hint = listed
-      ? `Up/Down choose · Tab complete\nEnter pick · Esc close list · F4 discard`
-      : review
-        ? `Enter ${waiting === "permission" ? "reviews the permission" : "answers the question"} · ${live ? "Esc Esc stops the turn" : "Esc shortcuts"}\nF4 discard${live ? " · Ctrl+T mode" : ""}`
-        : session.revert
-          ? `Enter send + commit undo · Alt+Enter newline\nEsc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
-          : `${started ? "" : "Enter send · Shift/Alt+Enter newline\n"}Esc shortcuts · F4 discard${live ? " · Ctrl+T mode" : ""}`
+    tail.content = facts.listed ? "" : (dialog.meter ?? "")
+    // Reassigning an unchanged placeholder re-wraps it at the editor's old width and inflates the editor.
+    const placeholder = replyPlaceholder(ctx.renderer.width)
+    if (dialog.editor && dialog.editor.placeholder !== placeholder) dialog.editor.placeholder = placeholder
+    const hint = replyHint(facts, (dialog.frame.width || ctx.renderer.width - 4) - 5 - tail.plainText.length - 2)
+    const rows = text ? 1 : 0
     // A refresh may repaint the hint, but never over a message that replaced it.
-    if (!shown.content || dialog.error.content === shown.content) {
+    const free = !shown.content || dialog.error.content === shown.content
+    if (free && (hint !== dialog.error.plainText || rows !== dialog.headingRows || tail.plainText !== shown.meter)) {
       dialog.error.content = hint
+      dialog.headingRows = rows
       // A one-line hint gives its second row back to the transcript.
       dialog.error.height = hint.split("\n").length
       ctx.dialogs.resize()
     }
-    shown.content = dialog.error.content
+    shown.meter = tail.plainText
+    if (free) shown.content = dialog.error.content
   }
   // The mode only means something while the agent runs, so the dashboard refresh repaints it.
   dialog.refresh = delivery
@@ -185,7 +213,14 @@ function reviewRequest(ctx: RequestContext, sessionID: string, task: ReplyEditor
 }
 
 function createReplyEditor(ctx: RequestContext, dialog: ModalState, draft: MessageDraft) {
-  return dockedEditor(ctx.dialogs, dialog, draft.text, draft.cursor, () => draft.submitted !== undefined)
+  return dockedEditor(
+    ctx.dialogs,
+    dialog,
+    draft.text,
+    draft.cursor,
+    () => draft.submitted !== undefined,
+    replyPlaceholder(ctx.renderer.width),
+  )
 }
 
 export type ReplyEditor = ReturnType<typeof createReplyEditor>

@@ -18,6 +18,10 @@ export const layout = {
   sidebarWidth: 32,
   sidebarMinWidth: 24,
   narrowBreakpoint: 90,
-  minWidth: 60,
+  minWidth: 58,
+  /** Below this many columns the top bar drops its buttons and names a local server by its port. */
+  compactBreakpoint: 70,
+  /** From this many columns the editor shows its tips and the full context meter. */
+  wideBreakpoint: 100,
   minHeight: 24,
 }

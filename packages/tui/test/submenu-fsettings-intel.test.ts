@@ -53,9 +53,9 @@ test("at 60 columns the CVE id stays whole and the hint fits two lines", async (
   cleanup.push(app.dispose)
   await app.ready
   // Below 90 columns the transcript has focus, so the reply editor is open until Esc.
-  await screen("Reply to main task")
+  await screen("Typing")
   view.mockInput.pressEscape()
-  await until(() => !view.captureCharFrame().includes("Reply to main task"))
+  await until(() => !view.captureCharFrame().includes("Typing"))
   view.mockInput.pressKey("I")
   const frame = await screen("Heap overflow")
   expect(frame).toContain("CVE-2025-6917")

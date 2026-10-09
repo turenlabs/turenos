@@ -240,7 +240,7 @@ test("[ loads the page before the lowest loaded message and merges it above", as
 test("a narrow footer names the Team view", async () => {
   const { routes } = server()
   const { screen } = await open(routes, 80)
-  await screen("View 4/4 Team")
+  await screen("4/4 Team")
 })
 
 const valid = () => answer(log)
@@ -401,13 +401,13 @@ test("a teammate reply points at its session only when no task line already name
   expect(text).toContain("full output in session ses_other")
 })
 
-test("the post row names posting and mentions rather than repeating the action row's keys", () => {
+test("the post row names posting and nothing else", () => {
   const state = createDashboardState()
   state.connected = true
   state.tab = "team"
   state.selected = room.id
   state.team = { room } as unknown as TeamView
-  expect(promptBoxText(state, undefined, { hasDraft: false })).toBe("f Post · @ mentions a teammate")
+  expect(promptBoxText(state, undefined, { hasDraft: false })).toBe("f Post")
   state.team = { room: old } as unknown as TeamView
   expect(promptBoxText(state, undefined, { hasDraft: false })).toStartWith("Archived · read-only")
 })

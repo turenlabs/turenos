@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { dashboard, session } from "./support"
+import { dashboard, session, until } from "./support"
 
 const message = (id: string, text: string, created: number) => ({ id, type: "user", text, time: { created } })
 const staged = {
@@ -56,7 +56,8 @@ test("Esc in History returns to the live transcript without arming a rewind", as
   view.mockInput.pressKey("h")
   await screen("History ·")
   view.mockInput.pressEscape()
-  const live = await screen("Transcript ·")
+  await until(() => !view.captureCharFrame().includes("History ·"))
+  const live = view.captureCharFrame()
   expect(live).not.toContain("Press Esc again to rewind")
   expect(live).not.toContain("History ·")
 })

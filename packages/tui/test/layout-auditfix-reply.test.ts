@@ -12,11 +12,11 @@ for (const [width, height] of [
     await app.screen("Sessions")
     // Below 90 columns the session's reply editor is open from the start; wider, f opens it.
     if (width >= 90) app.view.mockInput.pressKey("f")
-    await app.screen("Esc shortcuts")
+    await app.screen("Typing")
     app.view.mockInput.pressEnter()
     const frame = await app.screen("Enter a message between 1 and 32,000 characters.")
-    expect(frame).toContain("Reply to main task")
-    expect(frame).toContain("Type a message")
+    expect(frame).toContain("Typing")
+    expect(frame).toContain("Message…")
     expect(app.server.sent("/api/session/ses_main/prompt")).toHaveLength(0)
   })
 }

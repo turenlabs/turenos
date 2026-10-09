@@ -1,20 +1,30 @@
 import { TextRenderable, type StyledText } from "@opentui/core"
 import { fitPath } from "../chrome"
+import { layout } from "../theme"
 
 /**
- * Fits the context line (`Transcript · /some/folder · ↑ scrolled up · End for latest`) to `width` by
- * shortening the folder from its start; the state words and cues stay whole. With no room for a useful
- * folder it is dropped. Text without a folder is returned as is.
+ * Fits the context line (`/some/folder · ↑ scrolled up · End for latest`, with `History · …` first in History) to
+ * `width`. Below the wide breakpoint the folder keeps only its last two segments (`…/worktrees/project`); wider,
+ * the whole folder is shown while it fits and shortened from its start when it does not. The state words and
+ * cues stay whole. With no room for a useful folder it is dropped. Text without a folder is returned as is.
  */
 export function fitContext(text: string, width: number) {
-  if (width <= 0 || text.length <= width) return text
+  if (width <= 0) return text
   const fields = text.split(" · ")
   const at = fields.findIndex((field) => /^(?:[/~]|[A-Za-z]:[\\/])/.test(field))
   if (at < 0) return text
+  const short = width < layout.wideBreakpoint ? lastSegments(fields[at]!, 2) : fields[at]!
+  const whole = fields.with(at, short).join(" · ")
+  if (whole.length <= width) return whole
   const rest = fields.filter((_, index) => index !== at)
-  const path = fitPath(fields[at]!, width - rest.join(" · ").length - 3)
+  const path = fitPath(short, width - rest.join(" · ").length - 3)
   // A path cut inside a name (`…project`) says less than none.
-  return (path === fields[at] || path.startsWith("…/") ? fields.with(at, path) : rest).join(" · ")
+  return (path === short || path.startsWith("…/") ? fields.with(at, path) : rest).join(" · ")
+}
+
+function lastSegments(path: string, count: number) {
+  const parts = path.split("/").filter(Boolean)
+  return parts.length > count ? `…/${parts.slice(-count).join("/")}` : path
 }
 
 /** The line under the session title. It keeps the full text it was given and shows the part that fits its width. */

@@ -63,7 +63,7 @@ async function launch(options: Options = {}) {
   cleanup.push(app.dispose)
   await app.ready
   // Below 90 columns the sidebar is hidden and the reply editor opens by itself.
-  await screen(options.waiting ? "Needs input" : (options.width ?? 120) < 90 ? "Esc shortcuts" : "Task 1")
+  await screen(options.waiting ? "need input" : (options.width ?? 120) < 90 ? "Typing" : "Task 1")
   const settle = async () => {
     await Bun.sleep(60)
     await view.renderOnce()
@@ -212,7 +212,9 @@ test("the top bar shows host:port before it gives up the Sessions button for the
   const row = narrow.frame().split("\n")[1]!
   expect(row).not.toContain("…")
   expect(row).not.toContain("...")
-  expect(row).toMatch(/● (127\.0\.0\.1)?:5555|● {2}/)
+  // Below 70 columns the buttons go and a local server is named by its port alone.
+  expect(row).toMatch(/● 5555/)
+  expect(row).not.toContain("Models")
 })
 
 test("the switcher leads with the session on screen, names its agent, and marks running like the sidebar", async () => {
@@ -300,7 +302,7 @@ test("the Esc-again prompt goes when the turn it offered to stop has ended", asy
   expect(app.frame()).not.toContain("Press Esc again to stop this turn")
 })
 
-test("while a quit with a draft is armed the status line says what the next press does, once, and the footer keeps q quit", async () => {
+test("while a quit with a draft is armed the status line says what the next press does, once, and the footer does not repeat it", async () => {
   let quit = 0
   const app = await launch({ onQuit: () => quit++ })
   await app.leave()
@@ -309,10 +311,8 @@ test("while a quit with a draft is armed the status line says what the next pres
   await app.view.mockInput.typeText("unsent words")
   app.view.mockInput.pressEscape()
   await app.settle()
-  expect(app.frame()).toContain("q quit")
   await app.press("q")
   const armed = app.frame()
-  expect(armed.split("\n").at(-2)).toContain("q quit")
   expect(armed.match(/again to quit and discard/g)).toHaveLength(1)
   expect(armed).not.toContain("q again quits")
   expect(quit).toBe(0)

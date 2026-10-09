@@ -1,7 +1,7 @@
 import { fg, t, TextAttributes } from "@opentui/core"
 import { display } from "../messages"
 import { color, layout } from "../theme"
-import { headerLeft, headerRight, sidebarTitle, statusline, welcomeBody } from "../chrome"
+import { canType, headerLeft, headerRight, sidebarTitle, statusline, welcomeBody } from "../chrome"
 import { label, sessionTitle } from "../state"
 import { activityFrame } from "../activity"
 import { renderActionRow } from "./actions"
@@ -11,6 +11,8 @@ import { sidebarColumns } from "../layout/resize"
 export function resize(d: DashboardContext) {
   d.run.shortcutsFor = shortcutsKey(d)
   d.ui.resize(quitArmed(d))
+  // The editor's hint row fits the width, so a resize repaints it.
+  if (d.state.modal?.composer) d.state.modal.refresh?.()
   renderTabs(d)
   renderSidebarTitle(d)
   renderStatus(d)
@@ -121,6 +123,8 @@ function renderServer(d: DashboardContext) {
   ui.serversButton.visible = !!d.options.servers
   ui.switchButton.visible = true
   ui.modelButton.visible = true
+  // Below the compact breakpoint the buttons go, with or without an address.
+  if (d.renderer.width < layout.compactBreakpoint) for (const node of buttons) node.visible = false
   if (!d.options.server) {
     ui.server.content = ""
     return
@@ -128,6 +132,7 @@ function renderServer(d: DashboardContext) {
   const text = label(d.options.server, 120)
   const address = addressOf(text)
   const port = /:\d+$/.exec(address)?.[0]
+  if (d.renderer.width < layout.compactBreakpoint) return renderCompactServer(d, dot, address, port)
   const others = (nodes: typeof buttons) =>
     [ui.heading, ui.running, ...nodes]
       .filter((node) => node.visible)
@@ -152,6 +157,19 @@ function renderServer(d: DashboardContext) {
     if (!whole?.nodes.includes(node)) node.visible = false
   }
   ui.server.content = t`${dot(d.state.connected ? "●" : "○")} ${whole?.tier ?? ""}`
+}
+
+/**
+ * Below the compact breakpoint the buttons go (their keys stay in help and the palette) and a local server
+ * is named by its port alone, so the run state keeps the row: `● 4097 · idle`.
+ */
+function renderCompactServer(d: DashboardContext, dot: ReturnType<typeof fg>, address: string, port?: string) {
+  const ui = d.ui
+  const local = /^(?:127(?:\.\d+){3}|localhost|\[?::1\]?)(?::\d+)?$/i.test(address)
+  const room = d.renderer.width - 4 - 2 - ui.heading.plainText.length - ui.running.plainText.length - 6
+  const name = local && port ? port.slice(1) : [address, port?.slice(1)].find((tier) => tier && tier.length <= room)
+  const mark = d.state.connected ? "●" : "○"
+  ui.server.content = t`${dot(mark)} ${name ?? ""}${ui.running.visible && name ? " ·" : ""}`
 }
 
 export function say(d: DashboardContext, message: string, error = false) {
@@ -197,10 +215,10 @@ function quitArmed(d: DashboardContext) {
   return Date.now() < d.run.quitArmedUntil
 }
 
-/** What the footer shortcuts depend on besides the layout: an armed quit and, on a narrow row, the status text beside them. */
+/** What the footer shortcuts depend on besides the layout: an armed quit, whether Enter can return to typing and, on a narrow row, the status text beside them. */
 function shortcutsKey(d: DashboardContext) {
   const narrow = d.renderer.width < layout.narrowBreakpoint
-  return `${quitArmed(d)}:${narrow ? statusline(d.state, d.state.snapshot, d.renderer.width).length : 0}`
+  return `${quitArmed(d)}:${canType(d.state)}:${narrow ? statusline(d.state, d.state.snapshot, d.renderer.width).length : 0}`
 }
 
 export function renderTabs(d: DashboardContext) {

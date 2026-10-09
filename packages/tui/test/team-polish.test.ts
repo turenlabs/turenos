@@ -66,7 +66,7 @@ test("the post editor's hint fits one line at 80 columns and the action row step
   expect(before).toContain("t Tasks")
   view.mockInput.pressKey("f")
   await view.mockInput.typeText("hello @moss ")
-  await screen("Enter post · Shift+Enter newline · @ mention · Esc")
+  await screen("Enter post · Esc shortcuts")
   for (let i = 0; i < 50 && view.captureCharFrame().includes("A Archived"); i++) {
     await Bun.sleep(20)
     await view.renderOnce()
