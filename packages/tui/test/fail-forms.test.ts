@@ -119,7 +119,8 @@ for (const height of [24, 36]) {
     const frame = await screen("Which colour?")
     expect(frame).toContain("Ctrl+R reject request")
     expect(frame).toContain("Esc close")
-    expect(frame).toContain("Enter choose, then review answers")
+    expect(frame).toContain("Enter select")
+    expect(frame).toContain("1-9 move")
   })
 }
 

@@ -1,9 +1,10 @@
 import { fg, t, TextAttributes } from "@opentui/core"
 import { display } from "../messages"
 import { color, layout } from "../theme"
-import { canType, headerLeft, headerRight, sidebarTitle, statusline, welcomeBody } from "../chrome"
+import { canType, requestPanel, headerLeft, headerRight, sidebarTitle, statusline, welcomeBody } from "../chrome"
 import { label, sessionTitle } from "../state"
 import { activityFrame } from "../activity"
+import { sentNotice } from "../requests/context"
 import { renderActionRow } from "./actions"
 import type { DashboardContext } from "./context"
 import { sidebarColumns } from "../layout/resize"
@@ -202,7 +203,10 @@ function dropStaleNotice(d: DashboardContext) {
   const scope = d.run.noticeScope
   // An armed quit's message ("Session interrupted. Ctrl+C again quits.") is about the turn that just ended.
   if (Date.now() < d.run.quitArmedUntil) return
-  if (scope && (scope.selected !== d.state.selected || (scope.running && !selectedRunning(d)))) say(d, "")
+  if (!scope) return
+  if (scope.selected !== d.state.selected || (scope.running && !selectedRunning(d))) say(d, "")
+  // The working line has taken over from the confirmation.
+  if (d.run.noticeMessage === sentNotice && !scope.running && selectedRunning(d)) say(d, "")
 }
 
 /** What the next quit key does while a quit is armed, so the footer says it as well as the status line. */
@@ -218,7 +222,7 @@ function quitArmed(d: DashboardContext) {
 /** What the footer shortcuts depend on besides the layout: an armed quit, whether Enter can return to typing and, on a narrow row, the status text beside them. */
 function shortcutsKey(d: DashboardContext) {
   const narrow = d.renderer.width < layout.narrowBreakpoint
-  return `${quitArmed(d)}:${canType(d.state)}:${narrow ? statusline(d.state, d.state.snapshot, d.renderer.width).length : 0}`
+  return `${quitArmed(d)}:${canType(d.state)}:${requestPanel(d.state)}:${narrow ? statusline(d.state, d.state.snapshot, d.renderer.width).length : 0}`
 }
 
 export function renderTabs(d: DashboardContext) {

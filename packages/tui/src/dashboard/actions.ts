@@ -89,22 +89,10 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
     room && state.team?.room?.id === state.selected && !state.team.room.archived && !state.team.teammates.length
   const extra = extraActions(ui.actions)
   const returning = state.tab === "sessions" && !!state.selected && d.c.team.openedSession() === state.selected
+  // Shown in this order: what the state needs first, then the rest; History and Details are the first to give way.
   const row = [
     { node: ui.stop, show: running && !typing, text: "x Stop", rank: 100 },
-    {
-      node: ui.history,
-      show: (live || room) && !typing,
-      text: room ? "A Archived" : state.history ? "h Live" : "h History",
-      rank: 50,
-    },
-    { node: ui.information, show: !typing, text: "i Details", rank: 40 },
-    changesEntry(ui, live, room, typing, empty),
-    {
-      node: ui.files,
-      show: (live || (room && !!state.team?.hasMore)) && !typing,
-      text: room ? "[ Older" : "e Files",
-      rank: 20,
-    },
+    { node: ui.queued, show: queued > 0, text: `u ${queued} queued`, short: `u ${queued}`, rank: 90 },
     {
       node: ui.tasks,
       show: (hasTasks || room) && !(room && typing),
@@ -112,8 +100,21 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
       short: `t Tasks`,
       rank: 60,
     },
-    { node: ui.queued, show: queued > 0, text: `u ${queued} queued`, short: `u ${queued}`, rank: 90 },
-    { node: ui.harness, show: (live || room) && !typing, text: room ? "F Factory" : "H Harness", rank: 10 },
+    changesEntry(ui, live, room, typing, empty),
+    {
+      node: ui.files,
+      show: (live || (room && !!state.team?.hasMore)) && !typing,
+      text: room ? "[ Older" : "e Files",
+      rank: 20,
+    },
+    { node: ui.harness, show: (live || room) && !typing, text: room ? "F Factory" : "H Harness", rank: 6 },
+    {
+      node: ui.history,
+      show: (live || room) && !typing,
+      text: room ? "A Archived" : state.history ? "h Live" : "h History",
+      rank: room ? 50 : 4,
+    },
+    { node: ui.information, show: !typing, text: "i Details", rank: 2 },
     { node: ui.meter, show: !room && !!meter, text: meter, short: usage && meterText(usage, limit, true), rank: 80 },
     // A task session opened from a room offers the way back to it.
     { node: extra.team, show: returning, text: `4 Team`, rank: 15 },

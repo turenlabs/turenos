@@ -66,7 +66,7 @@ test("the footer does not repeat the transcript line and names the pane that has
 test("the narrow footer explains its tab number and reports the drawer as the focus", () => {
   const state = createDashboardState()
   state.tab = "automations"
-  expect(statusline(state, undefined, 80)).toBe("3/4 Automations")
+  expect(statusline(state, undefined, 80)).toBe("3/4 Automations · 1-4 tabs")
   state.sidebarHidden = false
   expect(statusline(state, undefined, 80)).toBe("3/4 · Focus: sidebar")
 })

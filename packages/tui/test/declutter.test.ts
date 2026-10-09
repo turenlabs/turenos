@@ -82,7 +82,7 @@ test("the reply heading carries only news", () => {
   expect(replyHeading(idle)).toBe("")
   expect(replyHeading({ ...idle, live: true })).toStartWith("Steer · agent is working")
   expect(replyHeading({ ...idle, live: true, queue: true })).toStartWith("Queue ·")
-  expect(replyHeading({ ...idle, waiting: "permission", review: true })).toBe("Send · Permission waiting")
+  expect(replyHeading({ ...idle, waiting: "permission", review: true })).toBe("Send · permission waiting")
   expect(replyHeading({ ...idle, revert: true })).toBe("Send · undo staged")
   expect(replyHeading({ ...idle, elsewhere: "Other work" })).toBe("Send · Reply to Other work")
   expect(replyHeading({ ...idle, queued: 2 })).toBe("Send · 2 queued")

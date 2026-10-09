@@ -2,7 +2,7 @@ import type { CliRenderer, SelectRenderable } from "@opentui/core"
 import type { ModalState } from "../state"
 
 /** Below this many rows the dialog drops its spacer rows, so the content keeps the screen. */
-export const compactRows = 30
+export const compactRows = 32
 
 /**
  * The size rule for floating dialogs: as tall as their content, up to the screen, so a short

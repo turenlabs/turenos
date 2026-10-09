@@ -77,9 +77,10 @@ for (const width of [60, 160]) {
       const rows = view.captureCharFrame().split("\n")
       const primaryRow = rows.findIndex((row) => row.includes(primary))
       expect(primaryRow).toBeGreaterThanOrEqual(0)
-      expect(rows[primaryRow + 1]).toContain("h History")
-      expect(rows[primaryRow + 1]).toContain("i Details")
+      // The row leads with the state-relevant entries; History and Details are last and the first to give way.
       expect(rows[primaryRow + 1]).toContain("t Tasks")
+      expect(rows[primaryRow + 1]).toContain("d Changes")
+      expect(rows[primaryRow + 1]).toContain("e Files")
       expect(ui.actions.height).toBe(2)
       expect(ui.composer.width).toBeGreaterThanOrEqual(primary.length)
       expect(view.captureCharFrame()).toContain("Conversation stays visible")
@@ -118,10 +119,10 @@ for (const width of [60]) {
     expect(frame).toContain("[ Turen ]")
     expect(frame).toContain(`${connection.status} · No session selected.`)
     for (const shortcut of [
-      "Press n or Enter to start a session.",
-      "? help · Ctrl+P commands · m model · Ctrl+K sessions",
-      "b shows the session list",
-      ", settings · I intel",
+      "n or Enter start a session",
+      "Ctrl+K sessions · b session list",
+      "1-4 tabs · 4 Team · ? help · Ctrl+P commands",
+      "m model · , settings · I intel",
     ])
       expect(frame).toContain(shortcut)
     expect(body).not.toContain("No agent sessions yet")
@@ -177,7 +178,7 @@ test("notice wraps recovery instructions without hiding actions at minimum size"
   expect(ui.notice.height).toBeGreaterThanOrEqual(2)
   expect(ui.notice.height).toBeLessThanOrEqual(3)
   expect(noticeRows.join(" ").replace(/\s+/g, " ")).toContain(notice)
-  for (const text of ["Enter type", "h History", "i Details", "t Tasks", "? help"])
+  for (const text of ["Enter type", "d Changes", "e Files", "t Tasks", "? help"])
     expect(captureCharFrame()).toContain(text)
   ui.notice.content = "Recovery instruction ".repeat(30)
   await renderOnce()

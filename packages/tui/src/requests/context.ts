@@ -40,6 +40,9 @@ export type RequestContext = {
   /** The last Steer/Queue choice per session, kept while the process lives. */
   deliveries: Map<string, MessageDraft["delivery"]>
   questionDrafts: Map<string, QuestionDraft>
+  /** A confirmation shown in the reply editor's hint row until `until`, so a running turn's working line keeps the screen to itself. */
+  flash?: { text: string; until: number }
+  flashTimer?: ReturnType<typeof setTimeout>
 }
 
 export const maxDrafts = 16
@@ -83,3 +86,6 @@ export function recipient(ctx: RequestContext, dialog: ModalState, sessionID: st
     }),
   )
 }
+
+/** The confirmation for a reply sent to an idle session; the dashboard drops it once the working line shows. */
+export const sentNotice = "Reply sent."

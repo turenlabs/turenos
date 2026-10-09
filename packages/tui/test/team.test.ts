@@ -398,7 +398,7 @@ test("a teammate reply points at its session only when no task line already name
   const text = roomLog(view)
   expect(text).toContain("→ @moss queued · session ses_main")
   expect(text).not.toContain("full output in session ses_main")
-  expect(text).toContain("full output in session ses_other")
+  expect(text).toContain("full output in session …es_other")
 })
 
 test("the post row names posting and nothing else", () => {

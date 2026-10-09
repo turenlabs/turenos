@@ -22,6 +22,8 @@ export type MemberDraft = {
 
 const HINT =
   "Tab or Enter next field (Mission: Enter newline) · Ctrl+S or Enter on the last field saves · F3 agent · Ctrl+L model · Esc"
+// F3 and Ctrl+L are named by their field labels, so a narrow screen keeps the keys the labels do not.
+const SHORT_HINT = "Tab next · Ctrl+S save · Esc cancel"
 
 /** The add form (no `mate`) or the edit form for a teammate; `back` returns to the list or menu that opened it. */
 export function memberForm(
@@ -42,18 +44,12 @@ export function memberForm(
   if (!dialog) return
   dialog.back = input.back
   const name = ctx.dialogs.input(dialog, "Name", draft.name)
-  const handleField = mate
-    ? undefined
-    : ctx.dialogs.input(dialog, "Handle: letters, digits, _ and -, starting with a letter", draft.handle)
+  const handleField = mate ? undefined : ctx.dialogs.input(dialog, "Handle (letters, digits, _ -)", draft.handle)
   const role = ctx.dialogs.input(dialog, "Role", draft.role, "blank: Security teammate")
   const mission = textArea(ctx, dialog, "Mission", draft.mission)
-  const directory = ctx.dialogs.input(dialog, "Directory (blank: the server's default)", draft.directory)
-  const agent = ctx.dialogs.input(dialog, "Agent (blank: the server's default · F3 browse)", draft.agent)
-  const model = ctx.dialogs.input(
-    dialog,
-    "Model: provider/model (blank: the server's default · Ctrl+L browse)",
-    draft.model,
-  )
+  const directory = ctx.dialogs.input(dialog, "Directory (blank: server default)", draft.directory)
+  const agent = ctx.dialogs.input(dialog, "Agent (blank: server default · F3 browse)", draft.agent)
+  const model = ctx.dialogs.input(dialog, "Model provider/model (blank: default · Ctrl+L)", draft.model)
   ;[name, handleField, role, directory, agent, model].filter((field) => field !== undefined).forEach(markFocus)
   const read = (): MemberDraft => ({
     name: name.value,
@@ -69,7 +65,7 @@ export function memberForm(
   enterAdvances(dialog)
   dialog.submit = () => submitMember(ctx, room.id, mate, read(), { name, handle: handleField, mission, model })
   dialog.afterSubmit = input.saved
-  dialog.error.content = HINT
+  dialog.error.content = ctx.renderer.width < 80 ? SHORT_HINT : HINT
   name.focus()
 }
 

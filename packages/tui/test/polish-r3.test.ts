@@ -62,14 +62,15 @@ test("an action row that drops entries ends with an ellipsis", async () => {
     }),
   })
   view.mockInput.pressEscape()
-  const frame = await screen("h History")
-  const row = frame.split("\n").find((line) => line.includes("h History"))!
-  expect(row).not.toContain("H Harness")
+  const frame = await screen("u 2 queued")
+  const row = frame.split("\n").find((line) => line.includes("u 2 queued"))!
+  // The queued count leads; History and Details are the first entries to give way.
+  expect(row).not.toContain("i Details")
   expect(row).not.toContain("[object Object]")
   expect(row.trimEnd()).toMatch(/ …\s*(│|$)/)
   view.resize(120, 36)
-  const wide = await screen("H Harness")
-  expect(wide.split("\n").find((line) => line.includes("H Harness"))).not.toContain("…")
+  const wide = await screen("i Details")
+  expect(wide.split("\n").find((line) => line.includes("i Details"))).not.toContain("…")
 })
 
 test("every to-do state puts its glyph and its text in the same columns", () => {

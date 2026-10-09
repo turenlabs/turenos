@@ -4,6 +4,7 @@ import { label, sessionTitle } from "../state"
 import { color } from "../theme"
 import { printableKey } from "../keys"
 import { fitHints } from "../changes/heading"
+import { lastSegments } from "../layout/context-line"
 import type { ModalState } from "../state"
 import type { RequestContext } from "./context"
 
@@ -116,7 +117,13 @@ function describe(ctx: RequestContext, dialog: ModalState, request: Request) {
     )
   row("Permission request", color.text, { attributes: TextAttributes.BOLD })
   row(`For: ${sessionTitle(session?.title ?? request.sessionID, 80)}`, color.muted)
-  if (session?.location.directory) row(`Directory: ${label(session.location.directory, 200)}`, color.muted)
+  const directory = session ? label(session.location.directory, 200) : ""
+  // The frame's border and padding and the row label take 14 columns; a longer path keeps its last two folders.
+  if (directory)
+    row(
+      `Directory: ${directory.length <= ctx.renderer.width - 14 ? directory : lastSegments(directory, 2)}`,
+      color.muted,
+    )
   dialog.form.add(
     new TextRenderable(ctx.renderer, {
       content: `${display(request.action)}\n${request.resources.map((resource) => display(resource, resourceLimit)).join("\n")}`,
@@ -153,8 +160,8 @@ function hint(ctx: RequestContext, dialog: ModalState, choice: SelectRenderable)
   const keys = [
     `1-${choice.options.length} answer now`,
     `↑↓ then Ctrl+S confirms ${chosen}`,
-    "PgUp/PgDn scroll",
     "Esc close",
+    "PgUp/PgDn scroll",
   ]
   const width = () => (dialog.frame.width > 1 ? dialog.frame.width : ctx.renderer.width) - 8
   const paint = () => (dialog.error.content = fitHints(width(), [], keys))

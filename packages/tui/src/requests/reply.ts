@@ -12,7 +12,15 @@ import { showAttachments } from "./attachments"
 import { openBlockedReply } from "./blocked-reply"
 import { permission } from "./permission"
 import { question } from "./question"
-import { maxDrafts, maxMessageLength, newMessageID, replyBlocked, waitingRequest, type RequestContext } from "./context"
+import {
+  maxDrafts,
+  maxMessageLength,
+  newMessageID,
+  replyBlocked,
+  sentNotice,
+  waitingRequest,
+  type RequestContext,
+} from "./context"
 
 export function followup(ctx: RequestContext) {
   if (ctx.state.tab !== "sessions" || !ctx.state.selected) return ctx.say("Select a session first.")
@@ -157,7 +165,8 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
   const delivery = () => {
     const facts = replyFacts(ctx, dialog, session, draft)
     const waiting = facts.waiting
-    const text = replyHeading(facts)
+    const room = (dialog.frame.width || ctx.renderer.width - 4) - 5
+    const text = replyHeading(facts, room)
     heading.content = text
     heading.visible = text.length > 0
     heading.fg = waiting || session.revert ? color.warning : color.muted
@@ -165,7 +174,8 @@ function wireDelivery(ctx: RequestContext, dialog: ModalState, session: Session,
     // Reassigning an unchanged placeholder re-wraps it at the editor's old width and inflates the editor.
     const placeholder = replyPlaceholder(ctx.renderer.width)
     if (dialog.editor && dialog.editor.placeholder !== placeholder) dialog.editor.placeholder = placeholder
-    const hint = replyHint(facts, (dialog.frame.width || ctx.renderer.width - 4) - 5 - tail.plainText.length - 2)
+    const flashed = ctx.flash && Date.now() < ctx.flash.until ? ctx.flash.text : ""
+    const hint = flashed || replyHint(facts, room - tail.plainText.length - 2)
     const rows = text ? 1 : 0
     // A refresh may repaint the hint, but never over a message that replaced it.
     const free = !shown.content || dialog.error.content === shown.content
@@ -276,15 +286,18 @@ async function submitReply(
     throw ownedError(ctx, sessionID, error)
   }
   ctx.messages.delete(sessionID)
-  ctx.say(draft.shell ? "Shell command sent to the server." : sentStatus(ctx, sessionID, draft))
+  if (draft.shell) return ctx.say("Shell command sent to the server.")
+  if (draft.command || !running(ctx, sessionID)) return ctx.say(sentNotice)
+  flash(ctx, draft.delivery === "queue" ? "Reply queued." : sentNotice)
 }
 
-/** Queue and Steer only differ while the agent runs, so the status says which one happened then. */
-function sentStatus(ctx: RequestContext, sessionID: string, draft: MessageDraft) {
-  if (draft.command || !running(ctx, sessionID)) return "Reply sent."
-  return draft.delivery === "queue"
-    ? "Reply queued. The agent reads it when it is idle."
-    : "Reply sent. The agent reads it at its next step."
+/** The confirmation for a reply sent to a running turn borrows the editor's hint row for two seconds: the working line above already shows the state. */
+function flash(ctx: RequestContext, text: string) {
+  ctx.flash = { text, until: Date.now() + 2000 }
+  clearTimeout(ctx.flashTimer)
+  ctx.flashTimer = setTimeout(() => {
+    if (!ctx.state.closed) ctx.state.modal?.refresh?.()
+  }, 2000)
 }
 
 /** Decides, once per draft, whether the text is a shell command, a slash command or a prompt. */

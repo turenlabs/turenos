@@ -22,7 +22,8 @@ export function fitContext(text: string, width: number) {
   return (path === short || path.startsWith("…/") ? fields.with(at, path) : rest).join(" · ")
 }
 
-function lastSegments(path: string, count: number) {
+/** The last `count` folders of a path, `…/worktrees/project`. */
+export function lastSegments(path: string, count: number) {
   const parts = path.split("/").filter(Boolean)
   return parts.length > count ? `…/${parts.slice(-count).join("/")}` : path
 }
