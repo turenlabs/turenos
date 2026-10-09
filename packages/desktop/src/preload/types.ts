@@ -71,6 +71,11 @@ export type ElectronAPI = {
   /** Present only in dev builds - the bridge omits it entirely otherwise. */
   profiler?: ProfilerAPI
   updater: UpdaterAPI
+  releaseNotes: {
+    claim: (enabled: boolean) => Promise<{ previous: string } | null>
+    shown: () => Promise<void>
+    release: () => Promise<void>
+  }
   consumeInitialDeepLinks: () => Promise<string[]>
   getDefaultServerUrl: () => Promise<string | null>
   setDefaultServerUrl: (url: string | null) => Promise<void>
