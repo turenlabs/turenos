@@ -1,4 +1,4 @@
-import { factoryOutput } from "@turenlabs/client/team"
+import { factoryOutput, replyContext } from "@turenlabs/client/team"
 import { display } from "../messages"
 import { clock } from "../menus/stamp"
 import { label } from "../state"
@@ -66,7 +66,10 @@ export function roomLog(view: TeamView) {
 }
 
 function entry(view: TeamView, message: Message, linked: ReadonlySet<string>) {
-  const [first = "", ...rest] = display(logText(view, message), MESSAGE_VIEW).split("\n")
+  const text = display(logText(view, message), MESSAGE_VIEW).split("\n")
+  const reply = replyTarget(view, message)
+  // A reply names what it answers first, beside the author, so the text below reads as the answer.
+  const [first = "", ...rest] = reply ? [`↳ ${reply}`, ...text] : text
   const head = `${clock(message.time)} ${author(view, message)}`
   const lines = [
     message.kind === "system" ? `${head} ${first}` : `${head}  ${first}`,
@@ -83,6 +86,19 @@ function entry(view: TeamView, message: Message, linked: ReadonlySet<string>) {
       ? [`  ↳ full output in session ${shortID(message.sessionID)} (t, then Enter)`]
       : []
   return [...lines, ...output, ...tasks.map((task) => taskLine(view, task))]
+}
+
+/** What a teammate's reply answers, as the desktop shows it: who wrote that message and how it starts. */
+export function replyTarget(room: { teammates: readonly Teammate[]; messages: readonly Message[] }, message: Message) {
+  if (!message.replyTo) return
+  const source = room.messages.find((item) => item.id === message.replyTo)
+  const context = source && replyContext(message, [source])
+  if (!source || !context) return "reply to a message not loaded"
+  const name =
+    source.kind === "teammate" && source.teammateID
+      ? handleOf(room.teammates, source.teammateID)
+      : label(context.author, 40)
+  return `reply to ${name}: ${label(context.excerpt, 160)}`
 }
 
 function author(view: TeamView, message: Message) {

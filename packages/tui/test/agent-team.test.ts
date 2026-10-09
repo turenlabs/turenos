@@ -157,6 +157,30 @@ test("team show prints the room, teammates, messages set in by four spaces, acti
   expect(server.requests.at(-1)?.path).toBe("/api/team")
 })
 
+test("team show names what a teammate's reply answers between the author and the text", async () => {
+  const reply = { kind: "teammate", author: "MOSS", teammateID: "tm_moss" }
+  const server = team({
+    "GET /api/team": () => ({
+      ...state(null),
+      messages: [
+        message(2, "Review @moss\nplease"),
+        message(3, "Looks good", { ...reply, replyTo: "msg_2" }),
+        message(4, "Earlier point", { ...reply, replyTo: "msg_1" }),
+      ],
+    }),
+  })
+  const lines = (await agent(["team", "show"], { url: server.url })).stdout.split("\n")
+  const first = lines.findIndex((line) => /^\d\d:\d\d @moss$/.test(line))
+  expect(lines.slice(first, first + 6)).toEqual([
+    expect.stringMatching(/^\d\d:\d\d @moss$/),
+    "  ↳ reply to You: Review @moss please",
+    "    Looks good",
+    expect.stringMatching(/^\d\d:\d\d @moss$/),
+    "  ↳ reply to a message not loaded",
+    "    Earlier point",
+  ])
+})
+
 test("team show names the factory and its latest run", async () => {
   const server = team()
   const result = await agent(["team", "show", "trm_fact"], { url: server.url })

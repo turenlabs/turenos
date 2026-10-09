@@ -161,6 +161,7 @@ The server does not automatically replay that task or its tool side effects.
 ## Terminal Client
 
 The terminal client shows Team as view `4`: rooms, the room log, posting with `@handle` completion, room tasks, members, duties and the factory.
+A reply names its source's author and excerpt beside its own author, using the same rule as the desktop.
 See [TUI usage](./tui/usage.md#team).
 Scripts and coding agents use `turen-tui team` to list rooms, read and post to a room, and start, wait for or cancel factory runs.
 See [TUI agent commands](./tui/agent-commands.md).

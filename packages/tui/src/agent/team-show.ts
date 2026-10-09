@@ -1,6 +1,6 @@
 import { clock } from "../menus/stamp"
 import { display } from "../messages"
-import { handleOf } from "../team/format"
+import { handleOf, replyTarget } from "../team/format"
 import type { Answer } from "../team/types"
 import { clean, emit, indented, type Run } from "./context"
 import { whole, takes } from "./options"
@@ -50,7 +50,10 @@ function teammateLine(teammate: Answer["teammates"][number]) {
   return `  @${teammate.handle} ${clean(teammate.name, 120)} · ${clean(teammate.role, 120)} · ${teammate.status}`
 }
 
-/** The time and author in column 0, then the text set in by four spaces, as `show` sets in a transcript. */
+/**
+ * The time and author in column 0, then the text set in by four spaces, as `show` sets in a transcript. A reply's
+ * source sits between them, set in by two.
+ */
 function messageText(state: Answer, message: Answer["messages"][number]) {
   const author =
     message.kind === "teammate" && message.teammateID
@@ -58,7 +61,12 @@ function messageText(state: Answer, message: Answer["messages"][number]) {
       : message.kind === "system"
         ? "system"
         : clean(message.author, 80)
-  return `${clock(message.time)} ${author}\n${indented(display(message.text, 16_000))}`
+  const reply = replyTarget(state, message)
+  return [
+    `${clock(message.time)} ${author}`,
+    ...(reply ? [`  ↳ ${reply}`] : []),
+    indented(display(message.text, 16_000)),
+  ].join("\n")
 }
 
 function activeTasks(state: Answer, flags: string) {

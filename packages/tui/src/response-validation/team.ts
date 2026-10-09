@@ -58,6 +58,7 @@ function message(item: Record<string, unknown>) {
   clip(item, "author", 512)
   clip(item, "text", 100_000)
   optional(item.teammateID, (id) => identifier(id))
+  optional(item.replyTo, (id) => identifier(id))
   optional(item.sessionID, (id) => identifier(id, "ses_"))
   optional(item.sourceMessageIDs, (ids) => array(ids, 256).forEach((id) => identifier(id)))
   numeric(item.time)

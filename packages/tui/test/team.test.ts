@@ -259,6 +259,8 @@ test("the Team validator accepts a valid state and rejects malformed ones", () =
     "Invalid server response",
   )
   expect(() => check({ ...valid(), messages: [log[0], log[0]] })).toThrow("duplicate")
+  expect(check({ ...valid(), messages: [{ ...log[0], replyTo: "msg_0" }] })).toBeDefined()
+  expect(() => check({ ...valid(), messages: [{ ...log[0], replyTo: "../x" }] })).toThrow("Invalid server response")
 })
 
 const write = (path: string, method: string, value: unknown) =>
@@ -399,6 +401,28 @@ test("a teammate reply points at its session only when no task line already name
   expect(text).toContain("→ @moss queued · session ses_main")
   expect(text).not.toContain("full output in session ses_main")
   expect(text).toContain("full output in session …es_other")
+})
+
+test("a reply names what it answers beside the author, from loaded messages only", () => {
+  const reply = { kind: "teammate", author: "Morgan", teammateID: "tm_moss" }
+  const view = {
+    ...answer([
+      message(2, "Check\n  the result"),
+      message(3, "Done", { ...reply, replyTo: "msg_2" }),
+      message(4, "About that", { ...reply, replyTo: "msg_1" }),
+      message(5, "Noted", { ...reply, replyTo: "msg_3" }),
+      message(6, "\u001b]0;title\u0007Hi"),
+      message(7, "Hello", { ...reply, replyTo: "msg_6" }),
+    ]),
+    showArchived: false,
+    pendingRuns: new Map(),
+  } as unknown as TeamView
+  const text = roomLog(view)
+  expect(text).toContain("@moss  ↳ reply to You: Check the result\n      Done")
+  expect(text).toContain("@moss  ↳ reply to a message not loaded\n      About that")
+  expect(text).toContain("@moss  ↳ reply to @moss: Done\n      Noted")
+  expect(text).not.toContain("\u001b")
+  expect(text).not.toContain("\u0007")
 })
 
 test("the post row names posting and nothing else", () => {
