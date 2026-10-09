@@ -37,7 +37,7 @@ export function buildSwitcherView(
     scopes.add(button)
     return { value, button }
   })
-  scopes.add(new TextRenderable(renderer, { content: "F2", fg: color.muted }))
+  scopes.add(new TextRenderable(renderer, { content: "Tab", fg: color.muted }))
   dialog.frame.add(scopes, 1)
   dialog.frame.add(
     new TextRenderable(renderer, {

@@ -132,7 +132,7 @@ export const helpSections: [string, [string, string][]][] = [
       ["Up/Down", "choose · Enter select · Esc back"],
       [
         "Sessions",
-        "type anytime; Tab stays in search; F2 Recent / All / Archived; F3 older and Shift+F3 newer title search",
+        "type anytime; Tab Recent / All / Archived (Shift+Tab back); F3 older and Shift+F3 newer title search",
       ],
       ["PgUp/PgDn", "or the wheel browse; click a result to open"],
       ["Ctrl+O", "in the session picker: open an older session by ID"],

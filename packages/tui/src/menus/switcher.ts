@@ -64,6 +64,7 @@ export function openSwitcher(ctx: MenuContext, initialScope: Scope = "recent", s
   dialog.form.content.on("resize", () => reveal(s))
   dialog.form.viewport.on("resize", () => reveal(s))
   dialog.key = (key) => onKey(s, key)
+  dialog.tab = (back) => nextTab(s, back)
   s.query.value = search
   changeScope(s, initialScope)
   s.query.focus()
@@ -125,7 +126,7 @@ function hint(s: Switcher) {
         "↑/↓ choose",
         "Enter open",
         ...(s.scope === "recent" ? [find] : ["F3 Older", "Shift+F3 Newer"]),
-        `F2 ${nextScope[s.scope]}`,
+        `Tab ${nextScope[s.scope]}`,
         "Ctrl+O ID",
         "PgUp/Dn page",
         "Ctrl+Home/End first/last",
@@ -134,9 +135,9 @@ function hint(s: Switcher) {
     )
   if (s.scope === "recent")
     return s.query.value.trim()
-      ? `${empty(s)}\nF2 Search server · Ctrl+O Open older session by ID`
-      : `${empty(s)}\n${fitHints(innerWidth(s), [], [find, "F2 All", "Ctrl+O ID", "Esc close"])}`
-  return `${empty(s)}\nF2 ${nextScope[s.scope]} · Ctrl+O ID · Esc close`
+      ? `${empty(s)}\nTab Search server · Ctrl+O Open older session by ID`
+      : `${empty(s)}\n${fitHints(innerWidth(s), [], [find, "Tab All", "Ctrl+O ID", "Esc close"])}`
+  return `${empty(s)}\nTab ${nextScope[s.scope]} · Ctrl+O ID · Esc close`
 }
 
 /** The recent list leaves them out until a search asks for them. */
@@ -255,11 +256,14 @@ function onInput(s: Switcher) {
   s.searchTimer = setTimeout(() => void search(s), 250)
 }
 
+/** Tab moves through Recent, All and Archived, and Shift+Tab back; the search field keeps the keyboard. */
+function nextTab(s: Switcher, back: boolean) {
+  const order = ["recent", "all", "archived"] as const
+  changeScope(s, order[(order.indexOf(s.scope) + (back ? 2 : 1)) % 3]!)
+  return true
+}
+
 function onKey(s: Switcher, key: KeyEvent) {
-  if (matchesKey(key, "f2")) {
-    changeScope(s, s.scope === "recent" ? "all" : s.scope === "all" ? "archived" : "recent")
-    return true
-  }
   if (s.scope !== "recent" && (matchesKey(key, "f3") || matchesKey(key, "f3", { shift: true }))) {
     if (!s.loading) {
       const cursor = key.shift ? s.cursors.previous : s.cursors.next

@@ -4,7 +4,7 @@ import { color } from "../theme"
 import type { RequestContext } from "./context"
 import { loadDraft } from "./question/draft"
 import { answers, complete, keepCustom, type QuestionFlow, type Questions } from "./question/flow"
-import { beforeSubmit, handleKey } from "./question/keys"
+import { beforeSubmit, handleKey, handleTab } from "./question/keys"
 import { render } from "./question/render"
 
 type Request = NonNullable<RequestContext["state"]["detail"]>["questions"][number]
@@ -28,6 +28,7 @@ export function question(ctx: RequestContext, reject = false) {
     Object.assign(flow.draft, { page: flow.page, review: flow.review, reject: flow.reject, editing: !!flow.input })
   }
   dialog.key = (event) => handleKey(flow, event)
+  dialog.tab = (back) => handleTab(flow, back)
   dialog.beforeSubmit = () => beforeSubmit(flow)
   dialog.submit = () => submitQuestion(flow, request, key)
   render(flow)

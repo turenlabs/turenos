@@ -150,6 +150,6 @@ function footer(flow: QuestionFlow, question: Questions[number]) {
       ...(question.multiple ? ["↑↓ move", "Space or 1-9 toggle", "Enter next"] : ["↑↓ or 1-9 move", "Enter select"]),
       ...(flow.ctx.renderer.height < compactRows ? [] : ["PgUp/PgDn scroll", "Ctrl+K sessions"]),
     ],
-    ["←/→ question", "Ctrl+R reject request", "Esc close"],
+    ["Tab/←/→ question", "Ctrl+R reject request", "Esc close"],
   )
 }

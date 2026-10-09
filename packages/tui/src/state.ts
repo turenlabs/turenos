@@ -16,7 +16,8 @@ import type { TeamView } from "./team/types"
 import type { Folder } from "./working-folders/folder"
 
 export type Tab = "sessions" | "terminals" | "automations" | "team"
-export type Field = InputRenderable | TextareaRenderable | SelectRenderable
+/** What Tab moves between in a dialog; a panel's content pane is one, so the arrows can scroll it. */
+export type Field = InputRenderable | TextareaRenderable | SelectRenderable | ScrollBoxRenderable
 export type Row = { id: string; name: string; description: string }
 export type LaunchDraft = {
   directory: string
@@ -86,6 +87,8 @@ export type ModalState = {
   save?: () => void
   discard?: () => void
   key?: (key: KeyEvent) => boolean
+  /** Takes Tab (and Shift+Tab, `back`) for the dialog's own screens; false leaves Tab to move between its fields. */
+  tab?: (back: boolean) => boolean
 }
 
 export type DashboardState = {

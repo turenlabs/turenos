@@ -2,7 +2,7 @@ import { BoxRenderable, SelectRenderable, TextRenderable, type CliRenderer } fro
 import type { Dialogs } from "./dialogs"
 import { mentionText } from "./prompt-files"
 import type { Session } from "./server"
-import type { ModalState } from "./state"
+import type { Field, ModalState } from "./state"
 import { color } from "./theme"
 import { fitHints } from "./changes/heading"
 
@@ -11,7 +11,8 @@ export type Drafts = { mention: (session: Session, text: string) => boolean; rep
 /**
  * A near-full-screen dialog split into a chooser on the left and the chosen item's content on the
  * right, like the desktop's review and file panels. The content pane is the dialog's own scroll
- * form, so Page Up/Down scroll it while arrows move the chooser.
+ * form: Page Up/Down scroll it from either pane, and Tab moves the keyboard between the panes, so
+ * the arrows move the chooser or scroll the content.
  */
 export function openPanel(
   renderer: CliRenderer,
@@ -39,8 +40,43 @@ export function openPanel(
     truncate: true,
   })
   const row = new BoxRenderable(renderer, { flexDirection: "row", flexGrow: 1, minHeight: 1, gap: 2 })
+  const list = chooser(renderer, listWidth)
+  const index = dialog.frame.getChildren().indexOf(dialog.form)
+  dialog.frame.remove(dialog.form)
+  row.add(list)
+  row.add(dialog.form)
+  dialog.frame.add(heading, index)
+  dialog.frame.add(row, index + 1)
+  const body = new TextRenderable(renderer, { content: "", fg: color.text, wrapMode: "word", selectable: true })
+  dialog.form.add(body)
+  dialogs.track(dialog, list)
+  dialogs.track(dialog, dialog.form)
+  list.focus()
+  return {
+    dialog,
+    heading,
+    list,
+    body,
+    ...fitting(renderer, row, dialog),
+    /** Adds a field to the Tab order before the content pane, which stays last. */
+    track(field: Field) {
+      dialogs.track(dialog, field)
+      dialog.fields.push(...dialog.fields.splice(dialog.fields.indexOf(dialog.form), 1))
+    },
+    /** Replaces the right pane and scrolls it back to the top. */
+    show(content: TextRenderable["content"] | string) {
+      body.content = content
+      dialog.form.scrollTo(0)
+    },
+  }
+}
+
+export type Panel = NonNullable<ReturnType<typeof openPanel>>
+
+/** The left pane. Its chosen row dims while the content pane has the keyboard, so the active pane is visible. */
+function chooser(renderer: CliRenderer, width: number | `${number}%`) {
   const list = new SelectRenderable(renderer, {
-    width: listWidth,
+    width,
     minWidth: 24,
     flexShrink: 0,
     options: [],
@@ -51,32 +87,23 @@ export function openPanel(
     textColor: color.text,
     selectedBackgroundColor: color.selected,
     selectedTextColor: color.accent,
+    focusedBackgroundColor: color.panel,
   })
-  const index = dialog.frame.getChildren().indexOf(dialog.form)
-  dialog.frame.remove(dialog.form)
-  row.add(list)
-  row.add(dialog.form)
-  dialog.frame.add(heading, index)
-  dialog.frame.add(row, index + 1)
-  const body = new TextRenderable(renderer, { content: "", fg: color.text, wrapMode: "word", selectable: true })
-  dialog.form.add(body)
-  dialogs.track(dialog, list)
-  list.focus()
-  return {
-    dialog,
-    heading,
-    list,
-    body,
-    ...fitting(renderer, row, dialog),
-    /** Replaces the right pane and scrolls it back to the top. */
-    show(content: TextRenderable["content"] | string) {
-      body.content = content
-      dialog.form.scrollTo(0)
-    },
-  }
+  list.on("focused", () => {
+    list.selectedBackgroundColor = color.selected
+    list.selectedTextColor = color.accent
+  })
+  list.on("blurred", () => {
+    list.selectedBackgroundColor = color.bg
+    list.selectedTextColor = color.muted
+  })
+  return list
 }
 
-export type Panel = NonNullable<ReturnType<typeof openPanel>>
+/** Every panel names Tab, before its closing key. */
+function withTab(essential: string[]) {
+  return [...essential.slice(0, -1), "Tab pane", ...essential.slice(-1)]
+}
 
 /** Heading, rows and hints are fitted to the laid-out width, so each repaints when the width changes. */
 function fitting(renderer: CliRenderer, row: BoxRenderable, dialog: ModalState) {
@@ -95,7 +122,9 @@ function fitting(renderer: CliRenderer, row: BoxRenderable, dialog: ModalState) 
     hintText(optional: string[], essential: string[], note?: { text: string; essential: string[] }) {
       // The error line keeps a two-column margin beside the frame's edge.
       const width = panel.width() - 2
-      return note?.text ? `${note.text}\n${fitHints(width, [], note.essential)}` : fitHints(width, optional, essential)
+      return note?.text
+        ? `${note.text}\n${fitHints(width, [], withTab(note.essential))}`
+        : fitHints(width, optional, withTab(essential))
     },
     /** Paints `hintText` now and whenever the width changes; `note` is read at each paint. */
     hints(optional: string[], essential: string[], note?: () => { text: string; essential: string[] }) {

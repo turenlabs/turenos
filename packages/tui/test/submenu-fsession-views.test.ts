@@ -31,8 +31,8 @@ test("the archived tab names itself in the title and explains an empty list", as
   await screen("main task")
   view.mockInput.pressKey("k", { ctrl: true })
   await screen("Switch session")
-  view.mockInput.pressKey("F2")
-  view.mockInput.pressKey("F2")
+  // Shift+Tab goes back, from Recent round to Archived.
+  view.mockInput.pressTab({ shift: true })
   const frame = await screen("No archived sessions")
   expect(frame).toContain("Switch session › Archived")
   expect(frame).not.toContain("No matching titles")
@@ -44,10 +44,10 @@ test("every finder tab lists the same navigation hints", async () => {
   view.mockInput.pressKey("k", { ctrl: true })
   const recent = await screen("Ctrl+O ID")
   expect(recent).toContain("Esc close")
-  view.mockInput.pressKey("F2")
+  view.mockInput.pressTab()
   await screen("Switch session › All sessions")
   const all = await screen("Enter open")
-  for (const hint of ["Enter open", "F2 Archived", "Ctrl+O ID", "Esc close"]) expect(all).toContain(hint)
+  for (const hint of ["Enter open", "Tab Archived", "Ctrl+O ID", "Esc close"]) expect(all).toContain(hint)
 })
 
 test("Esc in History returns to the live transcript without arming a rewind", async () => {

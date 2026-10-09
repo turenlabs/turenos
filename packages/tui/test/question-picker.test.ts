@@ -147,6 +147,25 @@ test("single picker needs answers and review; final payload keeps captured IDs a
   ])
 })
 
+test("Tab and Shift+Tab move between questions like the arrows; a custom answer keeps Tab for its fields", async () => {
+  const f = await fixture([single, { ...single, header: "Second", question: "And the second choice?", custom: true }])
+  const tab = async (shift = false) => {
+    f.view.mockInput.pressTab({ shift })
+    return f.settle()
+  }
+  expect(await f.enter()).toContain("Question 2 of 2")
+  expect(await tab(true)).toContain("Question 1 of 2")
+  expect(await tab()).toContain("Question 2 of 2")
+  expect(f.posts).toEqual([])
+  await f.arrow("down")
+  await f.arrow("down")
+  expect(await f.enter()).toContain("Your answer")
+  // Typing a custom answer: Tab goes back to the choices on the same question.
+  expect(await tab()).toContain("Question 2 of 2")
+  expect(f.picker().focused).toBe(true)
+  expect(f.posts).toEqual([])
+})
+
 test("clicking question text keeps arrow navigation in the option picker", async () => {
   const f = await fixture([single])
   const picker = f.picker()

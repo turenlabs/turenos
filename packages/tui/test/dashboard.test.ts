@@ -2995,8 +2995,6 @@ for (const width of [60, 120]) {
     await view.renderOnce()
     expect(view.captureCharFrame()).toContain(`▶ Browse ${selected}`)
     view.mockInput.pressKey("u", { ctrl: true })
-    view.mockInput.pressTab()
-    view.mockInput.pressTab({ shift: true })
     await view.renderOnce()
     expect(view.captureCharFrame()).toContain(`▶ Browse ${selected}`)
     await view.mockMouse.click(slider.x, slider.y + Math.floor(slider.height / 2))

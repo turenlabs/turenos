@@ -218,7 +218,7 @@ test("Recent with no loaded mains offers child discovery and preserves open by I
   app.menus.switcher()
   const frame = await app.screen("No loaded main sessions")
   expect(frame).toContain("Type to include subagents")
-  expect(frame).toContain("F2 All")
+  expect(frame).toContain("Tab All")
   expect(frame).toContain("Ctrl+O ID")
   app.view.mockInput.pressEnter()
   expect(app.opened).toEqual([])
@@ -283,7 +283,7 @@ test("All sessions finds an old title outside recent 100 and validates its exact
   app.query("Forgotten design")
   expect(await app.screen("No matching loaded sessions")).toContain("Archived")
   expect(app.calls).toEqual([])
-  app.view.mockInput.pressKey("F2")
+  app.view.mockInput.pressTab()
   await app.screen("Forgotten design notes")
   expect(app.searches().map((call) => call.query)).toEqual([
     { search: "Forgotten design", archived: "false", order: "desc", limit: "100" },
@@ -307,7 +307,7 @@ test("All sessions finds an old title outside recent 100 and validates its exact
   expect(snapshot.sessions.some((item) => item.id === "ses_old")).toBe(false)
 })
 
-test("scope buttons stay fixed, F2 cycles, and Archived avoids redundant row labels", async () => {
+test("scope buttons stay fixed, Tab cycles and Shift+Tab goes back, and Archived avoids redundant row labels", async () => {
   const app = await fixture()
   const archived = [session("ses_zero", "Epoch archive", 0), session("ses_stamp", "Dated archive", 123)]
   app.routes.set("/api/session", (request) =>
@@ -331,7 +331,7 @@ test("scope buttons stay fixed, F2 cycles, and Archived avoids redundant row lab
   expect(all).not.toContain("archived")
   expect(app.searches().at(-1)?.query).toEqual({ archived: "false", order: "desc", limit: "100" })
 
-  app.view.mockInput.pressKey("F2")
+  app.view.mockInput.pressTab()
   const frame = await app.screen("Epoch archive")
   expect(frame).toContain("[Archived]")
   const lines = frame.split("\n")
@@ -343,11 +343,12 @@ test("scope buttons stay fixed, F2 cycles, and Archived avoids redundant row lab
   await app.wait(() => app.searches().at(-1)?.query.search === "Epoch")
   await app.screen("1/2")
   expect(app.searches().at(-1)?.query).toEqual({ search: "Epoch", archived: "true", order: "desc", limit: "100" })
-  app.view.mockInput.pressTab()
   app.view.mockInput.pressArrow("down")
   expect(app.input().focused).toBe(true)
-  app.view.mockInput.pressKey("F2")
+  // Tab wraps from Archived to Recent and keeps the search typed so far.
+  app.view.mockInput.pressTab()
   await app.screen("[Recent]")
+  expect(app.input().focused).toBe(true)
   expect(app.input().value).toBe("Epoch")
   app.query("")
   await app.screen("Recent record 0")
@@ -355,6 +356,8 @@ test("scope buttons stay fixed, F2 cycles, and Archived avoids redundant row lab
   await app.click("Archived")
   await app.screen("Epoch archive")
   expect(app.searches()).toHaveLength(count + 1)
+  app.view.mockInput.pressTab({ shift: true })
+  await app.screen("[All sessions]")
   expect(app.opened).toEqual([])
 })
 
@@ -508,7 +511,7 @@ test("cancelled debounce and switching back to Recent do not send a pending titl
     const count = app.searches().length
     app.query("must not be sent")
     if (cancel === "escape") app.view.mockInput.pressEscape()
-    if (cancel === "recent") app.view.mockInput.pressKey("F2")
+    if (cancel === "recent") app.view.mockInput.pressTab()
     await Bun.sleep(300)
     expect(app.searches()).toHaveLength(count)
     expect(app.state.selected).toBe("ses_recent0")

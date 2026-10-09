@@ -44,7 +44,11 @@ export function keypress(ctx: DialogContext, key: KeyEvent) {
     return true
   }
   if (matchesKey(key, "pageup") || matchesKey(key, "pagedown")) return scrollPage(ctx, current, key)
-  if (matchesKey(key, "tab") || matchesKey(key, "tab", { shift: true })) return cycleFocus(ctx, current, key)
+  if (matchesKey(key, "tab") || matchesKey(key, "tab", { shift: true })) {
+    if (!current.tab?.(key.shift)) return cycleFocus(ctx, current, key)
+    key.preventDefault()
+    return true
+  }
   return routeSubmitKeys(ctx, current, key)
 }
 

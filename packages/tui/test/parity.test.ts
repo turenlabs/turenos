@@ -225,6 +225,32 @@ test("Files browses folders and shows file contents read-only", async () => {
   await screen("1  # Readme")
 })
 
+test("Tab moves the keyboard between a panel's list and its content, so the arrows scroll the content", async () => {
+  const file = (name: string) => ({ name, path: name, absolute: `/srv/main/${name}`, type: "file", ignored: false })
+  const { view, screen } = await dashboard({
+    "GET /file": () => [file("README.md"), file("z.md")],
+    "GET /file/content": (_, url) => ({
+      type: "text",
+      content:
+        url.searchParams.get("path") === "z.md"
+          ? "zed file"
+          : Array.from({ length: 200 }, (_, row) => `row ${row}`).join("\n"),
+    }),
+  })
+  view.mockInput.pressKey("e")
+  expect(await screen("row 0")).toContain("Tab pane")
+  view.mockInput.pressTab()
+  for (let step = 0; step < 3; step++) view.mockInput.pressArrow("down")
+  await view.renderOnce()
+  const scrolled = view.captureCharFrame()
+  expect(scrolled).not.toContain("row 0")
+  expect(scrolled).toContain("row 3")
+  expect(scrolled).not.toContain("zed file")
+  view.mockInput.pressTab({ shift: true })
+  view.mockInput.pressArrow("down")
+  await screen("zed file")
+})
+
 test("the Terminals tab renames and closes server terminals", async () => {
   const shell = { id: "pty_1", title: "build", command: "zsh", args: [], cwd: "/srv/main", status: "running", pid: 42 }
   const { server, view, screen, confirm } = await dashboard({

@@ -41,7 +41,7 @@ export function createSwarmRoom(
       placeholderColor: color.muted,
     })
     panel.dialog.frame.add(post, panel.dialog.frame.getChildren().indexOf(panel.dialog.error))
-    dialogs.track(panel.dialog, post)
+    panel.track(post)
     panel.dialog.save = () => {
       if (!post.value.trim()) return void drafts.delete(session.id)
       drafts.set(session.id, post.value)

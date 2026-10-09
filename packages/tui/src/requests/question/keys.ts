@@ -12,12 +12,7 @@ export function handleKey(flow: QuestionFlow, key: KeyEvent) {
   }
   if (flow.reject) return matchesKey(key, "enter")
   if (flow.input) return handleCustomKey(flow, key)
-  if (matchesKey(key, "left")) {
-    if (flow.review) flow.review = false
-    else flow.page = Math.max(0, flow.page - 1)
-    render(flow)
-    return true
-  }
+  if (matchesKey(key, "left")) return previous(flow)
   if (matchesKey(key, "right") && !flow.review) {
     advance(flow)
     return true
@@ -28,6 +23,24 @@ export function handleKey(flow: QuestionFlow, key: KeyEvent) {
     return true
   }
   return false
+}
+
+/**
+ * Tab and Shift+Tab move between the questions as → and ← do. While a custom answer is typed, or the request is
+ * being rejected, Tab keeps moving between the fields.
+ */
+export function handleTab(flow: QuestionFlow, back: boolean) {
+  if (flow.reject || flow.input) return false
+  if (back) return previous(flow)
+  if (!flow.review) advance(flow)
+  return true
+}
+
+function previous(flow: QuestionFlow) {
+  if (flow.review) flow.review = false
+  else flow.page = Math.max(0, flow.page - 1)
+  render(flow)
+  return true
 }
 
 function handleCustomKey(flow: QuestionFlow, key: KeyEvent) {
