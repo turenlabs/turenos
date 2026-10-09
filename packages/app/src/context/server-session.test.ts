@@ -121,6 +121,34 @@ describe("server session", () => {
     expect(store.data.part_text_accum_delta[part.id]).toBeUndefined()
   })
 
+  test("holds Session Core permission requests until they are replied", () => {
+    const store = setup({ child: session("child") }).store
+    store.apply({
+      type: "permission.v2.asked",
+      properties: { id: "per_1", sessionID: "child", action: "read", resources: [".env"], save: [".env"] },
+    })
+
+    expect(store.data.permission.child).toEqual([
+      {
+        id: "per_1",
+        sessionID: "child",
+        permission: "read",
+        patterns: [".env"],
+        metadata: {},
+        always: [".env"],
+        tool: undefined,
+        runtime: "v2",
+      },
+    ])
+
+    store.apply({
+      type: "permission.v2.replied",
+      properties: { sessionID: "child", requestID: "per_1", reply: "reject" },
+    })
+
+    expect(store.data.permission.child).toEqual([])
+  })
+
   test("does not remove content confirmed by a message event", () => {
     const message = userMessage("message")
     const part = textPart(message.id)
