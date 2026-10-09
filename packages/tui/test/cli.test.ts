@@ -229,7 +229,7 @@ describe("CLI entrypoint", () => {
     expect(await probe([], [true, true], {}, true)).toEqual({ stdout: "", stderr: "", exitCode: 0 })
   })
 
-  for (const flag of ["--help", "-h"]) {
+  for (const flag of ["--help", "-h", "help"]) {
     test(`${flag} works without a TTY and describes the standalone options`, async () => {
       const result = await run([cli, flag], { TURENOS_SERVER_URL: "invalid" })
       expect(result.exitCode).toBe(0)

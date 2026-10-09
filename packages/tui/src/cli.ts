@@ -122,6 +122,8 @@ function reportCrash(kind: string, error: unknown) {
 }
 
 export async function main(args = process.argv.slice(2)) {
+  // `help` alone is --help; `help <command>` goes to that command's help below.
+  if (args[0] === "help" && (args[1] === undefined || args[1].startsWith("-"))) return console.log(help)
   if (isAgentCommand(args[0]) || isCommandWord(args[0])) {
     // Agent commands never need a terminal and never load the renderer. A mistyped command word reaches
     // them too, so it fails as a usage error instead of being read as a server URL.
