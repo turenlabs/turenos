@@ -34,6 +34,24 @@ test("queued messages can be sent now, discarded, or taken back into the reply e
   expect(server.sent("/api/session/ses_main/input/msg_second/cancel")).toHaveLength(1)
 })
 
+test("sending the only queued message closes the dialog and says Sent now.", async () => {
+  let inputs = [queued("msg_first", "Also run the linter")]
+  const { server, view, screen } = await dashboard({
+    "GET /api/session/ses_main/input": () => ({ data: inputs }),
+    "POST /api/session/ses_main/input/msg_first/steer": () => {
+      inputs = []
+      return { data: true }
+    },
+  })
+  await screen("u 1 queued")
+  view.mockInput.pressKey("u")
+  await screen("Also run the linter")
+  view.mockInput.pressEnter()
+  await screen("Sent now.")
+  expect(server.sent("/api/session/ses_main/input/msg_first/steer")).toHaveLength(1)
+  expect(view.captureCharFrame()).not.toContain("Ctrl+D twice discard")
+})
+
 test("editing a queued message cancels it and reopens its text in the reply editor", async () => {
   let inputs = [queued("msg_first", "Rename the flag")]
   const { server, view, screen } = await dashboard({

@@ -169,3 +169,21 @@ test("the Ctrl+C that stops a turn still says a second press quits once the turn
   expect(frame.trimEnd().split("\n").at(-1)).toContain("Ctrl+C again quits")
   expect(frame.trimEnd().split("\n").at(-1)).not.toContain("Ctrl+C stop")
 })
+
+test("typed text stays visible beside the attachment line at 80x24", async () => {
+  const app = await mount(80, {
+    "GET /api/fs/find": () => ({
+      location: { directory: "/srv/main", project: { id: "project", directory: "/srv/main" } },
+      data: [{ path: "README.md", type: "file" }],
+    }),
+  })
+  app.view.mockInput.pressEnter()
+  await app.screen("Reply to main task")
+  await app.view.mockInput.typeText("see @RE")
+  await app.screen("README.md")
+  app.view.mockInput.pressTab()
+  await app.screen("Attaches README.md")
+  await app.view.mockInput.typeText("and explain it")
+  const frame = await app.screen("Attaches README.md")
+  expect(frame).toContain("and explain it")
+})

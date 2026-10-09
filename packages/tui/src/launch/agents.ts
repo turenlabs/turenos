@@ -1,4 +1,5 @@
-import { errorText } from "../server"
+import { clause } from "../messages"
+import { errorText, httpStatus } from "../server"
 import { label } from "../state"
 import type { LaunchForm } from "./context"
 import { summarize } from "./summary"
@@ -35,12 +36,30 @@ export function loadAgents(form: LaunchForm): Promise<void> {
     .catch((error) => {
       if (state.closed || state.modal !== dialog || requested !== directory.value.trim()) return
       form.loadError = error
-      dialog.error.content = `Cannot load agents: ${errorText(error)}. Ctrl+S retries.`
+      agent.options = [{ name: "Agents unavailable", description: "" }]
+      const typed = typedFolder(form, requested, error)
+      dialog.error.content = `${agentsFailure(form, requested, error)} ${typed ? "Fix Directory, or " : ""}Ctrl+S retries.`
     })
     .finally(() => {
       form.loading = undefined
     })
   return form.loading
+}
+
+/** Why discovery failed, as a sentence that submitting reports too. */
+export function agentsFailure(form: LaunchForm, requested: string, error: unknown) {
+  if (typedFolder(form, requested, error)) return `${label(requested, 80)} may not be a folder on the server.`
+  return `Cannot load agents: ${clause(errorText(error))}.`
+}
+
+/** The form opens on a folder that exists, so a refusal after the user typed another one points at that folder (a worktree's is generated, not typed). */
+function typedFolder(form: LaunchForm, requested: string, error: unknown) {
+  const status = httpStatus(error)
+  return (
+    !form.current.worktree &&
+    requested !== form.current.directory &&
+    (status === 400 || status === 404 || (status ?? 0) >= 500)
+  )
 }
 
 /** Sets the agent selection from code. The select's own change events are the user's choices, which this one is not. */

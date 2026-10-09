@@ -3,7 +3,7 @@ import { errorText } from "../server"
 import { color } from "../theme"
 import { requireWord } from "../dialogs/fields"
 import { waiting } from "../queue/inputs"
-import { recipient, type RequestContext } from "./context"
+import { recipient, waitingRequest, type RequestContext } from "./context"
 
 /** `x` and `/stop`: interrupts the running session and cancels its subagent tasks, as Esc Esc does. */
 export function interrupt(ctx: RequestContext) {
@@ -20,9 +20,19 @@ export function stopRunning(ctx: RequestContext, next = "") {
   if (ctx.state.tab !== "sessions" || !id || !Object.hasOwn(ctx.state.snapshot?.active ?? {}, id)) return false
   void ctx.connection.client.sessions
     .interrupt({ sessionID: id })
+    .then(() => idle(ctx, id))
     .then(() => ctx.say(`${stopped(ctx, id)}${next ? ` ${next}` : ""}`))
     .catch((error: unknown) => ctx.say(`Could not stop the turn: ${errorText(error)}`))
   return true
+}
+
+/**
+ * A notice said while the session still shows as running is dropped when the next update shows it idle, which
+ * would erase the outcome of the stop; wait (at most 2 s) for that update first.
+ */
+async function idle(ctx: RequestContext, sessionID: string) {
+  for (let waited = 0; waited < 2000 && Object.hasOwn(ctx.state.snapshot?.active ?? {}, sessionID); waited += 100)
+    await Bun.sleep(100)
 }
 
 /**
@@ -39,8 +49,12 @@ export function escapeStop(ctx: RequestContext, rewind: () => void) {
       ctx.say("Nothing to undo in this session.")
       return true
     }
-    ctx.stopArmed = { sessionID: id, until: Date.now() + 2000, action }
-    ctx.say(action === "stop" ? "Press Esc again to stop this turn and cancel its tasks" : "Press Esc again to rewind")
+    armStop(
+      ctx,
+      id,
+      action,
+      action === "stop" ? stopPrompt(ctx, id, " and cancel its tasks") : "Press Esc again to rewind",
+    )
     return true
   }
   ctx.stopArmed = undefined
@@ -52,10 +66,32 @@ export function escapeStop(ctx: RequestContext, rewind: () => void) {
   return true
 }
 
+/** What the first Esc says; with a request pending it names that request, so Esc Esc is not mistaken for dismissing it. */
+export function stopPrompt(ctx: RequestContext, sessionID: string, also = "") {
+  const waiting = waitingRequest(ctx, sessionID)
+  if (!waiting) return `Press Esc again to stop this turn${also}`
+  return waiting === "permission"
+    ? "Permission waiting · Enter reviews it · Esc again stops the turn"
+    : "Question waiting · Enter answers it · Esc again stops the turn"
+}
+
+/** Arms the second Esc for 2 s and shows `prompt`, which is cleared when the window closes unanswered. */
+export function armStop(ctx: RequestContext, sessionID: string, action: "stop" | "rewind", prompt: string) {
+  const armed = { sessionID, until: Date.now() + 2000, action }
+  ctx.stopArmed = armed
+  ctx.say(prompt)
+  // A later press or a replaced window leaves the notice to whoever owns it by then.
+  setTimeout(() => {
+    if (ctx.stopArmed !== armed) return
+    ctx.stopArmed = undefined
+    ctx.say("")
+  }, 2000).unref?.()
+}
+
 function stopped(ctx: RequestContext, sessionID: string) {
   const held = waiting(ctx.state.detail?.sessionID === sessionID ? ctx.state.detail.pending : []).length
   if (!held) return "Session interrupted."
-  return `Stopped. ${held} queued message${held === 1 ? " is" : "s are"} held: u to send or discard`
+  return `Stopped. ${held} queued message${held === 1 ? "" : "s"} held · u sends or discards`
 }
 
 export function kill(ctx: RequestContext) {

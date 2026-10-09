@@ -101,6 +101,73 @@ test("Esc from the reply editor arms the stop, so Esc Esc stops a running turn w
   expect(server.sent("/api/session/ses_main/interrupt")).toHaveLength(1)
 })
 
+test("the Esc-again prompt leaves the screen when its 2 s window closes, and a later Esc arms afresh", async () => {
+  const { server, view, screen } = await open({ ...running, ...stopped })
+  view.mockInput.pressEnter()
+  await screen("Typing")
+  view.mockInput.pressEscape()
+  await screen("Press Esc again to stop this turn")
+  const deadline = Date.now() + 3000
+  while (view.captureCharFrame().includes("Press Esc again") && Date.now() < deadline) {
+    await view.renderOnce()
+    await Bun.sleep(50)
+  }
+  // The window is 2 s; the notice's own 5 s timer must not be what removes it.
+  expect(Date.now()).toBeLessThan(deadline)
+  expect(view.captureCharFrame()).not.toContain("Press Esc again")
+  view.mockInput.pressEscape()
+  await screen("Press Esc again to stop this turn and cancel its tasks")
+  expect(server.sent("/api/session/ses_main/interrupt")).toHaveLength(0)
+})
+
+test("Ctrl+T says what the new delivery mode does", async () => {
+  const { view, screen } = await open({ ...running, ...stopped })
+  view.mockInput.pressEnter()
+  await screen("Steer · Reply to")
+  view.mockInput.pressKey("t", { ctrl: true })
+  await screen("Queue: sent when the agent is idle")
+  view.mockInput.pressKey("t", { ctrl: true })
+  await screen("Steer: read at the next step")
+})
+
+test("with a permission waiting, an empty editor says Enter reviews it, and Enter does", async () => {
+  const requests: unknown[] = []
+  const { server, view, screen, editor } = await open({ ...running, ...stopped, ...permission(requests) })
+  view.mockInput.pressEnter()
+  await screen("Typing")
+  await view.mockInput.typeText("half")
+  requests.push({ id: "per_one", sessionID: "ses_main", action: "shell", resources: ["npm test"] })
+  await screen("Permission waiting · Esc then Enter to answer")
+  view.mockInput.pressKey("u", { ctrl: true })
+  await screen("2 Allow once")
+  view.mockInput.pressEscape()
+  await screen("Enter reviews the permission · Esc Esc stops the turn")
+  expect(editor()?.plainText).toBe("")
+  view.mockInput.pressEnter()
+  await screen("2 Allow once")
+  expect(server.sent("/api/session/ses_main/interrupt")).toHaveLength(0)
+})
+
+test("a Ctrl+S right after a digit answers a permission is swallowed instead of erroring in the empty editor", async () => {
+  const requests: unknown[] = []
+  const { server, view, screen, editor } = await open(permission(requests))
+  view.mockInput.pressEnter()
+  await screen("Typing")
+  requests.push({ id: "per_one", sessionID: "ses_main", action: "shell", resources: ["npm test"] })
+  await screen("2 Allow once")
+  await Bun.sleep(600)
+  view.mockInput.pressKey("2")
+  await screen("Allowed once.")
+  requests.length = 0
+  await screen("Typing")
+  view.mockInput.pressKey("s", { ctrl: true })
+  await Bun.sleep(100)
+  await view.renderOnce()
+  expect(editor()).toBeDefined()
+  expect(view.captureCharFrame()).not.toContain("Enter a message between")
+  expect(server.sent("/api/session/ses_main/permission/per_one/reply")).toHaveLength(1)
+})
+
 test("Ctrl+C stops a running turn instead of quitting, and a second Ctrl+C quits", async () => {
   const { server, view, screen, quit } = await open({ ...running, ...stopped })
   await screen("x Stop")

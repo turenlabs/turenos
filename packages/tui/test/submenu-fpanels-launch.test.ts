@@ -84,5 +84,5 @@ test("the permission dialog's hint names the arrow keys, the digits and what Ctr
   view.mockInput.pressKey("p")
   const frame = await screen("Permission request")
   expect(frame).toContain("↑↓")
-  expect(frame).toContain("Ctrl+S Reject")
+  expect(frame).toContain("Ctrl+S confirms Reject")
 })

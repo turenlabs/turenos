@@ -126,7 +126,11 @@ test("instant stop still needs a running parent and sends no task inventory requ
   expect(f.calls).toEqual([])
   f.state.snapshot!.active = { ses_parent: { type: "running" } }
   expect(f.requests.stopRunning()).toBe(true)
-  await Bun.sleep(0)
+  await Bun.sleep(20)
   expect(f.calls).toEqual([{ method: "POST", path: "/api/session/ses_parent/interrupt" }])
+  // The outcome waits for the update that shows the session idle; said earlier, that update would erase it.
+  expect(f.notices).toEqual([])
+  f.state.snapshot!.active = {}
+  await Bun.sleep(250)
   expect(f.notices).toEqual(["Session interrupted."])
 })

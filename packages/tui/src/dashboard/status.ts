@@ -22,7 +22,8 @@ export function resize(d: DashboardContext) {
 
 export function renderActivity(d: DashboardContext) {
   if (d.state.closed) return
-  const current = activityFrame(d.state, d.run.activityStep, d.state.reducedMotion)
+  // The pane's width once laid out, so a wide terminal keeps more of a retry's reason.
+  const current = activityFrame(d.state, d.run.activityStep, d.state.reducedMotion, d.ui.activity.width || undefined)
   d.ui.activity.visible = !!current && !d.state.modal?.inline && !d.ui.sizeNotice.visible
   d.ui.activity.content = current?.content ?? ""
   d.ui.activity.fg = color[current?.tone ?? "muted"]

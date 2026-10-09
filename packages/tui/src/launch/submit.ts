@@ -2,7 +2,7 @@ import { outsideNotice } from "../mentions/outside"
 import { errorText, WorktreeNotStartedError } from "../server"
 import { folderContains } from "../working-folders"
 import type { LaunchForm } from "./context"
-import { loadAgents, selectAgent } from "./agents"
+import { agentsFailure, loadAgents, selectAgent } from "./agents"
 import { saveDraft } from "./draft"
 
 /** Sends the draft. A retry skips preparation so its frozen session ID, worktree and recipient stay as they were. */
@@ -58,8 +58,11 @@ export async function submitLaunch(form: LaunchForm) {
 async function prepare(form: LaunchForm) {
   if (form.workspace.getSelectedIndex() === 1 && !form.current.worktree?.directory) await prepareWorktree(form)
   await loadAgents(form)
-  if (form.loaded !== form.directory.value.trim())
-    throw form.loadError ?? new Error("Cannot load this directory's agents. Check Directory and retry.")
+  const requested = form.directory.value.trim()
+  if (form.loaded !== requested)
+    throw form.loadError
+      ? new Error(agentsFailure(form, requested, form.loadError))
+      : new Error("Cannot load this directory's agents. Check Directory and retry.")
   // Discovery in the worktree resets the selection; the user's choice stands only if the worktree offers it, and
   // a later choice by the user (see wireSummary) has already dropped it.
   const wanted = form.current.worktree?.agent

@@ -88,9 +88,9 @@ for (const size of [
     const app = await opened(size, () => {}, permission)
     const frame = await app.screen("3 Allow always")
     expect(frame).toContain("Allow always")
-    expect(frame).toContain("Ctrl+S Reject")
+    expect(frame).toContain("Ctrl+S confirms Reject")
     app.view.mockInput.pressArrow("down")
-    await app.screen("Ctrl+S Allow once")
+    await app.screen("Ctrl+S confirms Allow once")
   })
 }
 

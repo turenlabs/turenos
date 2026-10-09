@@ -27,6 +27,11 @@ export function display(value: string, limit = 16000) {
   return text + (value.length > limit ? "\n[display shortened]" : "")
 }
 
+/** Error text to continue with ". Next step": `errorText` ends a sentence only some of the time. */
+export function clause(text: string) {
+  return text.replace(/[.\s]+$/, "")
+}
+
 export function pendingQuestions(requests: QuestionsListOutput) {
   const request = requests[0]
   if (!request) return ""
