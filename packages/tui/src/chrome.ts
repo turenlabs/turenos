@@ -225,7 +225,7 @@ export function welcomeBody(
     : ""
   const hidden = connection?.sidebarHidden ?? (connection?.columns ?? 0) < layout.narrowBreakpoint
   return [
-    "[ Turen ]",
+    "",
     `${status ? `${status} · ` : ""}No session selected.`,
     "",
     "n or Enter start a session",

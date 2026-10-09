@@ -831,7 +831,7 @@ for (const [width, height] of [
   [120, 24],
   [180, 50],
 ] as const) {
-  test(`Ctrl+N shows the TurenOS wordmark and immediately focuses the task at ${width}×${height} without POST`, async () => {
+  test(`Ctrl+N shows the anvil and wordmark and immediately focuses the task at ${width}×${height} without POST`, async () => {
     const server = fixture()
     const view = await createTestRenderer({ width, height, kittyKeyboard: true })
     cleanup.push(() => view.renderer.destroy())
@@ -845,8 +845,9 @@ for (const [width, height] of [
       .captureSpans()
       .lines.slice(logo.y, logo.y + logo.height)
       .flatMap((line) => line.spans)
-    expect(spans.map((span) => span.fg)).toContainEqual(RGBA.fromHex("#fff3cd"))
-    expect(spans.map((span) => span.fg)).toContainEqual(RGBA.fromHex("#eee5ff"))
+    // The desktop mark's colors: the cream and blue wordmark beside the anvil's cream face and blue water.
+    const colors = spans.flatMap((span) => [span.fg, span.bg])
+    for (const hex of ["#fbf8f0", "#c8daf7", "#f3efe3", "#4a7fd4"]) expect(colors).toContainEqual(RGBA.fromHex(hex))
     expect(frame).toContain("Directory: /srv/project")
     expect(frame).toContain("Tab: folder")
     expect(frame).toContain("[ Send (Enter) ]")
@@ -2205,7 +2206,7 @@ test("empty session welcome is branded and does not block New session", async ()
   cleanup.push(() => view.renderer.destroy())
   const app = mountDashboard(view.renderer, server.connection, server.server.url.href)
   await app.ready
-  const frame = await waitForFrame(view, (frame) => frame.includes("[ Turen ]"))
+  const frame = await waitForFrame(view, (frame) => frame.includes("No session selected"))
   expect(frame).toContain("Connected")
   expect(frame).toContain("Ctrl+K sessions")
   options.authenticated = false

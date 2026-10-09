@@ -1,4 +1,5 @@
 import { BoxRenderable, ScrollBoxRenderable, TextAttributes, TextRenderable, type CliRenderer } from "@opentui/core"
+import { anvilMark } from "../logo"
 import { createMarkdown } from "../markdown"
 import { color } from "../theme"
 import { ContextLine } from "./context-line"
@@ -71,6 +72,9 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
     contentOptions: { flexDirection: "column", paddingRight: 2 },
   })
   main.add(detail)
+  // The anvil above the welcome text; other content hides it.
+  const mark = new TextRenderable(renderer, { ...anvilMark(), visible: false, flexShrink: 0, wrapMode: "none" })
+  detail.add(mark)
   const content = new TextRenderable(renderer, {
     content: "Connecting to the server…",
     fg: color.text,
@@ -82,7 +86,8 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
   markdown.visible = false
   detail.add(markdown)
 
-  function renderContent(value: string, rich = false) {
+  function renderContent(value: string, rich = false, welcome = false) {
+    mark.visible = welcome
     content.visible = !rich
     markdown.visible = rich
     if (rich) markdown.content = value

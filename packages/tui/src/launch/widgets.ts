@@ -13,7 +13,7 @@ export function createLogo(
 ) {
   const logo = new TextRenderable(renderer, {
     id: "turen-logo",
-    ...turenLogo(renderer.width >= 100 && renderer.height >= 32),
+    ...turenLogo(renderer.width >= 100 && renderer.height >= 32, renderer.width),
     alignSelf: "center",
     flexShrink: 0,
     wrapMode: "none",
@@ -32,6 +32,7 @@ export function createLogo(
           !ui.settingsOpen &&
           !dialog.reference &&
           dialog.error.height <= 2,
+        renderer.width,
       ),
     )
   }
