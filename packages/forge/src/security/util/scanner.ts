@@ -82,8 +82,8 @@ export async function resolveScanTarget(raw: unknown, ctx: IntegrationContext): 
 
 export interface RunOptions {
   cwd?: string
-  /** Extra env vars merged over process.env. */
-  env?: Record<string, string>
+  /** Extra env vars merged over process.env; undefined removes an inherited variable. */
+  env?: NodeJS.ProcessEnv
   /** Abort the scanner from an owning request or durable cancellation monitor. */
   signal?: AbortSignal
   /** Observe bounded stdout chunks while preserving the normal captured result. */

@@ -26,7 +26,9 @@ How a key combines across documents depends on the key:
   the fields it sets.
 - `retention` is read only from the global config files, and is re-read on every retention sweep.
 - `permissions` from every document are concatenated, lowest priority first, and appended to every agent's rules.
-  Evaluation takes the last matching rule, so a nearer document's rule wins.
+  Evaluation takes the last matching rule, so a nearer document's rule wins. Documents outside the global config
+  directory (repository `forge.json`, `.forge/` files, and agent Markdown found there) keep only their `ask` and `deny`
+  rules; their `allow` rules are dropped, so a cloned repository can tighten the user's rules but not loosen them.
 - `providers`, `commands`, `skills`, and `agents` are applied document by document, so a later document adds entries
   and overrides entries with the same name. An `agents` entry overrides only the fields it sets.
 - `watcher.ignore` patterns from every document are combined.
@@ -124,7 +126,8 @@ and `cors` entries are added to the `--cors` list. The CLI defaults are port `0`
 
 Each `agents.<name>` entry overrides a built-in agent or defines a new one. Fields: `model`, `variant`, `system`,
 `description`, `mode` (`primary`, `subagent`, or `all`), `hidden`, `color`, `steps` (a positive integer), `disabled`,
-and `permissions`. An agent's `permissions` are appended after the top-level rules. Agents can also be written as
+and `permissions`. An agent's `permissions` are appended after the top-level rules, and `allow` rules are dropped from
+documents outside the global config directory, as for top-level `permissions`. Agents can also be written as
 Markdown files under `agent/` or `agents/` in any config directory, and primary agents as Markdown files under `mode/`
 or `modes/`.
 

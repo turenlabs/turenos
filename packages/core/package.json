@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.42",
+  "version": "1.0.43",
   "name": "@turenlabs/core",
   "type": "module",
   "license": "MIT",
@@ -15,7 +15,7 @@
     "migration": "bun run script/migration.ts",
     "fix-node-pty": "bun run script/fix-node-pty.ts",
     "test": "bun test --timeout 60000 --max-concurrency 4 --only-failures",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit --checkers 1"
   },
   "exports": {
     "./effect/layer-node": "./src/effect/layer-node.ts",

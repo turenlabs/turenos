@@ -30,6 +30,7 @@ shell command
     |
     +--> high-confidence workspace search
     |       -> retry with grep or glob
+    |          (unless that tool is failing in this session)
     |
     +--> high-confidence workspace mutation
     |       -> retry with edit or apply_patch
@@ -61,6 +62,13 @@ workspace root under a bash or PowerShell shell is a model writing a patch in Co
 text with `ShellToolRouting.patchHeredoc` and applies it through the real `apply_patch` pipeline, with its fuzzy
 matching, permission check, and diff tracking. Every other routed command, and `apply_patch` under `cmd` or from another
 directory, returns the routing error.
+
+Search routing steps aside when its tool cannot answer. If the V2 `grep` or `glob` tool last failed in a session on a
+ripgrep backend error, the `bash` tool runs that kind of search for that session under normal shell permissions instead
+of returning the routing error. An invalid pattern or a denied permission does not count as a backend error. The next
+successful call of the same tool restores routing, and mutation routing never steps aside. `ShellToolRouting.reportSearch`
+records each outcome and `ShellToolRouting.searchUnavailable` answers the `bash` tool. The record is held in memory per
+process and bounded to the most recent 1,000 sessions.
 
 The legacy registry does not advertise `edit` and `apply_patch` together. GPT models selected for patch editing receive
 `apply_patch`; other models receive `edit` and `write`. Before returning an error, the legacy shell integration maps a

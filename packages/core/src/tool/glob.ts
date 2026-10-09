@@ -13,6 +13,7 @@ import { PermissionV2 } from "../permission"
 import { ToolRegistry } from "./registry"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
+import { ShellToolRouting } from "../shell-tool-routing"
 
 export const name = "glob"
 
@@ -105,11 +106,20 @@ const layer = Layer.effectDiscard(
                 source,
               })
               const cwd = resolved.canonical
-              const files = yield* ripgrep.glob({
-                cwd,
-                pattern: input.pattern,
-                limit: input.limit ?? Number.MAX_SAFE_INTEGER,
-              })
+              const files = yield* ripgrep
+                .glob({
+                  cwd,
+                  pattern: input.pattern,
+                  limit: input.limit ?? Number.MAX_SAFE_INTEGER,
+                })
+                .pipe(
+                  Effect.tapError((error) =>
+                    error instanceof Ripgrep.Error
+                      ? Effect.sync(() => ShellToolRouting.reportSearch(context.sessionID, "glob", false))
+                      : Effect.void,
+                  ),
+                  Effect.tap(() => Effect.sync(() => ShellToolRouting.reportSearch(context.sessionID, "glob", true))),
+                )
               // Counts are an affordance, not the answer. A failed count degrades to a
               // plain listing instead of failing a search that already succeeded.
               const counts =
@@ -136,7 +146,7 @@ const layer = Layer.effectDiscard(
                           ? error.feedback
                           : error instanceof LocationMutation.PathError
                             ? `Invalid search path ${input.path ?? "."}: ${error.reason}`
-                            : `Unable to find files matching ${input.pattern}`,
+                            : `Unable to find files matching ${input.pattern} in ${input.path ?? "."}: ${error.message}`,
                   }),
               ),
             ),

@@ -9,6 +9,7 @@ import { SessionHarness } from "@turenlabs/core/session/harness"
 import { SessionReviewer } from "@turenlabs/core/session/reviewer"
 import { SessionExecution } from "@turenlabs/core/session/execution"
 import { SessionExecutionLocal } from "@turenlabs/core/session/execution/local"
+import { TeamWorkspace } from "@turenlabs/core/team/workspace"
 import { ApplicationTools } from "@turenlabs/core/tool/application-tools"
 import { createEmbeddedRoutes } from "@turenlabs/server/routes"
 import { Context, Effect, Layer, Scope } from "effect"
@@ -30,6 +31,7 @@ export const create = Effect.fn("Forge.create")(function* () {
         SessionHarness.node,
         SessionReviewer.node,
         SessionV2.node,
+        TeamWorkspace.node,
       ]),
       // SessionV2 depends on the abstract SessionExecution node, which carries no
       // implementation of its own. The server route graph binds it the same way;

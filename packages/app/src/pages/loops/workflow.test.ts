@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   agentDraft,
+  invalidStepBinding,
   deriveStepID,
   renameStep,
   rewriteBindings,
@@ -77,4 +78,36 @@ describe("draft round-trip", () => {
     expect(drafts[0].key).toBeTruthy()
     expect(toWorkflowSteps(drafts)).toEqual(steps)
   })
+})
+
+test("renaming rewrites agent and skill conditions without changing other bindings", () => {
+  const steps = toDrafts([
+    { id: "inspect", name: "Inspect", type: "agent", prompt: "Inspect" },
+    { id: "publish", name: "Publish", type: "agent", prompt: "Publish", when: "{{ steps.inspect.output.ready }}" },
+    {
+      id: "notify",
+      name: "Notify",
+      type: "skill",
+      skill: "notify",
+      instructions: "Notify",
+      when: "{{ steps.inspect.output.ready }} {{ steps.publish.output }}",
+    },
+  ])
+  const result = toWorkflowSteps(renameStep(steps, steps[0].key, "Review"))
+  expect(result[1].when).toBe("{{ steps.review.output.ready }}")
+  expect(result[2].when).toBe("{{ steps.review.output.ready }} {{ steps.publish.output }}")
+  expect(result[0].when).toBeUndefined()
+  expect(steps[1].when).toBe("{{ steps.inspect.output.ready }}")
+})
+
+test("condition-only dependencies prevent removing or moving their producer", () => {
+  const steps = toDrafts([
+    { id: "inspect", name: "Inspect", type: "agent", prompt: "Inspect" },
+    { id: "publish", name: "Publish", type: "agent", prompt: "Publish", when: "{{ steps.inspect.output.ready }}" },
+  ])
+  expect(invalidStepBinding(steps)).toBeUndefined()
+  expect(invalidStepBinding([steps[1]])).toBe(steps[1])
+  expect(invalidStepBinding([steps[1], steps[0]])).toBe(steps[1])
+  const skill = { ...skillDraft([]), when: steps[1].when }
+  expect(invalidStepBinding([skill])).toBe(skill)
 })

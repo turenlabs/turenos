@@ -1,5 +1,5 @@
 import type { LoopInfo, LoopRun } from "./api"
-import { currentStepIndex, failedStep, isActiveRun, orderedStepOutputs, runTotal } from "./run-view"
+import { currentStepIndex, failedStep, isActiveRun, orderedStepOutputs, runSteps, runTotal } from "./run-view"
 
 export type LatestRun = {
   readonly loopID: string
@@ -90,10 +90,9 @@ export function latestRunsAcross(
   limit: number,
 ): LatestRun[] {
   return entries
-    .flatMap(({ automation, runs }) => {
-      const steps = automation.workflow?.steps.map((step) => ({ id: step.id, name: step.name })) ?? []
-      return runs.map((run) => ({ loopID: automation.id, loopName: automation.name, steps, run }))
-    })
+    .flatMap(({ automation, runs }) =>
+      runs.map((run) => ({ loopID: automation.id, loopName: automation.name, steps: runSteps(run, automation), run })),
+    )
     .toSorted((a, b) => Number(b.run.scheduledAt) - Number(a.run.scheduledAt))
     .slice(0, Math.max(0, limit))
 }
