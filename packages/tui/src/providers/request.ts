@@ -43,19 +43,16 @@ export function providerConnection(options: { url: URL; headers: Headers; signal
           ? "Provider request cancelled or timed out."
           : "Provider request failed. Check the server connection; redirects are not permitted.",
       )
-    let response: Response
-    try {
-      signal.throwIfAborted()
-      response = await fetch(address, {
-        method: input.method ?? "GET",
-        headers: requestHeaders,
-        body: input.body ? JSON.stringify(input.body) : undefined,
-        signal,
-        redirect: "error",
-      })
-    } catch {
+    if (signal.aborted) throw failed()
+    const response = await fetch(address, {
+      method: input.method ?? "GET",
+      headers: requestHeaders,
+      body: input.body ? JSON.stringify(input.body) : undefined,
+      signal,
+      redirect: "error",
+    }).catch(() => {
       throw failed()
-    }
+    })
     if (!response.ok || input.discard) {
       // Config PATCH returns the full config. Never read, parse, or retain it (or error bodies).
       await response.body?.cancel().catch(() => {})

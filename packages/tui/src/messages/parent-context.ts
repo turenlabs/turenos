@@ -1,3 +1,4 @@
+import { parseJSON } from "../api"
 import { display } from "../messages"
 import { literal } from "./literal"
 
@@ -30,12 +31,8 @@ function summary(body: string) {
 
 function toolCount(body: string) {
   if (body.length > PARSE_LIMIT) return undefined
-  try {
-    const value: unknown = JSON.parse(body)
-    return typeof value === "object" && value !== null && "tools" in value && Array.isArray(value.tools)
-      ? value.tools.length
-      : undefined
-  } catch {
-    return undefined
-  }
+  const value = parseJSON(body)
+  return typeof value === "object" && value !== null && "tools" in value && Array.isArray(value.tools)
+    ? value.tools.length
+    : undefined
 }

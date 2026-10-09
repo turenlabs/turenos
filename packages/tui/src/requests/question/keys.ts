@@ -59,11 +59,11 @@ export function beforeSubmit(flow: QuestionFlow) {
     flow.dialog.error.content = "Press Enter to save your custom answer first.\nEsc close"
     return true
   }
-  if (complete(flow)) {
-    flow.review = true
-    render(flow)
-  } else {
+  if (!complete(flow)) {
     flow.dialog.error.content = "Answer every question before reviewing.\n←/→ Navigate · Esc close"
+    return true
   }
+  flow.review = true
+  render(flow)
   return true
 }

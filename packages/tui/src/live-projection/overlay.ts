@@ -28,13 +28,12 @@ export function messages(p: Projection): Messages {
 function merge(info: Assistant, overlay: Overlay): Assistant {
   const used = new Set<string>()
   const parts = info.content.map((original) => {
-    let part = original
-    const name = key(part)
+    const name = key(original)
     used.add(name)
     const live = overlay.parts.get(name)
-    if (!live) return part
+    if (!live) return original
     if (live.ended) return live.part
-    part = live.snapshot ?? part
+    const part = live.snapshot ?? original
     if (part.type !== "tool" && live.part.type !== "tool") {
       return live.part.text.startsWith(part.text) ? live.part : part
     }
