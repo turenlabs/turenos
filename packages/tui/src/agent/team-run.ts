@@ -1,10 +1,11 @@
+import { httpStatus } from "../server"
 import { clean, emit, quote, type Run } from "./context"
 import { writeFailure } from "./delivery"
 import { AgentError, usage } from "./errors"
 import { takes } from "./options"
 import { idArgument } from "./state"
 import { roomState } from "./team-room"
-import { runDetail, runLine } from "./team-text"
+import { runDetail, runGone, runLine } from "./team-text"
 
 const maxRequest = 4000
 
@@ -22,7 +23,16 @@ export async function startRun(run: Run) {
     .factoryRun({ roomID: state.room.id, id: runID, ...(request ? { request } : {}) })
     .catch((error: unknown) => {
       // The server keeps a run by its ID and answers an exact retry with the stored run.
-      throw writeFailure(error, { messageID: runID }, retry, { noun: "run", nothing: "started", conflict: true })
+      const failure = writeFailure(error, { messageID: runID }, retry, {
+        noun: "run",
+        nothing: "started",
+        conflict: true,
+      })
+      const active = state.factoryRuns?.find((item) => item.status === "running")
+      if (!active || httpStatus(error) !== 409) throw failure
+      throw new AgentError(
+        `${failure.message} Active run: ${active.id}. Wait with: turen-tui team wait ${active.id}${run.flags}`,
+      )
     })
   return emit(
     run,
@@ -33,7 +43,12 @@ export async function startRun(run: Run) {
 
 export async function cancelRun(run: Run) {
   const runID = idArgument(takes("team cancel", run.positionals, ["run-id"])[0], "", "The run ID")
-  const cancelled = await run.connection.client.team.factoryRunCancel({ runID })
+  const client = run.connection.client.team
+  const current = await client.factoryRunGet({ runID }).catch(runGone(run.flags))
+  // The server leaves a finished run as it is, so the answer would read as a cancellation that did not happen.
+  if (["succeeded", "failed", "cancelled", "stale"].includes(current.status))
+    return emit(run, { ok: true, run: current }, `run ${runID} already ${current.status}; nothing to cancel.`)
+  const cancelled = await client.factoryRunCancel({ runID })
   return emit(run, { ok: true, run: cancelled }, [runLine("run", cancelled), ...runDetail(cancelled)].join("\n"))
 }
 

@@ -114,6 +114,7 @@ test("team rooms lists active rooms in one request, and --all adds archived ones
   expect(text.stdout.split("\n").filter(Boolean)).toEqual([
     "room trm_team · Team · Ship it",
     "room trm_fact · Factory",
+    "1 archived room hidden; --all shows them.",
   ])
   const all = document(await agent(["team", "rooms", "--all", "--json"], { url: server.url }))
   expect(all.rooms).toEqual([
@@ -228,7 +229,8 @@ test("team post without a mention says who replies, reads stdin, and notes a men
   expect(piped.stdout).toEndWith("no mention · @moss (coordinator) replies\n")
   const paused = await agent(["team", "post", "trm_team", "@rae and @ghost"], { url: server.url })
   expect(paused.stdout).toContain("@rae is paused; no task was created")
-  expect(paused.stdout).toContain("@ghost is not in this room; no task was created")
+  expect(paused.stdout).not.toContain("@ghost")
+  expect(paused.stderr).toContain("@ghost is not in this room; no task was created")
   expect(document(await agent(["team", "post", "trm_team", "hi", "--json"], { url: server.url })).coordinator).toBe(
     "moss",
   )
@@ -261,6 +263,83 @@ test("a refusal says nothing was posted, for a 400 and for an archived room's 40
   expect(result.code).toBe(1)
   expect(result.stderr).toContain("Archived rooms are read-only). Nothing was posted.")
   expect(result.stderr).not.toContain("Outcome unknown")
+  expect(result.stderr).toContain("Restore it in the dashboard (4, then d).")
+  // A room that is not archived has nothing to restore.
+  const busy = team({
+    "POST /api/team/message": () => Response.json({ _tag: "ConflictError", message: "Busy" }, { status: 409 }),
+  })
+  expect((await agent(["team", "post", "trm_team", "hello"], { url: busy.url })).stderr).not.toContain("Restore")
+})
+
+test("team post sends a mention that made no task to stderr and leaves stdout as the result", async () => {
+  const { server } = posting()
+  const json = await agent(["team", "post", "trm_team", "@ghost hi", "--json"], { url: server.url })
+  expect(json.code).toBe(0)
+  expect(document(json)).toMatchObject({ ok: true, room: "trm_team" })
+  expect(json.stderr).toBe("turen-tui: @ghost is not in this room; no task was created\n")
+  const text = await agent(["team", "post", "trm_team", "@ghost hi"], { url: server.url })
+  expect(text.code).toBe(0)
+  expect(text.stdout).toMatch(/^posted msg_[0-9a-f]{32}\n$/)
+})
+
+test("team rooms says how many archived rooms it hides, and its help promises only what it prints", async () => {
+  const server = team()
+  expect((await agent(["team", "rooms"], { url: server.url })).stdout).toEndWith(
+    "1 archived room hidden; --all shows them.\n",
+  )
+  expect((await agent(["team", "rooms", "--all"], { url: server.url })).stdout).not.toContain("hidden")
+  const help = await agent(["team", "--help"], {})
+  expect(help.stdout).not.toContain("teammate counts")
+  expect(help.stdout).toContain("List rooms: id, name and topic")
+})
+
+test("team run refused for an active run names that run and the command that waits for it", async () => {
+  const running = factoryRun("running", { id: "run-live" })
+  const busy = team({
+    "GET /api/team": (_, url) => ({
+      ...state(url.searchParams.get("roomID")),
+      factoryRuns: url.searchParams.get("roomID") === "trm_fact" ? [running] : [],
+    }),
+    "POST /api/team/room/trm_fact/factory/run": () =>
+      Response.json(
+        { _tag: "ConflictError", message: "A factory run is already active in this room" },
+        { status: 409 },
+      ),
+  })
+  const result = await agent(["team", "run", "trm_fact"], { url: busy.url })
+  expect(result.code).toBe(1)
+  expect(result.stderr).toContain("Nothing was started.")
+  expect(result.stderr).toContain("Active run: run-live. Wait with: turen-tui team wait run-live\n")
+})
+
+test("team wait and cancel on an unknown run say where runs are listed, and cancel leaves a finished run alone", async () => {
+  const cancels: string[] = []
+  const missing = () =>
+    Response.json(
+      { _tag: "InvalidRequestError", message: "Factory run run-9 not found", kind: "Team.NotFoundError" },
+      { status: 400 },
+    )
+  const server = team({
+    "GET /api/team/factory-run/run-9": missing,
+    "GET /api/team/factory-run/run-1": () => factoryRun("succeeded"),
+    "POST /api/team/factory-run/run-1/cancel": () => {
+      cancels.push("run-1")
+      return factoryRun("cancelled")
+    },
+  })
+  for (const command of ["wait", "cancel"]) {
+    const result = await agent(["team", command, "run-9"], { url: server.url })
+    expect(result.code).toBe(1)
+    expect(result.stderr).toBe("turen-tui: Factory run run-9 not found. List runs with: turen-tui team show <room>\n")
+  }
+  const done = await agent(["team", "cancel", "run-1"], { url: server.url })
+  expect(done.code).toBe(0)
+  expect(done.stdout).toBe("run run-1 already succeeded; nothing to cancel.\n")
+  expect(document(await agent(["team", "cancel", "run-1", "--json"], { url: server.url }))).toMatchObject({
+    ok: true,
+    run: { id: "run-1", status: "succeeded" },
+  })
+  expect(cancels).toEqual([])
 })
 
 test("team run starts a run with a UUID id; a room without a factory fails before anything is sent", async () => {
@@ -306,12 +385,18 @@ test("team run with a lost acknowledgement is an unknown outcome that --id retri
 })
 
 test("team cancel prints the run's final status", async () => {
-  const server = team({ "POST /api/team/factory-run/run-1/cancel": () => factoryRun("cancelled") })
+  const server = team({
+    "GET /api/team/factory-run/run-1": () => factoryRun("running"),
+    "POST /api/team/factory-run/run-1/cancel": () => factoryRun("cancelled"),
+  })
   expect((await agent(["team", "cancel", "run-1"], { url: server.url })).stdout).toBe("run run-1 · cancelled · done\n")
   const missing = turen({
     routes: {
-      "POST /api/team/factory-run/run-9/cancel": () =>
-        Response.json({ _tag: "Team.NotFoundError", message: "Factory run run-9 not found" }, { status: 404 }),
+      "GET /api/team/factory-run/run-9": () =>
+        Response.json(
+          { _tag: "InvalidRequestError", message: "Factory run run-9 not found", kind: "Team.NotFoundError" },
+          { status: 400 },
+        ),
     },
   })
   expect((await agent(["team", "cancel", "run-9"], { url: missing.url })).code).toBe(1)

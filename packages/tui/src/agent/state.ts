@@ -33,12 +33,22 @@ export async function endedState(connection: Connection, sessionID: string): Pro
   return turnFailure(messages)?.state ?? "idle"
 }
 
-/** A session ID or message ID argument; the value is never echoed back. */
+/** What each ID prefix names, so an ID passed where another kind belongs points at the right place. */
+const kinds = [
+  ["ses_", "a session ID"],
+  ["msg_", "a message ID"],
+  ["per_", "a permission ID; use turen-tui approve"],
+  ["que_", "a question ID; use turen-tui answer"],
+  ["trm_", "a room ID; use turen-tui team show"],
+] as const
+
+/** A session ID or message ID argument; only a known prefix of the value is echoed back. */
 export function idArgument(value: string | undefined, prefix: string, label: string) {
   try {
     return identifier(value, prefix)
   } catch {
-    throw usage(`${label} must be an ID starting with ${prefix}.`)
+    const other = kinds.find(([known]) => known !== prefix && value?.startsWith(known))
+    throw usage(`${label} must be an ID starting with ${prefix}${other ? ` (${other[0]} is ${other[1]})` : ""}.`)
   }
 }
 
@@ -71,11 +81,16 @@ export async function inBatches<Item, Result>(
   return results
 }
 
-export async function getSession(connection: Connection, sessionID: string) {
-  return connection.client.sessions.get({ sessionID }).catch((error: unknown) => {
+/** A catch handler that turns the server's 404 for a session into the message every command shares. */
+export function sessionGone(sessionID: string) {
+  return (error: unknown): never => {
     if (httpStatus(error) === 404) throw new AgentError(`No session ${sessionID} on this server.`)
     throw error
-  })
+  }
+}
+
+export async function getSession(connection: Connection, sessionID: string) {
+  return connection.client.sessions.get({ sessionID }).catch(sessionGone(sessionID))
 }
 
 /** The newest `limit` messages, oldest first. */

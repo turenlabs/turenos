@@ -15,7 +15,7 @@ import { show } from "./show"
 import { stop } from "./stop"
 import { team } from "./team"
 import { wait } from "./wait"
-import { isAgentCommand, unknownCommand } from "./words"
+import { agentOverview, isAgentCommand, unknownCommand } from "./words"
 
 const commands = { sessions, show, send, wait, pending, approve, reject, answer, stop, team }
 
@@ -30,6 +30,7 @@ export async function runAgent(args: string[], io: Io) {
 
 async function dispatch(args: string[], io: Io) {
   const command = args[0]
+  if (command === "help") return helpFor(args[1], io)
   if (!isAgentCommand(command)) throw usage(unknownCommand(command))
   const parsed = parseCommand(command, args.slice(1))
   if (parsed.values.help) {
@@ -50,6 +51,17 @@ async function dispatch(args: string[], io: Io) {
   } finally {
     server.close()
   }
+}
+
+/** `help` behaves as `--help`: the overview, or the help of the command named after it. */
+function helpFor(name: string | undefined, io: Io) {
+  if (name === undefined || name.startsWith("-")) {
+    io.stdout(`${agentOverview}\n`)
+    return 0
+  }
+  if (!isAgentCommand(name)) throw usage(unknownCommand(name))
+  io.stdout(commandHelp(name))
+  return 0
 }
 
 function report(error: unknown, io: Io, json: boolean) {

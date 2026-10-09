@@ -1,7 +1,7 @@
 import { maxMessageLength } from "../requests/context"
 import { mentionReport } from "../prompt-files"
 import { errorText, httpStatus, refused } from "../server"
-import { emit, quote, type Run } from "./context"
+import { emit, quote, waitLine, type Run } from "./context"
 import { AgentError, usage } from "./errors"
 import { report, settle, type Anchor } from "./wait"
 
@@ -46,14 +46,18 @@ export async function finish(run: Run, sent: Sent) {
       run,
       {
         session: sent.sessionID,
+        sessionID: sent.sessionID,
         messageID: sent.messageID,
         state: "sent",
         delivery: sent.delivery,
         created: sent.created,
       },
-      sent.created
-        ? `started session ${sent.sessionID} with message ${sent.messageID}`
-        : `sent message ${sent.messageID} to session ${sent.sessionID} (${sent.delivery})`,
+      [
+        sent.created
+          ? `started session ${sent.sessionID} with message ${sent.messageID}`
+          : `sent message ${sent.messageID} to session ${sent.sessionID} (${sent.delivery})`,
+        waitLine(run, sent.sessionID),
+      ].join("\n"),
     )
   const after: Anchor = { messageID: sent.messageID, baseline: sent.baseline, queued: sent.delivery === "queue" }
   const outcome = await settle(run.connection, sent.sessionID, { timeout: sent.timeout, after }).catch(
@@ -63,7 +67,7 @@ export async function finish(run: Run, sent: Sent) {
         `Message ${sent.messageID} was sent to session ${sent.sessionID}, but waiting for the reply failed: ${errorText(error).replace(/\.$/, "")}. Resume with: turen-tui wait ${sent.sessionID}${run.flags}`,
         1,
         undefined,
-        { session: sent.sessionID, messageID: sent.messageID, state: "sent" },
+        { session: sent.sessionID, sessionID: sent.sessionID, messageID: sent.messageID, state: "sent" },
       )
     },
   )

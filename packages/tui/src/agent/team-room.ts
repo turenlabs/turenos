@@ -31,20 +31,23 @@ export async function roomState(run: Run, given: string | undefined, limit: numb
 export async function rooms(run: Run) {
   takes("team rooms", run.positionals, [])
   // One request: the room list carries no teammates, and `team show` names them per room.
-  const items = checked(await readState(run, { limit: 1 }))
-    .rooms.filter((room) => run.values.all || !room.archived)
+  const all = checked(await readState(run, { limit: 1 })).rooms
+  const items = all
+    .filter((room) => run.values.all || !room.archived)
     .map((room) => ({ id: room.id, name: room.name, topic: room.topic, archived: !!room.archived }))
+  const hidden = all.length - items.length
   return emit(
     run,
     { rooms: items },
-    items.length
-      ? items
-          .map(
+    [
+      ...(items.length
+        ? items.map(
             (room) =>
               `room ${room.id} · ${clean(room.name, 120)}${room.archived ? " · archived" : ""}${room.topic ? ` · ${clean(room.topic, 200)}` : ""}`,
           )
-          .join("\n")
-      : "No rooms.",
+        : ["No rooms."]),
+      ...(hidden ? [`${hidden} archived room${hidden === 1 ? "" : "s"} hidden; --all shows them.`] : []),
+    ].join("\n"),
   )
 }
 

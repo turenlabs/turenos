@@ -7,7 +7,9 @@ test("send delivers plain text by steer or queue, from an argument or stdin", as
   const server = world()
   const steer = await agent(["send", "ses_main", "fix the build"], { url: server.url })
   expect(steer.code).toBe(0)
-  expect(steer.stdout).toMatch(/^sent message msg_[0-9a-f]{32} to session ses_main \(steer\)\n$/)
+  expect(steer.stdout).toMatch(
+    /^sent message msg_[0-9a-f]{32} to session ses_main \(steer\)\n  wait: turen-tui wait ses_main\n$/,
+  )
   const queued = document(await agent(["send", "ses_main", "later", "--queue", "--json"], { url: server.url }))
   expect(queued).toMatchObject({ session: "ses_main", state: "sent", delivery: "queue" })
   await agent(["send", "ses_main", "-"], { url: server.url, stdin: "from stdin\n" })
@@ -240,7 +242,7 @@ test("send --new starts a session under frozen IDs, and a retry with them cannot
     { url: server.url },
   )
   expect(run.code).toBe(0)
-  expect(run.stdout).toBe("started session ses_fresh with message msg_first\n")
+  expect(run.stdout).toBe("started session ses_fresh with message msg_first\n  wait: turen-tui wait ses_fresh\n")
   expect(created[0]).toMatchObject({
     id: "ses_fresh",
     location: { directory: "/srv/other" },

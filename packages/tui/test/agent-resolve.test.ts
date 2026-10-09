@@ -23,7 +23,9 @@ function resolving() {
 test("approve and reject reply to the permission, and --always needs a rule to save", async () => {
   const { server, posts } = resolving()
   server.state.permissions.push(permission("per_1"))
-  expect((await agent(["approve", "ses_main", "per_1"], { url: server.url })).stdout).toBe("approved per_1 (once)\n")
+  expect((await agent(["approve", "ses_main", "per_1"], { url: server.url })).stdout).toBe(
+    "approved per_1 (once) · session ses_main\n  wait: turen-tui wait ses_main\n",
+  )
   const always = await agent(["approve", "ses_main", "per_1", "--always"], { url: server.url })
   expect(always.code).toBe(2)
   expect(always.stderr).toContain("offers no rule to save")
@@ -33,10 +35,13 @@ test("approve and reject reply to the permission, and --always needs a rule to s
   expect(document(await agent(["approve", "ses_main", "per_1", "--always", "--json"], { url: server.url }))).toEqual({
     ok: true,
     session: "ses_main",
+    sessionID: "ses_main",
     permission: "per_1",
     reply: "always",
   })
-  expect((await agent(["reject", "ses_main", "per_1"], { url: server.url })).stdout).toBe("rejected per_1\n")
+  expect((await agent(["reject", "ses_main", "per_1"], { url: server.url })).stdout).toBe(
+    "rejected per_1 · session ses_main\n  wait: turen-tui wait ses_main\n",
+  )
   expect(posts.map((post) => post.body)).toEqual([{ reply: "once" }, { reply: "always" }, { reply: "reject" }])
 
   const gone = await agent(["approve", "ses_main", "per_404"], { url: server.url })
@@ -96,7 +101,7 @@ test("answer accepts custom text where allowed, several choices where multiple, 
   expect(text.stdout).toContain(`turen-tui answer ses_main que_1 --answers='[["Alpha"],["x"]]'`)
 
   const rejected = await agent(["answer", "ses_main", "que_1", "--reject"], { url: server.url })
-  expect(rejected.stdout).toBe("rejected que_1\n")
+  expect(rejected.stdout).toBe("rejected que_1\n  wait: turen-tui wait ses_main\n")
   expect(posts.at(-1)).toEqual({ path: "que_1/reject", body: undefined })
 })
 
@@ -109,6 +114,7 @@ test("stop delegates task cancellation to Core, including idle parents with --ta
   expect(document(done)).toEqual({
     ok: true,
     session: "ses_main",
+    sessionID: "ses_main",
     running: true,
     tasks: { status: "cancelled" },
   })
