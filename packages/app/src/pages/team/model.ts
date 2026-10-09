@@ -6,9 +6,30 @@ export function mergeMessages(existing: readonly Team.Message[], incoming: reado
   return [...messages.values()].sort((a, b) => a.seq - b.seq)
 }
 
+export function replyContext(message: Team.Message, messages: readonly Team.Message[]) {
+  if (!message.replyTo) return
+  const source = messages.find((item) => item.id === message.replyTo)
+  if (!source) return
+  const text = source.text.replace(/\s+/g, " ").trim()
+  return { author: source.author, excerpt: text.length > 160 ? `${text.slice(0, 159)}…` : text }
+}
+
 export function assignedHandles(text: string, teammates: readonly Team.Teammate[]) {
   const handles = new Set(teammates.map((teammate) => teammate.handle.toLowerCase()))
   return Team.mentionedHandles(text).filter((handle) => handles.has(handle))
+}
+
+export function roomActivity(roomID: string, tasks: readonly Team.Task[], teammates: readonly Team.Teammate[]) {
+  const active = tasks.filter(
+    (task) => task.roomID === roomID && ["queued", "claimed", "running"].includes(task.status),
+  )
+  if (!active.length) return
+  const names = [...new Set(active.map((task) => task.teammateID))].map(
+    (id) => teammates.find((mate) => mate.id === id)?.name ?? "A teammate",
+  )
+  const label = names.length > 2 ? `${names.slice(0, 2).join(", ")} and ${names.length - 2} more` : names.join(" and ")
+  const action = active.some((task) => task.status === "running") ? "working" : "getting ready"
+  return `${label} ${names.length === 1 ? "is" : "are"} ${action}...`
 }
 
 export function ownsTeamResponse<Client>(
