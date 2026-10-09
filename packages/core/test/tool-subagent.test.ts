@@ -36,6 +36,7 @@ import { ToolRegistry } from "@turenlabs/core/tool/registry"
 import { SwarmRoom } from "@turenlabs/core/team/room"
 import { testEffect } from "./lib/effect"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { and, eq } from "drizzle-orm"
 
@@ -651,9 +652,7 @@ describe("SubagentTool", () => {
       const task = (yield* tasks.list({ parentSessionID: parent.id }))[0]!
       wakes.length = 0
       const childTools = yield* materialize(task.childSessionID, control)
-      expect(
-        childTools.definitions.some((definition) => definition.name === SubagentTool.notifyParentName),
-      ).toBeTrue()
+      expect(childTools.definitions.some((definition) => definition.name === SubagentTool.notifyParentName)).toBeTrue()
 
       const notified = yield* callTool(childTools, {
         sessionID: task.childSessionID,
@@ -1707,11 +1706,13 @@ describe("SubagentTool", () => {
         result: report,
       })
 
-      const waited = yield* Effect.promise(() =>
-        client.callTool({
-          name: SubagentTool.waitName,
-          arguments: { task_ids: [task.id], timeout_ms: 30_000 },
-        }),
+      const waited = CallToolResultSchema.parse(
+        yield* Effect.promise(() =>
+          client.callTool({
+            name: SubagentTool.waitName,
+            arguments: { task_ids: [task.id], timeout_ms: 30_000 },
+          }),
+        ),
       )
       expect(waited.isError).not.toBe(true)
       expect(waited.content).toHaveLength(1)
