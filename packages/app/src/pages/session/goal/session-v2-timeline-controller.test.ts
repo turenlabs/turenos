@@ -104,11 +104,75 @@ describe("shouldPollSessionUntilIdle", () => {
 })
 
 describe("commitSessionIdleAfterRefresh", () => {
+  test("settles idle after a failed refresh and reports the error after committing", async () => {
+    const error = new Error("Snapshot failed")
+    const state: { status: "busy" | "idle" } = { status: "busy" }
+    const reported: unknown[] = []
+    const input = {
+      refresh: () => Promise.reject(error),
+      current: () => true,
+      commit: () => {
+        state.status = "idle"
+      },
+      onRefreshError: (failure: unknown) => {
+        expect(state.status).toBe("idle")
+        reported.push(failure)
+      },
+    }
+
+    expect(await commitSessionIdleAfterRefresh(input)).toBe(true)
+    expect(state.status).toBe("idle")
+    expect(reported).toEqual([error])
+  })
+
+  test("does not publish idle or report a stale refresh failure", async () => {
+    let reject = (_error: unknown) => {}
+    let current = true
+    let committed = false
+    const reported: unknown[] = []
+    const refresh = new Promise<never>((_resolve, fail) => {
+      reject = fail
+    })
+    const input = {
+      refresh: () => refresh,
+      current: () => current,
+      commit: () => {
+        committed = true
+      },
+      onRefreshError: (error: unknown) => reported.push(error),
+    }
+    const settling = commitSessionIdleAfterRefresh(input)
+
+    current = false
+    reject(new Error("Snapshot failed"))
+
+    expect(await settling).toBe(false)
+    expect(committed).toBe(false)
+    expect(reported).toEqual([])
+  })
+
+  test("does not publish idle when refresh succeeds without projecting a snapshot", async () => {
+    let committed = false
+    const reported: unknown[] = []
+    const input = {
+      refresh: () => Promise.resolve(false),
+      current: () => true,
+      commit: () => {
+        committed = true
+      },
+      onRefreshError: (error: unknown) => reported.push(error),
+    }
+
+    expect(await commitSessionIdleAfterRefresh(input)).toBe(false)
+    expect(committed).toBe(false)
+    expect(reported).toEqual([])
+  })
+
   test("keeps stale terminal failures suppressed until the transcript refresh commits", async () => {
     let release = () => {}
     const state: { status: "busy" | "idle" } = { status: "busy" }
-    const refresh = new Promise<void>((resolve) => {
-      release = resolve
+    const refresh = new Promise<boolean>((resolve) => {
+      release = () => resolve(true)
     })
     const settling = commitSessionIdleAfterRefresh({
       refresh: () => refresh,
@@ -130,8 +194,8 @@ describe("commitSessionIdleAfterRefresh", () => {
     let release = () => {}
     let current = true
     let committed = false
-    const refresh = new Promise<void>((resolve) => {
-      release = resolve
+    const refresh = new Promise<boolean>((resolve) => {
+      release = () => resolve(true)
     })
     const settling = commitSessionIdleAfterRefresh({
       refresh: () => refresh,
@@ -1434,7 +1498,9 @@ describe("expandSessionV2ToolBody", () => {
         metadata: { structured: { exit: 0 } },
       },
     })
-    expect(h.data.part.msg_a?.[0]?.type === "tool" ? h.data.part.msg_a[0].metadata?.truncated : "missing").toBeUndefined()
+    expect(
+      h.data.part.msg_a?.[0]?.type === "tool" ? h.data.part.msg_a[0].metadata?.truncated : "missing",
+    ).toBeUndefined()
   })
 
   test("re-opening while the fetch is in flight issues no second request", async () => {
@@ -1500,7 +1566,9 @@ describe("expandSessionV2ToolBody", () => {
     release(fullMessage())
     await expect(pending).resolves.toBe(false)
     expect(h.data.part.msg_a?.[0]).toMatchObject({ state: { status: "completed", output: "settled live" } })
-    expect(h.data.part.msg_a?.[0]?.type === "tool" ? h.data.part.msg_a[0].metadata?.truncated : "missing").toBeUndefined()
+    expect(
+      h.data.part.msg_a?.[0]?.type === "tool" ? h.data.part.msg_a[0].metadata?.truncated : "missing",
+    ).toBeUndefined()
   })
 
   test("a part that already carries its body is never fetched", async () => {

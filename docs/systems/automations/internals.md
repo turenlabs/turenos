@@ -22,7 +22,7 @@ MCP servers are contacted only when the Session assembles tools for a turn. A co
 
 ## Recovery and leases
 
-A claimed or running row has a five-minute lease, renewed every minute while its scheduler owns the run. An expired **claimed** row can be reclaimed with its existing run and Session identity. An expired **running** row is marked `stale`; it is not restarted automatically because provider or tool effects may already have happened. If execution loses its lease or its outcome is otherwise unknown, the scheduler interrupts local Session ownership and does not replay the turn. Cancellation persists and interrupts the active Session.
+A claimed or running row has a five-minute lease, renewed every minute while its scheduler owns the run. An expired **claimed** row can be reclaimed with its existing run and Session identity, step cursor, and outputs, but waits while another run owns the same Automation. Recovery renews at most one claim per Automation in a scan; blocked claims remain durable and do not force immediate scheduler wakeups. An expired **running** row is marked `stale`; it is not restarted automatically because provider or tool effects may already have happened. If execution loses its lease or its outcome is otherwise unknown, the scheduler interrupts local Session ownership and does not replay the turn. Cancellation persists and interrupts the active Session.
 
 Run history exposes `claimed`, `running`, `succeeded`, `failed`, `cancelled`, `skipped`, and `stale` states. Operators must inspect a stale run before deciding whether to create new work.
 
@@ -31,6 +31,8 @@ Run history exposes `claimed`, `running`, `succeeded`, `failed`, `cancelled`, `s
 File-change triggers match bounded relative globs under the Automation's directory and debounce rapid matches. The scheduler reads the active file-change Automations through `Loop.listFileChange` on each file event. Core caches that list for up to five seconds and clears it after every Automation create, edit, pause, resume of an event Automation, and delete, and after each claim, so another process sharing the database is picked up within the five seconds. Session-end triggers subscribe to `SessionEvent.Step.Ended` and `SessionEvent.Step.Failed`, so they fire at the end of every Session step, and filter outcome, Session ID, and agent; Automation-created Sessions do not trigger them. Both call `Loop.fireEvent` locally, which applies the same overlap rule as scheduled runs. There is no HTTP endpoint for firing an event.
 
 Automation metadata is listed from the selected server's process-global SQLite index. Listing does not open project directories; the run's Location is resolved when execution begins. The [Protocol Loop group](../../../packages/protocol/src/groups/loop.ts) defines the `/api/loop` create, list, get, edit, pause, resume, delete, run, history, and cancellation endpoints and their current payload schemas.
+
+Run responses include an optional `execution` snapshot (title, prompt, Location, execution choices, and workflow). Run history and latest-run summaries use its step order and names instead of the editable Automation definition. Older responses without a snapshot fall back to the current definition; a snapshot of a prompt-only run does not inherit a workflow added later.
 
 ## Limits
 

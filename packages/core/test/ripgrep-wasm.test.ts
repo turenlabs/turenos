@@ -124,6 +124,104 @@ describe("ripgrep wasm", () => {
     expect(got.every((m) => m.entry.path.endsWith(".ts"))).toBe(true)
   })
 
+  // The host hands file contents to the wasm side in bounded batches (8 MiB). A
+  // candidate list larger than one batch used to trap or silently drop every file
+  // after the first batch, so the needles sit at the start, middle and end.
+  describe("candidate sets larger than one read batch", () => {
+    const large = fs.mkdtempSync(path.join(os.tmpdir(), "rgwasm-large-"))
+    const filler = `${"lorem ipsum dolor sit amet ".repeat(19)}\n`.repeat(1_000)
+    const count = 40
+    const needles = new Set([0, count / 2, count - 1])
+    for (let index = 0; index < count; index++) {
+      const name = path.join(large, `file-${String(index).padStart(2, "0")}.txt`)
+      fs.writeFileSync(name, needles.has(index) ? `${filler}needle ${index}\n` : filler)
+    }
+    const expected = [...needles].map((index) => `file-${String(index).padStart(2, "0")}.txt`).sort()
+
+    test("one worker finds every match across batches", async () => {
+      const pool = startPool(1)
+      try {
+        const result = await pool.grep("needle", large, [], WASM_FLAGS.hidden, 0, undefined)
+        expect(result.matches.map((match) => path.basename(match.path)).sort()).toEqual(expected)
+      } finally {
+        await pool.stop()
+      }
+    })
+
+    test("grep matches native", async () => {
+      const input = { cwd: large, pattern: "needle", limit: 100 }
+      const native = await runNative((r) => r.grep(input))
+      const got = await runWasm((r) => r.grep(input))
+      expect(native.map((match) => String(match.entry.path)).sort()).toEqual(expected)
+      expect(got.map((match) => String(match.entry.path)).sort()).toEqual(expected)
+    })
+  })
+
+  describe("per-job fallback", () => {
+    const trapped = new Ripgrep.Error({ message: "ripgrep wasm grep failed: Unreachable code should not be executed" })
+    const failing: Ripgrep.Interface = {
+      find: () => Effect.fail(trapped),
+      glob: () => Effect.fail(trapped),
+      lines: () => Effect.fail(trapped),
+      grep: () => Effect.fail(trapped),
+    }
+    const counting = (calls: string[]): Ripgrep.Interface => ({
+      find: () => Effect.sync(() => void calls.push("find")).pipe(Effect.as([])),
+      glob: () => Effect.sync(() => void calls.push("glob")).pipe(Effect.as([])),
+      lines: () => Effect.sync(() => void calls.push("lines")).pipe(Effect.as(new Map())),
+      grep: () => Effect.sync(() => void calls.push("grep")).pipe(Effect.as([])),
+    })
+
+    test("a failed wasm job is answered by the rg binary", async () => {
+      const input = { cwd: fixture, pattern: "foo", limit: 100 }
+      const expected = await runNative((r) => r.grep(input))
+      const got = await runNative((native) => Ripgrep.withFallback(failing, native).grep(input))
+      expect(got.map((m) => `${m.entry.path}:${m.line}`).sort()).toEqual(
+        expected.map((m) => `${m.entry.path}:${m.line}`).sort(),
+      )
+      expect(got.length).toBeGreaterThan(0)
+    })
+
+    test("every operation falls back", async () => {
+      const calls: string[] = []
+      const service = Ripgrep.withFallback(failing, counting(calls))
+      await Effect.runPromise(service.find({ cwd: fixture, pattern: "*", limit: 10 }))
+      await Effect.runPromise(service.glob({ cwd: fixture, pattern: "*", limit: 10 }))
+      await Effect.runPromise(service.lines({ cwd: fixture, files: ["a.ts"] }))
+      await Effect.runPromise(service.grep({ cwd: fixture, pattern: "foo", limit: 10 }))
+      expect(calls).toEqual(["find", "glob", "lines", "grep"])
+    })
+
+    test("an invalid pattern is an answer, not a backend failure", async () => {
+      const calls: string[] = []
+      const invalid: Ripgrep.Interface = {
+        ...failing,
+        grep: (input) => Effect.fail(new Ripgrep.InvalidPatternError({ pattern: input.pattern, message: "regex parse error" })),
+      }
+      const exit = await Effect.runPromiseExit(
+        Ripgrep.withFallback(invalid, counting(calls)).grep({ cwd: fixture, pattern: "(", limit: 10 }),
+      )
+      expect(exit._tag).toBe("Failure")
+      expect(calls).toEqual([])
+    })
+
+    test("an aborted job is not retried", async () => {
+      const calls: string[] = []
+      const controller = new AbortController()
+      controller.abort()
+      const exit = await Effect.runPromiseExit(
+        Ripgrep.withFallback(failing, counting(calls)).grep({
+          cwd: fixture,
+          pattern: "foo",
+          limit: 10,
+          signal: controller.signal,
+        }),
+      )
+      expect(exit._tag).toBe("Failure")
+      expect(calls).toEqual([])
+    })
+  })
+
   test("grep invalid pattern fails", async () => {
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {

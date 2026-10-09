@@ -11,6 +11,7 @@ import { Global } from "../global"
 import { SessionContextManagement } from "../session/context-management"
 import { SessionTodoGuidance } from "../session/todo-guidance"
 import { Reflection } from "../reflection"
+import { VisualizationGuidance } from "../tool/visualization-guidance"
 
 const builtIns = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -50,6 +51,13 @@ const builtIns = Layer.effectDiscard(
       "Do not lead with tool logs, implementation narration, or validation command output. Put optional detail after the handoff.",
     ].join("\n")
     const context = SystemContext.combine([
+      SystemContext.make({
+        key: SystemContext.Key.make("core/visualization-guidance"),
+        codec: Schema.toCodecJson(Schema.String),
+        load: Effect.succeed(VisualizationGuidance.SYSTEM),
+        baseline: (guidance) => guidance,
+        update: (_previous, guidance) => guidance,
+      }),
       SystemContext.make({
         key: SystemContext.Key.make("core/response-guidance"),
         codec: Schema.toCodecJson(Schema.String),

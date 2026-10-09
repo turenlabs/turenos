@@ -71,7 +71,9 @@ export function renameStep(steps: readonly StepDraft[], key: string, name: strin
       step.type === "agent"
         ? { ...step, prompt: rewriteBindings(step.prompt, target.id, nextID) }
         : { ...step, instructions: rewriteBindings(step.instructions, target.id, nextID) }
-    return step.key === key ? { ...rewritten, id: nextID, name } : rewritten
+    const conditioned =
+      step.when === undefined ? rewritten : { ...rewritten, when: rewriteBindings(step.when, target.id, nextID) }
+    return step.key === key ? { ...conditioned, id: nextID, name } : conditioned
   })
 }
 
@@ -81,3 +83,10 @@ export function stepSummary(step: StepDraft) {
   const line = step.prompt.split("\n").find((value) => value.trim())
   return line?.trim() || "Describe what this step should do"
 }
+
+export const invalidStepBinding = (steps: readonly StepDraft[]) =>
+  steps.find((step, index) => {
+    const available = new Set(steps.slice(0, index).map((item) => item.id))
+    const template = `${step.type === "agent" ? step.prompt : step.instructions} ${step.when ?? ""}`
+    return [...template.matchAll(/{{\s*steps\.([A-Za-z][A-Za-z0-9_-]*)\./g)].some((match) => !available.has(match[1]))
+  })

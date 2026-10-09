@@ -1,0 +1,60 @@
+[data-component="safehtml-viewer"] {
+  min-width: 0;
+  padding: 12px;
+  color: var(--text-base);
+  font-size: 12px;
+
+  h3 {
+    color: var(--text-strong);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  p {
+    margin: 6px 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  iframe {
+    display: block;
+    width: 100%;
+    height: 480px;
+    border: 1px solid var(--border-weak-base);
+    border-radius: 6px;
+    margin-top: 12px;
+    background: var(--background-base);
+  }
+  iframe[data-expanded] {
+    height: 800px;
+  }
+  button {
+    margin: 8px 0;
+    padding: 6px 10px;
+    border: 1px solid var(--border-weak-base);
+    border-radius: 4px;
+    background: var(--background-base);
+    color: var(--text-base);
+    cursor: pointer;
+  }
+  button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  :is(button, summary):focus-visible {
+    outline: 2px solid var(--border-active);
+    outline-offset: 2px;
+  }
+  details {
+    margin-top: 8px;
+  }
+  summary {
+    cursor: pointer;
+  }
+  pre {
+    max-height: 320px;
+    margin-top: 8px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-family-mono);
+  }
+}

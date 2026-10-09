@@ -375,21 +375,6 @@ body[data-new-layout] [data-timeline-virtual-content] {
   [data-component="todos"] {
     padding: 6px 0 12px;
   }
-
-  /* The queued-status line under a user turn: a dim bracketed annotation on
-     the left-aligned stream, [queued — runs after this turn]. */
-  [data-slot="session-turn-pending-delivery"] {
-    text-align: start;
-    color: var(--v2-text-text-faint);
-
-    &::before {
-      content: "[";
-    }
-
-    &::after {
-      content: "]";
-    }
-  }
 }
 
 /* ── The live status line's glyphs ──

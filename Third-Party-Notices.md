@@ -343,6 +343,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@turenlabs/email-security-wasm` | `0.1.0-turen.1` | Apache-2.0 OR MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
 | `@turenlabs/ghidra-decompiler-wasm` | `0.1.0` | Apache-2.0 | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
 | `@turenlabs/goblin-wasm` | `0.10.6-turen.1` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
+| `@turenlabs/jwt-audit-wasm` | `0.1.0` | MIT | [source](https://github.com/turenlabs/turenos) |
 | `@turenlabs/libpcap-wasm` | `1.10.6-turen.1` | BSD-3-Clause | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
 | `@turenlabs/monodis-wasm` | `0.1.0` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
 | `@turenlabs/protocol-inspect-wasm` | `0.1.0-turen.1` | MIT | [source](git+ssh://git@github.com/turenlabs/turenos.git) |
@@ -405,6 +406,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `ai-gateway-provider` | `3.1.2` | MIT | [source](git+ssh://git@github.com/cloudflare/ai.git) |
 | `ajv` | `8.20.0` | MIT | [source](ajv-validator/ajv) |
 | `ajv-formats` | `3.0.1` | MIT | [source](git+https://github.com/ajv-validator/ajv-formats.git) |
+| `animejs` | `4.5.0` | MIT | [source](git+https://github.com/juliangarnier/anime.git) |
 | `ansi-regex` | `6.2.2` | MIT | [source](chalk/ansi-regex) |
 | `ansi-styles` | `6.2.3` | MIT | [source](chalk/ansi-styles) |
 | `argparse` | `1.0.10` | MIT | [source](nodeca/argparse) |
@@ -681,8 +683,8 @@ Each row identifies a resolved package and version, its declared license, and it
 | `just-diff-apply` | `5.5.0` | MIT | [source](https://github.com/angus-c/just) |
 | `jwa` | `2.0.1` | MIT | [source](git://github.com/brianloveswords/node-jwa.git) |
 | `jws` | `4.0.1` | MIT | [source](git://github.com/brianloveswords/node-jws.git) |
-| `katex` | `0.16.27` | MIT | [source](https://github.com/KaTeX/KaTeX.git) |
 | `katex` | `0.16.47` | MIT | [source](https://github.com/KaTeX/KaTeX.git) |
+| `katex` | `0.18.2` | MIT | [source](https://github.com/KaTeX/KaTeX.git) |
 | `khroma` | `2.1.0` | MIT | [source](github:fabiospampinato/khroma) |
 | `kind-of` | `6.0.3` | MIT | [source](jonschlinkert/kind-of) |
 | `kubernetes-types` | `1.30.0` | Apache-2.0 | [source](https://github.com/silverlyra/kubernetes-types) |
@@ -915,7 +917,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `stylis` | `4.4.0` | MIT | [source](https://github.com/thysultan/stylis.js) |
 | `sumchecker` | `3.0.1` | Apache-2.0 | [source](git+https://github.com/malept/sumchecker.git) |
 | `tagged-tag` | `1.0.0` | MIT | [source](sindresorhus/tagged-tag) |
-| `tailwindcss` | `4.1.11` | MIT | [source](https://github.com/tailwindlabs/tailwindcss.git) |
+| `tailwindcss` | `4.3.3` | MIT | [source](https://github.com/tailwindlabs/tailwindcss.git) |
 | `tar` | `7.5.22` | BlueOak-1.0.0 | [source](https://github.com/isaacs/node-tar.git) |
 | `thread-stream` | `4.2.0` | MIT | [source](git+https://github.com/mcollina/thread-stream.git) |
 | `three` | `0.169.0` | MIT | [source](https://github.com/mrdoob/three.js) |
@@ -1007,6 +1009,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `zustand` | `4.5.7` | MIT | [source](git+https://github.com/pmndrs/zustand.git) |
 | `zwitch` | `2.0.4` | MIT | [source](wooorm/zwitch) |
 
-Inventory total: **985 resolved packages**.
+Inventory total: **987 resolved packages**.
 
 This file is regenerated during the desktop prebuild. Do not edit generated inventory content by hand.

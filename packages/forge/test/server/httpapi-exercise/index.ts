@@ -18,22 +18,358 @@
  * - `.mutating()` tells the runner to reset isolated state after destructive routes.
  */
 import { cleanupExercisePaths, exerciseConfigDirectory, exerciseDatabasePath, exerciseGlobalRoot } from "./environment"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import { OpenApi } from "effect/unstable/httpapi"
 import fs from "fs/promises"
 import path from "path"
 import { cachePath, emptyCache } from "@turenlabs/server/intel/ingest"
 import { readEffectiveFeeds, resetFeeds, updateFeed } from "@turenlabs/server/intel/feeds"
 import { DEFAULT_FEEDS } from "@turenlabs/server/intel/sources"
+import { Team } from "@turenlabs/schema/team"
 import { array, boolean, check, isRecord, message, object, stable } from "./assertions"
 import { controlledPtyInput, http, route } from "./dsl"
 import { color, printHeader, printResults } from "./report"
 import { coverageResult, failureRatchet, parseOptions, routeKey, routeKeys, selectedScenarios } from "./routing"
 import { runScenario } from "./runner"
-import { disposeApps, prepareAuthApp } from "./backend"
+import { call, disposeApps, prepareAuthApp } from "./backend"
 import { runtime } from "./runtime"
-import { type Scenario } from "./types"
+import { type ActiveScenario, type Scenario, type ScenarioContext } from "./types"
 import { whiteboardScenarios } from "./whiteboard"
+
+function callTeamSeed(ctx: ScenarioContext, scenario: ActiveScenario) {
+  return call(scenario, { ...ctx, state: undefined })
+}
+
+function teamPost(ctx: ScenarioContext, path: string, body?: unknown) {
+  return callTeamSeed(
+    ctx,
+    http.protected
+      .post(path, "team.seed")
+      .at(() => ({ path, headers: ctx.headers(), body }))
+      .json(),
+  )
+}
+
+function createTeamRoom(ctx: ScenarioContext, name: string) {
+  return teamPost(ctx, "/api/team/room", { name }).pipe(
+    Effect.map(({ status, body }) => {
+      check(status === 200, `Team room creation should succeed, got ${status}`)
+      return Schema.decodeUnknownSync(Team.Room)(body)
+    }),
+  )
+}
+
+function createTeammate(ctx: ScenarioContext, roomID: string, handle: string) {
+  return teamPost(ctx, "/api/team/teammate", {
+    roomID,
+    name: handle,
+    handle,
+    role: "HTTP API reviewer",
+    mission: "Review the route exercise.",
+    directory: ctx.directory,
+  }).pipe(
+    Effect.map(({ status, body }) => {
+      check(status === 200, `Teammate creation should succeed, got ${status}`)
+      return Schema.decodeUnknownSync(Team.Teammate)(body)
+    }),
+  )
+}
+
+function createTeamFactory(ctx: ScenarioContext) {
+  return Effect.gen(function* () {
+    const room = yield* createTeamRoom(ctx, "httpapi-factory")
+    const teammate = yield* createTeammate(ctx, room.id, "factory-coordinator")
+    const config = {
+      outcome: "Verify Team factory route coverage",
+      parameters: {},
+      constraints: "Use only the isolated HTTP API fixture.",
+      acceptanceCriteria: "The run record is returned by its ID.",
+      directory: ctx.directory!,
+      coordinatorTeammateID: teammate.id,
+      teammateIDs: [teammate.id],
+    }
+    const response = yield* callTeamSeed(
+      ctx,
+      http.protected
+        .put(`/api/team/room/${room.id}/factory`, "team.seed")
+        .at(() => ({ path: `/api/team/room/${room.id}/factory`, headers: ctx.headers(), body: config }))
+        .json(),
+    )
+    check(response.status === 200, `Factory configuration should succeed, got ${response.status}`)
+    return { room, config }
+  })
+}
+
+function createTeamFactoryRun(ctx: ScenarioContext, id: string) {
+  return Effect.gen(function* () {
+    const factory = yield* createTeamFactory(ctx)
+    const response = yield* teamPost(ctx, `/api/team/room/${factory.room.id}/factory/run`, { id })
+    check(response.status === 200, `Factory run seed should succeed, got ${response.status}`)
+    return { room: factory.room, run: Schema.decodeUnknownSync(Team.FactoryRun)(response.body) }
+  })
+}
+
+const teamScenarios: Scenario[] = [
+  http.protected
+    .get("/api/team", "v2.team.state")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const room = yield* createTeamRoom(ctx, "httpapi-state")
+        const response = yield* teamPost(ctx, "/api/team/message", {
+          id: "tmsg_httpapi_state",
+          roomID: room.id,
+          text: "Check Team state projection.",
+        })
+        check(response.status === 200, `Team message seed should succeed, got ${response.status}`)
+        return room
+      }),
+    )
+    .at((ctx) => ({ path: `/api/team?roomID=${ctx.state.id}`, headers: ctx.headers() }))
+    .json(200, (body, ctx) => {
+      const state = Schema.decodeUnknownSync(Team.State)(body)
+      check(state.room.id === ctx.state.id, "Team state should select the requested room")
+      check(
+        state.messages.some((item) => item.text === "Check Team state projection."),
+        "state should include seeded message",
+      )
+    }),
+  http.protected
+    .post("/api/team/room", "v2.team.roomCreate")
+    .mutating()
+    .at((ctx) => ({
+      path: "/api/team/room",
+      headers: ctx.headers(),
+      body: { name: "httpapi-created-room", topic: "Route coverage" },
+    }))
+    .json(200, (body) => {
+      const room = Schema.decodeUnknownSync(Team.Room)(body)
+      check(
+        room.name === "httpapi-created-room" && room.topic === "Route coverage",
+        "room create should persist fields",
+      )
+    }),
+  http.protected
+    .patch("/api/team/room/{roomID}", "v2.team.roomEdit")
+    .mutating()
+    .seeded((ctx) => createTeamRoom(ctx, "httpapi-room-edit"))
+    .at((ctx) => ({
+      path: `/api/team/room/${ctx.state.id}`,
+      headers: ctx.headers(),
+      body: { topic: "Edited by gate" },
+    }))
+    .json(200, (body, ctx) => {
+      const room = Schema.decodeUnknownSync(Team.Room)(body)
+      check(room.id === ctx.state.id && room.topic === "Edited by gate", "room edit should update the selected room")
+    }),
+  http.protected
+    .post("/api/team/room/{roomID}/archive", "v2.team.roomArchive")
+    .mutating()
+    .seeded((ctx) => createTeamRoom(ctx, "httpapi-room-archive"))
+    .at((ctx) => ({ path: `/api/team/room/${ctx.state.id}/archive`, headers: ctx.headers() }))
+    .json(200, (body) => {
+      check(Schema.decodeUnknownSync(Team.Room)(body).archived === true, "room archive should set archived")
+    }),
+  http.protected
+    .post("/api/team/room/{roomID}/restore", "v2.team.roomRestore")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const room = yield* createTeamRoom(ctx, "httpapi-room-restore")
+        const archived = yield* teamPost(ctx, `/api/team/room/${room.id}/archive`)
+        check(archived.status === 200, `Room archive seed should succeed, got ${archived.status}`)
+        return room
+      }),
+    )
+    .at((ctx) => ({ path: `/api/team/room/${ctx.state.id}/restore`, headers: ctx.headers() }))
+    .json(200, (body) => {
+      check(Schema.decodeUnknownSync(Team.Room)(body).archived === false, "room restore should clear archived")
+    }),
+  http.protected
+    .delete("/api/team/room/{roomID}", "v2.team.roomDelete")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const room = yield* createTeamRoom(ctx, "httpapi-room-delete")
+        const archived = yield* teamPost(ctx, `/api/team/room/${room.id}/archive`)
+        check(archived.status === 200, `Room archive seed should succeed, got ${archived.status}`)
+        return room
+      }),
+    )
+    .at((ctx) => ({ path: `/api/team/room/${ctx.state.id}`, headers: ctx.headers() }))
+    .status(204, undefined, "status"),
+  http.protected
+    .post("/api/team/teammate", "v2.team.teammateCreate")
+    .mutating()
+    .seeded((ctx) => createTeamRoom(ctx, "httpapi-teammate-create"))
+    .at((ctx) => ({
+      path: "/api/team/teammate",
+      headers: ctx.headers(),
+      body: {
+        roomID: ctx.state.id,
+        name: "Gate teammate",
+        handle: "gate-teammate",
+        role: "HTTP API reviewer",
+        mission: "Verify teammate creation.",
+        directory: ctx.directory,
+      },
+    }))
+    .json(200, (body, ctx) => {
+      const teammate = Schema.decodeUnknownSync(Team.Teammate)(body)
+      check(teammate.roomID === ctx.state.id && teammate.handle === "gate-teammate", "teammate should join the room")
+    }),
+  http.protected
+    .patch("/api/team/teammate/{teammateID}", "v2.team.teammateEdit")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const room = yield* createTeamRoom(ctx, "httpapi-teammate-edit")
+        return yield* createTeammate(ctx, room.id, "gate-edit")
+      }),
+    )
+    .at((ctx) => ({
+      path: `/api/team/teammate/${ctx.state.id}`,
+      headers: ctx.headers(),
+      body: { mission: "Updated mission." },
+    }))
+    .json(200, (body, ctx) => {
+      const teammate = Schema.decodeUnknownSync(Team.Teammate)(body)
+      check(teammate.id === ctx.state.id && teammate.mission === "Updated mission.", "teammate edit should persist")
+    }),
+  http.protected
+    .post("/api/team/teammate/{teammateID}/stop", "v2.team.teammateStop")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const room = yield* createTeamRoom(ctx, "httpapi-teammate-stop")
+        return yield* createTeammate(ctx, room.id, "gate-stop")
+      }),
+    )
+    .at((ctx) => ({ path: `/api/team/teammate/${ctx.state.id}/stop`, headers: ctx.headers() }))
+    .status(204, undefined, "status"),
+  http.protected
+    .post("/api/team/message", "v2.team.messagePost")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const room = yield* createTeamRoom(ctx, "httpapi-message-post")
+        yield* createTeammate(ctx, room.id, "gate-message")
+        return room
+      }),
+    )
+    .at((ctx) => ({
+      path: "/api/team/message",
+      headers: ctx.headers(),
+      body: { id: "tmsg_httpapi_gate", roomID: ctx.state.id, text: "Verify Team message route." },
+    }))
+    .json(200, (body) => {
+      const posted = Schema.decodeUnknownSync(Team.Posted)(body)
+      check(posted.message.text === "Verify Team message route.", "message route should persist the text")
+      check(posted.tasks.length === 1, "message to an active teammate should create one task")
+    }),
+  http.protected
+    .post("/api/team/teammate/{teammateID}/duty", "v2.team.dutyAttach")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const room = yield* createTeamRoom(ctx, "httpapi-duty-attach")
+        const teammate = yield* createTeammate(ctx, room.id, "gate-duty")
+        const loop = yield* teamPost(ctx, "/api/loop", {
+          name: "HTTP API duty",
+          prompt: "Review the route fixture.",
+          location: { directory: ctx.directory! },
+          intervalSeconds: 3600,
+          paused: true,
+        })
+        check(loop.status === 200, `Duty Loop seed should succeed, got ${loop.status}`)
+        return { teammate, loopID: (loop.body as { id: string }).id }
+      }),
+    )
+    .at((ctx) => ({
+      path: `/api/team/teammate/${ctx.state.teammate.id}/duty`,
+      headers: ctx.headers(),
+      body: { loopID: ctx.state.loopID },
+    }))
+    .json(200, (body, ctx) => {
+      const duty = Schema.decodeUnknownSync(Team.Duty)(body)
+      check(
+        duty.teammateID === ctx.state.teammate.id && duty.loopID === ctx.state.loopID,
+        "duty should attach to teammate",
+      )
+    }),
+  http.protected
+    .post("/api/team/task/{taskID}/cancel", "v2.team.taskCancel")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const room = yield* createTeamRoom(ctx, "httpapi-task-cancel")
+        yield* createTeammate(ctx, room.id, "gate-task")
+        const posted = yield* teamPost(ctx, "/api/team/message", {
+          id: "tmsg_httpapi_task_cancel",
+          roomID: room.id,
+          text: "Create a task to cancel.",
+        })
+        check(posted.status === 200, `Task seed message should succeed, got ${posted.status}`)
+        const task = Schema.decodeUnknownSync(Team.Posted)(posted.body).tasks[0]
+        check(task !== undefined, "seed message should assign a task")
+        return task
+      }),
+    )
+    .at((ctx) => ({ path: `/api/team/task/${ctx.state.id}/cancel`, headers: ctx.headers() }))
+    .json(200, (body) => {
+      check(Schema.decodeUnknownSync(Team.Task)(body).status === "cancelled", "task cancel should persist cancelled")
+    }),
+  http.protected
+    .put("/api/team/room/{roomID}/factory", "v2.team.factoryConfigure")
+    .mutating()
+    .seeded((ctx) => createTeamFactory(ctx))
+    .at((ctx) => ({
+      path: `/api/team/room/${ctx.state.room.id}/factory`,
+      headers: ctx.headers(),
+      body: ctx.state.config,
+    }))
+    .json(200, (body, ctx) => {
+      const room = Schema.decodeUnknownSync(Team.Room)(body)
+      check(
+        room.id === ctx.state.room.id && room.factory?.config.outcome === ctx.state.config.outcome,
+        "factory config should persist",
+      )
+    }),
+  http.protected
+    .post("/api/team/room/{roomID}/factory/run", "v2.team.factoryRun")
+    .mutating()
+    .seeded((ctx) => createTeamRoom(ctx, "httpapi-factory-run-without-config"))
+    .at((ctx) => ({
+      path: `/api/team/room/${ctx.state.id}/factory/run`,
+      headers: ctx.headers(),
+      body: { id: "trun_httpapi_gate", request: "This request has no configured executor." },
+    }))
+    .json(400, object),
+  http.protected
+    .get("/api/team/factory-run/{runID}", "v2.team.factoryRunGet")
+    .mutating()
+    .seeded((ctx) => createTeamFactoryRun(ctx, "trun_httpapi_get"))
+    .at((ctx) => ({ path: `/api/team/factory-run/${ctx.state.run.id}`, headers: ctx.headers() }))
+    .json(200, (body, ctx) => {
+      const run = Schema.decodeUnknownSync(Team.FactoryRun)(body)
+      check(
+        run.id === ctx.state.run.id && run.roomID === ctx.state.room.id,
+        "factory run get should return the seeded run",
+      )
+    }),
+  http.protected
+    .post("/api/team/factory-run/{runID}/cancel", "v2.team.factoryRunCancel")
+    .mutating()
+    .seeded((ctx) => createTeamFactoryRun(ctx, "trun_httpapi_cancel"))
+    .at((ctx) => ({ path: `/api/team/factory-run/${ctx.state.run.id}/cancel`, headers: ctx.headers() }))
+    .json(200, (body, ctx) => {
+      const run = Schema.decodeUnknownSync(Team.FactoryRun)(body)
+      check(
+        run.id === ctx.state.run.id && run.status === "cancelled",
+        "factory run cancel should cancel the seeded run",
+      )
+    }),
+]
 
 function cursor(input: Record<string, unknown>) {
   return Buffer.from(JSON.stringify(input)).toString("base64url")
@@ -140,6 +476,7 @@ function seedIntelPoll() {
 }
 
 const scenarios: Scenario[] = [
+  ...teamScenarios,
   ...whiteboardScenarios,
   http.protected
     .get("/global/health", "global.health")
@@ -971,7 +1308,8 @@ const scenarios: Scenario[] = [
       path: route("/api/pty/{ptyID}/connect", { ptyID: "pty_httpapi_missing" }),
       headers: ctx.headers(),
     }))
-    .status(404, undefined, "none"),
+    // A missing ticket is rejected before PTY existence is checked.
+    .status(403, undefined, "none"),
   http.protected.get("/api/memory/wing", "v2.memory.wings").json(200, array),
   http.protected
     .post("/api/memory/wing", "v2.memory.wing")

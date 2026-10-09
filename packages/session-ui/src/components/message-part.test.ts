@@ -113,5 +113,8 @@ describe("partDefaultOpen", () => {
 
     expect(partDefaultOpen(part("error"))).toBe(true)
     expect(partDefaultOpen(part("completed"))).toBe(false)
+    expect(partDefaultOpen({ ...part("completed"), tool: "visualize" })).toBe(true)
+    expect(partDefaultOpen({ ...part("completed"), tool: "safehtml" })).toBe(true)
+    expect(partDefaultOpen({ ...part("completed"), tool: "animate" })).toBe(true)
   })
 })

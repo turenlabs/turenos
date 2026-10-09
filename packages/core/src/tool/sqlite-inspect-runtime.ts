@@ -10,6 +10,7 @@ import { makeGlobalNode } from "../effect/app-node"
 export interface Request {
   readonly op:
     | "sqlite_inspect"
+    | "sqlite_wal_inspect"
     | "sqlite_schema"
     | "sqlite_table_stats"
     | "sqlite_rows"

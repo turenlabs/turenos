@@ -15,6 +15,7 @@ import { useSync } from "@/context/sync"
 import { usePlatform } from "@/context/platform"
 import { useLanguage } from "@/context/language"
 import { showToast } from "@/utils/toast"
+import { formatServerError } from "@/utils/server-errors"
 import { promptAdmissionFor } from "@/components/prompt-input/prompt-admission"
 import {
   sessionPromptOutbox,
@@ -797,18 +798,19 @@ export function createSessionV2TimelineController(input: {
     const pendingRevision = sessionPromptPending.revision()
     const abort = new AbortController()
     snapshotAborts.add(abort)
+    const signal = AbortSignal.any([abort.signal, AbortSignal.timeout(30_000)])
     const snapshotStarted = performance.now()
     sessionInteractionTrace("snapshot.started", { sessionID, mode, authoritative })
     // Read inbox state first: if an input is promoted between these reads, it appears
     // in both results and is deduplicated by ID. The reverse order could miss it in both.
     const result = await client.v2.session
-      .pendingInputs({ sessionID }, { signal: abort.signal })
+      .pendingInputs({ sessionID }, { signal })
       .then((response) => [...response.data!.data])
       .then(async (pending) => ({
         pending,
         // Incremental and settled refreshes share the human transcript. Model context can reorder
         // preserved tails around checkpoints and must never be used to parent UI messages.
-        snapshot: await messages(sessionID, abort.signal, authoritative, client, captured.current),
+        snapshot: await messages(sessionID, signal, authoritative, client, captured.current),
       }))
       .catch((error) => {
         snapshotAborts.delete(abort)
@@ -1000,8 +1002,11 @@ export function createSessionV2TimelineController(input: {
         }
         polls.set(sessionID, window.setTimeout(poll, delay))
       }
+      const abort = new AbortController()
+      snapshotAborts.add(abort)
       void sdk()
-        .client.v2.session.active()
+        .client.v2.session.active({ signal: AbortSignal.any([abort.signal, AbortSignal.timeout(5_000)]) })
+        .finally(() => snapshotAborts.delete(abort))
         .then((response) => {
           if (!polling.has(sessionID) || pollingVersions.get(sessionID) !== pollingVersion) return
           if (!captured.current() || input.sessionID() !== sessionID) {
@@ -1022,18 +1027,26 @@ export function createSessionV2TimelineController(input: {
           }
           const projectionVersion = fullProjectionVersions.get(sessionID) ?? 0
           void commitSessionIdleAfterRefresh({
-            refresh: () => requestSnapshot(sessionID, "full"),
+            refresh: async () => {
+              await requestSnapshot(sessionID, "full")
+              return (fullProjectionVersions.get(sessionID) ?? 0) > projectionVersion
+            },
             current: () =>
               polling.has(sessionID) &&
               pollingVersions.get(sessionID) === pollingVersion &&
               captured.current() &&
               input.sessionID() === sessionID &&
-              sync().session.statusRevision(sessionID) === statusVersion &&
-              (fullProjectionVersions.get(sessionID) ?? 0) > projectionVersion,
+              sync().session.statusRevision(sessionID) === statusVersion,
             commit: () => {
               stopPolling(sessionID)
               setSessionStatus(sessionID, { type: "idle" })
             },
+            onRefreshError: (error) =>
+              showToast({
+                variant: "error",
+                title: language.t("common.requestFailed"),
+                description: formatServerError(error, language.t),
+              }),
           })
             .then((committed) => {
               if (committed) return
@@ -1367,13 +1380,20 @@ export function shouldPollSessionUntilIdle(status: SessionStatus | undefined) {
 }
 
 export async function commitSessionIdleAfterRefresh(input: {
-  refresh: () => Promise<void>
+  refresh: () => Promise<boolean>
   current: () => boolean
   commit: () => void
+  onRefreshError?: (error: unknown) => void
 }) {
-  await input.refresh()
+  // Inactive execution can settle after a failed read without claiming transcript projection.
+  const refreshed = await input.refresh().then(
+    (projected) => ({ projected }),
+    (error: unknown) => ({ error }),
+  )
   if (!input.current()) return false
+  if ("projected" in refreshed && !refreshed.projected) return false
   input.commit()
+  if ("error" in refreshed) input.onRefreshError?.(refreshed.error)
   return true
 }
 

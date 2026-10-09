@@ -9,6 +9,7 @@ packages/forge/src/agent/generate.txt whitespace=-trailing-space
 packages/forge/src/session/prompt/copilot-gpt-5.txt whitespace=-trailing-space
 packages/forge/src/tool/edit.txt whitespace=-trailing-space
 packages/ui/src/assets/icons/provider/*.svg whitespace=-trailing-space
+packages/ui/src/components/*-icons/sprite.svg whitespace=-trailing-space
 packages/sdk/.gitignore whitespace=-blank-at-eof
 script/turen-dev-replace export-ignore
 verify-defect-fixes.sh export-ignore

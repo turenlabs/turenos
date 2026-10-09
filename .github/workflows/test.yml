@@ -24,6 +24,36 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  affected-tests:
+    name: Affected test plan (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: Report affected test packages
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.event.merge_group.base_sha || '' }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          base="$BASE_SHA"
+          if [ -z "$base" ] || [[ "$base" =~ ^0+$ ]]; then
+            base=__missing_ci_base__
+          fi
+          bun packages/script/src/test-affected.ts --base "$base" --head "$HEAD_SHA" --json > "$RUNNER_TEMP/affected-tests.json"
+          node -e 'const fs = require("node:fs"); const plan = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Affected test plan (informational)\n\nSelected ${plan.selected.length} test package(s). This plan does not run tests or change CI gates.\n\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`\n`)' "$RUNNER_TEMP/affected-tests.json"
+
   unit:
     name: ${{ matrix.name }}
     # Windows shards lose minutes to slow setup phases; keep Linux tight.
@@ -136,7 +166,7 @@ jobs:
             --filter ./packages/sdk/js --filter ./packages/sdk-next --filter ./packages/server
             --filter ./packages/session-ui --filter ./packages/ui' }}
           # Use a cold cache on the checkout volume; validate misses against the same budget.
-          # Keep installation and native build scripts; only omit cache transport.
+          # Keep installation scripts; only omit cache transport.
           dependency-cache: ${{ runner.os != 'Windows' }}
 
       - name: Configure git identity
@@ -242,6 +272,8 @@ jobs:
         uses: ./.github/actions/setup-bun
         with:
           install-flags: --frozen-lockfile
+          # Restoring the cache takes longer than downloading on Windows, as in the unit jobs above.
+          dependency-cache: ${{ runner.os != 'Windows' }}
       - name: Verify Bun native terminal
         run: bun --cwd packages/script test ../core/test/pty/native-terminal.test.ts --timeout 15000
       - name: Build Forge Bun backend

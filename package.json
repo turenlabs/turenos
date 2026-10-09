@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "forge",
-  "version": "1.0.41",
+  "version": "1.0.43",
   "description": "TurenOS, the batteries-included security engineering workbench",
   "private": true,
   "type": "module",
@@ -11,9 +11,11 @@
     "dev:desktop": "bun --cwd packages/desktop dev",
     "dev:renderer": "bun --cwd packages/app dev",
     "lint": "oxlint",
+    "lint:types": "oxlint --type-aware",
     "license:check": "bun script/license-audit.ts",
     "license:generate": "bun script/license-audit.ts --write",
-    "typecheck": "bun turbo typecheck",
+    "typecheck": "bun turbo typecheck --concurrency=1",
+    "test:affected": "bun packages/script/src/test-affected.ts",
     "version:check": "bun --cwd packages/script version:check",
     "build:wasm": "bun script/build-wasm.ts",
     "verify:wasm": "bun script/verify-wasm-packages.ts",
@@ -51,7 +53,7 @@
       "@cloudflare/workers-types": "4.20251008.0",
       "@pierre/diffs": "1.2.10",
       "@solid-primitives/storage": "4.3.3",
-      "@tailwindcss/vite": "4.1.11",
+      "@tailwindcss/vite": "4.3.3",
       "diff": "8.0.4",
       "dompurify": "3.4.16",
       "drizzle-kit": "1.0.0-rc.2",
@@ -73,15 +75,15 @@
       "remeda": "2.26.0",
       "shiki": "4.2.0",
       "solid-list": "0.3.0",
-      "tailwindcss": "4.1.11",
-      "vite": "7.3.6",
+      "tailwindcss": "4.3.3",
+      "vite": "8.3.1",
       "@solidjs/meta": "0.29.4",
       "@solidjs/router": "0.15.4",
       "@solidjs/start": "https://pkg.pr.new/@solidjs/start@dfb2020",
       "@sentry/solid": "10.36.0",
       "@sentry/vite-plugin": "5.4.0",
       "solid-js": "1.9.15",
-      "vite-plugin-solid": "2.11.10",
+      "vite-plugin-solid": "2.11.14",
       "@lydell/node-pty": "1.2.0-beta.12"
     }
   },
@@ -115,12 +117,6 @@
   },
   "trustedDependencies": [
     "esbuild",
-    "node-pty",
-    "protobufjs",
-    "tree-sitter",
-    "tree-sitter-bash",
-    "tree-sitter-powershell",
-    "web-tree-sitter",
     "electron"
   ],
   "overrides": {
@@ -152,6 +148,8 @@
     "@tanstack/virtual-core@3.17.3": "patches/@tanstack%2Fvirtual-core@3.17.3.patch",
     "ghostty-web@github:anomalyco/ghostty-web#513463a": "patches/ghostty-web@0.3.0.patch",
     "pacote@21.5.1": "patches/pacote@21.5.1.patch",
-    "@ff-labs/fff-bun@0.9.4": "patches/@ff-labs%2Ffff-bun@0.9.4.patch"
+    "@ff-labs/fff-bun@0.9.4": "patches/@ff-labs%2Ffff-bun@0.9.4.patch",
+    "vite-plugin-icons-spritesheet@3.0.1": "patches/vite-plugin-icons-spritesheet@3.0.1.patch",
+    "@modelcontextprotocol/sdk@1.31.0": "patches/@modelcontextprotocol%2Fsdk@1.31.0.patch"
   }
 }

@@ -239,7 +239,7 @@ const invokeChildTool = Effect.fn("CodeMode.invokeChildTool")(function* (input: 
     const result = McpIntegration.redactMcpResult(
       input.entry.server,
       input.entry.configuration,
-      called,
+      CallToolResultSchema.parse(called),
       McpAuth.secrets(stored),
     )
     if (result.isError) {

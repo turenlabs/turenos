@@ -93,11 +93,13 @@ import { MessageComment, SummaryDiff, TimelineRow, TimelineRowMap } from "./rows
 import { dataUrlFromMediaValue, mediaKindFromPath } from "@turenlabs/session-ui/pierre/media"
 import { filterVirtualIndexes } from "./virtual-items"
 import "./message-timeline.css"
+import { same } from "@/utils/same"
 
 const emptyMessages: MessageType[] = []
 const emptyParts: PartType[] = []
 const emptyTools: ToolPart[] = []
 const emptyAssistantMessages: AssistantMessage[] = []
+const emptyUserMessages: UserMessage[] = []
 const idle = { type: "idle" as const }
 
 type FramedTimelineRow = Exclude<TimelineRow.TimelineRow, { _tag: "TurnGap" }>
@@ -513,9 +515,20 @@ export function MessageTimeline(props: {
         : {}),
     }
   })
+  // A prompt admitted into a running turn joins the transcript only once the runner promotes
+  // it; until then it lives in the composer's "Up next" tray. Rendering it early put it ahead
+  // of output still streaming for the current turn and briefly made it the active turn.
+  const awaitingPromotion = (message: MessageType) =>
+    message.role === "user" && sessionPromptPending.delivery(message.id) !== undefined
+  const projectedMessages = createMemo(() => sessionMessages().filter((message) => !awaitingPromotion(message)), emptyMessages, {
+    equals: same,
+  })
+  const projectedUserMessages = createMemo(() => props.userMessages.filter((message) => !awaitingPromotion(message)), emptyUserMessages, {
+    equals: same,
+  })
   const projection = createTimelineProjection({
-    messages: sessionMessages,
-    userMessages: () => props.userMessages,
+    messages: projectedMessages,
+    userMessages: projectedUserMessages,
     parts: getMsgParts,
     status: sessionStatus,
     starting: sessionPromptStartup.has,
@@ -1375,12 +1388,6 @@ export function MessageTimeline(props: {
           if (!settings.general.newLayoutDesigns()) return []
           return getMsgParts(userMessageRow().userMessageID).flatMap((part) => MessageComment.fromPart(part) ?? [])
         })
-        // Admitted (or optimistically sent) but not yet promoted into the turn; only worth
-        // announcing while a turn is actually running to absorb it.
-        const pendingDelivery = createMemo(() => {
-          if (sessionStatus().type === "idle") return undefined
-          return sessionPromptPending.delivery(userMessageRow().userMessageID)
-        })
         return (
           <TimelineRowFrame row={userMessageRow}>
             <Show when={message()}>
@@ -1395,18 +1402,6 @@ export function MessageTimeline(props: {
                       comments={messageComments()}
                     />
                   </div>
-                  <Show when={pendingDelivery()}>
-                    {(delivery) => (
-                      <div
-                        data-slot="session-turn-pending-delivery"
-                        class="w-full pt-1 text-left text-[12px] leading-4 text-v2-text-text-muted"
-                      >
-                        {language.t(
-                          delivery() === "queue" ? "session.message.pending.queue" : "session.message.pending.steer",
-                        )}
-                      </div>
-                    )}
-                  </Show>
                   <PromptAdmissionStatus sessionID={message().sessionID} messageID={message().id} />
                 </div>
               )}

@@ -244,11 +244,11 @@ describe("latestRunTone", () => {
 describe("stepChipFor", () => {
   test("maps inferred step states to canvas chip labels", () => {
     const active = run({ status: "running", currentStep: 1, outputs: { research: output("a") } })
-    expect(stepChipFor(active, "research", 0).label).toBe("done")
-    expect(stepChipFor(active, "write", 1).label).toBe("running")
-    expect(stepChipFor(active, "review", 2).label).toBe("pending")
+    expect(stepChipFor(active, "research", 0)?.label).toBe("done")
+    expect(stepChipFor(active, "write", 1)?.label).toBe("running")
+    expect(stepChipFor(active, "review", 2)?.label).toBe("pending")
     const failed = run({ status: "failed", currentStep: 1, outputs: { research: output("a") } })
-    expect(stepChipFor(failed, "write", 1).label).toBe("failed")
+    expect(stepChipFor(failed, "write", 1)?.label).toBe("failed")
   })
 })
 

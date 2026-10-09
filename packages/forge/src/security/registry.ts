@@ -35,6 +35,7 @@ import { Bandit } from "./integrations/bandit"
 import { NativeAudit } from "./integrations/native-audit"
 import { Opengrep } from "./integrations/opengrep"
 import { Batou } from "./integrations/batou"
+import { Zizmor } from "./integrations/zizmor"
 import { Linear } from "./integrations/linear"
 
 /**
@@ -116,6 +117,7 @@ const implementations: readonly Integration[] = [
   NativeAudit,
   Opengrep,
   Batou,
+  Zizmor,
 ]
 
 /** Runtime implementations projected through the Extension v1 catalog. */

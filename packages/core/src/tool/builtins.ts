@@ -3,6 +3,7 @@ export * as BuiltInTools from "./builtins"
 import { makeLocationNode } from "../effect/app-node"
 import { Layer } from "effect"
 import { AutomationTool } from "./automation"
+import { TeamWorkspaceTool } from "./team-workspace"
 import { BashTool } from "./bash"
 import { CodeSearchTool } from "./code-search"
 import { ContextTool } from "./context"
@@ -38,6 +39,7 @@ import { CodecTools } from "./codec-tools"
 import { SourcemapTools } from "./sourcemap-tools"
 import { ScriptDeobfuscateTools } from "./script-deobfuscate-tools"
 import { JsonQueryTools } from "./json-query-tools"
+import { JwtAuditTools } from "./jwt-audit-tools"
 import { FuzzyHashTools } from "./fuzzy-hash-tools"
 import { CryptoMarkersTools } from "./crypto-markers-tools"
 import { PdfInspectTools } from "./pdf-inspect-tools"
@@ -62,6 +64,8 @@ import { DebugSymbolsTools } from "./debug-symbols-tools"
 import { LobbyRoomContextTool } from "./lobby-room-context"
 import { FollowStream } from "./follow-stream"
 import { WhiteboardTool } from "./whiteboard"
+import { VisualizeTool } from "./visualize"
+import { AnimateTool } from "./animate"
 import { SecurityProxyTool } from "./security-proxy"
 
 /**
@@ -83,6 +87,7 @@ export const node = makeLocationNode({
   deps: [
     ApplyPatchTool.node,
     AutomationTool.node,
+    TeamWorkspaceTool.node,
     BashTool.node,
     CodeSearchTool.node,
     ContextTool.node,
@@ -109,9 +114,11 @@ export const node = makeLocationNode({
     BinaryAnalysisTools.node,
     StaticAnalysisTools.node,
     ProtocolInspectTools.node,
-  FollowStream.node,
-  WhiteboardTool.node,
-  SecurityProxyTool.node,
+    FollowStream.node,
+    WhiteboardTool.node,
+    VisualizeTool.node,
+    AnimateTool.node,
+    SecurityProxyTool.node,
     ForensicTools.node,
     RosettaExecTool.node,
     WasmInspectTools.node,
@@ -121,6 +128,7 @@ export const node = makeLocationNode({
     SourcemapTools.node,
     ScriptDeobfuscateTools.node,
     JsonQueryTools.node,
+    JwtAuditTools.node,
     FuzzyHashTools.node,
     CryptoMarkersTools.node,
     PdfInspectTools.node,

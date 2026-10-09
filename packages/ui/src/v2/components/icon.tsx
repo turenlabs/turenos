@@ -35,6 +35,7 @@ import TableColumnsSplitIcon from "@hugeicons/core-free-icons/TableColumnsSplitI
 import TableRowsSplitIcon from "@hugeicons/core-free-icons/TableRowsSplitIcon"
 import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon"
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon"
+import UserGroupIcon from "@hugeicons/core-free-icons/UserGroupIcon"
 
 const icons = {
   copy: Copy01Icon,
@@ -44,6 +45,7 @@ const icons = {
   "folder-add-left": FolderAddIcon,
   folder: Folder01Icon,
   branch: GitBranchIcon,
+  team: UserGroupIcon,
   "grid-plus": Grid2X2PlusIcon,
   help: HelpCircleIcon,
   home: Home05Icon,
