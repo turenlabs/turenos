@@ -15,6 +15,7 @@ import { loopApi, loopCatalog, responseData, type LoopInfo, type LoopModel } fro
 import { teamApi } from "./team/api"
 import { TeamMentionInput } from "./team/mention-input"
 import { TeamMessageContent } from "./team/message-content"
+import { createTeamScroll } from "./team/scroll"
 import { PixelAvatar, PixelAvatarEditor, generatePixelAvatar } from "./team/pixel-avatar"
 import {
   assignedHandles,
@@ -121,7 +122,7 @@ export default function TeamPage() {
   let generation = 0
   let roomRevision = 0
   const loadingKeys = new Set<string>()
-  let log: HTMLDivElement | undefined
+  const scroll = createTeamScroll()
   let pendingPost:
     | { id: string; roomID: string; text: string; client: ReturnType<typeof serverSDK>["client"]; generation: number }
     | undefined
@@ -140,7 +141,6 @@ export default function TeamPage() {
     if (loadingKeys.has(key)) return
     loadingKeys.add(key)
     const api = teamApi(sdk.client)
-    const beforeTop = log?.scrollHeight
     if (mode === "initial") setState("loading", true)
     if (mode === "older") setState("olderLoading", true)
     try {
@@ -166,6 +166,7 @@ export default function TeamPage() {
         mode === "older"
           ? mergeMessages(result.messages, previous?.messages ?? [])
           : mergeMessages(previous?.messages ?? [], result.messages)
+      if (mode === "older") scroll.prepend()
       setState("value", {
         ...result,
         hasMore: mode === "poll" ? (previous?.hasMore ?? result.hasMore) : result.hasMore,
@@ -177,8 +178,7 @@ export default function TeamPage() {
       }
       setState("loadError", undefined)
       if (!roomID && result.room.id) navigate(`/team/${result.room.id}`, { replace: true })
-      if (mode === "older" && log && beforeTop !== undefined)
-        requestAnimationFrame(() => log && (log.scrollTop += log.scrollHeight - beforeTop))
+      scroll.update()
     } catch (error) {
       if (current === generation && revision === roomRevision)
         setState("loadError", error instanceof Error ? error.message : "Could not load Team room")
@@ -197,6 +197,8 @@ export default function TeamPage() {
     void sdk
     generation++
     setState("value", undefined)
+    untrack(() => scroll.reset())
+    onCleanup(() => scroll.cancel())
     setState("roomAction", undefined)
     setState("createOpen", false)
     setState("factoryOpen", false)
@@ -273,15 +275,15 @@ export default function TeamPage() {
       })
       if (
         ownsTeamResponse(
-          { client: submitted.client, roomID: submitted.roomID },
-          { client: serverSDK().client, roomID: state.value?.room.id },
+          { client: submitted.client, roomID: submitted.roomID, generation: sendGeneration },
+          { client: serverSDK().client, roomID: state.value?.room.id, generation },
         )
       ) {
         setState("value", (previous) =>
           previous ? { ...previous, messages: mergeMessages(previous.messages, [posted.message]) } : previous,
         )
         if (state.text.trim() === submitted.text) setState("text", "")
-        if (log) log.scrollTop = log.scrollHeight
+        scroll.resume()
       }
       pendingPost = undefined
       void load("poll")
@@ -966,7 +968,10 @@ export default function TeamPage() {
           </div>
         </Show>
         <div
-          ref={log}
+          ref={scroll.scrollRef}
+          onScroll={scroll.handleScroll}
+          onPointerDown={scroll.handleInteraction}
+          onPointerUp={scroll.handleInteraction}
           role="log"
           aria-label="Room messages"
           aria-live="polite"
@@ -1012,30 +1017,32 @@ export default function TeamPage() {
               </p>
             </div>
           </Show>
-          <For each={state.value?.messages}>
-            {(message) => (
-              <article class="mb-4 grid grid-cols-[128px_minmax(0,1fr)] gap-3 max-sm:grid-cols-[76px_minmax(0,1fr)]">
-                <div class="flex justify-between gap-2 text-[10px] text-v2-text-text-faint">
-                  <time>{timeLabel(message.time)}</time>
-                  <b class="truncate font-sans text-v2-text-text-base">{message.author}</b>
-                </div>
-                <div class="min-w-0 break-words font-sans text-[13px] leading-5">
-                  <TeamMessageContent message={message} />
-                  <Show when={message.kind === "system"}>
-                    <span class="text-v2-text-text-muted"> · update</span>
-                  </Show>
-                  <Show when={message.sessionID}>
-                    <a
-                      class="ml-2 text-v2-text-text-accent underline"
-                      href={sessionHref(server.key, message.sessionID!)}
-                    >
-                      Open Session
-                    </a>
-                  </Show>
-                </div>
-              </article>
-            )}
-          </For>
+          <div ref={scroll.contentRef} class="flow-root">
+            <For each={state.value?.messages}>
+              {(message) => (
+                <article class="mb-4 grid grid-cols-[128px_minmax(0,1fr)] gap-3 max-sm:grid-cols-[76px_minmax(0,1fr)]">
+                  <div class="flex justify-between gap-2 text-[10px] text-v2-text-text-faint">
+                    <time>{timeLabel(message.time)}</time>
+                    <b class="truncate font-sans text-v2-text-text-base">{message.author}</b>
+                  </div>
+                  <div class="min-w-0 break-words font-sans text-[13px] leading-5">
+                    <TeamMessageContent message={message} />
+                    <Show when={message.kind === "system"}>
+                      <span class="text-v2-text-text-muted"> · update</span>
+                    </Show>
+                    <Show when={message.sessionID}>
+                      <a
+                        class="ml-2 text-v2-text-text-accent underline"
+                        href={sessionHref(server.key, message.sessionID!)}
+                      >
+                        Open Session
+                      </a>
+                    </Show>
+                  </div>
+                </article>
+              )}
+            </For>
+          </div>
         </div>
         <div class="border-t border-v2-border-border-base px-5 py-3 max-sm:px-4">
           <label for="team-message" class="mb-2 block text-[12px] [font-weight:550]">

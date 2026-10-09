@@ -3,12 +3,14 @@ import { Context, Effect, Schema } from "effect"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { Global } from "@turenlabs/core/global"
+import { SessionMessage } from "@turenlabs/core/session/message"
 import { Team } from "@turenlabs/schema/team"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
+import { extractTeamTaskOutput, teamTaskIDForResponse } from "../../src/team/runtime"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, tmpdir } from "../fixture/fixture"
 import { pollWithTimeout, testEffect } from "../lib/effect"
-import { TestLLMServer } from "../lib/llm-server"
+import { TestLLMServer, reply } from "../lib/llm-server"
 
 const it = testEffect(TestLLMServer.layer).live
 const context = Context.empty() as Context.Context<unknown>
@@ -31,7 +33,7 @@ function state(directory: string, roomID?: string) {
   )
 }
 
-function setup(llmURL: string) {
+function setup(llmURL: string, tools = false) {
   return Effect.gen(function* () {
     const tmp = yield* Effect.acquireRelease(
       Effect.promise(() => tmpdir({ git: true, config: { model: "team-fixture/chat" } })),
@@ -66,7 +68,7 @@ function setup(llmURL: string) {
                       url: llmURL,
                       settings: { apiKey: "fixture-key" },
                     },
-                    capabilities: { tools: false, input: ["text"], output: ["text"] },
+                    capabilities: { tools, input: ["text"], output: ["text"] },
                     limit: { context: 32_000, output: 2_000 },
                   },
                 },
@@ -91,6 +93,48 @@ afterEach(async () => {
 })
 
 describe("TeamRuntime dispatch", () => {
+  it("publishes the final response after user and machine continuation boundaries", () =>
+    Effect.sync(() => {
+      const assistant = (id: string, text: string, file: string): SessionMessage.Assistant =>
+        ({
+          id,
+          type: "assistant",
+          content: [{ id: `text_${id}`, type: "text", text }],
+          snapshot: { files: [file] },
+          time: { completed: 1 },
+        }) as unknown as SessionMessage.Assistant
+      const user = { type: "user" } as SessionMessage.Message
+      const earlier = assistant("msg_earlier", "Earlier private response", "earlier.txt")
+      const intermediate = assistant("msg_intermediate", "Intermediate private response", "intermediate.txt")
+      const final = assistant("msg_final", "Actual completed response", "final.txt")
+      const messages = [earlier, user, intermediate, user, final]
+
+      const output = extractTeamTaskOutput(messages, final)
+
+      expect(output.text).toBe("Actual completed response")
+      expect(output.artifacts).toEqual([{ type: "changed", path: "final.txt" }])
+    }))
+
+  it("attributes a Session response to the nearest preceding Team task prompt", () =>
+    Effect.sync(() => {
+      const user = (id: string) => ({ id, type: "user" }) as unknown as SessionMessage.Message
+      const assistant = (id: string) => ({ id, type: "assistant" }) as unknown as SessionMessage.Message
+      const messages = [
+        user("msg_team_old_task"),
+        assistant("msg_old_task_response"),
+        user("msg_team_runtime_followup"),
+        assistant("msg_followup_response"),
+        user("msg_team_new_task"),
+        assistant("msg_new_task_response"),
+      ]
+
+      const taskIDs = new Set(["old_task", "new_task"])
+      expect(teamTaskIDForResponse(messages, "msg_old_task_response", taskIDs)).toBe("old_task")
+      expect(teamTaskIDForResponse(messages, "msg_followup_response", taskIDs)).toBe("old_task")
+      expect(teamTaskIDForResponse(messages, "msg_new_task_response", taskIDs)).toBe("new_task")
+      expect(teamTaskIDForResponse(messages, "msg_missing_response", taskIDs)).toBeUndefined()
+    }))
+
   it("replies to a greeting once and shares that conversation with the next teammate task", () =>
     Effect.gen(function* () {
       const llm = yield* TestLLMServer
@@ -164,6 +208,90 @@ describe("TeamRuntime dispatch", () => {
       expect(inputs).toContain("Hey team")
       expect(inputs).toContain("What would you like the team to do?")
       expect(yield* llm.calls).toBe(2)
+    }))
+
+  it("runs a delegated task in a second native Session and publishes both results", () =>
+    Effect.gen(function* () {
+      const llm = yield* TestLLMServer
+      const tmp = yield* setup(llm.url, true)
+      const created = yield* Effect.promise(() =>
+        request("/api/team/room", tmp.path, "POST", { name: "handoff-runtime-room" }),
+      )
+      const room = Schema.decodeUnknownSync(Team.Room)(yield* Effect.promise(() => created.json()))
+      const teammates = yield* Effect.forEach(
+        ["coordinator", "researcher"],
+        (handle) =>
+          Effect.promise(() =>
+            request("/api/team/teammate", tmp.path, "POST", {
+              roomID: room.id,
+              name: handle,
+              handle,
+              role: "Teammate",
+              mission: "Complete the assigned room task.",
+              directory: tmp.path,
+              model: { id: "chat", providerID: "team-fixture" },
+            }),
+          ).pipe(
+            Effect.flatMap((response) => Effect.promise(() => response.json())),
+            Effect.map(Schema.decodeUnknownSync(Team.Teammate)),
+          ),
+        { concurrency: "unbounded" },
+      )
+      const parentRequest = "@coordinator assign the researcher a bounded checkout review"
+      const childRequest = "Check one checkout guard for the coordinator."
+      const isParentSession = (hit: { body: Record<string, unknown> }) =>
+        JSON.stringify(hit.body).includes("handle=@coordinator")
+      const isChildSession = (hit: { body: Record<string, unknown> }) =>
+        JSON.stringify(hit.body).includes(`Complete this bounded task from teammate @coordinator: ${childRequest}`)
+      yield* llm.pushMatch(
+        isParentSession,
+        reply().tool("team_collaborate", { targetHandle: "researcher", text: childRequest }),
+      )
+      yield* llm.pushMatch(isParentSession, reply().text("The researcher was assigned the review.").stop().item())
+      yield* llm.pushMatch(isChildSession, reply().text("The checkout guard is present.").stop().item())
+
+      const posted = yield* Effect.promise(() =>
+        request("/api/team/message", tmp.path, "POST", {
+          id: "tmsg_runtime_handoff",
+          roomID: room.id,
+          text: parentRequest,
+        }),
+      )
+      const parent = Schema.decodeUnknownSync(Team.Posted)(yield* Effect.promise(() => posted.json())).tasks[0]!
+      const coordinator = teammates.find((teammate) => teammate.handle === "coordinator")!
+      const researcher = teammates.find((teammate) => teammate.handle === "researcher")!
+      const child = yield* pollWithTimeout(
+        state(tmp.path, room.id).pipe(
+          Effect.map((current) => current.tasks.find((task) => task.teammateID === researcher.id)),
+        ),
+        "Coordinator did not create the delegated task",
+        "20 seconds",
+      )
+      const settled = yield* pollWithTimeout(
+        state(tmp.path, room.id).pipe(
+          Effect.map((current) => {
+            const parentTask = current.tasks.find((task) => task.id === parent.id)
+            const childTask = current.tasks.find((task) => task.id === child.id)
+            return parentTask?.status === "succeeded" && childTask?.status === "succeeded" ? current : undefined
+          }),
+        ),
+        "Delegated Team tasks did not finish",
+        "30 seconds",
+      )
+
+      expect(child.sessionID).toMatch(/^ses_team_/)
+      expect(child.sessionID).not.toBe(parent.sessionID)
+      expect(settled.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ teammateID: coordinator.id, text: "The researcher was assigned the review." }),
+          expect.objectContaining({ teammateID: researcher.id, text: "The checkout guard is present." }),
+        ]),
+      )
+      expect(
+        (yield* llm.inputs).some((input) =>
+          JSON.stringify(input).includes(`Complete this bounded task from teammate @coordinator: ${childRequest}`),
+        ),
+      ).toBe(true)
     }))
 
   it("runs a configured factory through plan, selected work, and acceptance check", () =>
@@ -440,6 +568,7 @@ describe("TeamRuntime dispatch", () => {
       expect(posted.status).toBe(200)
       const created = Schema.decodeUnknownSync(Team.Posted)(yield* Effect.promise(() => posted.json()))
       expect(created.tasks).toHaveLength(1)
+      const task = created.tasks[0]!
 
       const settled = yield* pollWithTimeout(
         Effect.gen(function* () {
@@ -457,6 +586,7 @@ describe("TeamRuntime dispatch", () => {
       expect(completed.messages).toContainEqual(
         expect.objectContaining({ teammateID: teammate.id, text: "The dependency review is ready." }),
       )
+      expect(completed.messages.filter((roomMessage) => roomMessage.replyTo === message.id)).toHaveLength(1)
       expect(completed.tasks.filter((task) => task.messageID === message.id)).toHaveLength(1)
       expect(
         (yield* llm.inputs).filter((input) => JSON.stringify(input).includes(`User message: ${message.text}`)),
@@ -465,10 +595,60 @@ describe("TeamRuntime dispatch", () => {
       const retry = yield* Effect.promise(() => request("/api/team/message", tmp.path, "POST", message))
       expect(retry.status).toBe(200)
       yield* Effect.sleep("250 millis")
-      expect((yield* state(tmp.path)).tasks.filter((task) => task.messageID === message.id)).toHaveLength(1)
+      const retried = yield* state(tmp.path)
+      expect(retried.tasks.filter((task) => task.messageID === message.id)).toHaveLength(1)
+      expect(retried.messages.filter((roomMessage) => roomMessage.replyTo === message.id)).toHaveLength(1)
       expect(
         (yield* llm.inputs).filter((input) => JSON.stringify(input).includes(`User message: ${message.text}`)),
       ).toHaveLength(1)
+
+      const followup = {
+        id: "msg_team_runtime_followup",
+        prompt: { text: "Please add one follow-up detail." },
+      }
+      yield* llm.pushMatch(
+        (hit) => hit.body.stream === true && JSON.stringify(hit.body).includes("Please add one follow-up detail."),
+        reply().text("The follow-up detail is available.").stop(),
+      )
+      const followupResponse = yield* Effect.promise(() =>
+        request(`/api/session/${task.sessionID}/prompt`, tmp.path, "POST", followup),
+      )
+      expect(followupResponse.status).toBe(200)
+      const followupOutput = yield* pollWithTimeout(
+        state(tmp.path).pipe(
+          Effect.map((current) =>
+            current.messages.find((roomMessage) => roomMessage.text === "The follow-up detail is available."),
+          ),
+        ),
+        "Completed teammate Session follow-up did not reach the room",
+        "20 seconds",
+      ).pipe(
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            const messagesResponse = yield* Effect.promise(() =>
+              request(`/api/session/${task.sessionID}/message?limit=100`, tmp.path),
+            )
+            const messages = yield* Effect.promise(() => messagesResponse.json())
+            const current = yield* state(tmp.path)
+            return yield* Effect.fail(
+              new Error(`${error}; sessionMessages=${JSON.stringify(messages)}; room=${JSON.stringify(current)}`),
+            )
+          }),
+        ),
+      )
+      expect(followupOutput.sourceMessageIDs).toHaveLength(1)
+
+      const callsBeforeRetry = yield* llm.calls
+      const followupRetry = yield* Effect.promise(() =>
+        request(`/api/session/${task.sessionID}/prompt`, tmp.path, "POST", followup),
+      )
+      expect(followupRetry.status).toBe(200)
+      yield* Effect.sleep("250 millis")
+      const afterFollowupRetry = yield* state(tmp.path)
+      expect(
+        afterFollowupRetry.messages.filter((roomMessage) => roomMessage.text === "The follow-up detail is available."),
+      ).toHaveLength(1)
+      expect(yield* llm.calls).toBe(callsBeforeRetry)
     }))
 
   it("cancels an active provider turn without replay", () =>
