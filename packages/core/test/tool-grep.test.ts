@@ -16,6 +16,7 @@ import { location } from "./fixture/location"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 import { toolIdentity, executeTool } from "./lib/tool"
+import { ShellToolRouting } from "@turenlabs/core/shell-tool-routing"
 
 const sessionID = SessionV2.ID.make("ses_grep_tool_test")
 const assertions: PermissionV2.AssertInput[] = []
@@ -70,6 +71,44 @@ const call = (id: string, input: typeof GrepTool.Input.Encoded) => ({
 const it = testEffect(Layer.empty)
 
 describe("GrepTool", () => {
+  it.live("reports a failing backend so bash stops redirecting searches to it", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        const state = { fail: true }
+        const real = Ripgrep.Service.of({
+          find: () => Effect.succeed([]),
+          glob: () => Effect.succeed([]),
+          lines: () => Effect.succeed(new Map()),
+          grep: () => Effect.succeed([]),
+        })
+        const backend = Layer.succeed(
+          Ripgrep.Service,
+          Ripgrep.Service.of({
+            ...real,
+            grep: (input) =>
+              state.fail ? Effect.fail(new Ripgrep.Error({ message: "worker trapped" })) : real.grep(input),
+          }),
+        )
+        return withTool(
+          tmp.path,
+          (registry) =>
+            Effect.gen(function* () {
+              const failed = yield* executeTool(registry, call("call-failing", { pattern: "x" }))
+              expect(failed).toMatchObject({ type: "error", value: expect.stringContaining("worker trapped") })
+              expect(ShellToolRouting.searchUnavailable(sessionID, "grep")).toBe(true)
+              state.fail = false
+              yield* executeTool(registry, call("call-recovered", { pattern: "x" }))
+              expect(ShellToolRouting.searchUnavailable(sessionID, "grep")).toBe(false)
+            }),
+          permission,
+          backend,
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   it.live("searches existing files and directories without widening the scope", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
