@@ -2,6 +2,7 @@ export {
   assignedHandles,
   mergeMessages,
   parseFactoryParameters,
+  replyContext,
   roomCoordinator,
   roomDeleteBlocker,
   selectFactoryTeammate,

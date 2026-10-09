@@ -9,6 +9,17 @@ export function mergeMessages<M extends { id: string; seq: number }>(existing: r
   return [...messages.values()].sort((a, b) => a.seq - b.seq)
 }
 
+export function replyContext<M extends { id: string; author: string; text: string; replyTo?: string | null }>(
+  message: M,
+  messages: readonly M[],
+) {
+  if (!message.replyTo) return
+  const source = messages.find((item) => item.id === message.replyTo)
+  if (!source) return
+  const text = source.text.replace(/\s+/g, " ").trim()
+  return { author: source.author, excerpt: text.length > 160 ? `${text.slice(0, 159)}…` : text }
+}
+
 export function assignedHandles(text: string, teammates: readonly { handle: string }[]) {
   const handles = new Set(teammates.map((teammate) => teammate.handle.toLowerCase()))
   return mentionedHandles(text).filter((handle) => handles.has(handle))

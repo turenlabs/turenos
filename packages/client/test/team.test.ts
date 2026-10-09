@@ -10,6 +10,7 @@ import {
   mentionedHandles,
   mergeMessages,
   parseFactoryParameters,
+  replyContext,
   roomCoordinator,
   roomDeleteBlocker,
   roomSchedules,
@@ -21,6 +22,22 @@ const teammate = (handle: string) => ({ handle }) as Team.Teammate
 const message = (id: string, seq: number) => ({ id, seq }) as Team.Message
 
 describe("team room rules", () => {
+  test("resolves reply context only from loaded messages", () => {
+    const source = { ...message("source", 1), author: "moss", text: "Check\n  the result" }
+    const reply = { ...message("reply", 2), replyTo: source.id }
+    expect(replyContext(reply, [source, reply])).toEqual({ author: "moss", excerpt: "Check the result" })
+    expect(replyContext(reply, [reply])).toBeUndefined()
+    expect(replyContext(message("plain", 3), [source])).toBeUndefined()
+  })
+
+  test("caps reply excerpts at 160 characters and keeps markup as plain text", () => {
+    const source = { ...message("source", 1), author: "<b>moss</b>", text: "<script>unsafe()</script>" }
+    const reply = { ...message("reply", 2), replyTo: source.id }
+    expect(replyContext(reply, [source])).toEqual({ author: source.author, excerpt: source.text })
+    expect(replyContext(reply, [{ ...source, text: "a".repeat(160) }])?.excerpt).toBe("a".repeat(160))
+    expect(replyContext(reply, [{ ...source, text: "a".repeat(161) }])?.excerpt).toBe(`${"a".repeat(159)}…`)
+  })
+
   test("merges retries and orders history without dropping older pages", () => {
     expect(
       mergeMessages([message("later", 3), message("old", 1)], [message("later", 3), message("middle", 2)]).map(
