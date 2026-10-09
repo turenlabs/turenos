@@ -55,8 +55,8 @@ export function workingFolders(ctx: FoldersContext) {
       build(pane)
     })
     .catch((error) => {
-      if (state.modal === dialog && !dialog.busy)
-        dialog.error.content = `${errorText(error)}\nCtrl+S retries the chosen operation · Esc close`
+      if (state.closed || state.modal !== dialog || dialog.busy || dialog.error.isDestroyed) return
+      dialog.error.content = `${errorText(error)}\nCtrl+S retries the chosen operation · Esc close`
     })
   field.focus()
 }
@@ -102,11 +102,14 @@ function rowText(pane: Pane, index: number) {
 
 function paint(pane: Pane) {
   const current = pane.ctx.state.folder?.directory
-  const all = pane.ctx.state.snapshot?.workingFolders === undefined ? "All folders" : "All open folders"
+  // A server that stores no list shows every folder, so no folder reads as closed there.
+  const listed = pane.ctx.state.snapshot?.workingFolders !== undefined
+  const all = listed ? "All open folders" : "All folders"
   pane.rows.forEach((row, index) => {
     const name = row.directory === undefined ? all : label(row.directory, 512)
-    const shown = row.directory === current ? "  · showing" : ""
-    row.text.content = `${index === pane.cursor ? "▶" : " "} ${name}${shown}`
+    const open = !listed || !row.directory || pane.directories.some((item) => pathKey(item) === pathKey(row.directory!))
+    const marks = `${row.directory === current ? "  · showing" : ""}${open ? "" : "  · not open"}`
+    row.text.content = `${index === pane.cursor ? "▶" : " "} ${name}${marks}`
     row.text.fg = index === pane.cursor ? color.accent : color.text
   })
 }

@@ -2,6 +2,14 @@ import { httpStatus, type Connection } from "../server"
 import type { DashboardState } from "../state"
 import { folderContains, inFolder, type Folder } from "./folder"
 
+/** The server answered that it cannot list the folder. */
+export class FolderNotFound extends Error {
+  constructor() {
+    super("Folder not found on the server.")
+    this.name = "FolderNotFound"
+  }
+}
+
 /**
  * A folder the server can read, with its project, so the session list can include the project's worktrees.
  * Unreadable folders are refused here: they would only fail later, as an HTTP 500 on session creation.
@@ -13,7 +21,7 @@ export async function resolveFolder(client: Connection["client"], directory: str
     client.files.list({ location: { directory } }, request).catch((error: unknown) => {
       const status = httpStatus(error)
       if (status === undefined || status === 401 || status === 403) throw error
-      throw new Error("Folder not found on the server.")
+      throw new FolderNotFound()
     }),
   ])
   return { directory, project: { id: location.project.id, directory: location.project.directory } }

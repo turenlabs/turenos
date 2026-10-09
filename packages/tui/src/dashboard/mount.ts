@@ -1,8 +1,8 @@
 import type { CliRenderer } from "@opentui/core"
-import type { Connection } from "../server"
+import { httpStatus, type Connection } from "../server"
 import { createDashboardState, label } from "../state"
 import { createLayout } from "../layout"
-import { resolveFolder } from "../working-folders"
+import { FolderNotFound, resolveFolder } from "../working-folders"
 import { createControls } from "./controls"
 import { bindPointer } from "./pointer"
 import { attach } from "./lifecycle"
@@ -104,12 +104,20 @@ function createContext(
 
 /**
  * Shows the folder the dashboard starts in before the first snapshot, so the list never flashes every folder. A folder
- * the server cannot read is dropped; the returned note says why every folder shows.
+ * the server cannot read is dropped, and the returned note says why every folder shows. A refused credential or a
+ * lost connection drops it without a note: the first snapshot reports those.
  */
 async function startIn(d: DashboardContext, directory: string | undefined) {
   if (!directory) return
-  const folder = await resolveFolder(d.connection.client, directory).catch(() => undefined)
+  const result = await resolveFolder(d.connection.client, directory).then(
+    (folder) => ({ folder, unreadable: false }),
+    (error: unknown) => {
+      const status = httpStatus(error)
+      const unreadable = status === undefined ? error instanceof FolderNotFound : status !== 401 && status !== 403
+      return { folder: undefined, unreadable }
+    },
+  )
   if (d.state.closed) return
-  if (folder) d.state.folder = folder
-  return folder ? undefined : `Showing every folder: ${label(directory, 200)} is not readable on this server.`
+  if (result.folder) d.state.folder = result.folder
+  return result.unreadable ? `Showing every folder: ${label(directory, 200)} is not readable on this server.` : undefined
 }

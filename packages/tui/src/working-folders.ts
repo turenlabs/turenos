@@ -7,4 +7,4 @@ export {
   startFolder,
   type Folder,
 } from "./working-folders/folder"
-export { defaultDirectory, emptyWorkingFolders, resolveFolder } from "./working-folders/select"
+export { defaultDirectory, emptyWorkingFolders, FolderNotFound, resolveFolder } from "./working-folders/select"

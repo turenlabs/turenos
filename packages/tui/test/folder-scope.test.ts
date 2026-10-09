@@ -58,6 +58,30 @@ test("a start folder the server cannot read shows every folder and says why", as
   expect(frame).toContain("other task")
 })
 
+test("a start folder that is not open is marked so in Working folders", async () => {
+  const server = folders({ "GET /global/storage": () => ({ state: stored(["/srv/other"]) }) })
+  const { view, screen } = await start(server, "/srv/repo")
+  await screen("Folder · repo")
+  view.mockInput.pressKey("p", { ctrl: true })
+  await view.mockInput.typeText("folders")
+  view.mockInput.pressEnter()
+  const pane = await screen("▶ /srv/repo  · showing  · not open")
+  expect(pane).toContain("  /srv/other")
+  expect(pane).not.toContain("/srv/other  · not open")
+})
+
+test("a refused credential at start drops the folder without calling it unreadable", async () => {
+  const server = turen({ name: "repo", password: "right" })
+  const { view, screen } = await terminal(120, 36)
+  const app = mountDashboard(view.renderer, connect({ url: server.url, password: "wrong" }), server.url, undefined, {
+    folder: "/srv/repo",
+  })
+  cleanup.push(app.dispose)
+  await app.ready.catch(() => undefined)
+  await screen("TurenOS")
+  expect(view.captureCharFrame()).not.toContain("not readable")
+})
+
 test("the shown folder's sessions are read by folder and project, not only from the recent page", async () => {
   const older = at("old", "/srv/repo/docs")
   const server = folders({
